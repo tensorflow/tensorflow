@@ -395,7 +395,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
       ValueError: if `not distribution.is_scalar_batch`.
       ValueError: if `not distribution.is_scalar_event`.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[mix_loc, temperature]) as name:
       if not scale or len(scale) < 2:
         raise ValueError("Must specify list (or list-like object) of scale "

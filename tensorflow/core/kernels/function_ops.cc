@@ -254,6 +254,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     opts.runner = ctx->runner();
     opts.stats_collector = ctx->stats_collector();
     opts.step_container = ctx->step_container();
+    opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -324,7 +325,7 @@ class RemoteCallOp : public AsyncOpKernel {
         handle = cached_entry->second;
       } else {
         VLOG(1) << "Instantiating " << func_.name() << " on " << target_device;
-        port::Tracing::TraceMe activity(strings::StrCat(
+        tracing::ScopedActivity activity(strings::StrCat(
             "RemoteCall: Instantiate: ", func_.name(), " on ", target_device));
         OP_REQUIRES_OK_ASYNC(
             ctx,
@@ -355,12 +356,12 @@ class RemoteCallOp : public AsyncOpKernel {
       args.push_back(argument);
     }
     auto* rets = new std::vector<Tensor>;
-    auto* trace = new port::Tracing::TraceMe(strings::StrCat(
+    auto* activity = new tracing::ScopedActivity(strings::StrCat(
         "RemoteCall: Run: ", func_.name(), " on ", target_device));
     VLOG(1) << "Running " << func_.name() << " on " << target_device
             << " with handle: " << handle;
     lib->Run(opts, handle, args, rets,
-             [rets, trace, done, ctx](const Status& status) {
+             [rets, activity, done, ctx](const Status& status) {
                if (!status.ok()) {
                  ctx->SetStatus(status);
                } else {
@@ -369,7 +370,7 @@ class RemoteCallOp : public AsyncOpKernel {
                  }
                }
                delete rets;
-               delete trace;
+               delete activity;
                done();
              });
   }

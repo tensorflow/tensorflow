@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/bcast.h"
 
@@ -30,7 +30,7 @@ namespace tensorflow {
 // inputs that can be broadcast to the same shape. The base class
 // contains pure virtual methods to override: description is a textual
 // description of the operation; and Computation adds the
-// implementation of the operation to a xla::ComputationBuilder. For most
+// implementation of the operation to a xla::XlaBuilder. For most
 // arithmetic Ops XLA handles the broadcasting automatically given the input
 // tensors.
 class XlaBinaryOp : public XlaOpKernel {
@@ -55,10 +55,9 @@ class XlaBinaryOp : public XlaOpKernel {
   // higher-rank input should be matched when broadcasting the
   // lower-rank input. See comment below and the documentation on broadcasting
   // in the XLA documentation.
-  virtual xla::ComputationDataHandle Computation(
-      XlaOpKernelContext* ctx, const xla::ComputationDataHandle& lhs,
-      const gtl::ArraySlice<int64>& lhs_shape,
-      const xla::ComputationDataHandle& rhs,
+  virtual xla::XlaOp Computation(
+      XlaOpKernelContext* ctx, const xla::XlaOp& lhs,
+      const gtl::ArraySlice<int64>& lhs_shape, const xla::XlaOp& rhs,
       const gtl::ArraySlice<int64>& rhs_shape, const BCast& broadcast_helper,
       const std::vector<int64>& extend_dimensions) = 0;
 
@@ -67,11 +66,9 @@ class XlaBinaryOp : public XlaOpKernel {
   // Helper function that performs the broadcasting described by
   // 'broadcast_helper', yielding arguments 'lhs' and 'rhs' that have the same
   // shape.
-  static std::pair<xla::ComputationDataHandle, xla::ComputationDataHandle>
-  Broadcast(xla::ComputationBuilder* builder,
-            const xla::ComputationDataHandle& lhs,
-            const xla::ComputationDataHandle& rhs,
-            const BCast& broadcast_helper);
+  static std::pair<xla::XlaOp, xla::XlaOp> Broadcast(
+      xla::XlaBuilder* builder, const xla::XlaOp& lhs, const xla::XlaOp& rhs,
+      const BCast& broadcast_helper);
 };
 
 }  // namespace tensorflow

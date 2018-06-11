@@ -26,13 +26,10 @@ namespace tensorflow {
 class GpuIdManager {
  public:
   // Adds a mapping from tf_gpu_id to physical_gpu_id.
-  static void InsertTfPhysicalGpuIdPair(TfGpuId tf_gpu_id, PhysicalGpuId physical_gpu_id);
+  static Status InsertTfPhysicalGpuIdPair(TfGpuId tf_gpu_id, PhysicalGpuId physical_gpu_id);
 
   // Gets the physical_gpu_id associated with tf_gpu_id. Returns OK if found.
   static Status TfToPhysicalGpuId(TfGpuId tf_gpu_id, PhysicalGpuId* physical_gpu_id);
-  // Similar to the above version, but returns the result, and checks fail if
-  // no result is found.
-  static PhysicalGpuId TfToPhysicalGpuId(TfGpuId tf_gpu_id);
 
   // Clears the map. Used in unit tests only.
   static void TestOnlyReset();

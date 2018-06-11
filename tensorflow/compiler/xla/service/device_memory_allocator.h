@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -37,28 +38,29 @@ class DeviceMemoryAllocator {
       : platform_(platform) {}
   virtual ~DeviceMemoryAllocator() {}
 
+  // Allocates memory on the device.
+  //
+  // If size > 0 and the returned StatusOr is OK, the wrapped OwningDeviceMemory
+  // must not be null.  If size == 0, must return a null OwningDeviceMemory.
+  //
   // 'retry_on_failure': If false, and the first attempt to allocate the memory
   // fails, the allocation should return immediately without retrying.  An
   // example use case is optional scratch spaces where a failure has only
   // performance impact.
-  //
-  // Allocate() should return a null pointer for a size-0 allocation.
-  // Deallocate() must be a no-op for null pointers.
-  virtual StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal,
-                                                  uint64 size,
-                                                  bool retry_on_failure) = 0;
+  virtual StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+                                                bool retry_on_failure) = 0;
 
   // Two-arg version of Allocate(), which sets retry-on-failure to true.
   //
   // (We don't simply use a default argument on the virtual Allocate function
   // because default args on virtual functions are disallowed by the Google
   // style guide.)
-  StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size) {
+  StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size) {
     return Allocate(device_ordinal, size, /*retry_on_failure=*/true);
   }
 
-  virtual tensorflow::Status Deallocate(int device_ordinal,
-                                        se::DeviceMemoryBase* mem) = 0;
+  // Must be a nop for null pointers.
+  virtual Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) = 0;
 
   // Return the platform that the allocator allocates memory on.
   const se::Platform* platform() const { return platform_; }
@@ -68,6 +70,7 @@ class DeviceMemoryAllocator {
   virtual bool AllowsAsynchronousDeallocation() const = 0;
 
  protected:
+  friend class OwningDeviceMemory;
   const se::Platform* platform_;
 };
 
@@ -79,14 +82,13 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
       const se::Platform* platform,
       tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors);
 
-  StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
-                                          bool retry_on_failure) override;
+  StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+                                        bool retry_on_failure) override;
 
   // Pull in two-arg overload that sets retry_on_failure to true.
   using DeviceMemoryAllocator::Allocate;
 
-  tensorflow::Status Deallocate(int device_ordinal,
-                                se::DeviceMemoryBase* mem) override;
+  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   bool AllowsAsynchronousDeallocation() const override;
 

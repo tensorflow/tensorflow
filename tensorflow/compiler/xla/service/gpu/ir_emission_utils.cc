@@ -59,6 +59,25 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
          !ShapeUtil::HasZeroElements(lhs_shape) &&
          !ShapeUtil::HasZeroElements(rhs_shape);
 }
+
+bool DotImplementedAsGemm(const HloInstruction& dot) {
+  CHECK_EQ(dot.opcode(), HloOpcode::kDot);
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+
+  // If gemm can accept the operand shapes, use it rather than a custom
+  // kernel.
+  if (AreValidGemmShapes(lhs_shape, rhs_shape, dot.shape())) {
+    // The size of the reduction dimension should match. The shape inference
+    // guarantees this invariant, so the check here is for programming
+    // errors.
+    const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+    CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
+             rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
+    return true;
+  }
+  return false;
+}
 }  // namespace
 
 bool ImplementedAsGemm(const HloInstruction& hlo) {
@@ -69,24 +88,7 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
 
   // For certain types of Dot, we can call pre-canned BLAS gemm.
   if (hlo.opcode() == HloOpcode::kDot) {
-    const Shape& lhs_shape = hlo.operand(0)->shape();
-    const Shape& rhs_shape = hlo.operand(1)->shape();
-
-    // If gemm can accept the operand shapes, use it rather than a custom
-    // kernel.
-    if (AreValidGemmShapes(lhs_shape, rhs_shape, hlo.shape())) {
-      // The size of the reduction dimension should match. The shape inference
-      // guarantees this invariant, so the check here is for programming
-      // errors.
-      CHECK_EQ(lhs_shape.dimensions(1), rhs_shape.dimensions(0));
-      return true;
-    }
-  }
-
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kTransposeDot &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kDot) {
-    return true;
+    return DotImplementedAsGemm(hlo);
   }
 
   if (hlo.opcode() == HloOpcode::kFusion &&
@@ -98,7 +100,7 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
       dot = hlo.fused_expression_root()->operand(1);
     }
     if (dot->opcode() == HloOpcode::kDot) {
-      return ImplementedAsGemm(*dot);
+      return DotImplementedAsGemm(*dot);
     }
   }
 
@@ -160,19 +162,8 @@ static HloInstruction* CreateCudnnConv(
   Shape call_shape =
       ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
 
-  // Our CustomCall takes four arguments: The conv lhs and rhs, the cudnn
-  // algorithm to use, and a boolean indicating whether to use tensor cores.
-  //
-  // It's up to a later pass to choose the algorithm and decide whether to use
-  // tensor cores, so to indicate that we haven't yet made a choice, we speicfy
-  // -1 and false for those args.
-  HloInstruction* negative_one = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int64>(-1)));
-  HloInstruction* false_constant = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
-  HloInstruction* custom_call =
-      computation->AddInstruction(HloInstruction::CreateCustomCall(
-          call_shape, {lhs, rhs, negative_one, false_constant}, call_target));
+  HloInstruction* custom_call = computation->AddInstruction(
+      HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
   custom_call->set_window(window);
   custom_call->set_convolution_dimension_numbers(dnums);
   return custom_call;
@@ -222,6 +213,35 @@ bool IsReductionToVector(const HloInstruction& reduce) {
                                               input->shape()));
 }
 
+llvm::Value* EmitDeviceFunctionCall(
+    const string& callee_name,
+    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
+    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
+    PrimitiveType output_type,
+    tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes,
+    llvm::IRBuilder<>* ir_builder, llvm::Module* module) {
+  std::vector<llvm::Type*> ir_input_types;
+  for (PrimitiveType input_type : input_types) {
+    ir_input_types.push_back(
+        llvm_ir::PrimitiveTypeToIrType(input_type, module));
+  }
+  llvm::FunctionType* callee_type = llvm::FunctionType::get(
+      llvm_ir::PrimitiveTypeToIrType(output_type, module),  // Return type.
+      ir_input_types,                                        // Parameter types.
+      false);  // No variadic arguments.
+
+  // Declares the callee if it is not declared already.
+  llvm::Function* callee = llvm::cast<llvm::Function>(
+      ir_builder->GetInsertBlock()->getModule()->getOrInsertFunction(
+          llvm_ir::AsStringRef(callee_name), callee_type));
+
+  for (auto attribute : attributes) {
+    callee->addFnAttr(attribute);
+  }
+
+  return ir_builder->CreateCall(callee, llvm_ir::AsArrayRef(operands));
+}
+
 // This emits a device-side call to
 // "i32 vprintf(i8* fmt, arguments_type* arguments)" in the driver; see
 // http://docs.nvidia.com/cuda/ptx-writers-guide-to-interoperability/index.html#system-calls
@@ -252,14 +272,15 @@ llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
 }
 
 llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
-                             llvm::IRBuilder<>* builder) {
+                             llvm::IRBuilder<>* builder, llvm::Module* module) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
-    return llvm_ir::EmitCallToIntrinsic(
-        llvm::Intrinsic::nvvm_shfl_down_f32,
-        {value, offset, builder->getInt32(kWarpSize - 1)}, {}, builder);
+    return EmitDeviceFunctionCall(
+        "amdgcn.shfl.down.f32",
+        {value, offset, builder->getInt32(kWarpSize - 1)},
+        {F32, S32, S32}, F32, {}, builder, module);
   }
 
   // We must split values wider than 32 bits as the "shfl" instruction operates
@@ -273,10 +294,10 @@ llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
   for (int i = 0; i < num_segments; ++i) {
     x = builder->CreateInsertElement(
         x,
-        llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_shfl_down_i32,
-                                     {builder->CreateExtractElement(x, i),
-                                      offset, builder->getInt32(kWarpSize - 1)},
-                                     {}, builder),
+        EmitDeviceFunctionCall("amdgcn.shfl.down.f32",
+                               {builder->CreateExtractElement(x, i),
+                                offset, builder->getInt32(kWarpSize - 1)},
+                               {F32, S32, S32}, F32, {}, builder, module),
         i);
   }
   return builder->CreateBitCast(

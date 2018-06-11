@@ -147,6 +147,9 @@ message HloInstructionProto {
   repeated int64 called_computation_ids = 38;
 
   xla.OpSharding sharding = 40;
+
+  // Backend configuration for the instruction. Has backend-specific meaning.
+  string backend_config = 43;
 }
 
 // Serialization of HloComputation.

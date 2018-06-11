@@ -39,12 +39,15 @@ class GpuIdUtil {
   }
   static se::port::StatusOr<se::StreamExecutor*> ExecutorForTfGpuId(
       TfGpuId tf_gpu_id) {
-    return ExecutorForPhysicalGpuId(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id));
+    PhysicalGpuId physical_gpu_id;
+    TF_RETURN_IF_ERROR(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id, &physical_gpu_id));
+    return ExecutorForPhysicalGpuId(physical_gpu_id);
   }
 
   // Verify that the physical_gpu_id associated with a TfGpuId is legitimate.
   static void CheckValidTfGpuId(TfGpuId tf_gpu_id) {
-    const PhysicalGpuId physical_gpu_id = GpuIdManager::TfToPhysicalGpuId(tf_gpu_id);
+    PhysicalGpuId physical_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id, &physical_gpu_id));
     const int visible_device_count = GPUMachineManager()->VisibleDeviceCount();
     CHECK_LT(physical_gpu_id.value(), visible_device_count)
         << "physical_gpu_id is outside discovered device range."

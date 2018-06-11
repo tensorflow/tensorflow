@@ -311,7 +311,15 @@ __global__ void ColumnReduceMax16ColumnsKernel(
 
   // 1D array necessary due to bug in CUDA 9 compiler.
   // TODO(nluehr) revert to 2D array when compiler is ready.
+  // This is the mimic the following, but without any constructors:
+  //   __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
+#ifdef GOOGLE_CUDA
+  __shared__ __align__(
+      alignof(value_type)) char partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1) * sizeof(value_type)];
+  value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
+#elif TENSORFLOW_USE_ROCM
   __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
+#endif
 
   row += rows_per_warp * gridDim.y * blockDim.y;
   for (; row < num_rows; row += rows_per_warp * gridDim.y * blockDim.y) {
@@ -360,7 +368,15 @@ __global__ void ColumnReduceKernel(
 
   // 1D array necessary due to bug in CUDA 9 compiler.
   // TODO(nluehr) revert to 2D array when compiler is ready.
+  // This is to mimic the following, but without constructors:
+  //     __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
+#if GOOGLE_CUDA
+  __shared__ __align__(
+      alignof(value_type)) char partial_sums_raw[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1) * sizeof(value_type)];
+  value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
+#elif TENSORFLOW_USE_ROCM
   __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
+#endif
 
   row += gridDim.y * blockDim.y;
 
@@ -650,7 +666,7 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    GPU_LAUNCH_KERNEL(ColumnReduceKernel, grid_dim, block_dim, 0, cu_stream,
+    GPU_LAUNCH_KERNEL(ColumnReduceKernel<IN_T, OUT_T, Op>, grid_dim, block_dim, 0, cu_stream,
         in, out, extent_x, extent_y, op, init);
   } else {
     Tensor temp_storage;
@@ -660,7 +676,7 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
 
-    GPU_LAUNCH_KERNEL(ColumnReduceKernel, dim3(grid_dim), dim3(block_dim), 0, cu_stream,
+    GPU_LAUNCH_KERNEL(ColumnReduceKernel<IN_T, T*, Op>, grid_dim, block_dim, 0, cu_stream,
         in, (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op,
         init);
 
@@ -680,7 +696,7 @@ void LaunchColumnReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     LaunchColumnReduction_LTE16Cols(ctx, out, in, extent_x, extent_y, op, init,
                                     cu_stream);
   } else if (extent_y <= 4096) {
-    LaunchColumnReduction_LTE4096Cols(ctx, out, in, extent_x, extent_y, op,
+    LaunchColumnReduction_LTE4096Cols<T, Op, OUT_T, IN_T>(ctx, out, in, extent_x, extent_y, op,
                                       init, cu_stream);
   } else {
     int threads_per_block = 128;
@@ -838,7 +854,7 @@ void ReduceImpl(OpKernelContext* ctx, OUT_T out, IN_T in, int in_rank,
     LaunchRowReduction(ctx, out, in, in_dim0, in_dim1, op, init, cu_stream);
   } else if (in_rank == 2 && out_rank == 1 &&
              reduction_axes[0] == 0) {  // column reduction
-    LaunchColumnReduction(ctx, out, in, in_dim0, in_dim1, op, init, cu_stream);
+    LaunchColumnReduction<T, Op, OUT_T, IN_T>(ctx, out, in, in_dim0, in_dim1, op, init, cu_stream);
   } else if (in_rank == 3 && out_rank == 2 && reduction_axes[0] == 1) {
     Launch3DYReduction(ctx, out, in, in_dim0, in_dim1, in_dim2, op, init,
                        cu_stream);

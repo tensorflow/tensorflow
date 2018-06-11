@@ -81,7 +81,7 @@ class ResizeBicubicOpTest : public OpsTestBase {
 
   // Used in the baseline implementation
   inline int64 Bound(int64 val, int64 limit) {
-    return std::min(limit - 1ll, std::max(0ll, val));
+    return std::min(limit - 1ll, std::max(int64{0}, val));
   }
 
   // Used in the baseline implementation

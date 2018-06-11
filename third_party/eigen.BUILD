@@ -64,6 +64,8 @@ cc_library(
         # This define (mostly) guarantees we don't link any problematic
         # code. We use it, but we do not rely on it, as evidenced above.
         "EIGEN_MPL2_ONLY",
+        # XXX FIXME figure this out for ROCm
+        #"EIGEN_MAX_ALIGN_BYTES=64",
     ],
     includes = ["."],
     visibility = ["//visibility:public"],

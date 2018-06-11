@@ -51,7 +51,6 @@ TestTuple = collections.namedtuple("TestTuple", "a b")
 SingletonTestTuple = collections.namedtuple("SingletonTestTuple", "a")
 
 
-@test_util.with_c_api
 class GroupTestCase(test_util.TensorFlowTestCase):
 
   def _StripNode(self, nd):
@@ -133,7 +132,6 @@ class GroupTestCase(test_util.TensorFlowTestCase):
         control_flow_ops.group(1, 2)
 
 
-@test_util.with_c_api
 class ShapeTestCase(test_util.TensorFlowTestCase):
 
   def testShape(self):
@@ -145,7 +143,6 @@ class ShapeTestCase(test_util.TensorFlowTestCase):
                             [constant_op.constant(1.0)], tensor).get_shape())
 
 
-@test_util.with_c_api
 class WithDependenciesTestCase(test_util.TensorFlowTestCase):
 
   def testTupleDependencies(self):
@@ -177,7 +174,6 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
         self.assertEquals(1, counter.eval())
 
 
-@test_util.with_c_api
 class SwitchTestCase(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesWithDenseShape(self):
@@ -349,12 +345,9 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
       self.assertEquals(grad_x_false.eval(), 0.)
 
 
-@test_util.with_c_api
 class CondTest(test_util.TensorFlowTestCase):
 
   def testCondTrue(self):
-    # Create new Graph and Session for each test so we pick up _USE_C_API
-    # correctly.
     with ops.Graph().as_default():
       with session.Session():
         x = constant_op.constant(2)
@@ -438,7 +431,6 @@ class CondTest(test_util.TensorFlowTestCase):
           control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
 
 
-@test_util.with_c_api
 class ContextTest(test_util.TensorFlowTestCase):
 
   def testCondContext(self):
@@ -535,7 +527,6 @@ def _raw_nested_shape(nested_shape):
 
 
 # TODO(yori): Add tests for indexed slices.
-@test_util.with_c_api
 class DataTypesTest(test_util.TensorFlowTestCase):
 
   def assertAllEqualNested(self, a, b):
@@ -885,7 +876,6 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(matrix.get_shape(), tensor_shape.TensorShape([2, 2]))
 
 
-@test_util.with_c_api
 class CaseTest(test_util.TensorFlowTestCase):
 
   def testCase_withDefault(self):
@@ -947,7 +937,6 @@ class CaseTest(test_util.TensorFlowTestCase):
         sess.run(output, feed_dict={x: 4})
 
 
-@test_util.with_c_api
 class WhileLoopTestCase(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()

@@ -97,6 +97,11 @@ StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
 StatusOr<HloInstruction*> MakeConcatHlo(
     tensorflow::gtl::ArraySlice<HloInstruction*> operands, int64 dimension);
 
+// Creates a Dot HLO instruction and adds it to the computation containing `lhs`
+// and `rhs` (both must be in the same computation).
+StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
+                                     const DotDimensionNumbers& dim_numbers);
+
 // -----------------------------------------------------------------------------
 // Some other miscellaneous helpers to generate common HLO patterns.  All of
 // these add all the instructions they generate into the computation containing

@@ -130,8 +130,9 @@ class EigenGPUStreamDevice : public ::Eigen::StreamInterface {
         reinterpret_cast<unsigned int*>(scratch + EIGEN_GPU_SCRATCH_SIZE);
     stream_ = gpu_stream;
     allocator_ = alloc;
-    const int physical_gpu_id = GpuIdManager::TfToPhysicalGpuId(tf_gpu_id).value();
-    device_prop_ = &Eigen::m_deviceProperties[physical_gpu_id];
+    PhysicalGpuId physical_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id, &physical_gpu_id));
+    device_prop_ = &Eigen::m_deviceProperties[physical_gpu_id.value()];
   }
 
   const gpuStream_t& stream() const override { return *stream_; }
@@ -302,6 +303,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
 
 BaseGPUDevice::~BaseGPUDevice() {
   delete gpu_device_info_;
+  for (auto sb : scratch_) gpu_allocator_->DeallocateRaw(sb);
   for (auto ctx : device_contexts_) ctx->Unref();
 }
 
@@ -352,7 +354,9 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   gpu_device_info_->stream = streams_[0]->compute;
   gpu_device_info_->default_context = device_contexts_[0];
   gpu_device_info_->event_mgr = em_.get();
-  gpu_device_info_->gpu_id = GpuIdManager::TfToPhysicalGpuId(tf_gpu_id_).value();
+  PhysicalGpuId physical_gpu_id;
+  TF_RETURN_IF_ERROR(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id_, &physical_gpu_id));
+  gpu_device_info_->gpu_id = physical_gpu_id.value();
   set_tensorflow_gpu_device_info(gpu_device_info_);
 
   // Whether and how the GPU device uses its own threadpool.
@@ -441,12 +445,8 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
 }
 
 void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  // ScopedActivity is cheap when tracing is not active, but we
-  // can avoid computing the Hash64.
-  // TODO(pbar) This would no longer be needed if Ops have a unique id.
-  const uint64 id = port::Tracing::IsActive() ? Hash64(op_kernel->name()) : 0;
-  port::Tracing::ScopedActivity region(port::Tracing::EventCategory::kCompute,
-                                       id);
+  tracing::ScopedRegion region(tracing::EventCategory::kCompute,
+                               op_kernel->name());
 
   // NOTE(tucker): We need to discriminate between Eigen GPU
   // operations and all others.  If an operation is Eigen
@@ -460,13 +460,18 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   if (op_kernel->is_internal() && op_kernel->type_string() == "_Recv") {
     context->SetStatus(errors::Internal(
         "Invalid synchronous 'Compute' on GPU for '_Recv' op"));
-  } else if (port::Tracing::ScopedAnnotation::Enabled()) {
-    port::Tracing::ScopedAnnotation annotation(op_kernel->name(),
-                                               op_kernel->type_string());
-    ComputeHelper(op_kernel, context);
   } else {
+    tracing::ScopedAnnotation annotation(op_kernel->name(),
+                                         op_kernel->type_string());
     ComputeHelper(op_kernel, context);
   }
+}
+
+string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
+                                                 const int& stream_id) {
+  return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
+                         " on GPU ", tf_gpu_id_.value(), " stream[", stream_id,
+                         "]");
 }
 
 void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
@@ -483,9 +488,8 @@ void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
   const bool vlog_2 = vlog_1 && VLOG_IS_ON(2);
 
   if (vlog_1) {
-    VLOG(1) << "GpuDevice::Compute " << op_kernel->name() << " op "
-            << op_kernel->type_string() << " on GPU" << tf_gpu_id_ << " stream["
-            << stream_id << "]";
+    VLOG(1) << "GpuDevice::ComputeHelper "
+            << ComputeOpKernelDebugString(*op_kernel, stream_id);
   }
 
   const auto num_streams = streams_.size();
@@ -529,6 +533,18 @@ void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
       // all streams.  Given that this flag is typically used for
       // debugging it makes more sense to sync all GPU activity.
       context->SetStatus(GPUUtil::SyncAll(this));
+      if (vlog_1) {
+        VLOG(1) << "GpuDevice::ComputeHelper finished "
+                << ComputeOpKernelDebugString(*op_kernel, stream_id);
+      }
+    } else if (vlog_1) {
+      VLOG(1) << "GpuDevice::ComputeHelper scheduled "
+              << ComputeOpKernelDebugString(*op_kernel, stream_id);
+    }
+  } else {
+    if (vlog_1) {
+      VLOG(1) << "GpuDevice::ComputeHelper failed to schedule "
+              << ComputeOpKernelDebugString(*op_kernel, stream_id);
     }
   }
 }
@@ -562,11 +578,10 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
           << op_kernel->type_string() << " on GPU" << tf_gpu_id_ << " stream["
           << stream_id << "]";
 
-  // When TraceMe profiling is off (which is the default), the
-  // following TraceMe constructor is simply a conditional test of
-  // false value. Measurements show that its overhead is negligible.
-  port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string(),
-                                  op_kernel->IsExpensive());
+  // When Xprof profiling is off (which is the default), constructing the
+  // activity is simple enough that its overhead is negligible.
+  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
+                                   op_kernel->IsExpensive());
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->ComputeAsync(context, done);
 }
@@ -608,7 +623,7 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
         },
         std::move(done), std::placeholders::_1);
 
-    port::Tracing::ScopedAnnotation annotation("MakeTensorFromProto");
+    tracing::ScopedAnnotation annotation("MakeTensorFromProto");
     device_contexts_[0]->CopyCPUTensorToDevice(&from, this, copy,
                                                std::move(wrapped_done));
     return Status::OK();
@@ -791,7 +806,7 @@ int64 MinSystemMemory(int64 available_memory) {
   } else {
     // max(300 MiB, 0.05 * available_memory)
     min_system_memory =
-        std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
+        std::max(int64{314572800}, static_cast<int64>(available_memory * 0.05));
   }
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 // Do nothing
@@ -830,6 +845,20 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
   int64 allocated_memory = 0;
   const double per_process_gpu_memory_fraction =
       gpu_options.per_process_gpu_memory_fraction();
+  if (per_process_gpu_memory_fraction > 1.0 ||
+      gpu_options.experimental().use_unified_memory()) {
+    int cc_major = 0, cc_minor = 0;
+    if (!se->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                            &cc_minor)) {
+      return errors::Internal("Failed to get compute capability for device.");
+    }
+    if (cc_major < 6) {
+      return errors::Internal(
+          "Unified memory on GPUs with compute capability lower than 6.0 "
+          "(pre-Pascal class GPUs) does not support oversubscription.");
+    }
+  }
+
   if (per_process_gpu_memory_fraction == 0) {
     allocated_memory = available_memory;
     const int64 min_system_memory = MinSystemMemory(available_memory);
@@ -918,7 +947,8 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
   if (num_gpus_to_use > valid_physical_gpu_ids.size()) {
     num_gpus_to_use = valid_physical_gpu_ids.size();
   }
-  if (!valid_physical_gpu_ids.empty()) {
+  // If we aren't going to use any GPUs, don't initialize them.
+  if (num_gpus_to_use > 0 && !valid_physical_gpu_ids.empty()) {
     // Save the original device.
     int original_device = 0;
 #if GOOGLE_CUDA
@@ -1038,7 +1068,8 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
     while (next_tf_gpu_id < memory_limit_bytes.size()) {
       TfGpuId tf_gpu_id(next_tf_gpu_id);
       ++next_tf_gpu_id;
-      GpuIdManager::InsertTfPhysicalGpuIdPair(tf_gpu_id, physical_gpu_id);
+      TF_RETURN_IF_ERROR(
+          GpuIdManager::InsertTfPhysicalGpuIdPair(tf_gpu_id, physical_gpu_id));
     }
   }
   const int num_tf_gpus = next_tf_gpu_id;
@@ -1094,7 +1125,8 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
   const string device_name =
       strings::StrCat(name_prefix, "/device:GPU:", tf_gpu_id.value());
   GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
-  PhysicalGpuId physical_gpu_id = GpuIdManager::TfToPhysicalGpuId(tf_gpu_id);
+  PhysicalGpuId physical_gpu_id;
+  TF_RETURN_IF_ERROR(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id, &physical_gpu_id));
   int numa_node = dev_locality.numa_node();
 
   se::StreamExecutor* se =
@@ -1179,7 +1211,8 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     all_tf_gpu_ids.push_back(TfGpuId(i));
   }
   for (TfGpuId tf_gpu_id : all_tf_gpu_ids) {
-    PhysicalGpuId physical_gpu_id = GpuIdManager::TfToPhysicalGpuId(tf_gpu_id);
+    PhysicalGpuId physical_gpu_id;
+    TF_RETURN_IF_ERROR(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id, &physical_gpu_id));
     // Get GPU bus_id from its reported NUMA affinity.  Because GPUs are
     // virtualized in some environments, we can't just use the GPU id.
     // NUMA locales are indexed from 0, buses are indexed from 1.
@@ -1207,7 +1240,9 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     LocalLinks* links = dev_locality.mutable_links();
     for (const InterconnectMap& imap : interconnects) {
       for (TfGpuId tf_gpu_dst : all_tf_gpu_ids) {
-        PhysicalGpuId physical_gpu_dst = GpuIdManager::TfToPhysicalGpuId(tf_gpu_dst);
+        PhysicalGpuId physical_gpu_dst;
+        TF_RETURN_IF_ERROR(
+            GpuIdManager::TfToPhysicalGpuId(tf_gpu_dst, &physical_gpu_dst));
         if (imap.directed_links.find({physical_gpu_id, physical_gpu_dst}) !=
             imap.directed_links.end()) {
           InterconnectLink* ilink = links->add_link();
@@ -1222,7 +1257,9 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     // add high strength links to the others.
     for (TfGpuId tf_gpu_dst : all_tf_gpu_ids) {
       if (tf_gpu_id == tf_gpu_dst) continue;
-      PhysicalGpuId physical_gpu_dst = GpuIdManager::TfToPhysicalGpuId(tf_gpu_dst);
+      PhysicalGpuId physical_gpu_dst;
+      TF_RETURN_IF_ERROR(
+          GpuIdManager::TfToPhysicalGpuId(tf_gpu_dst, &physical_gpu_dst));
       if (physical_gpu_id == physical_gpu_dst) {
         InterconnectLink* ilink = links->add_link();
         ilink->set_device_id(tf_gpu_dst.value());

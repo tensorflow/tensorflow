@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
@@ -161,7 +160,7 @@ XLA_TEST_F(ParamsTest, MissingParameter) {
   auto p = builder.Parameter(2, ShapeUtil::MakeShape(F32, {}), "param2");
   auto computation_status = builder.Build();
 
-  ASSERT_NE(computation_status.status(), tensorflow::Status::OK());
+  ASSERT_NE(computation_status.status(), Status::OK());
 }
 
 XLA_TEST_F(ParamsTest, UnusedParameter) {

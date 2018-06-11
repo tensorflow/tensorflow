@@ -7,6 +7,10 @@ package(
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
+# We disable some tfcompile tests in the open source build with the
+# "manual" tag to avoid making our OSS users build LLVM twice
+# (once for host and once for target).
+
 test_suite(
     name = "all_tests",
     tags = ["manual"],
@@ -15,6 +19,7 @@ test_suite(
         ":test_graph_tfadd_with_ckpt_saver_test",
         ":test_graph_tfadd_with_ckpt_test",
         ":test_graph_tfassert_eq_test",
+        ":test_graph_tfcond_test",
         ":test_graph_tffunction_test",
         ":test_graph_tfgather_test",
         ":test_graph_tfmatmul_test",
@@ -55,6 +60,7 @@ genrule(
         "test_graph_tfadd_with_ckpt_saver.pb",
         "test_graph_tfadd_with_ckpt_saver.saver",
         "test_graph_tfassert_eq.pb",
+        "test_graph_tfcond.pb",
         "test_graph_tffunction.pb",
         "test_graph_tfgather.pb",
         "test_graph_tfmatmul.pb",
@@ -119,6 +125,17 @@ tf_library(
 )
 
 tf_library(
+    name = "test_graph_tfcond",
+    testonly = 1,
+    config = "test_graph_tfcond.config.pbtxt",
+    cpp_class = "CondComp",
+    graph = "test_graph_tfcond.pb",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
     name = "test_graph_tffunction",
     testonly = 1,
     config = "test_graph_tffunction.config.pbtxt",
@@ -164,6 +181,15 @@ tf_library(
 )
 
 tf_library(
+    name = "test_graph_tfmatmulandadd_with_profiling",
+    testonly = 1,
+    config = "test_graph_tfmatmulandadd.config.pbtxt",
+    cpp_class = "MatMulAndAddCompWithProfiling",
+    enable_xla_hlo_profiling = True,
+    graph = "test_graph_tfmatmulandadd.pb",
+)
+
+tf_library(
     name = "test_graph_tfsplits",
     testonly = 1,
     config = "test_graph_tfsplits.config.pbtxt",
@@ -185,13 +211,18 @@ tf_cc_test(
         ":test_graph_tfadd_with_ckpt",
         ":test_graph_tfadd_with_ckpt_saver",
         ":test_graph_tfassert_eq",
+        ":test_graph_tfcond",
         ":test_graph_tffunction",
         ":test_graph_tfgather",
         ":test_graph_tfmatmul",
         ":test_graph_tfmatmulandadd",
+        ":test_graph_tfmatmulandadd_with_profiling",
         ":test_graph_tfsplits",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_profile_printer",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",

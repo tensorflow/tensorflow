@@ -64,6 +64,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                  llvm::Value* value) const override;
 
+  StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
+                                   llvm::Value* value) const override;
+
   StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
                                  llvm::Value* value) const override;
 
@@ -72,6 +75,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
                                  llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
+                                   llvm::Value* value) const override;
 
   StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type, llvm::Value* lhs,
                                  llvm::Value* rhs) const override;
@@ -87,15 +93,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                                      llvm::Value* lhs_value,
                                      llvm::Value* rhs_value) const;
 
-  // Emits IR to call a device function named "callee_name" on the given
-  // operand. Returns the IR value that represents the return value.
-  llvm::Value* EmitDeviceFunctionCall(
-      const string& callee_name,
-      tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-      tensorflow::gtl::ArraySlice<PrimitiveType> input_type,
-      PrimitiveType output_type,
-      tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes) const;
-
   // Emits IR to call an LLVM intrinsic of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
@@ -105,10 +102,10 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
       PrimitiveType output_type) const;
 
-  // Emits IR to call a libdevice function of type [T] -> T.  Adjusts
+  // Emits IR to call a ROCDL function of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
-  StatusOr<llvm::Value*> EmitLibdeviceMathCall(
+  StatusOr<llvm::Value*> EmitROCDLMathCall(
       const string& callee_name,
       tensorflow::gtl::ArraySlice<llvm::Value*> operands,
       tensorflow::gtl::ArraySlice<PrimitiveType> input_types,

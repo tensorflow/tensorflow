@@ -129,7 +129,7 @@ class TrainSpec(
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
@@ -193,7 +193,7 @@ class EvalSpec(
 
     Args:
       input_fn: A function that constructs the input data for evaluation.
-        See @{$get_started/premade_estimators#create_input_functions} for more
+        See @{$premade_estimators#create_input_functions} for more
         information. The function should construct and return one of
         the following:
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
@@ -201,7 +201,7 @@ class EvalSpec(
           * A tuple (features, labels): Where features is a `Tensor` or a
             dictionary of string feature name to `Tensor` and labels is a
             `Tensor` or a dictionary of string label name to `Tensor`.
-            
+
       steps: Int. Positive number of steps for which to evaluate model. If
         `None`, evaluates until `input_fn` raises an end-of-input exception.
         See `Estimator.evaluate` for details.
@@ -295,6 +295,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   model will be trained with three epochs of training data instead of one epoch.
 
   Example of local (non-distributed) training:
+
   ```python
   # Set up feature columns.
   categorial_feature_a = categorial_column_with_hash_bucket(...)
@@ -339,12 +340,14 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   Setting environment variable depends on the platform. For example, on Linux,
   it can be done as follows (`$` is the shell prompt):
+
   ```
   $ TF_CONFIG='<replace_with_real_content>' python train_model.py
   ```
 
   For the content in `TF_CONFIG`, assume that the training cluster spec looks
   like:
+
   ```
   cluster = {"chief": ["host0:2222"],
              "worker": ["host1:2222", "host2:2222", "host3:2222"],
@@ -352,6 +355,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   ```
 
   Example of `TF_CONFIG` for chief training worker (must have one and only one):
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -371,6 +375,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   Example of `TF_CONFIG` for non-chief training worker (optional, could be
   multiple):
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -387,6 +392,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   for non-chief training workers.
 
   Example of `TF_CONFIG` for parameter server, aka ps (could be multiple):
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -405,6 +411,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   Example of `TF_CONFIG` for evaluator task. Evaluator is a special task that is
   not part of the training cluster. There could be only one. It is used for
   model evaluation.
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -424,9 +431,16 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
     eval_spec: A `EvalSpec` instance to specify the evaluation and export
       specification.
 
+  Returns:
+    A tuple of the result of the `evaluate` call to the `Estimator` and the
+    export results using the specified `ExportStrategy`.
+    Currently, the return value is undefined for distributed training mode.
+
   Raises:
     ValueError: if environment variable `TF_CONFIG` is incorrectly set.
   """
+  _assert_eval_spec(eval_spec)  # fail fast if eval_spec is invalid.
+
   executor = _TrainingExecutor(
       estimator=estimator, train_spec=train_spec, eval_spec=eval_spec)
 
@@ -437,7 +451,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
         'For distributed training, there can only be one `evaluator` task '
         '(with task id 0).  Given task id {}'.format(config.task_id))
 
-  executor.run()
+  return executor.run()
 
 
 class _StopAtSecsHook(session_run_hook.SessionRunHook):
@@ -481,10 +495,10 @@ class _TrainingExecutor(object):
           'Got: {}'.format(type(train_spec)))
     self._train_spec = train_spec
 
-    if not isinstance(eval_spec, EvalSpec):
-      raise TypeError(
-          '`eval_spec` must have type `tf.estimator.EvalSpec`. '
-          'Got: {}'.format(type(eval_spec)))
+    if eval_spec and not isinstance(eval_spec, EvalSpec):
+      raise TypeError('`eval_spec` must be either `None` or have type '
+                      '`tf.estimator.EvalSpec`. Got: {}'.format(
+                          type(eval_spec)))
     self._eval_spec = eval_spec
 
     self._train_hooks = _validate_hooks(train_hooks)
@@ -508,6 +522,11 @@ class _TrainingExecutor(object):
     procedure is `run_foo'. This `run` method invoke the procedure base on the
     `RunConfig.task_type`.
 
+    Returns:
+      A tuple of the result of the `evaluate` call to the `Estimator` and the
+      export results using the specified `ExportStrategy`.
+      Currently undefined for distributed training mode.
+
     Raises:
       ValueError: if the estimator.config is mis-configured.
     """
@@ -516,8 +535,7 @@ class _TrainingExecutor(object):
     if (not config.cluster_spec and
         config.task_type != run_config_lib.TaskType.EVALUATOR):
       logging.info('Running training and evaluation locally (non-distributed).')
-      self.run_local()
-      return
+      return self.run_local()
 
     # Distributed case.
     if not config.task_type:
@@ -580,11 +598,13 @@ class _TrainingExecutor(object):
           logging.info('Skip the current checkpoint eval due to throttle secs '
                        '({} secs).'.format(self._eval_throttle_secs))
 
+    _assert_eval_spec(self._eval_spec)
+
     # Final export signal: For any eval result with global_step >= train
     # max_steps, the evaluator will send the final export signal. There is a
     # small chance that the Estimator.train stopping logic sees a different
     # global_step value (due to global step race condition and the fact the
-    # saver sees a larger value for checkpoing saving), which does not end
+    # saver sees a larger value for checkpoint saving), which does not end
     # the training. When the training ends, a new checkpoint is generated, which
     # triggers the listener again. So, it could be the case the final export is
     # triggered twice.
@@ -628,6 +648,8 @@ class _TrainingExecutor(object):
         return True
       return False
 
+    _assert_eval_spec(self._eval_spec)
+
     if self._eval_spec.throttle_secs <= 0:
       raise ValueError('eval_spec.throttle_secs should be positive, given: {}.'
                        'It is used do determine how long each training '
@@ -644,18 +666,26 @@ class _TrainingExecutor(object):
     evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec,
                                              self._train_spec.max_steps)
 
+    eval_result = _EvalResult(status=_EvalStatus.MISSING_CHECKPOINT)
+    export_results = []
+
     while True:
       self._estimator.train(
           input_fn=self._train_spec.input_fn,
           max_steps=self._train_spec.max_steps,
           hooks=train_hooks)
 
+      if not self._continuous_eval_listener.before_eval():
+        logging.info('Exiting training and evaluation loop, as requested by '
+                     '_ContinuousEvalListener.before_eval.')
+        break
+
       # Final export signal: For any eval result with global_step >= train
       # max_steps, the evaluator will send the final export signal. The
       # _should_stop_local_train will then end the while True as the stopping
       # condition is satisfied (both checks use the same global_step value,
       # i.e., no race condition)
-      eval_result = evaluator.evaluate_and_export()
+      eval_result, export_results = evaluator.evaluate_and_export()
 
       if eval_result.status != _EvalStatus.EVALUATED:
         #  This is unexpected; should never happen.
@@ -663,9 +693,15 @@ class _TrainingExecutor(object):
         raise RuntimeError('There was no new checkpoint after the training. '
                            'Eval status: {}'.format(eval_result.status))
 
+      if not self._continuous_eval_listener.after_eval(eval_result):
+        logging.info('Exiting evaluation, as requested by '
+                     '_ContinuousEvalListener.after_eval.')
+        break
+
       if _should_stop_local_train(
           eval_result.metrics[ops.GraphKeys.GLOBAL_STEP]):
         break
+    return eval_result.metrics, export_results
 
   def _start_std_server(self, config):
     """Creates, starts, and returns a server_lib.Server."""
@@ -741,6 +777,9 @@ class _TrainingExecutor(object):
 
   def _start_continuous_evaluation(self):
     """Repeatedly calls `Estimator` evaluate and export until training ends."""
+
+    _assert_eval_spec(self._eval_spec)
+
     start_delay_secs = self._eval_spec.start_delay_secs
     if start_delay_secs:
       logging.info('Waiting %f secs before starting eval.', start_delay_secs)
@@ -769,6 +808,9 @@ class _TrainingExecutor(object):
   def _execute_evaluator_once(self, evaluator, continuous_eval_listener,
                               throttle_secs):
     """Executes the `evaluator`."""
+
+    _assert_eval_spec(self._eval_spec)
+
     start = time.time()
 
     eval_result = None
@@ -785,7 +827,7 @@ class _TrainingExecutor(object):
     # iteration of while loop will end the continuous eval as the stopping
     # condition is satisfied (both checks use the same global_step value,
     # i.e., no race condition)
-    eval_result = evaluator.evaluate_and_export()
+    eval_result, _ = evaluator.evaluate_and_export()
 
     if not self._continuous_eval_listener.after_eval(eval_result):
       logging.info('Exiting evaluation, as requested by '
@@ -807,7 +849,10 @@ class _TrainingExecutor(object):
 
     def __init__(self, estimator, eval_spec, max_training_steps):
       self._estimator = estimator
+
+      _assert_eval_spec(eval_spec)
       self._eval_spec = eval_spec
+
       self._is_final_export_triggered = False
       self._previous_ckpt_path = None
       self._last_warning_time = 0
@@ -821,7 +866,7 @@ class _TrainingExecutor(object):
       """Evaluate and (maybe) export the current model.
 
       Returns:
-        An `EvalResult` instance.
+        A tuple of `EvalResult` instance and the export results.
 
       Raises:
         RuntimeError: for any unexpected internal error.
@@ -831,14 +876,14 @@ class _TrainingExecutor(object):
       if not latest_ckpt_path:
         self._log_err_msg('Estimator is not trained yet. Will start an '
                           'evaluation when a checkpoint is ready.')
-        return _EvalResult(status=_EvalStatus.MISSING_CHECKPOINT)
+        return _EvalResult(status=_EvalStatus.MISSING_CHECKPOINT), []
 
       if latest_ckpt_path == self._previous_ckpt_path:
         self._log_err_msg(
             'No new checkpoint ready for evaluation. Skip the current '
             'evaluation pass as evaluation results are expected to be same '
             'for the same checkpoint.')
-        return _EvalResult(status=_EvalStatus.NO_NEW_CHECKPOINT)
+        return _EvalResult(status=_EvalStatus.NO_NEW_CHECKPOINT), []
 
       metrics = self._estimator.evaluate(
           input_fn=self._eval_spec.input_fn,
@@ -856,7 +901,8 @@ class _TrainingExecutor(object):
       is_the_final_export = (
           eval_result.metrics[ops.GraphKeys.GLOBAL_STEP] >=
           self._max_training_steps if self._max_training_steps else False)
-      self._export_eval_result(eval_result, is_the_final_export)
+      export_results = self._export_eval_result(eval_result,
+                                                is_the_final_export)
 
       if is_the_final_export:
         logging.debug('Calling exporter with the `is_the_final_export=True`.')
@@ -864,7 +910,7 @@ class _TrainingExecutor(object):
 
       self._last_warning_time = 0
       self._previous_ckpt_path = latest_ckpt_path
-      return eval_result
+      return eval_result, export_results
 
     def _log_err_msg(self, message):
       """Prints warning `message` every 10 mins."""
@@ -879,15 +925,18 @@ class _TrainingExecutor(object):
           compat.as_str_any(self._estimator.model_dir),
           compat.as_str_any('export'))
 
+      export_results = []
       for exporter in self._eval_spec.exporters:
-        exporter.export(
-            estimator=self._estimator,
-            export_path=os.path.join(
-                compat.as_str_any(export_dir_base),
-                compat.as_str_any(exporter.name)),
-            checkpoint_path=eval_result.checkpoint_path,
-            eval_result=eval_result.metrics,
-            is_the_final_export=is_the_final_export)
+        export_results.append(
+            exporter.export(
+                estimator=self._estimator,
+                export_path=os.path.join(
+                    compat.as_str_any(export_dir_base),
+                    compat.as_str_any(exporter.name)),
+                checkpoint_path=eval_result.checkpoint_path,
+                eval_result=eval_result.metrics,
+                is_the_final_export=is_the_final_export))
+      return export_results
 
 
 class _EvalStatus(object):
@@ -996,3 +1045,10 @@ class _ContinuousEvalListener(object):
     """
     del eval_result
     return True
+
+
+def _assert_eval_spec(eval_spec):
+  """Raise error if `eval_spec` is not of the right type."""
+  if not isinstance(eval_spec, EvalSpec):
+    raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`. '
+                    'Got: {}'.format(type(eval_spec)))

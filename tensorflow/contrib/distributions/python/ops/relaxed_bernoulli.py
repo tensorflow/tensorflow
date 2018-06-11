@@ -165,7 +165,7 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
     Raises:
       ValueError: If both `probs` and `logits` are passed, or if neither.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[logits, probs, temperature]) as name:
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):

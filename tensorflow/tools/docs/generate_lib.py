@@ -50,7 +50,11 @@ def _is_free_function(py_object, full_name, index):
   return True
 
 
-def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
+def write_docs(output_dir,
+               parser_config,
+               yaml_toc,
+               root_title='TensorFlow',
+               search_hints=True):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol included in the indices of parser_config to
@@ -66,6 +70,8 @@ def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
       indices.
     yaml_toc: Set to `True` to generate a "_toc.yaml" file.
     root_title: The title name for the root level index.md.
+    search_hints: (bool) include meta-data search hints at the top of each
+      output file.
 
   Raises:
     ValueError: if `output_dir` is not an absolute path
@@ -134,7 +140,13 @@ def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
       if not os.path.exists(directory):
         os.makedirs(directory)
       # This function returns raw bytes in PY2 or unicode in PY3.
-      text = pretty_docs.build_md_page(page_info)
+      if search_hints:
+        content = [page_info.get_metadata_html()]
+      else:
+        content = ['']
+
+      content.append(pretty_docs.build_md_page(page_info))
+      text = '\n'.join(content)
       if six.PY3:
         text = text.encode('utf-8')
       with open(path, 'wb') as f:
@@ -467,6 +479,12 @@ class DocGenerator(object):
     self._do_not_descend_map = _get_default_do_not_descend_map()
     self.yaml_toc = True
 
+    self.argument_parser.add_argument(
+        '--no_search_hints',
+        dest='search_hints',
+        action='store_false',
+        default=True)
+
   def add_output_dir_argument(self):
     self.argument_parser.add_argument(
         '--output_dir',
@@ -553,7 +571,8 @@ class DocGenerator(object):
         output_dir,
         parser_config,
         yaml_toc=self.yaml_toc,
-        root_title=root_title)
+        root_title=root_title,
+        search_hints=getattr(flags, 'search_hints', True))
     _other_docs(flags.src_dir, flags.output_dir, reference_resolver)
 
     parser_config.reference_resolver.log_errors()

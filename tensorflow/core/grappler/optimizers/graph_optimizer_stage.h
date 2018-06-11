@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_OPTIMIZER_STAGE_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_OPTIMIZER_STAGE_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_STAGE_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_STAGE_H_
 
 #include <unordered_map>
 #include <unordered_set>
@@ -240,6 +240,25 @@ class GraphOptimizerStagePipeline {
     return false;
   }
 
+  // Pass a node through all registered optimizer stages, until break predicate
+  // is true or a stage fails.
+  //
+  // Returns any stage failure status, or else Status::OK().
+  Status PassThroughAllStagesWithStatus(NodeDef* node, Result* result) {
+    for (auto& stage : stages_) {
+      if (!stage->IsSupported(node)) {
+        continue;
+      }
+      const Status stage_status = stage->TrySimplify(node, result);
+      if (!stage_status.ok()) {
+        return stage_status;
+      } else if (break_predicate_(*result)) {
+        break;
+      }
+    }
+    return Status::OK();
+  }
+
   std::size_t NumStages() { return stages_.size(); }
 
   std::vector<string> StageNames() {
@@ -260,4 +279,4 @@ class GraphOptimizerStagePipeline {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_OPTIMIZER_STAGE_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_STAGE_H_

@@ -45,14 +45,20 @@ using ::tflite::Tensor;
 
 namespace {
 
-details::OperatorKey GetOperatorKey(const ::toco::Operator& op) {
+details::OperatorKey GetOperatorKey(
+    const ::toco::Operator& op,
+    const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   string custom_code;
   if (op.type == OperatorType::kTensorFlowUnsupported) {
     const TensorFlowUnsupportedOperator& unsupported_op =
         static_cast<const TensorFlowUnsupportedOperator&>(op);
     custom_code = unsupported_op.tensorflow_op;
   }
-  return details::OperatorKey(op.type, custom_code);
+  int version = 1;
+  if (ops_by_type.count(op.type) != 0) {
+    version = ops_by_type.at(op.type)->GetVersion(op);
+  }
+  return details::OperatorKey(op.type, custom_code, version);
 }
 
 }  // Anonymous namespace.
@@ -74,11 +80,13 @@ void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
   }
 }
 
-void LoadOperatorsMap(const Model& model, OperatorsMap* operators_map) {
+void LoadOperatorsMap(
+    const Model& model, OperatorsMap* operators_map,
+    const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   // First find a list of unique operator types.
   std::set<OperatorKey> keys;
   for (const auto& op : model.operators) {
-    keys.insert(GetOperatorKey(*op));
+    keys.insert(GetOperatorKey(*op, ops_by_type));
   }
   // Now assign indices to them and fill in the map.
   int index = 0;
@@ -185,8 +193,9 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
   std::map<int, Offset<OperatorCode>> ordered_opcodes;
 
   for (const auto& op : model.operators) {
-    const details::OperatorKey operator_key = GetOperatorKey(*op);
+    const details::OperatorKey operator_key = GetOperatorKey(*op, ops_by_type);
     int op_index = operators_map.at(operator_key);
+    int op_version = operator_key.version;
 
     string name = HelpfulOperatorTypeName(*op);
     bool is_builtin = false;
@@ -197,7 +206,7 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
 
     if (is_builtin) {
       ordered_opcodes[op_index] =
-          CreateOperatorCode(*builder, builtin_ops[name], 0);
+          CreateOperatorCode(*builder, builtin_ops[name], 0, op_version);
     } else {
       // This could be a kTensorFlowUnsupported, in which case we should be
       // able to retrieve the original Tensorflow name from the OperatorKey, or
@@ -211,8 +220,9 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
       if (error_summary) {
         error_summary->insert(name);
       }
-      ordered_opcodes[op_index] = CreateOperatorCode(
-          *builder, BuiltinOperator_CUSTOM, builder->CreateString(name));
+      ordered_opcodes[op_index] =
+          CreateOperatorCode(*builder, BuiltinOperator_CUSTOM,
+                             builder->CreateString(name), op_version);
     }
   }
 
@@ -244,7 +254,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
       outputs.push_back(tensors_map.at(output));
     }
 
-    int op_index = operators_map.at(GetOperatorKey(*op));
+    int op_index = operators_map.at(GetOperatorKey(*op, ops_by_type));
 
     // This is a custom op unless we can find it in ops_by_type, and even then
     // it could be a custom op (such as kTensorFlowUnsupported).
@@ -279,15 +289,20 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
 
 void Export(const Model& model, bool allow_custom_ops,
             string* output_file_contents) {
-  flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
-
   const auto ops_by_type = BuildOperatorByTypeMap();
+  Export(model, allow_custom_ops, output_file_contents, ops_by_type);
+}
+
+void Export(
+    const Model& model, bool allow_custom_ops, string* output_file_contents,
+    const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
+  flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
   details::TensorsMap tensors_map;
   details::LoadTensorsMap(model, &tensors_map);
 
   details::OperatorsMap operators_map;
-  details::LoadOperatorsMap(model, &operators_map);
+  details::LoadOperatorsMap(model, &operators_map, ops_by_type);
 
   std::vector<const Array*> buffers_to_write;
   Array empty_array;
@@ -312,12 +327,14 @@ void Export(const Model& model, bool allow_custom_ops,
     error_summary.erase(fake_quant_operation_name);
   }
   if (!allow_custom_ops && !error_summary.empty()) {
-    LOG(QFATAL) << "Some of the operators in the model are not supported by "
-                   "the standard TensorFlow Lite runtime. If you have a custom "
-                   "implementation for them you can disable this error with "
-                   "--allow_custom_ops. Here is a list of operators for which "
-                   "you will need custom implementations: "
-                << absl::StrJoin(error_summary, ", ") << ".";
+    LOG(QFATAL)
+        << "Some of the operators in the model are not supported by "
+           "the standard TensorFlow Lite runtime. If you have a custom "
+           "implementation for them you can disable this error with "
+           "--allow_custom_ops, or by setting allow_custom_ops=True "
+           "when calling tf.contrib.lite.toco_convert(). Here is a list "
+           "of operators for which  you will need custom implementations: "
+        << absl::StrJoin(error_summary, ", ") << ".";
   }
 
   auto ops =

@@ -73,6 +73,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "dataset_ops_test",
+    size = "small",
+    srcs = ["dataset_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "filter_dataset_op_test",
     size = "small",
     srcs = ["filter_dataset_op_test.py"],

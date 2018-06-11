@@ -189,9 +189,6 @@ def copy_op_handler(info, op, new_inputs, copy_shape=True, nodedef_fn=None):
   if op._original_op:
     op_._original_op = op._original_op
 
-  # Add op to the graph
-  info.graph_._add_op(op_)
-
   return op_, op_.outputs
 
 
@@ -492,7 +489,7 @@ class Transformer(object):
       t_ = info.transformed_ts[t]
       consumer_op_ = info.transformed_ops[consumer_op]
       t_index_ = list(consumer_op_.inputs).index(tmp_t_)
-      consumer_op_._update_input(t_index_, t_, update_dtype=False)  # pylint: disable=protected-access
+      consumer_op_._update_input(t_index_, t_)  # pylint: disable=protected-access
 
   def _connect_control_inputs(self, info):
     """Connect the previously copied ops."""
@@ -677,7 +674,7 @@ def copy_with_input_replacements(sgv, replacement_ts,
 
 
 def _add_control_flow_ops(ops, control_ios):
-  """Complete `ops` so that the tranformed graph is valid.
+  """Complete `ops` so that the transformed graph is valid.
 
   Partially copying a graph can lead to a malformed graph. For instance,
   copying half of a while construct is likely to result in an invalid graph.

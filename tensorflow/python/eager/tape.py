@@ -39,6 +39,11 @@ def push_new_tape(persistent=False):
   return Tape(tape)
 
 
+def push_tape(tape):
+  """Pushes an existing tape onto the tape stack."""
+  pywrap_tensorflow.TFE_Py_TapeSetAdd(tape._tape)  # pylint: disable=protected-access
+
+
 def watch(tensor):
   """Marks this tensor to be watched by all tapes in the stack.
 

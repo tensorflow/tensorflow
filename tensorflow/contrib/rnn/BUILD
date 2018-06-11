@@ -193,6 +193,10 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 gpu_py_tests(
