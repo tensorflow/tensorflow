@@ -75,6 +75,19 @@ class PandasIoTest(test.TestCase):
       pandas_io.pandas_input_fn(
           x, y_noindex, batch_size=2, shuffle=False, num_epochs=1)
 
+  def testPandasInputFn_RaisesWhenTargetColumnIsAList(self):
+    if not HAS_PANDAS:
+      return
+
+    x, y = self.makeTestDataFrame()
+
+    with self.assertRaisesRegexp(TypeError,
+                                 'target_column must be a string or None'):
+      pandas_io.pandas_input_fn(x, y, batch_size=2,
+        shuffle=False,
+        num_epochs=1,
+        target_column=['one', 'two'])
+
   def testPandasInputFn_NonBoolShuffle(self):
     if not HAS_PANDAS:
       return
