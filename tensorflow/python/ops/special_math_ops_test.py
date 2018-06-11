@@ -195,6 +195,12 @@ class EinsumTest(test.TestCase):
       'iJ,Jk->ik',
       'iJ,Ki->JK',
       'iJk,Jklm->Jk'
+      'ij, jk, kl -> il',
+      'a, ab, abc -> abc',
+      'ab, ab, cd, cd, ef, ef -> ',
+      'abc, bac',
+      'iJ, Ki -> JK',
+      'iJk, Jklm -> Jk'
   ]
 
   long_cases = [
@@ -203,6 +209,8 @@ class EinsumTest(test.TestCase):
       'ea,fb,gc,hd,abcd->efgh',
       'ea,fb,abcd,gc,hd->efgh',
       'abhe,hidj,jgba,hiab,gab',
+      'efc, dbc, acf, fd -> abe',
+      'abhe, hidj, jgba, hiab, gab',
   ]
 
   invalid_cases = [
