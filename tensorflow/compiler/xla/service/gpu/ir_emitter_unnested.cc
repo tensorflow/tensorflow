@@ -2514,7 +2514,9 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
     if (alpha->opcode() == HloOpcode::kBroadcast) {
       alpha = alpha->operand(0);
     }
-    alpha = inst->operand(alpha->parameter_number());
+    if (alpha->opcode() == HloOpcode::kParameter) {
+      alpha = inst->operand(alpha->parameter_number());
+    }
     // TODO(b/74185543): Remove the following if block once we support fusion
     // with a non-constant as well. Then we will just always use the constant
     // on the device.
@@ -2560,7 +2562,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     const HloInstruction* hlo, const ShapeIndex& index) {
   bool fused = HloOpcode::kFusion == hlo->opcode();
   const HloInstruction* inst = fused ? hlo->fused_expression_root() : hlo;
-  const HloInstruction* init_value = [&] {
+  const HloInstruction* init_value_operand = [&] {
     switch (inst->opcode()) {
       case HloOpcode::kSelectAndScatter:
         return inst->operand(2);
@@ -2580,6 +2582,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     }
   }();
 
+  const HloInstruction* init_value = init_value_operand;
   if (fused && init_value->opcode() == HloOpcode::kParameter) {
     init_value = hlo->operand(init_value->parameter_number());
   }
@@ -2636,6 +2639,11 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
                                 ir_emitter_context_->device_description());
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
+  // If the init_value was fused into this reduce we have to generate it first.
+  if (fused && init_value_operand->opcode() != HloOpcode::kParameter) {
+    CHECK_EQ(HloOpcode::kConstant, init_value_operand->opcode());
+    TF_RETURN_IF_ERROR(HandleConstant(const_cast<HloInstruction*>(init_value)));
+  }
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(
                          [=](const llvm_ir::IrArray::Index& index) {
                            return GetIrArray(*init_value, *hlo)
