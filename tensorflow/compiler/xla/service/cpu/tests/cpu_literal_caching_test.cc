@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 namespace xla {
 namespace cpu {
 namespace {
-class CpuExternalConstantsTest : public CpuCodegenTest {};
+class CpuDuplicateConstantsTest : public CpuCodegenTest {};
 
-TEST_F(CpuExternalConstantsTest, RepeatedArrayConstants) {
+TEST_F(CpuDuplicateConstantsTest, RepeatedArrayConstants) {
   // We use a while loop here to force the two constant HloInstructions to be in
   // different computations.  Otherwise the HLO optimizer itself CSEs them.
   const string hlo_text = R"(
@@ -50,19 +50,17 @@ ENTRY main {
   const_b = f32[2,3,2] while(f32[2,3,2] const_a), condition=while_cond, body=while_body
 
   out0 = () outfeed(f32[2,3,2] const_a)
-  out1 = () outfeed(f32[2,3,2] const_b)
-
-  ROOT root = f32[] constant(1)
+  ROOT out1 = () outfeed(f32[2,3,2] const_b)
 }
 )";
 
   string filecheck_pattern = R"(
-CHECK: private constant [2 x [3 x [2 x float]]]
-CHECK-NOT: private constant [2 x [3 x [2 x float]]]
+CHECK: private constant [12 x float]
+CHECK-NOT: private constant [12 x float]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_text));
+                          ParseHloString(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",
@@ -73,43 +71,41 @@ CHECK-NOT: private constant [2 x [3 x [2 x float]]]
                                 /*match_optimized_ir=*/false);
 }
 
-TEST_F(CpuExternalConstantsTest, RepeatedTupleConstants) {
+TEST_F(CpuDuplicateConstantsTest, RepeatedTupleConstants) {
   // We use a while loop here to force the two constant HloInstructions to be in
   // different computations.  Otherwise the HLO optimizer itself CSEs them.
   const string hlo_text = R"(
 HloModule RepeatedConstants
 
 while_body {
-  arg_body = (f32[2,1]{1,0}, f32[2]{0}) parameter(0)
-  ROOT const = (f32[2,1]{1,0}, f32[2]{0}) constant((f32[2,1], f32[2]) ( f32[2,1] { { 1 }, { 2 } }, {2, 42} ))
+  arg_body = (f32[2,1]{1,0}, f32[1]{0}) parameter(0)
+  ROOT const = (f32[2,1]{1,0}, f32[1]{0}) constant((f32[2,1], f32[1]) ( f32[2,1] { { 1 }, { 2 } }, {2} ))
 }
 
 while_cond {
-  arg_cond = (f32[2,1]{1,0}, f32[2]{0}) parameter(0)
+  arg_cond = (f32[2,1]{1,0}, f32[1]{0}) parameter(0)
   ROOT unknown = pred[] infeed()
 }
 
 ENTRY main {
   param = f32[2,3,2] parameter(0)
-  const_a = (f32[2,1]{1,0}, f32[2]{0}) constant((f32[2,1], f32[2]) ( f32[2,1] { { 1 }, { 2 } }, {2, 42} ))
-  const_b = (f32[2,1]{1,0}, f32[2]{0}) while((f32[2,1]{1,0}, f32[2]{0}) const_a), condition=while_cond, body=while_body
+  const_a = (f32[2,1]{1,0}, f32[1]{0}) constant((f32[2,1], f32[1]) ( f32[2,1] { { 1 }, { 2 } }, {2} ))
+  const_b = (f32[2,1]{1,0}, f32[1]{0}) while((f32[2,1]{1,0}, f32[1]{0}) const_a), condition=while_cond, body=while_body
 
-  out0 = () outfeed((f32[2,1]{1,0}, f32[2]{0}) const_a)
-  out1 = () outfeed((f32[2,1]{1,0}, f32[2]{0}) const_b)
-
-  ROOT root = f32[] constant(1)
+  out0 = () outfeed((f32[2,1]{1,0}, f32[1]{0}) const_a)
+  ROOT out1 = () outfeed((f32[2,1]{1,0}, f32[1]{0}) const_b)
 }
 )";
 
   string filecheck_pattern = R"(
+CHECK: private constant [1 x float]
 CHECK: private constant [2 x float]
-CHECK: private constant [2 x [1 x float]]
+CHECK-NOT: private constant [1 x float]
 CHECK-NOT: private constant [2 x float]
-CHECK-NOT: private constant [2 x [1 x float]]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_text));
+                          ParseHloString(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",

@@ -60,6 +60,8 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowLessEqual:
     case OperatorType::kTensorFlowGreater:
     case OperatorType::kTensorFlowGreaterEqual:
+    case OperatorType::kTensorFlowEqual:
+    case OperatorType::kTensorFlowNotEqual:
       // These operators unconditionally produce bool outputs
       SetDataTypeForAllOutputs(model, op, ArrayDataType::kBool);
       break;
@@ -151,6 +153,27 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kExpandDims: {
       // Yield on ExpandDim until it is converted to Reshape
       return false;
+    }
+    case OperatorType::kSelect: {
+      // Select produces outputs with the same type as their 2nd input
+      CHECK_EQ(op->inputs.size(), 3);
+      const ArrayDataType data_type_x =
+          model->GetArray(op->inputs[1]).data_type;
+      const ArrayDataType data_type_y =
+          model->GetArray(op->inputs[2]).data_type;
+      CHECK(data_type_x == data_type_y);
+      SetDataTypeForAllOutputs(model, op, data_type_x);
+      break;
+    }
+    case OperatorType::kSparseToDense: {
+      // Select produces outputs with the same type as their 3rd input
+      CHECK_EQ(op->inputs.size(), 4);
+      const ArrayDataType data_type = model->GetArray(op->inputs[2]).data_type;
+      const ArrayDataType data_type_default =
+          model->GetArray(op->inputs[3]).data_type;
+      CHECK(data_type == data_type_default);
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
     }
     default: {
       // These operators produce outputs with the same type as their 1st input

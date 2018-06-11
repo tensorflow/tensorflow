@@ -87,18 +87,10 @@ llvm::Value* EmitCallToIntrinsic(
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
     llvm::IRBuilder<>* ir_builder) {
-  std::vector<llvm::Type*> types;
-  for (auto type : overloaded_types) {
-    types.push_back(type);
-  }
   llvm::Module* module = ModuleFromIRBuilder(ir_builder);
-  llvm::Function* intrinsic =
-      llvm::Intrinsic::getDeclaration(module, intrinsic_id, types);
-  std::vector<llvm::Value*> operands_vec;
-  for (auto operand : operands) {
-    operands_vec.push_back(operand);
-  }
-  return ir_builder->CreateCall(intrinsic, operands_vec);
+  llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
+      module, intrinsic_id, AsArrayRef(overloaded_types));
+  return ir_builder->CreateCall(intrinsic, AsArrayRef(operands));
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
@@ -368,15 +360,52 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
   return llvm::ConstantArray::get(aggregate_type, elements);
 }
 
+template <typename T>
+llvm::Constant* GetConstantDataArray(const Literal& literal,
+                                     llvm::Module* module) {
+  const T* data = static_cast<const T*>(literal.untyped_data());
+  int64 num_elements = literal.size_bytes() / sizeof(T);
+  return llvm::ConstantDataArray::get(module->getContext(),
+                                      llvm::makeArrayRef(data, num_elements));
+}
+
 }  // namespace
 
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
-  std::vector<int64> multi_index(ShapeUtil::Rank(literal.shape()), 0);
-  llvm::Constant* value = LiteralToConstant(
-      literal, /*dimension_index=*/ShapeUtil::Rank(literal.shape()) - 1,
-      &multi_index, module);
-  return value;
+  const Shape& shape = literal.shape();
+  // TODO(b/29904935): We can get rid of this switch by exposing a
+  // ConstantDataArray factory method that takes a llvm::Type and a StringRef.
+  switch (shape.element_type()) {
+    case U64:
+      return GetConstantDataArray<uint64>(literal, module);
+    case U32:
+      return GetConstantDataArray<uint32>(literal, module);
+    case U8:
+      return GetConstantDataArray<uint8>(literal, module);
+    case S64:
+      return GetConstantDataArray<int64>(literal, module);
+    case S32:
+      return GetConstantDataArray<int32>(literal, module);
+    case F64:
+      return GetConstantDataArray<double>(literal, module);
+    case F32:
+      return GetConstantDataArray<float>(literal, module);
+    case BF16:
+    case F16:
+      return GetConstantDataArray<uint16>(literal, module);
+    case PRED:
+      return GetConstantDataArray<bool>(literal, module);
+    // TODO(b/29904935): Also use ConstantDataArray for complex numbers.
+    case C64: {
+      int64 dimensions = ShapeUtil::Rank(shape);
+      std::vector<int64> multi_index(dimensions, 0);
+      return LiteralToConstant(literal, /*dimension_index=*/dimensions - 1,
+                               &multi_index, module);
+    }
+    default:
+      LOG(FATAL) << "unsupported type " << shape.element_type();
+  }
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,

@@ -439,11 +439,11 @@ class MklInputConversionOp : public OpKernel {
                    tensor_out, &net);
       if(!reordered) {
         // This is the case that the TF tensor has the same shape and format of
-        // mkl tensor. However, tf_tensor can not be simply forwarded to the output
-        // tensor since mkl data tensor is always one dimensional tensor. 
-        // Tensor::CopyFrom shares the buffer of the other tensor while set its shape
-        // to the other tensor. 
-        tensor_out->CopyFrom(*tf_tensor, tensor_out->shape());
+        // mkl tensor. However, tf_tensor can not be simply forwarded to the
+        // output tensor since mkl data tensor is always one dimensional tensor.
+        // Tensor::CopyFrom shares the buffer of the other tensor while set its
+        // shape to the other tensor.
+        CHECK(tensor_out->CopyFrom(*tf_tensor, tensor_out->shape()));
       }
       else  
         stream(stream::kind::eager).submit(net).wait();

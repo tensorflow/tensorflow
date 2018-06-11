@@ -21,11 +21,11 @@ py_library(
     srcs = ["values.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":input_ops",
         ":prefetching_ops_v2",
         "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/contrib/eager/python:datasets",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:checkpointable",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
@@ -33,6 +33,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",
     ],
 )
@@ -86,6 +87,19 @@ py_library(
 )
 
 py_library(
+    name = "multi_worker_strategy",
+    srcs = ["multi_worker_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":mirrored_strategy",
+        ":values",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "one_device_strategy",
     srcs = ["one_device_strategy.py"],
     visibility = ["//tensorflow:internal"],
@@ -134,9 +148,11 @@ py_library(
     ],
     deps = [
         ":mirrored_strategy",
+        ":multi_worker_strategy",
         ":one_device_strategy",
         ":tpu_strategy",
         "//tensorflow/contrib/optimizer_v2:training",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -296,6 +312,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
+        "noguitar",  # TODO(b/109653107): test is flaky.
     ],
 )
 
@@ -430,10 +447,31 @@ py_library(
     srcs = ["cross_tower_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":values",
+        "//tensorflow/contrib/all_reduce:all_reduce_py",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+    ],
+)
+
+cuda_py_test(
+    name = "cross_tower_utils_test",
+    srcs = ["cross_tower_utils_test.py"],
+    additional_deps = [
+        ":combinations",
+        ":cross_tower_utils",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+    ],
+    tags = [
+        "no_pip",
     ],
 )
 
@@ -455,24 +493,26 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "cross_tower_ops_test",
     srcs = ["cross_tower_ops_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
-    deps = [
+    additional_deps = [
         ":combinations",
         ":cross_tower_ops",
+        ":multi_worker_test_base",
         ":values",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "@absl_py//absl/testing:parameterized",
+    ],
+    shard_count = 15,
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
     ],
 )
 
@@ -530,5 +570,24 @@ cuda_py_test(
     ],
     tags = [
         "no_pip",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_test",
+    srcs = ["keras_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distribute/python:mirrored_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:keras",
+        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/keras",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "noguitar",
+        "notsan",
     ],
 )

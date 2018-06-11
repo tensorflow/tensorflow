@@ -144,8 +144,8 @@ TEST(AlgorithmTest, ReversePostOrderStable) {
     std::vector<Node*> order;
 
     // Test reverse post order generates expected ordering.
-    GetReversePostOrder(g, &order, /*stable_comparator=*/NodeComparatorID());
-    EXPECT_TRUE(ExpectBefore({{"t3", "t2"}}, order, &error));
+    GetReversePostOrder(g, &order, /*stable_comparator=*/NodeComparatorName());
+    EXPECT_TRUE(ExpectBefore({{"t2", "t3"}}, order, &error));
   }
 }
 }  // namespace

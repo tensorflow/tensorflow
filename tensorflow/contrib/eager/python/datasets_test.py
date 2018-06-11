@@ -37,7 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
-from tensorflow.python.training import checkpointable_utils
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 class IteratorTest(test.TestCase):

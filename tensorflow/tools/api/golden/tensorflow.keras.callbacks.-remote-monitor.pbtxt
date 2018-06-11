@@ -1,11 +1,11 @@
 path: "tensorflow.keras.callbacks.RemoteMonitor"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.callbacks.RemoteMonitor\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.callbacks.Callback\'>"
+  is_instance: "<class \'tensorflow.python.keras.callbacks.RemoteMonitor\'>"
+  is_instance: "<class \'tensorflow.python.keras.callbacks.Callback\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'root\', \'path\', \'field\', \'headers\'], varargs=None, keywords=None, defaults=[\'http://localhost:9000\', \'/publish/epoch/end/\', \'data\', \'None\'], "
+    argspec: "args=[\'self\', \'root\', \'path\', \'field\', \'headers\', \'send_as_json\'], varargs=None, keywords=None, defaults=[\'http://localhost:9000\', \'/publish/epoch/end/\', \'data\', \'None\', \'False\'], "
   }
   member_method {
     name: "on_batch_begin"

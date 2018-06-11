@@ -370,23 +370,35 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
   return true;
 }
 
+StatusOr<bool> PadInsertion::RunOnComputation(HloComputation* computation) {
+  bool changed = false;
+  std::vector<HloInstruction*> convs;
+  for (auto* instr : computation->instructions()) {
+    if (IsCustomCallToDnnConvolution(*instr)) {
+      convs.push_back(instr);
+    }
+  }
+  for (HloInstruction* instruction : convs) {
+    const auto& target = instruction->custom_call_target();
+    if (target == kCudnnConvForwardCallTarget) {
+      changed |= CanonicalizeForwardConvolution(instruction);
+    } else if (target == kCudnnConvBackwardFilterCallTarget) {
+      changed |= CanonicalizeBackwardFilterConvolution(instruction);
+    } else if (target == kCudnnConvBackwardInputCallTarget) {
+      changed |= CanonicalizeBackwardInputConvolution(instruction);
+    } else {
+      LOG(FATAL) << "Unknown custom call target for cudnn conv: "
+                 << instruction->ToString();
+    }
+  }
+  return changed;
+}
+
 StatusOr<bool> PadInsertion::Run(HloModule* module) {
   bool changed = false;
-  for (HloInstruction* instruction :
-       module->entry_computation()->MakeInstructionPostOrder()) {
-    if (IsCustomCallToDnnConvolution(*instruction)) {
-      const auto& target = instruction->custom_call_target();
-      if (target == kCudnnConvForwardCallTarget) {
-        changed |= CanonicalizeForwardConvolution(instruction);
-      } else if (target == kCudnnConvBackwardFilterCallTarget) {
-        changed |= CanonicalizeBackwardFilterConvolution(instruction);
-      } else if (target == kCudnnConvBackwardInputCallTarget) {
-        changed |= CanonicalizeBackwardInputConvolution(instruction);
-      } else {
-        LOG(FATAL) << "Unknown custom call target for cudnn conv: "
-                   << instruction->ToString();
-      }
-    }
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    changed |= result;
   }
   return changed;
 }

@@ -35,6 +35,8 @@ TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims);
 bool EqualArrayAndTfLiteIntArray(const TfLiteIntArray* a, const int b_size,
                                  const int* b);
 
+size_t CombineHashes(std::initializer_list<size_t> hashes);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_UTIL_H_

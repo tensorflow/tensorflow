@@ -25,6 +25,8 @@ namespace tensor_utils {
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
 
+bool PortableIsZeroVector(const float* vector, int v_size);
+
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min,
                                      float* max, float* scaling_factor);
@@ -111,6 +113,10 @@ void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size);
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
+
+bool IsZeroVector(const float* vector, int v_size) {
+  return PortableIsZeroVector(vector, v_size);
+}
 
 void SymmetricQuantizeFloats(const float* values, const int size,
                              int8_t* quantized_values, float* min, float* max,

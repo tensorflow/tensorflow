@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -425,6 +426,13 @@ class SymbolicShapeRefiner {
     return it->second.inference_context.get();
   }
 
+  // Forward the shapes from the function's fanin to the function body,
+  // then call PropagateShapes.
+  // Returns an error if 'node' is not a function node.
+  Status UpdateFunction(const NodeDef* node, bool* refined) {
+    return UpdateNode(node, refined);
+  }
+
   Status UpdateNode(const NodeDef* node, bool* refined) {
     NodeContext* node_context = GetNodeContext(node);
     if (node_context == nullptr) {
@@ -473,6 +481,38 @@ class SymbolicShapeRefiner {
                       .ok()) {
                 input_tensors_as_shapes[dst_input] = shp;
               }
+            }
+          }
+        } else if (IsRank(*input)) {
+          if (c->inference_context->RankKnown(c->inference_context->input(0))) {
+            int32 rank =
+                c->inference_context->Rank(c->inference_context->input(0));
+            Tensor t(DT_INT32, {});
+            t.flat<int32>()(0) = rank;
+            const_values[dst_input] = t;
+            input_tensors[dst_input] = &const_values[dst_input];
+          }
+        } else if (IsSize(*input)) {
+          DimensionHandle size =
+              c->inference_context->NumElements(c->inference_context->input(0));
+          if (c->inference_context->ValueKnown(size)) {
+            int64 sz = c->inference_context->Value(size);
+            bool valid = false;
+            if (input->attr().at("T").type() == DT_INT32) {
+              if (sz < std::numeric_limits<int32>::max()) {
+                Tensor t(DT_INT32, {});
+                t.flat<int32>()(0) = sz;
+                const_values[dst_input] = t;
+                valid = true;
+              }
+            } else {
+              Tensor t(DT_INT64, {});
+              t.flat<int64>()(0) = sz;
+              const_values[dst_input] = t;
+              valid = true;
+            }
+            if (valid) {
+              input_tensors[dst_input] = &const_values[dst_input];
             }
           }
         }
@@ -645,9 +685,15 @@ class SymbolicShapeRefiner {
     return true;
   }
 
+  Status AddFunction(const NodeDef* node) { return Status::OK(); }
+
   Status AddNode(const NodeDef* node) {
     NodeContext& node_ctx = node_to_context_[node];
     TF_RETURN_IF_ERROR(function_library_.LookUp(node->op(), &node_ctx.op_data));
+
+    if (node_ctx.op_data->is_function_op) {
+      TF_RETURN_IF_ERROR(AddFunction(node));
+    }
 
     TF_RETURN_IF_ERROR(InOutTypesForNode(*node, node_ctx.op_data->op_def,
                                          &node_ctx.input_types,
@@ -737,6 +783,29 @@ class SymbolicShapeRefiner {
           c->output_tensors_as_shapes.resize(1);
           c->output_tensors_as_shapes[0] = result;
         }
+      } else if (IsPack(node)) {
+        // A Pack node concatenating scalars is often used to generate a shape.
+        std::vector<DimensionHandle> dims;
+        bool valid = true;
+        for (int i = 0; i < ic->num_inputs(); ++i) {
+          const Tensor* t = ic->input_tensor(i);
+          if (t) {
+            if (t->dims() != 0 ||
+                (t->dtype() != DT_INT32 && t->dtype() != DT_INT64)) {
+              valid = false;
+              break;
+            }
+            int64 size = t->dtype() == DT_INT32 ? t->scalar<int32>()()
+                                                : t->scalar<int64>()();
+            dims.push_back(size < 0 ? ic->UnknownDim() : ic->MakeDim(size));
+          } else {
+            dims.push_back(ic->UnknownDim());
+          }
+        }
+        if (valid) {
+          c->output_tensors_as_shapes.resize(1);
+          c->output_tensors_as_shapes[0] = ic->MakeShape(dims);
+        }
       } else if (IsSlice(node)) {
         ShapeHandle input = ic->input_tensors_as_shapes()[0];
         bool valid = ic->RankKnown(input);
@@ -748,11 +817,70 @@ class SymbolicShapeRefiner {
           int64 start = slice_offset->dtype() == DT_INT32
                             ? slice_offset->flat<int32>()(0)
                             : slice_offset->flat<int64>()(0);
-          int64 end = start + (slice_size->dtype() == DT_INT32
-                                   ? slice_size->flat<int32>()(0)
-                                   : slice_size->flat<int64>()(0));
+          int64 size =
+              (slice_size->dtype() == DT_INT32 ? slice_size->flat<int32>()(0)
+                                               : slice_size->flat<int64>()(0));
           ShapeHandle result;
-          TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
+          if (size == -1) {
+            TF_RETURN_IF_ERROR(ic->Subshape(input, start, &result));
+          } else {
+            int64 end = start + size;
+            TF_RETURN_IF_ERROR(ic->Subshape(input, start, end, &result));
+          }
+          c->output_tensors_as_shapes.resize(1);
+          c->output_tensors_as_shapes[0] = result;
+        }
+      } else if (IsStridedSlice(node)) {
+        ShapeHandle input = ic->input_tensors_as_shapes()[0];
+        bool valid = ic->RankKnown(input);
+        const Tensor* slice_begin = ic->input_tensor(1);
+        valid &= slice_begin != nullptr && slice_begin->NumElements() == 1;
+        const Tensor* slice_end = ic->input_tensor(2);
+        valid &= slice_end != nullptr && slice_end->NumElements() == 1;
+        const Tensor* slice_stride = ic->input_tensor(3);
+        valid &= slice_stride != nullptr && slice_stride->NumElements() == 1;
+
+        if (node.attr().count("ellipsis_mask") > 0 &&
+            node.attr().at("ellipsis_mask").i() != 0) {
+          valid = false;
+        }
+        if (node.attr().count("new_axis_mask") > 0 &&
+            node.attr().at("new_axis_mask").i() != 0) {
+          valid = false;
+        }
+        if (node.attr().count("shrink_axis_mask") > 0 &&
+            node.attr().at("shrink_axis_mask").i() != 0) {
+          valid = false;
+        }
+        int begin_mask = 0;
+        if (node.attr().count("begin_mask") > 0) {
+          begin_mask = node.attr().at("begin_mask").i();
+        }
+        int end_mask = 0;
+        if (node.attr().count("end_mask") > 0) {
+          end_mask = node.attr().at("end_mask").i();
+        }
+        if (begin_mask < 0 || begin_mask > 1 || end_mask < 0 || end_mask > 1) {
+          valid = false;
+        }
+        if (valid) {
+          int64 begin = 0;
+          if (begin_mask == 0) {
+            begin = slice_begin->dtype() == DT_INT32
+                        ? slice_begin->flat<int32>()(0)
+                        : slice_begin->flat<int64>()(0);
+          }
+          int64 end = std::numeric_limits<int64>::max();
+          if (end_mask == 0) {
+            end =
+                (slice_end->dtype() == DT_INT32 ? slice_end->flat<int32>()(0)
+                                                : slice_end->flat<int64>()(0));
+          }
+          int64 stride = slice_stride->dtype() == DT_INT32
+                             ? slice_stride->flat<int32>()(0)
+                             : slice_stride->flat<int64>()(0);
+          ShapeHandle result;
+          TF_RETURN_IF_ERROR(ic->Subshape(input, begin, end, stride, &result));
           c->output_tensors_as_shapes.resize(1);
           c->output_tensors_as_shapes[0] = result;
         }
@@ -955,8 +1083,13 @@ Status GraphProperties::UpdateShapes(
     TF_RETURN_IF_ERROR(
         UpdateEnqueue(n, resource_handles, shape_refiner, new_shapes));
   } else {
-    // Rely on regular TF shape refinement for all the other nodes.
-    TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, new_shapes));
+    auto c = shape_refiner->GetNodeContext(n);
+    if (c && c->op_data && c->op_data->is_function_op) {
+      TF_RETURN_IF_ERROR(shape_refiner->UpdateFunction(n, new_shapes));
+    } else {
+      // Rely on regular TF shape refinement for all the other nodes.
+      TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, new_shapes));
+    }
   }
   return Status::OK();
 }
