@@ -36,6 +36,7 @@ cc_library(
         "driver/convolution_classifier.cc",
         "driver/expression_outliner.cc",
         "driver/fuse_ops.cc",
+        "driver/hlo_hash.cc",
         "driver/hlo_matcher.cc",
         "driver/inplace_finder.cc",
         "driver/matcher_predicates.cc",
@@ -53,6 +54,7 @@ cc_library(
         "driver/convolution_classifier.h",
         "driver/expression_outliner.h",
         "driver/fuse_ops.h",
+        "driver/hlo_hash.h",
         "driver/hlo_matcher.h",
         "driver/inplace_finder.h",
         "driver/matcher_predicates.h",
@@ -250,6 +252,16 @@ tf_cc_test(
 tf_cc_test(
     name = "outliner_test",
     srcs = ["tests/outliner_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_hash_test",
+    srcs = ["tests/hlo_hash_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -509,6 +521,7 @@ test_suite(
         "batch_norm_test",
         "tensor_array_test",
         "outliner_test",
+        "hlo_hash_test",
         "hlo_matcher_test",
         "fuse_ops_test",
         "wide_const_finder_test",
@@ -538,6 +551,7 @@ test_suite(
         "64_bit_test",
         "allocation_finder_test",
         "batch_norm_test",
+        "hlo_hash_test",
         "hlo_matcher_test",
         "fuse_ops_test",
         "wide_const_finder_test",
