@@ -76,7 +76,8 @@ def pandas_input_fn(x,
     num_threads: Integer, number of threads used for reading and enqueueing. In
       order to have predicted and repeatable order of reading and enqueueing,
       such as in prediction and evaluation mode, `num_threads` should be 1.
-    target_column: str, name to give the target column `y`.
+    target_column: str, name to give the target column `y`. This parameter
+      is not used when `y` is a `DataFrame`.
 
   Returns:
     Function, that has signature of ()->(dict of `features`, `target`)
