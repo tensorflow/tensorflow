@@ -1873,6 +1873,8 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
         delete backward_function;
       });
 
+  Py_DECREF(num_inputs);
+
   Py_RETURN_NONE;
 }
 
@@ -1931,8 +1933,10 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
     Py_INCREF(output->get());  // stay alive after since tuple steals.
     PyTuple_SET_ITEM(outputs.get(), 0, output->get());
 
-    if (!RecordGradient(GetPythonObjectFromString("ReadVariableOp"),
-                        inputs.get(), Py_None, outputs.get(), Py_None)) {
+    tensorflow::Safe_PyObjectPtr op_string(
+        GetPythonObjectFromString("ReadVariableOp"));
+    if (!RecordGradient(op_string.get(), inputs.get(), Py_None, outputs.get(),
+                        Py_None)) {
       return false;
     }
   }
