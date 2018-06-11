@@ -46,9 +46,9 @@ class PoplarExecutable : public Executable {
                    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
                    std::shared_ptr<poplar::Engine> engine,
                    const OutputMap& output_map,
-                   const std::vector<Shape>& parameter_shapes,
                    const std::vector<bool>& parameter_streamed,
                    const std::vector<bool>& output_streamed);
+
   ~PoplarExecutable() override;
 
   StatusOr<ScopedShapedBuffer> ExecuteOnStream(
@@ -64,8 +64,6 @@ class PoplarExecutable : public Executable {
 
   bool DumpReport() const { return first_execution_; }
 
-  const std::vector<Shape> ParameterShapes() const { return parameter_shapes_; }
-
   const OutputMap& OutputMapping() const { return output_map_; }
 
   const std::shared_ptr<poplar::Engine>& Engine() const {
@@ -76,16 +74,22 @@ class PoplarExecutable : public Executable {
     return parameter_streamed_;
   }
 
-  const std::vector<bool>& OutputStreamed() const {
-    return output_streamed_;
-  }
+  const std::vector<bool>& OutputStreamed() const { return output_streamed_; }
+
+  static StatusOr<PoplarExecutable*> Deserialize(
+      std::unique_ptr<HloModule> hlo_module,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer,
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+      const std::string& filename);
+
+  static Status Serialize(const PoplarExecutable& executable,
+                          const std::string& filename);
 
  private:
   friend class GraphCompileIoMapTest;
 
   std::shared_ptr<poplar::Engine> poplar_engine_;
   OutputMap output_map_;
-  std::vector<Shape> parameter_shapes_;
   std::vector<bool> parameter_streamed_;
   std::vector<bool> output_streamed_;
   bool first_execution_;

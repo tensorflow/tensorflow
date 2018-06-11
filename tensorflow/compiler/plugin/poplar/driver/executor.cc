@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
+#include "tensorflow/compiler/plugin/poplar/driver/hlo_hash.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 
@@ -107,6 +108,8 @@ se::host::HostStream* AsPoplarStream(se::Stream* stream) {
 PoplarExecutor::PoplarExecutor()
     : ordinal_(0),
       poplar_device_(poplar::Device::createCPUDevice()),
+      poplar_device_hash_(0),
+      cache_directory_(std::string()),
       active_xla_device_(nullptr),
       profile_compilation_(false),
       profile_poplar_text_(false),
@@ -352,6 +355,23 @@ Status PoplarExecutor::InitializePoplarDevice(
   }
 
   active_xla_device_ = device;
+
+  cache_directory_ = cfg.engine_cache_directory();
+
+  std::vector<int64> poplar_target;
+  const auto& target = poplar_device_.getTarget();
+  poplar_target.push_back(target.getNumTiles());
+  poplar_target.push_back(target.getDataPathWidth());
+  poplar_target.push_back(target.getBytesPerTile());
+  poplar_target.push_back(target.getNumWorkerContexts());
+  poplar_target.push_back(target.getTilesPerIPU());
+  poplar_target.push_back(target.getNumIPUs());
+  poplar_target.push_back((unsigned)target.getTargetType());
+
+  for (int64 h : poplar_target) {
+    poplar_device_hash_ = tensorflow::Hash64Combine(poplar_device_hash_, h);
+  }
+
   return Status::OK();
 }
 
@@ -361,6 +381,25 @@ Status PoplarExecutor::ClosePoplarDevice(void* device) {
     active_xla_device_ = nullptr;
   }
   return Status::OK();
+}
+
+bool PoplarExecutor::HaveExecutableCache() const {
+  return !cache_directory_.empty();
+}
+
+std::string PoplarExecutor::CachedExecutableFilename(
+    const HloModule& module) const {
+  HloHash module_hash(&module);
+  uint64 hash = module_hash.GetHash();
+  hash = tensorflow::Hash64Combine(hash, poplar_device_hash_);
+
+  std::string filename = tensorflow::strings::Printf("%0llx.xla_engine", hash);
+
+  return tensorflow::io::JoinPath(cache_directory_, filename);
+}
+
+bool PoplarExecutor::HaveCachedExecutable(const std::string& filename) const {
+  return false;
 }
 
 void PoplarExecutor::AddEventRecord(tensorflow::IpuTraceEvent::Type type,
@@ -415,10 +454,15 @@ void PoplarExecutor::FlattenedDeviceMemoryList(InputPairList& list,
   }
 }
 
-void PoplarExecutor::CreateArgsHandleMap(ArgsHandleMap& arg_map,
-                                         const Args& args,
-                                         const std::vector<xla::Shape>& shapes,
-                                         const std::vector<bool>& streamed) {
+void PoplarExecutor::CreateArgsHandleMap(
+    ArgsHandleMap& arg_map, const Args& args,
+    const xla::poplarplugin::PoplarExecutable& executable) {
+  const auto* comp = executable.module().entry_computation();
+  std::vector<xla::Shape> shapes(comp->num_parameters());
+  for (const auto& inst : comp->parameter_instructions()) {
+    shapes[inst->parameter_number()] = inst->shape();
+  }
+  const auto& streamed = executable.ParameterStreamed();
   for (unsigned int a = 0; a < args.size(); a++) {
     InputPairList bufs;
     FlattenedDeviceMemoryList(bufs, shapes[a],
@@ -577,14 +621,13 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       std::tie(retbuf, tensor_count) =
           RemapArgs(output_shape, 0, output_map, args);
     } else {
-      ArgsHandleMap arg_map;
-      CreateArgsHandleMap(arg_map, args, executable.ParameterShapes(),
-                          executable.ParameterStreamed());
-
-      std::string name("");
-      if (executable.has_module()) {
-        name = executable.module().name();
+      if (!executable.has_module()) {
+        return tensorflow::errors::InvalidArgument(
+            "Executable must have an HloModule");
       }
+
+      ArgsHandleMap arg_map;
+      CreateArgsHandleMap(arg_map, args, executable);
 
       // Pull previous execution output back from device if:
       // a) it is on the device _and_
@@ -617,7 +660,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         // TODO Load new engine
 
         if (profile_io_) {
-          AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE, name, "", 0);
+          AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE,
+                         executable.module().name(), "", 0);
         }
       }
 

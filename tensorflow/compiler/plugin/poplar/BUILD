@@ -20,6 +20,7 @@ tf_proto_library(
     name = "protos",
     srcs = [
       "driver/trace.proto",
+      "driver/executable.proto",
     ],
     cc_api_version = 2,
     default_header = True,
@@ -597,6 +598,21 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "ipu_engine_cache_test",
+    size = "medium",
+    srcs = ["tests/ipu_engine_cache_test.py"],
+    deps = [
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -628,6 +644,7 @@ test_suite(
         "convolution_classifier_test",
         "while_loop_condition_simplify_test",
         "conv3d_test",
+        "ipu_engine_cache_test",
     ],
 )
 
@@ -657,6 +674,7 @@ test_suite(
         "convolution_classifier_test",
         "while_loop_condition_simplify_test",
         "conv3d_test",
+        "ipu_engine_cache_test",
     ],
 )
 

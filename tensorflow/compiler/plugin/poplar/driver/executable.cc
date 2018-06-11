@@ -17,6 +17,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
+#include "tensorflow/compiler/plugin/poplar/driver/executable.pb.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -27,14 +28,12 @@ PoplarExecutable::PoplarExecutable(
     std::unique_ptr<HloProfileIndexMap> profile_index_map,
     std::shared_ptr<poplar::Engine> engine,
     const ::xla::poplarplugin::OutputMap& output_map,
-    const std::vector<Shape>& parameter_shapes,
     const std::vector<bool>& parameter_streamed,
     const std::vector<bool>& output_streamed)
     : Executable(std::move(hlo_module), std::move(profile_printer),
                  std::move(profile_index_map)),
       poplar_engine_(std::move(engine)),
       output_map_(std::move(output_map)),
-      parameter_shapes_(std::move(parameter_shapes)),
       parameter_streamed_(std::move(parameter_streamed)),
       output_streamed_(std::move(output_streamed)),
       first_execution_(true) {}
@@ -118,6 +117,27 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
     return sizeof(void*);
   }
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+}
+
+/*static*/ StatusOr<PoplarExecutable*> PoplarExecutable::Deserialize(
+    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer,
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+    const std::string& filename) {
+  VLOG(1) << "Restoring executable from " << filename;
+
+  PoplarExecutableProto proto;
+
+  // TODO expand this when poplar engine serialization support is ready
+  return ReadBinaryProto(tensorflow::Env::Default(), filename, &proto);
+}
+
+/*static*/ Status PoplarExecutable::Serialize(
+    const PoplarExecutable& executable, const std::string& filename) {
+  PoplarExecutableProto proto;
+
+  // TODO expand this when poplar engine serialization support is ready
+  return WriteBinaryProto(tensorflow::Env::Default(), filename, proto);
 }
 
 }  // namespace poplarplugin

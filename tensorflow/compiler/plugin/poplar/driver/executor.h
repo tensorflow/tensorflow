@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
 
+#include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -36,7 +37,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 #include <list>
@@ -52,6 +53,9 @@ limitations under the License.
 namespace se = stream_executor;
 
 namespace xla {
+
+class HloModule;
+
 namespace poplarplugin {
 
 class PoplarExecutable;
@@ -254,6 +258,12 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   StatusOr<se::DeviceMemoryBase> GetTupleBufferByIndex(
       const se::DeviceMemoryBase &base, int64 value);
 
+  bool HaveExecutableCache() const;
+
+  std::string CachedExecutableFilename(const HloModule &module) const;
+
+  bool HaveCachedExecutable(const std::string &filename) const;
+
  private:
   struct TensorControl {
     size_t size = 0;
@@ -286,8 +296,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
                                               void *base);
 
   static void CreateArgsHandleMap(ArgsHandleMap &, const Args &,
-                                  const std::vector<xla::Shape> &,
-                                  const std::vector<bool> &);
+                                  const xla::poplarplugin::PoplarExecutable &);
 
   std::tuple<se::DeviceMemoryBase, int64> AllocateSingleOutput(
       xla::DeviceMemoryAllocator *allocator, const xla::Shape &shape,
@@ -313,6 +322,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   std::shared_ptr<poplar::Engine> current_engine_;
 
   poplar::Device poplar_device_;
+
+  int64 poplar_device_hash_;
+
+  std::string cache_directory_;
 
   poplar::OptionFlags option_flags_;
 

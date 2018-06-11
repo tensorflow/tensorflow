@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package xla;
+
+message PoplarExecutableProto {
+
+  // The serialized Engine
+  string engine = 1;
+
+  // Map from outputs to inputs for in-place updates
+  map<int32, int32> output_map = 2;
+
+  // Vector of indicators for whether to stream an input
+  repeated bool input_streamed = 3;
+
+  // Vector of indicators for whether to stream an output
+  repeated bool output_streamed = 4;
+};

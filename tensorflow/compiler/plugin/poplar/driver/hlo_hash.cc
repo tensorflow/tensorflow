@@ -29,6 +29,8 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+using tensorflow::Hash64Combine;
+
 uint64 HloHash::GetHash() {
   if (!performed_hash_) HashModule();
   return hash_;
@@ -46,6 +48,8 @@ void HloHash::HashModule() {
   tensorflow::SerializeToStringDeterministic(proto, &proto_str_);
 
   hash_ = std::hash<string>()(proto_str_);
+  hash_ = Hash64Combine(hash_, module_->config().seed());
+  hash_ = Hash64Combine(hash_, module_->config().resource_update_count());
   performed_hash_ = true;
 }
 

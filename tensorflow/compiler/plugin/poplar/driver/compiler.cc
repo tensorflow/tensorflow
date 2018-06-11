@@ -122,15 +122,12 @@ class EntryVisitor : public FullVisitor {
   EntryVisitor(poplar::Graph& graph, CompilerResources& resources,
                uint64 num_parameters, uint64 num_outputs)
       : FullVisitor(graph, resources),
-        parameter_shapes(num_parameters),
         parameter_streamed(num_parameters),
         output_streamed(num_outputs),
         all_outputs_are_parameters(false) {}
 
   Status HandleParameter(HloInstruction* inst) {
     VLOG(1) << "Processing " << inst->name();
-
-    parameter_shapes[inst->parameter_number()] = inst->shape();
 
     auto num_streaming = inst->parent()->num_parameters() -
                          resources_.annotations.num_resource_variables;
@@ -264,9 +261,7 @@ class EntryVisitor : public FullVisitor {
   }
 
   OutputMap output_map;
-  std::vector<Shape> parameter_shapes;
   std::vector<bool> parameter_streamed;
-
   std::vector<bool> output_streamed;
 
   bool all_outputs_are_parameters;
@@ -303,6 +298,33 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   PoplarExecutor* poplarExecutor(
       static_cast<PoplarExecutor*>(stream_exec->implementation()));
+
+  std::unique_ptr<HloProfileIndexMap> profile_index_map;
+  std::unique_ptr<HloProfilePrinterData> profile_printer;
+  if (module->config().hlo_profiling_enabled()) {
+    HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
+    profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
+    profile_printer =
+        CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
+  }
+
+  std::string filename;
+  if (poplarExecutor->HaveExecutableCache()) {
+    filename = poplarExecutor->CachedExecutableFilename(*module);
+
+    if (poplarExecutor->HaveCachedExecutable(filename)) {
+      PoplarExecutable* poplar_executable;
+      TF_ASSIGN_OR_RETURN(poplar_executable,
+                          PoplarExecutable::Deserialize(
+                              std::move(module), std::move(profile_printer),
+                              std::move(profile_index_map), filename));
+
+      std::unique_ptr<Executable> executable;
+      executable.reset(poplar_executable);
+
+      return std::move(executable);
+    }
+  }
 
   const poplar::Device& dev = poplarExecutor->GetPoplarDevice();
 
@@ -388,8 +410,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   try {
     TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
   } catch (std::logic_error e) {
-    return Status(tensorflow::error::UNKNOWN,
-                  StrCat("[Poplar Compile] ", e.what()));
+    return tensorflow::errors::Unknown(StrCat("[Poplar Compile] ", e.what()));
   }
 
   std::shared_ptr<poplar::Engine> engine;
@@ -405,8 +426,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       auto opts = poplarExecutor->GetOptionsFlags();
       engine.reset(new poplar::Engine(dev, graph, progs, opts));
     } catch (std::logic_error e) {
-      return Status(tensorflow::error::UNKNOWN,
-                    StrCat("[Poplar Engine] ", e.what()));
+      return tensorflow::errors::Unknown(StrCat("[Poplar Engine] ", e.what()));
     }
 
     if (poplarExecutor->CompilerReportingEnabled()) {
@@ -428,22 +448,21 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
   }
 
-  std::unique_ptr<HloProfileIndexMap> profile_index_map;
-  std::unique_ptr<HloProfilePrinterData> profile_printer;
-  if (module->config().hlo_profiling_enabled()) {
-    HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
-    profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
-    profile_printer =
-        CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
-  }
-
   std::unique_ptr<Executable> executable;
-  executable.reset(new PoplarExecutable(
+  PoplarExecutable* poplar_executable;
+  poplar_executable = new PoplarExecutable(
       std::move(module), std::move(profile_printer),
       std::move(profile_index_map), std::move(engine),
-      std::move(visitor.output_map), std::move(visitor.parameter_shapes),
-      std::move(visitor.parameter_streamed),
-      std::move(visitor.output_streamed)));
+      std::move(visitor.output_map), std::move(visitor.parameter_streamed),
+      std::move(visitor.output_streamed));
+  executable.reset(poplar_executable);
+
+  if (poplarExecutor->HaveExecutableCache()) {
+    if (!poplarExecutor->HaveCachedExecutable(filename)) {
+      TF_RETURN_IF_ERROR(
+          PoplarExecutable::Serialize(*poplar_executable, filename));
+    }
+  }
 
   return std::move(executable);
 }
