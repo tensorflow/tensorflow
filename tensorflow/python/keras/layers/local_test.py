@@ -118,6 +118,7 @@ class LocallyConnectedLayersTest(test.TestCase):
             },
             input_shape=(num_samples, num_row, num_col, stack_size))
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_locallyconnected_2d_channels_first(self):
     num_samples = 8
     filters = 3
@@ -125,15 +126,14 @@ class LocallyConnectedLayersTest(test.TestCase):
     num_row = 6
     num_col = 10
 
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.LocallyConnected2D,
-          kwargs={
-              'filters': filters,
-              'kernel_size': 3,
-              'data_format': 'channels_first'
-          },
-          input_shape=(num_samples, num_row, num_col, stack_size))
+    testing_utils.layer_test(
+        keras.layers.LocallyConnected2D,
+        kwargs={
+            'filters': filters,
+            'kernel_size': 3,
+            'data_format': 'channels_first'
+        },
+        input_shape=(num_samples, num_row, num_col, stack_size))
 
   def test_locallyconnected_2d_regularization(self):
     num_samples = 8
