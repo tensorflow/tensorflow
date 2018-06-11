@@ -34,8 +34,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import gfile
 from tensorflow.python.util.deprecation import deprecated
 
-# CVDF mirror of http://yann.lecun.com/exdb/mnist/
-DEFAULT_SOURCE_URL = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
+DEFAULT_SOURCE_URL = ' http://yann.lecun.com/exdb/mnist/'
 
 
 def _read32(bytestream):
