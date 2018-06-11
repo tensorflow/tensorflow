@@ -1847,7 +1847,7 @@ class FactoryKeyCreator {
 
   ~FactoryKeyCreator() {}
 
-  void AddAsKey(const string &str) { Append(str); }
+  void AddAsKey(const string& str) { Append(str); }
 
   void AddAsKey(const mkldnn::memory::dims &dims) {
     for (unsigned int i = 0; i < dims.size(); i++) {
