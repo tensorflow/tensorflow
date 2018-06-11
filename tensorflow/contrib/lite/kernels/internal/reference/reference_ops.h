@@ -3202,9 +3202,10 @@ inline void Gather(const T* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
+template <typename T>
+inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
-                           const Dims<4>& output_size_dims, float* output_data,
+                           const Dims<4>& output_size_dims, T* output_data,
                            const Dims<4>& output_dims, bool align_corners) {
   int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   int32 input_height = ArraySize(input_dims, 2);
@@ -3236,15 +3237,15 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
         int32 x0 = static_cast<int32>(std::floor(input_x));
         int32 x1 = std::min(x0 + 1, input_width - 1);
         for (int c = 0; c < depth; ++c) {
-          float interpolation = input_data[Offset(input_dims, c, x0, y0, b)] *
-                                    (1 - (input_y - y0)) *
-                                    (1 - (input_x - x0)) +
-                                input_data[Offset(input_dims, c, x0, y1, b)] *
-                                    (input_y - y0) * (1 - (input_x - x0)) +
-                                input_data[Offset(input_dims, c, x1, y0, b)] *
-                                    (1 - (input_y - y0)) * (input_x - x0) +
-                                input_data[Offset(input_dims, c, x1, y1, b)] *
-                                    (input_y - y0) * (input_x - x0);
+          T interpolation =
+              static_cast<T>(input_data[Offset(input_dims, c, x0, y0, b)] *
+                                 (1 - (input_y - y0)) * (1 - (input_x - x0)) +
+                             input_data[Offset(input_dims, c, x0, y1, b)] *
+                                 (input_y - y0) * (1 - (input_x - x0)) +
+                             input_data[Offset(input_dims, c, x1, y0, b)] *
+                                 (1 - (input_y - y0)) * (input_x - x0) +
+                             input_data[Offset(input_dims, c, x1, y1, b)] *
+                                 (input_y - y0) * (input_x - x0));
           output_data[Offset(output_dims, c, x, y, b)] = interpolation;
         }
       }
@@ -3257,8 +3258,18 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
                            const Dims<4>& output_dims) {
-  ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
-                 output_data, output_dims, /*align_corners=*/false);
+  ResizeBilinear<float>(input_data, input_dims, output_size_data,
+                        output_size_dims, output_data, output_dims,
+                        /*align_corners=*/false);
+}
+
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
+                           const Dims<4>& output_dims) {
+  ResizeBilinear<uint8>(input_data, input_dims, output_size_data,
+                        output_size_dims, output_data, output_dims,
+                        /*align_corners=*/false);
 }
 
 template <typename T>
