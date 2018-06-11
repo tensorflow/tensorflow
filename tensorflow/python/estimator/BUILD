@@ -971,7 +971,10 @@ py_test(
     size = "large",
     srcs = ["keras_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+      "notsan",
+      "no_windows",
+    ],
     deps = [
         ":keras",
         "//tensorflow/core:protos_all_py",
