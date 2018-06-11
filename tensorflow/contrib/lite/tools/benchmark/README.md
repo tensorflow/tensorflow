@@ -46,8 +46,6 @@ adb shell /data/local/tmp/benchmark_model \
   --graph=/data/local/tmp/mobilenet_quant_v1_224.tflite \
   --input_layer="Placeholder" \
   --input_layer_shape="1,224,224,3" \
-  --input_layer_type="uint8" \
-  --output_layer="MobilenetV1/Predictions/Reshape_1" \
   --num_threads=4
 ```
 
@@ -66,8 +64,6 @@ bazel-bin/tensorflow/contrib/lite/tools/benchmark/benchmark_model \
   --graph=mobilenet_quant_v1_224.tflite \
   --input_layer="Placeholder" \
   --input_layer_shape="1,224,224,3" \
-  --input_layer_type="uint8" \
-  --output_layer="MobilenetV1/Predictions/Reshape_1" \
   --num_threads=4
 ```
 
