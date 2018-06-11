@@ -52,8 +52,8 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "if_cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm", "if_rocm_is_configured")
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -2493,9 +2493,6 @@ cc_library(
     ],
 )
 
-# ROCM TODO: figure this out
-# at least one op depend on utility routines in this target without actually
-# using cuSOLVER
 tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
@@ -2919,12 +2916,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-    #deps = MATH_DEPS + if_cuda([
-    #    ":cuda_solvers",
-    #])
-
-    # ROCM TODO: figure this out
-    deps = MATH_DEPS + if_rocm([
+    deps = MATH_DEPS + if_cuda_is_configured([
+        ":cuda_solvers",
+    ]) + if_rocm_is_configured([
         ":cuda_solvers",
     ])
 )
