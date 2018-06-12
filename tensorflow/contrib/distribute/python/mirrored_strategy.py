@@ -349,7 +349,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     if isinstance(tower_local_var, values.TowerLocalVariable):
       return math_ops.add_n(self.unwrap(tower_local_var))
     assert isinstance(tower_local_var, values.Mirrored)
-    return tower_local_var.get()
+    return array_ops.identity(tower_local_var.get())
 
   def _fetch(self, val, destination, fn):
     """Return a copy of `val` or `fn(val)` on `destination`."""

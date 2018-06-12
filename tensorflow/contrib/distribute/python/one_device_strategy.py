@@ -104,7 +104,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
 
   def read_var(self, tower_local_var):
     """Read the aggregate value of a tower-local variable."""
-    return tower_local_var
+    return array_ops.identity(tower_local_var)
 
   def _fetch(self, val, destination, fn):
     """Return a copy of `val` or `fn(val)` on `destination`."""

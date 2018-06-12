@@ -652,7 +652,7 @@ class DistributionStrategy(object):
     """Reads the value of a variable.
 
     Returns the aggregate value of a tower-local variable, or the
-    (possibly read-only) value of any other variable.
+    (read-only) value of any other variable.
 
     Args:
       v: A variable allocated within the scope of this `DistributionStrategy`.
@@ -1217,7 +1217,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
       return fn(*args, **kwargs)
 
   def read_var(self, tower_local_var):
-    return tower_local_var
+    return array_ops.identity(tower_local_var)
 
   def _fetch(self, var, destination, fn):
     with ops.colocate_with(var):
