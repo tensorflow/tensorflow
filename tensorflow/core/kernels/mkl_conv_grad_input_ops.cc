@@ -84,7 +84,8 @@ template <typename T>
 class MklConv2DBwdInputPrimitive : public MklPrimitive {
  public:
   explicit MklConv2DBwdInputPrimitive(
-      const MklConvBwdInputParams& convBwdInputDims) {
+      const MklConvBwdInputParams& convBwdInputDims) :
+           cpu_engine_(engine::cpu, 0) {
     context_.bwd_input_stream.reset(new stream(stream::kind::eager));
 
     // create conv primitive
@@ -169,9 +170,8 @@ class MklConv2DBwdInputPrimitive : public MklPrimitive {
         diff_src_md(nullptr), filter_md(nullptr), diff_dst_md(nullptr),
         bwd_input_stream(nullptr) {
     }
-  } context_;
+  };
 
-  engine cpu_engine_ = engine(engine::cpu, 0);
 
   void Setup(const MklConvBwdInputParams& convBwdInputDims) {
     // create memory descriptors for convolution data w/ no specified format
@@ -226,8 +226,10 @@ class MklConv2DBwdInputPrimitive : public MklPrimitive {
         *context_.filter_mem, *context_.diff_src_mem));
 
     context_.bwd_input_primitives.push_back(*context_.conv_bwd_input);
-    return;
   }
+
+  struct ConvBwdInputContext context_;
+  engine cpu_engine_;
 };
 
 template <typename T>
