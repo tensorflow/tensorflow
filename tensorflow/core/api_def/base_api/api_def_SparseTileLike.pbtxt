@@ -1,0 +1,105 @@
+op {
+  graph_op_name: "SparseTileLike"
+  in_arg {
+    name: "a_input_indices"
+    description: <<END
+2-D.  Indices of input `SparseTensor` `a`.
+END
+  }
+  in_arg {
+    name: "a_input_values"
+    description: <<END
+1-D.   values of input `SparseTensor` `a`.
+END
+  }
+  in_arg {
+    name: "a_input_shapes"
+    description: <<END
+1-D.   Shapes of input `SparseTensor` `a`.
+END
+  }
+  in_arg {
+    name: "b_input_indices"
+    description: <<END
+2-D.  Indices of input `SparseTensor` `b`.
+END
+  }
+  in_arg {
+    name: "b_input_values"
+    description: <<END
+1-D.   values of input `SparseTensor` `b`.
+END
+  }
+  in_arg {
+    name: "b_input_shapes"
+    description: <<END
+1-D.   Shapes of input `SparseTensor` `b`.
+END
+  }
+  in_arg {
+    name: "axes"
+    description: <<END
+Constant.    Axes of `SparseTensor` `b` to tile.
+END
+  }
+  out_arg {
+    name: "output_indices"
+    description: <<END
+2-D.  Indices of the output `SparseTensor`.
+END
+  }
+  out_arg {
+    name: "output_values"
+    description: <<END
+1-D.  Values of the output `SparseTensor`
+`SparseTensor`.
+END
+  }
+  out_arg {
+    name: "output_shape"
+    description: <<END
+1-D.  Shape of the output `SparseTensor`.
+END
+  }
+  summary: "Tile sparse tensors."
+  description: <<END
+Tile a `SparseTensor` `a` to a new SparseTensor with the same 
+as `SparseTensor` `b` on the axes `axes`.
+
+For example. If `a` is a `SparseTensor` like:
+
+```
+    index = [0]
+            [4]
+            [6]
+    values = [1, 2, 3]
+    shape = [10]
+```
+
+while `b` is the template `SparseTensor` like:
+
+```
+    index = [0, 3]
+            [4, 1]
+            [4, 3]
+            [6, 0]
+            [6, 3]
+    values = [8, 8, 9, 9, 9]
+    shape = [10, 10]
+```
+
+with `axes=1`, then the final `SparseTensor` will be:
+
+```
+    index = [0, 3]
+            [4, 1]
+            [4, 3]
+            [6, 0]
+            [6, 3]
+    values = [1, 2, 2, 3, 3]
+    shape = [10, 10]
+```
+As you might see, the `op` will forget all the values in SparseTensor `b` and 
+fill `b` with values from SparseTensor `a` at the right position.
+END
+}

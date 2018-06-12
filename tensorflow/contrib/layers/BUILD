@@ -29,8 +29,22 @@ tf_custom_op_library(
     ],
 )
 
+tf_custom_op_library(
+    name = "python/ops/_sparse_tile_like_op.so",
+    srcs = [
+        "ops/sparse_tile_like_op.cc",
+    ],
+    deps = [
+        "//tensorflow/contrib/layers/kernels:sparse_tile_like_kernel",
+    ],
+)
+
 tf_gen_op_libs(
     op_lib_names = ["sparse_feature_cross_op"],
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["sparse_tile_like_op"],
 )
 
 tf_gen_op_wrapper_py(
@@ -38,10 +52,24 @@ tf_gen_op_wrapper_py(
     deps = [":sparse_feature_cross_op_op_lib"],
 )
 
+tf_gen_op_wrapper_py(
+    name = "sparse_tile_like_op",
+    deps = [":sparse_tile_like_op_op_lib"],
+)
+
 tf_kernel_library(
     name = "sparse_feature_cross_op_kernel",
     deps = [
         "//tensorflow/contrib/layers/kernels:sparse_feature_cross_kernel",
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
+)
+
+tf_kernel_library(
+    name = "sparse_tile_like_op_kernel",
+    deps = [
+        "//tensorflow/contrib/layers/kernels:sparse_tile_like_kernel",
         "//tensorflow/core:framework",
     ],
     alwayslink = 1,
@@ -67,18 +95,23 @@ tf_custom_op_py_library(
         "python/layers/utils.py",
         "python/ops/bucketization_op.py",
         "python/ops/sparse_feature_cross_op.py",
+        "python/ops/sparse_tile_like_op.py",
         "python/ops/sparse_ops.py",
     ],
     dso = [
         ":python/ops/_sparse_feature_cross_op.so",
+        ":python/ops/_sparse_tile_like_op.so",
     ],
     kernels = [
         ":sparse_feature_cross_op_kernel",
         ":sparse_feature_cross_op_op_lib",
+        ":sparse_tile_like_op_kernel",
+        ":sparse_tile_like_op_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":sparse_feature_cross_op",
+        ":sparse_tile_like_op",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
@@ -299,6 +332,22 @@ py_test(
     name = "sparse_feature_cross_op_test",
     size = "medium",
     srcs = ["python/kernel_tests/sparse_feature_cross_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "sparse_tile_like_op_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/sparse_tile_like_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",

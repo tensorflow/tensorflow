@@ -18,3 +18,15 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "sparse_tile_like_kernel",
+    srcs = ["sparse_tile_like_kernel.cc"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+    alwayslink = 1,
+)
