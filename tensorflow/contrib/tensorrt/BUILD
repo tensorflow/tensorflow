@@ -187,7 +187,6 @@ tf_py_wrap_cc(
     deps = [
         ":trt_conversion",
         ":trt_engine_op_kernel",
-        #"//tensorflow/core:framework_lite",
         "//third_party/python_runtime:headers",
     ],
 )

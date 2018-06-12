@@ -47,13 +47,11 @@ TRTInt8Calibrator::TRTInt8Calibrator(const string& calib_data)
       done_(false),
       calib_running_(false),
       batch_is_set_(false),
-      calibration_table(calib_data) {}
+      calibration_table_(calib_data) {}
 
 bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
-                                 const cudaStream_t stream,
-                                 tensorflow::core::RefCounted* rc) {
+                                 const cudaStream_t stream) {
   tensorflow::mutex_lock lock(cond_mtx_);
-  tensorflow::core::ScopedUnref SC(rc);
   while ((calib_running_ || batch_is_set_) &&
          !done_) {  // wait while calibration is running
     cond_.wait(lock);
@@ -116,9 +114,9 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
 }
 
 const void* TRTInt8Calibrator::readCalibrationCache(std::size_t& length) {
-  if (calibration_table.empty()) return nullptr;
-  length = calibration_table.size();
-  return calibration_table.data();
+  if (calibration_table_.empty()) return nullptr;
+  length = calibration_table_.size();
+  return calibration_table_.data();
 }
 
 void TRTInt8Calibrator::setDone() {
@@ -129,8 +127,9 @@ void TRTInt8Calibrator::setDone() {
 
 void TRTInt8Calibrator::writeCalibrationCache(const void* ptr,
                                               std::size_t length) {
-  calibration_table = string((const char*)ptr, length);
-  VLOG(1) << "Got calibration data for "<<engine_name_<<" @"<<ptr<<" length="<<length;
+  calibration_table_ = string((const char*)ptr, length);
+  VLOG(1) << "Got calibration data for " << engine_name_ << " @" << ptr
+          << " length=" << length;
 }
 TRTInt8Calibrator::~TRTInt8Calibrator() {
   VLOG(1) << "Destroying calibrator for " << engine_name_;
