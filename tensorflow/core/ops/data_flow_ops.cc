@@ -608,6 +608,50 @@ REGISTER_OP("TensorArrayGradV3")
       return Status::OK();
     });
 
+REGISTER_OP("TensorArrayGradWithShape")
+    .Input("handle: resource")
+    .Input("flow_in: float")
+    .Input("shape_to_prepend: int32")
+    .Output("grad_handle: resource")
+    .Output("flow_out: float")
+    .Attr("source: string")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle handle;
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
+      c->set_output(0, c->Vector(2));
+      c->set_output(1, c->Scalar());
+      auto* shape_and_type = c->input_handle_shapes_and_types(0);
+      if (shape_and_type) {
+        auto input_shape = (*shape_and_type)[0].shape;
+        auto dtype = (*shape_and_type)[0].dtype;
+        // Note that shape_to_preped is a rank 1 Tensor representing a shape.
+        // The size of dimension 0 is the number of dimensions we need to add to
+        // output shape.
+        int64 prepend_rank = c->Value(c->Dim(c->input(2), 0));
+        if (c->RankKnown(input_shape) &&
+            prepend_rank != InferenceContext::kUnknownDim) {
+          int32 input_rank = c->Rank(input_shape);
+          std::vector<DimensionHandle> dims;
+          dims.reserve(prepend_rank + input_rank);
+          for (int i = 0; i < prepend_rank; ++i) {
+            dims.push_back(c->UnknownDim());
+          }
+          for (int i = 0; i < input_rank; ++i) {
+            dims.push_back(c->Dim(input_shape, i));
+          }
+          c->set_output_handle_shapes_and_types(0,
+                                                {{c->MakeShape(dims), dtype}});
+        } else {
+          c->set_output_handle_shapes_and_types(0,
+                                                {{c->UnknownShape(), dtype}});
+        }
+      }
+      return Status::OK();
+    });
+
 REGISTER_OP("TensorArrayWriteV3")
     .Input("handle: resource")
     .Input("index: int32")

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/sendrecv_ops.h"
+#include "tensorflow/core/kernels/shape_ops.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 
 namespace tensorflow {
@@ -87,6 +88,46 @@ class XlaAssignVariableOp : public AsyncOpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("ReadVariableOp").Device(DEVICE).HostMemory("resource"),            \
       ReadVariableOp);                                                         \
+  REGISTER_KERNEL_BUILDER(Name("Shape")                                        \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("output")                            \
+                              .TypeConstraint<int32>("out_type")               \
+                              .TypeConstraint("T", TYPES),                     \
+                          ShapeOp<int32>);                                     \
+  REGISTER_KERNEL_BUILDER(Name("Shape")                                        \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("output")                            \
+                              .TypeConstraint<int64>("out_type")               \
+                              .TypeConstraint("T", TYPES),                     \
+                          ShapeOp<int64>);                                     \
+  REGISTER_KERNEL_BUILDER(Name("ShapeN")                                       \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("output")                            \
+                              .TypeConstraint<int32>("out_type")               \
+                              .TypeConstraint("T", TYPES),                     \
+                          ShapeNOp<int32>);                                    \
+  REGISTER_KERNEL_BUILDER(Name("ShapeN")                                       \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("output")                            \
+                              .TypeConstraint<int64>("out_type")               \
+                              .TypeConstraint("T", TYPES),                     \
+                          ShapeNOp<int64>);                                    \
+  REGISTER_KERNEL_BUILDER(Name("Size")                                         \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("output")                            \
+                              .TypeConstraint<int32>("out_type")               \
+                              .TypeConstraint("T", TYPES),                     \
+                          SizeOp<int32>);                                      \
+  REGISTER_KERNEL_BUILDER(Name("Size")                                         \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("output")                            \
+                              .TypeConstraint<int64>("out_type")               \
+                              .TypeConstraint("T", TYPES),                     \
+                          SizeOp<int64>);                                      \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Rank").Device(DEVICE).HostMemory("output").TypeConstraint("T",     \
+                                                                      TYPES),  \
+      RankOp);                                                                 \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("AssignVariableOp").Device(DEVICE).HostMemory("resource"),          \
       XlaAssignVariableOp);                                                    \
