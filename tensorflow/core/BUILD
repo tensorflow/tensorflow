@@ -876,6 +876,7 @@ cc_library(
     hdrs = [
         "util/stats_calculator.h",
     ],
+    copts = tf_copts(),
 )
 
 cc_library(
