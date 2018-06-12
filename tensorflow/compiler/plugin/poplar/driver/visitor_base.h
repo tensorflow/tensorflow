@@ -133,6 +133,8 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleGather(HloInstruction* inst) override;
 
+  Status HandleGenerateToken(HloInstruction* inst) override;
+
   TensorMap tensor_map;
 
   poplar::program::Sequence sequence;

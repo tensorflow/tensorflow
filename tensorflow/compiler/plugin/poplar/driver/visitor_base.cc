@@ -87,8 +87,8 @@ const Shape& BaseVisitor::GetOutputShape(HloInstruction* inst) const {
 }
 
 Status BaseVisitor::Unimplemented(HloInstruction* inst) {
-  return Status(tensorflow::error::UNIMPLEMENTED,
-                se::port::StrCat(inst->name(), " not implemented"));
+  return tensorflow::errors::Unimplemented(
+      se::port::StrCat(inst->name(), " not implemented"));
 }
 
 Status BaseVisitor::HandleElementwiseUnary(HloInstruction* inst) {
@@ -388,6 +388,10 @@ Status BaseVisitor::HandleHostCompute(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleGather(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status BaseVisitor::HandleGenerateToken(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
