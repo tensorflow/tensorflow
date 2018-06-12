@@ -92,7 +92,6 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
   }
 
   context_.fwd_primitives.push_back(*context_.fwd);
-  return;
 }
 
 template <typename T>
@@ -115,7 +114,6 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, const T* dst_data,
     assert(ws != nullptr);
     context_.ws_mem->set_data_handle(DummyData);
   }
-  return;
 }
 
 template class MklPoolingFwdPrimitive<float>;
@@ -199,7 +197,6 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
     assert(ws_data != nullptr);
     context_.ws_mem->set_data_handle(DummyData);
   }
-  return;
 }
 
 template class MklPoolingBwdPrimitive<float>;
