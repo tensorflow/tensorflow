@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 import scipy.sparse
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import variables
@@ -234,10 +235,13 @@ class BackendUtilsTest(test.TestCase):
       x_placeholder = keras.backend.placeholder(shape=())
       y_placeholder = keras.backend.placeholder(shape=())
 
+      run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
       f = keras.backend.function(inputs=[x_placeholder, y_placeholder],
                                  outputs=[x_placeholder + y_placeholder],
                                  updates=[(x, x_placeholder + 1.)],
-                                 fetches=[keras.backend.update(y, 5.)])
+                                 fetches=[keras.backend.update(y, 5.)],
+                                 options=run_options)
       output = f([10., 20.])
       self.assertEqual(output, [30.])
       self.assertEqual(
