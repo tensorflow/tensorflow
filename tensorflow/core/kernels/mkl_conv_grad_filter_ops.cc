@@ -84,7 +84,8 @@ template <typename T>
 class MklConv2DBwdFilterPrimitive : public MklPrimitive {
  public:
   explicit MklConv2DBwdFilterPrimitive(
-      const MklConvBwdFilterParams& convBwdFilterDims) {
+      const MklConvBwdFilterParams& convBwdFilterDims) :
+            cpu_engine_(engine::cpu, 0) {
     context_.bwd_filter_stream.reset(new stream(stream::kind::eager));
     // create conv primitive
     if (context_.conv_bwd_filter == nullptr) {
@@ -203,9 +204,7 @@ class MklConv2DBwdFilterPrimitive : public MklPrimitive {
         diff_bias_md(nullptr), diff_dst_md(nullptr),
         bwd_filter_stream(nullptr) {
     }
-  } context_;
-
-  engine cpu_engine_ = engine(engine::cpu, 0);
+  };
 
   // Setup Conv2d backward filter (weights) primitives.
   void Setup(const MklConvBwdFilterParams& convBwdFilterDims) {
@@ -290,8 +289,10 @@ class MklConv2DBwdFilterPrimitive : public MklPrimitive {
     }
 
     context_.bwd_filter_primitives.push_back(*context_.conv_bwd_filter);
-    return;
   }
+
+  struct ConvBwdFilterContext context_;
+  engine cpu_engine_;
 };
 
 template <typename T>
