@@ -105,7 +105,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int batch_size = input_size / filter->dims->data[1];
   const int num_units = filter->dims->data[0];
 
-  TF_LITE_ASSERT_EQ(input_size, batch_size * filter->dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, input_size, batch_size * filter->dims->data[1]);
   if (bias) {
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
   }

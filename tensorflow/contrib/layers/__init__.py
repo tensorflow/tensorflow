@@ -19,6 +19,8 @@ See the @{$python/contrib.layers} guide.
 @@avg_pool2d
 @@avg_pool3d
 @@batch_norm
+@@convolution
+@@convolution1d
 @@convolution2d
 @@convolution3d
 @@conv2d_in_plane

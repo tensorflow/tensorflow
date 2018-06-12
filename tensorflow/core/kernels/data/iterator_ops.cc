@@ -158,7 +158,10 @@ class IteratorResource : public ResourceBase {
         graph_runner.Run(&graph, lib, {}, {output_node}, &outputs));
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
 
-    TF_RETURN_IF_ERROR(set_iterator(dataset->MakeIterator("Iterator")));
+    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+    std::unique_ptr<IteratorBase> iterator;
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, "Iterator", &iterator));
+    TF_RETURN_IF_ERROR(set_iterator(std::move(iterator)));
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
 
     if (captured_iterator) {
@@ -204,12 +207,6 @@ class IteratorResource : public ResourceBase {
     return Status::OK();
   }
 
-
-  std::shared_ptr<StatsAggregator> stats_aggregator() {
-    tf_shared_lock l(mu_);
-    return stats_aggregator_;
-  }
-
   string DebugString() override { return "Iterator resource"; }
 
   const DataTypeVector& output_dtypes() const { return output_dtypes_; }
@@ -228,7 +225,6 @@ class IteratorResource : public ResourceBase {
   FunctionLibraryRuntime* lib_ = nullptr;  // not owned.
   std::shared_ptr<IteratorBase> iterator_;
   mutex mu_;
-  std::shared_ptr<StatsAggregator> stats_aggregator_ GUARDED_BY(mu_);
   std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
@@ -657,8 +653,12 @@ class MakeIteratorOp : public OpKernel {
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
     core::ScopedUnref unref(iterator_resource);
-    OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(
-                            dataset->MakeIterator("Iterator")));
+
+    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+    std::unique_ptr<IteratorBase> iterator;
+    OP_REQUIRES_OK(ctx,
+                   dataset->MakeIterator(&iter_ctx, "Iterator", &iterator));
+    OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(std::move(iterator)));
   }
 };
 
@@ -680,9 +680,12 @@ class ToSingleElementOp : public AsyncOpKernel {
       DatasetBase* dataset;
       OP_REQUIRES_OK_ASYNC(
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
-      auto iterator = dataset->MakeIterator("SingleElementIterator");
-
       IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+      std::unique_ptr<IteratorBase> iterator;
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          dataset->MakeIterator(&iter_ctx, "SingleElementIterator", &iterator),
+          done);
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;
@@ -772,7 +775,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
         return;
       }
     }
-    ProduceOutput(ctx, std::move(done));
+    ProduceOutput(ctx, done);
   }
 
  private:
@@ -793,9 +796,9 @@ class OneShotIteratorOp : public AsyncOpKernel {
     }
 
     for (auto&& ctx_done : callbacks_to_run) {
-      ProduceOutput(ctx_done.first, std::move(ctx_done.second));
+      ProduceOutput(ctx_done.first, ctx_done.second);
     }
-    ProduceOutput(ctx, std::move(done));
+    ProduceOutput(ctx, done);
   }
 
   Status TryInit(OpKernelContext* ctx, IteratorResource** iterator,
@@ -866,8 +869,10 @@ class OneShotIteratorOp : public AsyncOpKernel {
     // factory function.
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
-    TF_RETURN_IF_ERROR(
-        (*iterator)->set_iterator(dataset->MakeIterator("Iterator")));
+    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+    std::unique_ptr<IteratorBase> iter;
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, "Iterator", &iter));
+    TF_RETURN_IF_ERROR((*iterator)->set_iterator(std::move(iter)));
 
     (*iterator)->Ref();
     return Status::OK();
@@ -932,9 +937,6 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
           IteratorContext::Params params;
           params.env = ctx->env();
-          params.stats_aggregator_getter = [iterator]() {
-            return iterator->stats_aggregator();
-          };
           params.runner = *(ctx->runner());
           params.function_library = iterator->function_library();
           DeviceBase* device = ctx->function_library()->device();
@@ -983,9 +985,6 @@ class IteratorGetNextSyncOp : public OpKernel {
 
     IteratorContext::Params params;
     params.env = ctx->env();
-    params.stats_aggregator_getter = [iterator]() {
-      return iterator->stats_aggregator();
-    };
     params.runner = *(ctx->runner());
     params.function_library = iterator->function_library();
     DeviceBase* device = ctx->function_library()->device();

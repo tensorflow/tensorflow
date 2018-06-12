@@ -328,11 +328,13 @@ tf_cuda_cc_test(
         ":model_pruner",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:grappler_test",
         "//tensorflow/core/grappler/utils:topological_sort",
     ],
 )
@@ -778,7 +780,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:scoped_allocator_ops_op_lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
@@ -791,6 +792,9 @@ tf_cc_test(
     name = "scoped_allocator_optimizer_test",
     size = "small",
     srcs = ["scoped_allocator_optimizer_test.cc"],
+    tags = [
+        "nomsan",
+    ],
     deps = [
         ":scoped_allocator_optimizer",
         "//tensorflow/cc:cc_ops",

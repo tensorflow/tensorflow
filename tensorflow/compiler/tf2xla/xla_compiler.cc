@@ -225,7 +225,7 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
 // Computes the XLA shape for argument 'arg'.
 Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
                                         bool is_entry_computation,
-                                        xla::Shape* xla_shape) {
+                                        xla::Shape* xla_shape) const {
   switch (arg.kind) {
     case XlaCompiler::Argument::kConstant:
       LOG(FATAL) << "Unreachable case";
@@ -652,6 +652,7 @@ Status XlaCompiler::CompileSingleOp(
                         .Finalize(graph.get(), &node);
     TF_RETURN_IF_ERROR(status);
   }
+  FixupSourceAndSinkEdges(graph.get());
 
   return CompileGraph(options, name, std::move(graph), args, result);
 }
@@ -675,8 +676,8 @@ string ValidateFunctionDef(const FunctionDef* fdef,
   return tensorflow::str_util::Join(invalid_ops, ", ");
 }
 
-// Check that the graph doesn't have any nodes incompatible with given
-// device_type.
+// Check that the graph doesn't have any invalid nodes (e.g. incompatible with
+// given device_type, invalid data type, missing attributes...)
 Status ValidateGraph(const Graph* graph,
                      const FunctionLibraryDefinition& flib_def,
                      const DeviceType& device_type, const string& name) {
@@ -694,6 +695,12 @@ Status ValidateGraph(const Graph* graph,
       }
       continue;
     }
+    const OpDef* op_def;
+    if (!OpRegistry::Global()->LookUpOpDef(node->def().op(), &op_def).ok()) {
+      invalid_ops.push_back(node->def().op());
+      continue;
+    }
+    TF_RETURN_IF_ERROR(ValidateNodeDef(node->def(), *op_def));
     if (!FindKernelDef(device_type, node->def(), nullptr, nullptr).ok()) {
       invalid_ops.push_back(node->def().op());
     }
@@ -731,8 +738,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       FunctionalizeControlFlow(flib_runtime_->GetFunctionLibraryDefinition(),
                                graph.get(), local_flib_def_.get()));
 
-  // Detect ops incompatible with the device_type.
-  // FunctionalizeControlFlow may remove some unsupported ops.
+  // Detect invalid nodes.
+  // FunctionalizeControlFlow may remove some nodes from the graph.
   TF_RETURN_IF_ERROR(ValidateGraph(graph.get(), *options_.flib_def,
                                    options_.device_type, name));
 

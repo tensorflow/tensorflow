@@ -35,7 +35,7 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import compat
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 _MAX_DELAY_SECS = 60
 _DELAY_SECS_PER_WORKER = 5
@@ -115,7 +115,7 @@ def _is_google_env():
   return tf_config.get(_ENVIRONMENT_KEY) == _ENVIRONMENT_GOOGLE_VALUE
 
 
-@tf_export('estimator.TrainSpec')
+@estimator_export('estimator.TrainSpec')
 class TrainSpec(
     collections.namedtuple('TrainSpec', ['input_fn', 'max_steps', 'hooks'])):
   """Configuration for the "train" part for the `train_and_evaluate` call.
@@ -167,7 +167,7 @@ class TrainSpec(
         cls, input_fn=input_fn, max_steps=max_steps, hooks=hooks)
 
 
-@tf_export('estimator.EvalSpec')
+@estimator_export('estimator.EvalSpec')
 class EvalSpec(
     collections.namedtuple('EvalSpec', [
         'input_fn', 'steps', 'name', 'hooks', 'exporters', 'start_delay_secs',
@@ -263,7 +263,7 @@ class EvalSpec(
         throttle_secs=throttle_secs)
 
 
-@tf_export('estimator.train_and_evaluate')
+@estimator_export('estimator.train_and_evaluate')
 def train_and_evaluate(estimator, train_spec, eval_spec):
   """Train and evaluate the `estimator`.
 
@@ -295,6 +295,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   model will be trained with three epochs of training data instead of one epoch.
 
   Example of local (non-distributed) training:
+
   ```python
   # Set up feature columns.
   categorial_feature_a = categorial_column_with_hash_bucket(...)
@@ -339,12 +340,14 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   Setting environment variable depends on the platform. For example, on Linux,
   it can be done as follows (`$` is the shell prompt):
+
   ```
   $ TF_CONFIG='<replace_with_real_content>' python train_model.py
   ```
 
   For the content in `TF_CONFIG`, assume that the training cluster spec looks
   like:
+
   ```
   cluster = {"chief": ["host0:2222"],
              "worker": ["host1:2222", "host2:2222", "host3:2222"],
@@ -352,6 +355,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   ```
 
   Example of `TF_CONFIG` for chief training worker (must have one and only one):
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -371,6 +375,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   Example of `TF_CONFIG` for non-chief training worker (optional, could be
   multiple):
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -387,6 +392,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   for non-chief training workers.
 
   Example of `TF_CONFIG` for parameter server, aka ps (could be multiple):
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
@@ -405,6 +411,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   Example of `TF_CONFIG` for evaluator task. Evaluator is a special task that is
   not part of the training cluster. There could be only one. It is used for
   model evaluation.
+
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.

@@ -553,6 +553,10 @@ def standardize_weights(y,
 def has_symbolic_tensors(ls):
   if context.executing_eagerly():
     return False
+  return has_tensors(ls)
+
+
+def has_tensors(ls):
   if isinstance(ls, (list, tuple)):
     return any(tensor_util.is_tensor(v) for v in ls)
   return tensor_util.is_tensor(ls)
@@ -692,3 +696,29 @@ def check_steps_argument(input_data, steps, steps_name):
                            input_type=input_type_str, steps_name=steps_name))
     return True
   return False
+
+
+def cast_if_floating_dtype(x):
+  """Casts the given data tensors to the default floating point type.
+
+  Casts only if the input is already a floating point type.
+  Args:
+    x: tensor or list/tuple of tensors.
+
+  Returns:
+    Converted input.
+
+  Raises:
+    RuntimeError: if data isn't tensors.
+  """
+  if not has_tensors(x):
+    raise RuntimeError(
+        'Please provide tensors for casting, got: {x}'.format(x=x))
+
+  if isinstance(x, (list, tuple)):
+    return [
+        math_ops.cast(val, dtype=K.floatx())
+        if tensor_util.is_tensor(val) and val.dtype.is_floating else val
+        for val in x
+    ]
+  return math_ops.cast(x, dtype=K.floatx()) if x.dtype.is_floating else x

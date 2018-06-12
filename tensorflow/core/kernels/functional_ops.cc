@@ -152,7 +152,7 @@ class IfOp : public AsyncOpKernel {
         : kernel_(kernel),
           ctx_(ctx),
           cond_(cond),
-          done_(done),
+          done_(std::move(done)),
           lib_(CHECK_NOTNULL(ctx_->function_library())) {
       SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
       for (int i = 1; i < ctx_->num_inputs(); ++i) {
@@ -174,9 +174,9 @@ class IfOp : public AsyncOpKernel {
               s = SetOutputs(kernel_, ctx_, rets_);
             }
             ctx_->SetStatus(s);
-            auto done = done_;
+            DoneCallback captured_done(std::move(done_));
             delete this;
-            done();
+            captured_done();
           });
     }
 
@@ -184,7 +184,7 @@ class IfOp : public AsyncOpKernel {
     IfOp* const kernel_;
     OpKernelContext* const ctx_;
     const bool cond_;
-    const DoneCallback done_;
+    DoneCallback done_;
     FunctionLibraryRuntime* const lib_;
     FunctionLibraryRuntime::Options opts_;
     TensorVec args_;
@@ -257,7 +257,7 @@ class WhileOp : public AsyncOpKernel {
           ctx_(ctx),
           cond_handle_(cond_handle),
           body_handle_(body_handle),
-          done_(done),
+          done_(std::move(done)),
           lib_(CHECK_NOTNULL(ctx_->function_library())) {
       SetRunOptions(ctx_, &opts_, false /* always_collect_stats */);
       for (int i = 0; i < ctx_->num_inputs(); ++i) {
@@ -517,6 +517,25 @@ REGISTER_KERNEL_BUILDER(Name("For")
                             .HostMemory("limit")
                             .HostMemory("delta"),
                         ForOp);
+
+class FakeParamOp : public OpKernel {
+ public:
+  explicit FakeParamOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // We must produce something (only Switch and Recvs are allowed to output
+    // dead tensors). This output is not expected to be consumed by anything.
+    Tensor output_tensor(dtype_, TensorShape({}));
+    context->set_output(0, output_tensor);
+  }
+
+ private:
+  DataType dtype_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_CPU), FakeParamOp);
 
 }  // namespace
 }  // namespace tensorflow

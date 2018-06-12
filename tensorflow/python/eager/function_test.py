@@ -349,6 +349,23 @@ class FunctionTest(test.TestCase):
 
     g(constant_op.constant(1.0))
 
+  def testNestedDefunWithNoOutputAndTapedInput(self):
+    three = resource_variable_ops.ResourceVariable(3.0, name='v')
+
+    @function.defun
+    def f(x):
+      # This function intentionally takes a taped variable as input,
+      # but does not return any values
+      math_ops.add(x, three)
+
+    @function.defun
+    def g(x):
+      tape.watch_variable(x)
+      y = math_ops.add(x, three)
+      f(y)
+
+    g(three)
+
   def testGradientTensorConversionWithDefun(self):
     three = resource_variable_ops.ResourceVariable(3.0, name='v')
 

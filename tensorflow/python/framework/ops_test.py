@@ -270,7 +270,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     op1 = ops.Operation(
         ops._NodeDef("RefOutputFloatOutput", "op1"), g, [],
         [dtypes.float32_ref, dtypes.float32])
-    g._add_op(op1)
     self.assertProtoEquals("op:'RefOutputFloatOutput' name:'op1'", op1.node_def)
     self.assertEquals([], list(op1.inputs))
     ref_t, nonref_t = op1.values()
@@ -279,14 +278,12 @@ class OperationTest(test_util.TensorFlowTestCase):
         ops._NodeDef("RefInputFloatInput", "op2"),
         g, [ref_t, nonref_t], [],
         input_types=[dtypes.float32_ref, dtypes.float32])
-    g._add_op(op2)
     self.assertProtoEquals(
         "op:'RefInputFloatInput' name:'op2' input:'op1' input:'op1:1'",
         op2.node_def)
     self.assertEquals([ref_t, nonref_t], list(op2.inputs))
     op3 = ops.Operation(
         ops._NodeDef("TwoFloatInputs", "op3"), g, [ref_t, nonref_t], [])
-    g._add_op(op3)
     self.assertProtoEquals(
         "op:'TwoFloatInputs' name:'op3' input:'op1' input:'op1:1'",
         op3.node_def)

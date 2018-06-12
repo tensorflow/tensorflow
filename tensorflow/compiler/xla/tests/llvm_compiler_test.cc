@@ -124,8 +124,7 @@ class LLVMCompilerTest : public ::testing::Test {
   static std::unique_ptr<HloModule> CreateNewModule() {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
-                                 config);
+    return MakeUnique<HloModule>(TestName(), config);
   }
 };
 

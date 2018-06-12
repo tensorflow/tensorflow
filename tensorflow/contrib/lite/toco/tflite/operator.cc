@@ -507,6 +507,22 @@ class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class Tile
+    : public BuiltinOperator<TensorFlowTileOperator, ::tflite::TileOptions,
+                             ::tflite::BuiltinOptions_TileOptions> {
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateTileOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class PadV2 : public BuiltinOperator<PadV2Operator, ::tflite::PadV2Options,
                                      ::tflite::BuiltinOptions_PadV2Options> {
  public:
@@ -610,11 +626,21 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
+    ::tflite::LSTMKernelType kernel_type;
+    switch (op.kernel_type) {
+      case LstmCellOperator::KERNEL_BASIC:
+        kernel_type = ::tflite::LSTMKernelType_BASIC;
+        break;
+      case LstmCellOperator::KERNEL_FULL:
+        kernel_type = ::tflite::LSTMKernelType_FULL;
+        break;
+    }
+
     // Current toco converter only supports tanh, no clip.
     return ::tflite::CreateLSTMOptions(*builder, /*fused_activation_function=*/
                                        ::tflite::ActivationFunctionType_TANH,
                                        /*cell_clip=*/0.0,
-                                       /*proj_clip=*/0.0);
+                                       /*proj_clip=*/0.0, kernel_type);
   }
 
   void ReadOptions(const TfLiteOptions& options,
@@ -622,9 +648,26 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
     // Only support tanh activation, so check that tflite type is tanh.
     CHECK(options.fused_activation_function() ==
           ::tflite::ActivationFunctionType_TANH);
+
+    switch (options.kernel_type()) {
+      case ::tflite::LSTMKernelType_BASIC:
+        op->kernel_type = LstmCellOperator::KERNEL_BASIC;
+        break;
+      case ::tflite::LSTMKernelType_FULL:
+        op->kernel_type = LstmCellOperator::KERNEL_FULL;
+        break;
+    }
   }
 
-  int GetVersion(const Operator& op) const override { return 1; }
+  int GetVersion(const Operator& op) const override {
+    const auto& lstm_op = static_cast<const LstmCellOperator&>(op);
+    switch (lstm_op.kernel_type) {
+      case LstmCellOperator::KERNEL_FULL:
+        return 1;
+      case LstmCellOperator::KERNEL_BASIC:
+        return 2;
+    }
+  }
 };
 
 class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
@@ -790,6 +833,45 @@ class TransposeConv
     op->stride_width = options.stride_w();
     op->stride_height = options.stride_h();
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class SparseToDense
+    : public BuiltinOperator<SparseToDenseOperator,
+                             ::tflite::SparseToDenseOptions,
+                             ::tflite::BuiltinOptions_SparseToDenseOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateSparseToDenseOptions(*builder, op.validate_indices);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->validate_indices = options.validate_indices();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class ExpandDims
+    : public BuiltinOperator<ExpandDimsOperator, ::tflite::ExpandDimsOptions,
+                             ::tflite::BuiltinOptions_ExpandDimsOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateExpandDimsOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
 
   int GetVersion(const Operator& op) const override { return 1; }
 };
@@ -976,8 +1058,14 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new Cast(::tflite::BuiltinOperator_CAST, OperatorType::kCast));
   ops.emplace_back(
       new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
+  ops.emplace_back(
+      new Tile(::tflite::BuiltinOperator_TILE, OperatorType::kTensorFlowTile));
+  ops.emplace_back(new ExpandDims(::tflite::BuiltinOperator_EXPAND_DIMS,
+                                  OperatorType::kExpandDims));
   ops.emplace_back(new TransposeConv(::tflite::BuiltinOperator_TRANSPOSE_CONV,
                                      OperatorType::kTransposeConv));
+  ops.emplace_back(new SparseToDense(::tflite::BuiltinOperator_SPARSE_TO_DENSE,
+                                     OperatorType::kSparseToDense));
 
   // Custom Operators.
   ops.emplace_back(
@@ -1024,12 +1112,18 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "LESS", OperatorType::kTensorFlowLess));
   ops.emplace_back(new SimpleOperator<TensorFlowLessEqualOperator>(
       "LESS_EQUAL", OperatorType::kTensorFlowLessEqual));
+  ops.emplace_back(new SimpleOperator<TensorFlowEqualOperator>(
+      "EQUAL", OperatorType::kTensorFlowEqual));
+  ops.emplace_back(new SimpleOperator<TensorFlowNotEqualOperator>(
+      "NOT_EQUAL", OperatorType::kTensorFlowNotEqual));
   ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   ops.emplace_back(
       new SimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect));
   ops.emplace_back(
       new SimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice));
+  // Element-wise operator
   ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
+  ops.emplace_back(new SimpleOperator<LogOperator>("LOG", OperatorType::kLog));
 
   return ops;
 }

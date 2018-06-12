@@ -351,6 +351,10 @@ class IteratorBase {
   // in the outputs of this iterator.
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
+  // Performs initialization that needs to happen outside of a constructor to
+  // properly propagate errors.
+  virtual Status Initialize(IteratorContext* ctx) { return Status::OK(); }
+
   // Saves the state of this iterator.
   virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) {
     return SaveInternal(writer);
@@ -402,12 +406,13 @@ class DatasetBase : public core::RefCounted {
   // iterator will traverse all elements in this dataset from the
   // start.
   //
-  // Ownership of the created iterator will be transferred to the caller.
-  //
   // The prefix identifies the sequence of iterators leading up to the newly
   // created iterator.
-  virtual std::unique_ptr<IteratorBase> MakeIterator(
-      const string& prefix) const = 0;
+  Status MakeIterator(IteratorContext* ctx, const string& prefix,
+                      std::unique_ptr<IteratorBase>* iterator) const {
+    *iterator = MakeIteratorInternal(prefix);
+    return (*iterator)->Initialize(ctx);
+  }
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -420,7 +425,7 @@ class DatasetBase : public core::RefCounted {
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
   // A human-readable debug string for this dataset.
-  virtual string DebugString() = 0;
+  virtual string DebugString() const = 0;
 
   // Serializes the dataset and writes it to the `writer`.
   virtual Status Save(OpKernelContext* ctx, IteratorStateWriter* writer) const {
@@ -451,6 +456,11 @@ class DatasetBase : public core::RefCounted {
                                     Node** node) const {
     return errors::Unimplemented("AsGraphDefInternal");
   }
+
+  virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
+      const string& prefix) const = 0;
+
+  friend class DatasetToGraphOp;  // For access to graph related members.
 };
 
 // Base-class for datasets that are built by ops.
@@ -574,6 +584,23 @@ class DatasetOpKernel : public OpKernel {
       return errors::InvalidArgument(argument_name, " must be a scalar");
     }
     *output = argument_t->scalar<T>()();
+    return Status::OK();
+  }
+
+  template <typename T>
+  Status ParseVectorArgument(OpKernelContext* ctx,
+                             const StringPiece& argument_name,
+                             std::vector<T>* output) {
+    const Tensor* argument_t;
+    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+    if (!TensorShapeUtils::IsVector(argument_t->shape())) {
+      return errors::InvalidArgument(argument_name, " must be a vector");
+    }
+    int size = argument_t->vec<T>().size();
+    output->reserve(size);
+    for (int i = 0; i < size; ++i) {
+      output->push_back(argument_t->vec<T>()(i));
+    }
     return Status::OK();
   }
 };

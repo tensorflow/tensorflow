@@ -64,8 +64,8 @@ TEST_F(CpuExternalConstantsTest, BasicNegative) {
   // The constant array in this test case is small enough that there is no need
   // to externalize it.
   TestWithArray(/*rows=*/4, /*cols=*/4, R"(
-CHECK-NOT: @constant_global_0 = external constant [4 x [4 x float]], align 8
-CHECK: @0 = private constant [4 x [4 x float]] {{.*}}, align 8
+CHECK-NOT: @constant_global_0 = external constant [16 x float], align 8
+CHECK: @0 = private constant [16 x float] {{.*}}, align 8
 )");
 }
 }  // namespace

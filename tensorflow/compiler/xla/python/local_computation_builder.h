@@ -112,6 +112,11 @@ class LocalComputation {
 
   const XlaComputation& computation() const;
 
+  // Returns the HloModuleProto contained in the XlaComputation in the
+  // serialized binary format. Logs an internal error and returns an empty
+  // string on failure.
+  string GetSerializedProto() const;
+
   // Returns the return-value shape for this computation.
   StatusOr<Shape> GetReturnValueShape() const;
 
@@ -300,10 +305,12 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Not)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
+  _FORWARD_UNOP(Expm1)
   _FORWARD_UNOP(Floor)
   _FORWARD_UNOP(Ceil)
   _FORWARD_UNOP(Round)
   _FORWARD_UNOP(Log)
+  _FORWARD_UNOP(Log1p)
   _FORWARD_UNOP(Sign)
   _FORWARD_UNOP(Cos)
   _FORWARD_UNOP(Sin)

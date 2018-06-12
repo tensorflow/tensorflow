@@ -322,12 +322,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
 
   *builtin_data = nullptr;
   switch (op_type) {
-    case BuiltinOperator_CALL:
-      // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
-      // ok for now, since there is no call implementation either.
-      break;
-    case BuiltinOperator_CUSTOM:
-      break;
     case BuiltinOperator_CONV_2D: {
       TfLiteConvParams* params = MallocPOD<TfLiteConvParams>();
       if (auto* conv_params = op->builtin_options_as_Conv2DOptions()) {
@@ -343,21 +337,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_TANH:
-    case BuiltinOperator_LOGISTIC:
-    case BuiltinOperator_RELU:
-    case BuiltinOperator_RELU_N1_TO_1:
-    case BuiltinOperator_RELU6:
-    case BuiltinOperator_CONCAT_EMBEDDINGS:
-    case BuiltinOperator_EXP:
-    case BuiltinOperator_TOPK_V2:
-    case BuiltinOperator_LOG_SOFTMAX:
-    case BuiltinOperator_DEQUANTIZE:
-    case BuiltinOperator_PRELU:
-    case BuiltinOperator_FLOOR:
-    case BuiltinOperator_NEG:
-    case BuiltinOperator_SIN:
-      break;
     case BuiltinOperator_CAST: {
       TfLiteCastParams* params = MallocPOD<TfLiteCastParams>();
       if (auto* schema_params = op->builtin_options_as_CastOptions()) {
@@ -445,9 +424,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_EMBEDDING_LOOKUP:
-      // no-op.
-      break;
     case BuiltinOperator_EMBEDDING_LOOKUP_SPARSE: {
       TfLiteEmbeddingLookupSparseParams* params =
           MallocPOD<TfLiteEmbeddingLookupSparseParams>();
@@ -558,6 +534,14 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             parse_activation(lstm_params->fused_activation_function());
         params->cell_clip = lstm_params->cell_clip();
         params->proj_clip = lstm_params->proj_clip();
+        switch (lstm_params->kernel_type()) {
+          case LSTMKernelType_FULL:
+            params->kernel_type = kTfLiteLSTMFullKernel;
+            break;
+          case LSTMKernelType_BASIC:
+            params->kernel_type = kTfLiteLSTMBasicKernel;
+            break;
+        }
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -569,12 +553,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->align_corners = schema_params->align_corners();
       }
       *builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_PAD: {
-      break;
-    }
-    case BuiltinOperator_PADV2: {
       break;
     }
     case BuiltinOperator_RESHAPE: {
@@ -616,15 +594,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_SPACE_TO_BATCH_ND: {
-      break;
-    }
-    case BuiltinOperator_BATCH_TO_SPACE_ND: {
-      break;
-    }
-    case BuiltinOperator_TRANSPOSE: {
-      break;
-    }
     case BuiltinOperator_MEAN: {
       auto* params = MallocPOD<TfLiteMeanParams>();
       if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
@@ -664,10 +633,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_MAXIMUM:
-    case BuiltinOperator_MINIMUM: {
-      break;
-    }
     case BuiltinOperator_ARG_MAX: {
       auto* params = MallocPOD<TfLiteArgMaxParams>();
       if (auto* schema_params = op->builtin_options_as_ArgMaxOptions()) {
@@ -675,16 +640,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                           error_reporter);
       }
       *builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_GREATER:
-    case BuiltinOperator_GREATER_EQUAL:
-    case BuiltinOperator_LESS:
-    case BuiltinOperator_LESS_EQUAL:
-    case BuiltinOperator_SELECT: {
-      break;
-    }
-    case BuiltinOperator_SLICE: {
       break;
     }
     case BuiltinOperator_TRANSPOSE_CONV: {
@@ -699,11 +654,61 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_SPARSE_TO_DENSE: {
+      TfLiteSparseToDenseParams* params =
+          MallocPOD<TfLiteSparseToDenseParams>();
+      if (auto* sparse_to_dense_params =
+              op->builtin_options_as_SparseToDenseOptions()) {
+        params->validate_indices = sparse_to_dense_params->validate_indices();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
       return kTfLiteError;
     }
+
+    // Below are the ops with no builtin_data strcture.
+    case BuiltinOperator_BATCH_TO_SPACE_ND:
+    // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
+    // ok for now, since there is no call implementation either.
+    case BuiltinOperator_CALL:
+    case BuiltinOperator_CONCAT_EMBEDDINGS:
+    case BuiltinOperator_CUSTOM:
+    case BuiltinOperator_DEQUANTIZE:
+    case BuiltinOperator_EMBEDDING_LOOKUP:
+    case BuiltinOperator_EQUAL:
+    case BuiltinOperator_EXP:
+    case BuiltinOperator_EXPAND_DIMS:
+    case BuiltinOperator_FLOOR:
+    case BuiltinOperator_GREATER:
+    case BuiltinOperator_GREATER_EQUAL:
+    case BuiltinOperator_LESS:
+    case BuiltinOperator_LESS_EQUAL:
+    case BuiltinOperator_LOG:
+    case BuiltinOperator_LOGISTIC:
+    case BuiltinOperator_LOG_SOFTMAX:
+    case BuiltinOperator_MAXIMUM:
+    case BuiltinOperator_MINIMUM:
+    case BuiltinOperator_NEG:
+    case BuiltinOperator_NOT_EQUAL:
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_PADV2:
+    case BuiltinOperator_PRELU:
+    case BuiltinOperator_RELU:
+    case BuiltinOperator_RELU6:
+    case BuiltinOperator_RELU_N1_TO_1:
+    case BuiltinOperator_SELECT:
+    case BuiltinOperator_SIN:
+    case BuiltinOperator_SLICE:
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_TANH:
+    case BuiltinOperator_TILE:
+    case BuiltinOperator_TOPK_V2:
+    case BuiltinOperator_TRANSPOSE:
+      break;
   }
   return kTfLiteOk;
 }

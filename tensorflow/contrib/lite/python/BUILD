@@ -36,6 +36,16 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "tflite_convert",
+    srcs = ["tflite_convert.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lite",
+    ],
+)
+
 py_library(
     name = "lite",
     srcs = ["lite.py"],
@@ -47,8 +57,9 @@ py_library(
         ":interpreter",
         ":lite_constants",
         ":op_hint",
-        "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/python:graph_util",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/tools:freeze_graph_lib",
     ],
 )
@@ -125,6 +136,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":convert",
         "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
@@ -162,13 +174,5 @@ py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
-    ],
-)
-
-# Transitive dependencies of this target will be included in the pip package.
-py_library(
-    name = "tf_lite_py_pip",
-    deps = [
-        ":convert_saved_model",
     ],
 )

@@ -4242,7 +4242,11 @@ def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
   """Apply 1D conv with un-shared weights.
 
   Arguments:
-      inputs: 3D tensor with shape: (batch_size, steps, input_dim)
+      inputs: 3D tensor with shape:
+              (batch_size, steps, input_dim)
+              if data_format is "channels_last" or
+              (batch_size, input_dim, steps)
+              if data_format is "channels_first".
       kernel: the unshared weight for convolution,
               with shape (output_length, feature_dim, filters)
       kernel_size: a tuple of a single integer,
@@ -4272,11 +4276,20 @@ def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
   xs = []
   for i in range(output_length):
     slice_length = slice(i * stride, i * stride + kernel_size[0])
-    xs.append(reshape(inputs[:, slice_length, :], (1, -1, feature_dim)))
+    if data_format == 'channels_first':
+      xs.append(reshape(inputs[:, :, slice_length], (1, -1, feature_dim)))
+    else:
+      xs.append(reshape(inputs[:, slice_length, :], (1, -1, feature_dim)))
+
   x_aggregate = concatenate(xs, axis=0)
   # Shape: `(output_length, batch_size, filters)`.
   output = batch_dot(x_aggregate, kernel)
-  return permute_dimensions(output, (1, 0, 2))
+
+  if data_format == 'channels_first':
+    output = permute_dimensions(output, (1, 2, 0))
+  else:
+    output = permute_dimensions(output, (1, 0, 2))
+  return output
 
 
 def local_conv2d(inputs,
