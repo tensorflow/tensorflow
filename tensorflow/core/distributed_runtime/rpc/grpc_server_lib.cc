@@ -287,7 +287,7 @@ Status GrpcServer::Init(
 
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
-    const RendezvousMgrCreationFunction& rendezvous_mgr_func {
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
   return Init(std::move(service_func), rendezvous_mgr_func, nullptr,
               nullptr);
 }
