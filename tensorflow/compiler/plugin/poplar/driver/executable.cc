@@ -108,7 +108,7 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteOnStream(
 StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
-  return tensorflow::errors::Unimplemented(
+  return xla::Unimplemented(
       "ExecuteAsyncOnStream is not yet supported on Poplar.");
 }
 

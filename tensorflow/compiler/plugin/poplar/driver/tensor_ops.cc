@@ -41,8 +41,7 @@ StatusOr<poplar::program::Program> CreateSliceUpdateOp(
   }
 
   if (begin.size() != input.rank()) {
-    return Status(tensorflow::error::FAILED_PRECONDITION,
-                  "Invalid update slice start");
+    return xla::FailedPrecondition("Invalid update slice start");
   }
 
   poplar::program::Sequence seq;
@@ -96,8 +95,7 @@ StatusOr<poplar::program::Program> CreateSliceOp(poplar::Graph& graph,
   }
 
   if (begin.size() != input.rank()) {
-    return Status(tensorflow::error::FAILED_PRECONDITION,
-                  "Invalid update slice start");
+    return xla::FailedPrecondition("Invalid update slice start");
   }
 
   std::vector<std::size_t> s_begin =

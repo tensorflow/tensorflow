@@ -268,9 +268,8 @@ Status PoplarExecutor::InitializePoplarDevice(
         profile_execution_ = cfg.profiling().enable_execution_trace();
         profile_io_ = cfg.profiling().enable_io_trace();
       } catch (std::logic_error) {
-        return Status{tensorflow::error::INTERNAL,
-                      tensorflow::strings::Printf(
-                          "No IPU devices found on ordinal %d", ordinal_)};
+        return xla::InternalError("No IPU devices found on ordinal %d",
+                                  ordinal_);
       }
     }
     case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL: {
@@ -304,22 +303,18 @@ Status PoplarExecutor::InitializePoplarDevice(
           system_type = "_TEST_SYSTEM_FOUR_TILES";
           break;
         default:
-          return Status{
-              tensorflow::error::INTERNAL,
-              tensorflow::strings::Printf(
-                  "Invalid number of tiles %d on IPU simulator device for "
-                  "ordinal %d (must be 1 or 4)",
-                  num_tiles, ordinal_)};
+          return xla::InternalError(
+              "Invalid number of tiles %d on IPU simulator device for "
+              "ordinal %d (must be 1 or 4)",
+              num_tiles, ordinal_);
       }
       try {
         auto target = poplar::Target::createIPUTarget(num_ipus, system_type);
         poplar_device_ = poplar::Device::createSimulatorDevice(target);
       } catch (const std::logic_error&) {
-        return Status{
-            tensorflow::error::INTERNAL,
-            tensorflow::strings::Printf(
-                "Failed to connect to IPU simulator device for ordinal %d",
-                ordinal_)};
+        return xla::InternalError(
+            "Failed to connect to IPU simulator device for ordinal %d",
+            ordinal_);
       }
       profile_compilation_ = false;
       profile_execution_ = false;
@@ -334,17 +329,13 @@ Status PoplarExecutor::InitializePoplarDevice(
       profile_io_ = false;
       break;
     default:
-      return Status{tensorflow::error::INTERNAL,
-                    tensorflow::strings::Printf(
-                        "Unrecognized poplar device type for ordinal %d: %d",
-                        ordinal_, type)};
+      return xla::InternalError(
+          "Unrecognized poplar device type for ordinal %d: %d", ordinal_, type);
   }
 
   if (!poplar_device_.tryToAcquire()) {
-    return Status{
-        tensorflow::error::RESOURCE_EXHAUSTED,
-        tensorflow::strings::Printf(
-            "Unable to acquire poplar device type for ordinal %d", ordinal_)};
+    return xla::ResourceExhausted(
+        "Unable to acquire poplar device type for ordinal %d", ordinal_);
   }
 
   random_type_ = cfg.random_type();

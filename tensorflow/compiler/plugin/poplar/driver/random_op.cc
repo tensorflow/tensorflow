@@ -18,8 +18,7 @@ namespace poplarplugin {
 
 static StatusOr<double> DoubleValueOfScalarLiteral(const xla::Literal& lit) {
   if (ShapeUtil::ElementsIn(lit.shape()) != 1) {
-    return Status(tensorflow::error::FAILED_PRECONDITION,
-                  "Literal element count != 1");
+    return xla::FailedPrecondition("Literal element count != 1");
   }
 
   std::unique_ptr<Literal> double_lit;

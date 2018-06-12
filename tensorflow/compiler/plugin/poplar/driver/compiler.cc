@@ -293,8 +293,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   VLOG(1) << "Begin compilation: " << module->name();
 
   if (stream_exec == nullptr) {
-    return Status(tensorflow::error::UNKNOWN,
-                  "NULL stream pointer in poplar compiler");
+    return tensorflow::errors::Unknown(
+        "NULL stream pointer in poplar compiler");
   }
 
   PoplarExecutor* poplarExecutor(
@@ -501,8 +501,7 @@ StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 PoplarCompiler::CompileAheadOfTime(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
     const AotCompilationOptions& aot_options) {
-  return tensorflow::errors::InvalidArgument(
-      "AOT compilation not supported on Poplar");
+  return xla::InvalidArgument("AOT compilation not supported on Poplar");
 }
 
 se::Platform::Id PoplarCompiler::PlatformId() const {

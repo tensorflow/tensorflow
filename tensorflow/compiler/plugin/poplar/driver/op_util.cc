@@ -12,7 +12,7 @@ namespace xla {
 namespace poplarplugin {
 
 std::string GetDebugName(const HloInstruction* inst) {
-  const std::string &tf_core_name = inst->metadata().op_name();
+  const std::string& tf_core_name = inst->metadata().op_name();
   return tf_core_name + "/" + inst->name();
 }
 
@@ -47,9 +47,8 @@ StatusOr<poplar::Tensor> FindInstructionInput(const TensorMap& map,
   const HloInstruction* operand = inst->operand(input);
   OutVector outputs = FindInstructionOutputs(map, operand);
   if (outputs.size() == 0) {
-    return Status(tensorflow::error::UNKNOWN,
-                  se::port::StrCat("[Poplar] Couldn't find input ", input,
-                                   " for ", inst->name()));
+    return tensorflow::errors::Unknown(se::port::StrCat(
+        "[Poplar] Couldn't find input ", input, " for ", inst->name()));
   }
   return outputs[0];
 }
@@ -77,9 +76,8 @@ Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
   auto p = std::make_pair(inst->name(), n);
   auto it = map.find(p);
   if (it != map.end()) {
-    return Status(tensorflow::error::UNKNOWN,
-                  se::port::StrCat("[Poplar] Ouptut Tensor for ",
-                                   GetDebugName(inst), " already exists"));
+    return tensorflow::errors::Unknown(se::port::StrCat(
+        "[Poplar] Ouptut Tensor for ", GetDebugName(inst), " already exists"));
   }
   map[p] = tensor;
   return Status::OK();
@@ -116,9 +114,8 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
       SetVertexField<float>(graph, field, literal);
       break;
     default:
-      return Status(tensorflow::error::FAILED_PRECONDITION,
-                    se::port::StrCat("Unrecognised type in SetVertexField: ",
-                                     literal.shape().element_type()));
+      return xla::FailedPrecondition("Unrecognised type in SetVertexField: %d",
+                                     literal.shape().element_type());
   }
   return Status::OK();
 }

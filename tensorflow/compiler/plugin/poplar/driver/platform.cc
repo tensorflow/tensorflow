@@ -118,7 +118,7 @@ Status PoplarPlatform::ConfigurePoplarDevices(
 
 Status PoplarPlatform::ClosePoplarDevice(void* device, int ordinal) {
   if (ordinal >= VisibleDeviceCount()) {
-    return Status(tensorflow::error::UNKNOWN, "Invalid ordinal value");
+    return tensorflow::errors::Unknown("Invalid ordinal value");
   }
 
   se::StreamExecutor* executor;

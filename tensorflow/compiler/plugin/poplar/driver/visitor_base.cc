@@ -87,8 +87,7 @@ const Shape& BaseVisitor::GetOutputShape(HloInstruction* inst) const {
 }
 
 Status BaseVisitor::Unimplemented(HloInstruction* inst) {
-  return tensorflow::errors::Unimplemented(
-      se::port::StrCat(inst->name(), " not implemented"));
+  return xla::Unimplemented("%s not implemented", inst->name().c_str());
 }
 
 Status BaseVisitor::HandleElementwiseUnary(HloInstruction* inst) {
@@ -256,9 +255,8 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       sequence.add(prog);
       return Status::OK();
     } else {
-      return Status(tensorflow::error::FAILED_PRECONDITION,
-                    se::port::StrCat("Unrecognized special call op ",
-                                     inst->name(), ": ", name));
+      return xla::FailedPrecondition("Unrecognized special call op %s: %s",
+                                     inst->name().c_str(), name.c_str());
     }
   } else {
     poplar::program::Program prog;

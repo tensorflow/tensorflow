@@ -145,26 +145,26 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   Status SynchronousMemcpyDeviceToDevice(se::DeviceMemoryBase *,
                                          const se::DeviceMemoryBase &,
                                          uint64 size) override {
-    return Status{tensorflow::error::UNIMPLEMENTED, ""};
+    return xla::Unimplemented("");
   }
 
   bool HostCallback(se::Stream *stream,
                     std::function<void()> callback) override;
 
   Status AllocateEvent(se::Event *event) override {
-    return Status{tensorflow::error::UNIMPLEMENTED, ""};
+    return xla::Unimplemented("");
   }
 
   Status DeallocateEvent(se::Event *event) override {
-    return Status{tensorflow::error::UNIMPLEMENTED, ""};
+    return xla::Unimplemented("");
   }
 
   Status RecordEvent(se::Stream *stream, se::Event *event) override {
-    return Status{tensorflow::error::UNIMPLEMENTED, ""};
+    return xla::Unimplemented("");
   }
 
   Status WaitForEvent(se::Stream *stream, se::Event *event) override {
-    return Status{tensorflow::error::UNIMPLEMENTED, ""};
+    return xla::Unimplemented("");
   }
 
   se::Event::Status PollForEventStatus(se::Event *event) override {
@@ -203,8 +203,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   }
 
   Status SetDeviceSharedMemoryConfig(se::SharedMemoryConfig config) override {
-    return Status{tensorflow::error::UNIMPLEMENTED,
-                  "Shared memory not supported"};
+    return xla::Unimplemented("Shared memory not supported");
   }
 
   std::unique_ptr<se::internal::EventInterface> CreateEventImplementation()

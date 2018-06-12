@@ -62,8 +62,8 @@ StatusOr<poplar::Type> PoplarDataType(const xla::Shape& shape) {
     case F32:
       return poplar::FLOAT;
     default:
-      return tensorflow::errors::FailedPrecondition(StrCat(
-          "unsupported primitive type in poplar ", shape.element_type()));
+      return xla::FailedPrecondition("unsupported primitive type in poplar %d",
+                                     shape.element_type());
   }
 }
 
@@ -234,9 +234,9 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
             break;
           }
           default:
-            return tensorflow::errors::FailedPrecondition(
-                StrCat("invalid operand for tensor allocation on ",
-                       src.first->name()));
+            return xla::FailedPrecondition(
+                "invalid operand for tensor allocation on %s",
+                src.first->name().c_str());
         }
         break;
       }
@@ -255,9 +255,9 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
             break;
           }
           default:
-            return tensorflow::errors::FailedPrecondition(
-                StrCat("invalid operand for tensor allocation on ",
-                       src.first->name()));
+            return xla::FailedPrecondition(
+                "invalid operand for tensor allocation on %s",
+                src.first->name().c_str());
         }
         break;
       }
@@ -308,14 +308,14 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                 break;
               }
               default:
-                return tensorflow::errors::FailedPrecondition(
-                    StrCat("invalid operand for tensor allocation on ",
-                           src.first->name()));
+                return xla::FailedPrecondition(
+                    "invalid operand for tensor allocation on %s",
+                    src.first->name().c_str());
             }
           } else {
-            return tensorflow::errors::FailedPrecondition(
-                StrCat("Unknown poplibs fusion for tensor ", src.first->name(),
-                       ": ", name));
+            return xla::FailedPrecondition(
+                "Unknown poplibs fusion for tensor %s: %s",
+                src.first->name().c_str(), name.c_str());
           }
         } else {
           TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
@@ -323,9 +323,9 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
         break;
       }
       default:
-        return tensorflow::errors::FailedPrecondition(
-            StrCat("Unknown tensor target for ", src.first->name(), ": ",
-                   target->second.tgt->name()));
+        return xla::FailedPrecondition("Unknown tensor target for %s: %s",
+                                       src.first->name().c_str(),
+                                       target->second.tgt->name().c_str());
     }
 
     // Now apply any transformations required by the path from the source to
@@ -537,8 +537,8 @@ StatusOr<poplar::Tensor> PadTensor(const PaddingConfig& cfg,
                                    const poplar::Tensor& in,
                                    const poplar::Tensor& pad) {
   if (pad.numElements() != 1) {
-    return Status(tensorflow::error::FAILED_PRECONDITION,
-                  "PadTensor: pad tensor is not single valued");
+    return xla::FailedPrecondition(
+        "PadTensor: pad tensor is not single valued");
   }
 
   poplar::Tensor p(pad.reshape(std::vector<std::size_t>(in.rank(), 1)));
@@ -609,8 +609,7 @@ StatusOr<poplar::Tensor> BroadcastTensor(const poplar::Tensor& in,
 
   tensorflow::BCast bcast(tensor_shape, bcast_shape);
   if (!bcast.IsValid()) {
-    return Status(tensorflow::error::FAILED_PRECONDITION,
-                  "Incompatible broadcast");
+    return xla::FailedPrecondition("Incompatible broadcast");
   }
 
   poplar::Tensor o = in;

@@ -72,8 +72,8 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
     const HloInstruction* while_inst) {
   HloComputation* while_condition = while_inst->while_condition();
   HloComputation* while_body = while_inst->while_body();
-  Status status_no_convert = Status(tensorflow::errors::FailedPrecondition(
-      "Unable to convert this while loop"));
+  Status status_no_convert =
+      xla::FailedPrecondition("Unable to convert this while loop");
   // Make sure that this is a while loop with a single conditional of form
   // "cond < const"
   std::vector<HloInstruction*> lt_instructions;

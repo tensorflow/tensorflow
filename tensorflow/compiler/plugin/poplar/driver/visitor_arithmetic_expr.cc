@@ -60,9 +60,8 @@ ArithmeticExprVisitor::FindExpressionInput(const HloInstruction* inst) {
   } else {
     auto it = expressions_map_.find(inst);
     if (it == expressions_map_.end()) {
-      return Status(tensorflow::error::UNKNOWN,
-                    se::port::StrCat("[Poplar] Couldn't find expression for ",
-                                     inst->name()));
+      return tensorflow::errors::Unknown(se::port::StrCat(
+          "[Poplar] Couldn't find expression for %s", inst->name()));
     }
     return it->second->clone();
   }
@@ -141,9 +140,9 @@ Status ArithmeticExprVisitor::HandleClamp(HloInstruction* inst) {
 Status ArithmeticExprVisitor::HandleParameter(HloInstruction* inst) {
   // TODO ArithmeticExprVisitor does not support tuples
   if (inputs_[inst->parameter_number()].size() > 1)
-    return Status(tensorflow::error::UNIMPLEMENTED,
-                  se::port::StrCat("Support for tuples in outlined arithmetic "
-                                   "expressions is not implemented"));
+    return xla::Unimplemented(
+        "Support for tuples in outlined arithmetic expressions is not "
+        "implemented");
   return Status::OK();
 }
 

@@ -40,7 +40,7 @@ std::vector<xla::Shape> FlattenedXlaShape(const xla::Shape& shape) {
 StatusOr<std::vector<int64>> LiteralVectorToInt64Vector(
     const xla::Literal& lit) {
   if (lit.shape().dimensions_size() != 1) {
-    return Status(tensorflow::error::FAILED_PRECONDITION, "Literal rank != 1");
+    return xla::FailedPrecondition("Literal rank != 1");
   }
 
   std::unique_ptr<Literal> s64_lit;
@@ -54,7 +54,7 @@ StatusOr<std::vector<int64>> WideConstToInt64Vector(
     const xla::HloInstruction* bcast, const xla::HloInstruction* constant) {
   CHECK_EQ(bcast->opcode(), HloOpcode::kBroadcast);
   if (bcast->shape().dimensions_size() != 1) {
-    return Status(tensorflow::error::FAILED_PRECONDITION, "Literal rank != 1");
+    return xla::FailedPrecondition("Literal rank != 1");
   }
   CHECK_EQ(constant->opcode(), HloOpcode::kConstant);
 
@@ -65,8 +65,7 @@ StatusOr<std::vector<int64>> WideConstToInt64Vector(
 
 StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit) {
   if (!ShapeUtil::IsScalar(lit.shape())) {
-    return Status(tensorflow::error::FAILED_PRECONDITION,
-                  "Literal is not scalar");
+    return xla::FailedPrecondition("Literal is not scalar");
   }
 
   std::unique_ptr<Literal> s64_lit;

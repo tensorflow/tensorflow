@@ -86,9 +86,8 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFn(const HloInstruction* inst) {
     }
   }
 
-  return Status(tensorflow::error::UNKNOWN,
-                se::port::StrCat("[Poplar] Invalid opcode lookup ",
-                                 HloOpcodeString(opcode)));
+  return tensorflow::errors::Unknown(se::port::StrCat(
+      "[Poplar] Invalid opcode lookup ", HloOpcodeString(opcode)));
 }
 
 StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
@@ -151,9 +150,8 @@ StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
     }
   }
 
-  return Status(tensorflow::error::UNKNOWN,
-                se::port::StrCat("[Poplar] Invalid opcode lookup ",
-                                 HloOpcodeString(opcode)));
+  return tensorflow::errors::Unknown(se::port::StrCat(
+      "[Poplar] Invalid opcode lookup ", HloOpcodeString(opcode)));
 }
 
 static std::string GetMatMulPass(const HloInstruction* inst,
@@ -221,9 +219,8 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
 
       tensorflow::BCast bcast(shape1, shape2);
       if (!bcast.IsValid()) {
-        return Status(
-            tensorflow::error::FAILED_PRECONDITION,
-            se::port::StrCat("Incompatible broadcast on ", inst->name()));
+        return xla::FailedPrecondition("Incompatible broadcast on %s",
+                                       inst->name().c_str());
       }
 
       in0 = in0.reshape(convert_array<std::vector<size_t>>(bcast.x_reshape()));
@@ -270,19 +267,16 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
   poplar::program::Sequence seq;
 
   if (in0.rank() > 2 || in1.rank() > 2) {
-    return Status(
-        tensorflow::error::FAILED_PRECONDITION,
-        se::port::StrCat("Unsupported Dot operation on ", inst->name()));
+    return xla::FailedPrecondition("Unsupported Dot operation on %s",
+                                   inst->name().c_str());
   }
 
   const DotDimensionNumbers& dot_dims = inst->dot_dimension_numbers();
   if (dot_dims.lhs_contracting_dimensions_size() != 1 ||
       dot_dims.rhs_contracting_dimensions_size() != 1) {
-    return Status(
-        tensorflow::error::FAILED_PRECONDITION,
-        se::port::StrCat(
-            "Unsupported Dot with multiple contracting dimensions on ",
-            inst->name()));
+    return xla::FailedPrecondition(
+        "Unsupported Dot with multiple contracting dimensions on %s",
+        inst->name().c_str());
   }
 
   int64 lhs_reduction_dimension = dot_dims.lhs_contracting_dimensions(0);
@@ -329,9 +323,8 @@ StatusOr<poplar::program::Program> CreateSelectOp(
   ArgVector in1 = FindInstructionInputs(tensor_map, inst, 2);
 
   if (in0.size() != in1.size()) {
-    return Status(
-        tensorflow::error::FAILED_PRECONDITION,
-        se::port::StrCat("Mismatching tuple sizes on ", inst->name()));
+    return xla::FailedPrecondition("Mismatching tuple sizes on %s",
+                                   inst->name().c_str());
   }
 
   poplar::program::Sequence seq;

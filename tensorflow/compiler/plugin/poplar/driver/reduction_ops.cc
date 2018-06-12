@@ -421,8 +421,7 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
     }
 
     if (reduction_dims.size() != 2) {
-      return Status(tensorflow::error::FAILED_PRECONDITION,
-                    "poplar pooling only supports 2D pooling");
+      return xla::FailedPrecondition("poplar pooling only supports 2D pooling");
     }
 
     std::vector<std::size_t> kernel_shape;
