@@ -723,15 +723,16 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
     return false;
   }
   if (user->opcode() == HloOpcode::kFusion) {
-    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop &&
-        user->fused_expression_root()->opcode() ==
-            HloOpcode::kDynamicUpdateSlice) {
-      // Loop fusion with kDynamicUpdateSlice fused root.
-      //
-      // Returns true iff there is exactly one use of 'operand' at shape index
-      // 'operand_index', and this singleton use is the fused root at operand
-      // index 0.
-      return HasUniqueFusedUseOfOperandAt(operand, operand_index, user, 0);
+    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+      if (user->fused_expression_root()->opcode() ==
+          HloOpcode::kDynamicUpdateSlice) {
+        // Loop fusion with kDynamicUpdateSlice fused root.
+        //
+        // Returns true iff there is exactly one use of 'operand' at shape index
+        // 'operand_index', and this singleton use is the fused root at operand
+        // index 0.
+        return HasUniqueFusedUseOfOperandAt(operand, operand_index, user, 0);
+      }
     } else if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
                user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
@@ -789,8 +790,12 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
     return param_uses.size() == 1 && param_uses[0].first == callee_root &&
            callee_root->IsElementwiseOnOperand(param_uses[0].second);
   }
-  // Check if 'user' is element-wise.
-  return user->IsElementwise();
+  // Loop fusions that contain transposing copies won't reach here as they have
+  // different layouts, which fails the check in the beginning of this function.
+  //
+  // Multi-output fusion will fail the check here as tuples are not considered
+  // an elementwise operation.
+  return user->IsElementwiseOnOperand(user->operand_index(operand));
 }
 
 }  // namespace xla

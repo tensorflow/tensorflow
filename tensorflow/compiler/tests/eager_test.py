@@ -160,6 +160,77 @@ class EagerTest(XLATestCase):
       for _ in range(100):
         values.append(var.value())
 
+  # The shape, shape_n, size, and rank are tested here because their
+  # execution kernels (as opposed to compilation only tf2xla kernels)
+  # are distincts from tf2xla kernels.
+
+  def testShape(self):
+    def const(value):
+      return array_ops.shape(
+          constant_op.constant(value)).numpy()
+
+    def ones(value):
+      return array_ops.shape(
+          array_ops.ones(value)).numpy()
+
+    with self.test_scope():
+      # Shapes of directly constructed tensors
+      self.assertAllEqual([], const(3))
+      self.assertAllEqual([3], const([1.0, 2.0, 3.0]))
+      self.assertAllEqual([2, 2], const([[1.0, 2.0], [3.0, 4.0]]))
+      self.assertAllEqual([2, 1, 2], const([[[1.0, 2.0]], [[3.0, 4.0]]]))
+
+      # Shapes of tensors created by op running on device
+      # We make this distinction because directly constructed tensors
+      # are treated differently in a few places that can influence shape:
+      #  - they always have on_host_tensor
+      #  - they and their shapes can be cached
+      #  - they end up on device via a copy, instead of as program output
+      self.assertAllEqual([], ones([]))
+      self.assertAllEqual([3], ones([3]))
+      self.assertAllEqual([2, 2], ones([2, 2]))
+      self.assertAllEqual([2, 1, 2], ones([2, 1, 2]))
+
+  def testShapeN(self):
+    with self.test_scope():
+      # Shapes of directly constructed tensors
+      shapes = array_ops.shape_n([
+          constant_op.constant(1.0),
+          constant_op.constant([1.0, 2.0, 3.0]),
+          constant_op.constant([[1.0, 2.0], [3.0, 4.0]])])
+      self.assertAllEqual(
+          [[], [3], [2, 2]],
+          [x.numpy().tolist() for x in shapes])
+
+      # Shapes of tensors created by op running on device
+      shapes = array_ops.shape_n([
+          array_ops.ones([]),
+          array_ops.ones([3]),
+          array_ops.ones([2, 2])])
+      self.assertAllEqual(
+          [[], [3], [2, 2]],
+          [x.numpy().tolist() for x in shapes])
+
+  def testSize(self):
+    with self.test_scope():
+      self.assertEqual(
+          1, array_ops.size(constant_op.constant(1.0)).numpy())
+      self.assertEqual(
+          3, array_ops.size(constant_op.constant([1.0, 2.0, 3.0])).numpy())
+      self.assertEqual(
+          4, array_ops.size(
+              constant_op.constant([[1.0, 2.0], [3.0, 4.0]])).numpy())
+
+  def testRank(self):
+    with self.test_scope():
+      self.assertEqual(
+          0, array_ops.rank(constant_op.constant(1.0)).numpy())
+      self.assertEqual(
+          1, array_ops.rank(constant_op.constant([1.0, 2.0, 3.0])).numpy())
+      self.assertEqual(
+          2, array_ops.rank(
+              constant_op.constant([[1.0, 2.0], [3.0, 4.0]])).numpy())
+
 
 class EagerFunctionTest(XLATestCase):
 

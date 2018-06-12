@@ -121,7 +121,7 @@ TEST(HloGraphDumperTest, Constant) {
   HloComputation::Builder b("b");
   auto instruction = b.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(-42)));
-  instruction->set_name("i_am_a_constant_root_instruction");
+  instruction->SetAndSanitizeName("i_am_a_constant_root_instruction");
   HloModuleConfig config;
   HloModule m(TestName(), config);
   HloComputation* root_computation = m.AddEntryComputation(b.Build());

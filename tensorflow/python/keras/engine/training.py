@@ -1011,14 +1011,16 @@ class Model(Network):
     # to keep track of number of inputs and outputs and their ndim.
     if isinstance(inputs, (list, tuple)):
       if tensor_util.is_tensor(inputs[0]):
-        dummy_output_values = self.call(inputs)
+        dummy_output_values = self.call(
+            training_utils.cast_if_floating_dtype(inputs))
       else:
         dummy_output_values = self.call(
             [ops.convert_to_tensor(v, dtype=K.floatx()) for v in inputs])
       dummy_input_values = list(inputs)
     else:
       if tensor_util.is_tensor(inputs):
-        dummy_output_values = self.call(inputs)
+        dummy_output_values = self.call(
+            training_utils.cast_if_floating_dtype(inputs))
       else:
         dummy_output_values = self.call(
             ops.convert_to_tensor(inputs, dtype=K.floatx()))
@@ -1619,7 +1621,10 @@ class Model(Network):
     # Validate and standardize user data.
     inputs, _, _ = self._standardize_user_data(x)
     if context.executing_eagerly():
-      if not isinstance(inputs, iterator_ops.EagerIterator):
+      if (isinstance(x, iterator_ops.EagerIterator) or
+          (isinstance(x, dataset_ops.Dataset) and context.executing_eagerly())):
+        inputs = training_utils.cast_if_floating_dtype(inputs)
+      else:
         inputs = [
             ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs
         ]

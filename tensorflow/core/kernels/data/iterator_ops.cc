@@ -782,7 +782,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
         return;
       }
     }
-    ProduceOutput(ctx, std::move(done));
+    ProduceOutput(ctx, done);
   }
 
  private:
@@ -803,9 +803,9 @@ class OneShotIteratorOp : public AsyncOpKernel {
     }
 
     for (auto&& ctx_done : callbacks_to_run) {
-      ProduceOutput(ctx_done.first, std::move(ctx_done.second));
+      ProduceOutput(ctx_done.first, ctx_done.second);
     }
-    ProduceOutput(ctx, std::move(done));
+    ProduceOutput(ctx, done);
   }
 
   Status TryInit(OpKernelContext* ctx, IteratorResource** iterator,

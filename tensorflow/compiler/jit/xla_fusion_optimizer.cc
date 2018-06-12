@@ -178,6 +178,13 @@ Status XlaFusionOptimizer::Optimize(grappler::Cluster* cluster,
       continue;
     }
 
+    // XLA does not offer guaranteed aliasing between the input and output of
+    // the XLA cluster so it can't implement the forward-tensor-ref semantic.
+    // Leave such nodes out of XLA clusters.
+    if (HasForwardedRefInput(*node)) {
+      continue;
+    }
+
     compilation_candidates.insert(node);
   }
 

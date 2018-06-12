@@ -2892,6 +2892,104 @@ func DiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
 	return op.Output(0)
 }
 
+// Gives a guarantee to the TF runtime that the input tensor is a constant.
+//
+// The runtime is then free to make optimizations based on this.
+//
+// Only accepts value typed tensors as inputs and rejects resource variable handles
+// as input.
+//
+// Returns the input tensor without modification.
+func GuaranteeConst(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "GuaranteeConst",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Splits a tensor into `num_split` tensors along one dimension.
+//
+// Arguments:
+//	value: The tensor to split.
+//	size_splits: list containing the sizes of each output tensor along the split
+// dimension. Must sum to the dimension of value along split_dim.
+// Can contain one -1 indicating that dimension is to be inferred.
+//	axis: 0-D.  The dimension along which to split.  Must be in the range
+// `[-rank(value), rank(value))`.
+//
+//
+// Returns Tensors whose shape matches that of `value`
+// except along `axis`, where their sizes are
+// `size_splits[i]`.
+func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, axis tf.Output, num_split int64) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_split": num_split}
+	opspec := tf.OpSpec{
+		Type: "SplitV",
+		Input: []tf.Input{
+			value, size_splits, axis,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("SplitV", err)
+		return
+	}
+	return output
+}
+
+// Splits a tensor into `num_split` tensors along one dimension.
+//
+// Arguments:
+//	axis: 0-D.  The dimension along which to split.  Must be in the range
+// `[-rank(value), rank(value))`.
+//	value: The tensor to split.
+//	num_split: The number of ways to split.  Must evenly divide
+// `value.shape[split_dim]`.
+//
+// Returns They are identically shaped tensors, whose shape matches that of `value`
+// except along `axis`, where their sizes are
+// `values.shape[split_dim] / num_split`.
+func Split(scope *Scope, axis tf.Output, value tf.Output, num_split int64) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_split": num_split}
+	opspec := tf.OpSpec{
+		Type: "Split",
+		Input: []tf.Input{
+			axis, value,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("Split", err)
+		return
+	}
+	return output
+}
+
 // Creates a sequence of numbers.
 //
 // This operation creates a sequence of numbers that begins at `start` and
@@ -7457,6 +7555,36 @@ func RandomPoisson(scope *Scope, shape tf.Output, rate tf.Output, optional ...Ra
 	return op.Output(0)
 }
 
+// Returns the element-wise sum of a list of tensors.
+//
+// `tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not
+// wait for all of its inputs to be ready before beginning to sum. This can
+// save memory if inputs are ready at different times, since minimum temporary
+// storage is proportional to the output size rather than the inputs size.
+//
+// Unlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.
+//
+// Returns a `Tensor` of same shape and type as the elements of `inputs`.
+//
+// Arguments:
+//	inputs: A list of `Tensor` objects, each with same shape and type.
+//	shape: Shape of elements of `inputs`.
+func AccumulateNV2(scope *Scope, inputs []tf.Output, shape tf.Shape) (sum tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"shape": shape}
+	opspec := tf.OpSpec{
+		Type: "AccumulateNV2",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // DepthwiseConv2dNativeBackpropFilterAttr is an optional argument to DepthwiseConv2dNativeBackpropFilter.
 type DepthwiseConv2dNativeBackpropFilterAttr func(optionalAttr)
 
@@ -7520,6 +7648,69 @@ func DepthwiseConv2dNativeBackpropFilter(scope *Scope, input tf.Output, filter_s
 		Type: "DepthwiseConv2dNativeBackpropFilter",
 		Input: []tf.Input{
 			input, filter_sizes, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns immutable tensor from memory region.
+//
+// The current implementation memmaps the tensor from a file.
+//
+// Arguments:
+//	dtype: Type of the returned tensor.
+//	shape: Shape of the returned tensor.
+//	memory_region_name: Name of readonly memory region used by the tensor, see
+// NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
+func ImmutableConst(scope *Scope, dtype tf.DataType, shape tf.Shape, memory_region_name string) (tensor tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype, "shape": shape, "memory_region_name": memory_region_name}
+	opspec := tf.OpSpec{
+		Type: "ImmutableConst",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StringJoinAttr is an optional argument to StringJoin.
+type StringJoinAttr func(optionalAttr)
+
+// StringJoinSeparator sets the optional separator attribute to value.
+//
+// value: string, an optional join separator.
+// If not specified, defaults to ""
+func StringJoinSeparator(value string) StringJoinAttr {
+	return func(m optionalAttr) {
+		m["separator"] = value
+	}
+}
+
+// Joins the strings in the given list of string tensors into one tensor;
+//
+// with the given separator (default is an empty separator).
+//
+// Arguments:
+//	inputs: A list of string tensors.  The tensors must all have the same shape,
+// or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
+// of non-scalar inputs.
+func StringJoin(scope *Scope, inputs []tf.Output, optional ...StringJoinAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StringJoin",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
 		},
 		Attrs: attrs,
 	}
@@ -8326,95 +8517,6 @@ func RestoreSlice(scope *Scope, file_pattern tf.Output, tensor_name tf.Output, s
 	return op.Output(0)
 }
 
-// ImagAttr is an optional argument to Imag.
-type ImagAttr func(optionalAttr)
-
-// ImagTout sets the optional Tout attribute to value.
-// If not specified, defaults to DT_FLOAT
-func ImagTout(value tf.DataType) ImagAttr {
-	return func(m optionalAttr) {
-		m["Tout"] = value
-	}
-}
-
-// Returns the imaginary part of a complex number.
-//
-// Given a tensor `input` of complex numbers, this operation returns a tensor of
-// type `float` that is the imaginary part of each element in `input`. All
-// elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
-// is the real part and *b* is the imaginary part returned by this operation.
-//
-// For example:
-//
-// ```
-// # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-// tf.imag(input) ==> [4.75, 5.75]
-// ```
-func Imag(scope *Scope, input tf.Output, optional ...ImagAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Imag",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ComplexAttr is an optional argument to Complex.
-type ComplexAttr func(optionalAttr)
-
-// ComplexTout sets the optional Tout attribute to value.
-// If not specified, defaults to DT_COMPLEX64
-func ComplexTout(value tf.DataType) ComplexAttr {
-	return func(m optionalAttr) {
-		m["Tout"] = value
-	}
-}
-
-// Converts two real numbers to a complex number.
-//
-// Given a tensor `real` representing the real part of a complex number, and a
-// tensor `imag` representing the imaginary part of a complex number, this
-// operation returns complex numbers elementwise of the form \\(a + bj\\), where
-// *a* represents the `real` part and *b* represents the `imag` part.
-//
-// The input tensors `real` and `imag` must have the same shape.
-//
-// For example:
-//
-// ```
-// # tensor 'real' is [2.25, 3.25]
-// # tensor `imag` is [4.75, 5.75]
-// tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
-// ```
-func Complex(scope *Scope, real tf.Output, imag tf.Output, optional ...ComplexAttr) (out tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Complex",
-		Input: []tf.Input{
-			real, imag,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Divides sparse updates into the variable referenced by `resource`.
 //
 // This operation computes
@@ -8454,6 +8556,23 @@ func ResourceScatterDiv(scope *Scope, resource tf.Output, indices tf.Output, upd
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Mutually reduces multiple tensors of identical type and shape.
+func CollectiveReduce(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, merge_op string, final_op string, subdiv_offsets []int64) (data tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"group_size": group_size, "group_key": group_key, "instance_key": instance_key, "merge_op": merge_op, "final_op": final_op, "subdiv_offsets": subdiv_offsets}
+	opspec := tf.OpSpec{
+		Type: "CollectiveReduce",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // StatelessRandomNormalAttr is an optional argument to StatelessRandomNormal.
@@ -11174,63 +11293,6 @@ func DeserializeSparse(scope *Scope, serialized_sparse tf.Output, dtype tf.DataT
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// ResourceApplyRMSPropAttr is an optional argument to ResourceApplyRMSProp.
-type ResourceApplyRMSPropAttr func(optionalAttr)
-
-// ResourceApplyRMSPropUseLocking sets the optional use_locking attribute to value.
-//
-// value: If `True`, updating of the var, ms, and mom tensors is protected
-// by a lock; otherwise the behavior is undefined, but may exhibit less
-// contention.
-// If not specified, defaults to false
-func ResourceApplyRMSPropUseLocking(value bool) ResourceApplyRMSPropAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// Update '*var' according to the RMSProp algorithm.
-//
-// Note that in dense implementation of this algorithm, ms and mom will
-// update even if the grad is zero, but in this sparse implementation, ms
-// and mom will not update in iterations during which the grad is zero.
-//
-// mean_square = decay * mean_square + (1-decay) * gradient ** 2
-// Delta = learning_rate * gradient / sqrt(mean_square + epsilon)
-//
-// ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-// mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
-// var <- var - mom
-//
-// Arguments:
-//	var_: Should be from a Variable().
-//	ms: Should be from a Variable().
-//	mom: Should be from a Variable().
-//	lr: Scaling factor. Must be a scalar.
-//	rho: Decay rate. Must be a scalar.
-//
-//	epsilon: Ridge term. Must be a scalar.
-//	grad: The gradient.
-//
-// Returns the created operation.
-func ResourceApplyRMSProp(scope *Scope, var_ tf.Output, ms tf.Output, mom tf.Output, lr tf.Output, rho tf.Output, momentum tf.Output, epsilon tf.Output, grad tf.Output, optional ...ResourceApplyRMSPropAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceApplyRMSProp",
-		Input: []tf.Input{
-			var_, ms, mom, lr, rho, momentum, epsilon, grad,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
 // ResourceScatterNdUpdateAttr is an optional argument to ResourceScatterNdUpdate.
 type ResourceScatterNdUpdateAttr func(optionalAttr)
 
@@ -11759,23 +11821,6 @@ func TensorArrayGatherV3(scope *Scope, handle tf.Output, indices tf.Output, flow
 	return op.Output(0)
 }
 
-// Mutually reduces multiple tensors of identical type and shape.
-func CollectiveReduce(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, merge_op string, final_op string, subdiv_offsets []int64) (data tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"group_size": group_size, "group_key": group_key, "instance_key": instance_key, "merge_op": merge_op, "final_op": final_op, "subdiv_offsets": subdiv_offsets}
-	opspec := tf.OpSpec{
-		Type: "CollectiveReduce",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // This op consumes a lock created by `MutexLock`.
 //
 // This op exists to consume a tensor created by `MutexLock` (other than
@@ -11875,81 +11920,6 @@ func RestoreV2(scope *Scope, prefix tf.Output, tensor_names tf.Output, shape_and
 		return
 	}
 	return tensors
-}
-
-// Creates a dataset that skips `count` elements from the `input_dataset`.
-//
-// Arguments:
-//
-//	count: A scalar representing the number of elements from the `input_dataset`
-// that should be skipped.  If count is -1, skips everything.
-//
-//
-func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "SkipDataset",
-		Input: []tf.Input{
-			input_dataset, count,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the maximum along segments of a tensor.
-//
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
-//
-// Computes a tensor such that
-// \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
-// that `segment_ids[j] == i`.
-//
-// If the max is empty for a given segment ID `i`, `output[i] = 0`.
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
-// </div>
-//
-// Arguments:
-//
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
-// first dimension.  Values should be sorted and can be repeated.
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `k`, the number of segments.
-func SegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SegmentMax",
-		Input: []tf.Input{
-			data, segment_ids,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes hyperbolic tangent of `x` element-wise.
-func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Tanh",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Receives a tensor value broadcast from another device.
@@ -13665,6 +13635,170 @@ func TopK(scope *Scope, input tf.Output, k int64, optional ...TopKAttr) (values 
 	return op.Output(0), op.Output(1)
 }
 
+// ComplexAttr is an optional argument to Complex.
+type ComplexAttr func(optionalAttr)
+
+// ComplexTout sets the optional Tout attribute to value.
+// If not specified, defaults to DT_COMPLEX64
+func ComplexTout(value tf.DataType) ComplexAttr {
+	return func(m optionalAttr) {
+		m["Tout"] = value
+	}
+}
+
+// Converts two real numbers to a complex number.
+//
+// Given a tensor `real` representing the real part of a complex number, and a
+// tensor `imag` representing the imaginary part of a complex number, this
+// operation returns complex numbers elementwise of the form \\(a + bj\\), where
+// *a* represents the `real` part and *b* represents the `imag` part.
+//
+// The input tensors `real` and `imag` must have the same shape.
+//
+// For example:
+//
+// ```
+// # tensor 'real' is [2.25, 3.25]
+// # tensor `imag` is [4.75, 5.75]
+// tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
+// ```
+func Complex(scope *Scope, real tf.Output, imag tf.Output, optional ...ComplexAttr) (out tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Complex",
+		Input: []tf.Input{
+			real, imag,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ImagAttr is an optional argument to Imag.
+type ImagAttr func(optionalAttr)
+
+// ImagTout sets the optional Tout attribute to value.
+// If not specified, defaults to DT_FLOAT
+func ImagTout(value tf.DataType) ImagAttr {
+	return func(m optionalAttr) {
+		m["Tout"] = value
+	}
+}
+
+// Returns the imaginary part of a complex number.
+//
+// Given a tensor `input` of complex numbers, this operation returns a tensor of
+// type `float` that is the imaginary part of each element in `input`. All
+// elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
+// is the real part and *b* is the imaginary part returned by this operation.
+//
+// For example:
+//
+// ```
+// # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+// tf.imag(input) ==> [4.75, 5.75]
+// ```
+func Imag(scope *Scope, input tf.Output, optional ...ImagAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Imag",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the maximum along segments of a tensor.
+//
+// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
+// segments.
+//
+// Computes a tensor such that
+// \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
+// that `segment_ids[j] == i`.
+//
+// If the max is empty for a given segment ID `i`, `output[i] = 0`.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
+// </div>
+//
+// Arguments:
+//
+//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+// first dimension.  Values should be sorted and can be repeated.
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `k`, the number of segments.
+func SegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SegmentMax",
+		Input: []tf.Input{
+			data, segment_ids,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes hyperbolic tangent of `x` element-wise.
+func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Tanh",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that skips `count` elements from the `input_dataset`.
+//
+// Arguments:
+//
+//	count: A scalar representing the number of elements from the `input_dataset`
+// that should be skipped.  If count is -1, skips everything.
+//
+//
+func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "SkipDataset",
+		Input: []tf.Input{
+			input_dataset, count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
 //
 // The Hurwitz zeta function is defined as:
@@ -13892,6 +14026,42 @@ func ResourceApplyCenteredRMSProp(scope *Scope, var_ tf.Output, mg tf.Output, ms
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Computes the gradient for the inverse of `x` wrt its input.
+//
+// Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
+// is the corresponding input gradient.
+func ReciprocalGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReciprocalGrad",
+		Input: []tf.Input{
+			y, dy,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the min of x and y (i.e. x < y ? x : y) element-wise.
+//
+// *NOTE*: `Minimum` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func Minimum(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Minimum",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // RealAttr is an optional argument to Real.
@@ -16287,6 +16457,63 @@ func MutableDenseHashTableV2(scope *Scope, empty_key tf.Output, value_dtype tf.D
 	return op.Output(0)
 }
 
+// ResourceApplyRMSPropAttr is an optional argument to ResourceApplyRMSProp.
+type ResourceApplyRMSPropAttr func(optionalAttr)
+
+// ResourceApplyRMSPropUseLocking sets the optional use_locking attribute to value.
+//
+// value: If `True`, updating of the var, ms, and mom tensors is protected
+// by a lock; otherwise the behavior is undefined, but may exhibit less
+// contention.
+// If not specified, defaults to false
+func ResourceApplyRMSPropUseLocking(value bool) ResourceApplyRMSPropAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// Update '*var' according to the RMSProp algorithm.
+//
+// Note that in dense implementation of this algorithm, ms and mom will
+// update even if the grad is zero, but in this sparse implementation, ms
+// and mom will not update in iterations during which the grad is zero.
+//
+// mean_square = decay * mean_square + (1-decay) * gradient ** 2
+// Delta = learning_rate * gradient / sqrt(mean_square + epsilon)
+//
+// ms <- rho * ms_{t-1} + (1-rho) * grad * grad
+// mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
+// var <- var - mom
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	ms: Should be from a Variable().
+//	mom: Should be from a Variable().
+//	lr: Scaling factor. Must be a scalar.
+//	rho: Decay rate. Must be a scalar.
+//
+//	epsilon: Ridge term. Must be a scalar.
+//	grad: The gradient.
+//
+// Returns the created operation.
+func ResourceApplyRMSProp(scope *Scope, var_ tf.Output, ms tf.Output, mom tf.Output, lr tf.Output, rho tf.Output, momentum tf.Output, epsilon tf.Output, grad tf.Output, optional ...ResourceApplyRMSPropAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceApplyRMSProp",
+		Input: []tf.Input{
+			var_, ms, mom, lr, rho, momentum, epsilon, grad,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Returns element-wise remainder of division. This emulates C semantics in that
 //
 // the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
@@ -17558,69 +17785,6 @@ func DeserializeManySparse(scope *Scope, serialized_sparse tf.Output, dtype tf.D
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// StringJoinAttr is an optional argument to StringJoin.
-type StringJoinAttr func(optionalAttr)
-
-// StringJoinSeparator sets the optional separator attribute to value.
-//
-// value: string, an optional join separator.
-// If not specified, defaults to ""
-func StringJoinSeparator(value string) StringJoinAttr {
-	return func(m optionalAttr) {
-		m["separator"] = value
-	}
-}
-
-// Joins the strings in the given list of string tensors into one tensor;
-//
-// with the given separator (default is an empty separator).
-//
-// Arguments:
-//	inputs: A list of string tensors.  The tensors must all have the same shape,
-// or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
-// of non-scalar inputs.
-func StringJoin(scope *Scope, inputs []tf.Output, optional ...StringJoinAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StringJoin",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns immutable tensor from memory region.
-//
-// The current implementation memmaps the tensor from a file.
-//
-// Arguments:
-//	dtype: Type of the returned tensor.
-//	shape: Shape of the returned tensor.
-//	memory_region_name: Name of readonly memory region used by the tensor, see
-// NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
-func ImmutableConst(scope *Scope, dtype tf.DataType, shape tf.Shape, memory_region_name string) (tensor tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype, "shape": shape, "memory_region_name": memory_region_name}
-	opspec := tf.OpSpec{
-		Type: "ImmutableConst",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Inverse real-valued fast Fourier transform.
@@ -19195,88 +19359,58 @@ func SquaredDifference(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
-// Forwards the input to the output.
+// RandomGammaAttr is an optional argument to RandomGamma.
+type RandomGammaAttr func(optionalAttr)
+
+// RandomGammaSeed sets the optional seed attribute to value.
 //
-// This operator represents the loop termination condition used by the
-// "pivot" switches of a loop.
+// value: If either `seed` or `seed2` are set to be non-zero, the random number
+// generator is seeded by the given seed.  Otherwise, it is seeded by a
+// random seed.
+// If not specified, defaults to 0
+func RandomGammaSeed(value int64) RandomGammaAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// RandomGammaSeed2 sets the optional seed2 attribute to value.
+//
+// value: A second seed to avoid seed collision.
+// If not specified, defaults to 0
+func RandomGammaSeed2(value int64) RandomGammaAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// Outputs random values from the Gamma distribution(s) described by alpha.
+//
+// This op uses the algorithm by Marsaglia et al. to acquire samples via
+// transformation-rejection from pairs of uniform and normal random variables.
+// See http://dl.acm.org/citation.cfm?id=358414
 //
 // Arguments:
-//	input: A boolean scalar, representing the branch predicate of the Switch op.
+//	shape: 1-D integer tensor. Shape of independent samples to draw from each
+// distribution described by the shape parameters given in alpha.
+//	alpha: A tensor in which each scalar is a "shape" parameter describing the
+// associated gamma distribution.
 //
-// Returns The same tensor as `input`.
-func LoopCond(scope *Scope, input tf.Output) (output tf.Output) {
+// Returns A tensor with shape `shape + shape(alpha)`. Each slice
+// `[:, ..., :, i0, i1, ...iN]` contains the samples drawn for
+// `alpha[i0, i1, ...iN]`. The dtype of the output matches the dtype of alpha.
+func RandomGamma(scope *Scope, shape tf.Output, alpha tf.Output, optional ...RandomGammaAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	opspec := tf.OpSpec{
-		Type: "LoopCond",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the gradient for the inverse of `x` wrt its input.
-//
-// Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
-// is the corresponding input gradient.
-func ReciprocalGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
-		Type: "ReciprocalGrad",
+		Type: "RandomGamma",
 		Input: []tf.Input{
-			y, dy,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the min of x and y (i.e. x < y ? x : y) element-wise.
-//
-// *NOTE*: `Minimum` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func Minimum(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Minimum",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the element-wise sum of a list of tensors.
-//
-// `tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not
-// wait for all of its inputs to be ready before beginning to sum. This can
-// save memory if inputs are ready at different times, since minimum temporary
-// storage is proportional to the output size rather than the inputs size.
-//
-// Unlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.
-//
-// Returns a `Tensor` of same shape and type as the elements of `inputs`.
-//
-// Arguments:
-//	inputs: A list of `Tensor` objects, each with same shape and type.
-//	shape: Shape of elements of `inputs`.
-func AccumulateNV2(scope *Scope, inputs []tf.Output, shape tf.Shape) (sum tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"shape": shape}
-	opspec := tf.OpSpec{
-		Type: "AccumulateNV2",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
+			shape, alpha,
 		},
 		Attrs: attrs,
 	}
@@ -19332,60 +19466,24 @@ func QuantizeDownAndShrinkRange(scope *Scope, input tf.Output, input_min tf.Outp
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// RandomGammaAttr is an optional argument to RandomGamma.
-type RandomGammaAttr func(optionalAttr)
-
-// RandomGammaSeed sets the optional seed attribute to value.
+// Forwards the input to the output.
 //
-// value: If either `seed` or `seed2` are set to be non-zero, the random number
-// generator is seeded by the given seed.  Otherwise, it is seeded by a
-// random seed.
-// If not specified, defaults to 0
-func RandomGammaSeed(value int64) RandomGammaAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// RandomGammaSeed2 sets the optional seed2 attribute to value.
-//
-// value: A second seed to avoid seed collision.
-// If not specified, defaults to 0
-func RandomGammaSeed2(value int64) RandomGammaAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// Outputs random values from the Gamma distribution(s) described by alpha.
-//
-// This op uses the algorithm by Marsaglia et al. to acquire samples via
-// transformation-rejection from pairs of uniform and normal random variables.
-// See http://dl.acm.org/citation.cfm?id=358414
+// This operator represents the loop termination condition used by the
+// "pivot" switches of a loop.
 //
 // Arguments:
-//	shape: 1-D integer tensor. Shape of independent samples to draw from each
-// distribution described by the shape parameters given in alpha.
-//	alpha: A tensor in which each scalar is a "shape" parameter describing the
-// associated gamma distribution.
+//	input: A boolean scalar, representing the branch predicate of the Switch op.
 //
-// Returns A tensor with shape `shape + shape(alpha)`. Each slice
-// `[:, ..., :, i0, i1, ...iN]` contains the samples drawn for
-// `alpha[i0, i1, ...iN]`. The dtype of the output matches the dtype of alpha.
-func RandomGamma(scope *Scope, shape tf.Output, alpha tf.Output, optional ...RandomGammaAttr) (output tf.Output) {
+// Returns The same tensor as `input`.
+func LoopCond(scope *Scope, input tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
 	opspec := tf.OpSpec{
-		Type: "RandomGamma",
+		Type: "LoopCond",
 		Input: []tf.Input{
-			shape, alpha,
+			input,
 		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -25031,6 +25129,41 @@ func LatencyStatsDataset(scope *Scope, input_dataset tf.Output, tag tf.Output, o
 	return op.Output(0)
 }
 
+// Runs multiple additive regression ensemble predictors on input instances and
+//
+// computes the update to cached logits. It is designed to be used during training.
+// It traverses the trees starting from cached tree id and cached node id and
+// calculates the updates to be pushed to the cache.
+//
+// Arguments:
+//
+//	cached_tree_ids: Rank 1 Tensor containing cached tree ids which is the starting
+// tree of prediction.
+//	cached_node_ids: Rank 1 Tensor containing cached node id which is the starting
+// node of prediction.
+//	bucketized_features: A list of rank 1 Tensors containing bucket id for each
+// feature.
+//	logits_dimension: scalar, dimension of the logits, to be used for partial logits
+// shape.
+//
+// Returns Rank 2 Tensor containing logits update (with respect to cached
+// values stored) for each example.Rank 1 Tensor containing new tree ids for each example.Rank 1 Tensor containing new node ids in the new tree_ids.
+func BoostedTreesTrainingPredict(scope *Scope, tree_ensemble_handle tf.Output, cached_tree_ids tf.Output, cached_node_ids tf.Output, bucketized_features []tf.Output, logits_dimension int64) (partial_logits tf.Output, tree_ids tf.Output, node_ids tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"logits_dimension": logits_dimension}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesTrainingPredict",
+		Input: []tf.Input{
+			tree_ensemble_handle, cached_tree_ids, cached_node_ids, tf.OutputList(bucketized_features),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // MapSizeAttr is an optional argument to MapSize.
 type MapSizeAttr func(optionalAttr)
 
@@ -29790,41 +29923,6 @@ func BoostedTreesDeserializeEnsemble(scope *Scope, tree_ensemble_handle tf.Outpu
 	return scope.AddOperation(opspec)
 }
 
-// Runs multiple additive regression ensemble predictors on input instances and
-//
-// computes the update to cached logits. It is designed to be used during training.
-// It traverses the trees starting from cached tree id and cached node id and
-// calculates the updates to be pushed to the cache.
-//
-// Arguments:
-//
-//	cached_tree_ids: Rank 1 Tensor containing cached tree ids which is the starting
-// tree of prediction.
-//	cached_node_ids: Rank 1 Tensor containing cached node id which is the starting
-// node of prediction.
-//	bucketized_features: A list of rank 1 Tensors containing bucket id for each
-// feature.
-//	logits_dimension: scalar, dimension of the logits, to be used for partial logits
-// shape.
-//
-// Returns Rank 2 Tensor containing logits update (with respect to cached
-// values stored) for each example.Rank 1 Tensor containing new tree ids for each example.Rank 1 Tensor containing new node ids in the new tree_ids.
-func BoostedTreesTrainingPredict(scope *Scope, tree_ensemble_handle tf.Output, cached_tree_ids tf.Output, cached_node_ids tf.Output, bucketized_features []tf.Output, logits_dimension int64) (partial_logits tf.Output, tree_ids tf.Output, node_ids tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"logits_dimension": logits_dimension}
-	opspec := tf.OpSpec{
-		Type: "BoostedTreesTrainingPredict",
-		Input: []tf.Input{
-			tree_ensemble_handle, cached_tree_ids, cached_node_ids, tf.OutputList(bucketized_features),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
 // Elementwise computes the bitwise AND of `x` and `y`.
 //
 // The result will have those bits set, that are set in both `x` and `y`. The
@@ -30611,102 +30709,4 @@ func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset
 		return
 	}
 	return offset
-}
-
-// Splits a tensor into `num_split` tensors along one dimension.
-//
-// Arguments:
-//	axis: 0-D.  The dimension along which to split.  Must be in the range
-// `[-rank(value), rank(value))`.
-//	value: The tensor to split.
-//	num_split: The number of ways to split.  Must evenly divide
-// `value.shape[split_dim]`.
-//
-// Returns They are identically shaped tensors, whose shape matches that of `value`
-// except along `axis`, where their sizes are
-// `values.shape[split_dim] / num_split`.
-func Split(scope *Scope, axis tf.Output, value tf.Output, num_split int64) (output []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_split": num_split}
-	opspec := tf.OpSpec{
-		Type: "Split",
-		Input: []tf.Input{
-			axis, value,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
-		scope.UpdateErr("Split", err)
-		return
-	}
-	return output
-}
-
-// Splits a tensor into `num_split` tensors along one dimension.
-//
-// Arguments:
-//	value: The tensor to split.
-//	size_splits: list containing the sizes of each output tensor along the split
-// dimension. Must sum to the dimension of value along split_dim.
-// Can contain one -1 indicating that dimension is to be inferred.
-//	axis: 0-D.  The dimension along which to split.  Must be in the range
-// `[-rank(value), rank(value))`.
-//
-//
-// Returns Tensors whose shape matches that of `value`
-// except along `axis`, where their sizes are
-// `size_splits[i]`.
-func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, axis tf.Output, num_split int64) (output []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_split": num_split}
-	opspec := tf.OpSpec{
-		Type: "SplitV",
-		Input: []tf.Input{
-			value, size_splits, axis,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
-		scope.UpdateErr("SplitV", err)
-		return
-	}
-	return output
-}
-
-// Gives a guarantee to the TF runtime that the input tensor is a constant.
-//
-// The runtime is then free to make optimizations based on this.
-//
-// Only accepts value typed tensors as inputs and rejects resource variable handles
-// as input.
-//
-// Returns the input tensor without modification.
-func GuaranteeConst(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "GuaranteeConst",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }

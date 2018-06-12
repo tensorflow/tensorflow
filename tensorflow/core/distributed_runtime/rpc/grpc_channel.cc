@@ -19,7 +19,7 @@ limitations under the License.
 #include <map>
 #include <unordered_map>
 
-#include "grpc++/create_channel.h"
+#include "grpcpp/create_channel.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
