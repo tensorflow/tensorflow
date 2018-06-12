@@ -27,6 +27,12 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA
+#define TF_RED_WARPSIZE 32
+#elif TENSORFLOW_USE_ROCM
+#define TF_RED_WARPSIZE 64
+#endif
+
+#if GOOGLE_CUDA
 #define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, \
                           shared_mem, stream, ...) \
   kernel<<block_count, threads_per_block, shared_mem, stream>>>(__VA_ARGS__);
