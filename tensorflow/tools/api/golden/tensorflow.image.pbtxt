@@ -174,7 +174,7 @@ tf_module {
   }
   member_method {
     name: "resize_images"
-    argspec: "args=[\'images\', \'size\', \'method\', \'align_corners\'], varargs=None, keywords=None, defaults=[\'0\', \'False\'], "
+    argspec: "args=[\'images\', \'size\', \'method\', \'align_corners\', \'preserve_aspect_ratio\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'False\'], "
   }
   member_method {
     name: "resize_nearest_neighbor"

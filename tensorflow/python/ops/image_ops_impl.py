@@ -921,7 +921,8 @@ class ResizeMethod(object):
 def resize_images(images,
                   size,
                   method=ResizeMethod.BILINEAR,
-                  align_corners=False):
+                  align_corners=False,
+                  preserve_aspect_ratio=False):
   """Resize `images` to `size` using the specified `method`.
 
   Resized images will be distorted if their original aspect ratio is not
@@ -953,6 +954,10 @@ def resize_images(images,
     align_corners: bool.  If True, the centers of the 4 corner pixels of the
         input and output tensors are aligned, preserving the values at the
         corner pixels. Defaults to `False`.
+    preserve_aspect_ratio: Whether to preserve the aspect ratio. If this is set,
+      then `images` will be resized to a size that fits in `size` while
+      preserving the aspect ratio of the original image. Scales up the image if
+      `size` is bigger than the current size of the `image`. Defaults to False.
 
   Raises:
     ValueError: if the shape of `images` is incompatible with the
@@ -990,6 +995,28 @@ def resize_images(images,
     size_const_as_shape = tensor_util.constant_value_as_shape(size)
     new_height_const = size_const_as_shape[0].value
     new_width_const = size_const_as_shape[1].value
+
+    if preserve_aspect_ratio:
+      # Get the current shapes of the image, even if dynamic.
+      _, current_height, current_width, _ = _ImageDimensions(images, rank=4)
+
+      # do the computation to find the right scale and height/width.
+      scale_factor_height = (math_ops.to_float(new_height_const) /
+                             math_ops.to_float(current_height))
+      scale_factor_width = (math_ops.to_float(new_width_const) /
+                            math_ops.to_float(current_width))
+      scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
+      scaled_height_const = math_ops.to_int32(scale_factor *
+                                              math_ops.to_float(current_height))
+      scaled_width_const = math_ops.to_int32(scale_factor *
+                                             math_ops.to_float(current_width))
+
+      # NOTE: Reset the size and other constants used later.
+      size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
+                                   dtypes.int32, name='size')
+      size_const_as_shape = tensor_util.constant_value_as_shape(size)
+      new_height_const = size_const_as_shape[0].value
+      new_width_const = size_const_as_shape[1].value
 
     # If we can determine that the height and width will be unmodified by this
     # transformation, we avoid performing the resize.
