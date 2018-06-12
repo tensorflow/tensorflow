@@ -5983,6 +5983,7 @@ tf_cc_test(
 tf_mkl_kernel_library(
     name = "mkl_conv_op",
     prefix = "mkl_conv",
+    hdrs = ["mkl_quantized_conv_ops.h"],
     deps = [
         ":bounds_check",
         ":conv_ops",

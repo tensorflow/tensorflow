@@ -2160,7 +2160,7 @@ REGISTER_OP("_MklToTf")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, float, double, qint8, quint8, qint32}")
     .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -2193,6 +2193,291 @@ element-wise MKL op.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+
+REGISTER_OP("_MklQuantizedConv2D")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_min_input: uint8")
+    .Input("mkl_max_input: uint8")
+    .Input("mkl_min_filter: uint8")
+    .Input("mkl_max_filter: uint8")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Output("mkl_output: uint8")
+    .Output("mkl_min_output: uint8")
+    .Output("mkl_max_output: uint8")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("T: quantizedtype")  // Additional attribute "T" for enabling MklToTf
+                               // conversion
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKLDNN implementation of QuantizedConv2D OP.
+)doc");
+
+// Fusion of Quantized Conv2D and BiasAdd.
+REGISTER_OP("QuantizedConv2DWithBias")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: float")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+This Op registration is meant for QuantizedConv2DWithBias operator
+that can be accessed through
+tensorflow.python.ops.gen_nn_ops.quantized_conv2d_with_bias(...).
+)doc");
+
+REGISTER_OP("_MklQuantizedConv2DWithBias")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: float")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_bias: uint8")
+    .Input("mkl_min_input: uint8")
+    .Input("mkl_max_input: uint8")
+    .Input("mkl_min_filter: uint8")
+    .Input("mkl_max_filter: uint8")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Output("mkl_output: uint8")
+    .Output("mkl_min_output: uint8")
+    .Output("mkl_max_output: uint8")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("T: quantizedtype = DT_QINT32")  // Additional attribute "T" for
+                                           // enabling MklToTf conversion
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKLDNN implementation of QuantizedConv2DWithBias
+)doc");
+
+// Fusion of Quantized Conv2D and Relu.
+REGISTER_OP("QuantizedConv2DAndRelu")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+This Op registration is meant for QuantizedConv2DAndRelu operator
+that can be accessed through
+tensorflow.python.ops.gen_nn_ops.quantized_conv2d_and_relu(...).
+)doc");
+
+REGISTER_OP("_MklQuantizedConv2DAndRelu")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_min_input: uint8")
+    .Input("mkl_max_input: uint8")
+    .Input("mkl_min_filter: uint8")
+    .Input("mkl_max_filter: uint8")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Output("mkl_output: uint8")
+    .Output("mkl_min_output: uint8")
+    .Output("mkl_max_output: uint8")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("T: quantizedtype")  // Additional attribute "T" for enabling MklToTf
+                               // conversion
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKLDNN implementation of QuantizedConv2DAndRelu operator.
+)doc");
+
+// Fusion of Quantized Conv2D, BiasAdd and Relu.
+REGISTER_OP("QuantizedConv2DWithBiasAndRelu")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: float")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+This Op registration is meant for QuantizedConv2DWithBiasAndRelu operator
+that can be accessed through
+tensorflow.python.ops.gen_nn_ops.quantized_conv2d_with_bias_and_relu(...).
+)doc");
+
+REGISTER_OP("_MklQuantizedConv2DWithBiasAndRelu")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: float")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_bias: uint8")
+    .Input("mkl_min_input: uint8")
+    .Input("mkl_max_input: uint8")
+    .Input("mkl_min_filter: uint8")
+    .Input("mkl_max_filter: uint8")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Output("mkl_output: uint8")
+    .Output("mkl_min_output: uint8")
+    .Output("mkl_max_output: uint8")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("T: quantizedtype = DT_QINT32")  // Additional attribute "T" for
+                                           // enabling MklToTf conversion
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKLDNN implementation of QuantizedConv2DWithBiasAndRelu operator.
+)doc");
+
 #endif  // INTEL_MKL
 
 }  // namespace tensorflow
