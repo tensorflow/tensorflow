@@ -1814,11 +1814,11 @@ class MklDnnData {
   }
 };
 
-/// Base class for operations with reuse of DNN primitives
+/// Base class for operations with reuse of primitives
 ///
-class DnnOp {
+class MklPrimitive {
  public:
-  virtual ~DnnOp() {}
+  virtual ~MklPrimitive() {}
 
   // Dummy data. Its size, hard-coded as 256 here, does
   // not matter since MKL should never operate on this buffer.
@@ -1826,33 +1826,33 @@ class DnnOp {
 };
 
 const mkldnn::memory::dims NONE_DIMS = {};
-// This constant is used to declare dummy buffer (size), for MKL primitives
-template <typename T>
-class DnnOpFactory {
- public:
-  DnnOpFactory() {}
-  ~DnnOpFactory() {}
 
-  DnnOp* GetOp(const std::string& key) {
-    auto stream_iter = DnnOpFactory<T>::GetHashMap().find(key);
-    if (stream_iter == DnnOpFactory<T>::GetHashMap().end()) {
+template <typename T>
+class MklPrimitiveFactory {
+ public:
+  MklPrimitiveFactory() {}
+  ~MklPrimitiveFactory() {}
+
+  MklPrimitive* GetOp(const std::string& key) {
+    auto stream_iter = MklPrimitiveFactory<T>::GetHashMap().find(key);
+    if (stream_iter == MklPrimitiveFactory<T>::GetHashMap().end()) {
       return nullptr;
     } else {
       return stream_iter->second;
     }
   }
 
-  void SetOp(const std::string& key, DnnOp* op) {
-    auto stream_iter = DnnOpFactory<T>::GetHashMap().find(key);
+  void SetOp(const std::string& key, MklPrimitive* op) {
+    auto stream_iter = MklPrimitiveFactory<T>::GetHashMap().find(key);
 
-    CHECK(stream_iter == DnnOpFactory<T>::GetHashMap().end());
+    CHECK(stream_iter == MklPrimitiveFactory<T>::GetHashMap().end());
 
-    DnnOpFactory<T>::GetHashMap()[key] = op;
+    MklPrimitiveFactory<T>::GetHashMap()[key] = op;
   }
 
  private:
-  static inline std::unordered_map<std::string, DnnOp*> &GetHashMap() {
-    static thread_local std::unordered_map<std::string, DnnOp*> map_;
+  static inline std::unordered_map<std::string, MklPrimitive*> &GetHashMap() {
+    static thread_local std::unordered_map<std::string, MklPrimitive*> map_;
     return map_;
   }
 };
