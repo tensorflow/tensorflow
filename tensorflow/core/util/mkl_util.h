@@ -42,6 +42,7 @@ limitations under the License.
 
 #ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
+#include "tensorflow/core/lib/core/stringpiece.h"
 
 using mkldnn::engine;
 using mkldnn::memory;
@@ -1876,7 +1877,7 @@ class FactoryKeyCreator {
   template <typename T>
   void AddAsKey(const T data) {
     auto buffer = reinterpret_cast<const char *>(&data);
-    Append(absl::string_view(buffer, sizeof(T)));
+    Append(StringPiece(buffer, sizeof(T)));
   }
 
   std::string GetKey() {
@@ -1887,8 +1888,8 @@ class FactoryKeyCreator {
   string key_;
   const char delimiter = 'x';
   const int kMaxKeyLength = 256;
-  void Append(absl::string_view s) {
-    key_.append(string(s));
+  void Append(StringPiece s) {
+    key_.append(s.ToString());
     key_.append(1, delimiter);
   }
 };
