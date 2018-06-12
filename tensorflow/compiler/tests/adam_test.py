@@ -52,6 +52,8 @@ class AdamOptimizerTest(XLATestCase):
 
   def testBasic(self):
     for dtype in self.float_types:
+      if dtype == np.float16:
+        continue
       with self.test_session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
 
@@ -91,6 +93,8 @@ class AdamOptimizerTest(XLATestCase):
 
   def testTensorLearningRate(self):
     for dtype in self.float_types:
+      if dtype == np.float16:
+        continue
       with self.test_session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
 
@@ -130,6 +134,8 @@ class AdamOptimizerTest(XLATestCase):
 
   def testSharing(self):
     for dtype in self.float_types:
+      if dtype == np.float16:
+        continue
       with self.test_session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
 
