@@ -1970,7 +1970,7 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
 
     return Saver(saver_def=meta_graph_def.saver_def, name=scope)
   else:
-    if variables._all_saveable_objects():  # pylint: disable=protected-access
+    if variables._all_saveable_objects(scope=import_scope):  # pylint: disable=protected-access
       # Return the default saver instance for all graph variables.
       return Saver()
     else:
