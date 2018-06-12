@@ -443,7 +443,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       HloComputation* reduce_computation,
-      tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
+      tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+      tensorflow::StringPiece barrier,
       const tensorflow::gtl::optional<int64>& channel_id =
           tensorflow::gtl::nullopt);
 
@@ -1447,6 +1448,20 @@ class HloInstruction {
   void set_fusion_kind(FusionKind kind);
   // Old methods kept for smooth subclassing transition END.
 
+  // Returns the group ids of each replica for CrossReplicaSum op.
+  const std::vector<int64>& replica_group_ids() const {
+    return replica_group_ids_;
+  }
+
+  // Returns the barrier config used for the CrossReplicaSum implementation of
+  // each backend.
+  string cross_replica_sum_barrier() const {
+    return cross_replica_sum_barrier_;
+  }
+  void set_cross_replica_sum_barrier(string barrier) {
+    cross_replica_sum_barrier_ = barrier;
+  }
+
  protected:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
   // Helper class for computing OperandElementUse for kFusion.
@@ -1649,6 +1664,12 @@ class HloInstruction {
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   string backend_config_;
+
+  // The group id of each replica for CrossReplicaSum.
+  std::vector<int64> replica_group_ids_;
+
+  // The string representation of the barrier config used for CrossReplicaSum.
+  string cross_replica_sum_barrier_;
 
   // String identifier for instruction.
   string name_;

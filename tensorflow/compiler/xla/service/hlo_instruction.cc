@@ -298,6 +298,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->channel_name_ = proto.channel_name();
   instruction->cost_estimate_ns_ = proto.cost_estimate_ns();
 
+  for (int64 replica_group_id : proto.replica_group_ids()) {
+    instruction->replica_group_ids_.push_back(replica_group_id);
+  }
+
   return std::move(instruction);
 }
 
@@ -528,9 +532,9 @@ HloInstruction::CreateCrossReplicaSum(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
     HloComputation* reduce_computation,
     tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+    tensorflow::StringPiece barrier,
     const tensorflow::gtl::optional<int64>& channel_id) {
   // TODO(b/79737069): Remove the CHECK when supported.
-  CHECK(replica_group_ids.empty());
   CHECK(!channel_id.has_value());
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kCrossReplicaSum, shape));
@@ -538,6 +542,9 @@ HloInstruction::CreateCrossReplicaSum(
     instruction->AppendOperand(operand);
   }
   instruction->called_computations_.push_back(reduce_computation);
+  instruction->replica_group_ids_.assign(replica_group_ids.begin(),
+                                         replica_group_ids.end());
+  instruction->cross_replica_sum_barrier_ = std::string(barrier);
   return instruction;
 }
 
@@ -1138,7 +1145,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                         *dot_dimension_numbers_);
       break;
     case HloOpcode::kCrossReplicaSum:
-      clone = CreateCrossReplicaSum(shape, new_operands, to_apply());
+      clone =
+          CreateCrossReplicaSum(shape, new_operands, to_apply(),
+                                replica_group_ids_, cross_replica_sum_barrier_);
       break;
     case HloOpcode::kGetTupleElement:
       CHECK_EQ(new_operands.size(), 1);
@@ -1507,7 +1516,9 @@ bool HloInstruction::IdenticalSlowPath(
                                            other.padding_config());
     case HloOpcode::kCall:
     case HloOpcode::kCrossReplicaSum:
-      return eq_computations(to_apply(), other.to_apply());
+      return replica_group_ids() == other.replica_group_ids() &&
+             cross_replica_sum_barrier() == other.cross_replica_sum_barrier() &&
+             eq_computations(to_apply(), other.to_apply());
     case HloOpcode::kCustomCall:
       if ((window_ == nullptr) != (other.window_ == nullptr) ||
           (window_ != nullptr &&
@@ -2086,6 +2097,14 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                            "\", entry=", operand_side_metadata_->ToString(),
                            ", exit=", user_side_metadata_->ToString(), "}"));
   }
+  if (!replica_group_ids().empty()) {
+    extra.push_back(
+        StrCat("replica_group_ids={", Join(replica_group_ids(), ","), "}"));
+  }
+  if (!cross_replica_sum_barrier().empty()) {
+    extra.push_back(StrCat("barrier=\"", cross_replica_sum_barrier(), "\""));
+  }
+
   // By contract, we print the custom call target even if
   // options.print_subcomputation_mode() == kOff, because the call target is not
   // an HloComputation.
@@ -2173,6 +2192,9 @@ HloInstructionProto HloInstruction::ToProto() const {
 
   proto.set_channel_name(channel_name_);
   proto.set_cost_estimate_ns(cost_estimate_ns_);
+  for (int64 replica_group_id : replica_group_ids_) {
+    proto.add_replica_group_ids(replica_group_id);
+  }
 
   return proto;
 }
