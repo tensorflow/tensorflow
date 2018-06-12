@@ -1673,7 +1673,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64 alignment = 1) {
     auto sequence =
-        CreateMemoryMinimizingSequence(*module, ByteSizeOf).ConsumeValueOrDie();
+        ScheduleComputationsInModule(*module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
                module, xla::MakeUnique<SequentialHloOrdering>(module, sequence),
                ByteSizeOf,
@@ -2103,7 +2103,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   RunCopyInsertion(module.get());
 
   auto sequence =
-      CreateMemoryMinimizingSequence(*module, ByteSizeOf).ConsumeValueOrDie();
+      ScheduleComputationsInModule(*module, ByteSizeOf).ConsumeValueOrDie();
 
   // To trigger b/38494731, we want a specific Hlo sequence for the
   // root computation, so we overwrite that entry with a manually
