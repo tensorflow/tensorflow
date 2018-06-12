@@ -236,7 +236,7 @@ class BackendUtilsTest(test.TestCase):
       y_placeholder = keras.backend.placeholder(shape=())
 
       run_options = config_pb2.RunOptions(
-        trace_level=config_pb2.RunOptions.FULL_TRACE)
+        trace_level=config_pb2.RunOptions.NO_TRACE)
       f = keras.backend.function(inputs=[x_placeholder, y_placeholder],
                                  outputs=[x_placeholder + y_placeholder],
                                  updates=[(x, x_placeholder + 1.)],
