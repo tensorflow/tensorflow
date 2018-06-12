@@ -36,6 +36,7 @@ except ImportError:
 
 
 _GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
+_ENDPOINTS_SEPARATOR = ','
 _DEFAULT_ENV_VARIABLE = 'TPU_NAME'
 _DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
 
@@ -69,8 +70,8 @@ class TPUClusterResolver(ClusterResolver):
     return _GKE_ENV_VARIABLE in os.environ
 
   @staticmethod
-  def _gkeMaster():
-    return os.environ[_GKE_ENV_VARIABLE].split(',')[0]
+  def _gkeEndpoints():
+    return os.environ[_GKE_ENV_VARIABLE]
 
   @staticmethod
   def _envVarFallback():
@@ -143,7 +144,7 @@ class TPUClusterResolver(ClusterResolver):
     # When using GKE with Cloud TPUs, the env variable will be set.
     if tpu is None:
       if in_gke:
-        tpu = self._gkeMaster()
+        tpu = self._gkeEndpoints()
       else:
         tpu = self._envVarFallback()
 
@@ -214,7 +215,7 @@ class TPUClusterResolver(ClusterResolver):
       ValueError: If none of the TPUs specified exists.
     """
     if not self._shouldResolve():
-      return self._tpu
+      return self._tpu.split(compat.as_bytes(_ENDPOINTS_SEPARATOR))[0]
 
     job_tasks = self.cluster_spec().job_tasks(self._job_name)
     if not job_tasks:
@@ -280,8 +281,12 @@ class TPUClusterResolver(ClusterResolver):
         # Case 3.
         return None
       # Case 2.
-      cluster_spec = {self._job_name: [self._tpu[len(
-          compat.as_bytes('grpc://')):]]}
+      cluster_spec = {
+          self._job_name: [
+              x[len(compat.as_bytes('grpc://')):]
+              for x in self._tpu.split(compat.as_bytes(_ENDPOINTS_SEPARATOR))
+          ]
+      }
 
     if self._coordinator_address:
       # {1, 2}.a

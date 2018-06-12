@@ -178,6 +178,23 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                 slice_limits, slice_strides);
       break;
     }
+    case HloOpcode::kConstant: {
+      CHECK(proto.has_literal());
+      TF_ASSIGN_OR_RETURN(auto literal,
+                          Literal::CreateFromProto(proto.literal()));
+      instruction = CreateConstant(std::move(literal));
+      break;
+    }
+    case HloOpcode::kTrace: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Trace instruction should have 1 operand but sees "
+          << proto.operand_ids_size();
+      CHECK(proto.has_literal());
+      TF_ASSIGN_OR_RETURN(auto literal,
+                          Literal::CreateFromProto(proto.literal()));
+      instruction = CreateTrace(literal->GetR1U8AsString(), operands(0));
+      break;
+    }
     default: {
       instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -223,22 +240,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->called_computations_.push_back(fused_computation);
   }
 
-  if (instruction->opcode() == HloOpcode::kTrace) {
-    TF_RET_CHECK(instruction->operands().size() == 1)
-        << "Trace instruction should have 1 operand but sees "
-        << instruction->operands().size();
-    instruction->mutable_operand(0)->set_tracing(instruction.get());
-  }
-
   TF_RET_CHECK(!proto.name().empty());
   instruction->SetAndSanitizeName(proto.name());
 
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
-  if (proto.has_literal()) {
-    TF_ASSIGN_OR_RETURN(instruction->literal_,
-                        Literal::CreateFromProto(proto.literal()));
-  }
   instruction->parameter_number_ = proto.parameter_number();
 
   instruction->tuple_index_ = proto.tuple_index();
@@ -301,20 +307,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTrace(
     const string& tag, HloInstruction* operand) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
-  instruction->operands_.push_back(operand);
-  instruction->literal_ = Literal::CreateR1U8(tag);
-  operand->set_tracing(instruction.get());
-  return instruction;
+  return MakeUnique<HloTraceInstruction>(tag, operand);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConstant(
     std::unique_ptr<Literal> literal) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kConstant, literal->shape()));
-  instruction->literal_ = std::move(literal);
-  return instruction;
+  return MakeUnique<HloConstantInstruction>(std::move(literal));
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1321,6 +1319,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBroadcast:
     case HloOpcode::kMap:
     case HloOpcode::kSlice:
+    case HloOpcode::kConstant:
+    case HloOpcode::kTrace:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1470,9 +1470,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone =
           CreateWhile(shape, while_condition(), while_body(), new_operands[0]);
       break;
-    case HloOpcode::kConstant:
-      clone = CreateConstant(literal_->CloneToUnique());
-      break;
     case HloOpcode::kFusion: {
       HloModule* module = context != nullptr ? context->module() : GetModule();
       HloComputation* new_fused_computation = nullptr;
@@ -1520,8 +1517,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kGenerateToken:
       clone = CreateGenerateToken(new_operands);
       break;
-    case HloOpcode::kTrace:
-      LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
@@ -1601,13 +1596,6 @@ const HloInstruction* HloInstruction::LatestNonGteAncestor() const {
   }
   return hlo;
 }
-
-const Literal& HloInstruction::literal() const {
-  CHECK_EQ(HloOpcode::kConstant, opcode_);
-  return *literal_;
-}
-
-bool HloInstruction::HasLiteral() const { return literal_ != nullptr; }
 
 int64 HloInstruction::tuple_index() const {
   CHECK_EQ(HloOpcode::kGetTupleElement, opcode_);
@@ -1702,10 +1690,6 @@ void HloInstruction::AddUser(HloInstruction* user) {
   }
 }
 
-bool HloInstruction::IsConstant() const {
-  return opcode_ == HloOpcode::kConstant;
-}
-
 bool HloInstruction::HasConstantOperand() const {
   for (const HloInstruction* operand : operands_) {
     if (operand->IsConstant()) {
@@ -1782,17 +1766,12 @@ bool HloInstruction::IdenticalSlowPath(
     // These opcodes have complex or special behavior so just return false.
     case HloOpcode::kDomain:
     case HloOpcode::kRng:
-    case HloOpcode::kTrace:
     case HloOpcode::kWhile:
     case HloOpcode::kGenerateToken:
       return false;
 
     case HloOpcode::kParameter:
       return parameter_number() == other.parameter_number();
-
-    // A constant is defined by the value in the literal.
-    case HloOpcode::kConstant:
-      return literal() == other.literal();
 
     // A reduce-precision operation is determined by the bit sizes.
     case HloOpcode::kReducePrecision:
@@ -1878,6 +1857,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kBroadcast:
     case HloOpcode::kMap:
     case HloOpcode::kSlice:
+    case HloOpcode::kConstant:
+    case HloOpcode::kTrace:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -2172,34 +2153,7 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
   string operands;
-  if (opcode() == HloOpcode::kConstant) {
-    // For constants, show the actual value in place of an empty operand list.
-    //
-    // In HloInstruction, sometimes a constant literal is not constructed due
-    // to its size. Skip the printing in this case.
-    if (HasLiteral() && ((!ShapeUtil::IsTuple(shape()) &&
-                          ShapeUtil::ElementsIn(shape()) <= 10) ||
-                         options.print_large_constants())) {
-      // Literal::ToString emits multidimensional arrays over multiple
-      // lines. Compact this into one line by stripping out white space.
-      string tmp = literal().ToString();
-      std::replace(tmp.begin(), tmp.end(), '\n', ' ');
-      std::vector<string> v = tensorflow::str_util::Split(tmp, ' ');
-      bool first = true;
-      // Concatenate elements in "v" with spaces separating them, but ignoring
-      // empty entries.
-      for (const auto& s : v) {
-        if (s.empty()) {
-          continue;
-        }
-        StrAppend(&operands, (first ? "" : " "), s);
-        first = false;
-      }
-    } else {
-      // Do not show large constants or tuples.
-      operands = "{...}";
-    }
-  } else if (opcode() == HloOpcode::kParameter) {
+  if (opcode() == HloOpcode::kParameter) {
     StrAppend(&operands, parameter_number_);
   } else {
     tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
@@ -2410,9 +2364,6 @@ HloInstructionProto HloInstruction::ToProto() const {
 
   *proto.mutable_metadata() = metadata_;
   proto.set_backend_config(backend_config_);
-  if (literal_ != nullptr) {
-    *proto.mutable_literal() = literal_->ToProto();
-  }
   proto.set_parameter_number(parameter_number_);
   if (opcode() == HloOpcode::kFusion) {
     proto.set_fusion_kind(xla::ToString(fusion_kind()));
@@ -2516,12 +2467,6 @@ HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
 
 void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
   trace_instruction_ = trace_instruction;
-}
-
-string HloInstruction::TracingTag() const {
-  CHECK_EQ(HloOpcode::kTrace, opcode());
-  CHECK(literal_ != nullptr);
-  return literal_->GetR1U8AsString();
 }
 
 bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
@@ -3035,10 +2980,6 @@ bool HloInstruction::IsElementwiseBinary() const {
 
 bool HloInstruction::IsElementwise() const {
   switch (opcode_) {
-    // Nullary elementwise operations.
-    case HloOpcode::kConstant:
-      return true;
-
     // Unary elementwise operations.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
@@ -3500,23 +3441,6 @@ void HloInstruction::set_outer_dimension_partitions(
   outer_dimension_partitions_ = outer_dimension_partitions;
 }
 
-void HloInstruction::RelayoutConstant(const Layout& new_layout,
-                                      const ShapeIndex& shape_index) {
-  CHECK_EQ(opcode(), HloOpcode::kConstant);
-  Shape* mutable_array_subshape =
-      ShapeUtil::GetMutableSubshape(mutable_shape(), shape_index);
-  CHECK(ShapeUtil::IsArray(*mutable_array_subshape));
-
-  // Normally array_subshape will always have a layout, but this invariant is
-  // temporarily broken in LayoutAssignment::AssignLayouts.
-
-  if (!mutable_array_subshape->has_layout() ||
-      !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
-    literal_ = literal_->Relayout(new_layout, shape_index);
-    *mutable_array_subshape->mutable_layout() = new_layout;
-  }
-}
-
 // TODO(b/80131774): Remove these temporary methods after transition.
 int64 HloInstruction::feature_index() const {
   return Cast<HloBatchNormInstruction>(this)->feature_index();
@@ -3573,5 +3497,22 @@ const std::vector<int64>& HloInstruction::slice_strides() const {
 
 bool HloInstruction::IsInPlaceSlice() const {
   return Cast<HloSliceInstruction>(this)->IsInPlaceSlice();
+}
+
+const Literal& HloInstruction::literal() const {
+  return Cast<HloConstantInstruction>(this)->literal();
+}
+
+bool HloInstruction::IsConstant() const {
+  return DynCast<HloConstantInstruction>(this) != nullptr;
+}
+
+void HloInstruction::RelayoutConstant(const Layout& new_layout,
+                                      const ShapeIndex& shape_index) {
+  Cast<HloConstantInstruction>(this)->RelayoutConstant(new_layout, shape_index);
+}
+
+string HloInstruction::TracingTag() const {
+  return Cast<HloTraceInstruction>(this)->TracingTag();
 }
 }  // namespace xla

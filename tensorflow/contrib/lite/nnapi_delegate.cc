@@ -234,7 +234,10 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
           next_id++;
         };
 
-    auto add_add_params = [&add_scalar_int32]() { add_scalar_int32(0); };
+    auto add_add_params = [&add_scalar_int32](void* data) {
+      auto* builtin = reinterpret_cast<TfLiteAddParams*>(data);
+      add_scalar_int32(builtin->activation);
+    };
 
     auto add_pooling_params = [&add_scalar_int32](void* data) {
       auto builtin = reinterpret_cast<TfLitePoolParams*>(data);
@@ -345,11 +348,11 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
     switch (builtin) {
       case tflite::BuiltinOperator_ADD:
         nn_op_type = ANEURALNETWORKS_ADD;
-        add_add_params();
+        add_add_params(node.builtin_data);
         break;
       case tflite::BuiltinOperator_MUL:
         nn_op_type = ANEURALNETWORKS_MUL;
-        add_add_params();
+        add_add_params(node.builtin_data);
         break;
       case tflite::BuiltinOperator_AVERAGE_POOL_2D:
         add_pooling_params(node.builtin_data);

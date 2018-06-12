@@ -5722,6 +5722,46 @@ inline void ResizeBilinearGeneric(const float* input_data,
   }
 }
 
+template <typename T>
+inline void ResizeBilinearGenericSmallChannel(
+    const T* input_data, const Dims<4>& input_dims, T* output_data,
+    const Dims<4>& output_dims, int32 batches, int32 input_height,
+    int32 input_width, int32 depth, int32 output_height, int32 output_width,
+    float height_scale, float width_scale) {
+  memset(output_data, 0,
+         batches * output_height * output_width * depth * sizeof(T));
+
+  T* output_ptr = &output_data[0];
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < output_height; ++y) {
+      float input_y = y * height_scale;
+      int32 y0 = static_cast<int32>(std::floor(input_y));
+      int32 y1 = std::min(y0 + 1, input_height - 1);
+      for (int x = 0; x < output_width; ++x) {
+        float input_x = x * width_scale;
+        int32 x0 = static_cast<int32>(input_x);
+        int32 x1 = std::min(x0 + 1, input_width - 1);
+
+        int32 input_offset[4] = {
+            Offset(input_dims, 0, x0, y0, b), Offset(input_dims, 0, x1, y0, b),
+            Offset(input_dims, 0, x0, y1, b), Offset(input_dims, 0, x1, y1, b)};
+        float scale[4] = {(1 - (input_y - y0)) * (1 - (input_x - x0)),
+                          (1 - (input_y - y0)) * (input_x - x0),
+                          (input_y - y0) * (1 - (input_x - x0)),
+                          (input_y - y0) * (input_x - x0)};
+
+        for (int d = 0; d < depth; d++) {
+          const T* input_ptr = &input_data[d];
+          *output_ptr++ = static_cast<T>(input_ptr[input_offset[0]] * scale[0] +
+                                         input_ptr[input_offset[1]] * scale[1] +
+                                         input_ptr[input_offset[2]] * scale[2] +
+                                         input_ptr[input_offset[3]] * scale[3]);
+        }
+      }
+    }
+  }
+}
+
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
@@ -5762,10 +5802,54 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+// TODO(prabhumk): This is not a real quantized bilinear. It does not use int8
+// or int16 arithmetic.
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
+                           const Dims<4>& output_dims, bool align_corners) {
+  gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
+  int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  int32 input_height = ArraySize(input_dims, 2);
+  int32 input_width = ArraySize(input_dims, 1);
+  int32 depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 3), 1);
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 2), 1);
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 1), 1);
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 0), 2);
+  int32 output_height = output_size_data[Offset(output_size_dims, 0, 0, 0, 0)];
+  int32 output_width = output_size_data[Offset(output_size_dims, 1, 0, 0, 0)];
+
+  float height_scale =
+      (align_corners && output_height > 1)
+          ? (static_cast<float>(input_height - 1) / (output_height - 1))
+          : (static_cast<float>(input_height) / output_height);
+
+  float width_scale =
+      (align_corners && output_width > 1)
+          ? (static_cast<float>(input_width - 1) / (output_width - 1))
+          : (static_cast<float>(input_width) / output_width);
+
+  ResizeBilinearGenericSmallChannel<uint8>(
+      input_data, input_dims, output_data, output_dims, batches, input_height,
+      input_width, depth, output_height, output_width, height_scale,
+      width_scale);
+}
+
 // legacy, for compatibility with old checked-in code
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
+                           const Dims<4>& output_dims) {
+  ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
+                 output_data, output_dims, /*align_corners=*/false);
+}
+
+// legacy, for compatibility with old checked-in code
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
                            const Dims<4>& output_dims) {
   ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
                  output_data, output_dims, /*align_corners=*/false);

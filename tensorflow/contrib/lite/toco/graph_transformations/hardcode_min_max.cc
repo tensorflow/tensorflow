@@ -362,6 +362,8 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       changed = HardcodeMinMaxForAverageOrMaxPool(model, op);
       break;
 
+    case OperatorType::kResizeBilinear:
+    case OperatorType::kSlice:
     case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
     case OperatorType::kTensorFlowReshape:

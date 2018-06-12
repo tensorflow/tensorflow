@@ -529,6 +529,7 @@ def multi_label_head(n_classes,
   applications, the shape is `[batch_size, n_classes]`.
 
   Labels can be:
+
   * A multi-hot tensor of shape `[D0, D1, ... DN, n_classes]`
   * An integer `SparseTensor` of class indices. The `dense_shape` must be
     `[D0, D1, ... DN, ?]` and the values within `[0, n_classes)`.

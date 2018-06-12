@@ -25,6 +25,7 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 @@FLOAT
 @@QUANTIZED_UINT8
+@@STRING
 @@TFLITE
 @@GRAPHVIZ_DOT
 
@@ -38,6 +39,7 @@ from six import PY3
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
+from tensorflow.contrib.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert import tensor_name
 from tensorflow.contrib.lite.python.convert import toco_convert
 from tensorflow.contrib.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
@@ -65,10 +67,10 @@ class TocoConverter(object):
   Attributes:
 
     inference_type: Target data type of arrays in the output file. Currently
-      must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+      must be `{FLOAT, QUANTIZED_UINT8, STRING}`.  (default FLOAT)
     inference_input_type: Target data type of input arrays. Allows for a
       different type for input arrays in the case of quantization. Currently
-      must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
+      must be `{FLOAT, QUANTIZED_UINT8, STRING}`. (default `inference_type`)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: Dict of strings representing input tensor names
