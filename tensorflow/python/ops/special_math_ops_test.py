@@ -281,7 +281,7 @@ class EinsumTest(test.TestCase):
     input_axes, _, _ = axes.partition('->')
 
     for idx in input_axes.split(','):
-      shape = [all_axes[ax] for ax in idx]
+      shape = [all_axes[ax] for ax in idx if ax.isalpha()]
       input_vals.append(np.random.random(shape))
 
     input_tensors = [constant_op.constant(val) for val in input_vals]
