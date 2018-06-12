@@ -702,7 +702,8 @@ template <typename T>
 class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormFwdPrimitive(
-      const MklBatchNormFwdParams& fwdParams) {
+      const MklBatchNormFwdParams& fwdParams) :
+           cpu_engine_(engine::cpu, 0) {
     context_.fwd_stream.reset(
         new mkldnn::stream(mkldnn::stream::kind::eager));
     if (context_.bn_fwd == nullptr)
@@ -750,7 +751,6 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
       context_.mean_mem->set_data_handle(DummyData);
       context_.variance_mem->set_data_handle(DummyData);
     }
-    return;
   }
 
   memory::primitive_desc GetDstPd() const {
@@ -791,7 +791,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
       weights_mem(nullptr), dst_mem(nullptr),  mean_mem(nullptr),
       variance_mem(nullptr), bn_fwd(nullptr), fwd_stream(nullptr) {
     }
-  } context_;
+  };
 
   void Setup(const MklBatchNormFwdParams& fwdParams) {
     context_.flags = fwdParams.training ? use_scale_shift
@@ -864,14 +864,14 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     }
 
     context_.fwd_primitives.push_back(*context_.bn_fwd);
-    return;
   }
 
   mkldnn::memory::desc get_desc_data(const mkldnn::memory &m) const {
     return m.get_primitive_desc().desc().data;
   }
 
-  engine cpu_engine_ = engine(engine::cpu, 0);
+  struct BatchNormFwdContext context_;
+  engine cpu_engine_;
 };
 
 template <typename T>
@@ -942,7 +942,8 @@ template <typename T>
 class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormBwdPrimitive(
-      const MklBatchNormBwdParams& bwdParams) {
+      const MklBatchNormBwdParams& bwdParams) :
+           cpu_engine_(engine::cpu, 0) {
     context_.bwd_stream.reset(
           new mkldnn::stream(mkldnn::stream::kind::eager));
     if (context_.bn_bwd == nullptr)
@@ -993,7 +994,6 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
       context_.diff_weights_mem->set_data_handle(DummyData);
     }
     context_.diff_src_mem->set_data_handle(DummyData);
-    return;
   }
 
   mkldnn_memory_format_t GetSrcFmt() {
@@ -1032,7 +1032,8 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
       diff_dst_mem(nullptr), weights_mem(nullptr), diff_weights_mem(nullptr),
       diff_src_mem(nullptr), bwd_stream(nullptr) {
     }
-  } context_;
+  };
+
   void Setup(const MklBatchNormBwdParams& bwdParams) {
     context_.flags = bwdParams.training ? use_scale_shift
            : (use_scale_shift | use_global_stats);
@@ -1090,10 +1091,10 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
           *context_.variance_mem, *context_.diff_dst_mem, *context_.weights_mem,
           *context_.diff_src_mem, *context_.diff_weights_mem));
     context_.bwd_primitives.push_back(*context_.bn_bwd);
-    return;
   }
 
-  engine cpu_engine_ = engine(engine::cpu, 0);
+  struct BatchNormBwdContext context_;
+  engine cpu_engine_;
 };
 
 template <typename T>
