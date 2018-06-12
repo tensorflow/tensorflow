@@ -1073,6 +1073,19 @@ class HloInstruction {
   // instruction.
   void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
 
+  // TODO(b/80249101): Remove these methods once HLO scheduling and copy
+  // insertion are integrated, and we don't need to run a separate pass
+  // of copy elision anymore.
+  bool CopyElisionAllowed() const {
+    CHECK_EQ(HloOpcode::kCopy, opcode_);
+    return copy_elision_allowed_;
+  }
+
+  void SetCopyElisionAllowed(bool value) {
+    CHECK_EQ(HloOpcode::kCopy, opcode_);
+    copy_elision_allowed_ = value;
+  }
+
   // Returns the size of the slice in the given dimension for a dynamic
   // slice node.
   //
@@ -1594,6 +1607,9 @@ class HloInstruction {
 
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_window_bounds_;
+
+  // Used to tag kCopy instructions that are eligible for copy elision.
+  bool copy_elision_allowed_ = true;
 
   // The bit sizes for a reduce-precision operation.
   int32 exponent_bits_ = 0;
