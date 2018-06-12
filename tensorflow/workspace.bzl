@@ -115,9 +115,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "791b836cacd03e20bae5bdd25f1c4a5505a0a9975ba94a61eb4e2631fbd1d53a",
       strip_prefix = "eigen-eigen-6913f0cf7d06",
       build_file = clean_dep("//third_party:eigen.BUILD"),
-      patch_file = clean_dep("//third_party:eigen_fix_rocm_compilation.patch")
-      # ROCM TODO: figure out how to cope with CUDA-specific Eigen patch
-      #patch_file = clean_dep("//third_party:eigen_fix_cuda_compilation.patch")
+      patch_file = clean_dep("//third_party:eigen_fix_gpu_compilation.patch")
   )
 
   tf_http_archive(
