@@ -692,23 +692,26 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchColumnReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
                            int extent_x, int extent_y, Op op, T init,
                            const gpuStream_t& cu_stream) {
+#ifdef GOOGLE_CUDA
+// FIXME on ROCm
   if (extent_y <= 16) {
     LaunchColumnReduction_LTE16Cols(ctx, out, in, extent_x, extent_y, op, init,
                                     cu_stream);
-#ifdef GOOGLE_CUDA
-// FIXME on ROCm
   } else if (extent_y <= 4096) {
     LaunchColumnReduction_LTE4096Cols<T, Op, OUT_T, IN_T>(ctx, out, in, extent_x, extent_y, op,
 
                                       init, cu_stream);
-#endif
   } else {
+#endif
     int threads_per_block = 128;
     int num_blocks = Eigen::divup(extent_y, threads_per_block);
 
     GPU_LAUNCH_KERNEL(ColumnReduceSimpleKernel, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
         in, out, 1, extent_x, extent_y, op);
+#ifdef GOOGLE_CUDA
+// FIXME on ROCm
   }
+#endif
 }
 
 template <typename T, typename Op, typename OUT_T, typename IN_T>
