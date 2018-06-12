@@ -47,12 +47,11 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   bool getBatch(void* bindings[], const char* names[],
                 int num_bindings) override;
   bool setBatch(const std::unordered_map<string, void*>& data,
-                const cudaStream_t stream,
-                tensorflow::core::RefCounted* helper);
+                const cudaStream_t stream);
   void setDone();
   const void* readCalibrationCache(std::size_t& length) override;
   void writeCalibrationCache(const void* ptr, std::size_t length) override;
-  const string& getCalibrationTableAsString(){return calibration_table;}
+  const string& getCalibrationTableAsString() { return calibration_table_; }
   ~TRTInt8Calibrator();
 
  private:
@@ -68,7 +67,7 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   bool calib_running_;
   bool batch_is_set_;
   string engine_name_;
-  string calibration_table;
+  string calibration_table_;
 };
 
 }  // namespace tensorrt

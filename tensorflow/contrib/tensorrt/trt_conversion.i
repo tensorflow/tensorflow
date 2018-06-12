@@ -61,7 +61,7 @@ PyObject* version_helper(version_struct* in) {
   if (!tuple) {
     if (!PyErr_Occurred()) {
       PyErr_SetString(PyExc_TypeError,
-                      "Tuple creation from pair<string,string> failed!");
+                      "Tuple creation from version structure failed!");
     }
     return NULL;
   }
@@ -69,15 +69,15 @@ PyObject* version_helper(version_struct* in) {
 }
 /* Define converters for vector<int> */
 template<>
-      bool _PyObjAs(PyObject *pyobj, int* dest) {
-      *dest=PyLong_AsLong(pyobj);
-      return true;
-  }
+  bool _PyObjAs(PyObject *pyobj, int* dest) {
+  *dest = PyLong_AsLong(pyobj);
+  return true;
+}
 
-  template<>
-      PyObject *_PyObjFrom(const int& src) {
-      return PyLong_FromLong(src);
-  }
+template<>
+  PyObject *_PyObjFrom(const int& src) {
+  return PyLong_FromLong(src);
+}
 
 %}
 
@@ -175,7 +175,8 @@ std::pair<string, string> trt_convert(
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 }
 
-std::pair<string, string> calib_convert(string graph_def_string
+std::pair<string, string> calib_convert(
+    string graph_def_string
     // unfortunately we can't use TF_Status here since it
     // is in c/c_api and brings in a lot of other libraries
     // which in turn declare ops. These ops are included
@@ -250,8 +251,7 @@ std::pair<string, string> trt_convert(string graph_def_string,
                                       int precision_mode, int minimum_segment_size,
                                       bool is_dyn_op,
                                       int max_cached_engines,
-                                      std::vector<int> cached_engine_batches
-                                      );
+                                      std::vector<int> cached_engine_batches);
 version_struct get_linked_tensorrt_version();
 version_struct get_loaded_tensorrt_version();
 

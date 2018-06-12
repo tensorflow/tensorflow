@@ -47,17 +47,11 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
   ~TRTCalibrationResource() {
     VLOG(0) << "Destroying Calibration Resource " << std::endl << DebugString();
     builder_->destroy();
-    builder_ = nullptr;
     network_->destroy();
-    network_ = nullptr;
     engine_->destroy();
-    engine_ = nullptr;
     delete thr_;
-    thr_ = nullptr;
     delete logger_;
-    logger_ = nullptr;
     delete calibrator_;
-    calibrator_ = nullptr;
   }
 
   string DebugString() override {

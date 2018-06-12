@@ -189,6 +189,11 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   VLOG(2) << "cpu_cores: " << num_cpu_cores;
   VLOG(2) << "gpus: " << num_gpus;
   tensorflow::RewriterConfig rw_cfg;
+  // use only const folding and layout for the time being since new optimizers
+  // break the graph for us
+  rw_cfg.add_optimizers("constfold");
+  rw_cfg.add_optimizers("layout");
+
   tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
   tensorflow::GraphDef gdef;
   TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, &gdef));
@@ -210,10 +215,13 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   cp.minimum_segment_size = minimum_segment_size;
   cp.graph_properties = &static_graph_properties;
   cp.max_workspace_size_bytes = max_workspace_size_bytes;
-  // return ConvertAfterShapes(gdef, output_names, max_batch_size,
-  //                           max_workspace_size_bytes, new_graph_def,
-  //                           precision_mode, minimum_segment_size,
-  //                           static_graph_properties, nullptr);
+  if (VLOG_IS_ON(5)) {
+    std::fstream f;
+    f.open("TRTConversionInput.pb",
+           std::fstream::out | std::fstream::binary | std::fstream::trunc);
+    f << gdef.SerializeAsString();
+    f.close();
+  }
   return ConvertAfterShapes(cp);
 }
 

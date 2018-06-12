@@ -30,8 +30,6 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
-// This method converts an already generated calibration graph which was used in
-// calibration runs to an inference graph
 struct ConversionParams {
   ConversionParams()
       : input_graph_def(nullptr),

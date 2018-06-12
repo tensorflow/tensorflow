@@ -54,24 +54,37 @@ class TRTEngineOp : public AsyncOpKernel {
     }
   };
 
+  // Execute calibration
+  void ExecuteCalibration(tensorflow::OpKernelContext* ctx,
+                          AsyncHelper* helper);
+
+  // Construct a function handle for executing native funcdef graph
   tensorflow::Status ConstructFunctionHandle(tensorflow::OpKernelContext* ctx);
-  void ExecuteNativeSegment(tensorflow::OpKernelContext* ctx, AsyncHelper* ah);
+
+  // Execute replaced native segment as function Op.
+  void ExecuteNativeSegment(tensorflow::OpKernelContext* ctx,
+                            AsyncHelper* helper);
+
+  // Allocate necessary resources for calibration
   tensorflow::Status AllocateCalibrationResources(
       tensorflow::OpKernelContext* ctx,
       tensorflow::tensorrt::TRTCalibrationResource** cr);
 
   // TODO(samikama): context should go to a resource manager!
-  // std::shared_ptr<nvinfer1::IExecutionContext> get_execution_context(
-  //     int batch_size);
   typedef std::pair<std::shared_ptr<nvinfer1::ICudaEngine>,
                     std::shared_ptr<nvinfer1::IExecutionContext>>
       EngineCtxPair;
-  EngineCtxPair get_engine(int batch_size, OpKernelContext* ctx,
-                           bool ignore_dim_change = true);
+  EngineCtxPair GetEngine(int batch_size, OpKernelContext* ctx,
+                          bool ignore_dim_change = true);
 
-  std::unordered_map<int, EngineCtxPair> engine_map;
+  // Return engine batch closest to input batch.
+  int GetEngineBatch(OpKernelContext* ctx);
+
+  // map to keep engines and their execution context.
+  std::unordered_map<int, EngineCtxPair> engine_map_;
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
+  // keep device allocator for TRT
   std::unordered_map<string, std::shared_ptr<nvinfer1::IGpuAllocator>>
       allocators_;
   string serialized_segment_;
@@ -80,12 +93,12 @@ class TRTEngineOp : public AsyncOpKernel {
   tensorflow::GraphDef segment_graph_;
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
   std::vector<tensorflow::PersistentTensor> dev_tensors_;
-  int precision_mode;
-  bool static_engine;
-  bool calibration_mode;
-  bool fixed_input_size;
-  std::vector<int> cached_engine_batches;
-  int max_cached_engines;
+  int precision_mode_;
+  bool static_engine_;
+  bool calibration_mode_;
+  bool fixed_input_size_;
+  std::vector<int> cached_engine_batches_;
+  int max_cached_engines_;
   tensorflow::int64 workspace_size_;
   tensorflow::mutex engine_mutex_;
   tensorflow::FunctionLibraryRuntime::Handle native_func_;
