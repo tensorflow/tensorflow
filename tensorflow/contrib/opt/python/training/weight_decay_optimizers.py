@@ -23,6 +23,8 @@ from tensorflow.python.training import optimizer
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.training import adam, momentum
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import resource_variable_ops
 
 
 def extend_with_decoupled_weight_decay(base_optimizer):
@@ -48,6 +50,10 @@ def extend_with_decoupled_weight_decay(base_optimizer):
   # Create a MyAdamW object
   optimizer = MyAdamW(weight_decay=0.001, learning_rate=0.001)
   sess.run(optimizer.minimize(loss, decay_variables=[var1, var2]))
+
+  Note that this extension decays weights BEFORE applying the update based
+  on the gradient, i.e. this extension only has the desired behaviour for
+  optimizers which do not depend on the value of'var' in the update step!
   ```
 
   Args:
@@ -104,6 +110,10 @@ class DecoupledWeightDecayExtension(object):
     def __init__(self, weight_decay, *args, **kwargs):
       super(AdamWOptimizer, self).__init__(weight_decay, *args, **kwargs).
   ```
+
+  Note that this extension decays weights BEFORE applying the update based
+  on the gradient, i.e. this extension only has the desired behaviour for
+  optimizers which do not depend on the value of'var' in the update step!
   """
 
   def __init__(self, weight_decay, **kwargs):
@@ -164,30 +174,45 @@ class DecoupledWeightDecayExtension(object):
     # Call the optimizers _prepare function.
     super(DecoupledWeightDecayExtension, self)._prepare()
 
-  def _decay_weights(self, var):
-    if (not self._decay_var_list or
-            (self._decay_var_list and var in self._decay_var_list)):
+  def _decay_weights_op(self, var):
+    if (not self._decay_var_list) or var in self._decay_var_list:
       return var.assign_sub(self._weight_decay * var, self._use_locking)
     return control_flow_ops.no_op()
 
-  # Overwrite the apply functions the base optimizer calls. super().apply_x
-  # resolves to the apply_x function of the child's BaseOptimizer.
+  def _decay_weights_sparse_op(self, var, indices, scatter_add):
+    if (not self._decay_var_list) or (var in self._decay_var_list):
+      return scatter_add(var, indices, -self._weight_decay * var, self._use_locking)
+    return control_flow_ops.no_op()
+
+  # Here, we overwrite the apply functions that the base optimizer calls.
+  # super().apply_x resolves to the apply_x function of the BaseOptimizer.
   def _apply_dense(self, grad, var):
-    with ops.control_dependencies([self._decay_weights(var)]):
+    with ops.control_dependencies([self._decay_weights_op(var)]):
       return super(DecoupledWeightDecayExtension, self)._apply_dense(grad, var)
 
   def _resource_apply_dense(self, grad, var):
-    with ops.control_dependencies([self._decay_weights(var)]):
+    with ops.control_dependencies([self._decay_weights_op(var)]):
       return super(DecoupledWeightDecayExtension, self)._resource_apply_dense(
           grad, var)
 
   def _apply_sparse(self, grad, var):
-    with ops.control_dependencies([self._decay_weights(var)]):
+    scatter_add = state_ops.scatter_add
+    decay_op = self._decay_weights_sparse_op(var, grad.indices, scatter_add)
+    with ops.control_dependencies([decay_op]):
       return super(DecoupledWeightDecayExtension, self)._apply_sparse(
           grad, var)
 
+  def _resource_scatter_add(self, x, i, v, _=None):
+    # last argument allows for one overflow argument, to have the same function
+    # signature as state_ops.scatter_add
+    with ops.control_dependencies(
+        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
+      return x.value()
+
   def _resource_apply_sparse(self, grad, var, indices):
-    with ops.control_dependencies([self._decay_weights(var)]):
+    scatter_add = self._resource_scatter_add
+    decay_op = self._decay_weights_sparse_op(var, indices, scatter_add)
+    with ops.control_dependencies([decay_op]):
       return super(DecoupledWeightDecayExtension, self)._resource_apply_sparse(
           grad, var, indices)
 
