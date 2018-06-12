@@ -410,4 +410,73 @@ TEST_F(ExecutorTest, RecvInvalidRefDtype) {
   rendez->Unref();
 }
 
+// Create a graph that is 'depth' deep. At each level, fan-in and fan-out a
+// maximum of 'width' nodes. All nodes are no-ops and all dependencies are
+// control dependencies.
+static void BM_executor(int iters, int width, int depth) {
+#ifdef PLATFORM_GOOGLE
+  BenchmarkUseRealTime();
+#endif  // PLATFORM_GOOGLE
+  Graph* g = new Graph(OpRegistry::Global());
+  random::PhiloxRandom philox(1729, 17);
+  random::SimplePhilox rand(&philox);
+  uint64 cur = 0;
+  uint32 r = 1 + rand.Rand32() % width;
+  std::vector<Node*> ready_nodes;
+  for (int i = 0; i < r; ++i) {
+    ready_nodes.push_back(test::graph::NoOp(g, {}));
+    ++cur;
+  }
+  for (int i = 0; i < depth; ++i) {
+    std::random_shuffle(ready_nodes.begin(), ready_nodes.end());
+    r = 1 + rand.Rand32() % (ready_nodes.size());
+    std::vector<Node*> control_inputs;
+    for (int j = 0; j < r; ++j) {
+      control_inputs.push_back(ready_nodes.back());
+      ready_nodes.pop_back();
+    }
+    Node* n = test::graph::NoOp(g, control_inputs);
+    ++cur;
+    r = 1 + rand.Rand32() % width;
+    for (int j = 0; j < r; ++j) {
+      ready_nodes.push_back(test::graph::NoOp(g, {n}));
+      ++cur;
+    }
+  }
+#ifdef PLATFORM_GOOGLE
+  SetBenchmarkLabel(strings::StrCat("Nodes = ", cur));
+  SetBenchmarkItemsProcessed(cur * static_cast<int64>(iters));
+#endif  // PLATFORM_GOOGLE
+  test::Benchmark("cpu", g).Run(iters);
+}
+
+// Tall skinny graphs
+BENCHMARK(BM_executor)->ArgPair(16, 1024);
+BENCHMARK(BM_executor)->ArgPair(32, 8192);
+
+// Short fat graphs
+BENCHMARK(BM_executor)->ArgPair(1024, 16);
+BENCHMARK(BM_executor)->ArgPair(8192, 32);
+
+// Tall fat graph
+BENCHMARK(BM_executor)->ArgPair(1024, 1024);
+
+static void BM_FeedInputFetchOutput(int iters) {
+  Graph* g = new Graph(OpRegistry::Global());
+  // z = x + y: x and y are provided as benchmark inputs.  z is the
+  // output of the benchmark.  Conceptually, the caller is ALICE, the
+  // benchmark is BOB.
+  Node* x = test::graph::Recv(g, "x", "float", ALICE, 1, BOB);
+  Node* y = test::graph::Recv(g, "y", "float", ALICE, 1, BOB);
+  Node* sum = test::graph::Add(g, x, y);
+  Node* z = test::graph::Send(g, sum, "z", BOB, 1, ALICE);
+  Tensor val(DT_FLOAT, TensorShape({}));
+  val.scalar<float>()() = 3.14;
+#ifdef PLATFORM_GOOGLE
+  SetBenchmarkItemsProcessed(static_cast<int64>(iters));
+#endif  // PLATFORM_GOOGLE
+  test::Benchmark("cpu", g).RunWithArgs({{x, val}, {y, val}}, {z}, iters);
+}
+BENCHMARK(BM_FeedInputFetchOutput);
+
 }  // namespace tensorflow

@@ -317,15 +317,7 @@ class NearComparator {
       rel_error = std::numeric_limits<float>::infinity();
     } else {
       abs_error = FpAbsoluteValue(actual - expected);
-      // If the expected result is exactly zero, don't compute relative error;
-      // that's meaningless.
-      //
-      // TODO(b/80321728): Come up with a better way to handle this case.
-      if (expected == NativeT{}) {
-        rel_error = 0;
-      } else {
-        rel_error = abs_error / FpAbsoluteValue(expected);
-      }
+      rel_error = abs_error / FpAbsoluteValue(expected);
     }
     const bool is_abs_mismatch = abs_error > error_.abs;
     const bool is_rel_mismatch = rel_error > error_.rel;

@@ -201,7 +201,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
       LOCKS_EXCLUDED(irec->out_mu);
 
   const DeviceMgr* dev_mgr_;
-  DeviceResolverInterface* dev_resolver_;
+  DeviceResolverInterface* dev_resolver_;  // Not owned.
   string task_name_;
   mutex group_mu_;
   gtl::FlatMap<int32, std::unique_ptr<GroupRec>> group_table_

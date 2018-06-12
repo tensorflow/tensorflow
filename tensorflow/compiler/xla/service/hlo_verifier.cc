@@ -376,6 +376,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConstant:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
+    case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kInfeed:
@@ -423,6 +424,14 @@ Status ShapeVerifier::HandleGather(HloInstruction* gather) {
       ShapeInference::InferGatherShape(
           gather->operand(0)->shape(), gather->operand(1)->shape(),
           gather->gather_dimension_numbers(), gather->gather_window_bounds()));
+}
+
+Status ShapeVerifier::HandleGenerateToken(HloInstruction* token) {
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : token->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(token, ShapeInference::InferTokenShape(operand_shapes));
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
@@ -790,6 +799,46 @@ Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
   return Status::OK();
 }
 
+namespace {
+
+// Returns true if the given Shape has a TOKEN shape as any subshape.
+bool ShapeContainsToken(const Shape& shape) {
+  bool contains_token = false;
+  ShapeUtil::ForEachSubshape(
+      shape, [&contains_token](const Shape& subshape, const ShapeIndex&) {
+        if (ShapeUtil::IsToken(subshape)) {
+          contains_token = true;
+        }
+      });
+  return contains_token;
+}
+
+// Verifies that all types entering and exiting the entry computation are
+// legal. For example, TOKEN types have no Literal representation and cannot be
+// on the interface of the entry computation (parameters and root instruction).
+Status VerifyEntryAndExitShapes(const HloModule& module) {
+  for (int i = 0; i < module.entry_computation()->num_parameters(); ++i) {
+    HloInstruction* param =
+        module.entry_computation()->parameter_instruction(i);
+    if (ShapeContainsToken(param->shape())) {
+      return InternalError(
+          "Entry parameter %d is or contains a token shape: %s", i,
+          ShapeUtil::HumanString(param->shape()).c_str());
+    }
+  }
+  if (ShapeContainsToken(
+          module.entry_computation()->root_instruction()->shape())) {
+    return InternalError(
+        "Entry root is or contains a token shape: %s",
+        ShapeUtil::HumanString(
+            module.entry_computation()->root_instruction()->shape())
+            .c_str());
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
 
@@ -849,6 +898,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
     TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
   }
+
+  TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
 
   return false;
 }

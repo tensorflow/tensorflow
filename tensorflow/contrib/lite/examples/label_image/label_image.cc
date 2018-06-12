@@ -138,8 +138,8 @@ void RunInference(Settings* s) {
   int image_width = 224;
   int image_height = 224;
   int image_channels = 3;
-  uint8_t* in = read_bmp(s->input_bmp_name, &image_width, &image_height,
-                         &image_channels, s);
+  std::vector<uint8_t> in = read_bmp(s->input_bmp_name, &image_width,
+                                     &image_height, &image_channels, s);
 
   int input = interpreter->inputs()[0];
   if (s->verbose) LOG(INFO) << "input: " << input << "\n";
@@ -168,12 +168,12 @@ void RunInference(Settings* s) {
   switch (interpreter->tensor(input)->type) {
     case kTfLiteFloat32:
       s->input_floating = true;
-      resize<float>(interpreter->typed_tensor<float>(input), in, image_height,
-                    image_width, image_channels, wanted_height, wanted_width,
-                    wanted_channels, s);
+      resize<float>(interpreter->typed_tensor<float>(input), in.data(),
+                    image_height, image_width, image_channels, wanted_height,
+                    wanted_width, wanted_channels, s);
       break;
     case kTfLiteUInt8:
-      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in,
+      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in.data(),
                       image_height, image_width, image_channels, wanted_height,
                       wanted_width, wanted_channels, s);
       break;

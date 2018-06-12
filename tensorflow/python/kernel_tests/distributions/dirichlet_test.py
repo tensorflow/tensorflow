@@ -26,6 +26,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import dirichlet as dirichlet_lib
+from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -39,6 +40,7 @@ def try_import(name):  # pylint: disable=invalid-name
   return module
 
 
+special = try_import("scipy.special")
 stats = try_import("scipy.stats")
 
 
@@ -261,6 +263,39 @@ class DirichletTest(test.TestCase):
               stats.beta(
                   a=1., b=2.).cdf)[0],
           0.01)
+
+  def testDirichletDirichletKL(self):
+    conc1 = np.array([[1., 2., 3., 1.5, 2.5, 3.5],
+                      [1.5, 2.5, 3.5, 4.5, 5.5, 6.5]])
+    conc2 = np.array([[0.5, 1., 1.5, 2., 2.5, 3.]])
+
+    d1 = dirichlet_lib.Dirichlet(conc1)
+    d2 = dirichlet_lib.Dirichlet(conc2)
+    x = d1.sample(int(1e4), seed=0)
+    kl_sample = math_ops.reduce_mean(d1.log_prob(x) - d2.log_prob(x), 0)
+    kl_actual = kullback_leibler.kl_divergence(d1, d2)
+
+    kl_sample_val = self.evaluate(kl_sample)
+    kl_actual_val = self.evaluate(kl_actual)
+
+    self.assertEqual(conc1.shape[:-1], kl_actual.get_shape())
+
+    if not special:
+      return
+
+    kl_expected = (
+        special.gammaln(np.sum(conc1, -1))
+        - special.gammaln(np.sum(conc2, -1))
+        - np.sum(special.gammaln(conc1) - special.gammaln(conc2), -1)
+        + np.sum((conc1 - conc2) * (special.digamma(conc1) - special.digamma(
+            np.sum(conc1, -1, keepdims=True))), -1))
+
+    self.assertAllClose(kl_expected, kl_actual_val, atol=0., rtol=1e-6)
+    self.assertAllClose(kl_sample_val, kl_actual_val, atol=0., rtol=1e-1)
+
+    # Make sure KL(d1||d1) is 0
+    kl_same = self.evaluate(kullback_leibler.kl_divergence(d1, d1))
+    self.assertAllClose(kl_same, np.zeros_like(kl_expected))
 
 
 if __name__ == "__main__":

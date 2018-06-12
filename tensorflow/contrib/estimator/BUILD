@@ -312,6 +312,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
@@ -340,6 +341,7 @@ py_test(
     size = "medium",
     srcs = ["python/estimator/hooks_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":hooks",
         "//tensorflow/python:client_testlib",

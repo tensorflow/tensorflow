@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
@@ -29,7 +29,7 @@ using ::testing::ContainsRegex;
 class HloExecutionProfileTest : public HloTestBase {};
 
 TEST_F(HloExecutionProfileTest, Basic) {
-  auto hlo_module = tools::Parse(R"(
+  auto hlo_module = ParseHloString(R"(
   HloModule test_module
   ENTRY entry_computation {
     lhs = f32[30,30]{1,0} parameter(0)

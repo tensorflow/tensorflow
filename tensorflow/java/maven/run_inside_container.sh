@@ -19,6 +19,7 @@
 
 
 RELEASE_URL_PREFIX="https://storage.googleapis.com/tensorflow/libtensorflow"
+TF_ECOSYSTEM_URL="https://github.com/tensorflow/ecosystem.git"
 
 # By default we deploy to both ossrh and bintray. These two
 # environment variables can be set to skip either repository.
@@ -31,9 +32,7 @@ if [[ "${TF_VERSION}" == *"-SNAPSHOT" ]]; then
   # Bintray does not allow snapshots.
   DEPLOY_BINTRAY="false"
 fi
-PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.3.0/protoc-3.3.0-linux-x86_64.zip"
-TF_ECOSYSTEM_URL="https://github.com/tensorflow/ecosystem.git"
-
+PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.5.1/protoc-3.5.1-linux-x86_64.zip"
 if [[ "${DEPLOY_BINTRAY}" != "true" && "${DEPLOY_OSSRH}" != "true" ]]; then
   echo "Must deploy to at least one of Bintray or OSSRH" >&2
   exit 2

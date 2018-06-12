@@ -314,7 +314,7 @@ class XlaCompiler {
   // See the class comment for more details about the argument passing
   // convention.
   Status XLAShapeForArgument(const Argument& arg, bool is_entry_computation,
-                             xla::Shape* xla_shape);
+                             xla::Shape* xla_shape) const;
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.

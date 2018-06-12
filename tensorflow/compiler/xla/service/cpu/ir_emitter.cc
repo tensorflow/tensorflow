@@ -160,39 +160,44 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
-llvm::GlobalVariable* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
-  llvm::GlobalVariable* result;
+llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
+  llvm::Constant* result;
 
   // We avoid creating large constants in the LLVM IR since LLVM is not
   // efficient for large constant arrays.  We still emit "small enough" constant
   // arrays into the Ir, in the off chance the LLVM optimizer can do something
   // interesting with it.
+  //
+  // TODO(b/29904935): Remove the large constant pool.
   const int kMaxInternalConstantSizeInBytes = 128;
   if (external_constant_pool_ &&
       ByteSizeOf(literal.shape()) >= kMaxInternalConstantSizeInBytes) {
     string global_name = tensorflow::strings::StrCat(
         "constant_global_", external_global_constant_counter_++);
-    result = new llvm::GlobalVariable(
+    llvm::GlobalVariable* result_global = new llvm::GlobalVariable(
         /*Module=*/*module_,
         /*Type=*/IrShapeType(literal.shape()),
         /*isConstant=*/true,
         /*Linkage=*/llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/nullptr,
         /*Name=*/AsStringRef(global_name));
-    result->setAlignment(MinimumAlignmentForShape(literal.shape()));
+    result_global->setAlignment(MinimumAlignmentForShape(literal.shape()));
     external_constant_pool_->Insert(global_name, literal,
                                     MinimumAlignmentForShape(literal.shape()));
+    result = result_global;
   } else {
     llvm::Constant* initializer =
         llvm_ir::ConvertLiteralToIrConstant(literal, module_);
-    result = new llvm::GlobalVariable(
+    llvm::GlobalVariable* result_global = new llvm::GlobalVariable(
         /*Module=*/*module_,
         /*Type=*/initializer->getType(),
         /*isConstant=*/true,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
         /*Initializer=*/initializer,
         /*Name=*/"");
-    result->setAlignment(MinimumAlignmentForShape(literal.shape()));
+    result_global->setAlignment(MinimumAlignmentForShape(literal.shape()));
+    result = llvm::ConstantExpr::getBitCast(
+        result_global, IrShapeType(literal.shape())->getPointerTo());
   }
   return result;
 }
@@ -200,7 +205,7 @@ llvm::GlobalVariable* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
   VLOG(2) << "HandleConstant: " << constant->ToString();
   const Literal& literal = constant->literal();
-  llvm::GlobalVariable* global_for_const;
+  llvm::Constant* global_for_const;
 
   auto it = emitted_literals_.find(&literal);
   if (it != emitted_literals_.end()) {

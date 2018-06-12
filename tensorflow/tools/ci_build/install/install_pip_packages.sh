@@ -109,3 +109,7 @@ pip2 install --upgrade gast
 pip3 install --upgrade gast
 pip2 install --upgrade termcolor
 pip3 install --upgrade termcolor
+
+# Install last working version of setuptools.
+pip2 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools==39.1.0

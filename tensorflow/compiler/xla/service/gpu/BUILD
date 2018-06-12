@@ -1,6 +1,8 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = [":friends"])
@@ -22,6 +24,11 @@ filegroup(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+xla_proto_library(
+    name = "backend_configs",
+    srcs = ["backend_configs.proto"],
+)
 
 cc_library(
     name = "gpu_constants",
@@ -133,6 +140,7 @@ cc_library(
         "ir_emitter_unnested.h",
     ],
     deps = [
+        ":backend_configs",
         ":cudnn_convolution_runner",
         ":elemental_ir_emitter",
         ":gpu_constants",
@@ -156,6 +164,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
+        "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
@@ -266,6 +275,7 @@ cc_library(
         "while_thunk.h",
     ],
     deps = [
+        ":backend_configs",
         ":buffer_allocations",
         ":cudnn_convolution_runner",
         ":infeed_manager",
@@ -322,6 +332,7 @@ cc_library(
     srcs = ["cudnn_convolution_algorithm_picker.cc"],
     hdrs = ["cudnn_convolution_algorithm_picker.h"],
     deps = [
+        ":backend_configs",
         ":cudnn_convolution_runner",
         ":gpu_executable",
         ":ir_emission_utils",
@@ -406,9 +417,37 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
+    ],
+)
+
+cc_library(
+    name = "multi_output_fusion",
+    srcs = ["multi_output_fusion.cc"],
+    hdrs = ["multi_output_fusion.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:multi_output_fusion",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "multi_output_fusion_test",
+    srcs = ["multi_output_fusion_test.cc"],
+    deps = [
+        ":multi_output_fusion",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -450,9 +489,9 @@ tf_cc_test(
         ":instruction_fusion",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
     ],
 )
 
@@ -512,6 +551,7 @@ cc_library(
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
+        ":multi_output_fusion",
         ":pad_insertion",
         ":partition_assignment",
         ":stream_assignment",

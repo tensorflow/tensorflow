@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
+#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 
 #if GOOGLE_CUDA
@@ -41,7 +42,8 @@ namespace {
 // TODO(akshayka): Support distributed execution.
 class PartitionedCallOp : public AsyncOpKernel {
  public:
-  explicit PartitionedCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
+  explicit PartitionedCallOp(OpKernelConstruction* ctx)
+      : AsyncOpKernel(ctx), local_device_name_(ctx->device()->name()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
   }
 
@@ -73,92 +75,28 @@ class PartitionedCallOp : public AsyncOpKernel {
     {
       mutex_lock l(mu_);
       if (!partitioned_) {
-        // Instantiate the function to obtain its underlying graph, complete
-        // with nodes for arguments and return values.
-        FunctionLibraryRuntime::InstantiateOptions opts;
-        FHandle handle;
-        OP_REQUIRES_OK_ASYNC(
-            ctx,
-            lib->Instantiate(func_.name(), AttrSlice(&func_.attr()), opts,
-                             &handle),
-            done);
-        Graph* graph = lib->GetFunctionBody(handle)->graph;
+        auto graph = tensorflow::MakeUnique<Graph>(OpRegistry::Global());
+        OP_REQUIRES_OK_ASYNC(ctx, GetGraphFromFunction(lib, graph.get()), done);
 
-        // Pin the inputs and outputs to the local device to simplify the
-        // function-dispatching logic.
-        local_device_name_ = lib->device()->name();
-        for (Node* node : graph->op_nodes()) {
-          string node_type = node->type_string();
-          if (node_type == FunctionLibraryDefinition::kArgOp ||
-              node_type == FunctionLibraryDefinition::kRetOp) {
-            node->set_assigned_device_name(local_device_name_);
-          }
-        }
-
-        // Place the graph, i.e,. assign a device to every node in it.
         DeviceSet device_set;
         for (auto d : lib->device_mgr()->ListDevices()) {
           device_set.AddDevice(d);
         }
-        Placer placer(graph, &device_set);
+        Placer placer(graph.get(), &device_set);
         OP_REQUIRES_OK_ASYNC(ctx, placer.Run(), done);
 
-        // Partition the graph into subgraphs: exactly one subgraph per device.
-        //
-        // TODO(akshayka): Let devices rewrite their graphs.
-        PartitionOptions partition_options;
-        partition_options.node_to_loc = [](const Node* node) {
-          // TODO(akshayka): To better support the distributed case, first split
-          // the graph by worker (e.g,. using the master session's
-          // `SplitByWorker` policy), and then recursively partition the
-          // per-worker shards at the remote worker(s).
-          return node->assigned_device_name();
-        };
-        int64 edge_name_counter = 0;
-        partition_options.new_name =
-            [&edge_name_counter](const string& prefix) {
-              return strings::StrCat(prefix, "/_", ++edge_name_counter);
-            };
-        partition_options.get_incarnation =
-            [&device_set](const string& name) -> int64 {
-          const Device* d = device_set.FindDeviceByName(name);
-          if (d == nullptr) {
-            return PartitionOptions::kIllegalIncarnation;
-          } else {
-            return d->attributes().incarnation();
-          }
-        };
-        partition_options.control_flow_added = false;
-        std::unordered_map<string, GraphDef> partitions;
+        std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
         OP_REQUIRES_OK_ASYNC(
-            ctx, Partition(partition_options, graph, &partitions), done);
-
-        VLOG(3) << "Partitioned function '" << func_.name() << "', yielding "
-                << partitions.size() << " shards.";
-
-        // `subgraphs` is a map from devices to their corresponding subgraphs.
-        gtl::FlatMap<string, std::unique_ptr<Graph>> subgraphs;
-        const FunctionLibraryDefinition* flib_def = &graph->flib_def();
-        for (const auto& partition : partitions) {
-          std::unique_ptr<Graph> subgraph(new Graph(flib_def));
-          GraphConstructorOptions opts;
-          opts.allow_internal_ops = true;
-          opts.expect_device_spec = true;
-          const string& device = partition.first;
-          const GraphDef& graph_def = partition.second;
-          OP_REQUIRES_OK_ASYNC(
-              ctx, ConvertGraphDefToGraph(opts, graph_def, subgraph.get()),
-              done);
-          subgraphs.emplace(device, std::move(subgraph));
-        }
+            ctx, PartitionHelper(device_set, std::move(graph), &subgraphs),
+            done);
 
         // The FunctionLibraryRuntime's library cannot be mutated from within
-        // an OpKernel, so the functions are instantiated in an overlay library.
+        // an OpKernel, so functions are instantiated in an overlay library.
         overlay_lib_.reset(new FunctionLibraryDefinition(
             *lib->GetFunctionLibraryDefinition()));
         for (const auto& pair : subgraphs) {
           const string& target = pair.first;
-          Graph* subgraph = pair.second.get();
+          const auto& subgraph = pair.second;
           FunctionDef shard;
           string unique_name = UniquifyFunctionName(func_.name());
           OP_REQUIRES_OK_ASYNC(
@@ -173,12 +111,96 @@ class PartitionedCallOp : public AsyncOpKernel {
               lib->Instantiate(unique_name, AttrSlice(&shard.attr()), opts,
                                &handle),
               done);
-          device_handle_map_.emplace(target, handle);
+          function_handles_.emplace(target, handle);
         }
         partitioned_ = true;
       }
     }
+    ExecuteFunctions(lib, ctx, std::move(done));
+  }
 
+ private:
+  typedef std::pair<string, FHandle> DeviceAndFHandle;
+
+  // `func_` encapsulates the original, unsharded function.
+  // Copies the graph backing `func_` into `*graph`, pinning the input and
+  // output nodes to the local device.
+  //
+  // `*graph` must be a freshly allocated graph.
+  Status GetGraphFromFunction(FunctionLibraryRuntime* lib, Graph* graph) {
+    FunctionLibraryRuntime::InstantiateOptions opts;
+    FHandle handle;
+    TF_RETURN_IF_ERROR(lib->Instantiate(func_.name(), AttrSlice(&func_.attr()),
+                                        opts, &handle));
+    const FunctionBody* fbody = lib->GetFunctionBody(handle);
+    if (fbody == nullptr) {
+      return errors::Internal("Could not find handle ", handle);
+    }
+    CopyGraph(*fbody->graph, graph);
+
+    // Pin the inputs and outputs to the local device to simplify the
+    // function-dispatching logic.
+    for (Node* node : graph->op_nodes()) {
+      string node_type = node->type_string();
+      if (node_type == FunctionLibraryDefinition::kArgOp ||
+          node_type == FunctionLibraryDefinition::kRetOp) {
+        node->set_assigned_device_name(local_device_name_);
+      }
+    }
+    return Status::OK();
+  }
+
+  // Partitions `graph` and populates `subgraphs` with the partitions.
+  Status PartitionHelper(
+      const DeviceSet& device_set, std::unique_ptr<Graph> graph,
+      std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs) {
+    PartitionOptions partition_options;
+    partition_options.node_to_loc = [](const Node* node) {
+      // TODO(akshayka): To better support the distributed case, first split
+      // the graph by worker (e.g,. using the master session's
+      // `SplitByWorker` policy), and then recursively partition the
+      // per-worker shards at the remote worker(s).
+      return node->assigned_device_name();
+    };
+    int64 edge_name_counter = 0;
+    partition_options.new_name = [&edge_name_counter](const string& prefix) {
+      return strings::StrCat(prefix, "/_", ++edge_name_counter);
+    };
+    partition_options.get_incarnation =
+        [&device_set](const string& name) -> int64 {
+      const Device* d = device_set.FindDeviceByName(name);
+      if (d == nullptr) {
+        return PartitionOptions::kIllegalIncarnation;
+      } else {
+        return d->attributes().incarnation();
+      }
+    };
+    partition_options.control_flow_added = false;
+    std::unordered_map<string, GraphDef> partitions;
+    TF_RETURN_IF_ERROR(Partition(partition_options, graph.get(), &partitions));
+
+    VLOG(3) << "Partitioned function '" << func_.name() << "', yielding "
+            << partitions.size() << " shards.";
+
+    const FunctionLibraryDefinition* flib_def = &graph->flib_def();
+    for (const auto& partition : partitions) {
+      std::unique_ptr<Graph> subgraph(new Graph(flib_def));
+      GraphConstructorOptions opts;
+      opts.allow_internal_ops = true;
+      opts.expect_device_spec = true;
+      const string& device = partition.first;
+      const GraphDef& graph_def = partition.second;
+      TF_RETURN_IF_ERROR(
+          ConvertGraphDefToGraph(opts, graph_def, subgraph.get()));
+      subgraphs->emplace(device, std::move(subgraph));
+    }
+
+    return Status::OK();
+  }
+
+  // Executes the partitioned functions.
+  void ExecuteFunctions(FunctionLibraryRuntime* lib, OpKernelContext* ctx,
+                        DoneCallback done) LOCKS_EXCLUDED(mu_) {
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
     opts.step_container = ctx->step_container();
@@ -205,11 +227,11 @@ class PartitionedCallOp : public AsyncOpKernel {
         },
         rendez, std::move(done), std::placeholders::_1);
     auto* refcounted_done = new ReffedStatusCallback(std::move(callback));
-    for (int i = 1; i < device_handle_map_.size(); ++i) {
+    for (int i = 1; i < function_handles_.size(); ++i) {
       refcounted_done->Ref();
     }
 
-    for (const auto& pair : device_handle_map_) {
+    for (const auto& pair : function_handles_) {
       const string& target_device = pair.first;
       FHandle handle = pair.second;
       VLOG(3) << "Running function shard on device " << target_device;
@@ -247,8 +269,6 @@ class PartitionedCallOp : public AsyncOpKernel {
       }
     }
   }
-
- private:
   string UniquifyFunctionName(const string& name) {
     for (;; ++suffix_) {
       const string candidate = strings::StrCat(name, "_", suffix_);
@@ -258,13 +278,13 @@ class PartitionedCallOp : public AsyncOpKernel {
     }
   }
 
-  // `func_` encapsulates the original, unsharded function.
   NameAttrList func_;
-  string local_device_name_;
+  const string local_device_name_;
   // Function shards are added to `overlay_lib_`.
   std::unique_ptr<FunctionLibraryDefinition> overlay_lib_;
-  // A map from device names to handles of function shards.
-  gtl::FlatMap<string, FHandle> device_handle_map_;
+  // A map from device names to handles of function shards; this map is
+  // read-only after the first execution of the OpKernel.
+  gtl::FlatMap<string, FHandle> function_handles_;
 
   mutex mu_;
   bool partitioned_ GUARDED_BY(mu_) = false;
@@ -274,6 +294,12 @@ class PartitionedCallOp : public AsyncOpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_CPU),
                         PartitionedCallOp);
+REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_GPU),
+                        PartitionedCallOp);
+#if TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_SYCL),
+                        PartitionedCallOp);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace
 }  // namespace tensorflow

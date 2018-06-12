@@ -851,6 +851,11 @@ tensorflow::ImportNumpy();
     })) {
       return nullptr;
     }
+    if (!HandleStringAttribute($input, "dump_unoptimized_hlo_proto_to", [&](string s) {
+      build_options.set_dump_unoptimized_hlo_proto_to(std::move(s));
+    })) {
+      return nullptr;
+    }
     if (!HandleStringAttribute($input, "dump_per_pass_hlo_proto_to", [&](string s) {
       build_options.set_dump_per_pass_hlo_proto_to(std::move(s));
     })) {
@@ -906,6 +911,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputation;
 %unignore xla::swig::LocalComputation::Compile;
 %unignore xla::swig::LocalComputation::GetReturnValueShape;
+%unignore xla::swig::LocalComputation::GetSerializedProto;
 %unignore xla::swig::LocalOp;
 %unignore xla::swig::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::LocalComputationBuilder;
@@ -968,10 +974,12 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Not;
 %unignore xla::swig::LocalComputationBuilder::Abs;
 %unignore xla::swig::LocalComputationBuilder::Exp;
+%unignore xla::swig::LocalComputationBuilder::Expm1;
 %unignore xla::swig::LocalComputationBuilder::Floor;
 %unignore xla::swig::LocalComputationBuilder::Ceil;
 %unignore xla::swig::LocalComputationBuilder::Round;
 %unignore xla::swig::LocalComputationBuilder::Log;
+%unignore xla::swig::LocalComputationBuilder::Log1p;
 %unignore xla::swig::LocalComputationBuilder::Sign;
 %unignore xla::swig::LocalComputationBuilder::Cos;
 %unignore xla::swig::LocalComputationBuilder::Sin;

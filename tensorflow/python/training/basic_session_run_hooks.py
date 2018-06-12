@@ -28,6 +28,7 @@ from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.client import timeline
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
@@ -818,8 +819,25 @@ class FinalOpsHook(session_run_hook.SessionRunHook):
 
   def end(self, session):
     if self._final_ops is not None:
-      self._final_ops_values = session.run(self._final_ops,
-                                           feed_dict=self._final_ops_feed_dict)
+      try:
+        self._final_ops_values = session.run(
+            self._final_ops, feed_dict=self._final_ops_feed_dict)
+      except (errors.OutOfRangeError, StopIteration) as e:
+        logging.warning(
+            "An OutOfRangeError or StopIteration exception is raised by the "
+            "code in FinalOpsHook. This typically means the Ops running by the "
+            "FinalOpsHook have a dependency back to some input source, which "
+            "should not happen. For example, for metrics in "
+            "tf.estimator.Estimator, all metrics functions return two Ops: "
+            "`value_op` and  `update_op`. Estimator.evaluate calls the "
+            "`update_op` for each batch of the data in input source and, once "
+            "it is exhausted, it call the `value_op` to get the metric values. "
+            "The `value_op` here should have dependency back to variables "
+            "reading only, rather than reading another batch from input. "
+            "Otherwise, the `value_op`, executed by `FinalOpsHook`, triggers "
+            "another data reading, which ends OutOfRangeError/StopIteration. "
+            "Please fix that.")
+        raise e
 
 
 @tf_export("train.FeedFnHook")

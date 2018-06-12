@@ -20,7 +20,6 @@ from __future__ import print_function
 import os
 from tensorflow.contrib.checkpoint.python import split_dependency
 from tensorflow.contrib.rnn.python.ops import lstm_ops
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -1647,10 +1646,3 @@ class CudnnRNNRelu(_CudnnRNNNoInputC):
   # 1 set of weight and bias parameters for the recurrent input, and 1 for the
   # previous layer input.
   _NUM_PARAMS_PER_LAYER = CUDNN_RNN_RELU_PARAMS_PER_LAYER
-
-
-ops.RegisterShape("CudnnRNNParamsSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNParamsToCanonical")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNCanonicalToParams")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNN")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNBackprop")(common_shapes.call_cpp_shape_fn)

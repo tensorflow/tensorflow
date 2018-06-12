@@ -255,7 +255,7 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
     // node_ids
     const Tensor* node_ids_t;
     OP_REQUIRES_OK(context, context->input("node_ids", &node_ids_t));
-    const auto node_ids = node_ids_t->flat<int32>();
+    const auto node_ids = node_ids_t->vec<int32>();
     // gradients
     const Tensor* gradients_t;
     OP_REQUIRES_OK(context, context->input("gradients", &gradients_t));
@@ -270,46 +270,34 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
                                                 &bucketized_features_list));
     // Infer batch size.
     const int64 batch_size = node_ids_t->dim_size(0);
-    // Allocate output stats tensor (Rank 4).
-    Tensor* output_stats_summary_t = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                "stats_summary",
-                                {num_features_, max_splits_, num_buckets_, 2},
-                                &output_stats_summary_t));
-    auto output_stats_summary = output_stats_summary_t->flat<float>();
-    EIGEN_STATIC_ASSERT(
-        (static_cast<int>(decltype(output_stats_summary)::Layout) ==
-         static_cast<int>(Eigen::RowMajor)),
-        THIS_METHOD_IS_ONLY_FOR_ROW_MAJOR_MATRICES);
 
-    const int shift_per_node = num_buckets_ * 2;
-    const int shift_per_feature = shift_per_node * max_splits_;
-    const int32 max_index = num_features_ * shift_per_feature;
-    // We use double to sum the gradients and hessians, due to possible
-    // precision loss when summing small float values.
-    std::vector<double> res(max_index, 0);
+    // Allocate temporary stats tensor (Rank 4).
+    Tensor temp_stats_double_t;
+    OP_REQUIRES_OK(context, context->allocate_temp(
+                                DT_DOUBLE,
+                                {num_features_, max_splits_, num_buckets_, 2},
+                                &temp_stats_double_t));
+    auto temp_stats_double = temp_stats_double_t.tensor<double, 4>();
+    temp_stats_double.setZero();
 
     // Partition by node, and then bucketize.
-    int feature_idx = 0;
-    int feature_shift = 0;
-    for (const Tensor& tensor : bucketized_features_list) {
-      const auto& features = tensor.flat<int32>();
+    for (int feature_idx = 0; feature_idx < num_features_; ++feature_idx) {
+      const auto& features = bucketized_features_list[feature_idx].vec<int32>();
       for (int i = 0; i < batch_size; ++i) {
         const int32 node = node_ids(i);
         const int32 bucket = features(i);
-        // Calculate the index in the flattened vector for
-        // [feature_idx][node][bucket][0].
-        const int index = feature_shift + node * shift_per_node + bucket * 2;
-        res[index] += gradients(i, 0);
-        res[index + 1] += hessians(i, 0);
+        temp_stats_double(feature_idx, node, bucket, 0) += gradients(i, 0);
+        temp_stats_double(feature_idx, node, bucket, 1) += hessians(i, 0);
       }
-      ++feature_idx;
-      feature_shift += shift_per_feature;
     }
-    // Copy over the results.
-    for (int i = 0; i < max_index; ++i) {
-      output_stats_summary(i) = res[i];
-    }
+
+    // Copy temp tensor over to output tensor.
+    Tensor* output_stats_summary_t = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                "stats_summary", temp_stats_double_t.shape(),
+                                &output_stats_summary_t));
+    output_stats_summary_t->tensor<float, 4>() =
+        temp_stats_double.template cast<float>();
   }
 
  private:
