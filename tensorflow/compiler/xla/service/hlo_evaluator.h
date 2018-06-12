@@ -174,6 +174,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
+  Status HandleGenerateToken(HloInstruction* token) override;
+
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be
   // returned directly without looking up the cache.

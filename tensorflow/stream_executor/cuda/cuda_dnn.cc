@@ -2291,9 +2291,7 @@ class CudnnEnvVar {
 // algorithm through an env-var "TF_ENABLE_FFT_TILING_FORWARD=1".
 struct FftTilingForward {
   static constexpr const char* kName = "TF_ENABLE_FFT_TILING_FORWARD";
-  // TODO(csigg): Enabling this algo causes XLA test failures, for example in
-  // platforms/xla/tests/internal:convolution_test_gpu. See b/80018418.
-  static constexpr bool kDefaultFlag = false;  // CUDNN_VERSION >= 7000;
+  static constexpr bool kDefaultFlag = CUDNN_VERSION >= 7000;
 };
 
 // A helper struct to decide whether to enable the WINOGRAD_NONFUSED algorithms.
@@ -2425,6 +2423,33 @@ port::Status CudnnSupport::DoConvolveImpl(
       return port::Status(port::error::INTERNAL, "Failed to start timer");
     }
   }
+
+  // Report an error if we might be hitting a cuDNN bug that accesses illegal
+  // memory. See nvbugs/2138754, b/80018418.
+  SE_RETURN_IF_ERROR([&] {
+    if (algo_desc.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING) {
+      return port::Status::OK();
+    }
+    if (input_descriptor.ndims() < 3) {
+      return port::Status::OK();
+    }
+    // Checks that a*b is within the valid range (as provided by NVIDIA).
+    auto check_sizes = [](size_t a, size_t b) {
+      if ((a * b * 4608 - 1) >> 31 == 0) {
+        return port::Status::OK();
+      }
+      return port::Status(
+          port::error::FAILED_PRECONDITION,
+          "This configuration potentially accesses illegal memory.");
+    };
+    SE_RETURN_IF_ERROR(check_sizes(input_descriptor.feature_map_count(),
+                                   output_descriptor.feature_map_count()));
+    SE_RETURN_IF_ERROR(check_sizes(input_descriptor.count(),
+                                   input_descriptor.feature_map_count()));
+    SE_RETURN_IF_ERROR(check_sizes(input_descriptor.count(),
+                                   output_descriptor.feature_map_count()));
+    return port::Status::OK();
+  }());
 
   RETURN_IF_CUDNN_ERROR(cudnnConvolutionForward(
       cudnn.handle(),
@@ -3191,6 +3216,34 @@ port::Status CudnnSupport::DoConvolveBackwardFilterImpl(
       return port::Status(port::error::INTERNAL, "Failed to start timer");
     }
   }
+
+  // Report an error if we might be hitting a cuDNN bug that produces incorrect
+  // results. See nvbugs/2072856
+  SE_RETURN_IF_ERROR([&] {
+    if (algo_desc.algo_id() != CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING) {
+      return port::Status::OK();
+    }
+    if (output_descriptor.height() > 1 && output_descriptor.width() > 1) {
+      return port::Status::OK();
+    }
+    int convolution_size = output_descriptor.height() > 1
+                               ? filter_descriptor.input_filter_height()
+                               : filter_descriptor.input_filter_width();
+    if (convolution_size <= 32) {
+      return port::Status::OK();
+    }
+    cudnnConvolutionMode_t convolution_mode;
+    cudnnDataType_t compute_type;
+    RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionNdDescriptor(
+        conv.handle(), 0, nullptr, nullptr, nullptr, nullptr, &convolution_mode,
+        &compute_type));
+    if (convolution_mode != CUDNN_CONVOLUTION) {
+      return port::Status::OK();
+    }
+    return port::Status(
+        port::error::FAILED_PRECONDITION,
+        "This configuration potentially produces incorrect results.");
+  }());
 
   RETURN_IF_CUDNN_ERROR(cudnnConvolutionBackwardFilter(
       cudnn.handle(),

@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "grpc++/create_channel.h"
-#include "grpc++/security/credentials.h"
+#include "grpcpp/create_channel.h"
+#include "grpcpp/security/credentials.h"
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"

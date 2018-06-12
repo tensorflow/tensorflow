@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/exec_on_stall.h"
 
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -32,14 +33,24 @@ Chunk* NewChunk(int stall_seconds, std::function<void()> f) {
 }
 
 TEST(ExecuteOnStallTest, BothWays) {
-  bool a_triggered = false;
-  bool b_triggered = false;
-  Chunk* a = NewChunk(1, [&a_triggered]() { a_triggered = true; });
-  Chunk* b = NewChunk(1, [&b_triggered]() { b_triggered = true; });
+  mutex mu;
+  bool a_triggered(false);
+  bool b_triggered(false);
+  Chunk* a = NewChunk(1, [&mu, &a_triggered]() {
+    mutex_lock l(mu);
+    a_triggered = true;
+  });
+  Chunk* b = NewChunk(1, [&mu, &b_triggered]() {
+    mutex_lock l(mu);
+    b_triggered = true;
+  });
   delete a;
   Env::Default()->SleepForMicroseconds(2000000);
-  EXPECT_FALSE(a_triggered);
-  EXPECT_TRUE(b_triggered);
+  {
+    mutex_lock l(mu);
+    EXPECT_FALSE(a_triggered);
+    EXPECT_TRUE(b_triggered);
+  }
   delete b;
 }
 

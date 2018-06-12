@@ -1556,13 +1556,13 @@ def is_jpeg(contents, name=None):
 
 
 @tf_export('image.decode_image')
-def decode_image(contents, channels=None, name=None):
+def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
   and `decode_png`.
 
   Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
-  appropriate operation to convert the input bytes `string` into a `Tensor` of
-  type `uint8`.
+  appropriate operation to convert the input bytes `string` into a `Tensor`
+  of type `dtype`.
 
   Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
   opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
@@ -1574,10 +1574,11 @@ def decode_image(contents, channels=None, name=None):
     contents: 0-D `string`. The encoded image bytes.
     channels: An optional `int`. Defaults to `0`. Number of color channels for
       the decoded image.
+    dtype: The desired DType of the returned `Tensor`.
     name: A name for the operation (optional)
 
   Returns:
-    `Tensor` with type `uint8` with shape `[height, width, num_channels]` for
+    `Tensor` with type `dtype` and shape `[height, width, num_channels]` for
       BMP, JPEG, and PNG images and shape `[num_frames, height, width, 3]` for
       GIF images.
 
@@ -1601,7 +1602,7 @@ def decode_image(contents, channels=None, name=None):
       channels_msg = 'Channels must be in (None, 0, 3) when decoding BMP images'
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_decode, assert_channels]):
-        return gen_image_ops.decode_bmp(contents)
+        return convert_image_dtype(gen_image_ops.decode_bmp(contents), dtype)
 
     def _gif():
       # Create assert to make sure that channels is not set to 1
@@ -1614,7 +1615,7 @@ def decode_image(contents, channels=None, name=None):
       channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_channels]):
-        return gen_image_ops.decode_gif(contents)
+        return convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
 
     def check_gif():
       # Create assert op to check that bytes are GIF decodable
@@ -1623,7 +1624,11 @@ def decode_image(contents, channels=None, name=None):
 
     def _png():
       """Decodes a PNG image."""
-      return gen_image_ops.decode_png(contents, channels)
+      return convert_image_dtype(
+          gen_image_ops.decode_png(contents, channels,
+                                   dtype=dtypes.uint8
+                                   if dtype == dtypes.uint8
+                                   else dtypes.uint16), dtype)
 
     def check_png():
       """Checks if an image is PNG."""
@@ -1639,7 +1644,8 @@ def decode_image(contents, channels=None, name=None):
                       'images')
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_channels]):
-        return gen_image_ops.decode_jpeg(contents, channels)
+        return convert_image_dtype(
+            gen_image_ops.decode_jpeg(contents, channels), dtype)
 
     # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
     # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).

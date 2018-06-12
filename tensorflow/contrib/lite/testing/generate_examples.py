@@ -2165,6 +2165,74 @@ def make_arg_max_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_equal_tests(zip_path):
+  """Make a set of tests to do equal."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32, tf.int64],
+      "input_shape_pair": [([1, 1, 1, 3], [1, 1, 1, 3]),
+                           ([2, 3, 4, 5], [2, 3, 4, 5]), ([2, 3, 3], [2, 3]),
+                           ([5, 5], [1]), ([10], [2, 4, 10])],
+  }]
+
+  def build_graph(parameters):
+    """Build the equal op testing graph."""
+    input_value1 = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input1",
+        shape=parameters["input_shape_pair"][0])
+    input_value2 = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input2",
+        shape=parameters["input_shape_pair"][1])
+    out = tf.equal(input_value1, input_value2)
+    return [input_value1, input_value2], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value1 = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape_pair"][0])
+    input_value2 = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape_pair"][1])
+    return [input_value1, input_value2], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_not_equal_tests(zip_path):
+  """Make a set of tests to do not equal."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32, tf.int64],
+      "input_shape_pair": [([1, 1, 1, 3], [1, 1, 1, 3]),
+                           ([2, 3, 4, 5], [2, 3, 4, 5]), ([2, 3, 3], [2, 3]),
+                           ([5, 5], [1]), ([10], [2, 4, 10])],
+  }]
+
+  def build_graph(parameters):
+    """Build the not euqal op testing graph."""
+    input_value1 = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input1",
+        shape=parameters["input_shape_pair"][0])
+    input_value2 = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input2",
+        shape=parameters["input_shape_pair"][1])
+    out = tf.not_equal(input_value1, input_value2)
+    return [input_value1, input_value2], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value1 = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape_pair"][0])
+    input_value2 = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape_pair"][1])
+    return [input_value1, input_value2], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_greater_tests(zip_path):
   """Make a set of tests to do greater."""
 
@@ -2352,30 +2420,44 @@ def make_neg_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def _make_elementwise_tests(op):
+  """Make a set of tests to do element-wise operations."""
+
+  def f(zip_path):
+    """Actual function that generates examples."""
+    test_parameters = [{
+        "input_dtype": [tf.float32],
+        "input_shape": [[1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+    }]
+
+    def build_graph(parameters):
+      """Build the sin op testing graph."""
+      input_value = tf.placeholder(
+          dtype=parameters["input_dtype"],
+          name="input1",
+          shape=parameters["input_shape"])
+      out = op(input_value)
+      return [input_value], [out]
+
+    def build_inputs(parameters, sess, inputs, outputs):
+      input_value = create_tensor_data(parameters["input_dtype"],
+                                       parameters["input_shape"])
+      return [input_value], sess.run(
+          outputs, feed_dict={inputs[0]: input_value})
+
+    make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+  return f
+
+
 def make_sin_tests(zip_path):
   """Make a set of tests to do sin."""
+  return _make_elementwise_tests(tf.sin)(zip_path)
 
-  test_parameters = [{
-      "input_dtype": [tf.float32],
-      "input_shape": [[1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
-  }]
 
-  def build_graph(parameters):
-    """Build the sin op testing graph."""
-    input_value = tf.placeholder(
-        dtype=parameters["input_dtype"],
-        name="input1",
-        shape=parameters["input_shape"])
-    out = tf.sin(input_value)
-    return [input_value], [out]
-
-  def build_inputs(parameters, sess, inputs, outputs):
-    input_value = create_tensor_data(parameters["input_dtype"],
-                                     parameters["input_shape"])
-    return [input_value], sess.run(
-        outputs, feed_dict={inputs[0]: input_value})
-
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+def make_log_tests(zip_path):
+  """Make a set of tests to do log."""
+  return _make_elementwise_tests(tf.log)(zip_path)
 
 
 def make_where_tests(zip_path):

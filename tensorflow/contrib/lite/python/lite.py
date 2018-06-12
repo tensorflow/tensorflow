@@ -94,6 +94,16 @@ class TocoConverter(object):
       created for any op that is unknown. The developer will need to provide
       these to the TensorFlow Lite runtime with a custom resolver.
       (default False)
+    quantize_weights: Boolean indicating whether to store weights as quantized
+      weights followed by dequantize operations. Computation is still done in
+      float, but reduces model size (at the cost of accuracy and latency).
+      (default False)
+    dump_graphviz_dir: Full filepath of folder to dump the graphs at various
+      stages of processing GraphViz .dot files. Preferred over
+      --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
+      output file. (default None)
+    dump_graphviz_video: Boolean indicating whether to dump the graph after
+      every graph transformation. (default False)
 
   Example usage:
 
@@ -135,6 +145,9 @@ class TocoConverter(object):
     self.reorder_across_fake_quant = False
     self.change_concat_input_ranges = False
     self.allow_custom_ops = False
+    self.quantize_weights = False
+    self.dump_graphviz_dir = None
+    self.dump_graphviz_video = False
 
   @classmethod
   def from_session(cls, sess, input_tensors, output_tensors):
@@ -210,7 +223,7 @@ class TocoConverter(object):
 
       # Check if graph is frozen.
       if not _is_frozen_graph(sess):
-        raise ValueError("Please freeze the graph using freeze_graph.py")
+        raise ValueError("Please freeze the graph using freeze_graph.py.")
 
       # Create TocoConverter class.
       return cls(sess.graph_def, input_tensors, output_tensors)
@@ -310,7 +323,10 @@ class TocoConverter(object):
         drop_control_dependency=self.drop_control_dependency,
         reorder_across_fake_quant=self.reorder_across_fake_quant,
         change_concat_input_ranges=self.change_concat_input_ranges,
-        allow_custom_ops=self.allow_custom_ops)
+        allow_custom_ops=self.allow_custom_ops,
+        quantize_weights=self.quantize_weights,
+        dump_graphviz_dir=self.dump_graphviz_dir,
+        dump_graphviz_video=self.dump_graphviz_video)
     return result
 
   def get_input_arrays(self):

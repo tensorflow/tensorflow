@@ -11,9 +11,6 @@ TENSORFLOW_API_INIT_FILES = [
     "distributions/__init__.py",
     "distributions/bijectors/__init__.py",
     "errors/__init__.py",
-    "estimator/__init__.py",
-    "estimator/export/__init__.py",
-    "estimator/inputs/__init__.py",
     "feature_column/__init__.py",
     "gfile/__init__.py",
     "graph_util/__init__.py",
@@ -91,6 +88,16 @@ TENSORFLOW_API_INIT_FILES = [
     # END GENERATED FILES
 ]
 
+# keep sorted
+ESTIMATOR_API_INIT_FILES = [
+    # BEGIN GENERATED ESTIMATOR FILES
+    "__init__.py",
+    "estimator/__init__.py",
+    "estimator/export/__init__.py",
+    "estimator/inputs/__init__.py",
+    # END GENERATED ESTIMATOR FILES
+]
+
 # Creates a genrule that generates a directory structure with __init__.py
 # files that import all exported modules (i.e. modules with tf_export
 # decorators).
@@ -110,7 +117,9 @@ TENSORFLOW_API_INIT_FILES = [
 def gen_api_init_files(name,
                        output_files=TENSORFLOW_API_INIT_FILES,
                        root_init_template=None,
-                       srcs=[]):
+                       srcs=[],
+                       api_name="tensorflow",
+                       package="tensorflow.python"):
   root_init_template_flag = ""
   if root_init_template:
     root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
@@ -119,7 +128,8 @@ def gen_api_init_files(name,
       outs = output_files,
       cmd = (
           "$(location //tensorflow/tools/api/generator:create_python_api) " +
-          root_init_template_flag + " --apidir=$(@D) $(OUTS)"),
+          root_init_template_flag + " --apidir=$(@D) --apiname=" + api_name + " --package=" + package + " $(OUTS)"),
       srcs = srcs,
       tools = ["//tensorflow/tools/api/generator:create_python_api"],
+      visibility = ["//tensorflow:__pkg__"],
   )
