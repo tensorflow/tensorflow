@@ -2078,10 +2078,21 @@ class TPUEstimator(estimator_lib.Estimator):
 
     # Reconstruct `tensors`, but with `tpu_tensors` replaced with
     # `tpu_tensors_on_cpu`.
-    new_tensors = [
-        tpu_tensors_on_cpu.pop(0) if _is_tpu_tensor(t) else t
-        for t in tensors
-    ]
+    new_tensors = []
+    for t in tensors:
+      if _is_tpu_tensor(t):
+        new_tensors.append(tpu_tensors_on_cpu.pop(0))
+      elif t is None:
+        new_tensors.append(None)
+      else:
+        # Only fetching `tpu_tensors_on_cpu` does not trigger
+        # TPU computation and blocks, so we add the control dependency here.
+        control_inputs = (tpu_tensors_on_cpu
+                          if isinstance(tpu_tensors_on_cpu, (list, tuple))
+                          else (tpu_tensors_on_cpu,))
+        with ops.control_dependencies(control_inputs):
+          new_tensors.append(array_ops.identity(t))
+
     # Reconstruct `tensors_dict`.
     new_tensors_dict = nest.pack_sequence_as(tensors_dict, new_tensors)
     # Reconstruct `export_outputs`.
