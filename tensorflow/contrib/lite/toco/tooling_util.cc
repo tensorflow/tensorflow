@@ -920,7 +920,7 @@ void CheckEachArray(const Model& model) {
       CHECK(array->buffer->type == array->data_type);
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
-      CHECK(array->has_shape());
+      CHECK(array->has_shape()) << "Invalid array: " << array_entry.first;
       // Constant buffer should has a valid shape.
       for (int d : array->shape().dims()) {
         CHECK_GE(d, 1);
