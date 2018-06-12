@@ -47,12 +47,16 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
         element_instr = fused_expression_root;
       }
     }
+    // Special handling of kReduce instructions -- the fusion
+    // applies to the first operand.
+    if (element_instr->opcode() == HloOpcode::kReduce) {
+      return element_instr->operand(0)->shape();
+    }
     return element_instr->shape();
   };
 
   // The elementwise output shapes must be the same (including layout)
-  return ShapeUtil::ShapeUtil::Equal(get_element_shape(instr1),
-                                     get_element_shape(instr2));
+  return ShapeUtil::Equal(get_element_shape(instr1), get_element_shape(instr2));
 }
 
 bool GpuMultiOutputFusion::IsProfitableOperand(HloInstruction* instr) {

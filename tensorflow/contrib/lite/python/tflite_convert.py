@@ -116,7 +116,8 @@ def _convert_model(flags):
                        "tensors in order to map between names and "
                        "values.".format(",".join(input_arrays)))
     converter.quantized_input_stats = dict(zip(input_arrays, quant_stats))
-  if flags.default_ranges_min and flags.default_ranges_max:
+  if (flags.default_ranges_min is not None) and (flags.default_ranges_max is
+                                                 not None):
     converter.default_ranges_stats = (flags.default_ranges_min,
                                       flags.default_ranges_max)
 
@@ -195,7 +196,7 @@ def _check_flags(flags, unparsed):
       raise ValueError("--std_dev_values, --mean_values must have the same "
                        "number of items")
 
-  if bool(flags.default_ranges_min) != bool(flags.default_ranges_max):
+  if (flags.default_ranges_min is None) != (flags.default_ranges_max is None):
     raise ValueError("--default_ranges_min and --default_ranges_max must be "
                      "used together")
 
@@ -233,12 +234,12 @@ def run_main(_):
   parser.add_argument(
       "--inference_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8"],
+      choices=["FLOAT", "QUANTIZED_UINT8", "STRING"],
       help="Target data type of arrays in the output file.")
   parser.add_argument(
       "--inference_input_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8"],
+      choices=["FLOAT", "QUANTIZED_UINT8", "STRING"],
       help=("Target data type of input arrays. Allows for a different type for "
             "input arrays in the case of quantization."))
 

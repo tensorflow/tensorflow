@@ -66,6 +66,88 @@ int StepStatsDeviceIndex(StepStats* step_stats, EagerContext* ctx,
   return 0;
 }
 
+// This function expects *handle to point to an existing tensor handle. The
+// function will (maybe) update the *handle to be pointed to the newly copied
+// tensor handle.
+//
+// The passed in *handle will be Unreffed if it is replaced.
+Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
+                                      const Device* expected_device,
+                                      RunMetadata* run_metadata,
+                                      TensorHandle** handle) {
+  EagerContext* ctx = op->EagerContext();
+  Device* handle_device = nullptr;
+  TF_RETURN_IF_ERROR((*handle)->Device(&handle_device));
+  const Device* actual_device =
+      handle_device == nullptr ? ctx->HostCPU() : handle_device;
+
+  if (expected_device != actual_device) {
+    switch (ctx->GetDevicePlacementPolicy()) {
+      case DEVICE_PLACEMENT_SILENT_FOR_INT32:
+        // TODO(xpan): See if we could bubble python related error up
+        // to python level.
+        if ((*handle)->dtype == DT_INT32) {
+          // Note: enabling silent copies of int32 tensors to match behavior
+          // of graph mode.
+          break;
+        }
+        TF_FALLTHROUGH_INTENDED;
+      case DEVICE_PLACEMENT_EXPLICIT:
+        return errors::InvalidArgument(
+            "Tensors on conflicting devices:"
+            " cannot compute ",
+            op->Name(), " as input #", i, " was expected to be on ",
+            expected_device->name(), " but is actually on ",
+            actual_device->name(), " (operation running on ",
+            op->Device()->name(), ")",
+            " Tensors can be copied explicitly using .gpu() or .cpu() "
+            "methods,"
+            " or transparently copied by using tf.enable_eager_execution("
+            "device_policy=tfe.DEVICE_PLACEMENT_SILENT). Copying tensors "
+            "between devices"
+            " may slow down your model");
+      case DEVICE_PLACEMENT_WARN:
+        LOG(WARNING) << "before computing " << op->Name() << " input #" << i
+                     << " was expected to be on " << expected_device->name()
+                     << " but is actually on " << actual_device->name()
+                     << " (operation running on " << op->Device()->name()
+                     << "). This triggers a copy which can be a performance "
+                        "bottleneck.";
+        break;
+      case DEVICE_PLACEMENT_SILENT:  // Do nothing.
+        break;
+    }
+    // We are only here if the policy is warn or silent copies, so we should
+    // trigger a copy.
+    auto pre_time = Env::Default()->NowMicros();
+    TensorHandle* result_handle;
+    Status status = EagerCopyToDevice(
+        *handle, ctx, expected_device->name().c_str(), &result_handle);
+    if (run_metadata != nullptr) {
+      auto* step_stats = run_metadata->mutable_step_stats();
+      MaybeInitializeStepStats(step_stats, ctx);
+      // Record the sending on the source device for now.
+      int device_idx = StepStatsDeviceIndex(step_stats, ctx, handle_device);
+      auto* dev_stats = step_stats->mutable_dev_stats(device_idx);
+      auto* node_stats = dev_stats->add_node_stats();
+      node_stats->set_node_name("_Send");
+      node_stats->set_all_start_micros(pre_time);
+      node_stats->set_op_end_rel_micros(Env::Default()->NowMicros() - pre_time);
+    }
+    if (!status.ok()) {
+      if (result_handle != nullptr) result_handle->Unref();
+      return errors::Internal("Failed copying input tensor from ",
+                              actual_device->name(), " to ",
+                              expected_device->name(), " in order to run ",
+                              op->Name(), ": ", status.error_message());
+    }
+
+    (*handle)->Unref();
+    *handle = result_handle;
+  }
+  return Status::OK();
+}
+
 Status ValidateInputTypeAndPlacement(EagerContext* ctx, Device* op_device,
                                      EagerOperation* op, const OpKernel* kernel,
                                      RunMetadata* run_metadata) {
@@ -78,76 +160,9 @@ Status ValidateInputTypeAndPlacement(EagerContext* ctx, Device* op_device,
   for (int i = 0; i < op->Inputs().size(); ++i) {
     const Device* expected_device =
         memtypes[i] == HOST_MEMORY ? host_device : op_device;
-    TensorHandle* handle = op->Inputs()[i];
-    Device* handle_device = nullptr;
-    TF_RETURN_IF_ERROR(handle->Device(&handle_device));
-    const Device* actual_device =
-        handle_device == nullptr ? host_device : handle_device;
-    if (expected_device != actual_device) {
-      switch (ctx->GetDevicePlacementPolicy()) {
-        case DEVICE_PLACEMENT_SILENT_FOR_INT32:
-          // TODO(xpan): See if we could bubble python related error up
-          // to python level.
-          if (handle->dtype == DT_INT32) {
-            // Note: enabling silent copies of int32 tensors to match behavior
-            // of graph mode.
-            break;
-          }
-          TF_FALLTHROUGH_INTENDED;
-        case DEVICE_PLACEMENT_EXPLICIT:
-          return errors::InvalidArgument(
-              "Tensors on conflicting devices:"
-              " cannot compute ",
-              op->Name(), " as input #", i, " was expected to be on ",
-              expected_device->name(), " but is actually on ",
-              actual_device->name(), " (operation running on ",
-              op_device->name(), ")",
-              " Tensors can be copied explicitly using .gpu() or .cpu() "
-              "methods,"
-              " or transparently copied by using tf.enable_eager_execution("
-              "device_policy=tfe.DEVICE_PLACEMENT_SILENT). Copying tensors "
-              "between devices"
-              " may slow down your model");
-        case DEVICE_PLACEMENT_WARN:
-          LOG(WARNING) << "before computing " << op->Name() << " input #" << i
-                       << " was expected to be on " << expected_device->name()
-                       << " but is actually on " << actual_device->name()
-                       << " (operation running on " << op_device->name()
-                       << "). This triggers a copy which can be a performance "
-                          "bottleneck.";
-          break;
-        case DEVICE_PLACEMENT_SILENT:  // Do nothing.
-          break;
-      }
-      // We are only here if the policy is warn or silent copies, so we should
-      // trigger a copy.
-      auto pre_time = Env::Default()->NowMicros();
-      TensorHandle* copied_tensor = nullptr;
-      Status status = EagerCopyToDevice(
-          handle, ctx, expected_device->name().c_str(), &copied_tensor);
-      if (run_metadata != nullptr) {
-        auto* step_stats = run_metadata->mutable_step_stats();
-        MaybeInitializeStepStats(step_stats, ctx);
-        // Record the sending on the source device for now.
-        int device_idx = StepStatsDeviceIndex(step_stats, ctx, handle_device);
-        auto* dev_stats = step_stats->mutable_dev_stats(device_idx);
-        auto* node_stats = dev_stats->add_node_stats();
-        node_stats->set_node_name("_Send");
-        node_stats->set_all_start_micros(pre_time);
-        node_stats->set_op_end_rel_micros(Env::Default()->NowMicros() -
-                                          pre_time);
-      }
-      if (!status.ok()) {
-        if (copied_tensor != nullptr) copied_tensor->Unref();
-        return errors::Internal("Failed copying input tensor from ",
-                                actual_device->name(), " to ",
-                                expected_device->name(), " in order to run ",
-                                op->Name(), ": ", status.error_message());
-      }
-      handle->Unref();
-      handle = copied_tensor;
-      (*op->MutableInputs())[i] = copied_tensor;
-    }
+    TF_RETURN_IF_ERROR(MaybeCopyInputToExpectedDevice(
+        op, i, expected_device, run_metadata, &((*op->MutableInputs())[i])));
+    tensorflow::TensorHandle* handle = op->Inputs()[i];
     if (handle->dtype != kernel->input_type(i)) {
       return errors::InvalidArgument(
           "cannot compute ", op->Name(), " as input #", i,
@@ -192,8 +207,8 @@ Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
 // Resource4> as the input params to the synthesized function.
 //
 // It populates `const_input_types`, `arg_input_types` and
-// `op_input_to_func_input` based on the reordering results, that the caller can
-// use them to build an XlaLaunch. On error, it returns NULL, and sets
+// `op_input_to_func_input` based on the reordering results, that the caller
+// can use them to build an XlaLaunch. On error, it returns NULL, and sets
 // `status` accordingly.
 const FunctionDef* OpToFunction(TFE_Op* op,
                                 std::vector<TF_DataType>* const_input_types,
@@ -221,8 +236,8 @@ const FunctionDef* OpToFunction(TFE_Op* op,
   const std::unordered_set<string> const_inputs(
       *XlaOpRegistry::CompileTimeConstantInputs(op->operation.Name()));
 
-  // First add place holders for the input args, so that we can refer to them by
-  // position in the next loop. Also tally up the resource inputs.
+  // First add place holders for the input args, so that we can refer to them
+  // by position in the next loop. Also tally up the resource inputs.
   int num_resource_inputs = 0;
   for (int i = 0; i < op_def.input_arg_size(); ++i) {
     if (op_def.input_arg(i).type() == DT_RESOURCE) {
@@ -336,8 +351,9 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
                         &op_input_to_func_input, status);
     if (!status.ok()) return nullptr;
   } else {
-    // TODO(hongm): XlaOpRegistry::CompileTimeConstantInputs() does not work for
-    // functions, so we need to find another way to handle constant inputs.
+    // TODO(hongm): XlaOpRegistry::CompileTimeConstantInputs() does not work
+    // for functions, so we need to find another way to handle constant
+    // inputs.
     for (int i = const_input_types.size();
          i < fdef->signature().input_arg_size(); ++i) {
       VLOG(1) << "Adding Targs from input arg " << i;
@@ -348,8 +364,9 @@ std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
   DCHECK(fdef != nullptr);
 
   // Copy inputs and their devices.
-  // Since input param reordering may have occurred between `op` and `launch_op`
-  // via `op_input_to_func_input`, adjust the actual inputs accordingly.
+  // Since input param reordering may have occurred between `op` and
+  // `launch_op` via `op_input_to_func_input`, adjust the actual inputs
+  // accordingly.
   *launch_op->operation.MutableInputs() = op->operation.Inputs();
   for (TensorHandle* h : launch_op->operation.Inputs()) {
     h->Ref();
@@ -545,23 +562,23 @@ Status EagerLocalExecute(EagerOperation* op,
 Status EagerRemoteExecute(EagerOperation* op, eager::EagerClient* eager_client,
                           uint64 context_id, TensorHandle** retvals,
                           int* num_retvals) {
-  // All tensors must be on the same device.
-  // TODO(nareshmodi): handle silent copies
   eager::EnqueueRequest request;
   eager::EnqueueResponse response;
 
   auto* remote_op = request.add_queue()->mutable_operation();
 
-  for (auto* input : op->Inputs()) {
+  for (int i = 0; i < op->Inputs().size(); i++) {
     tensorflow::Device* input_device;
-    TF_RETURN_IF_ERROR(input->Device(&input_device));
+    TF_RETURN_IF_ERROR(op->Inputs()[i]->Device(&input_device));
     if (op->Device() != input_device) {
-      return tensorflow::errors::InvalidArgument(
-          "Ops and inputs are not on the same device. Use "
-          "TFE_TensorHandleCopyToDevice to get ops on the same "
-          "device. Expected device: ",
-          op->Device()->name(), ", Actual device: ", input_device->name());
+      // TODO(b/110044833): It's possible the same tensor gets copied to the
+      // remote device repeatedly.
+      TF_RETURN_IF_ERROR(MaybeCopyInputToExpectedDevice(
+          op, i, op->Device(), /* run_metadata= */ nullptr,
+          &(*op->MutableInputs())[i]));
     }
+
+    tensorflow::TensorHandle* input = op->Inputs()[i];
 
     tensorflow::uint64 op_id;
     int32 output_num;

@@ -223,6 +223,13 @@ class Dataset(object):
   def from_tensors(tensors):
     """Creates a `Dataset` with a single element, comprising the given tensors.
 
+    Note that if `tensors` contains a NumPy array, and eager execution is not
+    enabled, the values will be embedded in the graph as one or more
+    @{tf.constant} operations. For large datasets (> 1 GB), this can waste
+    memory and run into byte limits of graph serialization.  If tensors contains
+    one or more large NumPy arrays, consider the alternative described in
+    @{$programmers_guide/datasets#consuming_numpy_arrays$this guide}.
+
     Args:
       tensors: A nested structure of tensors.
 
@@ -234,6 +241,13 @@ class Dataset(object):
   @staticmethod
   def from_tensor_slices(tensors):
     """Creates a `Dataset` whose elements are slices of the given tensors.
+
+    Note that if `tensors` contains a NumPy array, and eager execution is not
+    enabled, the values will be embedded in the graph as one or more
+    @{tf.constant} operations. For large datasets (> 1 GB), this can waste
+    memory and run into byte limits of graph serialization.  If tensors contains
+    one or more large NumPy arrays, consider the alternative described in
+    @{$programmers_guide/datasets#consuming_numpy_arrays$this guide}.
 
     Args:
       tensors: A nested structure of tensors, each having the same size in the
@@ -409,13 +423,23 @@ class Dataset(object):
         # Use the same _convert function from the py_func() implementation to
         # convert the returned values to arrays early, so that we can inspect
         # their values.
-        # pylint: disable=protected-access
-        ret_arrays = [
-            script_ops.FuncRegistry._convert(ret, dtype=dtype.as_numpy_dtype)
-            for ret, dtype in zip(
-                nest.flatten_up_to(output_types, values), flattened_types)
-        ]
-        # pylint: enable=protected-access
+        try:
+          flattened_values = nest.flatten_up_to(output_types, values)
+        except (TypeError, ValueError):
+          raise TypeError(
+              "`generator` yielded an element that did not match the expected "
+              "structure. The expected structure was %s, but the yielded "
+              "element was %s." % (output_types, values))
+        ret_arrays = []
+        for ret, dtype in zip(flattened_values, flattened_types):
+          try:
+            ret_arrays.append(script_ops.FuncRegistry._convert(  # pylint: disable=protected-access
+                ret, dtype=dtype.as_numpy_dtype))
+          except (TypeError, ValueError):
+            raise TypeError(
+                "`generator` yielded an element that could not be converted to "
+                "the expected type. The expected type was %s, but the yielded "
+                "element was %s." % (dtype.name, ret))
 
         # Additional type and shape checking to ensure that the components
         # of the generated element match the `output_types` and `output_shapes`
