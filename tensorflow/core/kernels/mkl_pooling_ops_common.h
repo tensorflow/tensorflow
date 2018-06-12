@@ -65,7 +65,8 @@ struct MklPoolingParams {
 template <typename T>
 class MklPoolingFwdPrimitive : public MklPrimitive {
  public:
-  explicit MklPoolingFwdPrimitive(const MklPoolingParams& fwdParams) {
+  explicit MklPoolingFwdPrimitive(const MklPoolingParams& fwdParams) :
+           cpu_engine_(engine::cpu, 0) {
     context_.fwd_stream.reset(new stream(stream::kind::eager));
     if (context_.fwd == nullptr)
        Setup(fwdParams);
@@ -95,7 +96,6 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
 
  private:
   void Setup(const MklPoolingParams& fwdParams);
-
 
   struct PoolingFwdContext {
     // algorithm
@@ -135,9 +135,10 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
       dst_mem(nullptr), fwd_desc(nullptr), fwd_pd(nullptr), src_md(nullptr),
       dst_md(nullptr), fwd(nullptr), fwd_stream(nullptr) {
     }
-  } context_;
+  };
 
-  engine cpu_engine_ = engine(engine::cpu, 0);
+  struct PoolingFwdContext context_;
+  engine cpu_engine_;
 };
 
 template <typename T>
@@ -200,7 +201,8 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 template <typename T>
 class MklPoolingBwdPrimitive : public MklPrimitive {
  public:
-  explicit MklPoolingBwdPrimitive(const MklPoolingParams& bwdParams) {
+  explicit MklPoolingBwdPrimitive(const MklPoolingParams& bwdParams) :
+           cpu_engine(engine::cpu, 0) {
     context_.bwd_stream.reset(new stream(stream::kind::eager));
     if (context_.bwd == nullptr)
       Setup(bwdParams);
@@ -238,6 +240,7 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
 
  private:
   void Setup(const MklPoolingParams& bwdParams);
+
   // Primitive reuse context for pooling bwd ops
   struct PoolingBwdContext {
     // algorithm
@@ -280,9 +283,10 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
       fwd_desc(nullptr), bwd_desc(nullptr), fwd_pd(nullptr), bwd_pd(nullptr),
       bwd(nullptr), bwd_stream(nullptr) {
     }
-  } context_;
-  // cpu engine
-  engine cpu_engine = engine(engine::cpu, 0);
+  };
+
+  struct PoolingBwdContext context_;
+  engine cpu_engine;
 };
 
 template <typename T>
