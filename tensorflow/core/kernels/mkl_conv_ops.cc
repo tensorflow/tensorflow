@@ -86,7 +86,7 @@ template <typename T>
 class MklConv2DFwdPrimitive: public MklPrimitive {
  public:
   explicit MklConv2DFwdPrimitive(const MklConvFwdParams& convFwdDims) :
-    cpu_engine_(engine(engine::cpu, 0)) {
+    cpu_engine_(engine::cpu, 0) {
     context_.fwd_stream.reset(new stream(stream::kind::eager));
     // create conv primitive
     if (context_.conv_fwd == nullptr) {
