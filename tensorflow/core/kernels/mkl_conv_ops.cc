@@ -85,7 +85,8 @@ struct MklConvFwdParams {
 template <typename T>
 class MklConv2DFwdPrimitive: public MklPrimitive {
  public:
-  explicit MklConv2DFwdPrimitive(const MklConvFwdParams& convFwdDims) {
+  explicit MklConv2DFwdPrimitive(const MklConvFwdParams& convFwdDims) :
+    cpu_engine_(engine(engine::cpu, 0)) {
     context_.fwd_stream.reset(new stream(stream::kind::eager));
     // create conv primitive
     if (context_.conv_fwd == nullptr) {
@@ -139,8 +140,6 @@ class MklConv2DFwdPrimitive: public MklPrimitive {
     context_.src_mem->set_data_handle(DummyData);
     context_.filter_mem->set_data_handle(DummyData);
     context_.dst_mem->set_data_handle(DummyData);
-
-    return;
   }
 
   memory::format GetSrcMemoryFormat() const {
@@ -192,9 +191,7 @@ class MklConv2DFwdPrimitive: public MklPrimitive {
        src_md(nullptr), filter_md(nullptr), bias_md(nullptr),
        fwd_pd(nullptr), conv_fwd(nullptr), fwd_stream(nullptr) {
     }
-  } context_;
-
-  engine cpu_engine_ = engine(engine::cpu, 0);
+  };
 
   void Setup(const MklConvFwdParams& convFwdDims) {
     // create memory descriptors for convolution data w/ no specified format
@@ -260,6 +257,9 @@ class MklConv2DFwdPrimitive: public MklPrimitive {
     context_.fwd_primitives.push_back(*context_.conv_fwd);
     return;
   }
+
+  struct ConvFwdContext context_;
+  engine cpu_engine_;
 };
 
 template <typename T>
