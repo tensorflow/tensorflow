@@ -13,8 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Classes representing statistical distributions and ops for working with them.
-
-See the @{$python/contrib.distributions} guide.
 """
 from __future__ import absolute_import
 from __future__ import division

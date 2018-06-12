@@ -48,6 +48,12 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
+#define TOCO_RETURN_IF_ERROR(...)                       \
+  do {                                                  \
+    const ::toco::port::Status _status = (__VA_ARGS__); \
+    if (!_status.ok()) return _status;                  \
+  } while (0)
+
 using tensorflow::AttrValue;
 using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
@@ -128,6 +134,37 @@ const AttrValue::ListValue& GetListAttr(const NodeDef& node,
   const auto& attr = node.attr().at(attr_name);
   CHECK_EQ(attr.value_case(), AttrValue::kList);
   return attr.list();
+}
+
+Status CheckOptionalAttr(const NodeDef& node, const string& attr_name,
+                         const string& expected_value) {
+  if (HasAttr(node, attr_name)) {
+    const string& value = GetStringAttr(node, attr_name);
+    if (value != expected_value) {
+      return Status(false, "Unexpected value for attribute '" + attr_name +
+                               "'. Expected '" + expected_value + "'");
+    }
+  }
+  return Status::OK();
+}
+Status CheckOptionalAttr(const NodeDef& node, const string& attr_name,
+                         const tensorflow::DataType& expected_value) {
+  if (HasAttr(node, attr_name)) {
+    const tensorflow::DataType& value = GetDataTypeAttr(node, attr_name);
+    if (value != expected_value) {
+      return Status(false, "Unexpected value for attribute '" + attr_name +
+                               "'. Expected '" +
+                               tensorflow::DataType_Name(expected_value) + "'");
+    }
+  }
+  return Status::OK();
+}
+
+template <typename T1, typename T2>
+Status ExpectValue(const T1& v1, const T2& v2, const string& description) {
+  if (v1 == v2) return Status::OK();
+  return Status(false, absl::StrCat("Unexpected ", description, ": got ", v1,
+                                    ", expected ", v2));
 }
 
 ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
@@ -466,18 +503,16 @@ Status ConvertConstOperator(const NodeDef& node,
   return status;
 }
 
-void ConvertConvOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
+Status ConvertConvOperator(const NodeDef& node,
+                           const TensorFlowImportFlags& tf_import_flags,
+                           Model* model) {
   CHECK_EQ(node.op(), "Conv2D");
   CheckInputsCount(node, tf_import_flags, 2);
 
   // We only support NHWC, which is the default data_format.
   // So if data_format is not defined, we're all good.
-  if (HasAttr(node, "data_format")) {
-    CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
-  }
-  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  TOCO_RETURN_IF_ERROR(CheckOptionalAttr(node, "data_format", "NHWC"));
+  TOCO_RETURN_IF_ERROR(CheckOptionalAttr(node, "T", DT_FLOAT));
 
   const auto& input_name = node.input(0);
   const auto& weights_name = node.input(1);
@@ -502,27 +537,27 @@ void ConvertConvOperator(const NodeDef& node,
   auto* conv = new ConvOperator;
   conv->inputs = {input_name, reordered_weights_name};
   conv->outputs = {node.name()};
+  TOCO_RETURN_IF_ERROR(
+      Status(HasAttr(node, "strides"), "Missing attribute 'strides'"));
   const auto& strides = GetListAttr(node, "strides");
-  CHECK_EQ(strides.i_size(), 4);
-  CHECK_EQ(strides.i(0), 1);
-  CHECK_EQ(strides.i(3), 1);
+  TOCO_RETURN_IF_ERROR(ExpectValue(strides.i_size(), 4, "number of strides"));
+  TOCO_RETURN_IF_ERROR(ExpectValue(strides.i(0), 1, "strides(0)"));
+  TOCO_RETURN_IF_ERROR(ExpectValue(strides.i(3), 1, "strides(3)"));
   conv->stride_height = strides.i(1);
   conv->stride_width = strides.i(2);
   if (HasAttr(node, "dilations")) {
     const auto& dilations = GetListAttr(node, "dilations");
-    CHECK_EQ(dilations.i_size(), 4);
-    CHECK_EQ(dilations.i(0), 1)
-        << "Can only import Conv ops with dilation along the height (1st) or "
-           "width (2nd) axis. TensorFlow op \""
-        << node.name() << "\" had dilations:[ " << dilations.i(0) << ", "
-        << dilations.i(1) << ", " << dilations.i(2) << ", " << dilations.i(3)
-        << "].";
-    CHECK_EQ(dilations.i(3), 1)
-        << "Can only import Conv ops with dilation along the height (1st) or "
-           "width (2nd) axis. TensorFlow op \""
-        << node.name() << "\" had dilations:[ " << dilations.i(0) << ", "
-        << dilations.i(1) << ", " << dilations.i(2) << ", " << dilations.i(3)
-        << "].";
+    TOCO_RETURN_IF_ERROR(
+        ExpectValue(dilations.i_size(), 4, "number of dilations"));
+    if (dilations.i(0) != 1 || dilations.i(3) != 1) {
+      return Status(
+          false, absl::StrCat(
+                     "Can only import Conv ops with dilation along the height "
+                     "(1st) or width (2nd) axis. TensorFlow op \"",
+                     node.name(), "\" had dilations:[ ", dilations.i(0), ", ",
+                     dilations.i(1), ", ", dilations.i(2), ", ", dilations.i(3),
+                     "]."));
+    }
     conv->dilation_height_factor = dilations.i(1);
     conv->dilation_width_factor = dilations.i(2);
   } else {
@@ -535,9 +570,11 @@ void ConvertConvOperator(const NodeDef& node,
   } else if (padding == "VALID") {
     conv->padding.type = PaddingType::kValid;
   } else {
-    LOG(FATAL) << "Bad padding (only SAME and VALID are supported)";
+    return Status(false, "Bad padding (only SAME and VALID are supported)");
   }
   model->operators.emplace_back(conv);
+
+  return Status::OK();
 }
 
 void ConvertDepthwiseConvOperator(const NodeDef& node,
@@ -1408,11 +1445,13 @@ void ConvertTransposeConvOperator(const NodeDef& node,
   if (existing_transpose) {
     CHECK(existing_transpose->type == OperatorType::kTranspose);
   } else {
-    // Transpose weights from HWIO order to OHWI order, which is more efficient
-    // for computation
+    // Transpose weights from HWOI order to OHWI order, which is more efficient
+    // for computation. (Note that TensorFlow considers the order as HWIO
+    // because they consider this a backward conv, inverting the sense of
+    // input/output.)
     TransposeOperator* transpose = new TransposeOperator;
     string perm_array = CreateConstArray<ArrayDataType::kInt32>(
-        model, node.name() + "_transpose_perm", {3, 0, 1, 2});
+        model, node.name() + "_transpose_perm", {2, 0, 1, 3});
     transpose->inputs = {weights_name, perm_array};
     transpose->outputs = {transposed_weights_name};
     model->operators.emplace_back(transpose);
@@ -1722,7 +1761,7 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
   if (node.op() == "Const") {
     return ConvertConstOperator(node, tf_import_flags, model);
   } else if (node.op() == "Conv2D") {
-    ConvertConvOperator(node, tf_import_flags, model);
+    return ConvertConvOperator(node, tf_import_flags, model);
   } else if (node.op() == "Conv2DBackpropInput") {
     ConvertTransposeConvOperator(node, tf_import_flags, model);
   } else if (node.op() == "DepthwiseConv2dNative") {
@@ -1904,10 +1943,18 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertRandomUniform(node, tf_import_flags, model);
   } else if (node.op() == "Sin") {
     ConvertSimpleOperator<SinOperator, 1>(node, tf_import_flags, model);
+  } else if (node.op() == "Log") {
+    ConvertSimpleOperator<LogOperator, 1>(node, tf_import_flags, model);
   } else if (node.op() == "Select") {
     ConvertSimpleOperator<SelectOperator, 3>(node, tf_import_flags, model);
   } else if (node.op() == "SparseToDense") {
     ConvertSparseToDenseOperator(node, tf_import_flags, model);
+  } else if (node.op() == "Equal") {
+    ConvertSimpleOperator<TensorFlowEqualOperator, 2>(node, tf_import_flags,
+                                                      model);
+  } else if (node.op() == "NotEqual") {
+    ConvertSimpleOperator<TensorFlowNotEqualOperator, 2>(node, tf_import_flags,
+                                                         model);
   } else {
     ConvertUnsupportedOperator(node, tf_import_flags, model);
   }

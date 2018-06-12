@@ -606,6 +606,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateReshape(shape, operands[0]));
       break;
     }
+    case HloOpcode::kGenerateToken: {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateGenerateToken(operands));
+      break;
+    }
     case HloOpcode::kTuple: {
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
@@ -777,6 +785,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
+      optional<std::vector<tensorflow::int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                             &dimensions};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1137,7 +1148,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
                                HloOpcodeString(opcode)));
   }
 
-  instruction->set_name(name);
+  instruction->SetAndSanitizeName(name);
+  if (instruction->name() != name) {
+    return Error(name_loc,
+                 StrCat("illegal instruction name: ", name,
+                        "; suggest renaming to: ", instruction->name()));
+  }
 
   // Add shared attributes like metadata to the instruction, if they were seen.
   if (sharding) {

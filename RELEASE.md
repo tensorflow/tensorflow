@@ -1,3 +1,62 @@
+# Release 1.9.0
+
+## Major Features And Improvements
+* Update tf.keras to the Keras 2.1.6 API.
+* `tfe.Network` is deprecated. Please inherit from `tf.keras.Model`.
+* Adding support of core feature columns and losses to gradient boosted trees estimators.
+* The distributions.Bijector API supports broadcasting for Bijectors with new API changes. See [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/distributions/bijectors/Bijector) for more details.
+* Layered variable names have changed in the following conditions:
+  * Using `tf.keras.layers` with custom variable scopes.
+  * Using `tf.layers` in  a subclassed `tf.keras.Model` class. See [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers) for more details
+
+## Breaking Chances
+  * If you're opening empty variable scopes; replace `variable_scope`('', ...) by `variable_scope`(`tf.get_variable_scope()`, ...).
+
+## Bug Fixes and Other Changes
+* `tf.data`:
+  * The `DatasetBase::DebugString()` method is now `const`.
+  * Added the `tf.contrib.data.sample_from_datasets()` API for randomly sampling from multiple datasets.
+* Eager Execution:
+* `tf.keras`:
+  * Move Keras code out of _impl folder and remove API files.
+  * `tf.keras.Model.save_weights` now saves in TensorFlow format by default.
+  * Enable dataset iterators to be passed to `tf.keras.Model` training/eval methods.
+* Accelerated Linear Algebra (XLA):
+* TensorFlow Debugger (tfdbg): fix an issue in which the TensorBoard Debugger Plugin could not handle total source file size exceeding gRPC message size limit (4 MB).
+* `tf.contrib`:
+  * Add `tf.contrib.data.choose_from_datasets()`.
+  * `tf.contrib.data.make_csv_dataset()` now supports line breaks in quoted strings. Two arguments were removed from `make_csv_dataset`.
+  * `tf.contrib.framework.zero_initializer` supports ResourceVariable.
+  * Adding "constrained_optimization" to tensorflow/contrib.
+* Other:
+  * Add GCS Configuration Ops.
+  * Changing signature of `MakeIterator` to enable propagating error status.
+  * KL divergence for two Dirichlet distributions.
+  * More consistent GcsFileSystem behavior for certain reads past EOF.
+  * Update benchmark for tf.scan to match ranges across eager and graph modes.
+  * Fixed bug in `tf.reduce_prod gradient` for complex dtypes.
+  * Add optional `args` argument to `Dataset.from_generator()`.
+  * Allow the use of '.' in variables (e.g. "hparams.parse('a.b=1.0')"), which would previously raise an error. This will correspond to an attribute name with an embedded '.' symbol (e.g. 'a.b'), which can only be accessed indirectly (e.g. through getattr and setattr).  To set this up the user will first need to explicitly add the variable to the hparam object (e.g. "hparams.add_hparam(name='a.b', value=0.0)").
+  * Benchmark for tf.scan in graph and eager modes.
+  * Added complex128 support to FFT, FFT2D, FFT3D, IFFT, IFFT2D, and IFFT3D.
+  * Making ids unique in `nn.embedding_lookup_sparse`. This helps to reduce RPC calls for looking up the embeddings when there are repeated ids in the batch.
+  * Support indicator column in boosted trees.
+  * Prevent `tf.gradients()` from backpropagating through integer tensors.
+  * LinearOperator[1D,2D,3D]Circulant added to `tensorflow.linalg`.
+  * Conv3D, Conv3DBackpropInput, Conv3DBackpropFilter now supports arbitrary.
+  * Added `tf.train.Checkpoint` for reading/writing object-based checkpoints.
+  * `Dataset.list_files()` now produces determinstic results when `shuffle=False` or a `seed` is passed.
+  * Added LinearOperatorKronecker, a dense-free implementation of the Kronecker Product.
+  * Allow LinearOperator to broadcast.
+  * SavedModelBuilder will now deduplicate asset names that point to files with the same basename and the same contents. Note that this may result in new asset files included in SavedModels in cases where assets with the same name but different contents were previously overwriting each other.
+
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Abdullah Alrasheed, Achal Shah, Ad-530, ADiegoCAlonso, Aditya Yogi, Ag Ramesh, akindyakov, Andy Kernahan, Anya Petrova, Aurelien Geron, Ben, Ben Barsdell, Bhavani-Subramanian, braincodercn, Brett Koonce, Brian Nemsick, Brian Zier, Bryan Heden, candy.dc, cclauss, Clayne Robison, ctiijima, Dalmo Cirne, David Norman, David T.H. Kao, DosLin, ekelsen, Elson Rodriguez, Erik Smistad, Felix Abecassis, Fergal Cotter, fo40225, foo0x29a, Freedom" Koan-Sin Tan, FréDéRic Branchaud-Charron, gdh1995, Geoffrey Irving, Giuseppe, gracehoney, Guido Zuidhof, Guillaume Klein, Guozhong Zhuang, Haggai, Harald Husum, imsheridan, Ivan Zhang, Jan Zikes, Jayaram Bobba, Jesse Benson, Jesse Gumz, Jiajia Li, Jie, jinghuangintel, Jingwen, jjsjann123, Joe Yearsley, Joel Hestness, Joel Shor, josephyearsley, Junpeng Lao, Karol M. Langner, Kb Sriram, krantideep95, Krish Ravindranath, Letian Feng, Loo Rong Jie, Lukas Geiger, Maciej, Mahmoud Abuzaina, ManHyuk, Mark Ryan, mbhuiyan, Michal Turek, Mostafa Alaa, Myungsung Kwak, Nand Dalal, Nehal J Wani, Neil Tenenholtz, ngc92, Nicholas Nadeau, P.Eng., Avs, Niranjan Hasabnis, P-Hidringer, Paul Van Eck, Peng Yu, Qing Zhao, Qingying Chen, Quanlong, Rajendra Arora, Rholais Lii, rmanyari, Robin Richtsfeld, Russell Klopfer, Sagi, Sam Sendelbach, Sandeep N Gupta, Sandip Giri, Sarah Edkins, Scott Tseng, Sdalbsoo, Sergii Khomenko, Seungwoo Choi (Biggie), Seyed Majid Azimi, Shaoning Zeng, shengfuintel, Siu Kei, Muk, Smit Shilu, soonson, Stefan Schweter, Sukhwan Kim, Sunitha Kambhampati, Taehoon Lee, tamimaddari82, Tang, Wenyi, Ted Chang, u2takey, Utkarsh Upadhyay, Vadim Markovtsev, voegtlel, Wai Hon Law, wangsiyu, Wenhao Hu, wenhao.hu, William D. Irons, Yan Facai (颜发才), Yanbo Liang, Yihong Wang, Yilei (Dolee) Yang, Yong Tang, Yuan (Terry) Tang
+
 # Release 1.8.0
 
 ## Major Features And Improvements

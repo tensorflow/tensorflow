@@ -5,6 +5,8 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/contrib/lite:build_def.bzl", "tflite_linkopts")
+load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
 
 common_copts = ["-Wall"]
 
@@ -14,7 +16,7 @@ cc_binary(
         "benchmark_main.cc",
         "logging.h",
     ],
-    copts = common_copts,
+    copts = tflite_copts() + common_copts,
     linkopts = select({
         "//tensorflow:android": [
             "-pie",
@@ -58,6 +60,7 @@ cc_library(
     ],
     hdrs = ["benchmark_tflite_model.h"],
     copts = common_copts,
+    linkopts = tflite_linkopts(),
     deps = [
         ":benchmark_model_lib",
         "//tensorflow/contrib/lite:framework",

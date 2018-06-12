@@ -135,17 +135,18 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
     // instruction for each class.
     tensorflow::gtl::FlatSet<HloInstruction*, decltype(&CseHash),
                              decltype(cse_equal)>
-        representatives(/*N=*/1024, &CseHash, cse_equal);
-
+        representatives(/*N=*/computation->instruction_count() + 1, &CseHash,
+                        cse_equal);
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // If the instruction has zero operands (constants, parameters, etc.) skip
       // over it.
       if (instruction->operand_count() == 0) {
         continue;
       }
-
-      // Skip instructions which have side effects.
-      if (instruction->HasSideEffect()) {
+      // Skip instructions which have side effects or are a domain (which must
+      // not be CSE-ed).
+      if (instruction->HasSideEffect() ||
+          instruction->opcode() == HloOpcode::kDomain) {
         continue;
       }
 

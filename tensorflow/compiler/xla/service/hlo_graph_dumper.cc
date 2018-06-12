@@ -723,11 +723,28 @@ string HloDotDumper::DumpRootTag() {
                 to_id, node_body, node_shape, NodeColorAttributes(color));
 }
 
+static const HloInstruction* TryGetFusionParameterConstant(
+    const HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kParameter || !instr->IsFused()) {
+    return nullptr;
+  }
+  const HloInstruction* fusion = instr->parent()->FusionInstruction();
+  const HloInstruction* operand = fusion->operand(instr->parameter_number());
+  if (operand->opcode() == HloOpcode::kConstant) {
+    return operand;
+  }
+  return nullptr;
+}
+
 bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
   // If a node:
   //
-  //  - is a tuple-shaped parameter,
-  //  - is not a parameter to a fusion node,
+  //  - is a parameter of a fusion node which is bound to a constant,
+  //
+  // or
+  //
+  //  - is a tuple-shaped parameter, and
+  //  - is not a parameter to a fusion node, and
   //  - has at least kMinUsersToOmit users shown, and
   //  - all of the shown users are get-tuple-elements,
   //
@@ -735,6 +752,9 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
   //
   // This helps us handle the common case where a while loop body has one big
   // tuple-shaped parameter.
+  if (TryGetFusionParameterConstant(instr) != nullptr) {
+    return true;
+  }
   const int kMinUsersToOmit = 3;
   return instr->opcode() == HloOpcode::kParameter &&
          ShapeUtil::IsTuple(instr->shape()) && !instr->IsFused() &&
@@ -841,17 +861,6 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
                   ShapeUtil::HumanString(constant->shape()));
   };
 
-  // Special case: If instr is a parameter to a fusion node, check whether the
-  // corresponding operand to the fusion node is a constant.
-  if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
-    const HloInstruction* fusion = instr->parent()->FusionInstruction();
-    const HloInstruction* operand = fusion->operand(instr->parameter_number());
-    if (operand->opcode() != HloOpcode::kConstant) {
-      return "";
-    }
-    return StrCat("<b>constant</b> ", stringify_constant(operand));
-  }
-
   std::vector<string> lines;
   for (int64 i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
@@ -859,11 +868,18 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     if (operand->opcode() == HloOpcode::kConstant) {
       operand_str = stringify_constant(operand);
     } else if (ShouldMergeIntoUsers(operand)) {
-      // Special case: If the operand is a parameter, use its parameter number
-      // rather than its name, because that's generally how people think of the
-      // node.
+      // Special case: If the operand is a parameter to a fusion node and it
+      // always has a constant value, display it like a regular constant.
+      //
+      // For other parameters, use the parameter number rather than the proper
+      // name, because that's generally how people think of the node.
       if (operand->opcode() == HloOpcode::kParameter) {
-        operand_str = Printf("Parameter %lld", operand->parameter_number());
+        if (const HloInstruction* constant =
+                TryGetFusionParameterConstant(operand)) {
+          operand_str = stringify_constant(constant);
+        } else {
+          operand_str = Printf("Parameter %lld", operand->parameter_number());
+        }
       } else {
         operand_str = operand->name();
       }
@@ -897,11 +913,14 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   const auto kParameterColor = kOrange;
 
   // Special case: If this instruction has a parameter merged into it, paint it
-  // the same color as a parameter.
+  // the same color as a parameter.  Unless the merged-in parameter is a
+  // parameter to a fusion node that is bound to a constant -- these aren't
+  // "real" parameters from the user's perspective.
   if (std::any_of(instr->operands().begin(), instr->operands().end(),
                   [&](const HloInstruction* operand) {
                     return operand->opcode() == HloOpcode::kParameter &&
-                           ShouldMergeIntoUsers(operand);
+                           ShouldMergeIntoUsers(operand) &&
+                           TryGetFusionParameterConstant(operand) == nullptr;
                   })) {
     return kParameterColor;
   }
@@ -964,6 +983,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTrace:
+    case HloOpcode::kGenerateToken:
     case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
@@ -975,7 +995,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       }
       return kGreen;
     case HloOpcode::kConcatenate:
-    case HloOpcode::kCopy:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kGather:
     case HloOpcode::kPad:
@@ -996,6 +1015,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
         return kWhite;
       }
+      return kGreen;
+    case HloOpcode::kCopy:
+      // Emphasize copy nodes, which are either physical transposes (and thus
+      // significant), or copies of read-only buffers (and thus dead weight).
       return kGreen;
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:

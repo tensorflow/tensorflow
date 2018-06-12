@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -57,10 +56,6 @@ namespace xla {
 // attached to.
 class HloModule {
  public:
-  HloModule(const string& name,
-            const VersionedComputationHandle& entry_computation_handle,
-            const HloModuleConfig& config);
-
   // Constructor without a versioned computation handle. This constructor should
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
@@ -126,10 +121,6 @@ class HloModule {
     return config_.device_entry_computation_layout();
   }
 
-  const VersionedComputationHandle& entry_computation_handle() const {
-    return entry_computation_handle_;
-  }
-
   // Gets the computations in this module.
   //
   // Returns a view of HloComputation*s, so you can iterate over this in the
@@ -188,9 +179,7 @@ class HloModule {
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
   static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
-      const HloModuleProto& proto, const HloModuleConfig& module_config,
-      const VersionedComputationHandle& entry_computation_handle =
-          VersionedComputationHandle());
+      const HloModuleProto& proto, const HloModuleConfig& module_config);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
@@ -263,10 +252,6 @@ class HloModule {
   // where we don't need deterministic execution.
   mutable std::mt19937_64 rng_{42};
   mutable tensorflow::mutex rng_mutex_;
-
-  // Versioned handle of the entry computation of the module.
-  bool has_entry_computation_handle_ = false;
-  VersionedComputationHandle entry_computation_handle_;
 
   // Unique name generator for computation and instruction names, which are
   // unique per module.

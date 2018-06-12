@@ -123,7 +123,10 @@ def toco_convert(input_data,
                  drop_control_dependency=True,
                  reorder_across_fake_quant=False,
                  allow_custom_ops=False,
-                 change_concat_input_ranges=False):
+                 change_concat_input_ranges=False,
+                 quantize_weights=False,
+                 dump_graphviz_dir=None,
+                 dump_graphviz_video=False):
   """Convert a model using TOCO from `input_format` to `output_format`.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -143,10 +146,9 @@ def toco_convert(input_data,
       `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
-    quantized_input_stats: Dict of strings representing input tensor names
-      mapped to tuple of integers representing the mean and standard deviation
-      of the training data (e.g., {"foo" : (0., 1.)}). Only need if
-      `inference_type` is `QUANTIZED_UINT8`. (default None)
+    quantized_input_stats: List of tuples of integers representing the mean and
+      standard deviation. Each tuple maps to the corresponding input tensor.
+      Only need if `inference_type` is `QUANTIZED_UINT8`. (default None)
     default_ranges_stats: Tuple of integers representing (min, max) range values
       for all arrays without a specified range. Intended for experimenting with
       quantization via "dummy quantization". (default None)
@@ -158,14 +160,24 @@ def toco_convert(input_data,
       nodes is preventing graph transformations necessary to convert the graph.
       Results in a graph that differs from the quantized training graph,
       potentially causing differing arithmetic behavior. (default False)
-    change_concat_input_ranges: Boolean to change behavior of min/max ranges for
-      inputs and outputs of the concat operator for quantized models. Changes
-      the ranges of concat operator overlap when true. (default False)
     allow_custom_ops: Boolean indicating whether to allow custom operations.
       When false any unknown operation is an error. When true, custom ops are
       created for any op that is unknown. The developer will need to provide
       these to the TensorFlow Lite runtime with a custom resolver.
       (default False)
+    change_concat_input_ranges: Boolean to change behavior of min/max ranges for
+      inputs and outputs of the concat operator for quantized models. Changes
+      the ranges of concat operator overlap when true. (default False)
+    quantize_weights: Boolean indicating whether to store weights as quantized
+      weights followed by dequantize operations. Computation is still done in
+      float, but reduces model size (at the cost of accuracy and latency).
+      (default False)
+    dump_graphviz_dir: Full filepath of folder to dump the graphs at various
+      stages of processing GraphViz .dot files. Preferred over
+      --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
+      output file. (default None)
+    dump_graphviz_video: Boolean indicating whether to dump the graph after
+      every graph transformation. (default False)
 
   Returns:
     The converted data. For example if TFLite was the destination, then
@@ -185,9 +197,13 @@ def toco_convert(input_data,
   toco.drop_control_dependency = drop_control_dependency
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
+  toco.quantize_weights = quantize_weights
   if default_ranges_stats:
     toco.default_ranges_min = default_ranges_stats[0]
     toco.default_ranges_max = default_ranges_stats[1]
+  if dump_graphviz_dir:
+    toco.dump_graphviz_dir = dump_graphviz_dir
+  toco.dump_graphviz_include_video = dump_graphviz_video
 
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
