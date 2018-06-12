@@ -168,7 +168,6 @@ def calib_graph_to_infer_graph(calibration_graph_def):
   for n in calibration_graph_def.node:
     if n.op == "TRTEngineOp":
       is_calib_graph = len(n.attr["calibration_data"].s) == 0
-      break
   if not is_calib_graph:
     tf_logging.error(
         "Not a calib graph. Doesn't seem to contain any calibration nodes.")

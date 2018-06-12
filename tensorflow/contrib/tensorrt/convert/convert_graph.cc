@@ -173,7 +173,9 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   tensorflow::grappler::GrapplerItem item;
   item.fetch = output_names;
   item.graph = graph_def;
-
+  // grappler requires a virtual cluster with a proper GPU device
+  // in order to calculate flops>0 or fails with FATAL
+  // We add numbers from a Pascal card here to have flops>0
   tensorflow::DeviceProperties device_properties;
   device_properties.set_type("GPU");
   device_properties.mutable_environment()->insert({"architecture", "6"});
@@ -193,7 +195,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   // break the graph for us
   rw_cfg.add_optimizers("constfold");
   rw_cfg.add_optimizers("layout");
-
+  rw_cfg.set_meta_optimizer_iterations(tensorflow::RewriterConfig::ONE);
   tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
   tensorflow::GraphDef gdef;
   TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, &gdef));
@@ -385,8 +387,9 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     }
   }
   string segment_string;
-  if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
-    // add static engine creation here
+  if (info.engine_type == EngineInfo::EngineType::TRTStatic ||
+      info.precision_mode == INT8MODE) {
+    // Create static engine and for int8 test validity of the engine.
     tensorflow::tensorrt::Logger trt_logger;
     auto builder = std::shared_ptr<nvinfer1::IBuilder>(
         nvinfer1::createInferBuilder(trt_logger), [](nvinfer1::IBuilder* p) {
@@ -402,7 +405,6 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     auto status = ConvertSubgraphToEngine(info.segment_graph_def, builder.get(),
                                           shapes, &engine, info.precision_mode);
     if (!status.ok()) {
-      LOG(ERROR) << "Engine conversion failed with " << status;
       return status;
     }
     if (engine) {
@@ -413,6 +415,9 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
       segment_string =
           string((const char*)engine_data->data(), engine_data->size());
       engine->destroy();
+    }
+    if (info.precision_mode == INT8MODE) {
+      segment_string = info.segment_graph_def.SerializeAsString();
     }
   } else {
     segment_string = info.segment_graph_def.SerializeAsString();
@@ -587,9 +592,9 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   auto native_segment = fdeflib.add_function();
   TF_RETURN_IF_ERROR(tensorflow::GraphToFunctionDef(
       sgraph, StrCat(name, "_native_segment"), native_segment));
-  if (VLOG_IS_ON(3)) {
-    VLOG(3) << name << " Function_Def ";
-    VLOG(3) << native_segment->DebugString();
+  if (VLOG_IS_ON(7)) {
+    VLOG(7) << name << " Function_Def ";
+    VLOG(7) << native_segment->DebugString();
   }
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdeflib));
   return tensorflow::Status::OK();
@@ -692,18 +697,24 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
         auto pm = tensorflow::ProcessState::singleton();
         // this should be instantiated by now
         auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
-        VLOG(0) << "Got an allocator for device tf_device=" << tf_gpu_id.value()
+        VLOG(1) << "Got an allocator for device tf_device=" << tf_gpu_id.value()
                 << " cuda device= " << cuda_device_id << " at "
                 << dev_allocator;
         alloc.reset(new TRTDeviceAllocator(dev_allocator));
       }
     }
     cudaSetDevice(cuda_device_id);
-    CreateTRTNode(&graph, engine_segments, i, trt_node, alloc.get(),
-                  params.max_batch_size);
-    const auto& internal_nodes = segments.at(i).first;
-    for (auto node_id : internal_nodes) {
-      graph.RemoveNode(node_map.at(node_id));
+    auto status = CreateTRTNode(&graph, engine_segments, i, trt_node,
+                                alloc.get(), params.max_batch_size);
+    if (status.ok()) {
+      const auto& internal_nodes = segments.at(i).first;
+      for (auto node_id : internal_nodes) {
+        graph.RemoveNode(node_map.at(node_id));
+      }
+    } else {
+      LOG(WARNING) << "Engine creation for segment " << i << ", composed of "
+                   << segments.at(i).first.size() << " nodes failed. Skipping";
+      VLOG(1) << "Failure reason " << status;
     }
   }
   cudaSetDevice(old_cuda_device);

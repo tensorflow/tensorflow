@@ -2204,9 +2204,11 @@ tensorflow::Status ConvertSubgraphToEngine(
       input_dim_pseudo_chw.nbDims = shape.dims() - 1;
       nvinfer1::ITensor* input_tensor = converter.network()->addInput(
           node_name.c_str(), dtype, input_dim_pseudo_chw);
-      if (!input_tensor)
+      if (!input_tensor) {
         return tensorflow::errors::InvalidArgument(
-            "Failed to create Input layer");
+            StrCat("Failed to create Input layer tensor ", node_name,
+                   " rank=", shape.dims()-1));
+      }
       VLOG(1) << "Input tensor name :" << node_name;
       if (!converter.insert_input_tensor(node_name, input_tensor)) {
         return tensorflow::errors::AlreadyExists(

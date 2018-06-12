@@ -62,7 +62,7 @@ void* GetTensorAddress(const Tensor* tensor_ptr) {
     TYPECASE(tensorflow::DT_HALF, tensor_ptr, dest_ptr);
     TYPECASE(tensorflow::DT_INT8, tensor_ptr, dest_ptr);
     default: {
-      LOG(FATAL) << "Unsupported Data type "
+      LOG(ERROR) << "Unsupported Data type "
                  << tensorflow::DataTypeString(tensor_type);
       return nullptr;
     }
@@ -217,6 +217,11 @@ void TRTEngineOp::ExecuteCalibration(tensorflow::OpKernelContext* ctx,
   for (int i = 0; i < num_inputs; i++) {
     const Tensor& t = ctx->input(i);
     void* data_address = GetTensorAddress(&t);
+    if (data_address == nullptr) {
+      ctx->SetStatus(tensorflow::errors::InvalidArgument(
+          StrCat("Unsupported data type encountered in input ", i)));
+      return;
+    }
     const auto device_tensor = dev_tensors_.at(i).AccessTensor(ctx);
     CHECK_EQ(t.TotalBytes(),
              device_tensor->TotalBytes());  // use the tensor so FW keeps it
@@ -234,7 +239,7 @@ void TRTEngineOp::ExecuteCalibration(tensorflow::OpKernelContext* ctx,
   return;
 }
 
-int TRTEngineOp::GetEngineBatch(tensorflow::OpKernelContext *ctx){
+int TRTEngineOp::GetEngineBatch(tensorflow::OpKernelContext* ctx) {
   int num_batch = ctx->input(0).shape().dim_size(0);
   int smallest_engine = 0;
   for (const auto i : cached_engine_batches_) {
@@ -274,9 +279,9 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
   }
   int num_binding = ctx->num_inputs() + ctx->num_outputs();
   std::vector<void*> buffers(num_binding);
-  int smallest_engine=GetEngineBatch(ctx);
-  if(smallest_engine<0)return;
-  int num_batch=ctx->input(0).shape().dim_size(0);
+  int smallest_engine = GetEngineBatch(ctx);
+  if (smallest_engine < 0) return;
+  int num_batch = ctx->input(0).shape().dim_size(0);
   size_t binding_index;
   auto engine_ctx_pair = GetEngine(smallest_engine, ctx, fixed_input_size_);
   auto trt_engine_ptr_ = engine_ctx_pair.first;
@@ -406,8 +411,10 @@ TRTEngineOp::~TRTEngineOp() {
 }
 
 TRTEngineOp::EngineCtxPair TRTEngineOp::GetEngine(int batch_size,
-                                                   OpKernelContext* ctx,
-                                                   bool ignore_dim_change) {
+                                                  OpKernelContext* ctx,
+                                                  bool ignore_dim_change) {
+  // TODO(sami): This method needs to be re-written to use resource manager and
+  // with LRU mechanism option.
   tensorflow::mutex_lock lock(engine_mutex_);
   if (static_engine_) {
     if (engine_map_.size()) {
@@ -550,6 +557,10 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
     const auto device_tensor = dev_tensors_.at(i).AccessTensor(ctx);
     CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
     void* device_address = GetTensorAddress(device_tensor);
+    if (device_address == nullptr) {
+      return tensorflow::errors::InvalidArgument(
+          StrCat("Unsupported data type encountered in input ", i));
+    }
     device_buffers_.emplace(
         StrCat("InputPH_", i),
         std::pair<void*, size_t>(device_address, device_tensor->TotalBytes()));
@@ -566,7 +577,9 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
         tensorflow::tensorrt::convert::INT8MODE);  // will loop until we
                                                    // terminate calibration
     if (!s.ok()) {
-      LOG(ERROR) << "Calibration thread failed with " << s;
+      LOG(ERROR)
+          << "Calibration failed. Engine will not be calibrated! Error is" << s;
+      cres->calibrator_->setDone();  // ignore further pushes
     }
     VLOG(1) << "Calibration loop terminated " << label;
   });
