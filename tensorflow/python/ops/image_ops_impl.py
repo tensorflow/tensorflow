@@ -939,7 +939,8 @@ class ResizeMethod(object):
 def resize_images(images,
                   size,
                   method=ResizeMethod.BILINEAR,
-                  align_corners=False):
+                  align_corners=False,
+                  preserve_aspect_ratio=False):
   """Resize `images` to `size` using the specified `method`.
 
   Resized images will be distorted if their original aspect ratio is not
@@ -971,6 +972,10 @@ def resize_images(images,
     align_corners: bool.  If True, the centers of the 4 corner pixels of the
         input and output tensors are aligned, preserving the values at the
         corner pixels. Defaults to `False`.
+    preserve_aspect_ratio: Whether to preserve the aspect ratio. If this is set,
+      then `images` will be resized to a size that fits in `size` while
+      preserving the aspect ratio of the original image. Scales up the image if
+      `size` is bigger than the current size of the `image`. Defaults to False.
 
   Raises:
     ValueError: if the shape of `images` is incompatible with the
@@ -1008,6 +1013,28 @@ def resize_images(images,
     size_const_as_shape = tensor_util.constant_value_as_shape(size)
     new_height_const = size_const_as_shape[0].value
     new_width_const = size_const_as_shape[1].value
+
+    if preserve_aspect_ratio:
+      # Get the current shapes of the image, even if dynamic.
+      _, current_height, current_width, _ = _ImageDimensions(images, rank=4)
+
+      # do the computation to find the right scale and height/width.
+      scale_factor_height = (math_ops.to_float(new_height_const) /
+                             math_ops.to_float(current_height))
+      scale_factor_width = (math_ops.to_float(new_width_const) /
+                            math_ops.to_float(current_width))
+      scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
+      scaled_height_const = math_ops.to_int32(scale_factor *
+                                              math_ops.to_float(current_height))
+      scaled_width_const = math_ops.to_int32(scale_factor *
+                                             math_ops.to_float(current_width))
+
+      # NOTE: Reset the size and other constants used later.
+      size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
+                                   dtypes.int32, name='size')
+      size_const_as_shape = tensor_util.constant_value_as_shape(size)
+      new_height_const = size_const_as_shape[0].value
+      new_width_const = size_const_as_shape[1].value
 
     # If we can determine that the height and width will be unmodified by this
     # transformation, we avoid performing the resize.
@@ -1467,6 +1494,75 @@ def adjust_hue(image, delta, name=None):
     rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
+
+
+# pylint: disable=invalid-name
+@tf_export('image.random_jpeg_quality')
+def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
+  """Randomly changes jpeg encoding quality for inducing jpeg noise.
+
+  `min_jpeg_quality` must be in the interval `[0, 100]` and less than
+  `max_jpeg_quality`.
+  `max_jpeg_quality` must be in the interval `[0, 100]`.
+
+  Args:
+    image: RGB image or images. Size of the last dimension must be 3.
+    min_jpeg_quality: Minimum jpeg encoding quality to use.
+    max_jpeg_quality: Maximum jpeg encoding quality to use.
+    seed: An operation-specific seed. It will be used in conjunction
+      with the graph-level seed to determine the real seeds that will be
+      used in this operation. Please see the documentation of
+      set_random_seed for its interaction with the graph-level random seed.
+
+  Returns:
+    Adjusted image(s), same shape and DType as `image`.
+
+  Raises:
+    ValueError: if `min_jpeg_quality` or `max_jpeg_quality` is invalid.
+  """
+  if (min_jpeg_quality < 0 or max_jpeg_quality < 0 or
+      min_jpeg_quality > 100 or max_jpeg_quality > 100):
+    raise ValueError('jpeg encoding range must be between 0 and 100.')
+
+  if min_jpeg_quality >= max_jpeg_quality:
+    raise ValueError('`min_jpeg_quality` must be less than `max_jpeg_quality`.')
+
+  np.random.seed(seed)
+  jpeg_quality = np.random.randint(min_jpeg_quality, max_jpeg_quality)
+  return adjust_jpeg_quality(image, jpeg_quality)
+
+
+@tf_export('image.adjust_jpeg_quality')
+def adjust_jpeg_quality(image, jpeg_quality, name=None):
+  """Adjust jpeg encoding quality of an RGB image.
+
+  This is a convenience method that adjusts jpeg encoding quality of an
+  RGB image.
+
+  `image` is an RGB image.  The image's encoding quality is adjusted
+  to `jpeg_quality`.
+  `jpeg_quality` must be in the interval `[0, 100]`.
+
+  Args:
+    image: RGB image or images. Size of the last dimension must be 3.
+    jpeg_quality: int.  jpeg encoding quality.
+    name: A name for this operation (optional).
+
+  Returns:
+    Adjusted image(s), same shape and DType as `image`.
+  """
+  with ops.name_scope(name, 'adjust_jpeg_quality', [image]) as name:
+    image = ops.convert_to_tensor(image, name='image')
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = image.dtype
+    # Convert to uint8
+    image = convert_image_dtype(image, dtypes.uint8)
+    # Encode image to jpeg with given jpeg quality
+    image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
+    # Decode jpeg image
+    image = gen_image_ops.decode_jpeg(image)
+    # Convert back to original dtype and return
+    return convert_image_dtype(image, orig_dtype)
 
 
 @tf_export('image.random_saturation')

@@ -433,6 +433,62 @@ class HloSliceInstruction : public HloInstruction {
   // Describes whether the slice can be lowered to an offset into the operand.
   bool is_in_place_slice_ = false;
 };
+
+class HloConstantInstruction : public HloInstruction {
+ public:
+  explicit HloConstantInstruction(std::unique_ptr<Literal> literal);
+  // Returns the literal associated with this instruction.
+  const Literal& literal() const { return *literal_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+  // Returns true if this instruction is elementwise on all its operands.
+  bool IsElementwise() const override;
+
+  // Change the layout for an Constant Hlo instruction to match new_layout.  For
+  // tuple shaped constants shape_index is the path to the internal array
+  // subshape whose layout needs to be changed.
+  void RelayoutConstant(const Layout& new_layout,
+                        const ShapeIndex& shape_index = {});
+
+ private:
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  string OperandsToStringWithCanonicalNameMap(
+      const HloPrintOptions& options,
+      CanonicalNameMap* canonical_name_map) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+  // TODO(b/36360764): Remove unique_ptr wrapping.
+  std::unique_ptr<Literal> literal_;
+};
+
+class HloTraceInstruction : public HloInstruction {
+ public:
+  explicit HloTraceInstruction(const string& tag, HloInstruction* operand);
+  // Returns a tag to be used in tracing.
+  string TracingTag() const { return literal_->GetR1U8AsString(); }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+  // TODO(b/36360764): Remove unique_ptr wrapping.
+  std::unique_ptr<Literal> literal_;
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_

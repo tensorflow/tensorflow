@@ -2379,7 +2379,6 @@ cc_library(
         ":hlo_graph_dumper",
         ":hlo_pass",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
 )
@@ -2574,6 +2573,7 @@ cc_library(
     hdrs = ["hlo_graph_dumper.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_execution_profile",
         ":hlo_tfgraph_builder",
         "//tensorflow/compiler/xla:literal_util",

@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
 class LBetaTest(test.TestCase):
@@ -148,6 +149,33 @@ class LBetaTest(test.TestCase):
 
         self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
         self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
+
+
+class BesselTest(test.TestCase):
+
+  def test_bessel_i0(self):
+    x_single = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
+    x_double = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(special.i0(x_single),
+                          self.evaluate(special_math_ops.bessel_i0(x_single)))
+      self.assertAllClose(special.i0(x_double),
+                          self.evaluate(special_math_ops.bessel_i0(x_double)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
+
+  def test_bessel_i1(self):
+    x_single = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
+    x_double = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self.assertAllClose(special.i1(x_single),
+                          self.evaluate(special_math_ops.bessel_i1(x_single)))
+      self.assertAllClose(special.i1(x_double),
+                          self.evaluate(special_math_ops.bessel_i1(x_double)))
+    except ImportError as e:
+      tf_logging.warn('Cannot test special functions: %s' % str(e))
 
 
 class EinsumTest(test.TestCase):

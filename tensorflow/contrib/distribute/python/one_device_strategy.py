@@ -102,6 +102,10 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.device(self._device), distribute_lib.UpdateContext(self._device):
       return fn(*args, **kwargs)
 
+  def read_var(self, tower_local_var):
+    """Read the aggregate value of a tower-local variable."""
+    return array_ops.identity(tower_local_var)
+
   def _fetch(self, val, destination, fn):
     """Return a copy of `val` or `fn(val)` on `destination`."""
     with ops.device(self._device):
