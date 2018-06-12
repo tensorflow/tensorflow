@@ -321,8 +321,26 @@ class KerasCallbacksTest(test.TestCase):
           callbacks=cbks,
           epochs=5,
           verbose=0)
-      assert (float(keras.backend.get_value(model.optimizer.lr)) - 0.2
-             ) < keras.backend.epsilon()
+      assert (
+          float(keras.backend.get_value(
+              model.optimizer.lr)) - 0.2) < keras.backend.epsilon()
+
+      cbks = [keras.callbacks.LearningRateScheduler(lambda x, lr: lr / 2)]
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='sgd',
+          metrics=['accuracy'])
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=2,
+          verbose=0)
+      assert (
+          float(keras.backend.get_value(
+              model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
 
   def test_ReduceLROnPlateau(self):
     with self.test_session():
