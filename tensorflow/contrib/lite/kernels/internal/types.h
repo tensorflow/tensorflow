@@ -121,6 +121,10 @@ class RuntimeShape {
     }
   }
 
+  inline void BuildFrom(const std::initializer_list<int> init_list) {
+    BuildFrom<const std::initializer_list<int>>(init_list);
+  }
+
   // Returns the total count of elements, that is the size when flattened into a
   // vector.
   inline int FlatSize() const {

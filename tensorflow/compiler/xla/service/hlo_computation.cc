@@ -357,7 +357,6 @@ std::list<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   std::list<HloInstruction*> post_order;
   std::list<HloInstruction*> trace_instructions;
   tensorflow::gtl::FlatSet<HloInstruction*> added_instructions;
-  std::vector<HloInstruction> dfs_stack;
   for (auto& instruction : instructions_) {
     if (instruction->opcode() == HloOpcode::kTrace) {
       // Trace instructions aren't handled by the DFS visitor. Add trace
