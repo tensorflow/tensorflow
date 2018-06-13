@@ -32,8 +32,9 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
 #include "tensorflow/contrib/lite/toco/toco_flags.pb.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/types.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 
 // TODO(aselle): Replace with using a container specific hash override instead.
 namespace std {
@@ -315,7 +316,7 @@ void UseArraysExtraInfo(Model* model, bool quantize_output);
 // doesn't have enough range to represent the sum of elements, an error is
 // returned.
 template <typename T, typename U>
-port::Status NumElements(const std::vector<T>& shape, U* num_elements) {
+tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
   static_assert(
       std::numeric_limits<T>::max() <= std::numeric_limits<uint64_t>::max(),
       "vector type exceed capabilities of NumElements");
@@ -326,17 +327,17 @@ port::Status NumElements(const std::vector<T>& shape, U* num_elements) {
       // TensorFlow's shapes sometimes include -1 to represent an "unknown"
       // size but TOCO isn't able to create arrays of unknown sizes and will
       // crash in RequiredBufferSizeForShape().
-      return port::Status(false,
-                          "Tensor shape should not include negative values");
+      return tensorflow::errors::InvalidArgument(
+          "Tensor shape should not include negative values");
     }
     if (static_cast<uint64_t>(dim) >
         std::numeric_limits<U>::max() / *num_elements) {
       *num_elements = 0;
-      return port::Status(false, "Tensor shape is too large");
+      return tensorflow::errors::InvalidArgument("Tensor shape is too large");
     }
     *num_elements *= dim;
   }
-  return port::Status::OK();
+  return tensorflow::Status::OK();
 }
 
 }  // namespace toco

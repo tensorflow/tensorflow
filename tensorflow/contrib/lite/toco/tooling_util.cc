@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/dump_graphviz.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_graphviz_dump_options.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace toco {
