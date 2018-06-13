@@ -21,68 +21,11 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.training import adam, momentum
+from tensorflow.python.training import adam
+from tensorflow.python.training import momentum as momentum_opt
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import resource_variable_ops
-
-
-def extend_with_decoupled_weight_decay(base_optimizer):
-  """Factory function returning an optimizer class with decoupled weight decay.
-
-  Returns an optimizer class. An instance of the returned class computes the
-  update step of `base_optimizer` and additionally decays the weights.
-  E.g., the class returned by
-  `extend_with_decoupled_weight_decay(tf.train.AdamOptimizer)` is equivalent to
-  `tf.contrib.opt.AdamWOptimizer`.
-
-  The API of the new optimizer class slightly differs from the API of the
-  base optimizer:
-  - The first argument to the constructor is the weight decay rate.
-  - `minimize` and `apply_gradients` accept the optional keyword argument
-    `decay_var_list`, which specifies the variables that should be decayed.
-    If `None`, all variables that are optimized are decayed.
-
-  Usage example:
-  ```python
-  # MyAdamW is a new class
-  MyAdamW = extend_with_decoupled_weight_decay(tf.train.AdamOptimizer)
-  # Create a MyAdamW object
-  optimizer = MyAdamW(weight_decay=0.001, learning_rate=0.001)
-  sess.run(optimizer.minimize(loss, decay_variables=[var1, var2]))
-
-  Note that this extension decays weights BEFORE applying the update based
-  on the gradient, i.e. this extension only has the desired behaviour for
-  optimizers which do not depend on the value of'var' in the update step!
-  ```
-
-  Args:
-    base_optimizer: An optimizer class that inherits from tf.train.Optimizer.
-
-  Returns:
-    A new optimizer class that inherits from DecoupledWeightDecayExtension
-    and base_optimizer.
-  """
-  class OptimizerWithDecoupledWeightDecay(DecoupledWeightDecayExtension,
-                                          base_optimizer):
-    """Base_optimizer with decoupled weight decay.
-
-    This class computes the update step of `base_optimizer` and
-    additionally decays the variable with the weight decay being decoupled from
-    the optimization steps w.r.t. to the loss function, as described by
-    Loshchilov & Hutter (https://arxiv.org/pdf/1711.05101.pdf).
-    For SGD variants, this simplifies hyperparameter search since
-    it decouples the settings of weight decay and learning rate.
-    For adaptive gradient algorithms, it regularizes variables with large
-    gradients more than L2 regularization would, which was shown to yield
-    better training loss and generalization error in the paper above.
-    """
-
-    def __init__(self, weight_decay, *args, **kwargs):
-      super(OptimizerWithDecoupledWeightDecay, self).__init__(
-          weight_decay, *args, **kwargs)
-
-  return OptimizerWithDecoupledWeightDecay
 
 
 class DecoupledWeightDecayExtension(object):
@@ -175,13 +118,14 @@ class DecoupledWeightDecayExtension(object):
     super(DecoupledWeightDecayExtension, self)._prepare()
 
   def _decay_weights_op(self, var):
-    if (not self._decay_var_list) or var in self._decay_var_list:
+    if not self._decay_var_list or var in self._decay_var_list:
       return var.assign_sub(self._weight_decay * var, self._use_locking)
     return control_flow_ops.no_op()
 
   def _decay_weights_sparse_op(self, var, indices, scatter_add):
-    if (not self._decay_var_list) or (var in self._decay_var_list):
-      return scatter_add(var, indices, -self._weight_decay * var, self._use_locking)
+    if not self._decay_var_list or var in self._decay_var_list:
+      return scatter_add(var, indices, -self._weight_decay * var,
+                         self._use_locking)
     return control_flow_ops.no_op()
 
   # Here, we overwrite the apply functions that the base optimizer calls.
@@ -217,9 +161,70 @@ class DecoupledWeightDecayExtension(object):
           grad, var, indices)
 
 
+def extend_with_decoupled_weight_decay(base_optimizer):
+  """Factory function returning an optimizer class with decoupled weight decay.
+
+  Returns an optimizer class. An instance of the returned class computes the
+  update step of `base_optimizer` and additionally decays the weights.
+  E.g., the class returned by
+  `extend_with_decoupled_weight_decay(tf.train.AdamOptimizer)` is equivalent to
+  `tf.contrib.opt.AdamWOptimizer`.
+
+  The API of the new optimizer class slightly differs from the API of the
+  base optimizer:
+  - The first argument to the constructor is the weight decay rate.
+  - `minimize` and `apply_gradients` accept the optional keyword argument
+    `decay_var_list`, which specifies the variables that should be decayed.
+    If `None`, all variables that are optimized are decayed.
+
+  Usage example:
+  ```python
+  # MyAdamW is a new class
+  MyAdamW = extend_with_decoupled_weight_decay(tf.train.AdamOptimizer)
+  # Create a MyAdamW object
+  optimizer = MyAdamW(weight_decay=0.001, learning_rate=0.001)
+  sess.run(optimizer.minimize(loss, decay_variables=[var1, var2]))
+
+  Note that this extension decays weights BEFORE applying the update based
+  on the gradient, i.e. this extension only has the desired behaviour for
+  optimizers which do not depend on the value of'var' in the update step!
+  ```
+
+  Args:
+    base_optimizer: An optimizer class that inherits from tf.train.Optimizer.
+
+  Returns:
+    A new optimizer class that inherits from DecoupledWeightDecayExtension
+    and base_optimizer.
+  """
+  class OptimizerWithDecoupledWeightDecay(DecoupledWeightDecayExtension,
+                                          base_optimizer):
+    """Base_optimizer with decoupled weight decay.
+
+    This class computes the update step of `base_optimizer` and
+    additionally decays the variable with the weight decay being decoupled from
+    the optimization steps w.r.t. to the loss function, as described by
+    Loshchilov & Hutter (https://arxiv.org/pdf/1711.05101.pdf).
+    For SGD variants, this simplifies hyperparameter search since
+    it decouples the settings of weight decay and learning rate.
+    For adaptive gradient algorithms, it regularizes variables with large
+    gradients more than L2 regularization would, which was shown to yield
+    better training loss and generalization error in the paper above.
+    """
+
+    def __init__(self, weight_decay, *args, **kwargs):
+      # super delegation is necessary here
+      # pylint: disable=useless-super-delegation
+      super(OptimizerWithDecoupledWeightDecay, self).__init__(
+          weight_decay, *args, **kwargs)
+      # pylint: enable=useless-super-delegation
+
+  return OptimizerWithDecoupledWeightDecay
+
+
 @tf_export("contrib.opt.MomentumWOptimizer")
 class MomentumWOptimizer(DecoupledWeightDecayExtension,
-                         momentum.MomentumOptimizer):
+                         momentum_opt.MomentumOptimizer):
   """Optimizer that implements the Momentum algorithm with weight_decay.
 
   This is an implementation of the SGDW optimizer described in "Fixing

@@ -46,7 +46,7 @@ def adamw_update_numpy(param, g_t, t, m, v, lr=0.001, beta1=0.9,
   return param_t, m_t, v_t
 
 
-def momentumw_update_numpy(param, g_t, t, m, v, lr=0.001, momentum=0.9):
+def momentumw_update_numpy(param, g_t, m, lr=0.001, momentum=0.9, **_):
   # v, t are not needed for momentum optimizer
   m = momentum * m + g_t
   param_t = param - lr * m - param * WEIGHT_DECAY
@@ -108,8 +108,8 @@ class WeightDecayOptimizerTest(test.TestCase):
           elif t > 1:
             opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
 
-          var0_np, m0, v0 = update_fn(var0_np, grads0_np, t, m0, v0)
-          var1_np, m1, v1 = update_fn(var1_np, grads1_np, t, m1, v1)
+          var0_np, m0, v0 = update_fn(var0_np, grads0_np, t=t, m=m0, v=v0)
+          var1_np, m1, v1 = update_fn(var1_np, grads1_np, t=t, m=m1, v=v1)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
