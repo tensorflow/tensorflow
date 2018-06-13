@@ -35,19 +35,19 @@ flags.DEFINE_string(
     None,
     help='GCE zone where the Cloud TPU is located in. If not specified, we '
     'will attempt to automatically detect the GCE project from metadata.')
-flags.DEFINE_string('tpu_name', None,
+flags.DEFINE_string('tpu', None,
                     'Name of the Cloud TPU for Cluster Resolvers. You must '
                     'specify either this flag or --service_addr.')
 
 # Tool specific parameters
 flags.DEFINE_string(
     'service_addr', None, 'Address of TPU profiler service e.g. '
-    'localhost:8466, you must specify either this flag or --tpu_name.')
+    'localhost:8466, you must specify either this flag or --tpu.')
 flags.DEFINE_string(
     'workers_list', None, 'The list of worker TPUs that we are about to profile'
-    ' e.g. 10.0.1.2, 10.0.1.3. You can specify this flag with --tpu_name or '
+    ' e.g. 10.0.1.2, 10.0.1.3. You can specify this flag with --tpu or '
     '--service_addr to profile a subset of tpu nodes. You can also use only'
-    '--tpu_name and leave this flag unspecified to profile all the tpus.')
+    '--tpu and leave this flag unspecified to profile all the tpus.')
 flags.DEFINE_string('logdir', None,
                     'Path of TensorBoard log directory e.g. /tmp/tb_log, '
                     'gs://tb_bucket')
@@ -76,19 +76,19 @@ def run_main():
 def main(unused_argv=None):
   tf.logging.set_verbosity(tf.logging.INFO)
 
-  if FLAGS.service_addr is None and FLAGS.tpu_name is None:
-    sys.exit('You must specify either --service_addr or --tpu_name.')
+  if FLAGS.service_addr is None and FLAGS.tpu is None:
+    sys.exit('You must specify either --service_addr or --tpu.')
 
   tpu_cluster_resolver = None
   if FLAGS.service_addr is not None:
-    if FLAGS.tpu_name is not None:
-      tf.logging.warn('Both --service_addr and --tpu_name are set. Ignoring '
-                      '--tpu_name and using --service_addr.')
+    if FLAGS.tpu is not None:
+      tf.logging.warn('Both --service_addr and --tpu are set. Ignoring '
+                      '--tpu and using --service_addr.')
     service_addr = FLAGS.service_addr
   else:
     tpu_cluster_resolver = (
         tf.contrib.cluster_resolver.TPUClusterResolver(
-            [FLAGS.tpu_name],
+            [FLAGS.tpu],
             zone=FLAGS.tpu_zone,
             project=FLAGS.gcp_project))
     service_addr = tpu_cluster_resolver.get_master()
