@@ -72,8 +72,8 @@ class MultiOutputFusion : public HloPassInterface {
   // multi-output fusion instruction.
   virtual int64 GetProfit(HloInstruction* instr1, HloInstruction* instr2) = 0;
 
-  // Whether fusing the instruction can reduce cost.
-  virtual bool IsProfitableOperand(HloInstruction* instr) = 0;
+  // Whether fusing the instruction can reduce memory reads.
+  virtual bool IsProfitableOperand(HloInstruction* instr);
 
   // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
   virtual bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2);

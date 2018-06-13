@@ -81,22 +81,6 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
                           get_element_shape(element_instr_2));
 }
 
-bool GpuMultiOutputFusion::IsProfitableOperand(HloInstruction* instr) {
-  // kConstant instruction will not have memory reads, so it won't be a profit
-  // source. Skip them.
-  if (instr->opcode() == HloOpcode::kConstant &&
-      ShapeUtil::IsEffectiveScalar(instr->shape())) {
-    return false;
-  }
-  // We don't target to fuse producer/consumer instructions -- this should
-  // be taken care of by the instruction_fusion pass. If instr has only
-  // one user, it will not have sibling instructions. We won't consider it.
-  if (instr->user_count() < 2) {
-    return false;
-  }
-  return true;
-}
-
 namespace {
 bool IsReduction(HloInstruction* instr) {
   if (instr->IsMultiOutputFusion()) {
