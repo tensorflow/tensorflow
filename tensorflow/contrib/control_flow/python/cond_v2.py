@@ -44,11 +44,17 @@ from tensorflow.python.util import compat
 
 def cond_v2(pred, true_fn, false_fn, name="cond"):
   """Like tf.cond, except emits a single If op."""
+  if not name:
+    name = "cond"
+
   with ops.name_scope(name) as scope:
-    true_graph = function.func_graph_from_py_func(true_fn, [], [],
-                                                  name="%s_true" % scope)
-    false_graph = function.func_graph_from_py_func(false_fn, [], [],
-                                                   name="%s_false" % scope)
+    func_name_prefix = scope.replace("/", "_")
+
+    true_graph = function.func_graph_from_py_func(
+        true_fn, [], [], name="%strue" % func_name_prefix)
+    false_graph = function.func_graph_from_py_func(
+        false_fn, [], [], name="%sfalse" % func_name_prefix)
+
     _check_same_outputs(true_graph, false_graph)
 
     # Add inputs to true_graph and false_graph to make them match. Note that

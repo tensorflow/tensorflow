@@ -96,6 +96,37 @@ class NewCondTest(test.TestCase):
       self.assertEqual(sess.run(out, {pred: True}), [1.0])
       self.assertEqual(sess.run(out, {pred: False}), [2.0])
 
+  def _createCond(self, name):
+    pred = array_ops.placeholder(dtypes.bool, name="pred")
+    x = constant_op.constant(1.0, name="x")
+
+    def true_fn():
+      return x
+
+    def false_fn():
+      return x + 1
+
+    return cond_v2.cond_v2(pred, true_fn, false_fn, name=name)[0].op
+
+  def testDefaultName(self):
+    with ops.Graph().as_default():
+      cond = self._createCond(None)
+      self.assertEqual(cond.name, "cond")
+      self.assertIn("cond_true", ops.get_default_graph()._functions)
+      self.assertIn("cond_false", ops.get_default_graph()._functions)
+
+    with ops.Graph().as_default():
+      with ops.name_scope("foo"):
+        cond = self._createCond("")
+        self.assertEqual(cond.name, "foo/cond")
+        self.assertIn("foo_cond_true", ops.get_default_graph()._functions)
+        self.assertIn("foo_cond_false", ops.get_default_graph()._functions)
+
+        cond2 = self._createCond(None)
+        self.assertEqual(cond2.name, "foo/cond_1")
+        self.assertIn("foo_cond_1_true", ops.get_default_graph()._functions)
+        self.assertIn("foo_cond_1_false", ops.get_default_graph()._functions)
+
   def testSecondDerivative(self):
     pred = array_ops.placeholder(dtypes.bool, name="pred")
     x = constant_op.constant(3.0, name="x")
