@@ -585,6 +585,13 @@ void UnextendShape(Shape* shape, int new_shape_size) {
   shape_dims.erase(shape_dims.begin(), shape_dims.begin() + size_reduction);
 }
 
+bool IsValid(const Shape& shape) {
+  for (int i = 0; i < shape.dimensions_count(); ++i) {
+    if (shape.dims(i) < 1) return false;
+  }
+  return true;
+}
+
 void CheckShapeDimensions(const Shape& shape) {
   for (int i = 0; i < shape.dimensions_count(); ++i) {
     CHECK_GE(shape.dims()[i], 1) << "shape has dimension 0 at index << " << i
