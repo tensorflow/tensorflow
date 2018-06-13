@@ -212,7 +212,7 @@ class TripletSemiHardLossCosineTest(test.TestCase):
           labels=ops.convert_to_tensor(labels),
           embeddings=ops.convert_to_tensor(embedding),
           margin=margin,
-          pairwise_dist_fn=metric_loss_ops.pairwise_distances_cosine))
+          pairwise_dist_fn=metric_loss_ops.pairwise_distances_cosine)
       loss_tf = loss_tf.eval()
       self.assertAllClose(loss_np, loss_tf)
 
