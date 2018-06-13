@@ -215,21 +215,21 @@ public final class OperatorProcessor extends AbstractProcessor {
     AnnotationMirror am = getAnnotationMirror(opClass, annotation);
     String groupName = getAnnotationElementValueAsString("group", am);
     String methodName = getAnnotationElementValueAsString("name", am);
+    ClassName opClassName = ClassName.get(opClass);
     if (Strings.isNullOrEmpty(methodName)) {
-      methodName = CaseFormat.UPPER_CAMEL.to(CaseFormat.LOWER_CAMEL, ClassName.get(opClass).simpleName()); 
+      methodName = CaseFormat.UPPER_CAMEL.to(CaseFormat.LOWER_CAMEL, opClassName.simpleName()); 
     }
     // Build a method for each @Operator found in the class path. There should be one method per operation factory called
     // "create", which takes in parameter a scope and, optionally, a list of arguments
     for (ExecutableElement opMethod : ElementFilter.methodsIn(opClass.getEnclosedElements())) {
       if (opMethod.getModifiers().contains(Modifier.STATIC) && opMethod.getSimpleName().contentEquals("create")) {
-        MethodSpec method = buildOpMethod(methodName, opClass, opMethod);
+        MethodSpec method = buildOpMethod(methodName, opClassName, opMethod);
         groupedMethods.put(groupName, method);
       }
     }
   }
 
-  private MethodSpec buildOpMethod(String methodName, TypeElement opClass, ExecutableElement factoryMethod) {
-    ClassName opClassName = ClassName.get(opClass);
+  private MethodSpec buildOpMethod(String methodName, ClassName opClassName, ExecutableElement factoryMethod) {
     MethodSpec.Builder builder =
         MethodSpec.methodBuilder(methodName)
         .addModifiers(Modifier.PUBLIC)
