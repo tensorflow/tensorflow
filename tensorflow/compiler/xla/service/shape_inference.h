@@ -220,7 +220,7 @@ class ShapeInference {
   // shape is always a TOKEN shape. However, ShapeInference serves two purposes:
   // inferring shapes and checking operand shapes. This method verifies that the
   // operand shapes are all TOKENs.
-  static StatusOr<Shape> InferTokenShape(
+  static StatusOr<Shape> InferGenerateTokenShape(
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes);
 
   // Helper that validates the given operand shape can be converted to the

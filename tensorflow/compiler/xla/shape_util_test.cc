@@ -329,6 +329,16 @@ TEST(ShapeUtilTest, ByteSizeOfWithPadding) {
   EXPECT_EQ(15 * 21 * 4, ShapeUtil::ByteSizeOf(shape));
 }
 
+TEST(ShapeUtilTest, NilShape) {
+  EXPECT_TRUE(ShapeUtil::IsNil(ShapeUtil::MakeNil()));
+  EXPECT_FALSE(ShapeUtil::IsNil(ShapeUtil::MakeShape(F32, {1, 2, 3})));
+  EXPECT_FALSE(ShapeUtil::IsNil(ShapeUtil::MakeShape(F32, {0, 1})));
+  EXPECT_FALSE(ShapeUtil::IsNil(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {})})));
+  EXPECT_FALSE(ShapeUtil::IsNil(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {0})})));
+}
+
 TEST(ShapeUtilTest, NestedTuple) {
   EXPECT_FALSE(ShapeUtil::IsNestedTuple(ShapeUtil::MakeTupleShape({})));
   EXPECT_FALSE(ShapeUtil::IsNestedTuple(
@@ -359,25 +369,30 @@ TEST(ShapeUtilTest, ElementsIn) {
   EXPECT_EQ(221, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {13, 17})));
 }
 
-TEST(ShapeUtilTest, HasZeroElements) {
-  EXPECT_EQ(false, ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {})));
-  EXPECT_EQ(true, ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {0})));
-  EXPECT_EQ(false, ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {1})));
-  EXPECT_EQ(false,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {1, 1})));
-  EXPECT_EQ(false, ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {2})));
-  EXPECT_EQ(false,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {2, 1})));
-  EXPECT_EQ(false,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {3, 5})));
-  EXPECT_EQ(true,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {3, 0, 5})));
-  EXPECT_EQ(true,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {0, 3, 0})));
-  EXPECT_EQ(false,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {1, 3, 5})));
-  EXPECT_EQ(false,
-            ShapeUtil::HasZeroElements(ShapeUtil::MakeShape(S32, {13, 17})));
+TEST(ShapeUtilTest, IsZeroElementArray) {
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {})));
+  EXPECT_TRUE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {0})));
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {1})));
+  EXPECT_FALSE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {1, 1})));
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {2})));
+  EXPECT_FALSE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {2, 1})));
+  EXPECT_FALSE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {3, 5})));
+  EXPECT_TRUE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {3, 0, 5})));
+  EXPECT_TRUE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {0, 3, 0})));
+  EXPECT_FALSE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {1, 3, 5})));
+  EXPECT_FALSE(
+      ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {13, 17})));
+
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeNil()));
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeTupleShape({})));
+  EXPECT_FALSE(ShapeUtil::IsZeroElementArray(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {0, 3, 0})})));
 }
 
 TEST(ShapeUtilTest, SameDimensions) {

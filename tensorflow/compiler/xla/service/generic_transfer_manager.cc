@@ -74,7 +74,7 @@ GenericTransferManager::TransferLiteralFromDevice(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_host_shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> Status {
-        if (!ShapeUtil::IsTuple(subshape)) {
+        if (ShapeUtil::IsArray(subshape)) {
           TF_RETURN_IF_ERROR(TransferBufferFromDevice(
               executor,
               /*source=*/device_buffer.buffer(index),

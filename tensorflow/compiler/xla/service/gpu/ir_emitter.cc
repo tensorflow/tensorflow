@@ -610,7 +610,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
-  if (ShapeUtil::HasZeroElements(convolution->shape())) {
+  if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
     // Emit no code for an empty output.
     return Status::OK();
   }
@@ -620,7 +620,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 }
 
 Status IrEmitter::HandleFft(HloInstruction* fft) {
-  if (ShapeUtil::HasZeroElements(fft->shape())) {
+  if (ShapeUtil::IsZeroElementArray(fft->shape())) {
     // Emit no code for an empty output.
     return Status::OK();
   }

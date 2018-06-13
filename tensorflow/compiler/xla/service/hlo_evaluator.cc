@@ -372,7 +372,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
   // The result concatenate dimension is going to be the sum of all
   // concatenate dimensions of the operands taking part of the operation.
   const Shape& reference_shape = operands[0]->shape();
-  CHECK(!ShapeUtil::IsTuple(reference_shape));
+  CHECK(ShapeUtil::IsArray(reference_shape));
   const int64 rank = ShapeUtil::Rank(reference_shape);
   const int64 concat_dim = concatenate->dimensions()[0];
   CHECK_GE(concat_dim, 0);
@@ -383,7 +383,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 
   for (int64 i = 1; i < operands.size(); ++i) {
     const Shape& operand_shape = operands[i]->shape();
-    CHECK(!ShapeUtil::IsTuple(operand_shape));
+    CHECK(ShapeUtil::IsArray(operand_shape));
     // Accumulate the concat dimension from all tensors taking part to the
     // operation.
     concat_dimensions[concat_dim] +=

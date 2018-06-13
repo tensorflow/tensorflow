@@ -1456,7 +1456,7 @@ void LiteralBase::EachCell(
     std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
                        NativeT value)>
         per_cell) const {
-  if (ShapeUtil::HasZeroElements(shape())) {
+  if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
   std::vector<int64> indices(ShapeUtil::Rank(shape()), 0);

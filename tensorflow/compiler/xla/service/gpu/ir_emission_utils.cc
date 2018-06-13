@@ -56,8 +56,8 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   return type_is_allowed && IsRank2WithNoPadding(lhs_shape) &&
          IsRank2WithNoPadding(rhs_shape) &&
          IsRank2WithNoPadding(output_shape) &&
-         !ShapeUtil::HasZeroElements(lhs_shape) &&
-         !ShapeUtil::HasZeroElements(rhs_shape);
+         !ShapeUtil::IsZeroElementArray(lhs_shape) &&
+         !ShapeUtil::IsZeroElementArray(rhs_shape);
 }
 
 bool DotImplementedAsGemm(const HloInstruction& dot) {

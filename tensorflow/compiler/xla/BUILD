@@ -309,7 +309,6 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
 )

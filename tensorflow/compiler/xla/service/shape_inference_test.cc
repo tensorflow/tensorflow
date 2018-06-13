@@ -1311,7 +1311,7 @@ TEST_F(ShapeInferenceTest, ConcatenateWithBadShapes) {
   ASSERT_FALSE(inferred_status_error4.ok());
   ASSERT_THAT(
       inferred_status_error4.status().error_message(),
-      HasSubstr("Expected non-tuple argument for operand of concatenation"));
+      HasSubstr("Expected array argument for operand of concatenation"));
 
   const Shape vector_s32 = ShapeUtil::MakeShape(S32, {32});
   auto inferred_status_error5 = ShapeInference::InferConcatOpShape(
@@ -1387,7 +1387,7 @@ TEST_F(ShapeInferenceTest, ReverseInvalidDimension) {
       ShapeInference::InferReverseShape(tuple_shape, {0});
   ASSERT_FALSE(inferred_status_error3.ok());
   ASSERT_THAT(inferred_status_error3.status().error_message(),
-              HasSubstr("Expected non-tuple argument"));
+              HasSubstr("Expected array argument"));
 }
 
 TEST_F(ShapeInferenceTest, Call) {
@@ -1686,7 +1686,7 @@ TEST_F(GatherShapeInferenceTest, TupleShapedTensorInput) {
       /*window_bounds=*/{64, 1});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Expected non-tuple argument for input"))
+              HasSubstr("Expected array argument for input"))
       << statusor.status();
 }
 
@@ -1700,7 +1700,7 @@ TEST_F(GatherShapeInferenceTest, TupleShapedGatherIndicesInput) {
       /*window_bounds=*/{64, 1});
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Expected non-tuple argument for gather indices"))
+              HasSubstr("Expected array argument for gather indices"))
       << statusor.status();
 }
 

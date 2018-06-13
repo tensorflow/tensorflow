@@ -556,8 +556,13 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     }
     return AddInstruction(HloInstruction::CreateTuple(elements));
   } else {
-    return FailedPrecondition(
-        "Can only copy array and tuple shaped instructions");
+    // Tokens, opaques, etc are not copyable.
+    if (indices_to_copy == nullptr || indices_to_copy->element(*index)) {
+      return FailedPrecondition(
+          "Cannot copy instruction of shape: %s",
+          ShapeUtil::HumanString(instruction->shape()).c_str());
+    }
+    return instruction;
   }
 }
 

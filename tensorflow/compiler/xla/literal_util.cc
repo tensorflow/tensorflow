@@ -264,8 +264,8 @@ Status Literal::CopySliceFromInternal(
     StridedCopy(data<NativeT>(), linear_index(shape(), dest_base), 0,
                 src_literal.data<NativeT>(),
                 linear_index(src_literal.shape(), src_base), 0, 1);
-  } else if (!ShapeUtil::HasZeroElements(shape()) &&
-             !ShapeUtil::HasZeroElements(src_literal.shape())) {
+  } else if (!ShapeUtil::IsZeroElementArray(shape()) &&
+             !ShapeUtil::IsZeroElementArray(src_literal.shape())) {
     // Perform copy if neither src nor dest has dimensions with zero element,
     // otherwise it's a no-op.
     TF_RET_CHECK(src_base.size() == dest_base.size());
@@ -379,7 +379,7 @@ void CopyElementsBetween(tensorflow::gtl::MutableArraySlice<NativeT> dest,
                          tensorflow::gtl::ArraySlice<NativeT> src,
                          const Shape& dest_shape, const Shape& src_shape) {
   CHECK(ShapeUtil::Compatible(dest_shape, src_shape));
-  if (ShapeUtil::HasZeroElements(dest_shape)) {
+  if (ShapeUtil::IsZeroElementArray(dest_shape)) {
     return;
   }
   std::vector<int64> index(ShapeUtil::Rank(dest_shape));
@@ -1177,7 +1177,7 @@ size_t LiteralBase::Hash() const {
 
   ShapeUtil::ForEachSubshape(
       shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (ShapeUtil::IsTuple(subshape)) {
+        if (!ShapeUtil::IsArray(subshape)) {
           return;
         }
 
@@ -1556,7 +1556,7 @@ string LiteralBase::ToString(bool print_layout) const {
 void LiteralBase::EachCellAsString(
     const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
                              const string& value)>& per_cell) const {
-  if (ShapeUtil::HasZeroElements(shape())) {
+  if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
   std::vector<int64> indices = IndexUtil::LinearIndexToMultidimensionalIndex(
@@ -1962,7 +1962,7 @@ bool LiteralBase::IsAllFirst() const {
 
         // Empty shapes are not all the first element since there is no first
         // element.
-        if (ShapeUtil::HasZeroElements(piece.subshape())) {
+        if (ShapeUtil::IsZeroElementArray(piece.subshape())) {
           return false;
         }
         auto piece_is_all = [&]() {

@@ -658,7 +658,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     CanonicalNameMap* canonical_name_map) const {
   string operands;
   // For constants, show the actual value in place of an empty operand list.
-  if ((!ShapeUtil::IsTuple(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
+  if ((ShapeUtil::IsArray(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
       options.print_large_constants()) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.

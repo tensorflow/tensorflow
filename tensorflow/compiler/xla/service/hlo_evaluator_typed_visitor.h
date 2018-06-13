@@ -778,7 +778,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleSelect(HloInstruction* select) override {
     CHECK(!ShapeUtil::IsScalar(select->operand(0)->shape()));
-    CHECK(!ShapeUtil::IsTuple(select->shape()));
+    CHECK(ShapeUtil::IsArray(select->shape()));
     std::function<ReturnT(bool, ReturnT, ReturnT)> select_op =
         [](bool pred, ReturnT on_true, ReturnT on_false) {
           if (pred) {
@@ -1103,7 +1103,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandlePad(HloInstruction* pad) override {
-    CHECK(!ShapeUtil::IsTuple(pad->operand(0)->shape()));
+    CHECK(ShapeUtil::IsArray(pad->operand(0)->shape()));
     // Padding value must be scalar.
     CHECK(ShapeUtil::IsScalar(pad->operand(1)->shape()));
     CHECK_EQ(ShapeUtil::Rank(pad->operand(0)->shape()),

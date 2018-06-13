@@ -175,8 +175,8 @@ class ShapeUtil {
   // Precondition: IsArray(shape)
   static int64 ElementsIn(const Shape& shape);
 
-  // Returns true if 'shape' has zero elements.
-  static bool HasZeroElements(const Shape& shape);
+  // Returns true if 'shape' is an array with zero elements.
+  static bool IsZeroElementArray(const Shape& shape);
 
   // Returns the number of bytes required for an allocation of shape.  The
   // |pointer_size| parameter is used for calculating the size of tuple
@@ -336,7 +336,7 @@ class ShapeUtil {
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 
-  // Returns an empty tuple shape. Can be used to indicate side-effects.
+  // Returns an empty tuple shape. Can be used as a sentinel Shape value.
   static Shape MakeNil() { return MakeTupleShape({}); }
 
   // Checks whether the shape is initialized.
@@ -446,7 +446,7 @@ class ShapeUtil {
   // Returns true if shape is an empty tuple.
   static bool IsEmptyTuple(const Shape& shape);
 
-  // Returns true if shape is an empty tuple, or is an array with no elements.
+  // Returns true if shape is the nil shape (an empty tuple).
   static bool IsNil(const Shape& shape);
 
   // Returns the number of elements in the given tuple shape.
@@ -697,7 +697,7 @@ class ShapeUtil {
                                      tensorflow::gtl::ArraySlice<int64> incr,
                                      const FnType& visitor_function,
                                      bool parallel = false) {
-    if (ShapeUtil::HasZeroElements(shape)) {
+    if (ShapeUtil::IsZeroElementArray(shape)) {
       return Status::OK();
     }
     CHECK_EQ(Rank(shape), base.size());

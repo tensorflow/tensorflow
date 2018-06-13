@@ -1627,8 +1627,8 @@ bool PotentiallyImplementedAsEigenDot(
     const Shape& lhs_shape = hlo.operand(0)->shape();
     const Shape& rhs_shape = hlo.operand(1)->shape();
 
-    if (ShapeUtil::HasZeroElements(lhs_shape) ||
-        ShapeUtil::HasZeroElements(rhs_shape)) {
+    if (ShapeUtil::IsZeroElementArray(lhs_shape) ||
+        ShapeUtil::IsZeroElementArray(rhs_shape)) {
       return false;
     }
 

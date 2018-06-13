@@ -32,11 +32,11 @@ StatusOr<bool> ZeroSizedHloElimination::Run(HloModule* module) {
   for (HloComputation* comp : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
       if (instruction->HasSideEffect() ||
-          ShapeUtil::IsTuple(instruction->shape())) {
+          !ShapeUtil::IsArray(instruction->shape())) {
         continue;
       }
       if (comp->IsRemovable(instruction) &&
-          ShapeUtil::HasZeroElements(instruction->shape())) {
+          ShapeUtil::IsZeroElementArray(instruction->shape())) {
         TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
             instruction, HloInstruction::CreateConstant(
                              Literal::CreateFromShape(instruction->shape()))));

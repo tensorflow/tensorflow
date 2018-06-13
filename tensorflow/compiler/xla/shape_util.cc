@@ -363,7 +363,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::IsNil(const Shape& shape) {
-  return IsTuple(shape) ? IsEmptyTuple(shape) : HasZeroElements(shape);
+  return IsEmptyTuple(shape);
 }
 
 /* static */ int64 ShapeUtil::TupleElementCount(const Shape& shape) {
@@ -413,8 +413,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       std::multiplies<int64>());
 }
 
-/* static */ bool ShapeUtil::HasZeroElements(const Shape& shape) {
-  return ElementsIn(shape) == 0;
+/* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
+  return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
 }
 
 /* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {

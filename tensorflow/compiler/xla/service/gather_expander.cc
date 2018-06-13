@@ -300,7 +300,7 @@ static StatusOr<HloInstruction*> PermuteGatherAndWindowDims(
 
 StatusOr<HloInstruction*> GatherExpander::ExpandGather(
     HloInstruction* gather_instr) {
-  CHECK(!ShapeUtil::HasZeroElements(gather_instr->shape()));
+  CHECK(!ShapeUtil::IsZeroElementArray(gather_instr->shape()));
 
   HloComputation* computation = gather_instr->parent();
   HloInstruction* operand = gather_instr->mutable_operand(0);
@@ -369,7 +369,7 @@ StatusOr<bool> GatherExpander::Run(HloModule* module) {
     return inst->opcode() == HloOpcode::kGather &&
            // Avoid expanding gather ops that produce zero sized tensors,
            // instead punt these to ZeroSizedHloElimination.
-           !ShapeUtil::HasZeroElements(inst->shape());
+           !ShapeUtil::IsZeroElementArray(inst->shape());
   };
 
   std::vector<HloInstruction*> gather_instrs;

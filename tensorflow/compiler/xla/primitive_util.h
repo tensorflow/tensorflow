@@ -133,6 +133,9 @@ bool IsUnsignedIntegralType(PrimitiveType type);
 
 bool IsIntegralType(PrimitiveType type);
 
+// Returns true if values of the given primitive type are held in array shapes.
+bool IsArrayType(PrimitiveType primitive_type);
+
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
 
