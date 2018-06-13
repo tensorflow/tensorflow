@@ -232,6 +232,11 @@ bool HloOrdering::UseIsBeforeValueDefinition(
               << " and def is in FALSE computation";
       return true;
     }
+    if (value.defining_instruction() == use.instruction) {
+      VLOG(4) << "  use is conditional " << use << " and def is "
+              << value.ToShortString();
+      return true;
+    }
   }
 
   VLOG(4) << "  use is not before value";
