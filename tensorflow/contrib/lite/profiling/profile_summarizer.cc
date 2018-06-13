@@ -26,21 +26,22 @@ namespace {
 using Detail = tensorflow::StatsCalculator::Detail;
 
 struct OperatorDetails {
-  string name;
-  std::vector<string> inputs;
-  std::vector<string> outputs;
+  std::string name;
+  std::vector<std::string> inputs;
+  std::vector<std::string> outputs;
 };
 
-string GetTensorName(const tflite::Interpreter& interpreter, int tensor_index) {
+std::string GetTensorName(const tflite::Interpreter& interpreter,
+                          int tensor_index) {
   const auto tensor = interpreter.tensor(tensor_index);
   if (tensor == nullptr || tensor->name == nullptr) {
     return "Unknown";
   }
   return tensor->name;
 }
-std::vector<string> GetTensorNames(const tflite::Interpreter& interpreter,
-                                   const TfLiteIntArray* tensor_indices) {
-  std::vector<string> tensors;
+std::vector<std::string> GetTensorNames(const tflite::Interpreter& interpreter,
+                                        const TfLiteIntArray* tensor_indices) {
+  std::vector<std::string> tensors;
   tensors.reserve(tensor_indices->size);
   for (int i = 0; i < tensor_indices->size; i++) {
     tensors.push_back(GetTensorName(interpreter, tensor_indices->data[i]));
@@ -48,7 +49,7 @@ std::vector<string> GetTensorNames(const tflite::Interpreter& interpreter,
   return tensors;
 }
 
-string ToString(const std::vector<string>& str_vector) {
+std::string ToString(const std::vector<std::string>& str_vector) {
   std::stringstream stream;
   stream << "[";
   bool first = true;
@@ -84,11 +85,18 @@ OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
   return details;
 }
 
+tensorflow::StatSummarizerOptions GetProfileSummarizerOptions() {
+  auto options = tensorflow::StatSummarizerOptions();
+  options.show_summary = true;
+  options.show_memory = false;
+  return options;
+}
+
 }  // namespace
 
 ProfileSummarizer::ProfileSummarizer()
-    : stats_calculator_(new ::tensorflow::StatsCalculator(
-          tensorflow::StatSummarizerOptions())) {}
+    : stats_calculator_(
+          new ::tensorflow::StatsCalculator(GetProfileSummarizerOptions())) {}
 
 void ProfileSummarizer::ProcessProfiles(
     const std::vector<const ProfileEvent*>& profile_stats,

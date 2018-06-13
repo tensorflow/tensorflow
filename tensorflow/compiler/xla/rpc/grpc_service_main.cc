@@ -15,9 +15,9 @@ limitations under the License.
 
 // Basic server binary that exposes a xla::Service through a GRPC interface
 // on a configurable port.
-#include "grpc++/security/server_credentials.h"
-#include "grpc++/server.h"
-#include "grpc++/server_builder.h"
+#include "grpcpp/security/server_credentials.h"
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
 #include "tensorflow/compiler/xla/rpc/grpc_service.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/init_main.h"

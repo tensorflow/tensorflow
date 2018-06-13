@@ -233,10 +233,10 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
                                    HloInstruction* operand, HloInstruction* max,
                                    HloInstruction* max_operand);
 
-  // A Reshape or Broadcast that feeds an element-wise operation with a unique
-  // non-scalar operand can sink to after the operation.
-  StatusOr<bool> TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(
-      HloInstruction* reshape_or_broadcast);
+  // A Broadcast that feeds an element-wise operation with a unique non-scalar
+  // operand can sink to after the operation.
+  StatusOr<bool> TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
+      HloInstruction* broadcast);
 
   // Replaces the existing HLO instruction old_instruction, with
   // new_instruction, and marks the optimizer status as changed.
@@ -1305,7 +1305,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // broadcast after the unary element-wise operation.
   TF_ASSIGN_OR_RETURN(
       bool sink_succeeded,
-      TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
+      TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
   changed_ |= sink_succeeded;
   if (sink_succeeded) {
     return Status::OK();
@@ -1557,15 +1557,16 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
   return Status::OK();
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::
-    TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(
-        HloInstruction* reshape_or_broadcast) {
+StatusOr<bool>
+AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
+    HloInstruction* broadcast) {
+  TF_RET_CHECK(broadcast->opcode() == HloOpcode::kBroadcast);
   bool changed = false;
-  if (ShapeUtil::IsScalar(reshape_or_broadcast->shape())) {
+  if (ShapeUtil::IsScalar(broadcast->shape())) {
     return false;
   }
-  HloInstruction* operand = reshape_or_broadcast->mutable_operand(0);
-  for (HloInstruction* user : reshape_or_broadcast->users()) {
+  HloInstruction* operand = broadcast->mutable_operand(0);
+  for (HloInstruction* user : broadcast->users()) {
     if (user->user_count() == 0 && user != computation_->root_instruction()) {
       continue;
     }
@@ -1583,55 +1584,50 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
       continue;
     }
 
-    int64 reshape_or_broadcast_operand_index = -1;
     // Find the unique non-scalar operand or continue if there isn't one.
-    int64 scalar_count = 0;
-    for (int64 i = 0; i < user->operand_count(); ++i) {
-      if (ShapeUtil::IsScalar(user->operand(i)->shape())) {
-        ++scalar_count;
-      } else {
-        reshape_or_broadcast_operand_index = i;
+    int64 scalar_broadcast_count = 0;
+    int64 broadcast_use_count = 0;
+    for (HloInstruction* user_operand : user->operands()) {
+      if (user_operand->opcode() == HloOpcode::kBroadcast &&
+          ShapeUtil::IsScalar(user_operand->operand(0)->shape())) {
+        ++scalar_broadcast_count;
+      } else if (broadcast == user_operand) {
+        ++broadcast_use_count;
       }
     }
-    if (scalar_count != user->operand_count() - 1) {
+    if (scalar_broadcast_count + broadcast_use_count != user->operand_count()) {
       continue;
     }
-    VLOG(4) << "Sinking reshape or broadcast after user:";
-    VLOG(4) << "  old reshape/broadcast: " << reshape_or_broadcast->ToString();
-    VLOG(4) << "  old user: " << user->ToString();
-    CHECK_EQ(user->operand(reshape_or_broadcast_operand_index),
-             reshape_or_broadcast);
-    auto new_user_operands = user->operands();
-    new_user_operands[reshape_or_broadcast_operand_index] = operand;
-    auto new_user = computation_->AddInstruction(user->CloneWithNewOperands(
-        ShapeUtil::MakeShapeWithLayout(
-            user->shape().element_type(),
-            AsInt64Slice(operand->shape().dimensions()),
-            LayoutUtil::MinorToMajor(operand->shape())),
-        new_user_operands));
-    VLOG(4) << "  new user: " << new_user->ToString();
-    HloInstruction* new_reshape_or_broadcast = nullptr;
-    if (reshape_or_broadcast->opcode() == HloOpcode::kReshape) {
-      new_reshape_or_broadcast =
-          computation_->AddInstruction(HloInstruction::CreateReshape(
-              ShapeUtil::MakeShapeWithLayout(
-                  user->shape().element_type(),
-                  AsInt64Slice(reshape_or_broadcast->shape().dimensions()),
-                  LayoutUtil::MinorToMajor(reshape_or_broadcast->shape())),
-              new_user));
-    } else {
-      TF_RET_CHECK(reshape_or_broadcast->opcode() == HloOpcode::kBroadcast);
-      new_reshape_or_broadcast =
-          computation_->AddInstruction(HloInstruction::CreateBroadcast(
-              ShapeUtil::MakeShapeWithLayout(
-                  user->shape().element_type(),
-                  AsInt64Slice(reshape_or_broadcast->shape().dimensions()),
-                  LayoutUtil::MinorToMajor(reshape_or_broadcast->shape())),
-              new_user, reshape_or_broadcast->dimensions()));
+    std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(user->operand_count());
+
+    for (HloInstruction* user_operand : user->operands()) {
+      if (user_operand->opcode() == HloOpcode::kBroadcast &&
+          ShapeUtil::IsScalar(user_operand->operand(0)->shape())) {
+        new_operands.push_back(
+            computation_->AddInstruction(HloInstruction::CreateBroadcast(
+                ShapeUtil::ChangeElementType(
+                    operand->shape(), user_operand->shape().element_type()),
+                user_operand->mutable_operand(0), {})));
+      } else {
+        CHECK_EQ(broadcast, user_operand);
+        new_operands.push_back(operand);
+      }
     }
-    VLOG(4) << "  new reshape/broadcast: "
-            << new_reshape_or_broadcast->ToString();
-    TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(new_reshape_or_broadcast));
+    VLOG(4) << "Sinking broadcast after user:";
+    VLOG(4) << "  old broadcast: " << broadcast->ToString();
+    VLOG(4) << "  old user: " << user->ToString();
+    HloInstruction* new_user =
+        computation_->AddInstruction(user->CloneWithNewOperands(
+            ShapeUtil::ChangeElementType(operand->shape(),
+                                         user->shape().element_type()),
+            new_operands));
+    VLOG(4) << "  new user: " << new_user->ToString();
+    HloInstruction* new_broadcast =
+        computation_->AddInstruction(HloInstruction::CreateBroadcast(
+            user->shape(), new_user, broadcast->dimensions()));
+    VLOG(4) << "  new broadcast: " << new_broadcast->ToString();
+    TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(new_broadcast));
     changed = true;
   }
   return changed;
@@ -1672,16 +1668,6 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
               reshape->shape(), reshape->mutable_operand(0)->mutable_operand(0),
               opt_dims.second));
     }
-  }
-
-  // A Reshape that feeds a unary element-wise operation can sink the
-  // reshape after the unary element-wise operation.
-  TF_ASSIGN_OR_RETURN(
-      bool sink_succeeded,
-      TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(reshape));
-  changed_ |= sink_succeeded;
-  if (sink_succeeded) {
-    return Status::OK();
   }
 
   // Make this a bitcast if possible.
@@ -1788,6 +1774,46 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
                     new_reduce_dimensions, function));
   }
 
+  // If the reduction results in the same number of elements, then the only
+  // possible side effect would be a reshape. Since the init_value is an
+  // identity of the reduction function, we can therefore replace the reduce
+  // with a simple reshape, ignoring the reduction function completely.
+  if (ShapeUtil::ElementsIn(reduce->shape()) ==
+      ShapeUtil::ElementsIn(arg->shape())) {
+    return ReplaceWithNewInstruction(
+        reduce, HloInstruction::CreateReshape(reduce->shape(), arg));
+  }
+
+  // If a reduce feeds a reduce with the same computation and initial value,
+  // they can be combined into a single reduce.
+  if (arg->opcode() == HloOpcode::kReduce &&
+      init_value->Identical(*arg->operand(1)) &&
+      *function == *arg->to_apply()) {
+    // Create a new reduce with the combined reduction dimensions of both
+    // reduces.
+    std::vector<int64> arg_dims = arg->dimensions();
+    std::sort(arg_dims.begin(), arg_dims.end());
+    std::vector<int64> reduce_dims = reduce->dimensions();
+    std::sort(reduce_dims.begin(), reduce_dims.end());
+    // Transform reduce_dims to the same rank as the operand of the operand.
+    for (int64 arg_dim : arg_dims) {
+      for (int64& dim : reduce_dims) {
+        if (dim >= arg_dim) {
+          ++dim;
+        }
+      }
+    }
+    std::vector<int64> new_dimensions;
+    new_dimensions.reserve(arg->dimensions().size() +
+                           reduce->dimensions().size());
+    std::merge(arg_dims.begin(), arg_dims.end(), reduce_dims.begin(),
+               reduce_dims.end(), std::back_inserter(new_dimensions));
+    return ReplaceWithNewInstruction(
+        reduce,
+        HloInstruction::CreateReduce(reduce->shape(), arg->mutable_operand(0),
+                                     init_value, new_dimensions, function));
+  }
+
   // A reshape that collapses multiple dimensions into a dimension being
   // reduced can just reduce all of those dimensions instead of doing a
   // collapsing reshape before a reduction.
@@ -1832,15 +1858,6 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
                       new_reduce_dimensions, function));
     }
   }
-  if (ShapeUtil::ElementsIn(reduce->shape()) ==
-          ShapeUtil::ElementsIn(arg->shape()) ||
-      ShapeUtil::HasZeroElements(arg->shape())) {
-    auto reshape = computation_->AddInstruction(
-        HloInstruction::CreateReshape(reduce->shape(), arg));
-    return ReplaceWithNewInstruction(
-        reduce, HloInstruction::CreateMap(reduce->shape(),
-                                          {init_value, reshape}, function));
-  }
   return Status::OK();
 }
 
@@ -1860,7 +1877,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return ReplaceWithNewInstruction(
         reduce_window,
         HloInstruction::CreateMap(reduce_window->shape(),
-                                  {operand, reduce_window->mutable_operand(1)},
+                                  {reduce_window->mutable_operand(1), operand},
                                   function));
   }
 

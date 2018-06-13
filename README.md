@@ -56,6 +56,7 @@ $ python
 42
 >>> sess.close()
 ```
+Learn more examples about how to do specific tasks in TensorFlow at the [tutorials page of tensorflow.org](https://www.tensorflow.org/tutorials/).
 
 ## Contribution guidelines
 

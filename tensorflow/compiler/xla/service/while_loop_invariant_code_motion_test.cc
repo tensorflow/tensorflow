@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {

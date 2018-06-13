@@ -112,9 +112,7 @@ function prepare_src() {
     fi
     mkdir "${TMPDIR}/tensorflow/aux-bin"
     # Install toco as a binary in aux-bin.
-    # TODO(aselle): Re-enable this when we find a way to do it without doubling
-    # the whl size (over the limit).
-    # cp bazel-bin/tensorflow/contrib/lite/toco/toco ${TMPDIR}/tensorflow/aux-bin/
+    cp bazel-bin/tensorflow/contrib/lite/python/tflite_convert ${TMPDIR}/tensorflow/aux-bin/
   fi
 
   # protobuf pip package doesn't ship with header files. Copy the headers

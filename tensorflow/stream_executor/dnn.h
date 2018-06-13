@@ -469,6 +469,9 @@ enum class PadAlignment : int64 {
 // Returns a string representation of the given padding alignment.
 string PadAlignmentString(PadAlignment alignment);
 
+// Print alignment to str. Needed to use CHECK_EQ between two PadAlignments.
+std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment);
+
 // Describes a convolution.
 //
 // Uses the named argument construction form:
@@ -710,7 +713,7 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(false) {}
+  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(true) {}
   AlgorithmDesc(Index a, bool use_tensor_ops)
       : algo_(a), tensor_ops_enabled_(use_tensor_ops) {}
   bool is_default() const { return algo_ == kDefaultAlgorithm; }

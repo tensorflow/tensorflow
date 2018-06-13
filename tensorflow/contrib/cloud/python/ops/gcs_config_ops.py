@@ -53,6 +53,12 @@ class BlockCacheParams(object):
 class ConfigureGcsHook(training.SessionRunHook):
   """ConfigureGcsHook configures GCS when used with Estimator/TPUEstimator.
 
+  Warning: GCS `credentials` may be transmitted over the network unencrypted.
+  Please ensure that the network is trusted before using this function. For
+  users running code entirely within Google Cloud, your data is protected by
+  encryption in between data centers. For more information, please take a look
+  at https://cloud.google.com/security/encryption-in-transit/.
+
   Example:
 
   ```
@@ -134,6 +140,12 @@ class ConfigureGcsHook(training.SessionRunHook):
 
 def configure_gcs(session, credentials=None, block_cache=None, device=None):
   """Configures the GCS file system for a given a session.
+
+  Warning: GCS `credentials` may be transmitted over the network unencrypted.
+  Please ensure that the network is trusted before using this function. For
+  users running code entirely within Google Cloud, your data is protected by
+  encryption in between data centers. For more information, please take a look
+  at https://cloud.google.com/security/encryption-in-transit/.
 
   Args:
     session: A `tf.Session` session that should be used to configure the GCS

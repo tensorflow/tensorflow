@@ -30,6 +30,7 @@ from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib import coder
 from tensorflow.contrib import compiler
 from tensorflow.contrib import constrained_optimization
+from tensorflow.contrib import control_flow
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn

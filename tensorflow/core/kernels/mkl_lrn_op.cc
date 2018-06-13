@@ -22,8 +22,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include <vector>
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -31,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -45,7 +42,12 @@ using mkldnn::lrn_backward;
 using mkldnn::lrn_forward;
 using mkldnn::prop_kind;
 using mkldnn::stream;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -1236,7 +1238,7 @@ class MklLRNGradOp : public OpKernel {
     auto activations = orig_output_tensor.shaped<T, 2>({nodes * batch, depth});
 
     Tensor* output_dnn_data;
-    MklShape mkl_output_mkl_shape;
+    MklDnnShape mkl_output_mkl_shape;
     mkl_output_mkl_shape.SetMklTensor(false);
     mkl_output_mkl_shape.SetDimensions(4);
     AllocateOutputSetMklShape(context, kIdxOutput, &output_dnn_data,

@@ -130,6 +130,16 @@ class AsStringOpTest(test.TestCase):
       result = output.eval(feed_dict={input_: int_inputs_})
       self.assertAllEqual(s(result), ["%d" % x for x in int_inputs_])
 
+  def testHalfInt(self):
+    s = lambda strs: [x.decode("ascii") for x in strs]
+
+    with self.test_session():
+      input_ = array_ops.placeholder(dtypes.int16)
+      int_inputs_ = [np.iinfo(np.int16).min, np.iinfo(np.int16).max]
+      output = string_ops.as_string(input_)
+      result = output.eval(feed_dict={input_: int_inputs_})
+      self.assertAllEqual(s(result), ["%d" % x for x in int_inputs_])
+
   def testBool(self):
     bool_inputs_ = [False, True]
     s = lambda strs: [x.decode("ascii") for x in strs]

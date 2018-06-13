@@ -155,6 +155,9 @@ class HloModuleGroupMetadata {
   tensorflow::gtl::optional<int64> GetInstructionDevice(
       const HloInstruction& instruction) const;
 
+  // Returns the number of modules for devices (excluding the host module).
+  int64 GetDeviceModulesCount() const;
+
   // Returns the companion instructions for the given instruction.
   //
   // Precondition: IsCompanionWhile(instruction) is true.
@@ -226,6 +229,9 @@ class HloModuleGroupMetadata {
     auto it = tracked_instructions_.find(computation);
     return it != tracked_instructions_.end() ? &it->second : nullptr;
   }
+
+  // Dump all the collected module group statistics to the logs.
+  void DumpCollectedStats() const;
 
   // List of all companion instructions sets in the module.
   std::vector<std::unique_ptr<std::unordered_set<HloInstruction*>>>

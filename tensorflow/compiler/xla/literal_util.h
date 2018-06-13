@@ -542,6 +542,12 @@ class LiteralBase {
   friend class Literal;
   friend class LiteralSlice;
   friend class BorrowingLiteral;
+
+ private:
+  template <typename NativeT>
+  std::unique_ptr<Literal> SliceInternal(
+      const Shape& result_shape,
+      tensorflow::gtl::ArraySlice<int64> start_indices) const;
 };
 
 // Class representing literal values in XLA.
@@ -1093,8 +1099,10 @@ class BorrowingLiteral : public LiteralBase {
   const Piece& root_piece() const override { return root_piece_; };
   Piece root_piece_;
 
-  // Shape of this literal.
-  const Shape shape_;
+  // Shape of this literal. Stored as unique_ptr so such that the (default)
+  // move construction of this class would be trivially correct: the pointer to
+  // Shape root_piece_ stores will still point to the correct address.
+  std::unique_ptr<Shape> shape_;
 };
 
 template <typename NativeT>

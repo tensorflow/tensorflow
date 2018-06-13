@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -29,7 +31,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-class DependencyOptimizerTest : public ::testing::Test {};
+class DependencyOptimizerTest : public GrapplerTest {};
 
 void VerifyGraphsEqual(const GraphDef& original_graph,
                        const GraphDef& optimized_graph, const string& func) {
@@ -720,6 +722,68 @@ TEST_F(DependencyOptimizerTest, RemoveGreaterEqualWithNoOp) {
     }
   }
   EXPECT_EQ(3, count);
+}
+
+TEST_F(DependencyOptimizerTest, GroupCrossDeviceControlDeps) {
+  GrapplerItem item;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::RandomUniform(s.WithOpName("a").WithDevice("/CPU:1"),
+                                  {1, 2}, DT_FLOAT);
+    Output b = ops::RandomUniform(s.WithOpName("b").WithDevice("/CPU:2"),
+                                  {1, 2}, DT_FLOAT);
+    Output c = ops::RandomUniform(s.WithOpName("c").WithDevice("/CPU:1"),
+                                  {1, 2}, DT_FLOAT);
+    Output d = ops::RandomUniform(s.WithOpName("d").WithDevice("/CPU:3"),
+                                  {1, 2}, DT_FLOAT);
+    Output e = ops::RandomUniform(s.WithOpName("e").WithDevice("/CPU:0"),
+                                  {1, 2}, DT_FLOAT);
+    // Node with cross-device dependencies.
+    auto fetch = ops::Identity(
+        s.WithOpName("f")
+            .WithControlDependencies({a.op(), b.op(), c.op(), d.op()})
+            .WithDevice("/GPU:0"),
+        {e});
+
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    item.fetch.push_back("f");
+  }
+
+  GraphDef expected;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::RandomUniform(s.WithOpName("a").WithDevice("/CPU:1"),
+                                  {1, 2}, DT_FLOAT);
+    Output b = ops::RandomUniform(s.WithOpName("b").WithDevice("/CPU:2"),
+                                  {1, 2}, DT_FLOAT);
+    Output c = ops::RandomUniform(s.WithOpName("c").WithDevice("/CPU:1"),
+                                  {1, 2}, DT_FLOAT);
+    Output d = ops::RandomUniform(s.WithOpName("d").WithDevice("/CPU:3"),
+                                  {1, 2}, DT_FLOAT);
+    Output e = ops::RandomUniform(s.WithOpName("e").WithDevice("/CPU:0"),
+                                  {1, 2}, DT_FLOAT);
+    auto noop = ops::NoOp(s.WithOpName("GroupCrossDeviceControlEdges_0/f")
+                              .WithDevice("/CPU:1")
+                              .WithControlDependencies({a.op(), c.op()}));
+    auto fetch =
+        ops::Identity(s.WithOpName("f")
+                          .WithControlDependencies({b.op(), d.op(), noop})
+                          .WithDevice("/GPU:0"),
+                      {e});
+
+    TF_CHECK_OK(s.ToGraphDef(&expected));
+  }
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+  CompareGraphs(expected, output);
+
+  // Run the optimizer again to verify idempotence.
+  item.graph.Swap(&output);
+  output.Clear();
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+  CompareGraphs(expected, output);
 }
 
 }  // namespace

@@ -12,6 +12,10 @@ py_library(
     name = "estimator_py",
     srcs = ["estimator_lib.py"],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":baseline",
         ":boosted_trees",
@@ -446,7 +450,26 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/data",
+    ],
+)
+
+py_test(
+    name = "util_test",
+    srcs = ["util_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/67510291
+    deps = [
+        ":util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -598,6 +621,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -689,6 +713,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
@@ -950,7 +975,10 @@ py_test(
     size = "large",
     srcs = ["keras_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "no_windows",
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/core:protos_all_py",
