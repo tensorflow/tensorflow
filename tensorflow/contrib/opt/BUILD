@@ -24,11 +24,11 @@ py_library(
         "python/training/moving_average_optimizer.py",
         "python/training/multitask_optimizer_wrapper.py",
         "python/training/nadam_optimizer.py",
-        "python/training/weight_decay_optimizers.py",
         "python/training/powersign.py",
         "python/training/reg_adagrad_optimizer.py",
         "python/training/sign_decay.py",
         "python/training/variable_clipping_optimizer.py",
+        "python/training/weight_decay_optimizers.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
