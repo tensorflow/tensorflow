@@ -136,6 +136,21 @@ TEST_F(GraphUtilsTest, FindNodeWithOp) {
   EXPECT_EQ(FindNodeWithOp("OpA", graph), -1);
 }
 
+TEST_F(GraphUtilsTest, SetUniqueName) {
+  GraphDef graph;
+
+  NodeDef* node1;
+  TF_EXPECT_OK(AddNode("", "A", {}, {}, &graph, &node1));
+  NodeDef* node2;
+  TF_EXPECT_OK(AddNode("", "A", {}, {}, &graph, &node2));
+  EXPECT_NE(node1->name(), node2->name());
+
+  TF_EXPECT_OK(DeleteNodes({node1->name()}, &graph));
+  NodeDef* node3;
+  TF_EXPECT_OK(AddNode("", "A", {}, {}, &graph, &node3));
+  EXPECT_NE(node2->name(), node3->name());
+}
+
 }  // namespace
 }  // namespace graph_utils
 }  // namespace grappler

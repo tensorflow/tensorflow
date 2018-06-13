@@ -134,7 +134,9 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   // optimized_ops.h, in order to avoid a DCHECK(!im2col_data).
   data->need_im2col =
       (params->stride_width != 1 || params->stride_height != 1 ||
-       filter_width != 1 || filter_height != 1);
+       params->dilation_width_factor != 1 ||
+       params->dilation_height_factor != 1 || filter_width != 1 ||
+       filter_height != 1);
   // If we're using the optimized multithreaded EigenTensor implementation of
   // convolution, it expects the filter weights to be transposed compared to
   // the normal TF Lite buffer format. Typical TF Lite weights are

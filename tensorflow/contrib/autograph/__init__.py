@@ -30,6 +30,8 @@ from tensorflow.contrib.autograph.impl.api import do_not_convert
 from tensorflow.contrib.autograph.impl.api import RunMode
 from tensorflow.contrib.autograph.impl.api import to_code
 from tensorflow.contrib.autograph.impl.api import to_graph
+from tensorflow.contrib.autograph.impl.directives import set_element_type
+from tensorflow.contrib.autograph.impl.directives import set_loop_options
 from tensorflow.contrib.autograph.impl.special_functions import stack
 from tensorflow.contrib.autograph.pyct.transformer import AutographParseError
 from tensorflow.python.util.all_util import remove_undocumented
@@ -42,8 +44,11 @@ _allowed_symbols = [
     'do_not_convert',
     'to_code',
     'to_graph',
-    # Special functions and overloaded operators
+    # Overloaded operators
     'operators',
+    # Special functions and directives
+    'set_element_type',
+    'set_loop_options',
     'stack',
     # Exceptions
     'AutographParseError',

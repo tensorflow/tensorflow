@@ -79,6 +79,7 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   params.function_library = flib_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
+  params.cancellation_manager = &cm_;
   if (stats != nullptr) {
     params.track_allocations = true;
   }

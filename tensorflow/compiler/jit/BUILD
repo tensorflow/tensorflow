@@ -181,6 +181,7 @@ cc_library(
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
+        "//tensorflow/core/kernels:shape_ops",
         "//tensorflow/core/kernels:variable_ops",
     ],
 )
@@ -342,6 +343,7 @@ cc_library(
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:bounds_check",
     ],
 )

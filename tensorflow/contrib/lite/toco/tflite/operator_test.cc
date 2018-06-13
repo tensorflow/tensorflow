@@ -119,6 +119,11 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect);
   CheckSimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice);
   CheckSimpleOperator<SinOperator>("SIN", OperatorType::kSin);
+  CheckSimpleOperator<TensorFlowEqualOperator>("EQUAL",
+                                               OperatorType::kTensorFlowEqual);
+  CheckSimpleOperator<TensorFlowNotEqualOperator>(
+      "NOT_EQUAL", OperatorType::kTensorFlowNotEqual);
+  CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

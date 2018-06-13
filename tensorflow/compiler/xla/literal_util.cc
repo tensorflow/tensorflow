@@ -2341,28 +2341,28 @@ LiteralSlice::LiteralSlice(const LiteralBase& literal,
     : LiteralBase(), root_piece_(&literal.piece(view_root)) {}
 
 BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
-    : LiteralBase(), shape_(shape) {
-  CHECK(ShapeUtil::IsArray(shape_));
+    : LiteralBase(), shape_(MakeUnique<Shape>(shape)) {
+  CHECK(ShapeUtil::IsArray(*shape_));
   CHECK_NE(src_buf_ptr, nullptr);
-  CHECK(LayoutUtil::HasLayout(shape_));
+  CHECK(LayoutUtil::HasLayout(*shape_));
 
   root_piece_ = Piece();
   root_piece_.set_buffer(const_cast<char*>(src_buf_ptr));
-  root_piece_.set_subshape(&shape_);
+  root_piece_.set_subshape(shape_.get());
 }
 
 BorrowingLiteral::BorrowingLiteral(
     tensorflow::gtl::ArraySlice<const char*> src_buf_ptrs, const Shape& shape)
-    : LiteralBase(), shape_(shape) {
-  CHECK(ShapeUtil::IsTuple(shape_));
-  CHECK(!ShapeUtil::IsNestedTuple(shape_));
-  CHECK_EQ(src_buf_ptrs.size(), ShapeUtil::TupleElementCount(shape_));
+    : LiteralBase(), shape_(MakeUnique<Shape>(shape)) {
+  CHECK(ShapeUtil::IsTuple(*shape_));
+  CHECK(!ShapeUtil::IsNestedTuple(*shape_));
+  CHECK_EQ(src_buf_ptrs.size(), ShapeUtil::TupleElementCount(*shape_));
   root_piece_ = Piece();
-  root_piece_.set_subshape(&shape_);
-  BuildPieceSubtree(shape_, &root_piece_);
+  root_piece_.set_subshape(shape_.get());
+  BuildPieceSubtree(*shape_, &root_piece_);
 
   for (int i = 0; i < src_buf_ptrs.size(); ++i) {
-    const auto& src_shape = shape_.tuple_shapes(i);
+    const auto& src_shape = shape_->tuple_shapes(i);
     CHECK(ShapeUtil::IsArray(src_shape));
     root_piece_.child(i).set_buffer(const_cast<char*>(src_buf_ptrs[i]));
   }

@@ -571,6 +571,12 @@ class SingleOpTest(LocalComputationTest):
     c.Exp(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=np.exp(arr))
 
+  def testExpm1(self):
+    c = self._NewComputation()
+    arr = NumpyArrayF32([3.3, 12.1])
+    c.Expm1(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=np.expm1(arr))
+
   def testRound(self):
     c = self._NewComputation()
     arr = NumpyArrayF32([3.3, 12.1])
@@ -582,6 +588,12 @@ class SingleOpTest(LocalComputationTest):
     arr = NumpyArrayF32([3.3, 12.1])
     c.Log(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=np.log(arr))
+
+  def testLog1p(self):
+    c = self._NewComputation()
+    arr = NumpyArrayF32([3.3, 12.1])
+    c.Log1p(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=np.log1p(arr))
 
   def testNeg(self):
     c = self._NewComputation()
