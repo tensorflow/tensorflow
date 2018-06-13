@@ -613,6 +613,60 @@ class HloFusionInstruction : public HloInstruction {
   FusionKind fusion_kind_;
 };
 
+class HloRngInstruction : public HloInstruction {
+ public:
+  explicit HloRngInstruction(
+      const Shape& shape, RandomDistribution distribution,
+      tensorflow::gtl::ArraySlice<HloInstruction*> parameters);
+  // Returns the random distribution for this rng node.
+  RandomDistribution random_distribution() const { return distribution_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  bool IsElementwiseImpl(
+      const tensorflow::gtl::optional<int64>& operand_idx) const override;
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // The distribution requested for random number generation.
+  RandomDistribution distribution_;
+};
+
+class HloParameterInstruction : public HloInstruction {
+ public:
+  explicit HloParameterInstruction(int64 parameter_number, const Shape& shape,
+                                   const string& name);
+  int64 parameter_number() const { return parameter_number_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  string OperandsToStringWithCanonicalNameMap(
+      const HloPrintOptions& options,
+      CanonicalNameMap* canonical_name_map) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  int64 parameter_number_ = 0;
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_

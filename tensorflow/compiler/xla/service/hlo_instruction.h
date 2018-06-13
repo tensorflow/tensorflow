@@ -876,14 +876,6 @@ class HloInstruction {
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
 
-  // Returns the parameter number associated with this instruction.
-  //
-  // Note: only parameter opcodes have an associated parameter number.
-  int64 parameter_number() const {
-    CHECK_EQ(HloOpcode::kParameter, opcode_);
-    return parameter_number_;
-  }
-
   // Returns the tuple index associated with this instruction.
   //
   // Precondition: opcode() == HloOpcode::kGetTupleElement
@@ -1160,11 +1152,6 @@ class HloInstruction {
 
   // Returns the dump string of the gather dimension numbers.
   string GatherDimensionNumbersToString() const;
-
-  // Returns the random distribution for this rng node.
-  //
-  // Precondition: opcode() == HloOpcode::kRng
-  RandomDistribution random_distribution() const;
 
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
@@ -1446,6 +1433,12 @@ class HloInstruction {
 
   // Delegates to HloFusionInstruction::set_fusion_kind.
   void set_fusion_kind(FusionKind kind);
+
+  // Delegates to HloRngInstruction::random_distribution.
+  RandomDistribution random_distribution() const;
+
+  // Delegates to HloParameterInstruction::parameter_number.
+  int64 parameter_number() const;
   // Old methods kept for smooth subclassing transition END.
 
   // Returns the group ids of each replica for CrossReplicaSum op.
@@ -1614,9 +1607,6 @@ class HloInstruction {
   std::unique_ptr<DomainMetadata> operand_side_metadata_;
   std::unique_ptr<DomainMetadata> user_side_metadata_;
 
-  // For parameter instructions this field holds the parameter number.
-  int64 parameter_number_ = 0;
-
   // Name of a global symbol to call, only present for kCustomCall.
   string custom_call_target_;
 
@@ -1653,10 +1643,6 @@ class HloInstruction {
   // Invariant: if trace_instruction_ != nullptr, trace_instruction has this as
   // an operand.
   HloInstruction* trace_instruction_ = nullptr;
-
-  // The distribution requested for random number generation.
-  // Only present for kRng.
-  RandomDistribution distribution_;
 
   // The string representation of the infeed configuration.
   string infeed_config_;

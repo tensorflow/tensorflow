@@ -1128,4 +1128,79 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
   return MakeUnique<HloFusionInstruction>(shape, fusion_kind(), new_operands,
                                           new_fused_computation);
 }
+
+HloRngInstruction::HloRngInstruction(
+    const Shape& shape, RandomDistribution distribution,
+    tensorflow::gtl::ArraySlice<HloInstruction*> parameters)
+    : HloInstruction(HloOpcode::kRng, shape), distribution_(distribution) {
+  for (HloInstruction* param : parameters) {
+    AppendOperand(param);
+  }
+}
+
+HloInstructionProto HloRngInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_distribution(distribution_);
+  return proto;
+}
+
+std::vector<string> HloRngInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("distribution=", RandomDistributionToString(distribution_))};
+}
+
+bool HloRngInstruction::IsElementwiseImpl(
+    const tensorflow::gtl::optional<int64>& operand_idx) const {
+  return true;
+}
+
+bool HloRngInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  return false;
+}
+
+std::unique_ptr<HloInstruction> HloRngInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  return MakeUnique<HloRngInstruction>(shape, distribution_, new_operands);
+}
+
+HloParameterInstruction::HloParameterInstruction(int64 parameter_number,
+                                                 const Shape& shape,
+                                                 const string& name)
+    : HloInstruction(HloOpcode::kParameter, shape),
+      parameter_number_(parameter_number) {
+  SetAndSanitizeName(name);
+}
+
+HloInstructionProto HloParameterInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_parameter_number(parameter_number_);
+  return proto;
+}
+
+string HloParameterInstruction::OperandsToStringWithCanonicalNameMap(
+    const HloPrintOptions& options,
+    CanonicalNameMap* canonical_name_map) const {
+  return StrCat(parameter_number_);
+}
+
+bool HloParameterInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloParameterInstruction&>(other);
+  return parameter_number() == casted_other.parameter_number();
+}
+
+std::unique_ptr<HloInstruction>
+HloParameterInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  return MakeUnique<HloParameterInstruction>(parameter_number_, shape, name());
+}
 }  // namespace xla

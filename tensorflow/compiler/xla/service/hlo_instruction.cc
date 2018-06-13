@@ -220,6 +220,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                  fused_computation);
       break;
     }
+    case HloOpcode::kRng: {
+      std::vector<HloInstruction*> rng_parms(proto.operand_ids_size());
+      std::transform(proto.operand_ids().begin(), proto.operand_ids().end(),
+                     rng_parms.begin(), [&instruction_map](int64 operand_id) {
+                       return instruction_map.at(operand_id);
+                     });
+      instruction = CreateRng(proto.shape(), proto.distribution(), rng_parms);
+      break;
+    }
+    case HloOpcode::kParameter:
+      instruction = CreateParameter(proto.parameter_number(), proto.shape(),
+                                    proto.name());
+      break;
     default: {
       instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -250,7 +263,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
-  instruction->parameter_number_ = proto.parameter_number();
 
   instruction->tuple_index_ = proto.tuple_index();
   if (proto.has_window()) {
@@ -276,7 +288,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         MakeUnique<PaddingConfig>(proto.padding_config());
   }
   instruction->outfeed_config_ = proto.outfeed_config();
-  instruction->distribution_ = proto.distribution();
   instruction->infeed_config_ = proto.infeed_config();
   instruction->custom_call_target_ = proto.custom_call_target();
   instruction->outfeed_shape_ = proto.outfeed_shape();
@@ -307,11 +318,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
     int64 parameter_number, const Shape& shape, const string& name) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kParameter, shape));
-  instruction->parameter_number_ = parameter_number;
-  instruction->SetAndSanitizeName(name);
-  return instruction;
+  return MakeUnique<HloParameterInstruction>(parameter_number, shape, name);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTrace(
@@ -338,13 +345,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRng(
     const Shape& shape, RandomDistribution distribution,
     tensorflow::gtl::ArraySlice<HloInstruction*> parameters) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kRng, shape));
-  instruction->distribution_ = distribution;
-  instruction->shape_ = shape;
-  for (HloInstruction* param : parameters) {
-    instruction->AppendOperand(param);
-  }
-  return instruction;
+  return MakeUnique<HloRngInstruction>(shape, distribution, parameters);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateNary(
@@ -881,11 +882,6 @@ void HloInstruction::SetupDerivedInstruction(
   derived_instruction->set_metadata(metadata_);
 }
 
-RandomDistribution HloInstruction::random_distribution() const {
-  CHECK_EQ(opcode_, HloOpcode::kRng);
-  return distribution_;
-}
-
 bool HloInstruction::HasSideEffectNoRecurse() const {
   switch (opcode_) {
     case HloOpcode::kSend:
@@ -1043,6 +1039,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kConstant:
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
+    case HloOpcode::kRng:
+    case HloOpcode::kParameter:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1169,9 +1167,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
           CreateSelectAndScatter(shape, new_operands[0], select(), *window_,
                                  new_operands[1], new_operands[2], scatter());
       break;
-    case HloOpcode::kRng:
-      clone = CreateRng(shape, distribution_, new_operands);
-      break;
     case HloOpcode::kReshape:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateReshape(shape, new_operands[0]);
@@ -1193,9 +1188,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone =
           CreateWhile(shape, while_condition(), while_body(), new_operands[0]);
-      break;
-    case HloOpcode::kParameter:
-      clone = CreateParameter(parameter_number_, shape, name_);
       break;
     case HloOpcode::kInfeed:
       CHECK_EQ(new_operands.size(), 0);
@@ -1468,13 +1460,9 @@ bool HloInstruction::IdenticalSlowPath(
 
     // These opcodes have complex or special behavior so just return false.
     case HloOpcode::kDomain:
-    case HloOpcode::kRng:
     case HloOpcode::kWhile:
     case HloOpcode::kGenerateToken:
       return false;
-
-    case HloOpcode::kParameter:
-      return parameter_number() == other.parameter_number();
 
     // A reduce-precision operation is determined by the bit sizes.
     case HloOpcode::kReducePrecision:
@@ -1565,6 +1553,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kConstant:
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
+    case HloOpcode::kRng:
+    case HloOpcode::kParameter:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -1869,10 +1859,6 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kClamp:
       return true;
 
-    // Other operations.
-    case HloOpcode::kRng:
-      return true;
-
     default:
       return false;
   }
@@ -1928,36 +1914,32 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
   string operands;
-  if (opcode() == HloOpcode::kParameter) {
-    StrAppend(&operands, parameter_number_);
-  } else {
-    tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
-    const int64 kMaxOperandsToShowIfCompact = 4;
-    if (options.compact_operands() &&
-        slice.size() > kMaxOperandsToShowIfCompact) {
-      slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
+  tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
+  const int64 kMaxOperandsToShowIfCompact = 4;
+  if (options.compact_operands() &&
+      slice.size() > kMaxOperandsToShowIfCompact) {
+    slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
+  }
+  operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
+    std::vector<string> str;
+    if (options.print_operand_shape()) {
+      str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
     }
-    operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
-      std::vector<string> str;
-      if (options.print_operand_shape()) {
-        str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
-      }
 
-      // In a top-level HloInstruction::ToString() call, the operand name is not
-      // part of the canonical string.
-      if (options.canonicalize_instruction_names() &&
-          options.is_in_nested_computation()) {
-        str.push_back(PrintName(
-            canonical_name_map->LookupOrInsert(operand->name()), options));
-      } else if (!options.compact_operands()) {
-        str.push_back(PrintName(operand->name(), options));
-      }
-      StrAppend(out, Join(str, " "));
-    });
-    const int64 remaining = operands_.size() - slice.size();
-    if (slice.size() != operands_.size()) {
-      StrAppend(&operands, ", ...(+", remaining, ")");
+    // In a top-level HloInstruction::ToString() call, the operand name is not
+    // part of the canonical string.
+    if (options.canonicalize_instruction_names() &&
+        options.is_in_nested_computation()) {
+      str.push_back(PrintName(
+          canonical_name_map->LookupOrInsert(operand->name()), options));
+    } else if (!options.compact_operands()) {
+      str.push_back(PrintName(operand->name(), options));
     }
+    StrAppend(out, Join(str, " "));
+  });
+  const int64 remaining = operands_.size() - slice.size();
+  if (slice.size() != operands_.size()) {
+    StrAppend(&operands, ", ...(+", remaining, ")");
   }
   return operands;
 }
@@ -2084,10 +2066,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(
         StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
   }
-  if (opcode() == HloOpcode::kRng) {
-    extra.push_back(
-        StrCat("distribution=", RandomDistributionToString(distribution_)));
-  }
   if (opcode() == HloOpcode::kReducePrecision) {
     extra.push_back(StrCat("exponent_bits=", exponent_bits_));
     extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
@@ -2143,7 +2121,6 @@ HloInstructionProto HloInstruction::ToProto() const {
 
   *proto.mutable_metadata() = metadata_;
   proto.set_backend_config(backend_config_);
-  proto.set_parameter_number(parameter_number_);
   if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations_) {
       proto.add_called_computation_ids(computation->unique_id());
@@ -2179,9 +2156,6 @@ HloInstructionProto HloInstruction::ToProto() const {
     *proto.mutable_padding_config() = *padding_config_;
   }
   proto.set_outfeed_config(outfeed_config_);
-  if (opcode() == HloOpcode::kRng) {
-    proto.set_distribution(distribution_);
-  }
   proto.set_infeed_config(infeed_config_);
   proto.set_custom_call_target(custom_call_target_);
   *proto.mutable_outfeed_shape() = outfeed_shape_;
@@ -2743,8 +2717,10 @@ class HloInstruction::FusionReusesParamElements {
   static UseKind ComputeInternal(
       int64 i, const HloInstruction& hlo,
       tensorflow::gtl::FlatMap<const HloInstruction*, UseKind>* cache) {
-    if (hlo.opcode_ == HloOpcode::kParameter && hlo.parameter_number_ == i) {
-      return UseKind::kUse;
+    if (auto hlo_param = DynCast<HloParameterInstruction>(&hlo)) {
+      if (hlo_param->parameter_number() == i) {
+        return UseKind::kUse;
+      }
     }
 
     auto p = cache->emplace(&hlo, UseKind{});
@@ -3201,5 +3177,13 @@ HloInstruction::FusionKind HloInstruction::fusion_kind() const {
 
 void HloInstruction::set_fusion_kind(FusionKind kind) {
   return Cast<HloFusionInstruction>(this)->set_fusion_kind(kind);
+}
+
+RandomDistribution HloInstruction::random_distribution() const {
+  return Cast<HloRngInstruction>(this)->random_distribution();
+}
+
+int64 HloInstruction::parameter_number() const {
+  return Cast<HloParameterInstruction>(this)->parameter_number();
 }
 }  // namespace xla
