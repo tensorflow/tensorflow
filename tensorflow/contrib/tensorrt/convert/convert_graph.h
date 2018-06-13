@@ -52,10 +52,10 @@ struct ConversionParams {
   int minimum_segment_size;
   const tensorflow::grappler::GraphProperties* graph_properties;
   const tensorflow::grappler::Cluster* cluster;
-  bool is_dyn_op;
-  bool fixed_input_size;
-  int max_cached_engines;
-  std::vector<int> cached_engine_batches;
+  bool is_dyn_op;  //  Whether to create engine on conversion or execution time
+  bool fixed_input_size;   // Assume non-batch ranks of input tensors are fixed
+  int max_cached_engines;  // maximum number of cached engines
+  std::vector<int> cached_engine_batches;  // list of cached engines 
 };
 
 // This method extracts calibration information from the resource managers
