@@ -1811,7 +1811,7 @@ class FeatureEngineeringFunctionTest(test.TestCase):
     prediction_without_fe_fn = next(
         estimator_without_fe_fn.predict_scores(
             input_fn=input_fn, as_iterable=True))
-    self.assertAlmostEqual(100., prediction_without_fe_fn, delta=1.0)
+    self.assertAlmostEqual(100., prediction_without_fe_fn, delta=3.0)
 
 
 if __name__ == '__main__':
