@@ -19,7 +19,7 @@ limitations under the License.
 #include <chrono>
 #include <unordered_map>
 
-#include "tensorflow/core/lib/core/refcount.h"
+
 #include "tensorflow/core/platform/logging.h"
 
 #if GOOGLE_CUDA

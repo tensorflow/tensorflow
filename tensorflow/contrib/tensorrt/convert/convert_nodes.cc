@@ -2144,7 +2144,6 @@ void Converter::register_op_converters() {
 
 }  // namespace
 
-// Converts given subgraph to a TRT engine.
 tensorflow::Status ConvertSubgraphToEngine(
     const tensorflow::GraphDef& gdef, nvinfer1::IBuilder* builder,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
@@ -2163,7 +2162,7 @@ tensorflow::Status ConvertSubgraphToEngine(
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
     VLOG(1) << "Converting op name=" << node_name << ", op=" << node_def.op();
-    if (tensorflow::str_util::StartsWith(node_name, "InputPH_") &&
+    if (tensorflow::str_util::StartsWith(node_name, kInputPHName) &&
         (node_def.op() == "Placeholder")) {
       nvinfer1::DimsCHW input_dim_pseudo_chw;
       for (int i = 0; i < 8; i++) input_dim_pseudo_chw.d[i] = 0;
@@ -2192,29 +2191,28 @@ tensorflow::Status ConvertSubgraphToEngine(
         StrAppend(&dim_str, "[ ", shape.dim_size(0));
         for (int i = 1; i < shape.dims(); i++) {
           StrAppend(&dim_str, ", ", shape.dim_size(i));
-          input_dim_pseudo_chw.d[i - 1] = shape.dim_size(i);
         }
         StrAppend(&dim_str, " ]");
         VLOG(1) << dim_str;
-      } else {
-        for (int i = 1; i < shape.dims(); i++) {
-          input_dim_pseudo_chw.d[i - 1] = shape.dim_size(i);
-        }
       }
+      for (int i = 1; i < shape.dims(); i++) {
+        input_dim_pseudo_chw.d[i - 1] = shape.dim_size(i);
+      }
+
       input_dim_pseudo_chw.nbDims = shape.dims() - 1;
       nvinfer1::ITensor* input_tensor = converter.network()->addInput(
           node_name.c_str(), dtype, input_dim_pseudo_chw);
       if (!input_tensor) {
         return tensorflow::errors::InvalidArgument(
             StrCat("Failed to create Input layer tensor ", node_name,
-                   " rank=", shape.dims()-1));
+                   " rank=", shape.dims() - 1));
       }
       VLOG(1) << "Input tensor name :" << node_name;
       if (!converter.insert_input_tensor(node_name, input_tensor)) {
         return tensorflow::errors::AlreadyExists(
             "Output tensor already exists for op: " + node_name);
       }
-    } else if (tensorflow::str_util::StartsWith(node_name, "OutputPH_") &&
+    } else if (tensorflow::str_util::StartsWith(node_name, kOutputPHName) &&
                (node_def.op() == "Identity")) {
       tensorflow::int32 slot_number = -1;
       if (!tensorflow::strings::safe_strto32(node_name.c_str() + 9,
@@ -2222,8 +2220,9 @@ tensorflow::Status ConvertSubgraphToEngine(
         LOG(ERROR) << "Failed to parse slot number from " << node_name
                    << " +9=" << node_name.c_str() + 9;
       }
-      if (output_tensors.size() <= slot_number)
+      if (output_tensors.size() <= slot_number) {
         output_tensors.resize(slot_number + 1);
+      }
       output_tensors.at(slot_number) = {node_def.input(0), node_name};
     } else {
       VLOG(2) << "Converting node: " << node_def.name() << " , "
@@ -2253,10 +2252,7 @@ tensorflow::Status ConvertSubgraphToEngine(
   VLOG(1) << "Finished conversion";
   return tensorflow::Status::OK();
 }
-//  Constructs a graphdef from the segment in the given graph. Adds placeholder
-//  nodes for input edges (InputPH_*) and identity nodes for output edges
-//  (OutputPH_*).  This function needs to be called before TensorRT nodes
-//  inserted in order to correctly get sizes from the original graph.
+
 tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
@@ -2305,7 +2301,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
       tensorflow::NodeDef dummy_placeholder;
       string node_name;
       if (connection.is_input_edge) {
-        StrAppend(&node_name, "InputPH_", connection.port_number);
+        StrAppend(&node_name, kInputPHName, connection.port_number);
         if (marker_nodes.count(node_name)) {
           VLOG(1) << "Reusing input " << node_name << " for the edge "
                   << connection.outside_node_name << ":"
@@ -2325,7 +2321,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
                 << connection.outside_port << " -> "
                 << connection.inside_node_name << ":" << connection.inside_port;
       } else {
-        StrAppend(&node_name, "OutputPH_", connection.port_number);
+        StrAppend(&node_name, kOutputPHName, connection.port_number);
         if (marker_nodes.count(node_name)) {
           VLOG(1) << "Reusing output " << node_name << " for the edge "
                   << connection.inside_node_name << ":"
@@ -2365,7 +2361,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
     auto& connection = connections->at(i);
     if (!connection.is_input_edge) continue;
     auto snode = segment_def->mutable_node(newIdMap[connection.inside_id]);
-    string placeholder_name("InputPH_");
+    string placeholder_name(kInputPHName);
     StrAppend(&placeholder_name, connection.port_number);
     VLOG(1) << "Updating " << snode->name() << ":" << connection.inside_port
             << " from " << snode->input(connection.inside_port) << " to "

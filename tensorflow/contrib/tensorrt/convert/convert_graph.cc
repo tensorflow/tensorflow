@@ -143,7 +143,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
       if (cres->calibrator_) {
         cres->calibrator_->setDone();
         cres->thr_->join();
-        auto calibration_table =
+        const auto& calibration_table =
             cres->calibrator_->getCalibrationTableAsString();
         if (!calibration_table.size()) {
           LOG(ERROR) << "Calibration table is empty";
@@ -303,6 +303,7 @@ EngineInfo GetEngineInfo(
                            &info.connections, &info.segment_graph_def,
                            &info.engine_name);
   info.engine_type = EngineInfo::EngineType::TRTStatic;
+  // TODO(sami): This should not happen once segmenter is updated.
   if (segment_devices.size() > 1) {
     LOG(WARNING) << "Detected multiple(" << segment_devices.size()
                  << ") devices for the segment. Picking first one to continue "
@@ -315,7 +316,7 @@ EngineInfo GetEngineInfo(
 // Function to insert a TRT node into the graph.
 tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
                                  const std::vector<EngineInfo>& infos, int pos,
-                                 tensorflow::NodeDef* trtNode,
+                                 tensorflow::NodeDef* trt_node,
                                  nvinfer1::IGpuAllocator* alloc,
                                  int max_batch_size) {
   auto& info = infos.at(pos);
@@ -337,17 +338,17 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
       out_shapes.at(conn.port_number) = out_shape;
       out_types.at(conn.port_number) = conn.connection_type;
       continue;
-    } else {  // input edge
-      tensorflow::TensorShapeProto in_shape;
-      conn.outside_shape.AsProto(&in_shape);
+    }  // input edge
+    tensorflow::TensorShapeProto in_shape;
+    conn.outside_shape.AsProto(&in_shape);
 
-      if (input_shapes.size() <= conn.port_number) {
-        input_shapes.resize(conn.port_number + 1);
-        shapes.resize(conn.port_number + 1);
-      }
-      input_shapes.at(conn.port_number) = in_shape;
-      shapes.at(conn.port_number) = conn.outside_shape;
+    if (input_shapes.size() <= conn.port_number) {
+      input_shapes.resize(conn.port_number + 1);
+      shapes.resize(conn.port_number + 1);
     }
+    input_shapes.at(conn.port_number) = in_shape;
+    shapes.at(conn.port_number) = conn.outside_shape;
+
     string input_node = conn.outside_node_name;
     int input_port = conn.outside_port;
     auto dtype = conn.connection_type;
@@ -477,13 +478,13 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
                .Attr("workspace_size_bytes", info.max_workspace_size_bytes)
                .Attr("precision_mode", prec_string)
                .Attr("OutT", out_types)
-               .Finalize(trtNode);
+               .Finalize(trt_node);
   if (!status.ok()) {
     LOG(ERROR) << "Node construction failed with" << status;
     return status;
   }
   VLOG(1) << "Adding TRTEngine " << info.engine_name << " to graph";
-  engine_node = graph->AddNode(*trtNode, &status);
+  engine_node = graph->AddNode(*trt_node, &status);
   if (!status.ok()) {
     LOG(ERROR) << "Adding node failed " << status;
     return status;
@@ -522,16 +523,16 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   std::map<string, tensorflow::Node*> io_nodes;
   int num_inputs = 0;
   for (auto n : sgraph.op_nodes()) {
-    if (tensorflow::str_util::StartsWith(n->name(), "InputPH_")) {
+    if (tensorflow::str_util::StartsWith(n->name(), kInputPHName)) {
       num_inputs++;
       io_nodes.insert({n->name(), n});
-    } else if (tensorflow::str_util::StartsWith(n->name(), "OutputPH_")) {
+    } else if (tensorflow::str_util::StartsWith(n->name(), kOutputPHName)) {
       io_nodes.insert({n->name(), n});
     }
   }
 
   for (int i = 0; i < num_inputs; ++i) {
-    auto name = StrCat("InputPH_", i);
+    auto name = StrCat(kInputPHName, i);
     auto node = io_nodes[name];
     tensorflow::NodeDef nd;
     tensorflow::NodeDefBuilder node_builder(
@@ -539,17 +540,16 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     VLOG(1) << "Adding " << StrCat(name, "_Arg");
     node_builder.Attr("T", node->output_type(0)).Attr("index", i).Finalize(&nd);
     tensorflow::Status s;
-    auto nArg = sgraph.AddNode(nd, &s);
+    auto node_arg = sgraph.AddNode(nd, &s);
     if (!s.ok()) {
       LOG(ERROR) << "Couldn't add _Arg node for " << name;
     }
     for (auto edge : node->out_edges()) {
-      sgraph.AddEdge(nArg, 0, edge->dst(), edge->dst_input());
-      VLOG(1) << "Updating funcdef input " << nArg->name() << ":" << 0
+      sgraph.AddEdge(node_arg, 0, edge->dst(), edge->dst_input());
+      VLOG(1) << "Updating funcdef input " << node_arg->name() << ":" << 0
               << " - > " << edge->dst()->name() << ":" << edge->dst_input();
-      // s = sgraph.UpdateEdge(nArg, 0, edge->dst(), edge->dst_input());
       if (!s.ok()) {
-        LOG(ERROR) << "Failed to update edge from " << nArg->name() << " to "
+        LOG(ERROR) << "Failed to update edge from " << node_arg->name() << " to "
                    << edge->dst()->name() << ":" << edge->dst_input();
       }
     }
@@ -557,7 +557,7 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   }
 
   for (int i = 0; i < io_nodes.size() - num_inputs; ++i) {
-    auto name = StrCat("OutputPH_", i);
+    auto name = StrCat(kOutputPHName, i);
     auto node = io_nodes[name];
     tensorflow::NodeDef nd;
     tensorflow::NodeDefBuilder node_builder(
@@ -574,17 +574,17 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
       VLOG(3) << nd.DebugString();
     }
     tensorflow::Status s;
-    auto nRet = sgraph.AddNode(nd, &s);
+    auto node_ret = sgraph.AddNode(nd, &s);
     if (!s.ok()) {
       LOG(ERROR) << "Couldn't add _Ret node for " << name;
     }
     VLOG(1) << "Update edge from " << edge->src()->name() << ":"
-            << edge->src_output() << " - > " << nRet->name() << ":" << 0;
-    sgraph.AddEdge(edge->src(), edge->src_output(), nRet, 0);
-    s = sgraph.UpdateEdge(edge->src(), edge->src_output(), nRet, 0);
+            << edge->src_output() << " - > " << node_ret->name() << ":" << 0;
+    sgraph.AddEdge(edge->src(), edge->src_output(), node_ret, 0);
+    s = sgraph.UpdateEdge(edge->src(), edge->src_output(), node_ret, 0);
     if (!s.ok()) {
       LOG(ERROR) << "Failed to update edge from " << edge->src()->name() << ":"
-                 << edge->src_output() << " - > " << nRet->name() << ":" << 0;
+                 << edge->src_output() << " - > " << node_ret->name() << ":" << 0;
     }
     sgraph.RemoveNode(node);
   }

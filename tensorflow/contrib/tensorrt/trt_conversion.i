@@ -69,13 +69,13 @@ PyObject* version_helper(version_struct* in) {
 }
 /* Define converters for vector<int> */
 template<>
-  bool _PyObjAs(PyObject *pyobj, int* dest) {
+bool _PyObjAs(PyObject *pyobj, int* dest) {
   *dest = PyLong_AsLong(pyobj);
   return true;
 }
 
 template<>
-  PyObject *_PyObjFrom(const int& src) {
+PyObject *_PyObjFrom(const int& src) {
   return PyLong_FromLong(src);
 }
 

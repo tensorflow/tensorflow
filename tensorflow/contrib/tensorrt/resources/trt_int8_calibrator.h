@@ -29,9 +29,6 @@ limitations under the License.
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
-namespace core {
-class RefCounted;
-}
 namespace tensorrt {
 // This class provides a 1 element queue to match TFs push model to
 // TRTs pull model for calibration. When TRT implements a means for

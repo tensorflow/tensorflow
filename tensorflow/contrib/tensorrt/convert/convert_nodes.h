@@ -32,12 +32,13 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+static const string kInputPHName = "InputPH_";
+static const string kOutputPHName = "OutputPH_";
 namespace convert {
 
 const int FP32MODE = 0;
 const int FP16MODE = 1;
 const int INT8MODE = 2;
-
 struct EngineConnections {
   EngineConnections(const string& outside, int out_id, int out_port,
                     const string& inside, int in_id, int in_port,
@@ -81,6 +82,10 @@ struct EngineInfo {
 };
 ;
 
+//  Constructs a graphdef from the segment in the given graph. Adds placeholder
+//  nodes for input edges (InputPH_*) and identity nodes for output edges
+//  (OutputPH_*).  This function needs to be called before TensorRT nodes
+//  inserted in order to correctly get sizes from the original graph.
 tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
@@ -88,6 +93,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
     std::vector<EngineConnections>* connections,
     tensorflow::GraphDef* segment_def, string* common_scope);
 
+// Converts given subgraph to a TRT engine.
 tensorflow::Status ConvertSubgraphToEngine(
     const tensorflow::GraphDef& gdef, nvinfer1::IBuilder* builder,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
