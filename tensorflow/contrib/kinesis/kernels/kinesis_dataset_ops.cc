@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,91 +28,93 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
-  static mutex mu(LINKER_INITIALIZED);
-  static bool init(false);
+Aws::Client::ClientConfiguration* InitializeDefaultClientConfig() {
   static Aws::Client::ClientConfiguration config;
-
-  std::lock_guard<mutex> lock(mu);
-
-  if (!init) {
-    const char* endpoint = getenv("KINESIS_ENDPOINT");
-    if (endpoint) {
-      config.endpointOverride = Aws::String(endpoint);
-    }
-    const char* region = getenv("AWS_REGION");
-    if (region) {
-      config.region = Aws::String(region);
-    } else {
-      // Load config file (e.g., ~/.aws/config) only if AWS_SDK_LOAD_CONFIG
-      // is set with a truthy value.
-      const char* load_config_env = getenv("AWS_SDK_LOAD_CONFIG");
-      string load_config =
-          load_config_env ? str_util::Lowercase(load_config_env) : "";
-      if (load_config == "true" || load_config == "1") {
-        Aws::String config_file;
-        // If AWS_CONFIG_FILE is set then use it, otherwise use ~/.aws/config.
-        const char* config_file_env = getenv("AWS_CONFIG_FILE");
-        if (config_file_env) {
-          config_file = config_file_env;
-        } else {
-          const char* home_env = getenv("HOME");
-          if (home_env) {
-            config_file = home_env;
-            config_file += "/.aws/config";
-          }
+  const char* endpoint = getenv("KINESIS_ENDPOINT");
+  if (endpoint) {
+    config.endpointOverride = Aws::String(endpoint);
+  }
+  const char* region = getenv("AWS_REGION");
+  if (region) {
+    config.region = Aws::String(region);
+  } else {
+    // Load config file (e.g., ~/.aws/config) only if AWS_SDK_LOAD_CONFIG
+    // is set with a truthy value.
+    const char* load_config_env = getenv("AWS_SDK_LOAD_CONFIG");
+    string load_config =
+        load_config_env ? str_util::Lowercase(load_config_env) : "";
+    if (load_config == "true" || load_config == "1") {
+      Aws::String config_file;
+      // If AWS_CONFIG_FILE is set then use it, otherwise use ~/.aws/config.
+      const char* config_file_env = getenv("AWS_CONFIG_FILE");
+      if (config_file_env) {
+        config_file = config_file_env;
+      } else {
+        const char* home_env = getenv("HOME");
+        if (home_env) {
+          config_file = home_env;
+          config_file += "/.aws/config";
         }
-        Aws::Config::AWSConfigFileProfileConfigLoader loader(config_file);
-        loader.Load();
+      }
+      Aws::Config::AWSConfigFileProfileConfigLoader loader(config_file);
+      // Load the configuration. If successful, get the region.
+      // If the load is not successful, then generate a warning.
+      if (loader.Load()) {
         auto profiles = loader.GetProfiles();
         if (!profiles["default"].GetRegion().empty()) {
           config.region = profiles["default"].GetRegion();
         }
-      }
-    }
-    const char* use_https = getenv("KINESIS_USE_HTTPS");
-    if (use_https) {
-      if (use_https[0] == '0') {
-        config.scheme = Aws::Http::Scheme::HTTP;
       } else {
-        config.scheme = Aws::Http::Scheme::HTTPS;
+        LOG(WARNING) << "Failed to load the profile in " << config_file << ".";
       }
     }
-    const char* verify_ssl = getenv("KINESIS_VERIFY_SSL");
-    if (verify_ssl) {
-      if (verify_ssl[0] == '0') {
-        config.verifySSL = false;
-      } else {
-        config.verifySSL = true;
-      }
+  }
+  const char* use_https = getenv("KINESIS_USE_HTTPS");
+  if (use_https) {
+    if (use_https[0] == '0') {
+      config.scheme = Aws::Http::Scheme::HTTP;
+    } else {
+      config.scheme = Aws::Http::Scheme::HTTPS;
     }
-    const char* connect_timeout = getenv("KINESIS_CONNECT_TIMEOUT_MSEC");
-    if (connect_timeout) {
-      int64 timeout;
+  }
+  const char* verify_ssl = getenv("KINESIS_VERIFY_SSL");
+  if (verify_ssl) {
+    if (verify_ssl[0] == '0') {
+      config.verifySSL = false;
+    } else {
+      config.verifySSL = true;
+    }
+  }
+  const char* connect_timeout = getenv("KINESIS_CONNECT_TIMEOUT_MSEC");
+  if (connect_timeout) {
+    int64 timeout;
 
-      if (strings::safe_strto64(connect_timeout, &timeout)) {
-        config.connectTimeoutMs = timeout;
-      }
+    if (strings::safe_strto64(connect_timeout, &timeout)) {
+      config.connectTimeoutMs = timeout;
     }
-    const char* request_timeout = getenv("KINESIS_REQUEST_TIMEOUT_MSEC");
-    if (request_timeout) {
-      int64 timeout;
+  }
+  const char* request_timeout = getenv("KINESIS_REQUEST_TIMEOUT_MSEC");
+  if (request_timeout) {
+    int64 timeout;
 
-      if (strings::safe_strto64(request_timeout, &timeout)) {
-        config.requestTimeoutMs = timeout;
-      }
+    if (strings::safe_strto64(request_timeout, &timeout)) {
+      config.requestTimeoutMs = timeout;
     }
-
-    init = true;
   }
 
-  return config;
-};
+  return &config;
+}
+
+Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
+  static Aws::Client::ClientConfiguration* config =
+      InitializeDefaultClientConfig();
+  return *config;
+}
 
 static mutex mu(LINKER_INITIALIZED);
 static unsigned count(0);
 void AwsInitAPI() {
-  std::lock_guard<mutex> lock(mu);
+  mutex_lock lock(mu);
   count++;
   if (count == 1) {
     Aws::SDKOptions options;
@@ -126,7 +128,7 @@ void AwsInitAPI() {
   }
 }
 void AwsShutdownAPI() {
-  std::lock_guard<mutex> lock(mu);
+  mutex_lock lock(mu);
   count--;
   if (count == 0) {
     Aws::SDKOptions options;
@@ -150,25 +152,26 @@ class KinesisDatasetOp : public DatasetOpKernel {
                    ParseScalarArgument<std::string>(ctx, "stream", &stream));
     std::string shard = "";
     OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "shard", &shard));
-    bool eof = false;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "eof", &eof));
+    bool read_indefinitely = true;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "read_indefinitely",
+                                                  &read_indefinitely));
     int64 interval = -1;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "interval", &interval));
     OP_REQUIRES(ctx, (interval > 0),
                 errors::InvalidArgument(
                     "Interval value should be large than 0, got ", interval));
-    *output = new Dataset(ctx, stream, shard, eof, interval);
+    *output = new Dataset(ctx, stream, shard, read_indefinitely, interval);
   }
 
  private:
   class Dataset : public GraphDatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const string& stream, const string& shard,
-            const bool eof, const int64 interval)
+            const bool read_indefinitely, const int64 interval)
         : GraphDatasetBase(ctx),
           stream_(stream),
           shard_(shard),
-          eof_(eof),
+          read_indefinitely_(read_indefinitely),
           interval_(interval) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -197,12 +200,12 @@ class KinesisDatasetOp : public DatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddScalar(stream_, &stream));
       Node* shard = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(shard_, &shard));
-      Node* eof = nullptr;
-      TF_RETURN_IF_ERROR(b->AddScalar(eof_, &eof));
+      Node* read_indefinitely = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(read_indefinitely_, &read_indefinitely));
       Node* interval = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(interval_, &interval));
-      TF_RETURN_IF_ERROR(
-          b->AddDataset(this, {stream, shard, eof, interval}, output));
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {stream, shard, read_indefinitely, interval}, output));
       return Status::OK();
     }
 
@@ -218,21 +221,20 @@ class KinesisDatasetOp : public DatasetOpKernel {
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if (iterator_ == "") {
-          TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
+          TF_RETURN_IF_ERROR(SetupStreamsLocked());
         }
         do {
           Aws::Kinesis::Model::GetRecordsRequest request;
           auto outcome = client_->GetRecords(
               request.WithShardIterator(iterator_).WithLimit(1));
           if (!outcome.IsSuccess()) {
-            string error =
-                strings::StrCat(outcome.GetError().GetExceptionName().c_str(),
-                                ": ", outcome.GetError().GetMessage().c_str());
-            return errors::Internal(error);
+            return errors::Unknown(outcome.GetError().GetExceptionName(), ": ",
+                                   outcome.GetError().GetMessage());
           }
           if (outcome.GetResult().GetRecords().size() == 0) {
-            // If return 0 record then nothing available at the moment.
-            if (dataset()->eof_) {
+            // If no records were returned then nothing is available at the
+            // moment.
+            if (!dataset()->read_indefinitely_) {
               *end_of_sequence = true;
               return Status::OK();
             }
@@ -241,19 +243,17 @@ class KinesisDatasetOp : public DatasetOpKernel {
             continue;
           }
           if (outcome.GetResult().GetRecords().size() != 1) {
-            return errors::Internal("invalid records number ",
-                                    outcome.GetResult().GetRecords().size(),
-                                    " returned");
+            return errors::Unknown("invalid number of records ",
+                                   outcome.GetResult().GetRecords().size(),
+                                   " returned");
           }
 
           iterator_ = outcome.GetResult().GetNextShardIterator();
 
+          const auto& data = outcome.GetResult().GetRecords()[0].GetData();
           StringPiece value(
-              (const char*)outcome.GetResult()
-                  .GetRecords()[0]
-                  .GetData()
-                  .GetUnderlyingData(),
-              outcome.GetResult().GetRecords()[0].GetData().GetLength());
+              reinterpret_cast<const char*>(data.GetUnderlyingData()),
+              data.GetLength());
           Tensor value_tensor(ctx->allocator({}), DT_STRING, {});
           value_tensor.scalar<std::string>()() = std::string(value);
           out_tensors->emplace_back(std::move(value_tensor));
@@ -276,7 +276,7 @@ class KinesisDatasetOp : public DatasetOpKernel {
 
      private:
       // Sets up Kinesis streams to read from.
-      Status SetupStreamsLocked(Env* env) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      Status SetupStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         AwsInitAPI();
         client_.reset(
             new Aws::Kinesis::KinesisClient(GetDefaultClientConfig()));
@@ -285,10 +285,8 @@ class KinesisDatasetOp : public DatasetOpKernel {
         auto outcome = client_->DescribeStream(
             request.WithStreamName(dataset()->stream_.c_str()));
         if (!outcome.IsSuccess()) {
-          string error =
-              strings::StrCat(outcome.GetError().GetExceptionName().c_str(),
-                              ": ", outcome.GetError().GetMessage().c_str());
-          return errors::Internal(error);
+          return errors::Unknown(outcome.GetError().GetExceptionName(), ": ",
+                                 outcome.GetError().GetMessage());
         }
         Aws::String shard;
         Aws::String sequence;
@@ -311,7 +309,7 @@ class KinesisDatasetOp : public DatasetOpKernel {
                          .GetSequenceNumberRange()
                          .GetStartingSequenceNumber();
         } else {
-          for (auto entry :
+          for (const auto& entry :
                outcome.GetResult().GetStreamDescription().GetShards()) {
             if (entry.GetShardId() == dataset()->shard_.c_str()) {
               shard = entry.GetShardId();
@@ -321,8 +319,7 @@ class KinesisDatasetOp : public DatasetOpKernel {
             }
           }
           if (shard == "") {
-            return errors::InvalidArgument("no shard ",
-                                           dataset()->shard_.c_str(),
+            return errors::InvalidArgument("no shard ", dataset()->shard_,
                                            " in stream ", dataset()->stream_);
           }
         }
@@ -335,18 +332,12 @@ class KinesisDatasetOp : public DatasetOpKernel {
                     Aws::Kinesis::Model::ShardIteratorType::AT_SEQUENCE_NUMBER)
                 .WithStartingSequenceNumber(sequence));
         if (!iterator_outcome.IsSuccess()) {
-          string error = strings::StrCat(
-              iterator_outcome.GetError().GetExceptionName().c_str(), ": ",
-              iterator_outcome.GetError().GetMessage().c_str());
-          return errors::Internal(error);
+          return errors::Unknown(iterator_outcome.GetError().GetExceptionName(),
+                                 ": ",
+                                 iterator_outcome.GetError().GetMessage());
         }
         iterator_ = iterator_outcome.GetResult().GetShardIterator();
         return Status::OK();
-      }
-
-      // Resets all Kinesis streams.
-      void ResetStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        iterator_ = "";
       }
 
       mutex mu_;
@@ -357,7 +348,7 @@ class KinesisDatasetOp : public DatasetOpKernel {
 
     const std::string stream_;
     const std::string shard_;
-    const bool eof_;
+    const bool read_indefinitely_;
     const int64 interval_;
   };
 };

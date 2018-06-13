@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ namespace tensorflow {
 REGISTER_OP("KinesisDataset")
     .Input("stream: string")
     .Input("shard: string")
-    .Input("eof: bool")
+    .Input("read_indefinitely: bool")
     .Input("interval: int64")
     .Output("handle: variant")
     .SetIsStateful()
@@ -32,9 +32,11 @@ Creates a dataset that emits the messages of one or more Kinesis topics.
 
 stream: A `tf.string` tensor containing the name of the stream.
 shard: A `tf.string` tensor containing the id of the shard.
-eof: If True, the kinesis data reader will stop on EOF.
+read_indefinitely: If `True`, the Kinesis dataset will keep retry
+  again on `EOF` after the `interval` period. If `False`, then
+  the dataset will stop on `EOF`. The default value is `True`.
 interval: The interval for the Kinesis Client to wait before
-  try getting records again (in millisecond).
+  it tries to get records again (in millisecond).
 )doc");
 
 }  // namespace tensorflow

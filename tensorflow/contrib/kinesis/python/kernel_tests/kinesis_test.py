@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License.  You may obtain a copy of
@@ -56,7 +56,7 @@ class KinesisDatasetTest(test.TestCase):
     batch_size = array_ops.placeholder(dtypes.int64, shape=[])
 
     repeat_dataset = kinesis_dataset_ops.KinesisDataset(
-        stream, eof=True).repeat(num_epochs)
+        stream, read_indefinitely=False).repeat(num_epochs)
     batch_dataset = repeat_dataset.batch(batch_size)
 
     iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
@@ -99,7 +99,7 @@ class KinesisDatasetTest(test.TestCase):
     batch_size = array_ops.placeholder(dtypes.int64, shape=[])
 
     repeat_dataset = kinesis_dataset_ops.KinesisDataset(
-        stream, shard, eof=True).repeat(num_epochs)
+        stream, shard, read_indefinitely=False).repeat(num_epochs)
     batch_dataset = repeat_dataset.batch(batch_size)
 
     iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
@@ -114,7 +114,7 @@ class KinesisDatasetTest(test.TestCase):
           init_op, feed_dict={
               stream: stream_name, shard: shard_id_0, num_epochs: 1})
       with self.assertRaises(errors.OutOfRangeError):
-        # Use range(11) to guaranteee the OutOfRangeError.
+        # Use range(11) to guarantee the OutOfRangeError.
         for i in range(11):
           data.append(sess.run(get_next))
 
@@ -123,7 +123,7 @@ class KinesisDatasetTest(test.TestCase):
           init_op, feed_dict={
               stream: stream_name, shard: shard_id_1, num_epochs: 1})
       with self.assertRaises(errors.OutOfRangeError):
-        # Use range(11) to guaranteee the OutOfRangeError.
+        # Use range(11) to guarantee the OutOfRangeError.
         for i in range(11):
           data.append(sess.run(get_next))
 
