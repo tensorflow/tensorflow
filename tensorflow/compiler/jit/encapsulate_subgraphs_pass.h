@@ -61,10 +61,6 @@ typedef std::function<Status(
 // If 'rewrite_subgraph_fn' is set, it is applied to each subgraph before
 // function conversion.
 //
-// If 'parallel_checking' is true, the unencapsulated operators are added to the
-// output graph, together with a "ParallelCheck" operator, that verifies that
-// the original and encapsulated subgraphs produce similar results.
-//
 // If 'reuse_existing_functions' is set, use an existing function with the
 // same name, if any.
 //
@@ -76,8 +72,8 @@ typedef std::function<Status(
 Status EncapsulateSubgraphsInFunctions(
     string group_attribute, string outside_compilation_attribute,
     const Graph& graph_in, const RewriteSubgraphFn& rewrite_subgraph_fn,
-    bool parallel_checking, bool reuse_existing_functions,
-    std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library);
+    bool reuse_existing_functions, std::unique_ptr<Graph>* graph_out,
+    FunctionLibraryDefinition* library);
 
 // The attribute that marks function calls produced by the encapsulate
 // subgraphs pass and that should in turn be compiled via XlaLaunch operators.

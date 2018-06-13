@@ -146,6 +146,7 @@ NodeProperties GetPropertiesForArray(const Model& model,
   NodeProperties node_properties;
   node_properties.color = GetColorForArray(model, array_name);
   node_properties.label = absl::StrReplaceAll(array_name, {{"/", "/\\n"}});
+  node_properties.log2_buffer_size = 0.0f;
 
   // Append array shape to the label.
   auto& array = model.GetArray(array_name);
@@ -165,9 +166,12 @@ NodeProperties GetPropertiesForArray(const Model& model,
     }
     node_properties.label += "]";
 
-    int buffer_size = RequiredBufferSizeForShape(array.shape());
-    node_properties.log2_buffer_size =
-        std::log2(static_cast<float>(buffer_size));
+    int buffer_size = 0;
+    if (IsValid(array.shape())) {
+      buffer_size = RequiredBufferSizeForShape(array.shape());
+      node_properties.log2_buffer_size =
+          std::log2(static_cast<float>(buffer_size));
+    }
 
     if (array.buffer) {
       const auto& array = model.GetArray(array_name);
@@ -200,8 +204,6 @@ NodeProperties GetPropertiesForArray(const Model& model,
         AppendF(&node_properties.label, "}");
       }
     }
-  } else {
-    node_properties.log2_buffer_size = 0.0f;
   }
 
   if (array.minmax) {

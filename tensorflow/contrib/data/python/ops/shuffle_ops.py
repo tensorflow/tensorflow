@@ -18,9 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import random_seed
-from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -56,10 +54,7 @@ class _ShuffleAndRepeatDataset(dataset_ops.Dataset):
         count=self._count,
         seed=self._seed,
         seed2=self._seed2,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
     # pylint: enable=protected-access
 
   @property

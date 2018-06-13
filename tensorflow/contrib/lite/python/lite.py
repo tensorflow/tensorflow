@@ -25,7 +25,6 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 @@FLOAT
 @@QUANTIZED_UINT8
-@@STRING
 @@TFLITE
 @@GRAPHVIZ_DOT
 
@@ -67,10 +66,10 @@ class TocoConverter(object):
   Attributes:
 
     inference_type: Target data type of arrays in the output file. Currently
-      must be `{FLOAT, QUANTIZED_UINT8, STRING}`.  (default FLOAT)
+      must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
     inference_input_type: Target data type of input arrays. Allows for a
       different type for input arrays in the case of quantization. Currently
-      must be `{FLOAT, QUANTIZED_UINT8, STRING}`. (default `inference_type`)
+      must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: Dict of strings representing input tensor names

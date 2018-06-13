@@ -809,7 +809,7 @@ class SaveRestoreShardedTest(test.TestCase):
         self.assertEqual(save_path + "-?????-of-00002", val)
       else:
         self.assertEqual(save_path, val)
-      meta_graph_filename = save._MetaGraphFilename(val)
+      meta_graph_filename = saver_module._meta_graph_filename(val)
       self.assertEqual(save_path + ".meta", meta_graph_filename)
 
     if save._write_version is saver_pb2.SaverDef.V1:
@@ -1185,13 +1185,13 @@ class MaxToKeepTest(test.TestCase):
       self.assertEqual([s3, s2], save.last_checkpoints)
       self.assertFalse(saver_module.checkpoint_exists(s1))
       self.assertFalse(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s1)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
       self.assertTrue(saver_module.checkpoint_exists(s3))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s3)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
       self.assertTrue(saver_module.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s2)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
       self.assertCheckpointState(
           model_checkpoint_path=s2,
           all_model_checkpoint_paths=[s3, s2],
@@ -1202,13 +1202,13 @@ class MaxToKeepTest(test.TestCase):
       self.assertEqual([s2, s1], save.last_checkpoints)
       self.assertFalse(saver_module.checkpoint_exists(s3))
       self.assertFalse(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s3)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
       self.assertTrue(saver_module.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s2)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
       self.assertTrue(saver_module.checkpoint_exists(s1))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s1)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
       self.assertCheckpointState(
           model_checkpoint_path=s1,
           all_model_checkpoint_paths=[s2, s1],
@@ -1222,14 +1222,14 @@ class MaxToKeepTest(test.TestCase):
       # Created by the first helper.
       self.assertTrue(saver_module.checkpoint_exists(s1))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s1)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
       # Deleted by the first helper.
       self.assertFalse(saver_module.checkpoint_exists(s3))
       self.assertFalse(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s3)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
       self.assertTrue(saver_module.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s2)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
       self.assertCheckpointState(
           model_checkpoint_path=s2,
           all_model_checkpoint_paths=[s3, s2],
@@ -1240,13 +1240,13 @@ class MaxToKeepTest(test.TestCase):
       self.assertEqual([s2, s1], save2.last_checkpoints)
       self.assertFalse(saver_module.checkpoint_exists(s3))
       self.assertFalse(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s3)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
       self.assertTrue(saver_module.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s2)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
       self.assertTrue(saver_module.checkpoint_exists(s1))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s1)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
       self.assertCheckpointState(
           model_checkpoint_path=s1,
           all_model_checkpoint_paths=[s2, s1],
@@ -1260,14 +1260,14 @@ class MaxToKeepTest(test.TestCase):
       # Created by the first helper.
       self.assertTrue(saver_module.checkpoint_exists(s1))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s1)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
       # Deleted by the first helper.
       self.assertFalse(saver_module.checkpoint_exists(s3))
       self.assertFalse(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s3)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
       self.assertTrue(saver_module.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s2)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
       # Even though the file for s1 exists, this saver isn't aware of it, which
       # is why it doesn't end up in the checkpoint state.
       self.assertCheckpointState(
@@ -1280,13 +1280,13 @@ class MaxToKeepTest(test.TestCase):
       self.assertEqual([s2, s1], save3.last_checkpoints)
       self.assertFalse(saver_module.checkpoint_exists(s3))
       self.assertFalse(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s3)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s3)))
       self.assertTrue(saver_module.checkpoint_exists(s2))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s2)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s2)))
       self.assertTrue(saver_module.checkpoint_exists(s1))
       self.assertTrue(
-          saver_module.checkpoint_exists(save._MetaGraphFilename(s1)))
+          saver_module.checkpoint_exists(saver_module._meta_graph_filename(s1)))
       self.assertCheckpointState(
           model_checkpoint_path=s1,
           all_model_checkpoint_paths=[s2, s1],
@@ -1317,7 +1317,7 @@ class MaxToKeepTest(test.TestCase):
       else:
         self.assertEqual(4, len(gfile.Glob(s1 + "*")))
 
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertTrue(gfile.Exists(saver_module._meta_graph_filename(s1)))
 
       s2 = save.save(sess, os.path.join(save_dir, "s2"))
       self.assertEqual([s1, s2], save.last_checkpoints)
@@ -1325,27 +1325,27 @@ class MaxToKeepTest(test.TestCase):
         self.assertEqual(2, len(gfile.Glob(s1)))
       else:
         self.assertEqual(4, len(gfile.Glob(s1 + "*")))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertTrue(gfile.Exists(saver_module._meta_graph_filename(s1)))
       if save._write_version is saver_pb2.SaverDef.V1:
         self.assertEqual(2, len(gfile.Glob(s2)))
       else:
         self.assertEqual(4, len(gfile.Glob(s2 + "*")))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
+      self.assertTrue(gfile.Exists(saver_module._meta_graph_filename(s2)))
 
       s3 = save.save(sess, os.path.join(save_dir, "s3"))
       self.assertEqual([s2, s3], save.last_checkpoints)
       self.assertEqual(0, len(gfile.Glob(s1 + "*")))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertFalse(gfile.Exists(saver_module._meta_graph_filename(s1)))
       if save._write_version is saver_pb2.SaverDef.V1:
         self.assertEqual(2, len(gfile.Glob(s2)))
       else:
         self.assertEqual(4, len(gfile.Glob(s2 + "*")))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s2)))
+      self.assertTrue(gfile.Exists(saver_module._meta_graph_filename(s2)))
       if save._write_version is saver_pb2.SaverDef.V1:
         self.assertEqual(2, len(gfile.Glob(s3)))
       else:
         self.assertEqual(4, len(gfile.Glob(s3 + "*")))
-      self.assertTrue(gfile.Exists(save._MetaGraphFilename(s3)))
+      self.assertTrue(gfile.Exists(saver_module._meta_graph_filename(s3)))
 
   def testNoMaxToKeep(self):
     save_dir = self._get_test_dir("no_max_to_keep")
@@ -1385,7 +1385,7 @@ class MaxToKeepTest(test.TestCase):
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"), write_meta_graph=False)
       self.assertTrue(saver_module.checkpoint_exists(s1))
-      self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
+      self.assertFalse(gfile.Exists(saver_module._meta_graph_filename(s1)))
 
 
 class KeepCheckpointEveryNHoursTest(test.TestCase):
@@ -2620,6 +2620,20 @@ class SaverUtilsTest(test.TestCase):
     mtimes = saver_module.get_checkpoint_mtimes(prefixes)
     self.assertEqual(2, len(mtimes))
     self.assertTrue(mtimes[1] >= mtimes[0])
+
+  def testRemoveCheckpoint(self):
+    for sharded in (False, True):
+      for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
+        with self.test_session(graph=ops_lib.Graph()) as sess:
+          unused_v = variables.Variable(1.0, name="v")
+          variables.global_variables_initializer().run()
+          saver = saver_module.Saver(sharded=sharded, write_version=version)
+
+          path = os.path.join(self._base_dir, "%s-%s" % (sharded, version))
+          ckpt_prefix = saver.save(sess, path)
+          self.assertTrue(saver_module.checkpoint_exists(ckpt_prefix))
+          saver_module.remove_checkpoint(ckpt_prefix, version)
+          self.assertFalse(saver_module.checkpoint_exists(ckpt_prefix))
 
 
 class ScopedGraphTest(test.TestCase):

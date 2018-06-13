@@ -34,7 +34,6 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = common_copts,
-    visibility = ["//visibility:private"],
 )
 
 cc_test(
@@ -57,7 +56,6 @@ cc_library(
     ],
     hdrs = ["benchmark_tflite_model.h"],
     copts = common_copts,
-    linkopts = tflite_linkopts(),
     deps = [
         ":benchmark_model_lib",
         "//tensorflow/contrib/lite:framework",
