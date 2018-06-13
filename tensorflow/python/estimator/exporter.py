@@ -28,10 +28,10 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.summary import summary_iterator
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 
-@tf_export('estimator.Exporter')
+@estimator_export('estimator.Exporter')
 class Exporter(object):
   """A class representing a type of model export."""
 
@@ -172,7 +172,7 @@ def _verify_compare_fn_args(compare_fn):
                      (compare_fn, non_valid_args))
 
 
-@tf_export('estimator.BestExporter')
+@estimator_export('estimator.BestExporter')
 class BestExporter(Exporter):
   """This class exports the serving graph and checkpoints of the best models.
 
@@ -360,13 +360,14 @@ class BestExporter(Exporter):
           for value in event.summary.value:
             if value.HasField('simple_value'):
               event_eval_result[value.tag] = value.simple_value
-          if best_eval_result is None or self._compare_fn(
-              best_eval_result, event_eval_result):
-            best_eval_result = event_eval_result
+          if event_eval_result:
+            if best_eval_result is None or self._compare_fn(
+                best_eval_result, event_eval_result):
+              best_eval_result = event_eval_result
     return best_eval_result
 
 
-@tf_export('estimator.FinalExporter')
+@estimator_export('estimator.FinalExporter')
 class FinalExporter(Exporter):
   """This class exports the serving graph and checkpoints in the end.
 
@@ -417,7 +418,7 @@ class FinalExporter(Exporter):
                                              is_the_final_export)
 
 
-@tf_export('estimator.LatestExporter')
+@estimator_export('estimator.LatestExporter')
 class LatestExporter(Exporter):
   """This class regularly exports the serving graph and checkpoints.
 

@@ -24,15 +24,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/computation_tracker.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/compiler/xla/service/user_computation.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -110,6 +107,11 @@ ExecutionOptions CreateExecutionOptions(
         ->set_xla_dump_optimized_hlo_proto_to(
             build_options.dump_optimized_hlo_proto_to().value());
   }
+  if (build_options.dump_unoptimized_hlo_proto_to().has_value()) {
+    execution_options.mutable_debug_options()
+        ->set_xla_dump_unoptimized_hlo_proto_to(
+            build_options.dump_unoptimized_hlo_proto_to().value());
+  }
   if (build_options.dump_per_pass_hlo_proto_to().has_value()) {
     execution_options.mutable_debug_options()
         ->set_xla_dump_per_pass_hlo_proto_to(
@@ -124,74 +126,16 @@ ExecutionOptions CreateExecutionOptions(
     LayoutUtil::SetToDefaultLayout(
         execution_options.mutable_shape_with_output_layout());
   }
+
+  for (const std::string& disabled_pass : build_options.disabled_hlo_passes()) {
+    execution_options.mutable_debug_options()->add_xla_disable_hlo_passes(
+        disabled_pass);
+  }
+
   return execution_options;
 }
 
 }  // namespace
-
-StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
-    const ComputationHandle& computation,
-    const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-    const ExecutableBuildOptions& build_options) {
-  TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
-                      computation_tracker_.Resolve(computation));
-  VersionedComputationHandle versioned_handle =
-      user_computation->GetVersionedHandle();
-
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<const ProgramShape> program_shape,
-      user_computation->ComputeProgramShape(versioned_handle.version));
-
-  // Validate incoming layouts.
-  if (argument_layouts.size() != program_shape->parameters_size()) {
-    return InvalidArgument(
-        "Invalid number of arguments for computation: expected %d, got %zu.",
-        program_shape->parameters_size(), argument_layouts.size());
-  }
-  for (int i = 0; i < argument_layouts.size(); ++i) {
-    const Shape& argument_shape = *argument_layouts[i];
-    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(argument_shape));
-    if (!ShapeUtil::Compatible(argument_shape, program_shape->parameters(i))) {
-      tensorflow::gtl::optional<const OpMetadata*> metadata =
-          user_computation->ParameterMetadata(i);
-      auto metadata_string = [&metadata]() -> string {
-        if (!metadata.has_value()) {
-          return "";
-        }
-        CHECK(metadata.value() != nullptr);
-        const OpMetadata& m = *metadata.value();
-        if (!m.source_file().empty()) {
-          return tensorflow::strings::Printf(
-              " (%s:%d)", m.source_file().c_str(), m.source_line());
-        }
-        return "";
-      };
-      return InvalidArgument(
-          "Invalid argument shape for argument %d%s, expected %s, got %s.", i,
-          metadata_string().c_str(),
-          ShapeUtil::HumanString(program_shape->parameters(i)).c_str(),
-          ShapeUtil::HumanString(argument_shape).c_str());
-    }
-  }
-  if (build_options.result_layout() != nullptr) {
-    TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(
-        *build_options.result_layout(), program_shape->result()));
-  }
-
-  ExecutionOptions execution_options =
-      CreateExecutionOptions(build_options, program_shape.get());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
-                      CreateModuleConfig(*program_shape, argument_layouts,
-                                         &execution_options, user_computation));
-
-  TF_ASSIGN_OR_RETURN(
-      se::StreamExecutor * executor,
-      execute_backend_->stream_executor(build_options.device_ordinal()));
-
-  return BuildExecutable(versioned_handle, std::move(module_config),
-                         execute_backend_.get(), executor,
-                         build_options.device_allocator());
-}
 
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const XlaComputation& computation,
@@ -258,6 +202,17 @@ StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
   return backend().computation_placer()->DeviceId(
       replica_number, /*computation=*/0, options_.number_of_replicas(),
       /*computation_count=*/1);
+}
+
+StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
+    const GlobalDataHandle& data, int replica_number) {
+  TF_ASSIGN_OR_RETURN(auto buffers, allocation_tracker_.Resolve(data));
+  if (replica_number >= buffers.size()) {
+    return InvalidArgument(
+        "replica_number %d out of range; must be less than num_replicas = %zu.",
+        replica_number, buffers.size());
+  }
+  return buffers[replica_number];
 }
 
 }  // namespace xla

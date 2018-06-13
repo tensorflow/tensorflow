@@ -72,24 +72,23 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
     "full_path",
     "if_android",
-    "if_not_android_mips_and_mips64",
     "if_ios",
     "if_linux_x86_64",
     "if_mobile",
     "if_not_mobile",
-    "if_windows",
     "if_not_windows",
-    "tf_copts",
+    "if_windows",
     "tf_cc_test",
     "tf_cc_tests",
+    "tf_copts",
     "tf_cuda_library",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_android",
-    "cc_header_only_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
@@ -101,47 +100,48 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 # For platform specific build config
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_platform_hdrs",
-    "tf_platform_srcs",
-    "tf_proto_library",
-    "tf_proto_library_cc",
     "tf_additional_all_protos",
+    "tf_additional_cloud_kernel_deps",
+    "tf_additional_cloud_op_deps",
     "tf_additional_core_deps",
+    "tf_additional_cupti_wrapper_deps",
+    "tf_additional_device_tracer_cuda_deps",
+    "tf_additional_device_tracer_deps",
+    "tf_additional_device_tracer_srcs",
+    "tf_additional_gdr_lib_defines",
+    "tf_additional_human_readable_json_deps",
     "tf_additional_lib_defines",
     "tf_additional_lib_deps",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
-    "tf_additional_minimal_lib_srcs",
-    "tf_additional_proto_hdrs",
-    "tf_additional_proto_srcs",
-    "tf_additional_cupti_wrapper_deps",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
     "tf_additional_libdevice_srcs",
+    "tf_additional_minimal_lib_srcs",
+    "tf_additional_mpi_lib_defines",
+    "tf_additional_proto_hdrs",
+    "tf_additional_proto_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
-    "tf_kernel_tests_linkstatic",
-    "tf_additional_cloud_op_deps",
-    "tf_additional_cloud_kernel_deps",
-    "tf_lib_proto_parsing_deps",
     "tf_additional_verbs_lib_defines",
-    "tf_additional_mpi_lib_defines",
-    "tf_additional_gdr_lib_defines",
-    "tf_additional_device_tracer_srcs",
-    "tf_additional_device_tracer_deps",
-    "tf_additional_device_tracer_cuda_deps",
-    "tf_pyclif_proto_library",
     "tf_jspb_proto_library",
+    "tf_kernel_tests_linkstatic",
+    "tf_lib_proto_parsing_deps",
     "tf_nano_proto_library",
+    "tf_platform_hdrs",
+    "tf_platform_srcs",
+    "tf_proto_library",
+    "tf_proto_library_cc",
     "tf_protos_all",
     "tf_protos_all_impl",
     "tf_protos_grappler",
     "tf_protos_grappler_impl",
+    "tf_pyclif_proto_library",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
     "if_static",
+    "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
@@ -232,6 +232,7 @@ tf_proto_library(
     name = "protos_all",
     srcs = [],
     cc_api_version = 2,
+    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -401,6 +402,7 @@ cc_library(
         "protobuf.cc",
     ]) + [
         "platform/protobuf_util.cc",
+        "lib/core/status.h",
     ],
     hdrs = [
         ":platform_protobuf_hdrs",
@@ -415,6 +417,18 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:protobuf",
         "@protobuf_archive//:protobuf",
     ],
+)
+
+cc_library(
+    name = "human_readable_json",
+    srcs = tf_platform_srcs(["human_readable_json.cc"]),
+    hdrs = ["platform/human_readable_json.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+    ] + tf_additional_human_readable_json_deps(),
 )
 
 filegroup(
@@ -832,7 +846,6 @@ tf_cuda_library(
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
         "util/stat_summarizer_options.h",
-        "util/stats_calculator.h",
         "util/stream_executor_util.h",
         "util/strided_slice_op.h",
         "util/tensor_format.h",
@@ -859,12 +872,14 @@ tf_cuda_library(
 
 cc_library(
     name = "stats_calculator_portable",
-    srcs = ["util/stats_calculator.cc"],
-    hdrs = [
+    srcs = [
         "util/stat_summarizer_options.h",
+        "util/stats_calculator.cc",
+    ],
+    hdrs = [
         "util/stats_calculator.h",
     ],
-    deps = [":platform_base"],
+    copts = tf_copts(),
 )
 
 cc_library(
@@ -874,6 +889,12 @@ cc_library(
         ":framework_lite",
         ":lib",
     ],
+)
+
+cc_library(
+    name = "exec_on_stall",
+    hdrs = ["util/exec_on_stall.h"],
+    deps = [":framework_lite"],
 )
 
 cc_library(
@@ -1428,6 +1449,7 @@ filegroup(
             "lib/png/**/*",
             "lib/gif/**/*",
             "util/events_writer.*",
+            "util/stats_calculator.*",
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
             "platform/default/test_benchmark.*",
@@ -1511,6 +1533,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc_impl",
+        ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
@@ -1551,6 +1574,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc_impl",
+        ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
@@ -2016,6 +2040,7 @@ cc_library(
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/device_tracer.cc",
             "platform/**/logging.cc",
+            "platform/**/human_readable_json.cc",
             "platform/abi.cc",
         ],
     ) + tf_additional_lib_srcs(
@@ -2028,6 +2053,7 @@ cc_library(
             "platform/**/env_time.cc",
             "platform/**/device_tracer.cc",
             "platform/**/logging.cc",
+            "platform/**/human_readable_json.cc",
             "platform/abi.cc",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
@@ -2212,6 +2238,7 @@ tf_proto_library(
     name = "error_codes_proto",
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
+    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -2234,6 +2261,7 @@ tf_proto_library(
     name = "protos_all_proto",
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
+    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -2609,6 +2637,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/dma_helper.h",
     "common_runtime/eigen_thread_pool.h",
     "common_runtime/executor.h",
+    "common_runtime/executor_factory.h",
     "common_runtime/graph_optimizer.h",
     "common_runtime/local_device.h",
     "common_runtime/lower_if_op.h",
@@ -2658,6 +2687,7 @@ tf_cuda_library(
         "common_runtime/device_resolver_local.cc",
         "common_runtime/device_set.cc",
         "common_runtime/executor.cc",
+        "common_runtime/executor_factory.cc",
         "common_runtime/function.cc",
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
@@ -3234,6 +3264,18 @@ tf_cc_test(
     deps = [
         ":framework_lite",
         ":overflow",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "exec_on_stall_test",
+    size = "small",
+    srcs = ["util/exec_on_stall_test.cc"],
+    deps = [
+        ":exec_on_stall",
+        ":framework_lite",
         ":test",
         ":test_main",
     ],

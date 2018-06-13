@@ -438,6 +438,74 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         self.assertEquals("foo/" + name + ":0", v0.name)
         self.assertEquals("tower_1/foo/" + name + ":0", v1.name)
 
+  # variable_scope.variable() respects name scopes when creating
+  # variables. On the other hand variable_scope.get_variable() ignores name
+  # scopes when creating variables. We test both methods of creating variables
+  # to make sure that we have the same variable names in both cases.
+  def testNameScopeWithVariable(self):
+    def in_cross_tower(_):
+      c = variable_scope.variable(1.0, name="c")
+      return c
+
+    def model_fn():
+      b = variable_scope.variable(1.0, name="b")
+      with ops.name_scope("foo"):
+        c = distribute_lib.get_tower_context().merge_call(in_cross_tower)
+      return b, c
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with context.graph_mode(), dist.scope():
+      with ops.name_scope("main"):
+        a = variable_scope.variable(1.0, name="a")
+        result = dist.call_for_each_tower(model_fn, run_concurrently=False)
+      result_b = result[0]
+      result_c = result[1]
+      self.assertIsInstance(result_b, values.DistributedValues)
+      self.assertIsInstance(result_c, values.DistributedValues)
+      a0, a1 = dist.unwrap(a)
+      b0, b1 = dist.unwrap(result_b)
+      c0, c1 = dist.unwrap(result_c)
+      self.assertEquals("main/a:0", a0.name)
+      self.assertEquals("main/a/replica_1:0", a1.name)
+      self.assertEquals("main/b:0", b0.name)
+      self.assertEquals("main/b/replica_1:0", b1.name)
+      self.assertEquals("main/foo/c:0", c0.name)
+      self.assertEquals("main/foo/c/replica_1:0", c1.name)
+
+  def testNameScopeWithGetVariable(self):
+    def in_cross_tower(_):
+      c = variable_scope.get_variable("c", [1])
+      return c
+
+    def model_fn():
+      b = variable_scope.get_variable("b", [1])
+      with ops.name_scope("foo"):
+        c = distribute_lib.get_tower_context().merge_call(in_cross_tower)
+      return b, c
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with context.graph_mode(), dist.scope():
+      with ops.name_scope("main"):
+        a = variable_scope.get_variable("a", [1])
+        result = dist.call_for_each_tower(model_fn, run_concurrently=False)
+      result_b = result[0]
+      result_c = result[1]
+      self.assertIsInstance(result_b, values.DistributedValues)
+      self.assertIsInstance(result_c, values.DistributedValues)
+      a0, a1 = dist.unwrap(a)
+      b0, b1 = dist.unwrap(result_b)
+      c0, c1 = dist.unwrap(result_c)
+      self.assertEquals("a:0", a0.name)
+      self.assertEquals("a/replica_1:0", a1.name)
+      self.assertEquals("b:0", b0.name)
+      self.assertEquals("b/replica_1:0", b1.name)
+      self.assertEquals("c:0", c0.name)
+      self.assertEquals("c/replica_1:0", c1.name)
+
   def testDynamicRnnVariables(self):
     def model_fn():
       inputs = constant_op.constant(2 * [2 * [[0.0, 1.0, 2.0, 3.0, 4.0]]])

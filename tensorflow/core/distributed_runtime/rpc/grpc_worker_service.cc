@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <deque>
 
-#include "grpc++/alarm.h"
-#include "grpc++/server_builder.h"
+#include "grpcpp/alarm.h"
+#include "grpcpp/server_builder.h"
 
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -513,8 +513,8 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
   CollectiveRemoteAccess* rma = ce_handle.get()->remote_access();
   rma->buf_rendezvous()->ConsumeBuf(
       request->buf_rendezvous_key(),
-      [this, opts, request, response, done](const Status& status,
-                                            BufRendezvous::Hook* hook) {
+      [this, request, response, done](const Status& status,
+                                      BufRendezvous::Hook* hook) {
         Status s = status;
         if (s.ok()) {
           if (!DMAHelper::CanUseDMA(hook->prod_value)) {

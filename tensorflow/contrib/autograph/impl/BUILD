@@ -20,7 +20,9 @@ py_library(
         "api.py",
         "config.py",
         "conversion.py",
+        "directives.py",
         "naming.py",
+        "special_functions.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -63,6 +65,16 @@ py_test(
 py_test(
     name = "naming_test",
     srcs = ["naming_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":impl",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "special_functions_test",
+    srcs = ["special_functions_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":impl",

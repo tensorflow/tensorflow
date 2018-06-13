@@ -324,11 +324,11 @@ void ColumnMajorMatrixVectorProductEmitter::Emit() {
   int64 column_remainder = k() % tile_cols();
   int64 column_limit = k() - column_remainder;
 
-  ksl_.For("dot.outer.tiled",
-           /*start=*/0, /*end=*/column_limit, /*step=*/tile_cols(),
-           [&](llvm::Value* column, bool is_first_column) {
-             EmitOuterLoopBody(column, tile_cols(), is_first_column);
-           });
+  ksl_.ForReturnVoid("dot.outer.tiled",
+                     /*start=*/0, /*end=*/column_limit, /*step=*/tile_cols(),
+                     [&](llvm::Value* column, bool is_first_column) {
+                       EmitOuterLoopBody(column, tile_cols(), is_first_column);
+                     });
 
   if (column_remainder != 0) {
     EmitOuterLoopBody(ir_builder_->getInt64(column_limit), column_remainder,
@@ -341,19 +341,20 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopTiled(
     int64 columns, bool is_first_column) {
   int64 row_limit = m() - (m() % tile_rows());
 
-  ksl_.For("dot.inner.tiled", /*start=*/0, /*end=*/row_limit,
-           /*step=*/tile_rows(), [&](llvm::Value* row) {
-             std::vector<llvm::Value*> lhs_tile =
-                 lhs_memory_tile->LoadTile(/*minor_dim_offset=*/row);
-             llvm::Value* accumulator =
-                 is_first_column ? (addend_ ? vsl_.LoadVector(addend_, row)
-                                            : vsl_.GetZeroVector())
-                                 : vsl_.LoadVector(result_, row);
-             for (int i = 0; i < columns; i++) {
-               accumulator = vsl_.MulAdd(lhs_tile[i], rhs_tile[i], accumulator);
-             }
-             vsl_.StoreVector(accumulator, result_, row);
-           });
+  ksl_.ForReturnVoid(
+      "dot.inner.tiled", /*start=*/0, /*end=*/row_limit,
+      /*step=*/tile_rows(), [&](llvm::Value* row) {
+        std::vector<llvm::Value*> lhs_tile =
+            lhs_memory_tile->LoadTile(/*minor_dim_offset=*/row);
+        llvm::Value* accumulator =
+            is_first_column ? (addend_ ? vsl_.LoadVector(addend_, row)
+                                       : vsl_.GetZeroVector())
+                            : vsl_.LoadVector(result_, row);
+        for (int i = 0; i < columns; i++) {
+          accumulator = vsl_.MulAdd(lhs_tile[i], rhs_tile[i], accumulator);
+        }
+        vsl_.StoreVector(accumulator, result_, row);
+      });
 }
 
 void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
@@ -372,7 +373,7 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
   //     // initialized.
   //   }
 
-  ksl_.For(
+  ksl_.ForReturnVoid(
       "dot.inner.epilg.outer", /*start=*/current_tile_col,
       /*end=*/ir_builder_->CreateAdd(columns_llvm, current_tile_col),
       /*step=*/1, /*peel_first_iteration=*/false,
@@ -382,7 +383,7 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
             ir_builder_->CreateMul(col, ir_builder_->getInt64(m()));
         llvm::Value* lhs_base_pointer =
             vsl_.ComputeOffsetPointer(lhs_, total_offset);
-        ksl_.For(
+        ksl_.ForReturnVoid(
             "dot.inner.epilg.inner", /*start=*/row_start, /*end=*/m(),
             /*step=*/1, [&](llvm::Value* scalar_row) {
               llvm::Value* product = vsl_.Mul(
@@ -390,7 +391,7 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
               llvm::Value* setting_result_first_time = ir_builder_->CreateAnd(
                   is_first_scalar_col,
                   ir_builder_->getInt1(is_first_tiled_column));
-              ksl_.If(
+              ksl_.IfReturnVoid(
                   setting_result_first_time,
                   /*true_block_generator=*/
                   [&]() {
@@ -571,9 +572,10 @@ void RowMajorMatrixVectorProductEmitter::Emit() {
   int64 row_remainder = m() % tile_rows();
   int64 row_limit = m() - row_remainder;
 
-  ksl_.For("dot.outer.tiled",
-           /*start=*/0, /*end=*/row_limit, /*step=*/tile_rows(),
-           [&](llvm::Value* row) { EmitOuterLoopBody(row, tile_rows()); });
+  ksl_.ForReturnVoid(
+      "dot.outer.tiled",
+      /*start=*/0, /*end=*/row_limit, /*step=*/tile_rows(),
+      [&](llvm::Value* row) { EmitOuterLoopBody(row, tile_rows()); });
 
   if (row_remainder != 0) {
     EmitOuterLoopBody(ir_builder_->getInt64(row_limit), row_remainder);
@@ -585,17 +587,17 @@ void RowMajorMatrixVectorProductEmitter::EmitInnerLoopTiled(
     std::vector<VectorVariable>* vector_accumulators) {
   int64 column_limit = k() - (k() % tile_cols());
 
-  ksl_.For("dot.inner.tiled", /*start=*/0, /*end=*/column_limit,
-           /*step=*/tile_cols(), [&](llvm::Value* col) {
-             std::vector<llvm::Value*> lhs_tile =
-                 lhs_memory_tile->LoadTile(/*minor_dim_offset=*/col);
-             llvm::Value* rhs_value = vsl_.LoadVector(rhs_, col);
-             for (int i = 0; i < rows; i++) {
-               llvm::Value* old_sum = (*vector_accumulators)[i].Get();
-               (*vector_accumulators)[i].Set(
-                   vsl_.Add(old_sum, vsl_.Mul(rhs_value, lhs_tile[i])));
-             }
-           });
+  ksl_.ForReturnVoid("dot.inner.tiled", /*start=*/0, /*end=*/column_limit,
+                     /*step=*/tile_cols(), [&](llvm::Value* col) {
+                       std::vector<llvm::Value*> lhs_tile =
+                           lhs_memory_tile->LoadTile(/*minor_dim_offset=*/col);
+                       llvm::Value* rhs_value = vsl_.LoadVector(rhs_, col);
+                       for (int i = 0; i < rows; i++) {
+                         llvm::Value* old_sum = (*vector_accumulators)[i].Get();
+                         (*vector_accumulators)[i].Set(vsl_.Add(
+                             old_sum, vsl_.Mul(rhs_value, lhs_tile[i])));
+                       }
+                     });
 }
 
 void RowMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
@@ -612,14 +614,15 @@ void RowMajorMatrixVectorProductEmitter::EmitInnerLoopEpilogue(
         ir_builder_->getInt64(k()));
     llvm::Value* lhs_base_pointer =
         vsl_.ComputeOffsetPointer(lhs_, total_offset);
-    ksl_.For("dot.inner.epilg.inner", /*start=*/column_start, /*end=*/k(),
-             /*step=*/1, [&](llvm::Value* scalar_col) {
-               llvm::Value* product =
-                   vsl_.Mul(vsl_.LoadScalar(lhs_base_pointer, scalar_col),
-                            vsl_.LoadScalar(rhs_, scalar_col));
-               llvm::Value* old_value = (*scalar_accumulators)[r].Get();
-               (*scalar_accumulators)[r].Set(vsl_.Add(old_value, product));
-             });
+    ksl_.ForReturnVoid(
+        "dot.inner.epilg.inner", /*start=*/column_start, /*end=*/k(),
+        /*step=*/1, [&](llvm::Value* scalar_col) {
+          llvm::Value* product =
+              vsl_.Mul(vsl_.LoadScalar(lhs_base_pointer, scalar_col),
+                       vsl_.LoadScalar(rhs_, scalar_col));
+          llvm::Value* old_value = (*scalar_accumulators)[r].Get();
+          (*scalar_accumulators)[r].Set(vsl_.Add(old_value, product));
+        });
   }
 }
 
@@ -665,6 +668,10 @@ class MatrixMatrixBlockPanelEmitter {
   // the largest vector register we will use).  This can be larger than the
   // largest vector register supported by the machine -- LLVM will legalize
   // these large vector widths into legally sized vectors.
+  //
+  // `max_vector_count` is the maximum number of vectors of size
+  // `max_vectorization_width` that we will attempt to process at once.
+  //
   // `min_vectorization_width` is the smallest vector width the emitter will use
   // -- below that it will devolve to using a scalar loop.
   //
@@ -674,12 +681,13 @@ class MatrixMatrixBlockPanelEmitter {
   class Config {
    public:
     explicit Config(PrimitiveType scalar_type, Dimensions dims,
-                    int64 max_vectorization_width,
+                    int64 max_vectorization_width, int64 max_vector_count,
                     int64 min_vectorization_width, int64 tile_size_m,
                     int64 tile_size_k)
         : scalar_type_(scalar_type),
           dims_(dims),
           max_vectorization_width_(max_vectorization_width),
+          max_vector_count_(max_vector_count),
           min_vectorization_width_(min_vectorization_width),
           tile_size_m_(tile_size_m),
           tile_size_k_(tile_size_k) {}
@@ -694,6 +702,7 @@ class MatrixMatrixBlockPanelEmitter {
     PrimitiveType scalar_type() const { return scalar_type_; }
     Dimensions dims() const { return dims_; }
     int64 max_vectorization_width() const { return max_vectorization_width_; }
+    int64 max_vector_count() const { return max_vector_count_; }
     int64 min_vectorization_width() const { return min_vectorization_width_; }
 
     int64 tile_size_m() const { return tile_size_m_; }
@@ -703,6 +712,7 @@ class MatrixMatrixBlockPanelEmitter {
     PrimitiveType scalar_type_;
     Dimensions dims_;
     int64 max_vectorization_width_;
+    int64 max_vector_count_;
     int64 min_vectorization_width_;
     int64 tile_size_m_;
     int64 tile_size_k_;
@@ -721,39 +731,35 @@ class MatrixMatrixBlockPanelEmitter {
         ksl_(ir_builder_) {
     CHECK(max_vectorization_width() > 0 &&
           IsPowerOfTwo(static_cast<uint64>(max_vectorization_width())));
+    CHECK_GT(max_vector_count(), 0);
     CHECK(min_vectorization_width() > 0 &&
           IsPowerOfTwo(static_cast<uint64>(min_vectorization_width())));
+    CHECK_GE(max_vectorization_width(), min_vectorization_width());
     CHECK_GT(tile_size_k(), 0);
   }
 
   void Emit();
 
  private:
-  // This emits a loop that loops over the `n` dimension in multiples of
-  // `max_vectorization_width` as much as possible and then emits a remainder
-  // epilogue.
-  void EmitLoopOverN();
+  // The HandleResiduesOnX helpers split the iteration space for dimension X
+  // into a multiple of the tile size on dimension X and an epilogue.  These
+  // helpers ultimately call into `EmitTiledGemm` for emitting the
+  // tiled GEMM kernel.
 
-  // This emits a loop that loops over the `k` dimension in multiples of
-  // `tile_size_k` as much as possible and then emits a remainder epilogue.
-  void EmitLoopOverK(VectorSupportLibrary* vsl, llvm::Value* n_start,
-                     llvm::Value* n_end);
+  void HandleResiduesOnN();
+  void HandleResiduesOnK(VectorSupportLibrary* vsl, llvm::Value* n_start,
+                         llvm::Value* n_end);
+  void HandleResiduesOnM(VectorSupportLibrary* vsl, int64 tile_size_k,
+                         llvm::Value* k_start, llvm::Value* k_end,
+                         llvm::Value* n_start, llvm::Value* n_end);
 
-  // This emits a loop that loops over the `m` dimension in multiples of
-  // `tile_size_m` as much as possible and then emits a remainder epilogue.
-  void EmitLoopOverM(VectorSupportLibrary* vsl, int64 tile_size_k,
+  // This emits a tiled GEMM kernel.  For a detailed description see the comment
+  // on the implementation.
+  void EmitTiledGemm(VectorSupportLibrary* vsl, int64 tile_size_k,
                      llvm::Value* k_start, llvm::Value* k_end,
-                     llvm::Value* n_start, llvm::Value* n_end);
-
-  // This emits the inner reduction loop.  This inner reduction loop multiplies
-  // a tile from the LHS of size [tile_size_m,tile_size_k] and a tile from the
-  // RHS of size [`tile_size_k`, vls->vector_width()] to update a tile of size
-  // [`tile_size_m`, vls->vector_width()] in the result.
-  void EmitTiledReductionLoop(VectorSupportLibrary* vsl, int64 tile_size_k,
-                              llvm::Value* k_start, llvm::Value* k_end,
-                              llvm::Value* n_start, llvm::Value* n_end,
-                              int64 tile_size_m, llvm::Value* m_start,
-                              llvm::Value* m_end);
+                     llvm::Value* n_start, llvm::Value* n_end,
+                     int64 tile_size_m, llvm::Value* m_start,
+                     llvm::Value* m_end);
 
   llvm::Value* GetInt64(int64 value) { return ir_builder_->getInt64(value); }
 
@@ -763,6 +769,7 @@ class MatrixMatrixBlockPanelEmitter {
   int64 max_vectorization_width() const {
     return config().max_vectorization_width();
   }
+  int64 max_vector_count() const { return config().max_vector_count(); }
   int64 min_vectorization_width() const {
     return config().min_vectorization_width();
   }
@@ -779,16 +786,19 @@ class MatrixMatrixBlockPanelEmitter {
   KernelSupportLibrary ksl_;
 };
 
-void MatrixMatrixBlockPanelEmitter::Emit() { EmitLoopOverN(); }
+void MatrixMatrixBlockPanelEmitter::Emit() { HandleResiduesOnN(); }
 
-void MatrixMatrixBlockPanelEmitter::EmitLoopOverN() {
+void MatrixMatrixBlockPanelEmitter::HandleResiduesOnN() {
   // We can only iterate the `n` dimension for an extent that is divisible by
   // the vectorization width.  So we emit an outer loop that first processes the
   // largest extent in `n` that is divisible by max_vectorization_width, then
   // the largest remaining extent that is divisible by max_vectorization_width /
   // 2 etc.
 
-  int64 current_vectorization_width = max_vectorization_width();
+  int64 current_vectorization_width =
+      max_vector_count() * max_vectorization_width();
+  int64 current_vector_count = max_vector_count();
+
   int64 n_start = 0;
   while (n_start != dims().n() &&
          current_vectorization_width >= min_vectorization_width()) {
@@ -796,53 +806,67 @@ void MatrixMatrixBlockPanelEmitter::EmitLoopOverN() {
     if (n_start != n_end) {
       VectorSupportLibrary vsl(scalar_type(), current_vectorization_width,
                                ir_builder_, "gebp");
-      EmitLoopOverK(&vsl, GetInt64(n_start), GetInt64(n_end));
+      HandleResiduesOnK(&vsl, GetInt64(n_start), GetInt64(n_end));
       n_start = n_end;
     }
-    current_vectorization_width /= 2;
+    if (current_vector_count == 1) {
+      current_vectorization_width /= 2;
+    } else {
+      current_vector_count--;
+      current_vectorization_width =
+          current_vector_count * max_vectorization_width();
+    }
   }
 
   if (n_start != dims().n()) {
     VectorSupportLibrary vsl(scalar_type(), 1, ir_builder_, "gebp");
-    ksl_.For("epi.n", n_start, dims().n(), 1, [&](llvm::Value* n_i) {
+    ksl_.ForReturnVoid("epi.n", n_start, dims().n(), 1, [&](llvm::Value* n_i) {
       llvm::Value* n_i_next =
           ir_builder_->CreateAdd(n_i, ir_builder_->getInt64(1));
-      EmitLoopOverK(&vsl, n_i, n_i_next);
+      HandleResiduesOnK(&vsl, n_i, n_i_next);
     });
   }
 }
 
-void MatrixMatrixBlockPanelEmitter::EmitLoopOverK(VectorSupportLibrary* vsl,
-                                                  llvm::Value* n_start,
-                                                  llvm::Value* n_end) {
+void MatrixMatrixBlockPanelEmitter::HandleResiduesOnK(VectorSupportLibrary* vsl,
+                                                      llvm::Value* n_start,
+                                                      llvm::Value* n_end) {
   int64 k_start = 0;
   int64 k_end = dims().k() - (dims().k() % tile_size_k());
   if (k_end != k_start) {
-    EmitLoopOverM(vsl, tile_size_k(), GetInt64(k_start), GetInt64(k_end),
-                  n_start, n_end);
+    HandleResiduesOnM(vsl, tile_size_k(), GetInt64(k_start), GetInt64(k_end),
+                      n_start, n_end);
     k_start = k_end;
   }
 
   if (k_start != dims().k()) {
-    EmitLoopOverM(vsl, dims().k() - k_start, GetInt64(k_start),
-                  GetInt64(dims().k()), n_start, n_end);
+    HandleResiduesOnM(vsl, dims().k() - k_start, GetInt64(k_start),
+                      GetInt64(dims().k()), n_start, n_end);
   }
 }
 
-void MatrixMatrixBlockPanelEmitter::EmitLoopOverM(
+void MatrixMatrixBlockPanelEmitter::HandleResiduesOnM(
     VectorSupportLibrary* vsl, int64 tile_size_k, llvm::Value* k_start,
     llvm::Value* k_end, llvm::Value* n_start, llvm::Value* n_end) {
   const int64 m_end = dims().m() - dims().m() % tile_size_m();
-  EmitTiledReductionLoop(vsl, tile_size_k, k_start, k_end, n_start, n_end,
-                         tile_size_m(), GetInt64(0), GetInt64(m_end));
+  EmitTiledGemm(vsl, tile_size_k, k_start, k_end, n_start, n_end, tile_size_m(),
+                GetInt64(0), GetInt64(m_end));
 
   if (m_end != dims().m()) {
-    EmitTiledReductionLoop(vsl, tile_size_k, k_start, k_end, n_start, n_end,
-                           dims().m() - m_end, GetInt64(m_end),
-                           GetInt64(dims().m()));
+    EmitTiledGemm(vsl, tile_size_k, k_start, k_end, n_start, n_end,
+                  dims().m() - m_end, GetInt64(m_end), GetInt64(dims().m()));
   }
 }
 
+// The loop structure is:
+//
+// Iterate over dimension M as m:
+//   Iterate over dimension N as n:
+//     Iterate over dimension K as k:
+//       OutputTile[m,n] += Dot(LhsTile[m,k], RhsTile[k,n])
+//
+// I.e. a just a tiled version of a "naive" GEMM.
+//
 // The tiling scheme is as follows:
 //
 // Let the LHS be:
@@ -904,41 +928,48 @@ void MatrixMatrixBlockPanelEmitter::EmitLoopOverM(
 //   +-------------------+-------------------+-------------------+---------
 //   | a0*p0+b0*q0+c0*r0 | a0*p1+b0*q1+c0*r1 | a0*p2+b0*q2+c0*r2 |  ...
 //   +-------------------+-------------------+-------------------+---------
-void MatrixMatrixBlockPanelEmitter::EmitTiledReductionLoop(
+void MatrixMatrixBlockPanelEmitter::EmitTiledGemm(
     VectorSupportLibrary* vsl, int64 tile_size_k, llvm::Value* k_start,
     llvm::Value* k_end, llvm::Value* n_start, llvm::Value* n_end,
     int64 tile_size_m, llvm::Value* m_start, llvm::Value* m_end) {
-  ksl_.For("dot.m", m_start, m_end, tile_size_m, [&](llvm::Value* m_i) {
-    MemoryTile result_memory_tile(vsl, ir_builder_, /*matrix=*/result_,
-                                  /*matrix_size_along_minor_dim=*/dims().n(),
-                                  /*major_dim_offset=*/m_i,
-                                  /*tile_size_along_major_dim=*/tile_size_m);
-    MemoryTile lhs_memory_tile(vsl, ir_builder_, /*matrix=*/lhs_,
-                               /*matrix_size_along_minor_dim=*/dims().k(),
-                               /*major_dim_offset=*/m_i,
-                               /*tile_size_along_major_dim=*/tile_size_m);
+  ksl_.ForReturnVoid(
+      "dot.m", m_start, m_end, tile_size_m, [&](llvm::Value* m_i) {
+        MemoryTile result_memory_tile(
+            vsl, ir_builder_, /*matrix=*/result_,
+            /*matrix_size_along_minor_dim=*/dims().n(),
+            /*major_dim_offset=*/m_i,
+            /*tile_size_along_major_dim=*/tile_size_m);
+        MemoryTile lhs_memory_tile(vsl, ir_builder_, /*matrix=*/lhs_,
+                                   /*matrix_size_along_minor_dim=*/dims().k(),
+                                   /*major_dim_offset=*/m_i,
+                                   /*tile_size_along_major_dim=*/tile_size_m);
+        ksl_.ForReturnVoid(
+            "dot.n", n_start, n_end, vsl->vector_size(), [&](llvm::Value* n_i) {
+              TileVariable result_tile_var(vsl,
+                                           result_memory_tile.LoadTile(n_i));
+              ksl_.ForReturnVoid(
+                  "dot.k", k_start, k_end, tile_size_k, [&](llvm::Value* k_i) {
+                    MemoryTile rhs_memory_tile(vsl, ir_builder_, rhs_,
+                                               dims().n(), k_i, tile_size_k);
+                    std::vector<std::vector<llvm::Value*>> lhs_tile =
+                        lhs_memory_tile.LoadBroadcastTile(k_i, tile_size_k);
+                    std::vector<llvm::Value*> rhs_tile =
+                        rhs_memory_tile.LoadTile(n_i);
+                    std::vector<llvm::Value*> result_tile =
+                        result_tile_var.Get();
+                    for (int64 r_m_i = 0; r_m_i < tile_size_m; r_m_i++) {
+                      for (int64 r_k_i = 0; r_k_i < tile_size_k; r_k_i++) {
+                        result_tile[r_m_i] =
+                            vsl->MulAdd(lhs_tile[r_m_i][r_k_i], rhs_tile[r_k_i],
+                                        result_tile[r_m_i]);
+                      }
+                    }
+                    result_tile_var.Set(result_tile);
+                  });
 
-    ksl_.For("dot.k", k_start, k_end, tile_size_k, [&](llvm::Value* k_i) {
-      MemoryTile rhs_memory_tile(vsl, ir_builder_, rhs_, dims().n(), k_i,
-                                 tile_size_k);
-      std::vector<std::vector<llvm::Value*>> lhs_tile =
-          lhs_memory_tile.LoadBroadcastTile(k_i, tile_size_k);
-      ksl_.For(
-          "dot.n", n_start, n_end, vsl->vector_size(), [&](llvm::Value* n_i) {
-            std::vector<llvm::Value*> rhs_tile = rhs_memory_tile.LoadTile(n_i);
-            std::vector<llvm::Value*> result_tile =
-                result_memory_tile.LoadTile(n_i);
-            for (int64 r_m_i = 0; r_m_i < tile_size_m; r_m_i++) {
-              for (int64 r_k_i = 0; r_k_i < tile_size_k; r_k_i++) {
-                result_tile[r_m_i] =
-                    vsl->MulAdd(lhs_tile[r_m_i][r_k_i], rhs_tile[r_k_i],
-                                result_tile[r_m_i]);
-              }
-            }
-            result_memory_tile.StoreTile(result_tile, n_i);
-          });
-    });
-  });
+              result_memory_tile.StoreTile(result_tile_var.Get(), n_i);
+            });
+      });
 }
 
 }  // namespace
@@ -1023,16 +1054,21 @@ bool DotOpEmitter::EmitExperimentalGebpDotIfEnabled(
       target, ir_builder_->getInt8(0), size_bytes,
       target_machine_features_.minimum_alignment_for_allocation(size_bytes));
 
-  int64 max_vector_width =
+  int64 max_target_vector_width =
       target_machine_features_.vector_register_num_elements(
           *ir_builder_->GetInsertBlock()->getParent(), primitive_type);
+
+  int64 tile_size_m, tile_size_k, tile_size_n_in_vector_width;
+  std::tie(tile_size_m, tile_size_k, tile_size_n_in_vector_width) =
+      GetGemmTileSize();
 
   MatrixMatrixBlockPanelEmitter::Config config(
       /*scalar_type=*/primitive_type,
       MatrixMatrixBlockPanelEmitter::Dimensions{/*m=*/m, /*k=*/k, /*n=*/n},
-      /*max_vectorization_width=*/max_vector_width,
-      /*min_vectorization_width=*/std::min<int64>(4, max_vector_width),
-      /*tile_size_m=*/3, /*tile_size_k=*/5);
+      /*max_vectorization_width=*/max_target_vector_width,
+      /*max_vector_count=*/tile_size_n_in_vector_width,
+      /*min_vectorization_width=*/std::min<int64>(4, max_target_vector_width),
+      /*tile_size_m=*/tile_size_m, /*tile_size_k=*/tile_size_k);
 
   VLOG(2) << "Emitting GEBP kernel in LLVM IR with config "
           << config.GetCacheKey();
@@ -1265,8 +1301,11 @@ Status DotOpEmitter::Emit() {
   // from messing up the vectorization.
   std::unique_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
       0, lhs_shape.dimensions(lhs_reduction_dimension), "reduction",
-      /*prevent_unrolling=*/lhs_reduction_along_minor_dimension &&
-          rhs_reduction_along_minor_dimension);
+      /*unroll_mode=*/
+      (lhs_reduction_along_minor_dimension &&
+       rhs_reduction_along_minor_dimension)
+          ? xla::llvm_ir::UnrollMode::kNoUnroll
+          : xla::llvm_ir::UnrollMode::kDefaultUnroll);
 
   // The final entry in the rhs and lhs indexes is the indvar of the
   // reduction loop.

@@ -718,8 +718,14 @@ class _FuncGraph(ops.Graph):
           tensor.dtype, shape=tensor.get_shape(), name=name)
     # pylint: disable=protected-access
     if ops._USE_C_SHAPES:
-      handle_data = c_api.GetResourceHandleShapeAndType(tensor.graph._c_graph,
-                                                        tensor._as_tf_output())
+      if isinstance(tensor, ops.EagerTensor):
+        handle_data = tensor._handle_data
+        if handle_data:
+          handle_data = handle_data.SerializeToString()
+      else:
+        handle_data = c_api.GetResourceHandleShapeAndType(
+            tensor.graph._c_graph, tensor._as_tf_output())
+
       if handle_data:
         c_api.SetResourceHandleShapeAndType(ph.graph._c_graph,
                                             ph._as_tf_output(),
@@ -1166,3 +1172,13 @@ _DTYPE_TO_STR = {
     dtypes.qint32: "qi32",
     dtypes.bfloat16: "b16"
 }
+
+
+def function_def_from_tf_function(c_func):
+  """Converts a SWIG-wrapped TF_Function* to a FunctionDef proto."""
+  with c_api_util.tf_buffer() as buf:
+    c_api.TF_FunctionToFunctionDef(c_func, buf)
+    data = c_api.TF_GetBuffer(buf)
+  fdef = function_pb2.FunctionDef()
+  fdef.ParseFromString(compat.as_bytes(data))
+  return fdef

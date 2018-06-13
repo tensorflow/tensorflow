@@ -45,7 +45,7 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.8.0'
+_VERSION = '1.9.0-rc0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
@@ -54,6 +54,7 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
+    'setuptools <= 39.1.0',
     'tensorboard >= 1.8.0, < 1.9.0',
     'termcolor >= 1.1.0',
 ]
@@ -95,7 +96,8 @@ if sys.version_info < (3, 4):
 CONSOLE_SCRIPTS = [
     'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
     'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
-    'toco = tensorflow.contrib.lite.toco.python.toco_wrapper:main',
+    'tflite_convert = tensorflow.contrib.lite.python.tflite_convert:main',
+    'toco = tensorflow.contrib.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the
