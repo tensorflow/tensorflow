@@ -3388,10 +3388,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bias_op",
     prefix = "bias_op",
-    deps = NN_DEPS + if_cuda([
+    deps = NN_DEPS + if_cuda_is_configured([
         ":reduction_ops",
         "@cub_archive//:cub",
-    ]),
+    ]) + if_rocm_is_configured([
+        ":reduction_ops",
+        "@rocprim_archive//:rocprim",
+    ])
 )
 
 tf_kernel_library(

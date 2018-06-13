@@ -272,8 +272,8 @@ void BiasGradGPU<T>::DoRowReduction(OpKernelContext* context, T* output,
                                     const T* input, int rows, int cols) {
   typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
   Constants<GPUDevice> constants;
-  cub::Sum op;
-  functor::ReduceImpl<T, cub::Sum, T*, const T*, ReductionAxes>(
+  gpuprim::Sum op;
+  functor::ReduceImpl<T, gpuprim::Sum, T*, const T*, ReductionAxes>(
       context, output, input, 2, rows, cols, 1, 1, constants.kOne, op);
 }
 
@@ -282,8 +282,8 @@ void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
                                     const T* input, int rows, int cols) {
   typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
   Constants<GPUDevice> constants;
-  cub::Sum op;
-  functor::ReduceImpl<T, cub::Sum, T*, const T*, ReductionAxes>(
+  gpuprim::Sum op;
+  functor::ReduceImpl<T, gpuprim::Sum, T*, const T*, ReductionAxes>(
       context, output, input, 2, rows, cols, 1, 1, constants.kZero, op);
 }
 
