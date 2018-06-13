@@ -1,6 +1,6 @@
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/Core eigen_archive/Eigen/Core
---- eigen-eigen-6913f0cf7d06/Eigen/Core	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/Eigen/Core	2018-06-05 12:17:20.936682783 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/Core eigen-work-upstream/Eigen/Core
+--- eigen-eigen-6913f0cf7d06/Eigen/Core	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/Eigen/Core	2018-06-13 15:34:15.361735719 +0000
 @@ -31,8 +31,8 @@
  #define EIGEN_CUDACC_VER 0
  #endif
@@ -135,9 +135,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/Core eigen_archive/Eigen/Core
  
  #if defined EIGEN_VECTORIZE_CUDA
    #include "src/Core/arch/CUDA/PacketMath.h"
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/MathFunctions.h eigen_archive/Eigen/src/Core/MathFunctions.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/MathFunctions.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/Eigen/src/Core/MathFunctions.h	2018-06-05 11:33:49.520601316 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/MathFunctions.h eigen-work-upstream/Eigen/src/Core/MathFunctions.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/MathFunctions.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/MathFunctions.h	2018-06-13 15:34:15.361735719 +0000
 @@ -10,6 +10,10 @@
  #ifndef EIGEN_MATHFUNCTIONS_H
  #define EIGEN_MATHFUNCTIONS_H
@@ -380,9 +380,47 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/MathFunctions.h eigen_archive
  template <>
  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
  float fmod(const float& a, const float& b) {
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/Half.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h	1969-12-31 19:00:00.000000000 -0500
-+++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/Half.h	2018-06-05 12:27:02.618084506 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/ProductEvaluators.h eigen-work-upstream/Eigen/src/Core/ProductEvaluators.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/ProductEvaluators.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/ProductEvaluators.h	2018-06-13 15:41:49.590533596 +0000
+@@ -137,7 +137,7 @@
+   typename enable_if<(Options==DefaultProduct || Options==AliasFreeProduct)>::type>
+ {
+   typedef Product<Lhs,Rhs,Options> SrcXprType;
+-  static EIGEN_STRONG_INLINE
++  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+   void run(DstXprType &dst, const SrcXprType &src, const internal::assign_op<Scalar,Scalar> &)
+   {
+     Index dstRows = src.rows();
+@@ -390,7 +390,7 @@
+   typedef typename Product<Lhs,Rhs>::Scalar Scalar;
+   
+   template<typename Dst>
+-  static EIGEN_STRONG_INLINE void evalTo(Dst& dst, const Lhs& lhs, const Rhs& rhs)
++  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void evalTo(Dst& dst, const Lhs& lhs, const Rhs& rhs)
+   {
+     // Same as: dst.noalias() = lhs.lazyProduct(rhs);
+     // but easier on the compiler side
+@@ -398,14 +398,14 @@
+   }
+   
+   template<typename Dst>
+-  static EIGEN_STRONG_INLINE void addTo(Dst& dst, const Lhs& lhs, const Rhs& rhs)
++  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void addTo(Dst& dst, const Lhs& lhs, const Rhs& rhs)
+   {
+     // dst.noalias() += lhs.lazyProduct(rhs);
+     call_assignment_no_alias(dst, lhs.lazyProduct(rhs), internal::add_assign_op<typename Dst::Scalar,Scalar>());
+   }
+   
+   template<typename Dst>
+-  static EIGEN_STRONG_INLINE void subTo(Dst& dst, const Lhs& lhs, const Rhs& rhs)
++  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void subTo(Dst& dst, const Lhs& lhs, const Rhs& rhs)
+   {
+     // dst.noalias() -= lhs.lazyProduct(rhs);
+     call_assignment_no_alias(dst, lhs.lazyProduct(rhs), internal::sub_assign_op<typename Dst::Scalar,Scalar>());
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/Half.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h	1970-01-01 00:00:00.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/Half.h	2018-06-13 15:34:15.361735719 +0000
 @@ -0,0 +1,705 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -1089,9 +1127,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/Half.h eigen_arc
 +#endif
 +
 +#endif // EIGEN_HALF_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h	1969-12-31 19:00:00.000000000 -0500
-+++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h	2018-06-05 11:33:49.524601463 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h	1970-01-01 00:00:00.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h	2018-06-13 15:34:15.365735656 +0000
 @@ -0,0 +1,91 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -1184,9 +1222,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/MathFunctions.h 
 +} // end namespace Eigen
 +
 +#endif // EIGEN_MATH_FUNCTIONS_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMath.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/PacketMath.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMath.h	1969-12-31 19:00:00.000000000 -0500
-+++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/PacketMath.h	2018-06-05 11:33:49.524601463 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMath.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/PacketMath.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMath.h	1970-01-01 00:00:00.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/PacketMath.h	2018-06-13 15:34:15.365735656 +0000
 @@ -0,0 +1,305 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -1493,9 +1531,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMath.h eig
 +
 +
 +#endif // EIGEN_PACKET_MATH_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h	1969-12-31 19:00:00.000000000 -0500
-+++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h	2018-06-05 12:13:50.352934804 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h	1970-01-01 00:00:00.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h	2018-06-13 15:34:15.365735656 +0000
 @@ -0,0 +1,1019 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -2516,9 +2554,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/PacketMathHalf.h
 +}
 +
 +#endif // EIGEN_PACKET_MATH_HALF_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h	1969-12-31 19:00:00.000000000 -0500
-+++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h	2018-06-05 12:14:02.865395173 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h	1970-01-01 00:00:00.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h	2018-06-13 15:34:15.365735656 +0000
 @@ -0,0 +1,212 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -2732,9 +2770,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/TypeCasting.h ei
 +} // end namespace Eigen
 +
 +#endif // EIGEN_TYPE_CASTING_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/intrinsics.h eigen_archive/Eigen/src/Core/arch/HIP/hcc/intrinsics.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/intrinsics.h	1969-12-31 19:00:00.000000000 -0500
-+++ eigen_archive/Eigen/src/Core/arch/HIP/hcc/intrinsics.h	2018-06-05 12:12:46.070569675 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/intrinsics.h eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/intrinsics.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/intrinsics.h	1970-01-01 00:00:00.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/arch/HIP/hcc/intrinsics.h	2018-06-13 15:34:15.365735656 +0000
 @@ -0,0 +1,174 @@
 +/* 
 +** Alternates for CUDA intrinsics
@@ -2910,9 +2948,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/arch/HIP/hcc/intrinsics.h eig
 +
 +#endif
 +
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/functors/BinaryFunctors.h eigen_archive/Eigen/src/Core/functors/BinaryFunctors.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/functors/BinaryFunctors.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/Eigen/src/Core/functors/BinaryFunctors.h	2018-06-05 11:33:49.532601756 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/functors/BinaryFunctors.h eigen-work-upstream/Eigen/src/Core/functors/BinaryFunctors.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/functors/BinaryFunctors.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/functors/BinaryFunctors.h	2018-06-13 15:34:15.365735656 +0000
 @@ -443,6 +443,10 @@
    typedef typename BinaryOp::second_argument_type second_argument_type;
    typedef typename BinaryOp::result_type          result_type;
@@ -2935,9 +2973,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/functors/BinaryFunctors.h eig
    bind2nd_op(const second_argument_type &val) : m_value(val) {}
  
    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const result_type operator() (const first_argument_type& a) const { return BinaryOp::operator()(a,m_value); }
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Macros.h eigen_archive/Eigen/src/Core/util/Macros.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Macros.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/Eigen/src/Core/util/Macros.h	2018-06-05 11:33:49.536601905 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Macros.h eigen-work-upstream/Eigen/src/Core/util/Macros.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Macros.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/util/Macros.h	2018-06-13 15:34:15.365735656 +0000
 @@ -1003,9 +1003,12 @@
  #  define EIGEN_TRY try
  #  define EIGEN_CATCH(X) catch (X)
@@ -2952,9 +2990,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Macros.h eigen_archive/E
  #  else
  #    define EIGEN_THROW_X(X) std::abort()
  #    define EIGEN_THROW std::abort()
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Memory.h eigen_archive/Eigen/src/Core/util/Memory.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Memory.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/Eigen/src/Core/util/Memory.h	2018-06-05 11:33:49.536601905 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Memory.h eigen-work-upstream/Eigen/src/Core/util/Memory.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Memory.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/util/Memory.h	2018-06-13 15:34:15.365735656 +0000
 @@ -156,7 +156,11 @@
  
    void *result;
@@ -3013,9 +3051,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Memory.h eigen_archive/E
    }
  };
  
-diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Meta.h eigen_archive/Eigen/src/Core/util/Meta.h
---- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Meta.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/Eigen/src/Core/util/Meta.h	2018-06-05 11:33:49.536601905 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Meta.h eigen-work-upstream/Eigen/src/Core/util/Meta.h
+--- eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Meta.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/Eigen/src/Core/util/Meta.h	2018-06-13 15:34:15.365735656 +0000
 @@ -16,6 +16,11 @@
  #include <math_constants.h>
  #endif
@@ -3112,9 +3150,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/Eigen/src/Core/util/Meta.h eigen_archive/Eig
  using internal::device::numeric_limits;
  #else
  using std::numeric_limits;
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/Tensor eigen_archive/unsupported/Eigen/CXX11/Tensor
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/Tensor	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/CXX11/Tensor	2018-06-05 11:33:49.308593516 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/Tensor eigen-work-upstream/unsupported/Eigen/CXX11/Tensor
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/Tensor	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/Tensor	2018-06-13 15:34:15.365735656 +0000
 @@ -81,7 +81,13 @@
  
  #ifdef EIGEN_USE_GPU
@@ -3170,9 +3208,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/Tensor eigen_archive
  #include "src/Tensor/TensorConversion.h"
  #include "src/Tensor/TensorConvolution.h"
  #include "src/Tensor/TensorFFT.h"
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h	1969-12-31 19:00:00.000000000 -0500
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h	2018-06-05 11:33:49.308593516 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h	1970-01-01 00:00:00.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorContractionHip.h	2018-06-13 15:34:15.369735593 +0000
 @@ -0,0 +1,1528 @@
 +//#include "hip/hip_runtime.h"
 +// This file is part of Eigen, a lightweight C++ template library
@@ -4702,9 +4740,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorCon
 +
 +#endif // EIGEN_USE_GPU and __HIPCC__
 +#endif // EIGEN_CXX11_TENSOR_TENSOR_CONTRACTION_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h	2018-06-05 11:33:49.312593663 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h	2018-06-13 15:34:15.369735593 +0000
 @@ -35,17 +35,22 @@
    }
  
@@ -4763,9 +4801,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDev
  #endif
    }
  };
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h	1969-12-31 19:00:00.000000000 -0500
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h	2018-06-05 11:33:49.308593516 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h	1970-01-01 00:00:00.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceHip.h	2018-06-13 15:34:15.369735593 +0000
 @@ -0,0 +1,352 @@
 +// This file is part of Eigen, a lightweight C++ template library
 +// for linear algebra.
@@ -5119,9 +5157,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorDev
 +}  // end namespace Eigen
 +
 +#endif  // EIGEN_CXX11_TENSOR_TENSOR_DEVICE_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h	2018-06-05 11:33:49.312593663 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorExecutor.h	2018-06-13 15:34:15.369735593 +0000
 @@ -201,7 +201,7 @@
  };
  
@@ -5166,9 +5204,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorExe
  #endif  // EIGEN_USE_GPU
  
  // SYCL Executor policy
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h	2018-06-05 11:33:49.308593516 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorForcedEval.h	2018-06-13 15:34:15.369735593 +0000
 @@ -109,7 +109,10 @@
  
    EIGEN_DEVICE_FUNC const Dimensions& dimensions() const { return m_impl.dimensions(); }
@@ -5181,9 +5219,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorFor
      const Index numValues =  internal::array_prod(m_impl.dimensions());
      m_buffer = (CoeffReturnType*)m_device.allocate(numValues * sizeof(CoeffReturnType));
      // Should initialize the memory in case we're dealing with non POD types.
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h	2018-06-05 11:33:49.308593516 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorIndexList.h	2018-06-13 15:34:15.369735593 +0000
 @@ -350,7 +350,8 @@
  
  namespace internal {
@@ -5194,9 +5232,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorInd
    size_t result = 1;
    for (int i = 0; i < array_size<IndexList<FirstType, OtherTypes...> >::value; ++i) {
      result *= sizes[i];
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h	2018-06-05 11:33:49.312593663 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorMacros.h	2018-06-13 15:34:15.369735593 +0000
 @@ -27,7 +27,7 @@
   */
  
@@ -5206,9 +5244,21 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMac
  #if EIGEN_HAS_VARIADIC_TEMPLATES
    // SFINAE doesn't work for gcc <= 4.7
    #ifdef EIGEN_COMP_GNUC
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h	2018-06-05 11:33:49.312593663 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h	2018-06-13 15:34:15.373735529 +0000
+@@ -52,7 +52,7 @@
+ };
+ 
+ // For CUDA packet types when using a GpuDevice
+-#if defined(EIGEN_USE_GPU) && defined(EIGEN_CUDACC) && defined(EIGEN_HAS_CUDA_FP16)
++#if defined(EIGEN_USE_GPU) && ((defined(EIGEN_CUDACC) && defined(EIGEN_HAS_CUDA_FP16)) || defined(EIGEN_HAS_HIP_FP16))
+ template <>
+ struct PacketType<half, GpuDevice> {
+   typedef half2 type;
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorMorphing.h	2018-06-13 15:34:15.369735593 +0000
 @@ -859,7 +859,12 @@
      return inputIndex;
    }
@@ -5223,9 +5273,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMor
  #ifndef __SYCL_DEVICE_ONLY__
      return numext::maxi(min, numext::mini(max,value));
  #else
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h	2018-06-05 11:33:49.312593663 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h	2018-06-13 15:34:15.369735593 +0000
 @@ -334,12 +334,12 @@
  };
  
@@ -5298,9 +5348,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
    static const bool RunningOnGPU = internal::is_same<Device, Eigen::GpuDevice>::value;
    static const bool RunningOnSycl = false;
  #elif defined(EIGEN_USE_SYCL)
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	1969-12-31 19:00:00.000000000 -0500
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	2018-06-05 12:09:35.435555666 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	1970-01-01 00:00:00.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/Tensor/TensorReductionHip.h	2018-06-13 15:34:15.369735593 +0000
 @@ -0,0 +1,819 @@
 +//#include "hip/hip_runtime.h"
 +// This file is part of Eigen, a lightweight C++ template library
@@ -6121,9 +6171,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorRed
 +} // end namespace Eigen
 +
 +#endif // EIGEN_CXX11_TENSOR_TENSOR_REDUCTION_HIP_H
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/util/CXX11Meta.h eigen_archive/unsupported/Eigen/CXX11/src/util/CXX11Meta.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/util/CXX11Meta.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/CXX11/src/util/CXX11Meta.h	2018-06-05 11:33:49.316593810 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/util/CXX11Meta.h eigen-work-upstream/unsupported/Eigen/CXX11/src/util/CXX11Meta.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/util/CXX11Meta.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/CXX11/src/util/CXX11Meta.h	2018-06-13 15:34:15.369735593 +0000
 @@ -268,6 +268,7 @@
    typename Reducer
  > struct reduce<Reducer>
@@ -6156,9 +6206,9 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/util/CXX11Meta.h
  constexpr inline decltype(reduce<product_op, Ts...>::run((*((Ts*)0))...)) arg_prod(Ts... ts)
  {
    return reduce<product_op, Ts...>::run(ts...);
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h eigen_archive/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h	2018-06-05 11:33:49.336594546 -0400
+diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h eigen-work-upstream/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h
+--- eigen-eigen-6913f0cf7d06/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h	2017-10-26 20:44:28.000000000 +0000
++++ eigen-work-upstream/unsupported/Eigen/src/SpecialFunctions/SpecialFunctionsImpl.h	2018-06-13 15:34:15.369735593 +0000
 @@ -121,7 +121,7 @@
  struct lgamma_impl<float> {
    EIGEN_DEVICE_FUNC
@@ -6177,15 +6227,3 @@ diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/src/SpecialFunctions/Speci
      int dummy;
      return ::lgamma_r(x, &dummy);
  #else
-diff -Naur eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h
---- eigen-eigen-6913f0cf7d06/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h	2017-10-26 16:44:28.000000000 -0400
-+++ eigen_archive/unsupported/Eigen/CXX11/src/Tensor/TensorMeta.h	2018-06-05 11:33:49.312593663 -0400
-@@ -52,7 +52,7 @@
- };
- 
- // For CUDA packet types when using a GpuDevice
--#if defined(EIGEN_USE_GPU) && defined(EIGEN_CUDACC) && defined(EIGEN_HAS_CUDA_FP16)
-+#if defined(EIGEN_USE_GPU) && ((defined(EIGEN_CUDACC) && defined(EIGEN_HAS_CUDA_FP16)) || defined(EIGEN_HAS_HIP_FP16))
- template <>
- struct PacketType<half, GpuDevice> {
-   typedef half2 type;
