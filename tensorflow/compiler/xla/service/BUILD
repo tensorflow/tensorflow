@@ -2123,7 +2123,6 @@ cc_library(
         ":buffer_liveness",
         ":buffer_value",
         ":call_graph",
-        ":copy_insertion",
         ":flatten_call_graph",
         ":hlo",
         ":hlo_dce",
@@ -2131,7 +2130,6 @@ cc_library(
         ":hlo_scheduling",
         ":logical_buffer",
         ":tuple_points_to_analysis",
-        ":tuple_simplifier",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -2145,7 +2143,6 @@ tf_cc_test(
     name = "hlo_rematerialization_test",
     srcs = ["hlo_rematerialization_test.cc"],
     deps = [
-        ":flatten_call_graph",
         ":hlo",
         ":hlo_matchers",
         ":hlo_ordering",

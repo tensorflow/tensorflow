@@ -57,12 +57,6 @@ class HloRematerialization {
   //   sizes: Optional outparam that indicates the peak memory usage of the HLO
   //     module before/after rematerialization.
   //
-  //   run_copy_elision: Enable copy elision. This pass is used to eliminate
-  //     copies that were inserted before HLO scheduling.
-  //
-  // TODO(b/80249101): Remove the 'run_copy_elision' parameter when copy
-  // insertion is integrated with HLO scheduling.
-  //
   // Returns whether any instructions were rematerialized. If memory use is
   // already below the given limit then no instructions are rematerialized and
   // false is returned.
@@ -74,7 +68,7 @@ class HloRematerialization {
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
       HloModule* hlo_module, MemorySchedulerAlgorithm scheduler_algorithm,
       SequentialHloOrdering::HloModuleSequence* sequence,
-      RematerializationSizes* sizes, bool run_copy_elision = true);
+      RematerializationSizes* sizes = nullptr);
 
  protected:
   HloRematerialization(MemorySchedulerAlgorithm scheduler_algorithm,
@@ -89,8 +83,7 @@ class HloRematerialization {
   // contains the memory-minimizing order in which to emit the HLO instructions.
   StatusOr<bool> Run(HloModule* module,
                      SequentialHloOrdering::HloModuleSequence* sequence,
-                     int64 memory_limit, RematerializationSizes* sizes,
-                     bool run_copy_elision);
+                     int64 memory_limit, RematerializationSizes* sizes);
 
   // Rematerializes instructions within the given computation. 'order' is the
   // order in which the computation's instructions will be emitted in the
