@@ -274,9 +274,7 @@ class GroupByReducerDataset(dataset_ops.Dataset):
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping Defun for key_func."""
 
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
+    @function.Defun(*dataset_ops.defun_args(input_dataset))
     def tf_key_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       nested_args = dataset_ops.restructure_args(args, input_dataset)
@@ -335,11 +333,9 @@ class GroupByReducerDataset(dataset_ops.Dataset):
       # Create a list in which `tf_reduce_func` will store the new shapes.
       flat_new_state_shapes = []
 
-      @function.Defun(*(nest.flatten(
-          sparse.as_dense_types(
-              self._state_types, self._state_classes)) + nest.flatten(
-                  sparse.as_dense_types(input_dataset.output_types,
-                                        input_dataset.output_classes))))
+      @function.Defun(*dataset_ops.defun_args(
+          input_types=(self._state_types, input_dataset.output_types),
+          input_classes=(self._state_classes, input_dataset.output_classes)))
       def tf_reduce_func(*args):
         """A wrapper for Defun that facilitates shape inference."""
         nested_args = dataset_ops.restructure_args(
@@ -409,8 +405,8 @@ class GroupByReducerDataset(dataset_ops.Dataset):
   def _make_finalize_func(self, finalize_func):
     """Make wrapping Defun for finalize_func."""
 
-    @function.Defun(*(nest.flatten(
-        sparse.as_dense_types(self._state_types, self._state_classes))))
+    @function.Defun(*dataset_ops.defun_args(
+        input_types=self._state_types, input_classes=self._state_classes))
     def tf_finalize_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       nested_args = dataset_ops.restructure_args(
@@ -501,9 +497,7 @@ class GroupByWindowDataset(dataset_ops.Dataset):
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping Defun for key_func."""
 
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
+    @function.Defun(*dataset_ops.defun_args(input_dataset))
     def tf_key_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       nested_args = dataset_ops.restructure_args(args, input_dataset)

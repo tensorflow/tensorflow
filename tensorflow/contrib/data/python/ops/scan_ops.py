@@ -70,11 +70,9 @@ class _ScanDataset(dataset_ops.Dataset):
       # Create a list in which `tf_scan_func` will store the new shapes.
       flat_new_state_shapes = []
 
-      @function.Defun(*(nest.flatten(
-          sparse.as_dense_types(
-              self._state_types, self._state_classes)) + nest.flatten(
-                  sparse.as_dense_types(input_dataset.output_types,
-                                        input_dataset.output_classes))))
+      @function.Defun(*dataset_ops.defun_args(
+          input_types=(self._state_types, input_dataset.output_types),
+          input_classes=(self._state_classes, input_dataset.output_classes)))
       def tf_scan_func(*args):
         """A wrapper for Defun that facilitates shape inference."""
         nested_args = dataset_ops.restructure_args(

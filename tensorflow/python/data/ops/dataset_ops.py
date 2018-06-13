@@ -108,12 +108,7 @@ class Dataset(object):
     if shared_name is None:
       shared_name = ""
     iterator_resource = gen_dataset_ops.iterator(
-        container="",
-        shared_name=shared_name,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        container="", shared_name=shared_name, **flat_structure(self))
     with ops.colocate_with(iterator_resource):
       initializer = gen_dataset_ops.make_iterator(self._as_variant_tensor(),
                                                   iterator_resource)
@@ -171,13 +166,8 @@ class Dataset(object):
 
     return iterator_ops.Iterator(
         gen_dataset_ops.one_shot_iterator(
-            dataset_factory=_make_dataset,
-            output_types=nest.flatten(
-                sparse.as_dense_types(self.output_types, self.output_classes)),
-            output_shapes=nest.flatten(
-                sparse.as_dense_shapes(self.output_shapes,
-                                       self.output_classes))), None,
-        self.output_types, self.output_shapes, self.output_classes)
+            dataset_factory=_make_dataset, **flat_structure(self)),
+        None, self.output_types, self.output_shapes, self.output_classes)
 
   @abc.abstractproperty
   def output_classes(self):
@@ -1182,6 +1172,49 @@ def flat_structure(dataset):
   }
 
 
+# TODO(mrry): Investigate adding a `Defun` wrapper that combines
+# `defun_args()`, `restructure_args()`, and a future helper that consumes the
+# outputs of the wrapped function.
+def defun_args(dataset=None, input_types=None, input_classes=None):
+  """Returns a flat list of @{tf.DType} for a given element structure.
+
+  The expected usage for an example function is as follows:
+
+  ```python
+  input_dataset = ...  # A `tf.data.Dataset`.
+
+  @function.Defun(*defun_args(input_dataset))
+  def tf_example_func(*args):
+    nested_args = restructure_args(args, input_dataset)
+    # [Destructure and handle the return values from `example_func()`.
+  ```
+
+  Either `dataset`, or both of `input_types` and `input_classes` must be
+  specified. If `dataset` is not specified, the structures of `input_types` and
+  `input_classes` must be compatible.
+
+  Args:
+    dataset: (Optional.) A @{tf.data.Dataset} whose element structure should
+      be flattened.
+    input_types: (Optional.) A nested structure of @{tf.DType} with the desired
+      structure and types for each argument.
+    input_classes: (Optional.) A nested structure of `type` with the desired
+      structure and classes for each argument.
+
+  Returns:
+    A flat list of @{tf.DType} for the given element structure.
+  """
+  if input_types is None:
+    assert dataset is not None
+    assert input_classes is None
+    input_types = dataset.output_types
+    input_classes = dataset.output_classes
+  else:
+    assert input_types is not None and input_classes is not None
+  return nest.flatten(
+      sparse.as_dense_types(input_types, input_classes))
+
+
 def restructure_args(args, dataset=None, input_shapes=None, input_types=None,
                      input_classes=None):
   """Converts a flat tuple of arguments into a given structure.
@@ -1195,7 +1228,7 @@ def restructure_args(args, dataset=None, input_shapes=None, input_types=None,
   ```python
   input_dataset = ...  # A `tf.data.Dataset`.
 
-  @function.Defun(...)
+  @function.Defun(*defun_args(input_dataset))
   def tf_example_func(*args):
     nested_args = restructure_args(args, input_dataset)
     ret = example_func(*nested_args)
@@ -1274,8 +1307,8 @@ class _GeneratorDataset(Dataset):
     init_args_types = nest.pack_sequence_as(
         init_args, [t.dtype for t in nest.flatten(init_args)])
 
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(init_args_types, init_args_classes)))
+    @function.Defun(*defun_args(
+        input_types=init_args_types, input_classes=init_args_classes))
     def tf_init_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       nested_args = restructure_args(
@@ -1323,8 +1356,8 @@ class _GeneratorDataset(Dataset):
     self._output_shapes = None
     self._output_types = None
 
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(self._state_types, self._state_classes)))
+    @function.Defun(*defun_args(
+        input_types=self._state_types, input_classes=self._state_classes))
     def tf_next_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       nested_args = restructure_args(
@@ -1367,8 +1400,8 @@ class _GeneratorDataset(Dataset):
     self._next_func = tf_next_func
     self._next_func.add_to_graph(ops.get_default_graph())
 
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(self._state_types, self._state_classes)))
+    @function.Defun(*defun_args(
+        input_types=self._state_types, input_classes=self._state_classes))
     def tf_finalize_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       nested_args = restructure_args(
@@ -1986,9 +2019,7 @@ class MapDataset(Dataset):
     self._output_shapes = None
     self._output_types = None
 
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
+    @function.Defun(*defun_args(input_dataset))
     def tf_map_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       nested_args = restructure_args(args, input_dataset)
@@ -2082,9 +2113,7 @@ class FlatMapDataset(Dataset):
     super(FlatMapDataset, self).__init__()
     self._input_dataset = input_dataset
 
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
+    @function.Defun(*defun_args(input_dataset))
     def tf_map_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
       nested_args = restructure_args(args, input_dataset)
@@ -2160,9 +2189,7 @@ class FilterDataset(Dataset):
     super(FilterDataset, self).__init__()
     self._input_dataset = input_dataset
 
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
+    @function.Defun(*defun_args(input_dataset))
     def tf_predicate(*args):
       """A wrapper for Defun that facilitates shape inference."""
       nested_args = restructure_args(args, input_dataset)
