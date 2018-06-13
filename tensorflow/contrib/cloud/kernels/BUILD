@@ -79,6 +79,7 @@ tf_kernel_library(
     srcs = ["gcs_config_ops.cc"],
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform/cloud:curl_http_request",
