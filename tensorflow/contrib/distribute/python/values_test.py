@@ -966,6 +966,18 @@ class TowerLocalVariableTest(test.TestCase):
     save_path = self._save_normal()
     self._restore_tower_local_sum(save_path)
 
+  def testTensorConversion(self):
+    with context.graph_mode():
+      _, tower_local = _make_tower_local("sum")
+      converted = ops.internal_convert_to_tensor(tower_local, as_ref=False)
+      self.assertIsInstance(converted, ops.Tensor)
+      self.assertEqual(converted.dtype, tower_local.dtype)
+
+      converted = ops.internal_convert_to_tensor(tower_local, as_ref=True)
+      # Resources variable are converted to tensors as well when as_ref is True.
+      self.assertIsInstance(converted, ops.Tensor)
+      self.assertEqual(converted.dtype, tower_local.dtype)
+
 
 if __name__ == "__main__":
   test.main()
