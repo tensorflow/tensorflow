@@ -592,7 +592,7 @@ gpu_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "metrics_v1_test",
     srcs = ["metrics_v1_test.py"],
     additional_deps = [
