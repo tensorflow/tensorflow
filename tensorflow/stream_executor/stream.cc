@@ -192,6 +192,7 @@ string ToVlogString(dnn::DataType data_type) {
     case dnn::DataType::kInt8:
       return "dnn::DataType::kInt8";
   }
+  return "unknown DataType";
 }
 
 // Used together with PARAM to VLOG calls made to the stream. Intended
