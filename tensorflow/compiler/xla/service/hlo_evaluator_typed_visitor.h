@@ -1116,7 +1116,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                             /*padding_config=*/pad->padding_config()));
     CHECK(ShapeUtil::Compatible(pad->shape(), inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(pad->shape())
-        << "but is inferred to be: "
+        << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
 
     // Create new HLO of padded shape with padding value.
@@ -1182,7 +1182,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                             dynamic_slice->dynamic_slice_sizes()));
     TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
-        << "but is inferred to be: "
+        << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
     TF_RET_CHECK(
         primitive_util::IsIntegralType(start_indices->shape().element_type()));
@@ -1237,7 +1237,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             operand->shape(), update->shape(), start_indices->shape()));
     TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
-        << "but is inferred to be: "
+        << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
     TF_RET_CHECK(
         primitive_util::IsIntegralType(start_indices->shape().element_type()));
@@ -1393,7 +1393,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                             /*to_apply=*/function->ComputeProgramShape()));
     TF_RET_CHECK(ShapeUtil::Compatible(reduce->shape(), inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(reduce->shape())
-        << "but is inferred to be: "
+        << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
 
     const Literal& arg_literal = parent_->GetEvaluatedLiteralFor(arg);
@@ -1613,7 +1613,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         ShapeUtil::Compatible(reduce_window->shape(), inferred_return_shape))
         << "return shape is set to: "
         << ShapeUtil::HumanStringWithLayout(reduce_window->shape())
-        << "but is inferred to be: "
+        << " but is inferred to be: "
         << ShapeUtil::HumanStringWithLayout(inferred_return_shape);
 
     const Literal& operand_literal =
