@@ -62,6 +62,8 @@ class ShapeIndex {
  public:
   ShapeIndex() = default;
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
+  template <typename InputIt>
+  ShapeIndex(InputIt start, InputIt end) : indices_(start, end) {}
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
@@ -132,6 +134,7 @@ class ShapeIndexView {
     ++new_begin;
     return ShapeIndexView(new_begin, end_);
   }
+  ShapeIndex ToShapeIndex() const { return ShapeIndex(begin_, end_); }
 
   bool operator==(const ShapeIndexView& other) const;
   bool operator!=(const ShapeIndexView& other) const;
