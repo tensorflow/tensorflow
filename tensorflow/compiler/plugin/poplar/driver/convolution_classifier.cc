@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -43,8 +43,7 @@ namespace {
 // Find the actual source of an input. Entry/Exit from tuples and kCall
 // instructions are traced though.
 const HloInstruction* FindOperand(
-    const HloInstruction* inst,
-    const std::unique_ptr<CallGraph>& call_graph) {
+    const HloInstruction* inst, const std::unique_ptr<CallGraph>& call_graph) {
   const HloInstruction* source = inst;
   std::vector<int64> tuple_stack;
   bool done = false;
@@ -58,40 +57,35 @@ const HloInstruction* FindOperand(
       } else {
         done = true;
       }
-    }
-    else if (source->opcode() == HloOpcode::kGetTupleElement) {
+    } else if (source->opcode() == HloOpcode::kGetTupleElement) {
       // push tuple element index onto stack
       tuple_stack.push_back(source->tuple_index());
       source = source->operand(0);
-    }
-    else if (source->opcode() == HloOpcode::kTuple) {
+    } else if (source->opcode() == HloOpcode::kTuple) {
       // pull tuple element index off stack and move to that operand
       int64 op_num = tuple_stack.back();
       tuple_stack.pop_back();
       source = source->operand(op_num);
-    }
-    else if (source->opcode() == HloOpcode::kTranspose) {
+    } else if (source->opcode() == HloOpcode::kTranspose) {
       // We allow ourselves to look through transpose ops
       source = source->operand(0);
-    }
-    else {
+    } else {
       done = true;
     }
   }
   return source;
 }
 
-}
+}  // namespace
 
 StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
   classification_.clear();
 
-  std::set<const HloInstruction*> variable_inputs;
-  int64 n_vars = module->config().resource_update_count();
-  for (int p = n_vars; p < module->entry_computation()->num_parameters(); p++) {
-    variable_inputs.insert(
-        module->entry_computation()->parameter_instruction(p));
-  }
+  const int64 n_vars = module->config().resource_update_count();
+  std::set<const HloInstruction*> variable_inputs(
+      module->entry_computation()->parameter_instructions().end() -
+          std::min(module->entry_computation()->num_parameters(), n_vars),
+      module->entry_computation()->parameter_instructions().end());
 
   for (const auto& comp : module->computations()) {
     if (!tensorflow::str_util::StartsWith(comp->name(), "_")) {
@@ -169,13 +163,13 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
     }
   }
 
-  for (auto it : classification_) {
+  for (auto& it : classification_) {
     if (it.second == ClassificationType::INFERENCE) {
       auto weight = arg1_rev_map.find(it.first);
       auto targets = arg1_fwd_map.equal_range(weight->second);
       for (auto t = targets.first; t != targets.second; ++t) {
         if (classification_[t->second] == ClassificationType::FORWARD) {
-          classification_[it.first] = ClassificationType::BACKPROP_INPUT;
+          it.second = ClassificationType::BACKPROP_INPUT;
         }
       }
     }

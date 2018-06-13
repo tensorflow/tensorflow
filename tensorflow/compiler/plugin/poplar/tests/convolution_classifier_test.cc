@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 
-#include "tensorflow/compiler/xla/service/hlo_runner.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -30,7 +30,7 @@ using ConvolutionClassifierTest = HloTestBase;
 
 // Check basic parameter matching
 TEST_F(ConvolutionClassifierTest, Training1) {
-std::string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule top
 
 %add14 {
@@ -176,8 +176,11 @@ HloModule top
   ROOT %tuple.19.98 = (f16[4]{0}, f16[5,5,64,4]{3,2,1,0}, f16[64]{0}, f16[7,7,4,64]{3,2,1,0}) tuple(f16[4]{0} %subtract.19.65, f16[5,5,64,4]{3,2,1,0} %subtract.19.71, f16[64]{0} %subtract.19.85, f16[7,7,4,64]{3,2,1,0} %subtract.19.89), metadata={op_name="XLA_Retvals"}
 }
   )";
-  auto module_or_status =
-    HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_resource_update_count(4);
+  auto module_or_status = ParseHloString(hlo_string, config);
   EXPECT_TRUE(module_or_status.ok());
 
   CompilerAnnotations annotations;
@@ -194,20 +197,15 @@ HloModule top
   for (auto it : annotations.classification_map) {
     if (it.first->name() == "call.2.clone") {
       EXPECT_EQ(it.second, ClassificationType::BACKPROP_INPUT);
-    }
-    else if (it.first->name() == "convolution.19.17.clone") {
+    } else if (it.first->name() == "convolution.19.17.clone") {
       EXPECT_EQ(it.second, ClassificationType::FORWARD);
-    }
-    else if (it.first->name() == "convolution.19.14.clone") {
+    } else if (it.first->name() == "convolution.19.14.clone") {
       EXPECT_EQ(it.second, ClassificationType::FORWARD);
-    }
-    else if (it.first->name() == "convolution.19.66.clone") {
+    } else if (it.first->name() == "convolution.19.66.clone") {
       EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
-    }
-    else if (it.first->name() == "convolution.19.86.clone") {
+    } else if (it.first->name() == "convolution.19.86.clone") {
       EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
-    }
-    else {
+    } else {
       // Should not have missing convolutions
       EXPECT_EQ(1, 0);
     }
@@ -215,7 +213,7 @@ HloModule top
 }
 
 TEST_F(ConvolutionClassifierTest, SingleConvTraining) {
-std::string hlo_string = R"(
+  std::string hlo_string = R"(
   HloModule top
 
   %Mean-reduction4 {
@@ -292,8 +290,11 @@ std::string hlo_string = R"(
     ROOT %tuple.7.57 = (f32[3,3,4,12]{3,2,1,0}) tuple(f32[3,3,4,12]{3,2,1,0} %subtract.7.54), metadata={op_name="XLA_Retvals"}
   }
   )";
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_resource_update_count(1);
+  auto module_or_status = ParseHloString(hlo_string, config);
   EXPECT_TRUE(module_or_status.ok());
 
   CompilerAnnotations annotations;
@@ -310,11 +311,9 @@ std::string hlo_string = R"(
   for (auto it : annotations.classification_map) {
     if (it.first->name() == "convolution.7.51.clone") {
       EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
-    }
-    else if (it.first->name() == "convolution.7.13.clone") {
+    } else if (it.first->name() == "convolution.7.13.clone") {
       EXPECT_EQ(it.second, ClassificationType::FORWARD);
-    }
-    else {
+    } else {
       // Should not have missing convolutions
       EXPECT_EQ(1, 0);
     }
@@ -322,7 +321,7 @@ std::string hlo_string = R"(
 }
 
 TEST_F(ConvolutionClassifierTest, TrainingMatMul) {
-std::string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule top
 
 %max7 {
@@ -399,8 +398,10 @@ ENTRY %cluster_1 {
 
 )";
 
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_resource_update_count(2);
+  auto module_or_status = ParseHloString(hlo_string, config);
   EXPECT_TRUE(module_or_status.ok());
 
   CompilerAnnotations annotations;
@@ -417,20 +418,15 @@ ENTRY %cluster_1 {
   for (auto it : annotations.classification_map) {
     if (it.first->name() == "dot.9.9") {
       EXPECT_EQ(it.second, ClassificationType::FORWARD);
-    }
-    else if (it.first->name() == "dot.9.13") {
+    } else if (it.first->name() == "dot.9.13") {
       EXPECT_EQ(it.second, ClassificationType::FORWARD);
-    }
-    else if (it.first->name() == "dot.9.36") {
+    } else if (it.first->name() == "dot.9.36") {
       EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
-    }
-    else if (it.first->name() == "dot.9.38") {
+    } else if (it.first->name() == "dot.9.38") {
       EXPECT_EQ(it.second, ClassificationType::BACKPROP_INPUT);
-    }
-    else if (it.first->name() == "dot.9.47") {
+    } else if (it.first->name() == "dot.9.47") {
       EXPECT_EQ(it.second, ClassificationType::BACKPROP_FILTER);
-    }
-    else {
+    } else {
       // Should not have missing convolutions
       EXPECT_EQ(1, 0);
     }
@@ -438,7 +434,7 @@ ENTRY %cluster_1 {
 }
 
 TEST_F(ConvolutionClassifierTest, InferenceMatMul) {
-std::string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule top
 
 %_pop_op_relu {
@@ -476,8 +472,10 @@ ENTRY %cluster_9 {
 }
   )";
 
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_resource_update_count(0);
+  auto module_or_status = ParseHloString(hlo_string, config);
   EXPECT_TRUE(module_or_status.ok());
 
   CompilerAnnotations annotations;
@@ -494,11 +492,9 @@ ENTRY %cluster_9 {
   for (auto it : annotations.classification_map) {
     if (it.first->name() == "dot.17.12") {
       EXPECT_EQ(it.second, ClassificationType::INFERENCE);
-    }
-    else if (it.first->name() == "dot.17.6") {
+    } else if (it.first->name() == "dot.17.6") {
       EXPECT_EQ(it.second, ClassificationType::INFERENCE);
-    }
-    else {
+    } else {
       // Should not have missing convolutions
       EXPECT_EQ(1, 0);
     }
