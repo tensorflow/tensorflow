@@ -68,7 +68,7 @@ class GroupByReducerTest(test.TestCase):
     reducer = grouping.Reducer(
         init_func=lambda _: (0.0, 0.0),
         reduce_func=reduce_fn,
-        finalize_func=lambda x: x[0])
+        finalize_func=lambda x, _: x)
     for i in range(1, 11):
       dataset = dataset_ops.Dataset.range(2 * i).apply(
           grouping.group_by_reducer(
@@ -121,7 +121,7 @@ class GroupByReducerTest(test.TestCase):
     reducer = grouping.Reducer(
         init_func=lambda x: ([0], 1),
         reduce_func=reduce_fn,
-        finalize_func=lambda x: x)
+        finalize_func=lambda x, y: (x, y))
 
     for i in range(1, 11):
       dataset = dataset_ops.Dataset.from_tensors(np.int64(0)).repeat(i).apply(

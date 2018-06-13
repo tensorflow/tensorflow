@@ -279,22 +279,8 @@ class GroupByReducerDataset(dataset_ops.Dataset):
                               input_dataset.output_classes)))
     def tf_key_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      # pylint: disable=protected-access
-      if dataset_ops._should_unpack_args(nested_args):
-        ret = key_func(*nested_args)
-      # pylint: enable=protected-access
-      else:
-        ret = key_func(nested_args)
+      nested_args = dataset_ops.restructure_args(args, input_dataset)
+      ret = key_func(*nested_args)
       ret = ops.convert_to_tensor(ret)
       if ret.dtype != dtypes.int64 or ret.get_shape() != tensor_shape.scalar():
         raise ValueError(
@@ -356,28 +342,13 @@ class GroupByReducerDataset(dataset_ops.Dataset):
                                         input_dataset.output_classes))))
       def tf_reduce_func(*args):
         """A wrapper for Defun that facilitates shape inference."""
-        for arg, shape in zip(
+        nested_args = dataset_ops.restructure_args(
             args,
-            nest.flatten(
-                sparse.as_dense_shapes(self._state_shapes, self._state_classes))
-            + nest.flatten(
-                sparse.as_dense_shapes(input_dataset.output_shapes,
-                                       input_dataset.output_classes))):
-          arg.set_shape(shape)
+            input_shapes=(self._state_shapes, input_dataset.output_shapes),
+            input_types=(self._state_types, input_dataset.output_types),
+            input_classes=(self._state_classes, input_dataset.output_classes))
 
-        pivot = len(nest.flatten(self._state_shapes))
-        nested_state_args = nest.pack_sequence_as(self._state_types,
-                                                  args[:pivot])
-        nested_state_args = sparse.deserialize_sparse_tensors(
-            nested_state_args, self._state_types, self._state_shapes,
-            self._state_classes)
-        nested_input_args = nest.pack_sequence_as(input_dataset.output_types,
-                                                  args[pivot:])
-        nested_input_args = sparse.deserialize_sparse_tensors(
-            nested_input_args, input_dataset.output_types,
-            input_dataset.output_shapes, input_dataset.output_classes)
-
-        ret = reduce_func(nested_state_args, nested_input_args)
+        ret = reduce_func(*nested_args)
 
         # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
         # values to tensors.
@@ -442,18 +413,10 @@ class GroupByReducerDataset(dataset_ops.Dataset):
         sparse.as_dense_types(self._state_types, self._state_classes))))
     def tf_finalize_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
-      for arg, shape in zip(
-          args,
-          nest.flatten(
-              sparse.as_dense_shapes(self._state_shapes, self._state_classes))):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(self._state_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, self._state_types, self._state_shapes,
-          self._state_classes)
-
-      ret = finalize_func(nested_args)
+      nested_args = dataset_ops.restructure_args(
+          args, input_shapes=self._state_shapes, input_types=self._state_types,
+          input_classes=self._state_classes)
+      ret = finalize_func(*nested_args)
 
       # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
       # values to tensors.
@@ -543,22 +506,8 @@ class GroupByWindowDataset(dataset_ops.Dataset):
                               input_dataset.output_classes)))
     def tf_key_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      # pylint: disable=protected-access
-      if dataset_ops._should_unpack_args(nested_args):
-        ret = key_func(*nested_args)
-      # pylint: enable=protected-access
-      else:
-        ret = key_func(nested_args)
+      nested_args = dataset_ops.restructure_args(args, input_dataset)
+      ret = key_func(*nested_args)
       ret = ops.convert_to_tensor(ret, dtype=dtypes.int64)
       if ret.dtype != dtypes.int64:
         raise ValueError("`key_func` must return a single tf.int64 tensor.")

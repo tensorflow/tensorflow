@@ -1182,6 +1182,66 @@ def flat_structure(dataset):
   }
 
 
+def restructure_args(args, dataset=None, input_shapes=None, input_types=None,
+                     input_classes=None):
+  """Converts a flat tuple of arguments into a given structure.
+
+  The intended use is to bridge between the flat tuple of unshaped @{tf.Tensor}
+  arguments that a `Defun` receives and the potentially nested structures that
+  `tf.data` functions expect.
+
+  The expected usage for an example function is as follows:
+
+  ```python
+  input_dataset = ...  # A `tf.data.Dataset`.
+
+  @function.Defun(...)
+  def tf_example_func(*args):
+    nested_args = restructure_args(args, input_dataset)
+    ret = example_func(*nested_args)
+    # [Destructure and handle the return values from `example_func()`.
+  ```
+
+  Either `dataset`, or all of `input_shapes`, `input_types` and `input_classes`
+  must be specified. If `dataset` is not specified, the structures of
+  `input_shapes`, `input_types` and `input_classes` must be compatible.
+
+  Args:
+    args: A flat tuple of @{tf.Tensor} objects, representing the arguments
+      to a TensorFlow function.
+    dataset: (Optional.) A @{tf.data.Dataset} whose element structure matches
+      the desired structure of the arguments.
+    input_shapes: (Optional.) A nested structure of @{tf.TensorShape} with the
+      desired structure and static shapes for each argument.
+    input_types: (Optional.) A nested structure of @{tf.DType} with the desired
+      structure and types for each argument.
+    input_classes: (Optional.) A nested structure of `type` with the desired
+      structure and classes for each argument.
+
+  Returns:
+    A nested structure representing the arguments.
+  """
+  if input_shapes is None:
+    assert dataset is not None
+    assert input_types is None and input_classes is None
+    input_shapes = dataset.output_shapes
+    input_types = dataset.output_types
+    input_classes = dataset.output_classes
+  else:
+    assert input_types is not None and input_classes is not None
+
+  dense_shapes = sparse.as_dense_shapes(input_shapes, input_classes)
+  for arg, shape in zip(args, nest.flatten(dense_shapes)):
+    arg.set_shape(shape)
+
+  nested_args = nest.pack_sequence_as(input_classes, args)
+  nested_args = sparse.deserialize_sparse_tensors(
+      nested_args, input_types, input_shapes, input_classes)
+  if not _should_unpack_args(nested_args):
+    nested_args = (nested_args,)
+  return nested_args
+
+
 class _GeneratorDataset(Dataset):
   """A `Dataset` that generates elements by invoking a function."""
 
@@ -1218,17 +1278,10 @@ class _GeneratorDataset(Dataset):
         sparse.as_dense_types(init_args_types, init_args_classes)))
     def tf_init_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
-      dense_shapes = sparse.as_dense_shapes(init_args_shapes, init_args_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(init_args_classes, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, init_args_types, init_args_shapes, init_args_classes)
-      if _should_unpack_args(nested_args):
-        ret = init_func(*nested_args)
-      else:
-        ret = init_func(nested_args)
+      nested_args = restructure_args(
+          args, input_shapes=init_args_shapes, input_types=init_args_types,
+          input_classes=init_args_classes)
+      ret = init_func(*nested_args)
 
       # If `init_func` returns a list of tensors, `nest.flatten()` and
       # `ops.convert_to_tensor()` would conspire to attempt to stack
@@ -1274,20 +1327,10 @@ class _GeneratorDataset(Dataset):
         sparse.as_dense_types(self._state_types, self._state_classes)))
     def tf_next_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(self._state_shapes,
-                                            self._state_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(self._state_classes, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, self._state_types, self._state_shapes,
-          self._state_classes)
-      if _should_unpack_args(nested_args):
-        ret = next_func(*nested_args)
-      else:
-        ret = next_func(nested_args)
+      nested_args = restructure_args(
+          args, input_shapes=self._state_shapes, input_types=self._state_types,
+          input_classes=self._state_classes)
+      ret = next_func(*nested_args)
 
       # If `next_func` returns a list of tensors, `nest.flatten()` and
       # `ops.convert_to_tensor()` would conspire to attempt to stack
@@ -1328,20 +1371,10 @@ class _GeneratorDataset(Dataset):
         sparse.as_dense_types(self._state_types, self._state_classes)))
     def tf_finalize_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the state.
-      dense_shapes = sparse.as_dense_shapes(self._state_shapes,
-                                            self._state_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(self._state_classes, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, self._state_types, self._state_shapes,
-          self._state_classes)
-      if _should_unpack_args(nested_args):
-        return finalize_func(*nested_args)
-      else:
-        return finalize_func(nested_args)
+      nested_args = restructure_args(
+          args, input_shapes=self._state_shapes, input_types=self._state_types,
+          input_classes=self._state_classes)
+      return finalize_func(*nested_args)
 
     self._finalize_func = tf_finalize_func
     self._finalize_func.add_to_graph(ops.get_default_graph())
@@ -1958,20 +1991,8 @@ class MapDataset(Dataset):
                               input_dataset.output_classes)))
     def tf_map_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      if _should_unpack_args(nested_args):
-        ret = map_func(*nested_args)
-      else:
-        ret = map_func(nested_args)
+      nested_args = restructure_args(args, input_dataset)
+      ret = map_func(*nested_args)
 
       # If `map_func` returns a list of tensors, `nest.flatten()` and
       # `ops.convert_to_tensor()` would conspire to attempt to stack
@@ -2066,20 +2087,8 @@ class FlatMapDataset(Dataset):
                               input_dataset.output_classes)))
     def tf_map_func(*args):
       """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      if _should_unpack_args(nested_args):
-        dataset = map_func(*nested_args)
-      else:
-        dataset = map_func(nested_args)
+      nested_args = restructure_args(args, input_dataset)
+      dataset = map_func(*nested_args)
 
       if not isinstance(dataset, Dataset):
         raise TypeError("`map_func` must return a `Dataset` object.")
@@ -2156,20 +2165,8 @@ class FilterDataset(Dataset):
                               input_dataset.output_classes)))
     def tf_predicate(*args):
       """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      if _should_unpack_args(nested_args):
-        ret = predicate(*nested_args)
-      else:
-        ret = predicate(nested_args)
+      nested_args = restructure_args(args, input_dataset)
+      ret = predicate(*nested_args)
 
       ret = ops.convert_to_tensor(ret, dtype=dtypes.bool)
       if not (ret.dtype == dtypes.bool and

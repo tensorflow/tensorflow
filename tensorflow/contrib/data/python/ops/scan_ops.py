@@ -77,31 +77,13 @@ class _ScanDataset(dataset_ops.Dataset):
                                         input_dataset.output_classes))))
       def tf_scan_func(*args):
         """A wrapper for Defun that facilitates shape inference."""
-        # Pass in shape information from the state and input_dataset.
-        for arg, shape in zip(
+        nested_args = dataset_ops.restructure_args(
             args,
-            nest.flatten(
-                sparse.as_dense_shapes(self._state_shapes, self._state_classes))
-            + nest.flatten(
-                sparse.as_dense_shapes(input_dataset.output_shapes,
-                                       input_dataset.output_classes))):
-          arg.set_shape(shape)
+            input_shapes=(self._state_shapes, input_dataset.output_shapes),
+            input_types=(self._state_types, input_dataset.output_types),
+            input_classes=(self._state_classes, input_dataset.output_classes))
 
-        pivot = len(nest.flatten(self._state_shapes))
-        print(self._state_classes)
-        nested_state_args = nest.pack_sequence_as(self._state_types,
-                                                  args[:pivot])
-        nested_state_args = sparse.deserialize_sparse_tensors(
-            nested_state_args, self._state_types, self._state_shapes,
-            self._state_classes)
-        print(input_dataset.output_classes)
-        nested_input_args = nest.pack_sequence_as(input_dataset.output_types,
-                                                  args[pivot:])
-        nested_input_args = sparse.deserialize_sparse_tensors(
-            nested_input_args, input_dataset.output_types,
-            input_dataset.output_shapes, input_dataset.output_classes)
-
-        ret = scan_func(nested_state_args, nested_input_args)
+        ret = scan_func(*nested_args)
         if not isinstance(ret, collections.Sequence) or len(ret) != 2:
           raise TypeError("The scan function must return a pair comprising the "
                           "new state and the output value.")
