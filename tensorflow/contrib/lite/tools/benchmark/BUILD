@@ -34,7 +34,6 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = common_copts,
-    visibility = ["//visibility:private"],
 )
 
 cc_test(
