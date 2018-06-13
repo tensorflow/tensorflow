@@ -903,6 +903,21 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return *return_shape;
 }
 
+/* static */ StatusOr<const Shape*> ShapeUtil::TryGetSubshape(
+    const Shape& shape, ShapeIndexView index) {
+  const Shape* return_shape = &shape;
+  for (auto i : index) {
+    if (!IsTuple(*return_shape) || i < 0 ||
+        i >= return_shape->tuple_shapes_size()) {
+      return InvalidArgument(
+          "Shape index %s not a valid subshape index for tuple with shape %s",
+          index.ToString().c_str(), shape.DebugString().c_str());
+    }
+    return_shape = &return_shape->tuple_shapes(i);
+  }
+  return return_shape;
+}
+
 /* static */ Shape* ShapeUtil::GetMutableSubshape(Shape* shape,
                                                   ShapeIndexView index) {
   Shape* return_shape = shape;

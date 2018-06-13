@@ -476,8 +476,11 @@ class ShapeUtil {
   static bool IndexIsValid(const Shape& shape, ShapeIndexView index);
 
   // GetSubshape and GetMutableSubshape return a particular nested Shape within
-  // the given Shape argument.
+  // the given Shape argument. The non-Try variants check fail if index is
+  // invalid.
   static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);
+  static StatusOr<const Shape*> TryGetSubshape(const Shape& shape,
+                                               ShapeIndexView index);
   static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);
 
   // Returns whether the given index in the given shape is a leaf element of the
