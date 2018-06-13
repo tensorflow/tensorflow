@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -2366,12 +2366,15 @@ inline void Relu6(const float* input_data, const Dims<4>& input_dims,
 }
 
 template <FusedActivationFunctionType Ac>
-void L2Normalization(const float* input_data, const Dims<4>& input_dims,
-                     float* output_data, const Dims<4>& output_dims) {
+void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
+                     float* output_data, const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("L2Normalization");
   static_assert(Ac == FusedActivationFunctionType::kNone, "");
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
   for (int i = 0; i < outer_size; ++i) {
     float squared_l2_norm = 0;
     for (int c = 0; c < depth; ++c) {
@@ -2434,17 +2437,20 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
   *output_shift *= kReverseShift;
 }
 
-inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
+inline void L2Normalization(const uint8* input_data,
+                            const RuntimeShape& input_shape,
                             int32 input_zero_point, uint8* output_data,
-                            const Dims<4>& output_dims) {
+                            const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("L2Normalization/8bit");
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
   for (int i = 0; i < outer_size; ++i) {
     int32 square_l2_norm = 0;
     for (int c = 0; c < depth; c++) {
+      // Note that input_data advances by depth in the second pass below.
       int32 diff = input_data[c] - input_zero_point;
       square_l2_norm += diff * diff;
     }
