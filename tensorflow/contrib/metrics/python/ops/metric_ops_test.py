@@ -2391,34 +2391,6 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
       for _ in range(3):
         self._testResultsEqual(initial_result, result)
 
-  def testLargeCase(self):
-    self.skipTest("Test consistently timing out")
-    shape = [32, 512, 256, 1]
-    predictions = random_ops.random_uniform(
-        shape, 0.0, 1.0, dtype=dtypes_lib.float32)
-    labels = math_ops.greater(random_ops.random_uniform(shape, 0.0, 1.0), 0.5)
-
-    result, update_op = metric_ops.precision_recall_at_equal_thresholds(
-        labels=labels, predictions=predictions, num_thresholds=201)
-    # Run many updates, enough to cause highly inaccurate values if the
-    # code used float32 for accumulation.
-    num_updates = 71
-
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      for _ in xrange(num_updates):
-        sess.run(update_op)
-
-      prdata = sess.run(result)
-
-      # Since we use random values, we won't know the tp/fp/tn/fn values, but
-      # tp and fp at threshold 0 should be the total number of positive and
-      # negative labels, hence their sum should be total number of pixels.
-      expected_value = 1.0 * np.product(shape) * num_updates
-      got_value = prdata.tp[0] + prdata.fp[0]
-      # They should be at least within 1.
-      self.assertNear(got_value, expected_value, 1.0)
-
   def _testCase(self,
                 predictions,
                 labels,
