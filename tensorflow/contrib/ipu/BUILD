@@ -26,8 +26,8 @@ tf_py_test(
     size = "small",
     srcs = ["python/ops_test.py"],
     additional_deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib:contrib_py",
+        ":ipu",
+        "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/python:framework_test_lib",
     ],
 )
