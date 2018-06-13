@@ -36,6 +36,9 @@ using OrderedNodeSet = std::set<Node*, NodeComparatorID>;
 // Returns the DeviceType corresponding to 'device'.
 Status DeviceToDeviceType(const string& device, DeviceType* device_type);
 
+// Returns true if `node` has a ref tensor input that it forwards to its output.
+bool HasForwardedRefInput(const Node& node);
+
 // Creates a graph representation to enable cycle detection when clustering.
 // This representation handles loops in graph by disconnecting each loop from
 // the enclosing graph.

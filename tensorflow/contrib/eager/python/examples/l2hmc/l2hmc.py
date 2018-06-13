@@ -57,11 +57,6 @@ class Dynamics(tf.keras.Model):
     self.eps = tfe.Variable(
         initial_value=eps, name="eps", dtype=tf.float32, trainable=True)
 
-    # TODO(lxuechen): Remove this after model.add_weight is in place
-    self.vars_not_in_layers = [self.eps]
-    self.vars_not_in_layers += self.position_fn.vars_not_in_layers
-    self.vars_not_in_layers += self.momentum_fn.vars_not_in_layers
-
   def apply_transition(self, position):
     """Propose a new state and perform the accept or reject step."""
 
@@ -290,86 +285,35 @@ class Dynamics(tf.keras.Model):
     return grad
 
 
-# Defining loss and grads for training
-def compute_loss(x, dynamics, scale=.1, eps=1e-4):
-  """Compute loss defined in equation (8)."""
-
-  z = tf.random_normal(tf.shape(x))
-  x_, _, x_accept_prob, x_out = dynamics.apply_transition(x)
-  z_, _, z_accept_prob, _ = dynamics.apply_transition(z)
-
-  # Add eps for numerical stability; following released impl
-  x_loss = tf.reduce_sum((x - x_)**2, axis=1) * x_accept_prob + eps
-  z_loss = tf.reduce_sum((z - z_)**2, axis=1) * z_accept_prob + eps
-
-  loss = tf.reduce_mean(
-      (1. / x_loss + 1. / z_loss) * scale - (x_loss + z_loss) / scale, axis=0)
-
-  return loss, x_out
-
-
-def loss_and_grads(x, dynamics):
-  """Obtain loss value and gradients."""
-
-  with tf.GradientTape() as tape:
-    loss_val, x_out = compute_loss(x, dynamics)
-
-  vars_ = dynamics.variables + dynamics.vars_not_in_layers
-  grads = tape.gradient(loss_val, vars_)
-
-  return loss_val, grads, x_out
-
-
-def warmup(dynamics, optimizer, n_iters=1, n_samples=200):
-  """Warmup optimization to reduce overhead."""
-
-  samples = tf.random_normal(
-      shape=[n_samples, dynamics.x_dim], dtype=tf.float32)
-
-  for _ in range(n_iters):
-    _, grads, samples = loss_and_grads(samples, dynamics)
-    vars_ = dynamics.variables + dynamics.vars_not_in_layers
-    optimizer.apply_gradients(zip(grads, vars_))
-
-
-def fit(dynamics,
-        optimizer,
-        n_samples=200,
-        n_iters=5000,
-        verbose=True,
-        logdir=None):
-  """Fit L2HMC sampler with given log-likelihood function."""
-
-  if logdir:
-    summary_writer = tf.contrib.summary.create_file_writer(logdir)
-
-  samples = tf.random_normal(
-      shape=[n_samples, dynamics.x_dim], dtype=tf.float32)
-
-  tf.train.get_or_create_global_step()
-  for i in range(n_iters):
-    loss, grads, samples = loss_and_grads(samples, dynamics)
-    # TODO(lxuechen): Proper learning rate decay
-    grads_ = [grad * .96**(i // 1000) for grad in grads]
-    vars_ = dynamics.variables + dynamics.vars_not_in_layers
-    optimizer.apply_gradients(
-        zip(grads_, vars_), global_step=tf.train.get_global_step())
-
-    if verbose:
-      print("Iteration %d: loss %.4f" % (i, loss))
-
-    if logdir:
-      with summary_writer.as_default():
-        with tf.contrib.summary.always_record_summaries():
-          tf.contrib.summary.scalar("loss", loss)
-
-
+# Examples of unnormalized log density/probabilities
 def get_scg_energy_fn():
   """Get energy function for 2d strongly correlated Gaussian."""
 
   # Avoid recreating tf constants on each invocation of gradients
   mu = tf.constant([0., 0.])
   sigma = tf.constant([[50.05, -49.95], [-49.95, 50.05]])
+  sigma_inv = tf.matrix_inverse(sigma)
+
+  def energy(x):
+    """Unnormalized log density/energy of 2d strongly correlated Gaussian."""
+
+    xmmu = x - mu
+    return .5 * tf.diag_part(
+        tf.matmul(tf.matmul(xmmu, sigma_inv), tf.transpose(xmmu)))
+
+  return energy
+
+
+def get_multivariate_gaussian_energy_fn(x_dim=2):
+  """Get energy function for 2d strongly correlated Gaussian."""
+
+  mu = tf.random_normal(shape=[x_dim])
+  # Lower triangularize and positive diagonal
+  l = tf.sigmoid(
+      tf.matrix_band_part(tf.random_normal(shape=[x_dim, x_dim]), -1, 0))
+  # Exploit Cholesky decomposition
+  sigma = tf.matmul(l, tf.transpose(l))
+  sigma *= 100.  # Small covariance causes extreme numerical instability
   sigma_inv = tf.matrix_inverse(sigma)
 
   def energy(x):

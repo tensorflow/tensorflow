@@ -946,7 +946,7 @@ class DistributionStrategy(object):
       return control_flow_ops.group(value, name=name)
     # Special handling for the common case of one op.
     v, = value
-    if isinstance(v, ops.Tensor):
+    if hasattr(v, "op"):
       v = v.op
     return v
 

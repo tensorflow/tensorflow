@@ -88,10 +88,10 @@ TEST(TransposeConvOpModelTest, SimpleTest) {
 // And filter value is derived by:
 // filter = tf.reshape(tf.transpose(filter, perm=[3, 0, 1, 2]), shape=[18, 1])
 TEST(TransposeConvOpModelTest, TwoFiltersTest) {
-  TransposeConvOpModel m({1, 4, 4, 2}, {2, 3, 3, 1}, Padding_SAME, 1, 1);
+  TransposeConvOpModel m({1, 4, 4, 2}, {1, 3, 3, 2}, Padding_SAME, 1, 1);
   m.PopulateTensor<int>(m.output_shape(), {1, 4, 4, 1});
-  m.PopulateTensor<float>(m.filter(), {1, 3, 5, 7, 9, 11, 13, 15, 17, 2, 4, 6,
-                                       8, 10, 12, 14, 16, 18});
+  m.PopulateTensor<float>(m.filter(), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                                       13, 14, 15, 16, 17, 18});
   m.PopulateTensor<float>(
       m.input(),
       {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16,
@@ -117,10 +117,10 @@ TEST(TransposeConvOpModelTest, TwoFiltersTest) {
 // And filter value is derived by:
 // filter = tf.reshape(tf.transpose(filter, perm=[3, 0, 1, 2]), shape=[1, 18])
 TEST(TransposeConvOpModelTest, PaddingValidTest) {
-  TransposeConvOpModel m({1, 4, 4, 2}, {2, 3, 3, 1}, Padding_VALID, 1, 1);
+  TransposeConvOpModel m({1, 4, 4, 2}, {1, 3, 3, 2}, Padding_VALID, 1, 1);
   m.PopulateTensor<int>(m.output_shape(), {1, 6, 6, 1});
-  m.PopulateTensor<float>(m.filter(), {1, 3, 5, 7, 9, 11, 13, 15, 17, 2, 4, 6,
-                                       8, 10, 12, 14, 16, 18});
+  m.PopulateTensor<float>(m.filter(), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                                       13, 14, 15, 16, 17, 18});
   m.PopulateTensor<float>(
       m.input(),
       {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16,
@@ -171,10 +171,10 @@ TEST(TransposeConvOpModelTest, StrideValidTest) {
 //     [1, 2, 2, 1 ],
 //     "VALID")
 TEST(TransposeConvOpModelTest, MultiChannelTest) {
-  TransposeConvOpModel m({1, 2, 2, 1}, {1, 3, 3, 2}, Padding_VALID, 2, 2);
+  TransposeConvOpModel m({1, 2, 2, 1}, {2, 3, 3, 1}, Padding_VALID, 2, 2);
   m.PopulateTensor<int>(m.output_shape(), {1, 5, 5, 2});
-  m.PopulateTensor<float>(m.filter(), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-                                       13, 14, 15, 16, 17, 18});
+  m.PopulateTensor<float>(m.filter(), {1, 3, 5, 7, 9, 11, 13, 15, 17, 2, 4, 6,
+                                       8, 10, 12, 14, 16, 18});
   m.PopulateTensor<float>(m.input(), {1, 2, 3, 4});
   m.Invoke();
 

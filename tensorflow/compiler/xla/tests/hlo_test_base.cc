@@ -94,8 +94,7 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
 
 /* static */
 std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
-  return MakeUnique<HloModule>(name, VersionedComputationHandle(),
-                               GetModuleConfigForTest());
+  return MakeUnique<HloModule>(name, GetModuleConfigForTest());
 }
 
 /*static*/ DebugOptions HloTestBase::GetDebugOptionsForTest() {

@@ -149,6 +149,7 @@ py_test(
         "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:test_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
