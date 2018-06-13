@@ -50,9 +50,9 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       result = sess.run(out, fd)
       self.assertAllClose(result, [3.0])
 
-      # Event trace (1x compile, 1x load engine, 1x execute)
+      # 1x compile begin, 1x compile end, 1x load engine, 1x execute
       e = sess.run(events)
-      self.assertEqual(len(e), 3)
+      self.assertEqual(len(e), 4)
 
       dump = tf.contrib.ipu.utils.extract_all_strings_from_event_trace(e);
       self.assertTrue(len(dump) > 100)
