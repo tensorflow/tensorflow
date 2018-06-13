@@ -391,3 +391,20 @@ py_library(
     srcs = ["imperative_grad.py"],
     srcs_version = "PY2AND3",
 )
+
+cuda_py_test(
+    name = "memory_test",
+    size = "medium",
+    srcs = ["memory_test.py"],
+    additional_deps = [
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    tags = [
+        "optonly",  # The test is too slow in non-opt mode
+    ],
+)
