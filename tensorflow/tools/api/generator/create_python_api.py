@@ -25,7 +25,6 @@ import os
 import sys
 
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_export
 from tensorflow.tools.api.generator import doc_srcs
 
 
