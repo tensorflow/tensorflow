@@ -215,7 +215,7 @@ def Input(  # pylint: disable=invalid-name
 
   if dtype is None:
     dtype = K.floatx()
-  if not shape and tensor is None:
+  if shape is None and tensor is None:
     raise ValueError('Please provide to Input either a `shape`'
                      ' or a `tensor` argument. Note that '
                      '`shape` does not include the batch '
