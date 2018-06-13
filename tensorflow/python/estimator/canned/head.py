@@ -1424,6 +1424,109 @@ class _MultiLabelHeadWithSigmoidCrossEntropyLoss(_BinaryLogisticHeadWithSigmoidC
         weights=weights,
         processed_labels=labels)
 
+  def _create_tpu_estimator_spec(self,
+      features, mode, logits, labels=None, optimizer=None,
+      train_op_fn=None, regularization_losses=None):
+
+    with ops.name_scope(self._name, 'head'):
+      with ops.name_scope(None, 'predictions', (logits,)):
+        pred_keys = prediction_keys.PredictionKeys
+        logits = _check_logits_final_dim(logits, self.logits_dimension)
+        probabilities = math_ops.sigmoid(logits, name=pred_keys.PROBABILITIES)
+        class_ids = math_ops.argsort(logits, axis=-1, name=pred_keys.CLASS_IDS)
+        if self._label_vocabulary:
+          table = lookup_ops.index_to_string_table_from_tensor(
+              vocabulary_list=self._label_vocabulary,
+              name='class_string_lookup')
+          classes = table.lookup(class_ids)
+        else:
+          classes = string_ops.as_string(class_ids, name='str_classes')
+        predictions = {
+            pred_keys.LOGITS: logits,
+            pred_keys.PROBABILITIES: probabilities,
+            pred_keys.CLASS_IDS: class_ids,
+            pred_keys.CLASSES: classes,
+        }
+      if mode == model_fn.ModeKeys.PREDICT:
+        classifier_output = _classification_output(
+            scores=probabilities, n_classes=self.logits_dimension,
+            label_vocabulary=self._label_vocabulary)
+        return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
+            mode=model_fn.ModeKeys.PREDICT,
+            predictions=predictions,
+            export_outputs={
+                _DEFAULT_SERVING_KEY: classifier_output,
+                _CLASSIFY_SERVING_KEY: classifier_output,
+                _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
+            })
+
+      (training_loss, unreduced_loss, weights, processed_labels) = (
+          self.create_loss(
+              features=features, mode=mode, logits=logits, labels=labels))
+      if regularization_losses:
+        regularization_loss = math_ops.add_n(regularization_losses)
+        regularized_training_loss = math_ops.add_n(
+            [training_loss, regularization_loss])
+      else:
+        regularization_loss = None
+        regularized_training_loss = training_loss
+
+      # Eval.
+      if mode == model_fn.ModeKeys.EVAL:
+        return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
+            mode=model_fn.ModeKeys.EVAL,
+            predictions=predictions,
+            loss=regularized_training_loss,
+            eval_metrics=_create_eval_metrics_tuple(
+                self._eval_metric_ops,
+                {
+                    'labels': processed_labels,
+                    'logits': logits,
+                    'class_ids': class_ids,
+                    'weights': weights,
+                    'unreduced_loss': unreduced_loss,
+                    'regularization_loss': regularization_loss
+                }
+            ))
+
+      # Train.
+      if optimizer is not None:
+        if train_op_fn is not None:
+          raise ValueError('train_op_fn and optimizer cannot both be set.')
+        train_op = optimizer.minimize(
+            regularized_training_loss,
+            global_step=training_util.get_global_step())
+      elif train_op_fn is not None:
+        train_op = train_op_fn(regularized_training_loss)
+      else:
+        raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
+      # Only summarize mean_loss for SUM reduction to preserve backwards
+      # compatibility. Otherwise skip it to avoid unnecessary computation.
+      if self._loss_reduction == losses.Reduction.SUM:
+        example_weight_sum = math_ops.reduce_sum(
+            weights * array_ops.ones_like(unreduced_loss))
+        mean_loss = training_loss / example_weight_sum
+      else:
+        mean_loss = None
+    with ops.name_scope(''):
+      keys = metric_keys.MetricKeys
+      summary.scalar(
+          _summary_key(self._name, keys.LOSS),
+          regularized_training_loss)
+      if mean_loss is not None:
+        summary.scalar(
+            _summary_key(self._name, keys.LOSS_MEAN), mean_loss)
+      if regularization_loss is not None:
+        summary.scalar(
+            _summary_key(self._name, keys.LOSS_REGULARIZATION),
+            regularization_loss)
+    return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
+        mode=model_fn.ModeKeys.TRAIN,
+        predictions=predictions,
+        loss=regularized_training_loss,
+        train_op=train_op)
+
 
 def _regression_head(
     weight_column=None,
