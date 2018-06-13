@@ -55,6 +55,19 @@ py_test(
 )
 
 py_test(
+    name = "cache_dataset_op_test",
+    size = "small",
+    srcs = ["cache_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "concatenate_dataset_op_test",
     size = "small",
     srcs = ["concatenate_dataset_op_test.py"],

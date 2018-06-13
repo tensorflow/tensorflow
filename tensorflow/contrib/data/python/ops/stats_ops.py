@@ -18,8 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -97,10 +95,7 @@ class _SetStatsAggregatorDataset(dataset_ops.Dataset):
     return gen_dataset_ops.set_stats_aggregator_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._stats_aggregator._resource,  # pylint: disable=protected-access
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_shapes(self):
@@ -210,10 +205,7 @@ class _StatsDataset(dataset_ops.Dataset):
     return self._op_function(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._tag,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_shapes(self):

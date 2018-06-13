@@ -47,6 +47,9 @@ struct ShapeTreeNode {
   // Children of this node, as indices into the container's nodes_ array.
   std::vector<size_t> children;
 
+  // Tells whether this is a leaf node.
+  bool is_leaf = true;
+
   explicit ShapeTreeNode(ShapeIndex index)
       : ShapeTreeNode(std::move(index), T()) {}
   ShapeTreeNode(ShapeIndex index, T data)
@@ -122,9 +125,7 @@ class ShapeTree {
 
   // Returns true if the node at the given index is a leaf node (an array
   // shape).
-  bool IsLeaf(const ShapeIndex& index) const {
-    return Lookup(index)->children.empty();
-  }
+  bool IsLeaf(const ShapeIndex& index) const { return Lookup(index)->is_leaf; }
 
   ShapeTree(const ShapeTree&) = default;
   ShapeTree& operator=(const ShapeTree&) = default;
@@ -311,16 +312,14 @@ class ShapeTreeIterator
       : nodes_(nodes),
         node_(std::move(node)),
         iterate_leaves_only_(iterate_leaves_only) {
-    while (iterate_leaves_only && node_ != nodes_->end() &&
-           !node_->children.empty()) {
+    while (iterate_leaves_only && node_ != nodes_->end() && !node_->is_leaf) {
       ++node_;
     }
   }
 
   ShapeTreeIterator& operator++() {
     ++node_;
-    while (iterate_leaves_only_ && node_ != nodes_->end() &&
-           !node_->children.empty()) {
+    while (iterate_leaves_only_ && node_ != nodes_->end() && !node_->is_leaf) {
       ++node_;
     }
     return *this;
@@ -333,8 +332,7 @@ class ShapeTreeIterator
 
   ShapeTreeIterator& operator--() {
     --node_;
-    while (iterate_leaves_only_ && node_ > nodes_->begin() &&
-           !node_->children.empty()) {
+    while (iterate_leaves_only_ && node_ > nodes_->begin() && !node_->is_leaf) {
       --node_;
     }
     return *this;
@@ -358,7 +356,7 @@ class ShapeTreeIterator
   ContainerType* nodes_;
   IteratorType node_;
   // True if we should not include interior nodes in our walk.
-  bool iterate_leaves_only_;
+  const bool iterate_leaves_only_;
 };
 
 template <typename T>
@@ -379,6 +377,7 @@ void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
   if (ShapeUtil::IsTuple(shape)) {
     const int64 size = ShapeUtil::TupleElementCount(shape);
     node->children.reserve(size);
+    node->is_leaf = false;
     ShapeIndex shape_index = node->data.first;
     shape_index.push_back(0);
     for (int i = 0; i < size; ++i) {
@@ -395,6 +394,7 @@ void ShapeTree<T>::InitChildren(const Shape& shape, Node* node) {
   if (ShapeUtil::IsTuple(shape)) {
     const int64 size = ShapeUtil::TupleElementCount(shape);
     node->children.reserve(size);
+    node->is_leaf = false;
     ShapeIndex shape_index = node->data.first;
     shape_index.push_back(0);
     for (int i = 0; i < size; ++i) {

@@ -48,15 +48,15 @@ void QuantizeMultiplierGreaterThanOne(double double_multiplier,
   TFLITE_CHECK_GE(*left_shift, 0);
 }
 
-void QuantizeMultiplierSmallerThanOne(double double_multiplier,
-                                      int32_t* quantized_multiplier,
-                                      int* right_shift) {
+void QuantizeMultiplierSmallerThanOneExp(double double_multiplier,
+                                         int32_t* quantized_multiplier,
+                                         int* left_shift) {
   TFLITE_CHECK_LT(double_multiplier, 1.);
   TFLITE_CHECK_GT(double_multiplier, 0.);
   int shift;
   QuantizeMultiplier(double_multiplier, quantized_multiplier, &shift);
   TFLITE_CHECK_LE(shift, 0);
-  *right_shift = -shift;
+  *left_shift = shift;
 }
 
 void PreprocessSoftmaxScaling(double beta, double input_scale,
@@ -78,20 +78,21 @@ void PreprocessSoftmaxScaling(double beta, double input_scale,
                                    quantized_multiplier, left_shift);
 }
 
-void PreprocessLogSoftmaxScaling(double beta, double input_scale,
-                                 int input_integer_bits,
-                                 int32_t* quantized_multiplier, int* left_shift,
-                                 int32_t* reverse_scaling_divisor,
-                                 int* reverse_scaling_right_shift) {
+void PreprocessLogSoftmaxScalingExp(double beta, double input_scale,
+                                    int input_integer_bits,
+                                    int32_t* quantized_multiplier,
+                                    int* left_shift,
+                                    int32_t* reverse_scaling_divisor,
+                                    int* reverse_scaling_left_shift) {
   PreprocessSoftmaxScaling(beta, input_scale, input_integer_bits,
                            quantized_multiplier, left_shift);
 
   // Also calculate what amounts to the inverse scaling factor for the input.
   const double real_reverse_scaling_divisor =
       (1 << (31 - *left_shift)) / static_cast<double>(*quantized_multiplier);
-  tflite::QuantizeMultiplierSmallerThanOne(real_reverse_scaling_divisor,
-                                           reverse_scaling_divisor,
-                                           reverse_scaling_right_shift);
+  tflite::QuantizeMultiplierSmallerThanOneExp(real_reverse_scaling_divisor,
+                                              reverse_scaling_divisor,
+                                              reverse_scaling_left_shift);
 }
 
 int CalculateInputRadius(int input_integer_bits, int input_left_shift) {

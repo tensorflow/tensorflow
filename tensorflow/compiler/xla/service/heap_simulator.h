@@ -34,6 +34,21 @@ limitations under the License.
 
 namespace xla {
 
+// Returns the minimum memory required to compute an HLO module where all
+// computations have been scheduled (represented by the given module_sequence),
+// assuming no fragmentation.
+StatusOr<int64> MinimumMemoryForModule(
+    const SequentialHloOrdering::HloModuleSequence& module_sequence,
+    const LogicalBuffer::SizeFunction& size_function);
+
+// Returns the minimum memory required to compute the given computation,
+// assuming no fragmentation.
+StatusOr<int64> MinimumMemoryForComputation(
+    const HloComputation& computation,
+    const std::vector<const HloInstruction*>& sequence,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function);
+
 // Forward declare classes defined below.
 class HeapAlgorithm;
 
