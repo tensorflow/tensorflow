@@ -233,6 +233,16 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = CreateParameter(proto.parameter_number(), proto.shape(),
                                     proto.name());
       break;
+    case HloOpcode::kGetTupleElement:
+      CHECK_EQ(proto.operand_ids_size(), 1);
+      instruction = CreateGetTupleElement(proto.shape(), operands(0),
+                                          proto.tuple_index());
+      break;
+    case HloOpcode::kReducePrecision:
+      instruction =
+          CreateReducePrecision(proto.shape(), operands(0),
+                                proto.exponent_bits(), proto.mantissa_bits());
+      break;
     default: {
       instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -260,11 +270,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   TF_RET_CHECK(!proto.name().empty());
   instruction->SetAndSanitizeName(proto.name());
-
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
 
-  instruction->tuple_index_ = proto.tuple_index();
   if (proto.has_window()) {
     instruction->window_ = MakeUnique<Window>(proto.window());
   }
@@ -278,8 +286,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         MakeUnique<DotDimensionNumbers>(proto.dot_dimension_numbers());
   }
 
-  instruction->exponent_bits_ = proto.exponent_bits();
-  instruction->mantissa_bits_ = proto.mantissa_bits();
   for (int64 dynamic_slice_size : proto.dynamic_slice_sizes()) {
     instruction->dynamic_slice_sizes_.push_back(dynamic_slice_size);
   }
@@ -334,12 +340,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateGetTupleElement(const Shape& shape,
                                       HloInstruction* operand, int64 index) {
-  CHECK(ShapeUtil::IsTuple(operand->shape()));
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kGetTupleElement, shape));
-  instruction->tuple_index_ = index;
-  instruction->AppendOperand(operand);
-  return instruction;
+  return MakeUnique<HloGetTupleElementInstruction>(shape, operand, index);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRng(
@@ -520,12 +521,8 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
                                       HloInstruction* operand,
                                       const int exponent_bits,
                                       const int mantissa_bits) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kReducePrecision, shape));
-  instruction->AppendOperand(operand);
-  instruction->exponent_bits_ = exponent_bits;
-  instruction->mantissa_bits_ = mantissa_bits;
-  return instruction;
+  return MakeUnique<HloReducePrecisionInstruction>(
+      shape, operand, exponent_bits, mantissa_bits);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1041,6 +1038,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
     case HloOpcode::kParameter:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kReducePrecision:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1127,11 +1126,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBitcastConvert(shape, new_operands[0]);
       break;
-    case HloOpcode::kReducePrecision:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateReducePrecision(shape, new_operands[0], exponent_bits_,
-                                    mantissa_bits_);
-      break;
     case HloOpcode::kConvolution:
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateConvolve(shape, new_operands[0], new_operands[1], *window_,
@@ -1146,10 +1140,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone =
           CreateCrossReplicaSum(shape, new_operands, to_apply(),
                                 replica_group_ids_, cross_replica_sum_barrier_);
-      break;
-    case HloOpcode::kGetTupleElement:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateGetTupleElement(shape, new_operands[0], tuple_index());
       break;
     case HloOpcode::kPad:
       CHECK_EQ(new_operands.size(), 2);
@@ -1295,11 +1285,6 @@ const HloInstruction* HloInstruction::LatestNonGteAncestor() const {
     hlo = hlo->operand(0);
   }
   return hlo;
-}
-
-int64 HloInstruction::tuple_index() const {
-  CHECK_EQ(HloOpcode::kGetTupleElement, opcode_);
-  return tuple_index_;
 }
 
 const HloInstruction* HloInstruction::operand(int64 i) const {
@@ -1464,11 +1449,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kGenerateToken:
       return false;
 
-    // A reduce-precision operation is determined by the bit sizes.
-    case HloOpcode::kReducePrecision:
-      return exponent_bits() == other.exponent_bits() &&
-             mantissa_bits() == other.mantissa_bits();
-
     // Convolution has a window and dimensions.
     case HloOpcode::kConvolution:
       return protobuf_util::ProtobufEquals(window(), other.window()) &&
@@ -1497,8 +1477,6 @@ bool HloInstruction::IdenticalSlowPath(
              protobuf_util::ProtobufEquals(window(), other.window());
 
     // Remaining instructions with special values.
-    case HloOpcode::kGetTupleElement:
-      return tuple_index() == other.tuple_index();
     case HloOpcode::kPad:
       return protobuf_util::ProtobufEquals(padding_config(),
                                            other.padding_config());
@@ -1555,6 +1533,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
     case HloOpcode::kParameter:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kReducePrecision:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -2044,9 +2024,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     }
   }
 
-  if (opcode() == HloOpcode::kGetTupleElement) {
-    extra.push_back(StrCat("index=", tuple_index()));
-  }
   if (has_sharding()) {
     extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
@@ -2065,10 +2042,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (opcode() == HloOpcode::kOutfeed && !outfeed_config_.empty()) {
     extra.push_back(
         StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
-  }
-  if (opcode() == HloOpcode::kReducePrecision) {
-    extra.push_back(StrCat("exponent_bits=", exponent_bits_));
-    extra.push_back(StrCat("mantissa_bits=", mantissa_bits_));
   }
   if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
     extra.push_back(StrCat("domain={kind=\"", operand_side_metadata_->Kind(),
@@ -2127,7 +2100,6 @@ HloInstructionProto HloInstruction::ToProto() const {
     }
   }
 
-  proto.set_tuple_index(tuple_index_);
   if (window_ != nullptr) {
     *proto.mutable_window() = *window_;
   }
@@ -2147,8 +2119,6 @@ HloInstructionProto HloInstruction::ToProto() const {
     }
   }
 
-  proto.set_exponent_bits(exponent_bits_);
-  proto.set_mantissa_bits(mantissa_bits_);
   for (int64 slice_size : dynamic_slice_sizes_) {
     proto.add_dynamic_slice_sizes(slice_size);
   }
@@ -3185,5 +3155,17 @@ RandomDistribution HloInstruction::random_distribution() const {
 
 int64 HloInstruction::parameter_number() const {
   return Cast<HloParameterInstruction>(this)->parameter_number();
+}
+
+int64 HloInstruction::tuple_index() const {
+  return Cast<HloGetTupleElementInstruction>(this)->tuple_index();
+}
+
+int32 HloInstruction::exponent_bits() const {
+  return Cast<HloReducePrecisionInstruction>(this)->exponent_bits();
+}
+
+int32 HloInstruction::mantissa_bits() const {
+  return Cast<HloReducePrecisionInstruction>(this)->mantissa_bits();
 }
 }  // namespace xla

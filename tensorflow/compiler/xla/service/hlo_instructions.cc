@@ -1203,4 +1203,85 @@ HloParameterInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   return MakeUnique<HloParameterInstruction>(parameter_number_, shape, name());
 }
+
+HloGetTupleElementInstruction::HloGetTupleElementInstruction(
+    const Shape& shape, HloInstruction* operand, int64 index)
+    : HloInstruction(HloOpcode::kGetTupleElement, shape), tuple_index_(index) {
+  CHECK(ShapeUtil::IsTuple(operand->shape()));
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloGetTupleElementInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_tuple_index(tuple_index_);
+  return proto;
+}
+
+std::vector<string> HloGetTupleElementInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("index=", tuple_index())};
+}
+
+bool HloGetTupleElementInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloGetTupleElementInstruction&>(other);
+  return tuple_index() == casted_other.tuple_index();
+}
+
+std::unique_ptr<HloInstruction>
+HloGetTupleElementInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return MakeUnique<HloGetTupleElementInstruction>(shape, new_operands[0],
+                                                   tuple_index());
+}
+
+HloReducePrecisionInstruction::HloReducePrecisionInstruction(
+    const Shape& shape, HloInstruction* operand, const int exponent_bits,
+    const int mantissa_bits)
+    : HloInstruction(HloOpcode::kReducePrecision, shape),
+      exponent_bits_(exponent_bits),
+      mantissa_bits_(mantissa_bits) {
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloReducePrecisionInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_exponent_bits(exponent_bits_);
+  proto.set_mantissa_bits(mantissa_bits_);
+  return proto;
+}
+
+std::vector<string> HloReducePrecisionInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("exponent_bits=", exponent_bits_),
+          StrCat("mantissa_bits=", mantissa_bits_)};
+}
+
+bool HloReducePrecisionInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloReducePrecisionInstruction&>(other);
+  // A reduce-precision operation is determined by the bit sizes.
+  return exponent_bits() == casted_other.exponent_bits() &&
+         mantissa_bits() == casted_other.mantissa_bits();
+}
+
+std::unique_ptr<HloInstruction>
+HloReducePrecisionInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return MakeUnique<HloReducePrecisionInstruction>(
+      shape, new_operands[0], exponent_bits(), mantissa_bits());
+}
+
 }  // namespace xla

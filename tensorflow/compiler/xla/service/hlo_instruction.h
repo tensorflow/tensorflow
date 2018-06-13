@@ -876,11 +876,6 @@ class HloInstruction {
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
 
-  // Returns the tuple index associated with this instruction.
-  //
-  // Precondition: opcode() == HloOpcode::kGetTupleElement
-  int64 tuple_index() const;
-
   // Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
   // If the first non-GTE ancestor is tuple-shaped, populates 'index' with the
   // (possibly nested) tuple indices used on the path from ancestor to 'hlo'.
@@ -1076,22 +1071,6 @@ class HloInstruction {
   const std::vector<int64>& dynamic_slice_sizes() const {
     CHECK_EQ(HloOpcode::kDynamicSlice, opcode_);
     return dynamic_slice_sizes_;
-  }
-
-  // Returns the number of exponent bits for a reduce-precision node.
-  //
-  // Precondition: opcode() == HloOpcode::kReducePrecision
-  int32 exponent_bits() const {
-    CHECK_EQ(HloOpcode::kReducePrecision, opcode_);
-    return exponent_bits_;
-  }
-
-  // Returns the number of mantissa bits for a reduce-precision node.
-  //
-  // Precondition: opcode() == HloOpcode::kReducePrecision
-  int32 mantissa_bits() const {
-    CHECK_EQ(HloOpcode::kReducePrecision, opcode_);
-    return mantissa_bits_;
   }
 
   // Returns data on the window in a windowed operation such as
@@ -1439,6 +1418,15 @@ class HloInstruction {
 
   // Delegates to HloParameterInstruction::parameter_number.
   int64 parameter_number() const;
+
+  // Delegates to HloGetTupleElementInstruction::tuple_index.
+  int64 tuple_index() const;
+
+  // Returns the number of exponent bits for a reduce-precision node.
+  int32 exponent_bits() const;
+
+  // Returns the number of mantissa bits for a reduce-precision node.
+  int32 mantissa_bits() const;
   // Old methods kept for smooth subclassing transition END.
 
   // Returns the group ids of each replica for CrossReplicaSum op.
@@ -1573,9 +1561,6 @@ class HloInstruction {
   // Result shape of this instruction.
   Shape shape_;
 
-  // Constant index, only present for kGetTupleElement.
-  int64 tuple_index_ = -1;
-
   // Describes the window in a windowed operation such as convolution.
   std::unique_ptr<Window> window_;
 
@@ -1587,10 +1572,6 @@ class HloInstruction {
 
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_window_bounds_;
-
-  // The bit sizes for a reduce-precision operation.
-  int32 exponent_bits_ = 0;
-  int32 mantissa_bits_ = 0;
 
   // Describes the [start, start + size) range size for a dynamic slice
   // ('start' is specified dynamically in the second operand of the operation).

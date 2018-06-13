@@ -667,6 +667,61 @@ class HloParameterInstruction : public HloInstruction {
   int64 parameter_number_ = 0;
 };
 
+class HloGetTupleElementInstruction : public HloInstruction {
+ public:
+  explicit HloGetTupleElementInstruction(const Shape& shape,
+                                         HloInstruction* operand, int64 index);
+  // Returns the tuple index associated with this instruction.
+  int64 tuple_index() const { return tuple_index_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  int64 tuple_index_ = -1;
+};
+
+class HloReducePrecisionInstruction : public HloInstruction {
+ public:
+  explicit HloReducePrecisionInstruction(const Shape& shape,
+                                         HloInstruction* operand,
+                                         const int exponent_bits,
+                                         const int mantissa_bits);
+  // Returns the number of exponent bits for a reduce-precision node.
+  int32 exponent_bits() const { return exponent_bits_; }
+  // Returns the number of mantissa bits for a reduce-precision node.
+  int32 mantissa_bits() const { return mantissa_bits_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // The bit sizes for a reduce-precision operation.
+  int32 exponent_bits_ = 0;
+  int32 mantissa_bits_ = 0;
+};
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
