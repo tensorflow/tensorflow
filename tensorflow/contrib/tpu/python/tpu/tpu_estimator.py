@@ -1902,11 +1902,6 @@ class TPUEstimator(estimator_lib.Estimator):
     ...
   ```
 
-  Current limitations:
-  --------------------
-
-  1. Outside compilation does not work yet (b/79991729).
-
   """
 
   def __init__(self,
