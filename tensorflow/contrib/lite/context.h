@@ -225,6 +225,9 @@ typedef struct {
   // delegate buffer.
   // WARNING: This is an // experimental interface that is subject to change.
   bool data_is_stale;
+
+  // True if the tensor is a variable.
+  bool is_variable;
 } TfLiteTensor;
 
 // Free data memory of tensor `t`;
@@ -237,7 +240,8 @@ void TfLiteTensorFree(TfLiteTensor* t);
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        TfLiteQuantizationParams quantization, char* buffer,
                        size_t size, TfLiteAllocationType allocation_type,
-                       const void* allocation, TfLiteTensor* tensor);
+                       const void* allocation, bool is_variable,
+                       TfLiteTensor* tensor);
 
 // Resize the allocated data of a (dynamic) tensor.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);

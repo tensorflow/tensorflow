@@ -118,6 +118,11 @@ class Interpreter {
   // interpreter.
   TfLiteStatus SetOutputs(std::vector<int> outputs);
 
+  // Provide a list of tensor indexes that are variable tensors.
+  // Each index is bound check and this modifies the consistent_ flag of the
+  // interpreter.
+  TfLiteStatus SetVariables(std::vector<int> variables);
+
   // Adds a node with the given parameters and returns the index of the new
   // node in `node_index` (optionally). Interpreter will take ownership of
   // `builtin_data` and destroy it with `free`. Ownership of 'init_data'
@@ -160,13 +165,15 @@ class Interpreter {
   // to Interpreter.
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
-      const std::vector<int>& dims, TfLiteQuantizationParams quantization) {
+      const std::vector<int>& dims, TfLiteQuantizationParams quantization,
+      bool is_variable = false) {
     return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
-                                        dims.data(), quantization);
+                                        dims.data(), quantization, is_variable);
   }
   TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
-      const int* dims, TfLiteQuantizationParams quantization);
+      const int* dims, TfLiteQuantizationParams quantization,
+      bool is_variable = false);
 
   // Functions to access tensor data
 
@@ -181,6 +188,9 @@ class Interpreter {
 
   // Read only access to list of outputs.
   const std::vector<int>& outputs() const { return outputs_; }
+
+  // Read only access to list of variable tensors.
+  const std::vector<int>& variables() const { return variables_; }
 
   // Return the name of a given output. The given index must be between 0 and
   // outputs().size().
@@ -379,6 +389,10 @@ class Interpreter {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
 
+  // Reset all variable tensors to zero.
+  // WARNING: This is an experimental API and subject to change.
+  TfLiteStatus ResetVariableTensorsToZero();
+
  private:
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'.
@@ -540,6 +554,9 @@ class Interpreter {
   // Array of indices representing the tensors that are outputs to the
   // interpreter.
   std::vector<int> outputs_;
+
+  // Array of indices representing the tensors that are variable tensors.
+  std::vector<int> variables_;
 
   // The error reporter delegate that tflite will forward queries errors to.
   ErrorReporter* error_reporter_;
