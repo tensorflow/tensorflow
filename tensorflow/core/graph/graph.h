@@ -284,6 +284,16 @@ struct InputTensor {
 
   InputTensor(const Node* n, int i) : node(n), index(i) {}
   InputTensor() : node(nullptr), index(0) {}
+
+  // Returns true if this InputTensor is identical to 'other'. Nodes are
+  // compared using pointer equality.
+  bool operator==(const InputTensor& other) const;
+
+  // A hash function for InputTensors. Nodes are hashed based on their pointer
+  // value.
+  struct Hash {
+    uint64 operator()(InputTensor const& s) const;
+  };
 };
 
 // Represents an output of a node, i.e., the `index`-th output of `node`. Note
@@ -295,6 +305,16 @@ struct OutputTensor {
 
   OutputTensor(const Node* n, int i) : node(n), index(i) {}
   OutputTensor() : node(nullptr), index(0) {}
+
+  // Returns true if this OutputTensor is identical to 'other'. Nodes are
+  // compared using pointer equality.
+  bool operator==(const OutputTensor& other) const;
+
+  // A hash function for OutputTensors. Nodes are hashed based on their pointer
+  // value.
+  struct Hash {
+    uint64 operator()(OutputTensor const& s) const;
+  };
 };
 
 class Edge {
