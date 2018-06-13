@@ -27,8 +27,9 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'BigQueryReader',
-    'ConfigureColabSession',
-    'ConfigureGcs',
+    'BlockCacheParams',
+    'configure_colab_session',
+    'configure_gcs',
     'ConfigureGcsHook',
 ]
 remove_undocumented(__name__, _allowed_symbols)
