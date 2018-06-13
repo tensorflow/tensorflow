@@ -1150,13 +1150,10 @@ class Estimator(object):
                 input_fn, model_fn_lib.ModeKeys.TRAIN))
         worker_hooks.extend(input_hooks)
         global_step_tensor = self._create_and_assert_global_step(g)
-        # The default destination for the global_step_tensor fetch call is the
-        # CPU.
-        global_step_read_tensor = self._distribution.fetch(global_step_tensor)
         # we want to add to the global collection in the main thread not the
         # tower threads.
         ops.add_to_collection(training_util.GLOBAL_STEP_READ_KEY,
-                              global_step_read_tensor)
+                              self._distribution.read_var(global_step_tensor))
         grouped_estimator_spec = self._distribution.call_for_each_tower(
             self._call_model_fn,
             features,
@@ -1254,7 +1251,7 @@ class Estimator(object):
             training_chief_hooks=training_chief_hooks,
             scaffold=scaffold)
         return self._train_with_estimator_spec(estimator_spec, worker_hooks,
-                                               hooks, global_step_read_tensor,
+                                               hooks, global_step_tensor,
                                                saving_listeners)
 
   def _train_with_estimator_spec(self, estimator_spec, worker_hooks, hooks,
