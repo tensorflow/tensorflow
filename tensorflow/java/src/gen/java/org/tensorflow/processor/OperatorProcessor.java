@@ -48,7 +48,6 @@ import com.google.common.base.CaseFormat;
 import com.google.common.base.Strings;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
-import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.FieldSpec;
 import com.squareup.javapoet.JavaFile;
@@ -144,7 +143,7 @@ public final class OperatorProcessor extends AbstractProcessor {
 
   @Override
   public Set<String> getSupportedAnnotationTypes() {
-    return Collections.singleton(String.format("%s.annotation.Operator", OP_PACKAGE));
+    return Collections.singleton("org.tensorflow.op.annotation.Operator");
   }
 
   private static final Pattern JAVADOC_TAG_PATTERN = Pattern.compile("@(?:param|return|throws|exception|see)\\s+.*");
@@ -153,7 +152,6 @@ public final class OperatorProcessor extends AbstractProcessor {
   private static final TypeName T_SCOPE = ClassName.get("org.tensorflow.op", "Scope");
   private static final TypeName T_GRAPH = ClassName.get("org.tensorflow", "Graph");
   private static final TypeName T_STRING = ClassName.get(String.class);
-  private static final String OP_PACKAGE = "org.tensorflow.op";
 
   private Filer filer;
   private Messager messager;
@@ -204,7 +202,11 @@ public final class OperatorProcessor extends AbstractProcessor {
         result = false;
         continue;
       }
-      collectOpMethods(groupedMethods, (TypeElement) e, annotation);
+      TypeElement opClass = (TypeElement) e;
+      // Skip deprecated operations for now, as we do not guarantee API stability yet
+      if (opClass.getAnnotation(Deprecated.class) == null) {
+        collectOpMethods(groupedMethods, opClass, annotation);
+      }
     }
     return result;
   }
@@ -227,14 +229,13 @@ public final class OperatorProcessor extends AbstractProcessor {
   }
 
   private MethodSpec buildOpMethod(String methodName, TypeElement opClass, ExecutableElement factoryMethod) {
-    boolean deprecated = opClass.getAnnotation(Deprecated.class) != null;
     ClassName opClassName = ClassName.get(opClass);
     MethodSpec.Builder builder =
         MethodSpec.methodBuilder(methodName)
         .addModifiers(Modifier.PUBLIC)
         .returns(TypeName.get(factoryMethod.getReturnType()))
         .varargs(factoryMethod.isVarArgs())
-        .addJavadoc("$L", buildOpMethodJavadoc(opClassName, factoryMethod, deprecated));
+        .addJavadoc("$L", buildOpMethodJavadoc(opClassName, factoryMethod));
 
     for (TypeParameterElement tp: factoryMethod.getTypeParameters()) {
       TypeVariableName tvn = TypeVariableName.get((TypeVariable) tp.asType());
@@ -242,9 +243,6 @@ public final class OperatorProcessor extends AbstractProcessor {
     }
     for (TypeMirror thrownType: factoryMethod.getThrownTypes()) {
       builder.addException(TypeName.get(thrownType));
-    }
-    if (deprecated) {
-      builder.addAnnotation(AnnotationSpec.builder(Deprecated.class).build());
     }
     StringBuilder call = new StringBuilder("return $T.create(scope");
     boolean first = true;
@@ -263,7 +261,7 @@ public final class OperatorProcessor extends AbstractProcessor {
     return builder.build();
   }    
   
-  private String buildOpMethodJavadoc(ClassName opClassName, ExecutableElement factoryMethod, boolean deprecated) {
+  private String buildOpMethodJavadoc(ClassName opClassName, ExecutableElement factoryMethod) {
     StringBuilder javadoc = new StringBuilder();
     javadoc.append("Adds an {@link ").append(opClassName.simpleName()).append("} operation to the graph\n\n");
 
@@ -280,9 +278,6 @@ public final class OperatorProcessor extends AbstractProcessor {
         javadoc.append(tag).append('\n');
       }
     }    
-    if (deprecated) {
-      javadoc.append("@deprecated\n");
-    }
     javadoc.append("@see {@link ").append(opClassName).append("}\n");
 
     return javadoc.toString();
