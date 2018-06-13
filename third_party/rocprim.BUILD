@@ -36,7 +36,7 @@ genrule(
     cmd = ("sed " +
            "-e 's/@rocprim_VERSION_MAJOR@/0/g' " +
            "-e 's/@rocprim_VERSION_MINOR@/3/g' " +
-           "-e 's/@rocprim_VERSION_PATCH@/0/g' " +
+           "-e 's/@rocprim_VERSION_PATCH@/2/g' " +
            "$< >$@"),
 )
 
