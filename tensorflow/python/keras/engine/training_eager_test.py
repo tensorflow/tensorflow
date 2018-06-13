@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python import keras
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
@@ -669,6 +670,59 @@ class CorrectnessTest(test.TestCase):
     y = np.zeros((100, 1))
     outs = model.evaluate(x, y)
     self.assertEqual(outs[1], 0.)
+
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_loss_correctness_with_iterator(self):
+    # Test that training loss is the same in eager and graph
+    # (by comparing it to a reference value in a deterministic case)
+    model = keras.Sequential()
+    model.add(
+        keras.layers.Dense(
+            3, activation='relu', input_dim=4, kernel_initializer='ones'))
+    model.add(
+        keras.layers.Dense(2, activation='softmax', kernel_initializer='ones'))
+    model.compile(
+        loss='sparse_categorical_crossentropy',
+        optimizer=RMSPropOptimizer(learning_rate=0.001))
+    x = np.ones((100, 4), dtype=np.float32)
+    np.random.seed(123)
+    y = np.random.randint(0, 1, size=(100, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10)
+    iterator = dataset.make_one_shot_iterator()
+    history = model.fit(iterator, epochs=1, steps_per_epoch=10)
+    self.assertEqual(np.around(history.history['loss'][-1], decimals=4), 0.6173)
+
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_metrics_correctness_with_iterator(self):
+    model = keras.Sequential()
+    model.add(
+        keras.layers.Dense(
+            8, activation='relu', input_dim=4, kernel_initializer='ones'))
+    model.add(
+        keras.layers.Dense(1, activation='sigmoid', kernel_initializer='ones'))
+    model.compile(
+        loss='binary_crossentropy',
+        metrics=['accuracy'],
+        optimizer=RMSPropOptimizer(learning_rate=0.001))
+    np.random.seed(123)
+    x = np.random.randint(10, size=(100, 4)).astype(np.float32)
+    y = np.random.randint(2, size=(100, 1)).astype(np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = dataset.batch(10)
+    iterator = dataset.make_one_shot_iterator()
+    outs = model.evaluate(iterator, steps=10)
+    self.assertEqual(np.around(outs[1], decimals=1), 0.5)
+
+    y = np.zeros((100, 1), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10)
+    iterator = dataset.make_one_shot_iterator()
+    outs = model.evaluate(iterator, steps=10)
+    self.assertEqual(outs[1], 0.)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
