@@ -163,8 +163,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
       pass.AddPass<BatchNormExpander>(
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
-          /*rewrite_grad_op=*/true,
-          /*use_fusion=*/false);
+          /*rewrite_grad_op=*/true);
 
       // Rewrite gather ops into smaller ones.
       pass.AddPass<GatherExpander>();
