@@ -57,7 +57,7 @@ def pairwise_distance_np(feature, squared=False):
       pairwise_distances.diagonal())
   return pairwise_distances
 
-class PairwiseCosineTest(tf.test.TestCase):
+class PairwiseCosineTest(test.TestCase):
 
   def testPairwiseCosine(self):
     with self.test_session():
