@@ -32,7 +32,7 @@ FLAGS = None
 class DocSrcsTest(test.TestCase):
 
   def testModulesAreValidAPIModules(self):
-    for module_name in doc_srcs.TENSORFLOW_DOC_SOURCES:
+    for module_name in doc_srcs.get_doc_sources(FLAGS.api_name):
       # Convert module_name to corresponding __init__.py file path.
       file_path = module_name.replace('.', '/')
       if file_path:
@@ -43,7 +43,7 @@ class DocSrcsTest(test.TestCase):
         self.assertFalse('%s is not a valid API module' % module_name)
 
   def testHaveDocstringOrDocstringModule(self):
-    for module_name, docsrc in doc_srcs.TENSORFLOW_DOC_SOURCES.items():
+    for module_name, docsrc in doc_srcs.get_doc_sources(FLAGS.api_name).items():
       if docsrc.docstring and docsrc.docstring_module_name:
         self.assertFalse(
             '%s contains DocSource has both a docstring and a '
@@ -52,12 +52,12 @@ class DocSrcsTest(test.TestCase):
             % (module_name))
 
   def testDocstringModulesAreValidModules(self):
-    for _, docsrc in doc_srcs.TENSORFLOW_DOC_SOURCES.items():
+    for _, docsrc in doc_srcs.get_doc_sources(FLAGS.api_name).items():
       if docsrc.docstring_module_name:
         doc_module_name = '.'.join([
             FLAGS.package, docsrc.docstring_module_name])
         if doc_module_name not in sys.modules:
-          sys.assertFalse(
+          self.assertFalse(
               'docsources_module %s is not a valid module under %s.' %
               (docsrc.docstring_module_name, FLAGS.package))
 
@@ -71,6 +71,9 @@ if __name__ == '__main__':
       '--package', type=str,
       help='Base package that imports modules containing the target tf_export '
            'decorators.')
+  parser.add_argument(
+      '--api_name', type=str,
+      help='API name: tensorflow or estimator')
   FLAGS, unparsed = parser.parse_known_args()
 
   importlib.import_module(FLAGS.package)

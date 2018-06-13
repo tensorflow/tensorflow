@@ -247,7 +247,7 @@ def get_module(dir_path, relative_to_dir):
   return dir_path.replace('/', '.').strip('.')
 
 
-def get_module_docstring(module_name, package):
+def get_module_docstring(module_name, package, api_name):
   """Get docstring for the given module.
 
   This method looks for docstring in the following order:
@@ -263,6 +263,7 @@ def get_module_docstring(module_name, package):
       (excluding 'tensorflow.' prefix) to get a docstring for.
     package: Base python package containing python with target tf_export
       decorators.
+    api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
 
   Returns:
     One-line docstring to describe the module.
@@ -270,8 +271,10 @@ def get_module_docstring(module_name, package):
   # Module under base package to get a docstring from.
   docstring_module_name = module_name
 
-  if module_name in doc_srcs.TENSORFLOW_DOC_SOURCES:
-    docsrc = doc_srcs.TENSORFLOW_DOC_SOURCES[module_name]
+  doc_sources = doc_srcs.get_doc_sources(api_name)
+
+  if module_name in doc_sources:
+    docsrc = doc_sources[module_name]
     if docsrc.docstring:
       return docsrc.docstring
     if docsrc.docstring_module_name:
@@ -330,7 +333,7 @@ def create_api_files(
     if module or not root_init_template:
       contents = (
           _GENERATED_FILE_HEADER %
-          get_module_docstring(module, package) + text)
+          get_module_docstring(module, package, api_name) + text)
     else:
       # Read base init file
       with open(root_init_template, 'r') as root_init_template_file:
