@@ -50,13 +50,13 @@ alias(
 _NCCL_LOCAL_BUILD_TEMPLATE = """
 filegroup(
   name = "LICENSE",
-  data = ["nccl/NCCL-SLA.txt"],
+  data = ["nccl-lic/NCCL-SLA.txt%s"],
   visibility = ["//visibility:public"],
 )
 
 cc_library(
   name = "nccl",
-  srcs = ["nccl/lib/libnccl.so.%s"],
+  srcs = ["nccl-lib/libnccl.so.%s"],
   hdrs = ["nccl/include/nccl.h"],
   include_prefix = "third_party/nccl",
   strip_include_prefix = "nccl/include",
@@ -66,6 +66,17 @@ cc_library(
   visibility = ["//visibility:public"],
 )
 """
+NCCL_LIB_PATHS = [
+  "lib64/",
+  "lib/powerpc64le-linux-gnu/",
+  "lib/x86-64-linux-gnu/",
+  "lib/",
+  ""
+]
+
+NCCL_LICENSE_PATHS = [
+  "share/doc/libnccl2/"
+]
 
 
 def _find_nccl_header(repository_ctx, nccl_install_path):
@@ -123,11 +134,51 @@ def _find_nccl_lib(repository_ctx, nccl_install_path, nccl_version):
   Returns:
     The path to the NCCL library.
   """
-  lib_path = repository_ctx.path("%s/lib/libnccl.so.%s" % (nccl_install_path,
-                                                           nccl_version))
-  if not lib_path.exists:
-    auto_configure_fail("Cannot find NCCL library %s" % str(lib_path))
+  file_name = "libnccl.so.%s" % nccl_version
+  lib_path = ""
+  lpath = repository_ctx.path("%s/lib/%s" % (nccl_install_path,
+                                                file_name))
+  if not lpath.exists:
+   for relative_path in NCCL_LIB_PATHS:
+     path = repository_ctx.path("%s/%s%s" % (nccl_install_path, relative_path, file_name))
+     if path.exists:
+       lib_path = struct(file_name=file_name, path=str(path.dirname))
+       break
+  else:
+    lib_path = struct(file_name=file_name, path=str(lpath.dirname))
+
+  if not lib_path:
+    auto_configure_fail("Cannot find NCCL library %s" % str(path))
   return lib_path
+
+
+def _find_nccl_license(repository_ctx, nccl_install_path):
+  """Finds the given NCCL license on the system.
+  Args:
+    repository_ctx: The repository context.
+    nccl_install_path: The NCCL library installation directory.
+    nccl_version: The version of NCCL library files as returned
+      by _nccl_version.
+  Returns:
+    The path to the NCCL license.
+  """
+  file_name = "NCCL-SLA.txt"
+  lic_path = ""
+  lpath = repository_ctx.path("%s/%s" % (nccl_install_path,
+                                                file_name))
+  if not lpath.exists:
+   file_name = "NCCL-SLA.txt.gz"
+   for relative_path in NCCL_LICENSE_PATHS:
+     path = repository_ctx.path("%s/%s%s" % (nccl_install_path, relative_path, file_name))
+     if path.exists:
+       lic_path = struct(file_name=file_name, path=str(path.dirname), extension=".gz")
+       break
+  else:
+    lic_path = struct(file_name=file_name, path=str(lpath.dirname), extension="")
+
+  if not lic_path:
+    auto_configure_fail("Cannot find NCCL license %s" % str(path))
+  return lic_path
 
 
 def _nccl_configure_impl(repository_ctx):
@@ -148,8 +199,12 @@ def _nccl_configure_impl(repository_ctx):
     # Create target for locally installed NCCL.
     nccl_install_path = repository_ctx.os.environ[_NCCL_INSTALL_PATH].strip()
     _check_nccl_version(repository_ctx, nccl_install_path, nccl_version)
+    libpath = _find_nccl_lib(repository_ctx, nccl_install_path, nccl_version)
+    licpath = _find_nccl_license(repository_ctx, nccl_install_path)
+    repository_ctx.symlink(libpath.path, "nccl-lib")
     repository_ctx.symlink(nccl_install_path, "nccl")
-    repository_ctx.file("BUILD", _NCCL_LOCAL_BUILD_TEMPLATE % nccl_version)
+    repository_ctx.symlink(licpath.path, "nccl-lic")
+    repository_ctx.file("BUILD", _NCCL_LOCAL_BUILD_TEMPLATE % (licpath.extension, nccl_version))
 
 
 nccl_configure = repository_rule(
