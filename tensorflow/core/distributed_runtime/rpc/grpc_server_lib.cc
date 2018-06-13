@@ -284,6 +284,14 @@ Status GrpcServer::Init(
               nullptr);
 }
 
+
+Status GrpcServer::Init(
+    ServiceInitFunction service_func,
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
+  return Init(std::move(service_func), rendezvous_mgr_func, nullptr,
+              nullptr);
+}
+
 Status GrpcServer::Init() { return Init(nullptr, nullptr, nullptr, nullptr); }
 
 Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
