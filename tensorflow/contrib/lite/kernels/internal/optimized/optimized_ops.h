@@ -1082,10 +1082,10 @@ struct GemmlowpOutputPipeline {
       gemmlowp::OutputStageQuantizeDownInt32ToUint8ScaleByFixedPoint,
       gemmlowp::OutputStageClamp, gemmlowp::OutputStageSaturatingCastToUint8>
       Pipeline;
-  static Pipeline Make(const int32* bias_data, int output_rows,
-                       int32 output_offset, int32 output_multiplier,
-                       int output_shift, int32 output_activation_min,
-                       int32 output_activation_max) {
+  static Pipeline MakeExp(const int32* bias_data, int output_rows,
+                          int32 output_offset, int32 output_multiplier,
+                          int output_left_shift, int32 output_activation_min,
+                          int32 output_activation_max) {
     ColVectorMap bias_vector(bias_data, output_rows);
     gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
     bias_addition_stage.bias_vector = bias_vector;
@@ -1093,7 +1093,7 @@ struct GemmlowpOutputPipeline {
         quantize_down_stage;
     quantize_down_stage.result_offset_after_shift = output_offset;
     quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
-    quantize_down_stage.result_shift = output_shift;
+    quantize_down_stage.result_shift = -output_left_shift;
     gemmlowp::OutputStageClamp clamp_stage;
     clamp_stage.min = output_activation_min;
     clamp_stage.max = output_activation_max;
@@ -1146,8 +1146,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       input_data, filter_cols, batches, filter_cols);
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, batches, output_rows);
-  const auto& output_pipeline = GemmlowpOutputPipeline::Make(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -2084,8 +2084,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
       gemm_input_data, gemm_input_rows, gemm_input_cols);
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, output_cols);
-  const auto& output_pipeline = GemmlowpOutputPipeline::Make(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -2242,8 +2242,8 @@ void ConvAsGemm(const uint8* input_data, const Dims<4>& input_dims,
       input_data, filter_cols, output_cols, filter_cols);
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, output_cols, output_rows);
-  const auto& output_pipeline = GemmlowpOutputPipeline::Make(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -2387,8 +2387,9 @@ void L2Normalization(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
-                                          int* output_shift) {
+inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
+                                             int32* output_inv_sqrt,
+                                             int* output_shift) {
   *output_shift = 11;
   while (input >= (1 << 29)) {
     input /= 4;
@@ -2430,6 +2431,7 @@ inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
     *output_inv_sqrt <<= -*output_shift;
     *output_shift = 0;
   }
+  *output_shift *= kReverseShift;
 }
 
 inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
@@ -2448,13 +2450,13 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
     }
     int32 inv_l2norm_multiplier;
     int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplier(square_l2_norm, &inv_l2norm_multiplier,
-                                  &inv_l2norm_shift);
+    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, &inv_l2norm_multiplier,
+                                     &inv_l2norm_shift);
 
     for (int c = 0; c < depth; c++) {
       int32 diff = *input_data - input_zero_point;
       int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          128 * diff, inv_l2norm_multiplier, kReverseShift * inv_l2norm_shift);
+          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
       int32 unclamped_output_val = 128 + rescaled_diff;
       int32 output_val = std::min(255, std::max(0, unclamped_output_val));
       *output_data = static_cast<uint8>(output_val);

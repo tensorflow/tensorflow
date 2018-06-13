@@ -1369,12 +1369,24 @@ class BaseSession(SessionInterface):
       finally:
         tf_session.TF_DeleteBuffer(options_ptr)
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
       # TODO(b/74355905): Support argument and return value nested structures,
       # and tensor-like objects such as SparseTensors.
-      with errors.raise_exception_on_not_ok_status() as status:
-        return tf_session.TF_SessionRunCallable(
-            self._session._session, self._handle, args, status, None)
+      run_metadata = kwargs.get('run_metadata', None)
+      try:
+        run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
+        # TODO(mrry): Switch to raising an exception from the SWIG wrapper.
+        with errors.raise_exception_on_not_ok_status() as status:
+          ret = tf_session.TF_SessionRunCallable(
+              self._session._session, self._handle, args, status,
+              run_metadata_ptr)
+        if run_metadata:
+          proto_data = tf_session.TF_GetBuffer(run_metadata_ptr)
+          run_metadata.ParseFromString(compat.as_bytes(proto_data))
+      finally:
+        if run_metadata_ptr:
+          tf_session.TF_DeleteBuffer(run_metadata_ptr)
+      return ret
 
     def __del__(self):
       # NOTE(mrry): It is possible that `self._session.__del__()` could be

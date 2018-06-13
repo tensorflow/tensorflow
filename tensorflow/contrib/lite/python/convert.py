@@ -136,10 +136,10 @@ def build_toco_convert_protos(input_tensors,
       `foo.get_shape()` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     inference_type: Target data type of arrays in the output file. Currently
-      must be `{FLOAT, QUANTIZED_UINT8, STRING}`.  (default FLOAT)
+      must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
     inference_input_type: Target data type of input arrays. Allows for a
       different type for input arrays in the case of quantization. Currently
-      must be `{FLOAT, QUANTIZED_UINT8, STRING}`. (default `inference_type`)
+      must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
     input_format: Type of data to read Currently must be
       `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
     output_format: Output file format. Currently must be `{TFLITE,
@@ -213,8 +213,7 @@ def build_toco_convert_protos(input_tensors,
       tflite_input_type = lite_constants.INT64
     elif input_tensor.dtype == _dtypes.uint8:
       tflite_input_type = lite_constants.QUANTIZED_UINT8
-    elif input_tensor.dtype == _dtypes.string:
-      tflite_input_type = lite_constants.STRING
+    # TODO(aselle): Insert strings when they are available
     else:
       raise ValueError("Tensors %s not known type %r" % (input_tensor.name,
                                                          input_tensor.dtype))

@@ -155,20 +155,15 @@ HloInstruction* UpdateOperand(const HloInstruction* first_reshape_operand,
     case HloOpcode::kConstant: {
       if (first_reshape_operand->opcode() == HloOpcode::kReshape) {
         VLOG(5) << "Adding reshape to kConstant operand";
-        HloInstruction* reshape = computation->AddInstruction(
+        return computation->AddInstruction(
             HloInstruction::CreateReshape(new_shape, operand));
-        operand->SetupDerivedInstruction(reshape);
-        return reshape;
       } else {
         CHECK(first_reshape_operand->opcode() == HloOpcode::kTranspose);
         VLOG(5) << "Adding transpose to kConstant operand";
         std::vector<int64> inverse_permutation =
             InversePermutation(first_reshape_operand->dimensions());
-        HloInstruction* transpose =
-            computation->AddInstruction(HloInstruction::CreateTranspose(
-                new_shape, operand, inverse_permutation));
-        operand->SetupDerivedInstruction(transpose);
-        return transpose;
+        return computation->AddInstruction(HloInstruction::CreateTranspose(
+            new_shape, operand, inverse_permutation));
       }
     }
     case HloOpcode::kRng: {

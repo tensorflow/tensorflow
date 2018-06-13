@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/dump_graphviz.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_graphviz_dump_options.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace toco {
@@ -585,6 +585,13 @@ void UnextendShape(Shape* shape, int new_shape_size) {
   shape_dims.erase(shape_dims.begin(), shape_dims.begin() + size_reduction);
 }
 
+bool IsValid(const Shape& shape) {
+  for (int i = 0; i < shape.dimensions_count(); ++i) {
+    if (shape.dims(i) < 1) return false;
+  }
+  return true;
+}
+
 void CheckShapeDimensions(const Shape& shape) {
   for (int i = 0; i < shape.dimensions_count(); ++i) {
     CHECK_GE(shape.dims()[i], 1) << "shape has dimension 0 at index << " << i
@@ -920,7 +927,7 @@ void CheckEachArray(const Model& model) {
       CHECK(array->buffer->type == array->data_type);
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
-      CHECK(array->has_shape()) << "Invalid array: " << array_entry.first;
+      CHECK(array->has_shape());
       // Constant buffer should has a valid shape.
       for (int d : array->shape().dims()) {
         CHECK_GE(d, 1);

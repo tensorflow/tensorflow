@@ -3381,7 +3381,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bias_op",
     prefix = "bias_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + if_cuda([
+        ":reduction_ops",
+        "@cub_archive//:cub",
+    ]),
 )
 
 tf_kernel_library(

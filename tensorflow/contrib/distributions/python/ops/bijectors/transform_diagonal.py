@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "TransformDiagonal",
@@ -42,6 +43,14 @@ class TransformDiagonal(bijector.Bijector):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                diag_bijector,
                validate_args=False,
