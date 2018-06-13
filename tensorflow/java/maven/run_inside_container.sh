@@ -46,8 +46,8 @@ clean() {
   # artifacts lying around)
   mvn -q clean
   rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow_jni_gpu/src libtensorflow_jni_gpu/target \
-    libtensorflow/src libtensorflow/target tensorflow-android/target \
-    hadoop/src spark-connector/src
+    libtensorflow/src libtensorflow/target tensorflow-android/target proto/src proto/target \
+    hadoop/src hadoop/target spark-connector/src spark-connector/target
 }
 
 update_version_in_pom() {
