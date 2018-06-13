@@ -151,6 +151,12 @@ TEST(DataBuffer, Int32) {
               ::testing::ElementsAre(1, 1 << 30));
 }
 
+TEST(DataBuffer, Int16) {
+  Array recovered = ToFlatBufferAndBack<ArrayDataType::kInt16>({1, 1 << 14});
+  EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kInt16>().data,
+              ::testing::ElementsAre(1, 1 << 14));
+}
+
 TEST(DataBuffer, String) {
   Array recovered = ToFlatBufferAndBack<ArrayDataType::kString>(
       {"AA", "BBB", "Best. String. Ever."});

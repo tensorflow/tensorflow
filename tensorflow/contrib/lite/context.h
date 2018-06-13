@@ -138,6 +138,7 @@ typedef enum {
   kTfLiteInt64 = 4,
   kTfLiteString = 5,
   kTfLiteBool = 6,
+  kTfLiteInt16 = 7,
 } TfLiteType;
 
 // Parameters for asymmetric quantization. Quantized values can be converted
@@ -148,7 +149,7 @@ typedef struct {
   int32_t zero_point;
 } TfLiteQuantizationParams;
 
-// A union of points that points to memory for a given tensor.
+// A union of pointers that points to memory for a given tensor.
 typedef union {
   int* i32;
   int64_t* i64;
@@ -157,6 +158,7 @@ typedef union {
   const char* raw_const;
   uint8_t* uint8;
   bool* b;
+  int16_t* i16;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped

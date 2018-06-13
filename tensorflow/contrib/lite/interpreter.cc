@@ -334,6 +334,9 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteFloat32:
       *bytes = sizeof(float) * count;
       break;
+    case kTfLiteInt16:
+      *bytes = sizeof(int16_t) * count;
+      break;
     case kTfLiteInt32:
       *bytes = sizeof(int32_t) * count;
       break;
@@ -347,9 +350,9 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
       *bytes = sizeof(bool) * count;
       break;
     default:
-      ReportError(
-          &context_,
-          "Only float32, int32, int64, uint8, bool supported currently.");
+      ReportError(&context_,
+                  "Only float32, int16, int32, int64, uint8, bool supported "
+                  "currently.");
       return kTfLiteError;
   }
   return kTfLiteOk;

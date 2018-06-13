@@ -216,11 +216,12 @@ enum TensorType {
   TensorType_INT64 = 4,
   TensorType_STRING = 5,
   TensorType_BOOL = 6,
+  TensorType_INT16 = 7,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_BOOL
+  TensorType_MAX = TensorType_INT16
 };
 
-inline TensorType (&EnumValuesTensorType())[7] {
+inline TensorType (&EnumValuesTensorType())[8] {
   static TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -228,7 +229,8 @@ inline TensorType (&EnumValuesTensorType())[7] {
     TensorType_UINT8,
     TensorType_INT64,
     TensorType_STRING,
-    TensorType_BOOL
+    TensorType_BOOL,
+    TensorType_INT16
   };
   return values;
 }
@@ -242,6 +244,7 @@ inline const char **EnumNamesTensorType() {
     "INT64",
     "STRING",
     "BOOL",
+    "INT16",
     nullptr
   };
   return names;

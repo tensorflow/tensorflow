@@ -88,6 +88,8 @@ void CopyBuffer(const ::tflite::Buffer& buffer, Array* array) {
   switch (array_data_type) {
     case ArrayDataType::kFloat:
       return ::tflite::TensorType_FLOAT32;
+    case ArrayDataType::kInt16:
+      return ::tflite::TensorType_INT16;
     case ArrayDataType::kInt32:
       return ::tflite::TensorType_INT32;
     case ArrayDataType::kInt64:
@@ -109,6 +111,8 @@ ArrayDataType DataType::Deserialize(int tensor_type) {
   switch (::tflite::TensorType(tensor_type)) {
     case ::tflite::TensorType_FLOAT32:
       return ArrayDataType::kFloat;
+    case ::tflite::TensorType_INT16:
+      return ArrayDataType::kInt16;
     case ::tflite::TensorType_INT32:
       return ArrayDataType::kInt32;
     case ::tflite::TensorType_INT64:
@@ -131,6 +135,8 @@ flatbuffers::Offset<flatbuffers::Vector<uint8_t>> DataBuffer::Serialize(
   switch (array.data_type) {
     case ArrayDataType::kFloat:
       return CopyBuffer<ArrayDataType::kFloat>(array, builder);
+    case ArrayDataType::kInt16:
+      return CopyBuffer<ArrayDataType::kInt16>(array, builder);
     case ArrayDataType::kInt32:
       return CopyBuffer<ArrayDataType::kInt32>(array, builder);
     case ArrayDataType::kInt64:
@@ -154,6 +160,8 @@ void DataBuffer::Deserialize(const ::tflite::Tensor& tensor,
   switch (tensor.type()) {
     case ::tflite::TensorType_FLOAT32:
       return CopyBuffer<ArrayDataType::kFloat>(buffer, array);
+    case ::tflite::TensorType_INT16:
+      return CopyBuffer<ArrayDataType::kInt16>(buffer, array);
     case ::tflite::TensorType_INT32:
       return CopyBuffer<ArrayDataType::kInt32>(buffer, array);
     case ::tflite::TensorType_INT64:
