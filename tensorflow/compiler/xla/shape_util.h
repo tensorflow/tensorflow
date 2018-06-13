@@ -62,6 +62,8 @@ class ShapeIndex {
  public:
   ShapeIndex() = default;
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
+  template <typename InputIt>
+  ShapeIndex(InputIt start, InputIt end) : indices_(start, end) {}
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
@@ -132,6 +134,7 @@ class ShapeIndexView {
     ++new_begin;
     return ShapeIndexView(new_begin, end_);
   }
+  ShapeIndex ToShapeIndex() const { return ShapeIndex(begin_, end_); }
 
   bool operator==(const ShapeIndexView& other) const;
   bool operator!=(const ShapeIndexView& other) const;
@@ -509,26 +512,6 @@ class ShapeUtil {
       std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
   static Status ForEachMutableSubshapeWithStatus(
       Shape* shape, const MutatingStatusVisitorFunction& func);
-
-  // Removes all degenerate dimensions (size one) from the given shape. The
-  // stripped minor_to_major preserves the relative ordering of non-degenerate
-  // dimensions. The stripped shape has the property that the underlying
-  // representation (bits in memory) for the stripped shape is the same as the
-  // original shape modulo padding. Examples:
-  //
-  // input shape:    F32 [1, 2, 1], minor_to_major = {0, 1, 2}
-  // stripped shape: F32 [2], minor_to_major = {0}
-  //
-  // input shape:    F32 [6, 1, 5], minor_to_major = {2, 0, 1}
-  // stripped shape: F32 [6, 5], minor_to_major = {1, 0}
-  //
-  // input shape:    F32 [1, 7, 1, 6, 5, 1], minor_to_major = {0, 2, 5, 4, 3, 1}
-  // stripped shape: F32 [7, 6, 5], minor_to_major = {0, 2, 1}
-  //
-  // input shape:    F32 [1, 1], minor_to_major = {0, 1}
-  // stripped shape: F32 [], minor_to_major = {}
-  // Precondition: !ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)
-  static Shape StripDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[permutation[i]] = argument.dimensions[i]

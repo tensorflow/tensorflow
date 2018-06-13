@@ -42,7 +42,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -61,7 +61,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -74,6 +74,6 @@ cc_library(
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )

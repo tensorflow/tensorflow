@@ -174,4 +174,13 @@ message TocoFlags {
   // Computation is still done in float, but reduces model size (at the cost of
   // accuracy and latency).
   optional bool quantize_weights = 20 [default = false];
+
+  // Full filepath of folder to dump the graphs at various stages of processing
+  // GraphViz .dot files. Preferred over --output_format=GRAPHVIZ_DOT in order
+  // to keep the requirements of the output file.
+  optional string dump_graphviz_dir = 24;
+
+  // Boolean indicating whether to dump the graph after every graph
+  // transformation.
+  optional bool dump_graphviz_include_video = 25;
 }

@@ -71,6 +71,20 @@ bool IsRematerializable(const HloInstruction* instruction) {
   }
 }
 
+// Checks whether an instruction can be rematerialized, by looking up the
+// cache before, and eventually calling the IsRematerializable() API.
+bool CanBeRematerialized(
+    const HloInstruction* instruction,
+    tensorflow::gtl::FlatMap<const HloInstruction*, bool>* remat_able) {
+  auto it = remat_able->find(instruction);
+  if (it != remat_able->end()) {
+    return it->second;
+  }
+  bool rematerializable = IsRematerializable(instruction);
+  (*remat_able)[instruction] = rematerializable;
+  return rematerializable;
+}
+
 // Type holding a unique identifier for each Buffer object.
 using BufferId = int64;
 using BufferIdList = tensorflow::gtl::InlinedVector<BufferId, 3>;
@@ -843,9 +857,10 @@ int64 RematerializationCost(const HloInstruction* instruction,
 // candidate which reduce memory use at the program point of the current
 // instruction as indicated by memory_tracker. nullptr is returned if no
 // candidate can be found.
-Item* PickRematerializationCandidate(const MemoryUsageTracker& memory_tracker,
-                                     const InstructionList& instruction_list,
-                                     int64 memory_limit_bytes) {
+Item* PickRematerializationCandidate(
+    const MemoryUsageTracker& memory_tracker,
+    const InstructionList& instruction_list, int64 memory_limit_bytes,
+    tensorflow::gtl::FlatMap<const HloInstruction*, bool>* remat_able) {
   Item* best_item = nullptr;
   int64 best_cost = 0;
 
@@ -869,8 +884,7 @@ Item* PickRematerializationCandidate(const MemoryUsageTracker& memory_tracker,
               << " is excluded from rematerialization";
       continue;
     }
-
-    if (!IsRematerializable(candidate)) {
+    if (!CanBeRematerialized(candidate, remat_able)) {
       VLOG(5) << "candidate " << candidate->name()
               << " not viable: is not rematerializable";
       continue;
@@ -974,6 +988,9 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   // blacklist.
   tensorflow::gtl::FlatSet<const HloInstruction*> remat_move_instructions;
 
+  // The map from instructions to their rematerializable status.
+  tensorflow::gtl::FlatMap<const HloInstruction*, bool> remat_able;
+
   // The peak memory of the computation at any point in the instruction
   // sequence.
   int64 peak_memory = memory_tracker.memory_usage();
@@ -1011,7 +1028,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
               << ", limit is " << HumanReadableNumBytes(memory_limit_bytes);
 
       Item* best_item = PickRematerializationCandidate(
-          memory_tracker, instruction_list, memory_limit_bytes);
+          memory_tracker, instruction_list, memory_limit_bytes, &remat_able);
 
       if (best_item == nullptr) {
         VLOG(3) << "Unable to find rematerialization candidate at program "
@@ -1213,7 +1230,7 @@ StatusOr<bool> HloRematerialization::Run(
 
   XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
   // Create initial sequence of HLO instructions.
-  TF_ASSIGN_OR_RETURN(*sequence, CreateMemoryMinimizingSequence(
+  TF_ASSIGN_OR_RETURN(*sequence, ScheduleComputationsInModule(
                                      *module,
                                      [this](const BufferValue& buffer) {
                                        return size_function_(buffer.shape());

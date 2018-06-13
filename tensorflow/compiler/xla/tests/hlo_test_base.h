@@ -66,6 +66,15 @@ namespace xla {
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
 class HloTestBase : public ::testing::Test {
+ public:
+  // Creates a new HLO module for a test. The module created will have
+  // TestName() for its name; it will also automatically populate its debug
+  // options from command-line flags. If you want a fresh HloModule object and
+  // then add HloComputations to it, it's recommended to use this method in your
+  // tests.
+  static std::unique_ptr<HloModule> CreateNewModule(
+      const string& name = TestName());
+
  protected:
   // This uses the interpreter backend as the reference backend and
   // automatically finds another supported backend as the test backend. If the
@@ -79,14 +88,6 @@ class HloTestBase : public ::testing::Test {
   HloTestBase(se::Platform* test_platform, se::Platform* reference_platform);
 
   ~HloTestBase() override {}
-
-  // Creates a new HLO module for a test. The module created will have
-  // TestName() for its name; it will also automatically populate its debug
-  // options from command-line flags. If you want a fresh HloModule object and
-  // then add HloComputations to it, it's recommended to use this method in your
-  // tests.
-  static std::unique_ptr<HloModule> CreateNewModule(
-      const string& name = TestName());
 
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in

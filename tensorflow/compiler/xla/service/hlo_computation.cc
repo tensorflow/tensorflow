@@ -64,7 +64,7 @@ HloComputation::HloComputation(
     const string& name, int parameter_count,
     std::vector<std::unique_ptr<HloInstruction>>* instructions,
     HloInstruction* root_instruction, HloInstruction* fusion_instruction)
-    : name_(name),
+    : name_(NameUniquer::GetSanitizedName(name)),
       unique_id_(-1),
       root_instruction_(root_instruction),
       fusion_instruction_(fusion_instruction) {
@@ -315,6 +315,42 @@ void ComputeComputationPostOrder(
   }
 }
 
+std::list<HloInstruction*> ComputeInstructionPostOrder(
+    HloInstruction* root, tensorflow::gtl::FlatSet<HloInstruction*>* visited) {
+  std::list<HloInstruction*> post_order;
+  std::vector<std::pair<HloInstruction*, bool>> dfs_stack;
+  dfs_stack.emplace_back(root, false);
+  while (!dfs_stack.empty()) {
+    const auto current = dfs_stack.back();
+    if (current.second) {
+      dfs_stack.pop_back();
+      if (!visited->insert(current.first).second) {
+        continue;
+      }
+      post_order.push_back(current.first);
+    } else {
+      if (visited->count(current.first)) {
+        dfs_stack.pop_back();
+        continue;
+      }
+      dfs_stack.back().second = true;
+
+      // Add the operands to the stack in reverse order so the first operand is
+      // processed first. This will produce a more natural ordering and a nicer
+      // result for thigns like HLO stringification.
+      const auto& operands = current.first->operands();
+      for (int64 i = operands.size() - 1; i >= 0; --i) {
+        dfs_stack.emplace_back(operands[i], false);
+      }
+
+      for (HloInstruction* op : current.first->control_predecessors()) {
+        dfs_stack.emplace_back(op, false);
+      }
+    }
+  }
+  return post_order;
+}
+
 }  // namespace
 
 std::list<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
@@ -328,9 +364,9 @@ std::list<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
       // users).
       trace_instructions.push_back(instruction.get());
     } else if (instruction->users().empty()) {
-      post_order.splice(post_order.end(),
-                        InstructionPostOrderer::GetOrder(instruction.get(),
-                                                         &added_instructions));
+      post_order.splice(
+          post_order.end(),
+          ComputeInstructionPostOrder(instruction.get(), &added_instructions));
     }
   }
   post_order.splice(post_order.end(), trace_instructions);

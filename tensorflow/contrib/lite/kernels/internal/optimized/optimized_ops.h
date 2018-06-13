@@ -1082,10 +1082,10 @@ struct GemmlowpOutputPipeline {
       gemmlowp::OutputStageQuantizeDownInt32ToUint8ScaleByFixedPoint,
       gemmlowp::OutputStageClamp, gemmlowp::OutputStageSaturatingCastToUint8>
       Pipeline;
-  static Pipeline Make(const int32* bias_data, int output_rows,
-                       int32 output_offset, int32 output_multiplier,
-                       int output_shift, int32 output_activation_min,
-                       int32 output_activation_max) {
+  static Pipeline MakeExp(const int32* bias_data, int output_rows,
+                          int32 output_offset, int32 output_multiplier,
+                          int output_left_shift, int32 output_activation_min,
+                          int32 output_activation_max) {
     ColVectorMap bias_vector(bias_data, output_rows);
     gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
     bias_addition_stage.bias_vector = bias_vector;
@@ -1093,7 +1093,7 @@ struct GemmlowpOutputPipeline {
         quantize_down_stage;
     quantize_down_stage.result_offset_after_shift = output_offset;
     quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
-    quantize_down_stage.result_shift = output_shift;
+    quantize_down_stage.result_shift = -output_left_shift;
     gemmlowp::OutputStageClamp clamp_stage;
     clamp_stage.min = output_activation_min;
     clamp_stage.max = output_activation_max;
@@ -1146,8 +1146,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       input_data, filter_cols, batches, filter_cols);
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, batches, output_rows);
-  const auto& output_pipeline = GemmlowpOutputPipeline::Make(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -2084,8 +2084,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
       gemm_input_data, gemm_input_rows, gemm_input_cols);
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, output_cols);
-  const auto& output_pipeline = GemmlowpOutputPipeline::Make(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -2242,8 +2242,8 @@ void ConvAsGemm(const uint8* input_data, const Dims<4>& input_dims,
       input_data, filter_cols, output_cols, filter_cols);
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, output_cols, output_rows);
-  const auto& output_pipeline = GemmlowpOutputPipeline::Make(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -2387,8 +2387,9 @@ void L2Normalization(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
-                                          int* output_shift) {
+inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
+                                             int32* output_inv_sqrt,
+                                             int* output_shift) {
   *output_shift = 11;
   while (input >= (1 << 29)) {
     input /= 4;
@@ -2430,6 +2431,7 @@ inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
     *output_inv_sqrt <<= -*output_shift;
     *output_shift = 0;
   }
+  *output_shift *= kReverseShift;
 }
 
 inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
@@ -2448,13 +2450,13 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
     }
     int32 inv_l2norm_multiplier;
     int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplier(square_l2_norm, &inv_l2norm_multiplier,
-                                  &inv_l2norm_shift);
+    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, &inv_l2norm_multiplier,
+                                     &inv_l2norm_shift);
 
     for (int c = 0; c < depth; c++) {
       int32 diff = *input_data - input_zero_point;
       int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          128 * diff, inv_l2norm_multiplier, kReverseShift * inv_l2norm_shift);
+          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
       int32 unclamped_output_val = 128 + rescaled_diff;
       int32 output_val = std::min(255, std::max(0, unclamped_output_val));
       *output_data = static_cast<uint8>(output_val);
@@ -5722,6 +5724,46 @@ inline void ResizeBilinearGeneric(const float* input_data,
   }
 }
 
+template <typename T>
+inline void ResizeBilinearGenericSmallChannel(
+    const T* input_data, const Dims<4>& input_dims, T* output_data,
+    const Dims<4>& output_dims, int32 batches, int32 input_height,
+    int32 input_width, int32 depth, int32 output_height, int32 output_width,
+    float height_scale, float width_scale) {
+  memset(output_data, 0,
+         batches * output_height * output_width * depth * sizeof(T));
+
+  T* output_ptr = &output_data[0];
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < output_height; ++y) {
+      float input_y = y * height_scale;
+      int32 y0 = static_cast<int32>(std::floor(input_y));
+      int32 y1 = std::min(y0 + 1, input_height - 1);
+      for (int x = 0; x < output_width; ++x) {
+        float input_x = x * width_scale;
+        int32 x0 = static_cast<int32>(input_x);
+        int32 x1 = std::min(x0 + 1, input_width - 1);
+
+        int32 input_offset[4] = {
+            Offset(input_dims, 0, x0, y0, b), Offset(input_dims, 0, x1, y0, b),
+            Offset(input_dims, 0, x0, y1, b), Offset(input_dims, 0, x1, y1, b)};
+        float scale[4] = {(1 - (input_y - y0)) * (1 - (input_x - x0)),
+                          (1 - (input_y - y0)) * (input_x - x0),
+                          (input_y - y0) * (1 - (input_x - x0)),
+                          (input_y - y0) * (input_x - x0)};
+
+        for (int d = 0; d < depth; d++) {
+          const T* input_ptr = &input_data[d];
+          *output_ptr++ = static_cast<T>(input_ptr[input_offset[0]] * scale[0] +
+                                         input_ptr[input_offset[1]] * scale[1] +
+                                         input_ptr[input_offset[2]] * scale[2] +
+                                         input_ptr[input_offset[3]] * scale[3]);
+        }
+      }
+    }
+  }
+}
+
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
@@ -5762,10 +5804,54 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+// TODO(prabhumk): This is not a real quantized bilinear. It does not use int8
+// or int16 arithmetic.
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
+                           const Dims<4>& output_dims, bool align_corners) {
+  gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
+  int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  int32 input_height = ArraySize(input_dims, 2);
+  int32 input_width = ArraySize(input_dims, 1);
+  int32 depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 3), 1);
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 2), 1);
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 1), 1);
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 0), 2);
+  int32 output_height = output_size_data[Offset(output_size_dims, 0, 0, 0, 0)];
+  int32 output_width = output_size_data[Offset(output_size_dims, 1, 0, 0, 0)];
+
+  float height_scale =
+      (align_corners && output_height > 1)
+          ? (static_cast<float>(input_height - 1) / (output_height - 1))
+          : (static_cast<float>(input_height) / output_height);
+
+  float width_scale =
+      (align_corners && output_width > 1)
+          ? (static_cast<float>(input_width - 1) / (output_width - 1))
+          : (static_cast<float>(input_width) / output_width);
+
+  ResizeBilinearGenericSmallChannel<uint8>(
+      input_data, input_dims, output_data, output_dims, batches, input_height,
+      input_width, depth, output_height, output_width, height_scale,
+      width_scale);
+}
+
 // legacy, for compatibility with old checked-in code
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
+                           const Dims<4>& output_dims) {
+  ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
+                 output_data, output_dims, /*align_corners=*/false);
+}
+
+// legacy, for compatibility with old checked-in code
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
                            const Dims<4>& output_dims) {
   ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
                  output_data, output_dims, /*align_corners=*/false);
@@ -6289,8 +6375,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   // To optimize, start by using the conv code with transposed weights for the
   // case of stride_height = stride_width = 1.
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 3);
-  const int output_depth = MatchingArraySize(filter_dims, 0, output_dims, 0);
+  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
+  const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
   const int input_height = ArraySize(input_dims, 2);
   const int input_width = ArraySize(input_dims, 1);
   const int filter_height = ArraySize(filter_dims, 2);
@@ -6337,8 +6423,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                   float input_value = input_data[Offset(input_dims, in_channel,
                                                         in_x, in_y, batch)];
                   float filter_value =
-                      filter_data[Offset(filter_dims, out_channel, filter_x,
-                                         filter_y, in_channel)];
+                      filter_data[Offset(filter_dims, in_channel, filter_x,
+                                         filter_y, out_channel)];
                   output_data[Offset(output_dims, out_channel, out_x, out_y,
                                      batch)] += input_value * filter_value;
                 }

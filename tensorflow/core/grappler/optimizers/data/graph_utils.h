@@ -74,6 +74,10 @@ int FindNodeWithName(const string& name, const GraphDef& graph);
 // exists.
 int FindNodeWithOp(const string& op, const GraphDef& graph);
 
+// Sets the node name using the op name as a prefix while guaranteeing the name
+// is unique across the graph.
+void SetUniqueName(const string& op, GraphDef* graph, NodeDef* node);
+
 }  // end namespace graph_utils
 }  // end namespace grappler
 }  // end namespace tensorflow

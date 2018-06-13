@@ -121,6 +121,10 @@ class RuntimeShape {
     }
   }
 
+  inline void BuildFrom(const std::initializer_list<int> init_list) {
+    BuildFrom<const std::initializer_list<int>>(init_list);
+  }
+
   // Returns the total count of elements, that is the size when flattened into a
   // vector.
   inline int FlatSize() const {
@@ -141,6 +145,22 @@ class RuntimeShape {
     int32* dims_pointer_;
   };
 };
+
+// Converts inference-style shape to legacy tflite::Dims<4>.
+inline tflite::Dims<4> ToRuntimeDims(const tflite::RuntimeShape& array_shape) {
+  tflite::Dims<4> result;
+  const int dimensions_count = array_shape.DimensionsCount();
+  TFLITE_CHECK_LE(dimensions_count, 4);
+  int cum_prod = 1;
+  for (int i = 0; i < 4; i++) {
+    const int new_dim =
+        (i < dimensions_count) ? array_shape.Dims(dimensions_count - 1 - i) : 1;
+    result.sizes[i] = new_dim;
+    result.strides[i] = cum_prod;
+    cum_prod *= new_dim;
+  }
+  return result;
+}
 
 // Gets next index to iterate through a multidimensional array.
 inline bool NextIndex(const int num_dims, const int* dims, int* current) {

@@ -20,13 +20,16 @@ py_library(
     srcs = ["python/cond_v2.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
+        "//tensorflow/python:function_def_to_graph",
         "//tensorflow/python:functional_ops_gen",
         "//tensorflow/python:gradients",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -42,7 +45,9 @@ tf_py_test(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:training",
     ],
     grpc_enabled = True,
 )

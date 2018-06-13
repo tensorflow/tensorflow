@@ -27,6 +27,7 @@ from tensorflow.contrib.opt.python.training.lazy_adam_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
 from tensorflow.contrib.opt.python.training.multitask_optimizer_wrapper import *
 from tensorflow.contrib.opt.python.training.nadam_optimizer import *
+from tensorflow.contrib.opt.python.training.weight_decay_optimizers import *
 from tensorflow.contrib.opt.python.training.powersign import *
 from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *
 from tensorflow.contrib.opt.python.training.elastic_average_optimizer import *
@@ -46,6 +47,10 @@ _allowed_symbols = [
     'LazyAdamOptimizer',
     'NadamOptimizer',
     'MovingAverageOptimizer',
+    'MomentumWOptimizer',
+    'AdamWOptimizer',
+    'DecoupledWeightDecayExtension',
+    'extend_with_decoupled_weight_decay',
     'ScipyOptimizerInterface',
     'VariableClippingOptimizer',
     'MultitaskOptimizerWrapper',

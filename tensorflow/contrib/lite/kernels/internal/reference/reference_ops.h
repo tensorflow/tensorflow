@@ -968,8 +968,9 @@ void L2Normalization(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
-                                          int* output_shift) {
+inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
+                                             int32* output_inv_sqrt,
+                                             int* output_shift) {
   *output_shift = 11;
   while (input >= (1 << 29)) {
     input /= 4;
@@ -1011,6 +1012,7 @@ inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
     *output_inv_sqrt <<= -*output_shift;
     *output_shift = 0;
   }
+  *output_shift *= kReverseShift;
 }
 
 inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
@@ -1027,14 +1029,14 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
     }
     int32 inv_l2norm_multiplier;
     int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplier(square_l2_norm, &inv_l2norm_multiplier,
-                                  &inv_l2norm_shift);
+    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, &inv_l2norm_multiplier,
+                                     &inv_l2norm_shift);
 
     for (int c = 0; c < depth; c++) {
       int32 diff =
           input_data[Offset(input_dims, c, i, 0, 0)] - input_zero_point;
       int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          128 * diff, inv_l2norm_multiplier, kReverseShift * inv_l2norm_shift);
+          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
       int32 unclamped_output_val = 128 + rescaled_diff;
       int32 output_val = std::min(255, std::max(0, unclamped_output_val));
       output_data[Offset(output_dims, c, i, 0, 0)] =
@@ -3202,9 +3204,10 @@ inline void Gather(const T* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
+template <typename T>
+inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
-                           const Dims<4>& output_size_dims, float* output_data,
+                           const Dims<4>& output_size_dims, T* output_data,
                            const Dims<4>& output_dims, bool align_corners) {
   int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   int32 input_height = ArraySize(input_dims, 2);
@@ -3236,15 +3239,15 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
         int32 x0 = static_cast<int32>(std::floor(input_x));
         int32 x1 = std::min(x0 + 1, input_width - 1);
         for (int c = 0; c < depth; ++c) {
-          float interpolation = input_data[Offset(input_dims, c, x0, y0, b)] *
-                                    (1 - (input_y - y0)) *
-                                    (1 - (input_x - x0)) +
-                                input_data[Offset(input_dims, c, x0, y1, b)] *
-                                    (input_y - y0) * (1 - (input_x - x0)) +
-                                input_data[Offset(input_dims, c, x1, y0, b)] *
-                                    (1 - (input_y - y0)) * (input_x - x0) +
-                                input_data[Offset(input_dims, c, x1, y1, b)] *
-                                    (input_y - y0) * (input_x - x0);
+          T interpolation =
+              static_cast<T>(input_data[Offset(input_dims, c, x0, y0, b)] *
+                                 (1 - (input_y - y0)) * (1 - (input_x - x0)) +
+                             input_data[Offset(input_dims, c, x0, y1, b)] *
+                                 (input_y - y0) * (1 - (input_x - x0)) +
+                             input_data[Offset(input_dims, c, x1, y0, b)] *
+                                 (1 - (input_y - y0)) * (input_x - x0) +
+                             input_data[Offset(input_dims, c, x1, y1, b)] *
+                                 (input_y - y0) * (input_x - x0));
           output_data[Offset(output_dims, c, x, y, b)] = interpolation;
         }
       }
@@ -3257,8 +3260,18 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
                            const Dims<4>& output_dims) {
-  ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
-                 output_data, output_dims, /*align_corners=*/false);
+  ResizeBilinear<float>(input_data, input_dims, output_size_data,
+                        output_size_dims, output_data, output_dims,
+                        /*align_corners=*/false);
+}
+
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
+                           const Dims<4>& output_dims) {
+  ResizeBilinear<uint8>(input_data, input_dims, output_size_data,
+                        output_size_dims, output_data, output_dims,
+                        /*align_corners=*/false);
 }
 
 template <typename T>
@@ -3810,8 +3823,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                           int pad_height, float* output_data,
                           const Dims<4>& output_dims) {
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 3);
-  const int output_depth = MatchingArraySize(filter_dims, 0, output_dims, 0);
+  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
+  const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
   const int input_height = ArraySize(input_dims, 2);
   const int input_width = ArraySize(input_dims, 1);
   const int filter_height = ArraySize(filter_dims, 2);
@@ -3851,8 +3864,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                   float input_value = input_data[Offset(input_dims, in_channel,
                                                         in_x, in_y, batch)];
                   float filter_value =
-                      filter_data[Offset(filter_dims, out_channel, filter_x,
-                                         filter_y, in_channel)];
+                      filter_data[Offset(filter_dims, in_channel, filter_x,
+                                         filter_y, out_channel)];
                   output_data[Offset(output_dims, out_channel, out_x, out_y,
                                      batch)] += input_value * filter_value;
                 }
@@ -3863,6 +3876,16 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+template <typename T>
+inline bool EqualFn(T lhs, T rhs) {
+  return lhs == rhs;
+}
+
+template <typename T>
+inline bool NotEqualFn(T lhs, T rhs) {
+  return lhs != rhs;
 }
 
 template <typename T>
@@ -4028,6 +4051,8 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
                                      input2_offset, input2_multiplier,        \
                                      input2_shift, output_data, output_dims); \
   }
+TFLITE_COMPARISON_OP(Equal);
+TFLITE_COMPARISON_OP(NotEqual);
 TFLITE_COMPARISON_OP(Greater);
 TFLITE_COMPARISON_OP(GreaterEqual);
 TFLITE_COMPARISON_OP(Less);

@@ -116,6 +116,11 @@ TEST_F(ShapeTreeTest, InitValueConstructor) {
   TestInitValueConstructor(nested_tuple_shape_, 10);
 }
 
+TEST_F(ShapeTreeTest, EmptyTupleMustHaveNoLeaves) {
+  ShapeTree<int> shape_tree{ShapeUtil::MakeTupleShape({})};
+  EXPECT_EQ(0, shape_tree.leaf_count());
+}
+
 TEST_F(ShapeTreeTest, ArrayShape) {
   ShapeTree<int> shape_tree{array_shape_};
   *shape_tree.mutable_element({}) = 42;

@@ -1373,23 +1373,6 @@ class Saver(object):
     name, _ = p
     return name
 
-  def _MetaGraphFilename(self, checkpoint_filename, meta_graph_suffix="meta"):
-    """Returns the meta graph filename.
-
-    Args:
-      checkpoint_filename: Name of the checkpoint file.
-      meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
-
-    Returns:
-      MetaGraph file name.
-    """
-    # If the checkpoint_filename is sharded, the checkpoint_filename could
-    # be of format model.ckpt-step#-?????-of-shard#. For example,
-    # model.ckpt-123456-?????-of-00005, or model.ckpt-123456-00001-of-00002.
-    basename = re.sub(r"-[\d\?]+-of-\d+$", "", checkpoint_filename)
-    meta_graph_filename = ".".join([basename, meta_graph_suffix])
-    return meta_graph_filename
-
   def _RecordLastCheckpoint(self, latest_save_path):
     """Manages the list of the latest checkpoints."""
     if not self.saver_def.max_to_keep:
@@ -1430,23 +1413,11 @@ class Saver(object):
 
       # Otherwise delete the files.
       try:
-        checkpoint_prefix = self._CheckpointFilename(p)
-        self._delete_file_if_exists(
-            self._MetaGraphFilename(checkpoint_prefix, meta_graph_suffix))
-        if self.saver_def.version == saver_pb2.SaverDef.V2:
-          # V2 has a metadata file and some data files.
-          self._delete_file_if_exists(checkpoint_prefix + ".index")
-          self._delete_file_if_exists(checkpoint_prefix +
-                                      ".data-?????-of-?????")
-        else:
-          # V1, Legacy.  Exact match on the data file.
-          self._delete_file_if_exists(checkpoint_prefix)
+        remove_checkpoint(
+            self._CheckpointFilename(p), self.saver_def.version,
+            meta_graph_suffix)
       except Exception as e:  # pylint: disable=broad-except
         logging.warning("Ignoring: %s", str(e))
-
-  def _delete_file_if_exists(self, filespec):
-    for pathname in file_io.get_matching_files(filespec):
-      file_io.delete_file(pathname)
 
   def as_saver_def(self):
     """Generates a `SaverDef` representation of this saver.
@@ -1669,7 +1640,7 @@ class Saver(object):
         raise exc
 
     if write_meta_graph:
-      meta_graph_filename = self._MetaGraphFilename(
+      meta_graph_filename = _meta_graph_filename(
           checkpoint_file, meta_graph_suffix=meta_graph_suffix)
       if not context.executing_eagerly():
         with sess.graph.as_default():
@@ -1970,7 +1941,7 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
 
     return Saver(saver_def=meta_graph_def.saver_def, name=scope)
   else:
-    if variables._all_saveable_objects():  # pylint: disable=protected-access
+    if variables._all_saveable_objects(scope=import_scope):  # pylint: disable=protected-access
       # Return the default saver instance for all graph variables.
       return Saver()
     else:
@@ -2119,6 +2090,55 @@ def get_checkpoint_mtimes(checkpoint_prefixes):
     match_maybe_append(checkpoint_prefix)
 
   return mtimes
+
+
+@tf_export("train.remove_checkpoint")
+def remove_checkpoint(checkpoint_prefix,
+                      checkpoint_format_version=saver_pb2.SaverDef.V2,
+                      meta_graph_suffix="meta"):
+  """Removes a checkpoint given by `checkpoint_prefix`.
+
+  Args:
+    checkpoint_prefix: The prefix of a V1 or V2 checkpoint. Typically the result
+      of `Saver.save()` or that of `tf.train.latest_checkpoint()`, regardless of
+      sharded/non-sharded or V1/V2.
+    checkpoint_format_version: `SaverDef.CheckpointFormatVersion`, defaults to
+      `SaverDef.V2`.
+    meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
+  """
+  _delete_file_if_exists(
+      _meta_graph_filename(checkpoint_prefix, meta_graph_suffix))
+  if checkpoint_format_version == saver_pb2.SaverDef.V2:
+    # V2 has a metadata file and some data files.
+    _delete_file_if_exists(checkpoint_prefix + ".index")
+    _delete_file_if_exists(checkpoint_prefix + ".data-?????-of-?????")
+  else:
+    # V1, Legacy.  Exact match on the data file.
+    _delete_file_if_exists(checkpoint_prefix)
+
+
+def _delete_file_if_exists(filespec):
+  """Deletes files matching `filespec`."""
+  for pathname in file_io.get_matching_files(filespec):
+    file_io.delete_file(pathname)
+
+
+def _meta_graph_filename(checkpoint_filename, meta_graph_suffix="meta"):
+  """Returns the meta graph filename.
+
+  Args:
+    checkpoint_filename: Name of the checkpoint file.
+    meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
+
+  Returns:
+    MetaGraph file name.
+  """
+  # If the checkpoint_filename is sharded, the checkpoint_filename could
+  # be of format model.ckpt-step#-?????-of-shard#. For example,
+  # model.ckpt-123456-?????-of-00005, or model.ckpt-123456-00001-of-00002.
+  basename = re.sub(r"-[\d\?]+-of-\d+$", "", checkpoint_filename)
+  meta_graph_filename = ".".join([basename, meta_graph_suffix])
+  return meta_graph_filename
 
 
 ops.register_proto_function(

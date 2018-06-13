@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/tensorflow_graph_matching/resolve_cluster.h"
 #include "tensorflow/contrib/lite/toco/tensorflow_util.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -62,8 +62,6 @@ using tensorflow::TensorProto;
 using tensorflow::TensorShapeProto;
 
 namespace toco {
-
-using port::Status;
 
 namespace {
 bool HasAttr(const NodeDef& node, const string& attr_name) {
@@ -130,6 +128,42 @@ const AttrValue::ListValue& GetListAttr(const NodeDef& node,
   return attr.list();
 }
 
+tensorflow::Status CheckOptionalAttr(const NodeDef& node,
+                                     const string& attr_name,
+                                     const string& expected_value) {
+  if (HasAttr(node, attr_name)) {
+    const string& value = GetStringAttr(node, attr_name);
+    if (value != expected_value) {
+      return tensorflow::errors::InvalidArgument(
+          "Unexpected value for attribute '" + attr_name + "'. Expected '" +
+          expected_value + "'");
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status CheckOptionalAttr(
+    const NodeDef& node, const string& attr_name,
+    const tensorflow::DataType& expected_value) {
+  if (HasAttr(node, attr_name)) {
+    const tensorflow::DataType& value = GetDataTypeAttr(node, attr_name);
+    if (value != expected_value) {
+      return tensorflow::errors::InvalidArgument(
+          "Unexpected value for attribute '" + attr_name + "'. Expected '" +
+          tensorflow::DataType_Name(expected_value) + "'");
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
+template <typename T1, typename T2>
+tensorflow::Status ExpectValue(const T1& v1, const T2& v2,
+                               const string& description) {
+  if (v1 == v2) return tensorflow::Status::OK();
+  return tensorflow::errors::InvalidArgument(absl::StrCat(
+      "Unexpected ", description, ": got ", v1, ", expected ", v2));
+}
+
 ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
   if (dtype == DT_UINT8)
     return ArrayDataType::kUint8;
@@ -148,9 +182,10 @@ ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
   return ArrayDataType::kNone;
 }
 
-Status ImportShape(const TFLITE_PROTO_NS::RepeatedPtrField<
-                       tensorflow::TensorShapeProto_Dim>& input_dims,
-                   int* input_flat_size, Shape* shape) {
+tensorflow::Status ImportShape(
+    const TFLITE_PROTO_NS::RepeatedPtrField<tensorflow::TensorShapeProto_Dim>&
+        input_dims,
+    int* input_flat_size, Shape* shape) {
   std::vector<int> input_dims_only_sizes;
   for (auto& d : input_dims) {
     if (d.size() == 0) {
@@ -160,23 +195,24 @@ Status ImportShape(const TFLITE_PROTO_NS::RepeatedPtrField<
       // For now, tweaking this to record a 0-D shape instead.
       shape->mutable_dims()->clear();
       if (input_flat_size != nullptr) *input_flat_size = 0;
-      return Status::OK();
+      return tensorflow::Status::OK();
     }
     // TensorFlow's shapes use int64s, while TOCO uses ints.
     if (d.size() > std::numeric_limits<int>::max()) {
-      return Status(false, "Shape element overflows");
+      return tensorflow::errors::InvalidArgument("Shape element overflows");
     }
 
     input_dims_only_sizes.push_back(d.size());
   }
   *shape->mutable_dims() = input_dims_only_sizes;
 
-  if (input_flat_size == nullptr) return Status::OK();
+  if (input_flat_size == nullptr) return tensorflow::Status::OK();
 
   return NumElements(input_dims_only_sizes, input_flat_size);
 }
 
-Status ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
+tensorflow::Status ImportFloatArray(const TensorProto& input_tensor,
+                                    Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_FLOAT);
   const auto& input_shape = input_tensor.tensor_shape();
   CHECK_LE(input_shape.dim_size(), 4);
@@ -203,18 +239,18 @@ Status ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_float_data.data()));
   } else {
-    return Status(
-        false,
+    return tensorflow::errors::InvalidArgument(
         absl::StrCat("Neither input_content (",
                      input_tensor.tensor_content().size() / sizeof(float),
                      ") nor float_val (", input_tensor.float_val_size(),
                      ") have the right dimensions (", input_flat_size,
                      ") for this float tensor"));
   }
-  return Status::OK();
+  return tensorflow::Status::OK();
 }
 
-Status ImportQuint8Array(const TensorProto& input_tensor, Array* output_array) {
+tensorflow::Status ImportQuint8Array(const TensorProto& input_tensor,
+                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_QUINT8);
   const auto& input_shape = input_tensor.tensor_shape();
   CHECK_LE(input_shape.dim_size(), 4);
@@ -236,18 +272,18 @@ Status ImportQuint8Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    return Status(
-        false,
+    return tensorflow::errors::InvalidArgument(
         absl::StrCat("Neither input_content (",
                      input_tensor.tensor_content().size() / sizeof(uint8_t),
                      ") nor int_val (", input_tensor.int_val_size(),
                      ") have the right dimensions (", input_flat_size,
                      ") for this uint8 tensor"));
   }
-  return Status::OK();
+  return tensorflow::Status::OK();
 }
 
-Status ImportInt32Array(const TensorProto& input_tensor, Array* output_array) {
+tensorflow::Status ImportInt32Array(const TensorProto& input_tensor,
+                                    Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT32);
   const auto& input_shape = input_tensor.tensor_shape();
   CHECK_LE(input_shape.dim_size(), 4);
@@ -269,18 +305,17 @@ Status ImportInt32Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    return Status(
-        false,
-        absl::StrCat("Neither input_content (",
-                     input_tensor.tensor_content().size() / sizeof(int32),
-                     ") nor int_val (", input_tensor.int_val_size(),
-                     ") have the right dimensions (", input_flat_size,
-                     ") for this int32 tensor"));
+    return tensorflow::errors::InvalidArgument(absl::StrCat(
+        "Neither input_content (",
+        input_tensor.tensor_content().size() / sizeof(int32), ") nor int_val (",
+        input_tensor.int_val_size(), ") have the right dimensions (",
+        input_flat_size, ") for this int32 tensor"));
   }
-  return Status::OK();
+  return tensorflow::Status::OK();
 }
 
-Status ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
+tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
+                                    Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT64);
   const auto& input_shape = input_tensor.tensor_shape();
   CHECK_LE(input_shape.dim_size(), 4);
@@ -302,18 +337,18 @@ Status ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    return Status(
-        false,
+    return tensorflow::errors::InvalidArgument(
         absl::StrCat("Neither input_content (",
                      input_tensor.tensor_content().size() / sizeof(int64),
                      ") nor int64_val (", input_tensor.int64_val_size(),
                      ") have the right dimensions (", input_flat_size,
                      ") for this int64 tensor"));
   }
-  return Status::OK();
+  return tensorflow::Status::OK();
 }
 
-Status ImportBoolArray(const TensorProto& input_tensor, Array* output_array) {
+tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,
+                                   Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_BOOL);
   const auto& input_shape = input_tensor.tensor_shape();
   CHECK_LE(input_shape.dim_size(), 4);
@@ -343,19 +378,19 @@ Status ImportBoolArray(const TensorProto& input_tensor, Array* output_array) {
     // So far only encountered that in an array with 1 entry, let's
     // require that until we encounter a graph where that's not the case.
     if (output_bool_data.size() != 1) {
-      return Status(
-          false, absl::StrCat("Neither input_content (",
-                              input_tensor.tensor_content().size(),
-                              ") nor bool_val (", input_tensor.bool_val_size(),
-                              ") have the right dimensions (", input_flat_size,
-                              ") for this bool tensor"));
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "Neither input_content (", input_tensor.tensor_content().size(),
+          ") nor bool_val (", input_tensor.bool_val_size(),
+          ") have the right dimensions (", input_flat_size,
+          ") for this bool tensor"));
     }
     output_bool_data[0] = false;
   }
-  return Status::OK();
+  return tensorflow::Status::OK();
 }
 
-Status ImportStringArray(const TensorProto& input_tensor, Array* output_array) {
+tensorflow::Status ImportStringArray(const TensorProto& input_tensor,
+                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_STRING);
   const auto& input_shape = input_tensor.tensor_shape();
   CHECK_LE(input_shape.dim_size(), 4);
@@ -365,9 +400,9 @@ Status ImportStringArray(const TensorProto& input_tensor, Array* output_array) {
   if (!status.ok()) return status;
 
   if (input_flat_size != input_tensor.string_val_size()) {
-    return Status(false,
-                  "Input_content string_val doesn't have the right dimensions "
-                  "for this string tensor");
+    return tensorflow::errors::InvalidArgument(
+        "Input_content string_val doesn't have the right dimensions "
+        "for this string tensor");
   }
 
   auto& output_string_data =
@@ -377,7 +412,7 @@ Status ImportStringArray(const TensorProto& input_tensor, Array* output_array) {
   for (int i = 0; i < input_flat_size; ++i) {
     output_string_data[i] = input_tensor.string_val(i);
   }
-  return Status::OK();
+  return tensorflow::Status::OK();
 }
 
 // Count the number of inputs of a given node. If
@@ -417,14 +452,14 @@ string CreateConstArray(Model* model, string const& name,
   return array_name;
 }
 
-Status ConvertConstOperator(const NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
+tensorflow::Status ConvertConstOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Const");
   const auto& tensor = GetTensorAttr(node, "value");
   const auto dtype = GetDataTypeAttr(node, "dtype");
 
-  Status status = Status::OK();
+  tensorflow::Status status = tensorflow::Status::OK();
 
   auto& array = model->GetOrCreateArray(node.name());
   switch (dtype) {
@@ -460,24 +495,21 @@ Status ConvertConstOperator(const NodeDef& node,
       array.GetMutableBuffer<ArrayDataType::kNone>();
       break;
   }
-  if (!status.ok()) {
-    status.AppendMessage(" (while processing node '" + node.name() + "')");
-  }
-  return status;
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      status, " (while processing node '" + node.name() + "')");
+  return tensorflow::Status::OK();
 }
 
-void ConvertConvOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
+tensorflow::Status ConvertConvOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Conv2D");
   CheckInputsCount(node, tf_import_flags, 2);
 
   // We only support NHWC, which is the default data_format.
   // So if data_format is not defined, we're all good.
-  if (HasAttr(node, "data_format")) {
-    CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
-  }
-  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  TF_RETURN_IF_ERROR(CheckOptionalAttr(node, "data_format", "NHWC"));
+  TF_RETURN_IF_ERROR(CheckOptionalAttr(node, "T", DT_FLOAT));
 
   const auto& input_name = node.input(0);
   const auto& weights_name = node.input(1);
@@ -502,27 +534,26 @@ void ConvertConvOperator(const NodeDef& node,
   auto* conv = new ConvOperator;
   conv->inputs = {input_name, reordered_weights_name};
   conv->outputs = {node.name()};
+  if (!HasAttr(node, "strides")) {
+    return tensorflow::errors::InvalidArgument("Missing attribute 'strides'");
+  }
   const auto& strides = GetListAttr(node, "strides");
-  CHECK_EQ(strides.i_size(), 4);
-  CHECK_EQ(strides.i(0), 1);
-  CHECK_EQ(strides.i(3), 1);
+  TF_RETURN_IF_ERROR(ExpectValue(strides.i_size(), 4, "number of strides"));
+  TF_RETURN_IF_ERROR(ExpectValue(strides.i(0), 1, "strides(0)"));
+  TF_RETURN_IF_ERROR(ExpectValue(strides.i(3), 1, "strides(3)"));
   conv->stride_height = strides.i(1);
   conv->stride_width = strides.i(2);
   if (HasAttr(node, "dilations")) {
     const auto& dilations = GetListAttr(node, "dilations");
-    CHECK_EQ(dilations.i_size(), 4);
-    CHECK_EQ(dilations.i(0), 1)
-        << "Can only import Conv ops with dilation along the height (1st) or "
-           "width (2nd) axis. TensorFlow op \""
-        << node.name() << "\" had dilations:[ " << dilations.i(0) << ", "
-        << dilations.i(1) << ", " << dilations.i(2) << ", " << dilations.i(3)
-        << "].";
-    CHECK_EQ(dilations.i(3), 1)
-        << "Can only import Conv ops with dilation along the height (1st) or "
-           "width (2nd) axis. TensorFlow op \""
-        << node.name() << "\" had dilations:[ " << dilations.i(0) << ", "
-        << dilations.i(1) << ", " << dilations.i(2) << ", " << dilations.i(3)
-        << "].";
+    TF_RETURN_IF_ERROR(
+        ExpectValue(dilations.i_size(), 4, "number of dilations"));
+    if (dilations.i(0) != 1 || dilations.i(3) != 1) {
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "Can only import Conv ops with dilation along the height "
+          "(1st) or width (2nd) axis. TensorFlow op \"",
+          node.name(), "\" had dilations:[ ", dilations.i(0), ", ",
+          dilations.i(1), ", ", dilations.i(2), ", ", dilations.i(3), "]."));
+    }
     conv->dilation_height_factor = dilations.i(1);
     conv->dilation_width_factor = dilations.i(2);
   } else {
@@ -535,9 +566,12 @@ void ConvertConvOperator(const NodeDef& node,
   } else if (padding == "VALID") {
     conv->padding.type = PaddingType::kValid;
   } else {
-    LOG(FATAL) << "Bad padding (only SAME and VALID are supported)";
+    return tensorflow::errors::InvalidArgument(
+        "Bad padding (only SAME and VALID are supported)");
   }
   model->operators.emplace_back(conv);
+
+  return tensorflow::Status::OK();
 }
 
 void ConvertDepthwiseConvOperator(const NodeDef& node,
@@ -1408,11 +1442,13 @@ void ConvertTransposeConvOperator(const NodeDef& node,
   if (existing_transpose) {
     CHECK(existing_transpose->type == OperatorType::kTranspose);
   } else {
-    // Transpose weights from HWIO order to OHWI order, which is more efficient
-    // for computation
+    // Transpose weights from HWOI order to OHWI order, which is more efficient
+    // for computation. (Note that TensorFlow considers the order as HWIO
+    // because they consider this a backward conv, inverting the sense of
+    // input/output.)
     TransposeOperator* transpose = new TransposeOperator;
     string perm_array = CreateConstArray<ArrayDataType::kInt32>(
-        model, node.name() + "_transpose_perm", {3, 0, 1, 2});
+        model, node.name() + "_transpose_perm", {2, 0, 1, 3});
     transpose->inputs = {weights_name, perm_array};
     transpose->outputs = {transposed_weights_name};
     model->operators.emplace_back(transpose);
@@ -1714,15 +1750,15 @@ void ConvertSparseToDenseOperator(const NodeDef& node,
 }  // namespace
 
 namespace internal {
-Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
+tensorflow::Status ImportTensorFlowNode(
+    const tensorflow::NodeDef& node,
+    const TensorFlowImportFlags& tf_import_flags, Model* model) {
   // TODO(ahentz): Historically these functions all CHECK-fail on error. We've
   // been slowly converting them to return Status.
   if (node.op() == "Const") {
     return ConvertConstOperator(node, tf_import_flags, model);
   } else if (node.op() == "Conv2D") {
-    ConvertConvOperator(node, tf_import_flags, model);
+    return ConvertConvOperator(node, tf_import_flags, model);
   } else if (node.op() == "Conv2DBackpropInput") {
     ConvertTransposeConvOperator(node, tf_import_flags, model);
   } else if (node.op() == "DepthwiseConv2dNative") {
@@ -1904,14 +1940,22 @@ Status ImportTensorFlowNode(const tensorflow::NodeDef& node,
     ConvertRandomUniform(node, tf_import_flags, model);
   } else if (node.op() == "Sin") {
     ConvertSimpleOperator<SinOperator, 1>(node, tf_import_flags, model);
+  } else if (node.op() == "Log") {
+    ConvertSimpleOperator<LogOperator, 1>(node, tf_import_flags, model);
   } else if (node.op() == "Select") {
     ConvertSimpleOperator<SelectOperator, 3>(node, tf_import_flags, model);
   } else if (node.op() == "SparseToDense") {
     ConvertSparseToDenseOperator(node, tf_import_flags, model);
+  } else if (node.op() == "Equal") {
+    ConvertSimpleOperator<TensorFlowEqualOperator, 2>(node, tf_import_flags,
+                                                      model);
+  } else if (node.op() == "NotEqual") {
+    ConvertSimpleOperator<TensorFlowNotEqualOperator, 2>(node, tf_import_flags,
+                                                         model);
   } else {
     ConvertUnsupportedOperator(node, tf_import_flags, model);
   }
-  return Status::OK();
+  return tensorflow::Status::OK();
 }
 }  // namespace internal
 

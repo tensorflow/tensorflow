@@ -316,6 +316,7 @@ void Export(
   auto op_codes = ExportOperatorCodes(model, ops_by_type, operators_map,
                                       &builder, &error_summary);
   const string fake_quant_operation_name = "FAKE_QUANT";
+
   if (error_summary.count(fake_quant_operation_name) != 0) {
     LOG(ERROR)
         << fake_quant_operation_name
@@ -327,6 +328,21 @@ void Export(
     error_summary.erase(fake_quant_operation_name);
   }
   if (!allow_custom_ops && !error_summary.empty()) {
+    // Remove ExpandDims and ReorderAxes from unimplemented list unless they
+    // compose the list. Both ops are removed during graph transformations.
+    // However, if an op is unimplemented earlier in the model, the graph
+    // transformation is unable to run because the output shape is not defined.
+    // This causes unnecessary confusion during model conversion time.
+    std::set<string> error_summary_final;
+    for (const auto& op_type : error_summary) {
+      if (op_type != "ReorderAxes" && op_type != "ExpandDims") {
+        error_summary_final.insert(op_type);
+      }
+    }
+    if (error_summary_final.empty()) {
+      error_summary_final = error_summary;
+    }
+
     LOG(QFATAL)
         << "Some of the operators in the model are not supported by "
            "the standard TensorFlow Lite runtime. If you have a custom "
@@ -334,7 +350,7 @@ void Export(
            "--allow_custom_ops, or by setting allow_custom_ops=True "
            "when calling tf.contrib.lite.toco_convert(). Here is a list "
            "of operators for which  you will need custom implementations: "
-        << absl::StrJoin(error_summary, ", ") << ".";
+        << absl::StrJoin(error_summary_final, ", ") << ".";
   }
 
   auto ops =

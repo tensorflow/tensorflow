@@ -44,6 +44,7 @@ from tensorflow.python.saved_model import main_op
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver_test_utils
+from tensorflow.python.training import training
 from tensorflow.python.util import compat
 
 SAVED_MODEL_PATH = ("cc/saved_model/testdata/half_plus_two/00000123")
@@ -1121,6 +1122,133 @@ class SavedModelTest(test.TestCase):
           name="v1", table_ref=ops.get_collection("table_ref")[0])
       self.assertEqual(b"k1", v1.keys().eval())
       self.assertEqual(3.0, v1.values().eval())
+
+  def testCustomSaver(self):
+    export_dir = self._get_export_dir("test_custom_saver")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      variables.Variable(1, name="v1")
+      sess.run(variables.global_variables_initializer())
+      custom_saver = training.Saver(name="my_saver")
+      builder.add_meta_graph_and_variables(sess, ["tag"], saver=custom_saver)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with ops.Graph().as_default() as graph:
+      with self.test_session(graph=graph) as sess:
+        saved_graph = loader.load(sess, ["tag"], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue("my_saver/restore_all" in graph_ops)
+        self.assertFalse("save/restore_all" in graph_ops)
+        self.assertEqual(
+            saved_graph.saver_def.restore_op_name, "my_saver/restore_all")
+
+  def testNoCustomSaver(self):
+    export_dir = self._get_export_dir("test_no_custom_saver")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      variables.Variable(1, name="v1")
+      sess.run(variables.global_variables_initializer())
+      training.Saver(name="my_saver")
+      builder.add_meta_graph_and_variables(sess, ["tag"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with ops.Graph().as_default() as graph:
+      with self.test_session(graph=graph) as sess:
+        saved_graph = loader.load(sess, ["tag"], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue("my_saver/restore_all" in graph_ops)
+        self.assertTrue("save/restore_all" in graph_ops)
+        self.assertEqual(
+            saved_graph.saver_def.restore_op_name, "save/restore_all")
+
+  def testMultipleCustomSavers(self):
+    export_dir = self._get_export_dir("test_multiple_custom_savers")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      variables.Variable(1, name="v1")
+      sess.run(variables.global_variables_initializer())
+      builder.add_meta_graph_and_variables(sess, ["tag_0"])
+
+      saver_1 = training.Saver()
+      builder.add_meta_graph(["tag_1"], saver=saver_1)
+
+      saver_2 = training.Saver()
+      builder.add_meta_graph(["tag_2"], saver=saver_2)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    def _validate_custom_saver(tag_name, saver_name):
+      with ops.Graph().as_default() as graph:
+        with self.test_session(graph=graph) as sess:
+          saved_graph = loader.load(sess, [tag_name], export_dir)
+          self.assertEqual(
+              saved_graph.saver_def.restore_op_name,
+              saver_name)
+
+    _validate_custom_saver("tag_0", "save/restore_all")
+    _validate_custom_saver("tag_1", "save_1/restore_all")
+    _validate_custom_saver("tag_2", "save_2/restore_all")
+
+  def testImportScope(self):
+    export_dir = self._get_export_dir("test_scoped_assets")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Build a SavedModel with a variable, an asset, and a constant tensor.
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+      asset_collection = self._build_asset_collection("foo.txt", "content_foo",
+                                                      "asset_file_tensor")
+      constant_op.constant("constant value", name="constant_tensor_name")
+      builder.add_meta_graph_and_variables(
+          sess, ["tag_name"], assets_collection=asset_collection)
+
+      # Save the asset file path for later comparison.
+      asset_file_path = asset_collection[0].eval()
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      # Restore the SavedModel under an import_scope in a new graph/session.
+      graph_proto = loader.load(
+          sess, ["tag_name"], export_dir, import_scope="scope_name")
+
+      # The loaded variable tensor should be scoped, but its contents should be
+      # unchanged.
+      self.assertEqual(
+          "scope_name/v:0",
+          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].name)
+      self.assertEqual(
+          42,
+          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
+
+      # The loaded asset tensor should be scoped, but the asset file path and
+      # contents should be unchanged.
+      asset_collection = ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
+      self.assertEqual(1, len(asset_collection))
+      self.assertEqual(asset_file_path, asset_collection[0].eval())
+      self.assertEqual("scope_name/asset_file_tensor:0",
+                       asset_collection[0].name)
+      # The static asset data inside graph_proto.collection_def should not be
+      # scoped.
+      self._validate_asset_collection(export_dir, graph_proto.collection_def,
+                                      "foo.txt", "content_foo",
+                                      "asset_file_tensor:0")
+
+      # The constant tensor should be scoped, but its contents should be
+      # unchanged.
+      self.assertEqual(
+          compat.as_bytes("constant value"),
+          ops.get_default_graph().get_tensor_by_name(
+              "scope_name/constant_tensor_name:0").eval())
 
   def testClearDevices(self):
     export_dir = self._get_export_dir("test_clear_devices")
