@@ -2973,30 +2973,29 @@ def rnn(step_function,
 
   Arguments:
       step_function: RNN step function.
-          Parameters;
-              input; tensor with shape `(samples, ...)` (no time dimension),
+          Args;
+              input; Tensor with shape `(samples, ...)` (no time dimension),
                   representing input for the batch of samples at a certain
                   time step.
-              states; list of tensors.
+              states; List of tensors.
           Returns;
-              output; tensor with shape `(samples, output_dim)`
+              output; Tensor with shape `(samples, output_dim)`
                   (no time dimension).
-              new_states; list of tensors, same length and shapes
+              new_states; List of tensors, same length and shapes
                   as 'states'. The first state in the list must be the
                   output tensor at the previous timestep.
-      inputs: tensor of temporal data of shape `(samples, time, ...)`
+      inputs: Tensor of temporal data of shape `(samples, time, ...)`
           (at least 3D).
-      initial_states: tensor with shape (samples, output_dim)
+      initial_states: Tensor with shape `(samples, output_dim)`
           (no time dimension),
           containing the initial values for the states used in
           the step function.
-      go_backwards: boolean. If True, do the iteration over the time
+      go_backwards: Boolean. If True, do the iteration over the time
           dimension in reverse order and return the reversed sequence.
-      mask: binary tensor with shape `(samples, time, 1)`,
+      mask: Binary tensor with shape `(samples, time, 1)`,
           with a zero for every element that is masked.
-      constants: a list of constant values passed at each step.
-      unroll: whether to unroll the RNN or to use a symbolic loop
-          (`while_loop` or `scan` depending on backend).
+      constants: List of constant values passed at each step.
+      unroll: Whether to unroll the RNN or to use a symbolic `while_loop`.
       input_length: If specified, assume time dimension is of this length.
 
   Returns:
@@ -3637,12 +3636,12 @@ def _preprocess_conv1d_input(x, data_format):
   Returns:
       A tensor.
   """
-  tf_data_format = 'NHWC'  # to pass TF Conv2dNative operations
+  tf_data_format = 'NWC'  # to pass TF Conv2dNative operations
   if data_format == 'channels_first':
     if not _has_nchw_support():
       x = array_ops.transpose(x, (0, 2, 1))  # NCW -> NWC
     else:
-      tf_data_format = 'NCHW'
+      tf_data_format = 'NCW'
   return x, tf_data_format
 
 
@@ -3741,10 +3740,8 @@ def conv1d(x,
     x = temporal_padding(x, (left_pad, 0))
     padding = 'valid'
   padding = _preprocess_padding(padding)
-  if data_format == 'channels_last':
-    tf_data_format = 'NWC'
-  else:
-    tf_data_format = 'NCW'
+
+  x, tf_data_format = _preprocess_conv1d_input(x, data_format)
   x = nn.convolution(
       input=x,
       filter=kernel,
@@ -3752,6 +3749,8 @@ def conv1d(x,
       strides=(strides,),
       padding=padding,
       data_format=tf_data_format)
+  if data_format == 'channels_first' and tf_data_format == 'NWC':
+    x = array_ops.transpose(x, (0, 2, 1))  # NWC -> NCW
   return x
 
 
@@ -3892,11 +3891,16 @@ def separable_conv1d(x,
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
 
+  if isinstance(strides, int):
+    strides = (strides,)
+  if isinstance(dilation_rate, int):
+    dilation_rate = (dilation_rate,)
+
   x, tf_data_format = _preprocess_conv1d_input(x, data_format)
   padding = _preprocess_padding(padding)
   if not isinstance(strides, tuple):
     strides = tuple(strides)
-  if tf_data_format == 'NHWC':
+  if tf_data_format == 'NWC':
     spatial_start_dim = 1
     strides = (1,) + strides * 2 + (1,)
   else:
@@ -3918,7 +3922,7 @@ def separable_conv1d(x,
 
   x = array_ops.squeeze(x, [spatial_start_dim])
 
-  if data_format == 'channels_first' and tf_data_format == 'NHWC':
+  if data_format == 'channels_first' and tf_data_format == 'NWC':
     x = array_ops.transpose(x, (0, 2, 1))  # NWC -> NCW
 
   return x
@@ -4717,8 +4721,13 @@ def foldr(fn, elems, initializer=None, name=None):
 
 
 # Load Keras default configuration from config file if present.
-_keras_base_dir = os.path.expanduser('~')
-_keras_dir = os.path.join(_keras_base_dir, '.keras')
+# Set Keras base dir path given KERAS_HOME env variable, if applicable.
+# Otherwise either ~/.keras or /tmp.
+if 'KERAS_HOME' in os.environ:
+  _keras_dir = os.environ.get('KERAS_HOME')
+else:
+  _keras_base_dir = os.path.expanduser('~')
+  _keras_dir = os.path.join(_keras_base_dir, '.keras')
 _config_path = os.path.expanduser(os.path.join(_keras_dir, 'keras.json'))
 if os.path.exists(_config_path):
   try:

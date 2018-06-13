@@ -16,6 +16,13 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 py_library(
     name = "bijectors_py",
     srcs = glob(["python/ops/bijectors/*.py"]),
+    deprecation = ("TensorFlow Distributions has migrated to " +
+                   "TensorFlow Probability " +
+                   "(https://github.com/tensorflow/probability). " +
+                   "Deprecated copies remaining in tf.contrib.distributions " +
+                   "are unmaintained, unsupported, and will be removed by " +
+                   "late 2018. You should update all usage of " +
+                   "`tf.contrib.distributions` to `tfp.distributions`."),
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/linalg:linalg_py",
@@ -42,6 +49,13 @@ py_library(
 py_library(
     name = "distributions_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
+    deprecation = ("TensorFlow Distributions has migrated to " +
+                   "TensorFlow Probability " +
+                   "(https://github.com/tensorflow/probability). " +
+                   "Deprecated copies remaining in tf.contrib.distributions " +
+                   "are unmaintained, unsupported, and will be removed by " +
+                   "late 2018. You should update all usage of " +
+                   "`tf.contrib.distributions` to `tfp.distributions`."),
     srcs_version = "PY2AND3",
     deps = [
         ":bijectors_py",

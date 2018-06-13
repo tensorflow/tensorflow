@@ -502,10 +502,7 @@ class GroupByReducerDataset(dataset_ops.Dataset):
         init_func=self._init_func,
         reduce_func=self._reduce_func,
         finalize_func=self._finalize_func,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
 
 class GroupByWindowDataset(dataset_ops.Dataset):
@@ -616,10 +613,7 @@ class GroupByWindowDataset(dataset_ops.Dataset):
         key_func=self._key_func,
         reduce_func=self._reduce_func,
         window_size_func=self._window_size_func,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
 
 class Reducer(object):

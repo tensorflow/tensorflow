@@ -64,10 +64,7 @@ def get_single_element(dataset):
   nested_ret = nest.pack_sequence_as(
       dataset.output_types, gen_dataset_ops.dataset_to_single_element(
           dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          output_types=nest.flatten(sparse.as_dense_types(
-              dataset.output_types, dataset.output_classes)),
-          output_shapes=nest.flatten(sparse.as_dense_shapes(
-              dataset.output_shapes, dataset.output_classes))))
+          **dataset_ops.flat_structure(dataset)))
   return sparse.deserialize_sparse_tensors(
       nested_ret, dataset.output_types, dataset.output_shapes,
       dataset.output_classes)
