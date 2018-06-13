@@ -133,7 +133,7 @@ def is_dense_tensor_like(t):
     t: An object.
 
   Returns:
-    True iff `t` is an instance of one of the registered "tensor-like" types.
+    True if `t` is an instance of one of the registered "tensor-like" types.
   """
   return isinstance(t, _TENSOR_LIKE_TYPES)
 
@@ -3118,7 +3118,7 @@ class Graph(object):
 
   @property
   def building_function(self):
-    """Returns True iff this graph represents a function."""
+    """Returns True if this graph represents a function."""
     return self._building_function
 
   # Helper functions to create operations.
