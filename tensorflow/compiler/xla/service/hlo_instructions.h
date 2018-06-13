@@ -722,6 +722,67 @@ class HloReducePrecisionInstruction : public HloInstruction {
   int32 exponent_bits_ = 0;
   int32 mantissa_bits_ = 0;
 };
+
+class HloInfeedInstruction : public HloInstruction {
+ public:
+  explicit HloInfeedInstruction(const Shape& shape, const string& config);
+  // Returns the infeed configuration string. The infeed configuration includes
+  // any metadata needed for the backend compiler (e.g., infeed buffer address)
+  // and is target-dependent.
+  string infeed_config() const { return infeed_config_; }
+  void set_infeed_config(const string& config) { infeed_config_ = config; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // The string representation of the infeed configuration.
+  string infeed_config_;
+};
+
+class HloOutfeedInstruction : public HloInstruction {
+ public:
+  explicit HloOutfeedInstruction(const Shape& shape, HloInstruction* operand,
+                                 tensorflow::StringPiece outfeed_config);
+  // Returns the shape for the Outfeed instruction.
+  const Shape& outfeed_shape() const {
+    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape()));
+    return outfeed_shape_;
+  }
+  // Returns the config for the Outfeed instruction.
+  const string& outfeed_config() const { return outfeed_config_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // Shape of outfeed request.
+  Shape outfeed_shape_;
+  // Outfeed configuration information, only present for kOutfeed.
+  string outfeed_config_;
+};
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_

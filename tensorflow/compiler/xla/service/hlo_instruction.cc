@@ -243,6 +243,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           CreateReducePrecision(proto.shape(), operands(0),
                                 proto.exponent_bits(), proto.mantissa_bits());
       break;
+    case HloOpcode::kInfeed:
+      instruction = CreateInfeed(proto.shape(), proto.infeed_config());
+      break;
+    case HloOpcode::kOutfeed:
+      instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
+                                  proto.outfeed_config());
+      break;
     default: {
       instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -293,10 +300,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->padding_config_ =
         MakeUnique<PaddingConfig>(proto.padding_config());
   }
-  instruction->outfeed_config_ = proto.outfeed_config();
-  instruction->infeed_config_ = proto.infeed_config();
   instruction->custom_call_target_ = proto.custom_call_target();
-  instruction->outfeed_shape_ = proto.outfeed_shape();
 
   if (proto.has_sharding()) {
     TF_ASSIGN_OR_RETURN(const auto& sharding,
@@ -548,23 +552,13 @@ HloInstruction::CreateCrossReplicaSum(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
     const Shape& shape, const string& config) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kInfeed, shape));
-  instruction->set_infeed_config(config);
-  return instruction;
+  return MakeUnique<HloInfeedInstruction>(shape, config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
     const Shape& shape, HloInstruction* operand,
     tensorflow::StringPiece outfeed_config) {
-  std::unique_ptr<HloInstruction> instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()));
-  CHECK(ShapeUtil::Compatible(operand->shape(), shape))
-      << "Outfeed shape " << shape << " must be compatible with operand shape "
-      << operand->shape();
-  instruction->AppendOperand(operand);
-  instruction->outfeed_config_ = std::string(outfeed_config);
-  instruction->outfeed_shape_ = shape;
-  return instruction;
+  return MakeUnique<HloOutfeedInstruction>(shape, operand, outfeed_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
@@ -1040,6 +1034,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1178,14 +1174,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone =
           CreateWhile(shape, while_condition(), while_body(), new_operands[0]);
-      break;
-    case HloOpcode::kInfeed:
-      CHECK_EQ(new_operands.size(), 0);
-      clone = CreateInfeed(shape, infeed_config());
-      break;
-    case HloOpcode::kOutfeed:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateOutfeed(outfeed_shape_, new_operands[0], outfeed_config());
       break;
     case HloOpcode::kConditional:
       CHECK_EQ(new_operands.size(), 3);
@@ -1505,8 +1493,6 @@ bool HloInstruction::IdenticalSlowPath(
              eq_computations(false_computation(), other.false_computation());
 
     // These opcodes are not yet supported.
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
     case HloOpcode::kHostCompute:
       return false;
@@ -1535,6 +1521,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -1673,11 +1661,6 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
 const string& HloInstruction::custom_call_target() const {
   CHECK_EQ(opcode_, HloOpcode::kCustomCall);
   return custom_call_target_;
-}
-
-const string& HloInstruction::outfeed_config() const {
-  CHECK_EQ(opcode_, HloOpcode::kOutfeed);
-  return outfeed_config_;
 }
 
 HloComputation* HloInstruction::while_condition() const {
@@ -2036,13 +2019,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                                 }),
                            "}"));
   }
-  if (opcode() == HloOpcode::kInfeed && !infeed_config_.empty()) {
-    extra.push_back(StrCat("infeed_config=\"", CEscape(infeed_config_), "\""));
-  }
-  if (opcode() == HloOpcode::kOutfeed && !outfeed_config_.empty()) {
-    extra.push_back(
-        StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
-  }
   if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
     extra.push_back(StrCat("domain={kind=\"", operand_side_metadata_->Kind(),
                            "\", entry=", operand_side_metadata_->ToString(),
@@ -2125,10 +2101,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   if (padding_config_ != nullptr) {
     *proto.mutable_padding_config() = *padding_config_;
   }
-  proto.set_outfeed_config(outfeed_config_);
-  proto.set_infeed_config(infeed_config_);
   proto.set_custom_call_target(custom_call_target_);
-  *proto.mutable_outfeed_shape() = outfeed_shape_;
 
   if (has_sharding()) {
     *proto.mutable_sharding() = sharding().ToProto();
@@ -2627,12 +2600,6 @@ Status HloInstruction::AcceptOrdered(
   }
 
   return visitor->FinishVisit(this);
-}
-
-const Shape& HloInstruction::outfeed_shape() const {
-  DCHECK_EQ(opcode_, HloOpcode::kOutfeed);
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
-  return outfeed_shape_;
 }
 
 const Shape& HloInstruction::shape() const {
@@ -3167,5 +3134,21 @@ int32 HloInstruction::exponent_bits() const {
 
 int32 HloInstruction::mantissa_bits() const {
   return Cast<HloReducePrecisionInstruction>(this)->mantissa_bits();
+}
+
+string HloInstruction::infeed_config() const {
+  return Cast<HloInfeedInstruction>(this)->infeed_config();
+}
+
+void HloInstruction::set_infeed_config(const string& config) {
+  return Cast<HloInfeedInstruction>(this)->set_infeed_config(config);
+}
+
+const Shape& HloInstruction::outfeed_shape() const {
+  return Cast<HloOutfeedInstruction>(this)->outfeed_shape();
+}
+
+const string& HloInstruction::outfeed_config() const {
+  return Cast<HloOutfeedInstruction>(this)->outfeed_config();
 }
 }  // namespace xla

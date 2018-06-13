@@ -24,6 +24,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::tensorflow::str_util::CEscape;
 using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
@@ -1282,6 +1283,84 @@ HloReducePrecisionInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 1);
   return MakeUnique<HloReducePrecisionInstruction>(
       shape, new_operands[0], exponent_bits(), mantissa_bits());
+}
+
+HloInfeedInstruction::HloInfeedInstruction(const Shape& shape,
+                                           const string& config)
+    : HloInstruction(HloOpcode::kInfeed, shape), infeed_config_(config) {}
+
+HloInstructionProto HloInfeedInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_infeed_config(infeed_config_);
+  return proto;
+}
+
+std::vector<string> HloInfeedInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (infeed_config_.empty()) {
+    return {};
+  }
+  return {StrCat("infeed_config=\"", CEscape(infeed_config_), "\"")};
+}
+
+bool HloInfeedInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  // Not yet supported.
+  return false;
+}
+
+std::unique_ptr<HloInstruction> HloInfeedInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 0);
+  return MakeUnique<HloInfeedInstruction>(shape, infeed_config());
+}
+
+HloOutfeedInstruction::HloOutfeedInstruction(
+    const Shape& shape, HloInstruction* operand,
+    tensorflow::StringPiece outfeed_config)
+    : HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()),
+      outfeed_shape_(shape),
+      outfeed_config_(outfeed_config.begin(), outfeed_config.end()) {
+  CHECK(ShapeUtil::Compatible(operand->shape(), shape))
+      << "Outfeed shape " << shape << " must be compatible with operand shape "
+      << operand->shape();
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloOutfeedInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_outfeed_config(outfeed_config());
+  *proto.mutable_outfeed_shape() = outfeed_shape();
+  return proto;
+}
+
+std::vector<string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (outfeed_config_.empty()) {
+    return {};
+  }
+  return {StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\"")};
+}
+
+bool HloOutfeedInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  // Not yet supported.
+  return false;
+}
+
+std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return MakeUnique<HloOutfeedInstruction>(outfeed_shape(), new_operands[0],
+                                           outfeed_config());
 }
 
 }  // namespace xla

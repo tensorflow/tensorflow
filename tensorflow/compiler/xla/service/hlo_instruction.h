@@ -907,14 +907,6 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kCustomCall
   const string& custom_call_target() const;
 
-  // Returns the config for the Outfeed instruction.
-  // Precondition: opcode() == HloOpcode::kOutfeed
-  const string& outfeed_config() const;
-
-  // Returns the shape for the Outfeed instruction.
-  // Precondition: opcode() == HloOpcode::kOutfeed
-  const Shape& outfeed_shape() const;
-
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
   //
@@ -987,12 +979,6 @@ class HloInstruction {
   //
   // Precondition: opcode() == HloOpcode::kHostCompute
   string channel_name() const { return channel_name_; }
-
-  // Returns the infeed configuration string. The infeed configuration includes
-  // any metadata needed for the backend compiler (e.g., infeed buffer address)
-  // and is target-dependent.
-  string infeed_config() const { return infeed_config_; }
-  void set_infeed_config(const string& config) { infeed_config_ = config; }
 
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
@@ -1422,11 +1408,23 @@ class HloInstruction {
   // Delegates to HloGetTupleElementInstruction::tuple_index.
   int64 tuple_index() const;
 
-  // Returns the number of exponent bits for a reduce-precision node.
+  // // Delegates to HloReducePrecisionInstruction::exponent_bits.
   int32 exponent_bits() const;
 
-  // Returns the number of mantissa bits for a reduce-precision node.
+  // // Delegates to HloReducePrecisionInstruction::mantissa_bits.
   int32 mantissa_bits() const;
+
+  // Delegates to HloInfeedInstruction::infeed_config.
+  string infeed_config() const;
+
+  // Delegates to HloInfeedInstruction::set_infeed_config.
+  void set_infeed_config(const string& config);
+
+  // Returns the config for the Outfeed instruction.
+  const string& outfeed_config() const;
+
+  // Returns the shape for the Outfeed instruction.
+  const Shape& outfeed_shape() const;
   // Old methods kept for smooth subclassing transition END.
 
   // Returns the group ids of each replica for CrossReplicaSum op.
@@ -1555,9 +1553,6 @@ class HloInstruction {
   // The computation in which this instruction is contained.
   HloComputation* parent_ = nullptr;
 
-  // Shape of outfeed request.
-  Shape outfeed_shape_;
-
   // Result shape of this instruction.
   Shape shape_;
 
@@ -1616,17 +1611,11 @@ class HloInstruction {
     kFalseComputationIndex = 1,
   };
 
-  // Outfeed configuration information, only present for kOutfeed.
-  string outfeed_config_;
-
   // A trace instruction that consumes this instruction.
   //
   // Invariant: if trace_instruction_ != nullptr, trace_instruction has this as
   // an operand.
   HloInstruction* trace_instruction_ = nullptr;
-
-  // The string representation of the infeed configuration.
-  string infeed_config_;
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
