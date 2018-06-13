@@ -25,9 +25,11 @@ from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.lite.python import lite_constants
 from tensorflow.contrib.lite.python.interpreter import Interpreter
 from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -131,21 +133,31 @@ class FromSessionTest(test_util.TensorFlowTestCase):
         'Quantization input stats are not available for input tensors '
         '\'inputB\'.', str(error.exception))
 
-  def testBatchSizeInvalid(self):
-    in_tensor = array_ops.placeholder(
-        shape=[None, 16, 16, 3], dtype=dtypes.float32)
+  def testSizeNoneInvalid(self):
+    in_tensor = array_ops.placeholder(dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
 
     # Test invalid shape. None after 1st dimension.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    with self.assertRaises(ValueError) as error:
+      converter.convert()
+    self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
+                     str(error.exception))
+
+  def testBatchSizeInvalid(self):
     in_tensor = array_ops.placeholder(
         shape=[1, None, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Test invalid shape. None after 1st dimension.
     converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
     with self.assertRaises(ValueError) as error:
       converter.convert()
     self.assertEqual(
         'None is only supported in the 1st dimension. Tensor '
-        '\'Placeholder_1:0\' has invalid shape \'[1, None, 16, 3]\'.',
+        '\'Placeholder\' has invalid shape \'[1, None, 16, 3]\'.',
         str(error.exception))
 
   def testBatchSizeValid(self):
@@ -208,6 +220,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
+  # TODO(nupurgarg): Verify value of contents in GraphViz.
   def testGraphviz(self):
     in_tensor = array_ops.placeholder(
         shape=[1, 16, 16, 3], dtype=dtypes.float32)
@@ -219,6 +232,39 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     converter.output_format = lite_constants.GRAPHVIZ_DOT
     graphviz_output = converter.convert()
     self.assertTrue(graphviz_output)
+
+  # TODO(nupurgarg): Verify value of contents in GraphViz.
+  def testDumpGraphviz(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    graphviz_dir = self.get_temp_dir()
+    converter.dump_graphviz_dir = graphviz_dir
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure interpreter is able to allocate and check graphviz data.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    num_items_graphviz = len(os.listdir(graphviz_dir))
+    self.assertTrue(num_items_graphviz)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    graphviz_dir = self.get_temp_dir()
+    converter.dump_graphviz_dir = graphviz_dir
+    converter.dump_graphviz_video = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure graphviz folder has more data after using video flag.
+    num_items_graphviz_video = len(os.listdir(graphviz_dir))
+    self.assertTrue(num_items_graphviz_video > num_items_graphviz)
 
   def testInferenceInputType(self):
     in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3], dtype=dtypes.uint8)
@@ -281,8 +327,38 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertTrue(output_details[0]['quantization'][0] > 0)  # scale
 
+  def testQuantizeWeights(self):
+    np.random.seed(0)
+    # We need the tensor to have more than 1024 elements for quantize_weights
+    # to kick in. Thus, the [33, 33] shape.
+    in_tensor_1 = array_ops.placeholder(
+        shape=[33, 33], dtype=dtypes.float32, name='inputA')
+    in_tensor_2 = constant_op.constant(
+        np.random.uniform(low=-10., high=10., size=(33, 33)),
+        shape=[33, 33],
+        dtype=dtypes.float32,
+        name='inputB')
+    out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+    sess = session.Session()
 
-class FromFlatbufferFile(test_util.TensorFlowTestCase):
+    # Convert float model.
+    float_converter = lite.TocoConverter.from_session(sess, [in_tensor_1],
+                                                      [out_tensor])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert quantized weights model.
+    quantized_weights_converter = lite.TocoConverter.from_session(
+        sess, [in_tensor_1], [out_tensor])
+    quantized_weights_converter.quantize_weights = True
+    quantized_weights_tflite = quantized_weights_converter.convert()
+    self.assertTrue(quantized_weights_tflite)
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertTrue(len(quantized_weights_tflite) < len(float_tflite))
+
+
+class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
   def testFloat(self):
     in_tensor = array_ops.placeholder(
@@ -359,7 +435,7 @@ class FromFlatbufferFile(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError) as error:
       lite.TocoConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
                                            ['add'])
-    self.assertEqual('Please freeze the graph using freeze_graph.py',
+    self.assertEqual('Please freeze the graph using freeze_graph.py.',
                      str(error.exception))
 
   def testPbtxt(self):

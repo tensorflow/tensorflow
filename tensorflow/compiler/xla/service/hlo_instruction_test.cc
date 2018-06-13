@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -342,7 +342,7 @@ TEST_F(HloInstructionTest, TrivialMap) {
   // Builds a parameter and feeds it to the map.
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32a100x10, ""));
+      HloInstruction::CreateParameter(0, f32a100x10, "p"));
   auto map = builder.AddInstruction(
       HloInstruction::CreateMap(f32a100x10, {param0}, add_f32));
   module->AddEntryComputation(builder.Build());
@@ -381,7 +381,7 @@ TEST_F(HloInstructionTest, TrivialReduce) {
   // Builds a parameter and an initial value and feeds them to the reduce.
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32a100x10, ""));
+      HloInstruction::CreateParameter(0, f32a100x10, "p"));
   auto const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   builder.AddInstruction(
@@ -980,6 +980,23 @@ TEST_F(HloInstructionTest, FullyElementwise) {
   }
 }
 
+TEST_F(HloInstructionTest, MapIsElementwise) {
+  auto module = CreateNewModule();
+  const Shape r2f32 = ShapeUtil::MakeShapeWithLayout(F32, {10, 10}, {1, 0});
+  HloComputation::Builder builder(TestName());
+  HloComputation::Builder map_builder("id");
+  map_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  auto map_computation = module->AddEmbeddedComputation(map_builder.Build());
+  auto x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r2f32, "x"));
+  auto map = builder.AddInstruction(
+      HloInstruction::CreateMap(r2f32, {x}, map_computation));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(map->IsElementwise());
+}
+
 TEST_F(HloInstructionTest, PartiallyElementwise) {
   const Shape r1f32 = ShapeUtil::MakeShape(F32, {5});
   const Shape r2f32 = ShapeUtil::MakeShape(F32, {3, 5});
@@ -1533,7 +1550,7 @@ ENTRY entry (param: s32[]) -> s32[] {
   // Check that deep clones really deep clones every instruction and
   // computations, without leaving dangling pointers to the old module.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   std::unique_ptr<HloModule> clone = module->Clone();
   for (HloComputation* computation : clone->computations()) {
     EXPECT_EQ(computation->parent(), clone.get());

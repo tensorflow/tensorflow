@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -76,6 +77,11 @@ class KernelAndDevice {
   const DataTypeVector& output_dtypes() { return output_dtypes_; }
 
  private:
+  // TODO(apassos) Consider a shared cancellation manager. Note that this
+  // cancellation manager is not useful to actually cancel anything, and is
+  // provided here only for the few kernels which can't handle one being
+  // missing.
+  CancellationManager cm_;
   std::unique_ptr<OpKernel> kernel_;
   Device* device_;
   FunctionLibraryRuntime* flib_;

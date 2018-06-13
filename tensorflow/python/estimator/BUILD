@@ -12,6 +12,10 @@ py_library(
     name = "estimator_py",
     srcs = ["estimator_lib.py"],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":baseline",
         ":boosted_trees",
@@ -709,6 +713,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
@@ -970,7 +975,10 @@ py_test(
     size = "large",
     srcs = ["keras_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "no_windows",
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/core:protos_all_py",

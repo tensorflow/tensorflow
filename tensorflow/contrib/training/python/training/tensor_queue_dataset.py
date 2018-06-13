@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
@@ -45,14 +46,14 @@ class _PrependFromQueueAndPaddedBatchDataset(dataset_ops.Dataset):
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
-    # pylint: disable=protected-access
     if padded_shapes is None:
       self._padded_shapes = nest.map_structure(
-          dataset_ops._partial_shape_to_tensor, input_dataset.output_shapes)
+          convert.partial_shape_to_tensor, input_dataset.output_shapes)
     else:
       self._padded_shapes = nest.map_structure_up_to(
-          input_dataset.output_shapes, dataset_ops._partial_shape_to_tensor,
+          input_dataset.output_shapes, convert.partial_shape_to_tensor,
           padded_shapes)
+    # pylint: disable=protected-access
     padding_values = (
         padding_values if padding_values is not None else
         dataset_ops._default_padding(input_dataset))

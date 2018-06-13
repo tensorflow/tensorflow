@@ -135,6 +135,7 @@ Status GatherComputationsByAllocationType(
             worklist.push_back(std::make_pair(subcomputation,
                                               false));  // Not thread local.
             break;
+          case HloOpcode::kCrossReplicaSum:
           case HloOpcode::kMap:
           case HloOpcode::kReduce:
           case HloOpcode::kReduceWindow:

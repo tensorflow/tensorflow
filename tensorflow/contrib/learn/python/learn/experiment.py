@@ -505,7 +505,7 @@ class Experiment(object):
     eval_result = None
     last_warning_time = 0
     while (not predicate_fn or predicate_fn(
-        eval_result, checkpoint_path=previous_path if eval_result else None)):
+        eval_result, checkpoint_path=previous_path)):
       # Exit if we have already reached number of steps to train.
       if self._has_training_stopped(eval_result):
         logging.info("Exiting continuous eval, global_step=%s >= "

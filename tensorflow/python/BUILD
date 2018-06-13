@@ -1050,7 +1050,10 @@ py_test(
 
 tf_gen_op_wrapper_private_py(
     name = "functional_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/contrib/control_flow:__pkg__",
+    ],
 )
 
 py_library(
@@ -2527,6 +2530,7 @@ py_library(
         ":check_ops",
         ":confusion_matrix",
         ":control_flow_ops",
+        ":distribute",
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
@@ -3521,6 +3525,7 @@ tf_py_wrap_cc(
         "util/transform_graph.i",
         "util/util.i",
     ],
+    # add win_def_file
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
         "//conditions:default": None,

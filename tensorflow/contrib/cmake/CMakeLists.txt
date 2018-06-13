@@ -18,7 +18,16 @@ cmake_policy(SET CMP0022 NEW)
 
 # Options
 option(tensorflow_VERBOSE "Enable for verbose output" OFF)
+
+if(WIN32)
+# BoringSSL is disabled for windows as it currently doesn't build with
+# MSBuild. (Ninja is required.)
 option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" OFF)
+else()
+# BoringSSL is enabled for gRPC.
+option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" ON)
+endif()
+
 option(tensorflow_ENABLE_GRPC_SUPPORT "Enable gRPC support" ON)
 option(tensorflow_ENABLE_HDFS_SUPPORT "Enable HDFS support" OFF)
 option(tensorflow_ENABLE_JEMALLOC_SUPPORT "Enable jemalloc support" OFF)

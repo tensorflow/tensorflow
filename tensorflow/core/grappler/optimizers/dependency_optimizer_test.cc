@@ -774,7 +774,7 @@ TEST_F(DependencyOptimizerTest, GroupCrossDeviceControlDeps) {
     TF_CHECK_OK(s.ToGraphDef(&expected));
   }
 
-  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  DependencyOptimizer optimizer;
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
   CompareGraphs(expected, output);

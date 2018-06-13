@@ -1774,11 +1774,46 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
                     new_reduce_dimensions, function));
   }
 
+  // If the reduction results in the same number of elements, then the only
+  // possible side effect would be a reshape. Since the init_value is an
+  // identity of the reduction function, we can therefore replace the reduce
+  // with a simple reshape, ignoring the reduction function completely.
   if (ShapeUtil::ElementsIn(reduce->shape()) ==
       ShapeUtil::ElementsIn(arg->shape())) {
     return ReplaceWithNewInstruction(
         reduce, HloInstruction::CreateReshape(reduce->shape(), arg));
   }
+
+  // If a reduce feeds a reduce with the same computation and initial value,
+  // they can be combined into a single reduce.
+  if (arg->opcode() == HloOpcode::kReduce &&
+      init_value->Identical(*arg->operand(1)) &&
+      *function == *arg->to_apply()) {
+    // Create a new reduce with the combined reduction dimensions of both
+    // reduces.
+    std::vector<int64> arg_dims = arg->dimensions();
+    std::sort(arg_dims.begin(), arg_dims.end());
+    std::vector<int64> reduce_dims = reduce->dimensions();
+    std::sort(reduce_dims.begin(), reduce_dims.end());
+    // Transform reduce_dims to the same rank as the operand of the operand.
+    for (int64 arg_dim : arg_dims) {
+      for (int64& dim : reduce_dims) {
+        if (dim >= arg_dim) {
+          ++dim;
+        }
+      }
+    }
+    std::vector<int64> new_dimensions;
+    new_dimensions.reserve(arg->dimensions().size() +
+                           reduce->dimensions().size());
+    std::merge(arg_dims.begin(), arg_dims.end(), reduce_dims.begin(),
+               reduce_dims.end(), std::back_inserter(new_dimensions));
+    return ReplaceWithNewInstruction(
+        reduce,
+        HloInstruction::CreateReduce(reduce->shape(), arg->mutable_operand(0),
+                                     init_value, new_dimensions, function));
+  }
+
   // A reshape that collapses multiple dimensions into a dimension being
   // reduced can just reduce all of those dimensions instead of doing a
   // collapsing reshape before a reduction.
@@ -1842,7 +1877,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return ReplaceWithNewInstruction(
         reduce_window,
         HloInstruction::CreateMap(reduce_window->shape(),
-                                  {operand, reduce_window->mutable_operand(1)},
+                                  {reduce_window->mutable_operand(1), operand},
                                   function));
   }
 

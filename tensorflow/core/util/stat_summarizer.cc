@@ -78,6 +78,14 @@ void StatSummarizer::Validate(const std::vector<TensorDescription>* outputs,
   }
 }
 
+void StatSummarizer::PrintStepStats() const {
+  string output = GetOutputString();
+  std::istringstream iss(output);
+  for (std::string line; std::getline(iss, line);) {
+    LOG(INFO) << line;
+  }
+}
+
 namespace {
 std::string OpType(const DeviceStepStats& ds, const NodeExecStats& ns) {
   // There is no published specification of how DeviceStats and NodeStats

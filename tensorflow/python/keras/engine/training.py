@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -409,11 +410,13 @@ class Model(Network):
         else:
           if sample_weight_mode == 'temporal':
             sample_weights.append(array_ops.placeholder_with_default(
-                [[1.]], shape=[None, None], name=name + '_sample_weights'))
+                constant_op.constant([[1.]], dtype=K.floatx()),
+                shape=[None, None], name=name + '_sample_weights'))
             sample_weight_modes.append('temporal')
           else:
             sample_weights.append(array_ops.placeholder_with_default(
-                [1.], shape=[None], name=name + '_sample_weights'))
+                constant_op.constant([1.], dtype=K.floatx()),
+                shape=[None], name=name + '_sample_weights'))
             sample_weight_modes.append(None)
     self.sample_weight_modes = sample_weight_modes
     self._feed_sample_weight_modes = []
@@ -1008,14 +1011,16 @@ class Model(Network):
     # to keep track of number of inputs and outputs and their ndim.
     if isinstance(inputs, (list, tuple)):
       if tensor_util.is_tensor(inputs[0]):
-        dummy_output_values = self.call(inputs)
+        dummy_output_values = self.call(
+            training_utils.cast_if_floating_dtype(inputs))
       else:
         dummy_output_values = self.call(
             [ops.convert_to_tensor(v, dtype=K.floatx()) for v in inputs])
       dummy_input_values = list(inputs)
     else:
       if tensor_util.is_tensor(inputs):
-        dummy_output_values = self.call(inputs)
+        dummy_output_values = self.call(
+            training_utils.cast_if_floating_dtype(inputs))
       else:
         dummy_output_values = self.call(
             ops.convert_to_tensor(inputs, dtype=K.floatx()))
@@ -1616,7 +1621,10 @@ class Model(Network):
     # Validate and standardize user data.
     inputs, _, _ = self._standardize_user_data(x)
     if context.executing_eagerly():
-      if not isinstance(inputs, iterator_ops.EagerIterator):
+      if (isinstance(x, iterator_ops.EagerIterator) or
+          (isinstance(x, dataset_ops.Dataset) and context.executing_eagerly())):
+        inputs = training_utils.cast_if_floating_dtype(inputs)
+      else:
         inputs = [
             ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs
         ]

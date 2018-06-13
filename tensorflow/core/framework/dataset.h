@@ -459,6 +459,8 @@ class DatasetBase : public core::RefCounted {
 
   virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const = 0;
+
+  friend class DatasetToGraphOp;  // For access to graph related members.
 };
 
 // Base-class for datasets that are built by ops.
@@ -582,6 +584,23 @@ class DatasetOpKernel : public OpKernel {
       return errors::InvalidArgument(argument_name, " must be a scalar");
     }
     *output = argument_t->scalar<T>()();
+    return Status::OK();
+  }
+
+  template <typename T>
+  Status ParseVectorArgument(OpKernelContext* ctx,
+                             const StringPiece& argument_name,
+                             std::vector<T>* output) {
+    const Tensor* argument_t;
+    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+    if (!TensorShapeUtils::IsVector(argument_t->shape())) {
+      return errors::InvalidArgument(argument_name, " must be a vector");
+    }
+    int size = argument_t->vec<T>().size();
+    output->reserve(size);
+    for (int i = 0; i < size; ++i) {
+      output->push_back(argument_t->vec<T>()(i));
+    }
     return Status::OK();
   }
 };

@@ -474,8 +474,9 @@ cc_test(
 )
 
 cc_test(
-    name = "resize_bilinear_float_test",
-    srcs = ["resize_bilinear_float_test.cc"],
+    name = "resize_bilinear_test",
+    srcs = ["resize_bilinear_test.cc"],
+    tags = ["tflite_not_portable"],
     deps = [
         ":optimized_base",
         ":reference_base",

@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_EAGER_GRPC_EAGER_SERVICE_IMPL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_EAGER_GRPC_EAGER_SERVICE_IMPL_H_
 
-#include "grpc++/alarm.h"
-#include "grpc++/completion_queue.h"
-#include "grpc++/server_builder.h"
+#include "grpcpp/alarm.h"
+#include "grpcpp/completion_queue.h"
+#include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
