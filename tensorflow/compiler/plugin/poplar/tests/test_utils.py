@@ -62,6 +62,13 @@ def extract_all_types_from_event_trace(events):
     result += [evt.type]
   return result
 
+def extract_all_events(events):
+  result = []
+  for e in events:
+    evt = IpuTraceEvent.FromString(e)
+    result += [evt]
+  return result
+
 def extract_all_io_events(events):
   result = []
   for e in events:

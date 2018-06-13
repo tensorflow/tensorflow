@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
+#include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -270,12 +271,12 @@ class EntryVisitor : public FullVisitor {
   std::set<HloInstruction*> non_standard_parameter_layout;
 };
 
-static void DumpGraph(const HloComputation* comp) {
-  DebugOptions debug_opts;
-  debug_opts.set_xla_hlo_dump_as_graphdef(true);
-  debug_opts.set_xla_hlo_graph_path("/tmp");
-
-  hlo_graph_dumper::DumpGraph(*comp, "poplar", debug_opts, NULL, false);
+static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
+  std::string buffer;
+  hlo_graph_dumper::HloTfGraphBuilder builder;
+  TF_CHECK_OK(builder.AddComputation(comp));
+  builder.GetGraphDef().SerializeToString(&buffer);
+  return buffer;
 }
 
 StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
@@ -385,8 +386,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   HloComputation* entry = module->entry_computation();
 
-  if (getenv("TF_POPLAR_DUMP_HLO") != NULL) {
-    DumpGraph(entry);
+  if (poplarExecutor->CompilerReportingEnabled()) {
+    poplarExecutor->AddEventRecord(tensorflow::IpuTraceEvent::COMPILE_BEGIN,
+                                   module->name(),
+                                   SerializeComputationToGraphDef(*entry), 0);
   }
 
   // Set layout if there isn't one
@@ -428,24 +431,27 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     } catch (std::logic_error e) {
       return tensorflow::errors::Unknown(StrCat("[Poplar Engine] ", e.what()));
     }
+  }
 
-    if (poplarExecutor->CompilerReportingEnabled()) {
+  if (poplarExecutor->CompilerReportingEnabled()) {
+    std::stringstream stream;
+
+    if (engine != nullptr) {
       poplar::OptionFlags opts;
       opts.set("includeVarStorageReport", "true");
 
-      std::stringstream stream;
       auto rep = engine->getGraphReport(opts);
       if (poplarExecutor->CompilerReportingTextFormat()) {
         rep.printSummary(stream);
       } else {
         rep.serialize(stream, poplar::SerializationFormat::JSON);
       }
-
-      uint64 duration = tensorflow::Env::Default()->NowMicros() - start_micros;
-
-      poplarExecutor->AddEventRecord(tensorflow::IpuTraceEvent::COMPILE,
-                                     module->name(), stream.str(), duration);
     }
+
+    uint64 duration = tensorflow::Env::Default()->NowMicros() - start_micros;
+
+    poplarExecutor->AddEventRecord(tensorflow::IpuTraceEvent::COMPILE_END,
+                                   module->name(), stream.str(), duration);
   }
 
   std::unique_ptr<Executable> executable;

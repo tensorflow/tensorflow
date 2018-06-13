@@ -29,6 +29,8 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import training_util
 
+from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
+
 import test_utils as tu
 
 def model_fn(features, labels, mode):
@@ -103,14 +105,17 @@ class IpuEstimatorTest(test_util.TensorFlowTestCase):
 
     self.assertTrue(len(event_file) == 1)
 
-    compile_count = 0
+    compile_for_ipu_count = 0
     for summary in summary_iterator.summary_iterator(event_file[0]):
       for val in summary.summary.value:
         if val.tag == "compile_summary":
-          compile_count += len(val.tensor.string_val)
+          for evt_str in val.tensor.string_val:
+            evt = IpuTraceEvent.FromString(evt_str)
+            if evt.type == IpuTraceEvent.COMPILE_END and len(evt.data_str) > 0:
+              compile_for_ipu_count += 1
 
-    # COMPILE, EXECUTE
-    self.assertTrue(compile_count == 2)
+    # Initialization graph and main graph
+    self.assertEqual(compile_for_ipu_count, 2)
 
 
 if __name__ == "__main__":

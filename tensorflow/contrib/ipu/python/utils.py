@@ -79,8 +79,10 @@ def extract_all_strings_from_event_trace(events):
     result = result + ("-" * 70) + "\n=> @ " + \
              time.strftime('%F %T %z', time.localtime(evt.timestamp)) + ": "
 
-    if evt.type == IpuTraceEvent.COMPILE:
-      evt_str = "Compile: " + evt.module_name + "\n" + \
+    if evt.type == IpuTraceEvent.COMPILE_BEGIN:
+      evt_str = "Compile begin: " + evt.module_name + "\n"
+    elif evt.type == IpuTraceEvent.COMPILE_END:
+      evt_str = "Compile end: " + evt.module_name + "\n" + \
                 "Duration: " + str(evt.data_int) + " us\n" + evt.data_str
     elif evt.type == IpuTraceEvent.HOST_TO_DEVICE_TRANSFER:
       evt_str = "Host->Device\nHandle = " + evt.data_str + "\n"

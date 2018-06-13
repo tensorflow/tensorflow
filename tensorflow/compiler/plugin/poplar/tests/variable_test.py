@@ -18,6 +18,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import gradient_descent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
+from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
+
 import test_utils as tu
 
 class IpuXlaVariableTest(test_util.TensorFlowTestCase):
@@ -299,8 +301,10 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       # initialization graph
       io_evts = io_evts[2:]
 
-      host_to_device = filter(lambda x:x[0]==1, io_evts)
-      device_to_host = filter(lambda x:x[0]==2, io_evts)
+      host_to_device = filter(
+        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts)
+      device_to_host = filter(
+        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts)
 
       # Weights/biases should be downloaded once, and the input no times
       # because it is streamed
@@ -326,8 +330,10 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       rep = sess.run(report)
       io_evts = tu.extract_all_io_events(rep)
 
-      host_to_device = filter(lambda x:x[0]==1, io_evts)
-      device_to_host = filter(lambda x:x[0]==2, io_evts)
+      host_to_device = filter(
+        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts)
+      device_to_host = filter(
+        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts)
 
       # Weights/biases/inputs should not be downloaded at all
       self.assertEqual(len(filter(lambda x:x[1]==d_dl, host_to_device)), 0)

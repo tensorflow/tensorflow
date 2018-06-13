@@ -18,6 +18,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 class IpuIpuModelTest(test_util.TensorFlowTestCase):
@@ -88,7 +89,11 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
             result, rep = sess.run([output, report], fd)
             self.assertAllClose(result, [[1.,2.],[6.,8.]])
-            self.assertTrue(len(rep) == 2)
+            self.assertTrue(len(rep) == 3)
+            evts = tu.extract_all_events(rep)
+            self.assertEqual(evts[0].type, IpuTraceEvent.COMPILE_BEGIN)
+            self.assertEqual(evts[1].type, IpuTraceEvent.COMPILE_END)
+            self.assertEqual(evts[2].type, IpuTraceEvent.EXECUTE)
 
     def testIpuModelDeviceWithMultipleReport(self):
         with ops.device("/device:IPU:0"):
@@ -120,8 +125,8 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
             result, rep = sess.run([out2, report], fd)
             self.assertAllClose(result, [[1.,0.],[-2.,-2.]])
 
-            # 2x compile, 2x load engine
-            self.assertTrue(len(rep) == 4)
+            # 2x compile_begin, 2x compile_end, 2x load engine
+            self.assertTrue(len(rep) == 6)
 
     def testIpuModelDeviceMultipleIPUs(self):
         with ops.device("/device:IPU:0"):
@@ -150,7 +155,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
             result, rep = sess.run([output, report], fd)
             self.assertAllClose(result, np.zeros([480]))
-            self.assertTrue(len(rep) == 2)
+            self.assertTrue(len(rep) == 3)
 
             s = tu.extract_all_strings_from_event_trace(rep)
             l = s.split("\n")

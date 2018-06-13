@@ -50,7 +50,8 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         events = tu.extract_all_types_from_event_trace(rep)
 
         # Check that there is only one compile
-        self.assertEqual(count_event_type(events, IpuTraceEvent.COMPILE), 1)
+        self.assertEqual(count_event_type(events,
+                                          IpuTraceEvent.COMPILE_BEGIN), 1)
 
         # Check that there is only one execute
         self.assertEqual(count_event_type(events, IpuTraceEvent.EXECUTE), 1)

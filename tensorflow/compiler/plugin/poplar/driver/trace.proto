@@ -11,11 +11,12 @@ message IpuTraceEvent {
 
   // The type of event
   enum Type {
-    COMPILE = 0;
-    HOST_TO_DEVICE_TRANSFER = 1;
-    DEVICE_TO_HOST_TRANSFER = 2;
-    LOAD_ENGINE = 3;
-    EXECUTE = 4;
+    COMPILE_BEGIN = 0;
+    COMPILE_END = 1;
+    HOST_TO_DEVICE_TRANSFER = 2;
+    DEVICE_TO_HOST_TRANSFER = 3;
+    LOAD_ENGINE = 4;
+    EXECUTE = 5;
   };
   Type type = 3;
 
