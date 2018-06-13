@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -66,6 +67,9 @@ string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
   }
   return description;
 }
+
+bool AlwaysForwardsRefInput(const Node& node) { return node.IsIdentity(); }
+
 }  // namespace
 
 Status DeviceToDeviceType(const string& device, DeviceType* device_type) {
@@ -75,6 +79,24 @@ Status DeviceToDeviceType(const string& device, DeviceType* device_type) {
   }
   *device_type = DeviceType(parsed.type);
   return Status::OK();
+}
+
+bool HasForwardedRefInput(const Node& node) {
+  if (AlwaysForwardsRefInput(node)) {
+    for (const Edge* incoming_edge : node.in_edges()) {
+      if (incoming_edge->IsControlEdge()) {
+        continue;
+      }
+
+      Node* incoming_node = incoming_edge->src();
+      if (IsRefType(incoming_node->output_type(incoming_edge->src_output()))) {
+        VLOG(2) << "Node " << node.def().ShortDebugString() << " has ref input "
+                << incoming_node->name() << " " << incoming_node->type_string();
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {

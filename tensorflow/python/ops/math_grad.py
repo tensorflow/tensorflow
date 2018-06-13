@@ -620,6 +620,35 @@ def _DigammaGrad(op, grad):
     return grad * math_ops.polygamma(array_ops.constant(1, dtype=x.dtype), x)
 
 
+@ops.RegisterGradient("BesselI0e")
+def _BesselI0eGrad(op, grad):
+  """Compute gradient of bessel_i0e(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * (math_ops.bessel_i1e(x) - math_ops.sign(x) * y)
+
+
+@ops.RegisterGradient("BesselI1e")
+def _BesselI1eGrad(op, grad):
+  """Compute gradient of bessel_i1e(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    # For x = 0, the correct gradient is 0.5.
+    # However, the main branch gives NaN because of the division by x, so
+    # we impute the gradient manually.
+    # An alternative solution is to express the gradient via bessel_i0e and
+    # bessel_i2e, but the latter is not yet implemented in Eigen.
+    eps = np.finfo(x.dtype.as_numpy_dtype).eps
+    zeros = array_ops.zeros_like(x)
+    x_is_not_tiny = math_ops.abs(x) > eps
+    safe_x = array_ops.where(x_is_not_tiny, x, eps + zeros)
+    dy_dx = math_ops.bessel_i0e(safe_x) - y * (
+        math_ops.sign(safe_x) + math_ops.reciprocal(safe_x))
+    return grad * array_ops.where(x_is_not_tiny, dy_dx, 0.5 + zeros)
+
+
 @ops.RegisterGradient("Igamma")
 def _IgammaGrad(op, grad):
   """Returns gradient of igamma(a, x) with respect to x."""

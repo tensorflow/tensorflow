@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/grpc_verbs_service_impl.h"
 
-#include "grpc++/impl/codegen/async_stream.h"
-#include "grpc++/impl/codegen/async_unary_call.h"
-#include "grpc++/impl/codegen/channel_interface.h"
-#include "grpc++/impl/codegen/client_unary_call.h"
-#include "grpc++/impl/codegen/method_handler_impl.h"
-#include "grpc++/impl/codegen/rpc_service_method.h"
-#include "grpc++/impl/codegen/service_type.h"
-#include "grpc++/impl/codegen/sync_stream.h"
+#include "grpcpp/impl/codegen/async_stream.h"
+#include "grpcpp/impl/codegen/async_unary_call.h"
+#include "grpcpp/impl/codegen/channel_interface.h"
+#include "grpcpp/impl/codegen/client_unary_call.h"
+#include "grpcpp/impl/codegen/method_handler_impl.h"
+#include "grpcpp/impl/codegen/rpc_service_method.h"
+#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/impl/codegen/sync_stream.h"
 
 namespace tensorflow {
 

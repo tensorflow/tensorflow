@@ -40,6 +40,37 @@ Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal) {
   return Status::OK();
 }
 
+Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
+                                    xla::BorrowingLiteral* literal) {
+  xla::Shape xla_shape;
+  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor.dtype(),
+                                           host_tensor.shape(), &xla_shape));
+  *literal = xla::BorrowingLiteral(
+      static_cast<const char*>(DMAHelper::base(&host_tensor)), xla_shape);
+  return Status::OK();
+}
+
+Status HostTensorsToBorrowingLiteralTuple(
+    tensorflow::gtl::ArraySlice<Tensor> host_tensors,
+    xla::BorrowingLiteral* literal) {
+  std::vector<const char*> buf_ptrs;
+  buf_ptrs.reserve(host_tensors.size());
+  std::vector<xla::Shape> tensor_shapes(host_tensors.size());
+
+  for (int i = 0; i < host_tensors.size(); i++) {
+    // Validate runtime shapes and fail if it doesn't match the contract.
+    const Tensor* tensor = &host_tensors[i];
+    buf_ptrs.emplace_back(static_cast<const char*>(DMAHelper::base(tensor)));
+    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(tensor->dtype(), tensor->shape(),
+                                             &tensor_shapes[i]));
+  }
+
+  *literal = xla::BorrowingLiteral(
+      buf_ptrs, xla::ShapeUtil::MakeTupleShape(tensor_shapes));
+
+  return Status::OK();
+}
+
 Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
                                Tensor* host_tensor) {
   TF_RET_CHECK(xla::ShapeUtil::IsArray(literal.shape()) &&

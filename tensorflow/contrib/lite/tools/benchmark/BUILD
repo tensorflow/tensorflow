@@ -5,8 +5,10 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/contrib/lite:build_def.bzl", "tflite_linkopts")
+load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
 
-common_copts = ["-Wall"]
+common_copts = ["-Wall"] + tflite_copts()
 
 cc_binary(
     name = "benchmark_model",
@@ -15,13 +17,10 @@ cc_binary(
         "logging.h",
     ],
     copts = common_copts,
-    linkopts = select({
+    linkopts = tflite_linkopts() + select({
         "//tensorflow:android": [
-            "-pie",
-            "-landroid",
-            "-lm",
-            "-z defs",
-            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
+            "-pie",  # Android 5.0 and later supports only PIE
+            "-lm",  # some builtin ops, e.g., tanh, need -lm
         ],
         "//conditions:default": [],
     }),
@@ -35,7 +34,6 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = common_copts,
-    visibility = ["//visibility:private"],
 )
 
 cc_test(

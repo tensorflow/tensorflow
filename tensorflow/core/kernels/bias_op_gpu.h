@@ -19,7 +19,9 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -38,6 +40,91 @@ struct BiasGradGPU {
   static void compute(const GPUDevice& device, const T* output_backprop,
                       T* bias_backprop, int32 batch, int32 height, int32 width,
                       int32 channel, TensorFormat data_format);
+
+  static void DoRowReduction(OpKernelContext* context, T* output,
+                             const T* input, int rows, int cols);
+
+  static void DoColReduction(OpKernelContext* context, T* output,
+                             const T* input, int rows, int cols);
+};
+
+enum class BiasAddGradGPUMode {
+  kInvalid = 0,
+  kNative = 1,
+  kReduction = 2,
+};
+
+// Describe the BiasGradGPU result from a perf experiment.
+//
+// Arguments:
+// algorithm: returns the method to use for bias add grad.
+// elapsed_time; returns the measured elapsed time in microseconds.
+class BiasGradGPUProfileResult {
+ public:
+  bool is_valid() const {
+    return (algorithm_ != BiasAddGradGPUMode::kInvalid &&
+            elapsed_time_ != std::numeric_limits<float>::max());
+  }
+  BiasAddGradGPUMode algorithm() const { return algorithm_; }
+  void set_algorithm(BiasAddGradGPUMode val) { algorithm_ = val; }
+  uint64 elapsed_time() const { return elapsed_time_; }
+  void set_elapsed_time(uint64 val) { elapsed_time_ = val; }
+
+ private:
+  BiasAddGradGPUMode algorithm_ = BiasAddGradGPUMode::kInvalid;
+  uint64 elapsed_time_ = std::numeric_limits<uint64>::max();
+};
+
+// Encapsulate all the shape information that is used in bias add grad
+// operations.
+class BiasAddParams {
+ public:
+  // We use a list to maintain both the shape value and the order (data format).
+  using SpatialArray = gtl::InlinedVector<int64, 4>;
+  BiasAddParams(const SpatialArray& in_shape, TensorFormat data_format,
+                DataType dtype, int device_id)
+      : in_shape_(in_shape),
+        data_format_(data_format),
+        dtype_(dtype),
+        device_id_(device_id) {
+    for (int64 val : in_shape_) {
+      hash_code_ = Hash64Combine(hash_code_, val);
+    }
+    hash_code_ = Hash64Combine(hash_code_, data_format);
+    hash_code_ = Hash64Combine(hash_code_, dtype);
+    hash_code_ = Hash64Combine(hash_code_, device_id);
+  }
+  bool operator==(const BiasAddParams& other) const {
+    return this->get_data_as_tuple() == other.get_data_as_tuple();
+  }
+
+  bool operator!=(const BiasAddParams& other) const {
+    return !(*this == other);
+  }
+  uint64 hash() const { return hash_code_; }
+
+  string ToString() const {
+    // clang-format off
+    return strings::StrCat(
+        "(", str_util::Join(in_shape_, ", "), "), ",
+        data_format_, ", ", dtype_, ", ", device_id_);
+    // clang-format on
+  }
+
+ protected:
+  using ParamsDataType = std::tuple<SpatialArray, TensorFormat, DataType, int>;
+
+  ParamsDataType get_data_as_tuple() const {
+    return std::make_tuple(in_shape_, data_format_, dtype_, device_id_);
+  }
+
+  uint64 hash_code_ = 0;
+
+ private:
+  SpatialArray in_shape_;
+  TensorFormat data_format_;
+  DataType dtype_;
+  int device_id_;
 };
 
 }  // namespace tensorflow

@@ -152,6 +152,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(resource_variable_ops.assign_variable_op(
         id_handle, constant_op.constant(0, dtype=dtypes.int32)))
 
+  def testUnreadOpName(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.assertNotEqual(v.name, v.assign_add(1.0).name)
+
   @test_util.run_in_graph_and_eager_modes()
   def testCreateRead(self):
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
@@ -821,6 +825,16 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable([1.0, 2.0], name="add")
       state_ops.scatter_add(v, [1], [3])
       self.assertAllEqual([1.0, 5.0], v.numpy())
+
+  def testScatterNdAddStateOps(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(
+          [1, 1, 1, 1, 1, 1, 1, 1], dtype=dtypes.float32, name="add")
+      indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
+      updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
+      expected = np.array([1, 12, 1, 11, 10, 1, 1, 13])
+      state_ops.scatter_nd_add(v, indices, updates)
+      self.assertAllClose(expected, v.numpy())
 
   def testScatterUpdateCast(self):
     with context.eager_mode():

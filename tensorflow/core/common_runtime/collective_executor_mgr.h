@@ -25,8 +25,8 @@ class DeviceMgr;
 class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
  public:
   CollectiveExecutorMgr(const ConfigProto& config, const DeviceMgr* dev_mgr,
-                        DeviceResolverInterface* dev_resolver,
-                        ParamResolverInterface* param_resolver);
+                        std::unique_ptr<DeviceResolverInterface> dev_resolver,
+                        std::unique_ptr<ParamResolverInterface> param_resolver);
 
   virtual ~CollectiveExecutorMgr();
 
@@ -56,11 +56,16 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   void RetireStepId(int64 graph_key, int64 step_id) override {}
 
  protected:
+  // Called by FindOrCreate when table entry does not yet exist.
+  virtual CollectiveExecutor* Create(int64 step_id);
+
   const DeviceMgr* dev_mgr_;
   std::unique_ptr<DeviceResolverInterface> dev_resolver_;
   std::unique_ptr<ParamResolverInterface> param_resolver_;
   CollectiveRemoteAccess* remote_access_;
   string task_name_;
+
+ private:
   mutex exec_mu_;
   // Map from step_id to CollectiveExecutor
   gtl::FlatMap<int64, CollectiveExecutor*> executor_table_ GUARDED_BY(exec_mu_);

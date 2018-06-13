@@ -24,15 +24,16 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 #ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 using mkldnn::stream;
 using mkldnn::sum;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -333,7 +334,7 @@ class MklAddNOp : public OpKernel {
 
       if (!input1_in_mkl_format && src1_dims_size == 0) {
         Tensor* dst_tensor = nullptr;
-        MklShape mkl_shape_dst;
+        MklDnnShape mkl_shape_dst;
         mkl_shape_dst.SetMklTensor(false);
         AllocateOutputSetMklShape(ctx, output_idx, &dst_tensor,
                                   src1_tensor.shape(), mkl_shape_dst);
@@ -347,7 +348,7 @@ class MklAddNOp : public OpKernel {
       if (!input1_in_mkl_format && !input2_in_mkl_format) {
         if (src1_tensor.shape().num_elements() == 0) {
           Tensor* dst_tensor = nullptr;
-          MklShape mkl_shape_dst;
+          MklDnnShape mkl_shape_dst;
           mkl_shape_dst.SetMklTensor(false);
           AllocateOutputSetMklShape(ctx, output_idx, &dst_tensor,
                                     src1_tensor.shape(), mkl_shape_dst);

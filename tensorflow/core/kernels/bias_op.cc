@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_stream.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -363,6 +366,40 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
+struct BiasGradAutotuneGroup {
+  static string name() { return "BiasGrad"; }
+};
+
+class BiasAddGradGPUConfig {
+ public:
+  BiasAddGradGPUConfig() : mode_(BiasAddGradGPUMode::kReduction) {}
+  string ToString() const {
+    if (mode_ == BiasAddGradGPUMode::kNative) {
+      return "native CUDA kernel.";
+    }
+    if (mode_ == BiasAddGradGPUMode::kReduction) {
+      return "cub reduction kernel.";
+    }
+    return "unknown kernel.";
+  }
+  BiasAddGradGPUMode get_mode() const { return mode_; }
+  void set_mode(BiasAddGradGPUMode val) { mode_ = val; }
+
+  bool operator==(const BiasAddGradGPUConfig& other) const {
+    return this->mode_ == other.get_mode();
+  }
+
+  bool operator!=(const BiasAddGradGPUConfig& other) const {
+    return !(*this == other);
+  }
+
+ private:
+  BiasAddGradGPUMode mode_;
+};
+typedef AutoTuneSingleton<BiasGradAutotuneGroup, BiasAddParams,
+                          BiasAddGradGPUConfig>
+    AutotuneBiasGrad;
+
 template <typename T>
 class BiasGradOp<GPUDevice, T> : public OpKernel {
  public:
@@ -374,6 +411,49 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                   errors::InvalidArgument("Invalid data format"));
     } else {
       data_format_ = FORMAT_NCHW;
+    }
+  }
+
+  void ComputeWithCustomKernel(OpKernelContext* context,
+                               const Tensor& output_backprop, int32 batch,
+                               int32 width, int32 height, int32 channel,
+                               Tensor* output) {
+    BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
+                            output_backprop.template flat<T>().data(),
+                            output->flat<T>().data(), batch, width, height,
+                            channel, data_format_);
+  }
+
+  void ComputeWithReduceSum(OpKernelContext* context,
+                            const Tensor& output_backprop, int32 batch,
+                            int32 width, int32 height, int32 channel,
+                            Tensor* output) {
+    if (data_format_ == FORMAT_NCHW) {
+      int32 row_count = batch * channel;
+      int32 col_count = height * width;
+      Tensor temp_grad_outputs;
+      // For 'NCHW' format, we perform reduction twice: first HW, then N.
+      TensorShape temp_grad_output_shape{row_count, col_count};
+      OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                     temp_grad_output_shape,
+                                                     &temp_grad_outputs));
+      BiasGradGPU<T>::DoRowReduction(
+          context, temp_grad_outputs.flat<T>().data(),
+          output_backprop.template flat<T>().data(), row_count, col_count);
+
+      row_count = batch;
+      col_count = channel;
+      BiasGradGPU<T>::DoColReduction(context, output->flat<T>().data(),
+                                     temp_grad_outputs.flat<T>().data(),
+                                     row_count, col_count);
+    } else {
+      // For 'NHWC', we simply apply reduction once on NHW.
+      int32 row_count = batch * height * width;
+      int32 col_count = channel;
+      BiasGradGPU<T>::DoColReduction(
+          context, const_cast<T*>(output->flat<T>().data()),
+          reinterpret_cast<const T*>(output_backprop.template flat<T>().data()),
+          row_count, col_count);
     }
   }
 
@@ -396,11 +476,65 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     se::DeviceMemoryBase output_ptr(output->flat<T>().data(),
                                     output->NumElements() * sizeof(T));
     stream->ThenMemZero(&output_ptr, output->NumElements() * sizeof(T));
-    if (output_backprop.NumElements() > 0) {
-      BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
-                              output_backprop.template flat<T>().data(),
-                              output->flat<T>().data(), batch, width, height,
-                              channel, data_format_);
+    if (output_backprop.NumElements() <= 0) return;
+
+    int device_id = stream->parent()->device_ordinal();
+    DataType dtype = output_backprop.dtype();
+    BiasAddParams bias_parameters = {
+        {batch, height * width, channel},
+        data_format_,
+        dtype,
+        device_id,
+    };
+
+    // Autotune two algorithm: customized
+    BiasAddGradGPUConfig algo_config;
+    if (!AutotuneBiasGrad::GetInstance()->Find(bias_parameters, &algo_config)) {
+      BiasGradGPUProfileResult best_result;
+      // Initialize the timer.
+      perftools::gputools::Timer timer(stream->parent());
+      stream->InitTimer(&timer);
+      stream->ThenStartTimer(&timer);
+      ComputeWithCustomKernel(context, output_backprop, batch, width, height,
+                              channel, output);
+      stream->ThenStopTimer(&timer);
+      uint64 elapsed_microseconds = timer.Microseconds();
+      VLOG(1) << "BiasAddGrad " << bias_parameters.ToString()
+              << " Native algo latency: " << elapsed_microseconds;
+      if (elapsed_microseconds < best_result.elapsed_time()) {
+        best_result.set_algorithm(BiasAddGradGPUMode::kNative);
+        best_result.set_elapsed_time(elapsed_microseconds);
+      }
+
+      // Try reduction and profile.
+      stream->ThenStartTimer(&timer);
+      ComputeWithReduceSum(context, output_backprop, batch, width, height,
+                           channel, output);
+      stream->ThenStopTimer(&timer);
+
+      elapsed_microseconds = timer.Microseconds();
+      VLOG(1) << "BiasAddGrad " << bias_parameters.ToString()
+              << " Reduction algo latency: " << elapsed_microseconds;
+      if (elapsed_microseconds < best_result.elapsed_time()) {
+        best_result.set_algorithm(BiasAddGradGPUMode::kReduction);
+        best_result.set_elapsed_time(elapsed_microseconds);
+      }
+
+      algo_config.set_mode(best_result.algorithm());
+      AutotuneBiasGrad::GetInstance()->Insert(bias_parameters, algo_config);
+
+      // Results are already available during autotune, so no need to continue.
+      return;
+    }
+
+    // Choose the best algorithm based on autotune results.
+    if (algo_config.get_mode() == BiasAddGradGPUMode::kReduction) {
+      ComputeWithReduceSum(context, output_backprop, batch, width, height,
+                           channel, output);
+    } else {
+      // Default to the customized kernel.
+      ComputeWithCustomKernel(context, output_backprop, batch, width, height,
+                              channel, output);
     }
   }
 

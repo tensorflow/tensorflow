@@ -24,9 +24,10 @@ limitations under the License.
 
 namespace tflite {
 namespace {
+template <typename T>
 void TestOneResizeBilinear(int batch, int depth, int input_width,
                            int input_height, int output_width,
-                           int output_height) {
+                           int output_height, float error_threshold) {
   Dims<4> input_dims_inference =
       MakeDimsForInference(depth, input_width, input_height, batch);
   Dims<4> output_dims_inference =
@@ -36,14 +37,15 @@ void TestOneResizeBilinear(int batch, int depth, int input_width,
   const int output_buffer_size =
       RequiredBufferSizeForDims(output_dims_inference);
 
-  std::vector<float> input_data(input_buffer_size, 0);
-  std::vector<float> reference_output_data(output_buffer_size, 0);
+  std::vector<T> input_data(input_buffer_size, 0);
+  std::vector<T> reference_output_data(output_buffer_size, 0);
   // Initialize the output data with something other than zero, so we can catch
   // issue with kernels failing to initialize the output.
-  std::vector<float> output_data(output_buffer_size, 3.1415);
+  std::vector<T> output_data(output_buffer_size, 3);
 
-  const float input_amplitude = 1.f;
-  FillRandom(&input_data, -input_amplitude, input_amplitude);
+  const T min_amplitude = static_cast<T>(0);
+  const T max_amplitude = static_cast<T>(255);
+  FillRandom(&input_data, min_amplitude, max_amplitude);
 
   Dims<4> output_size_dims = MakeDimsForInference(2, 1, 1, 1);
   std::vector<int32> output_size_data = {output_height, output_width};
@@ -58,14 +60,46 @@ void TestOneResizeBilinear(int batch, int depth, int input_width,
   double sum_diff = 0;
   float max_abs_val = 0;
   for (int i = 0; i < output_buffer_size; i++) {
-    sum_diff += std::abs(output_data[i] - reference_output_data[i]);
-    max_abs_val = std::max(max_abs_val, std::abs(reference_output_data[i]));
+    sum_diff += std::abs(static_cast<float>(output_data[i]) -
+                         static_cast<float>(reference_output_data[i]));
+    max_abs_val = std::max(
+        max_abs_val, std::abs(static_cast<float>(reference_output_data[i])));
   }
 
   if (sum_diff != 0.f) {
     const float mean_diff = static_cast<float>(sum_diff / output_buffer_size);
     const float relative_error = std::abs(mean_diff) / max_abs_val;
-    ASSERT_LT(relative_error, 1e-5f);
+    ASSERT_LT(relative_error, error_threshold);
+  }
+}
+
+TEST(ResizeBilinear, TestResizeBilinear8Bit) {
+  const int kTestsToRun = 100 * 1000;
+  for (int i = 0; i < kTestsToRun; i++) {
+    const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
+    const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
+    const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
+    const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
+    const int output_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
+    const int output_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
+
+    TestOneResizeBilinear<uint8>(batch, depth, input_width, input_height,
+                                 output_width, output_height, 0.025);
+  }
+}
+
+TEST(ResizeBilinear2x2, TestResizeBilinear8Bit) {
+  const int kTestsToRun = 100 * 1000;
+  for (int i = 0; i < kTestsToRun; i++) {
+    const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
+    const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
+    const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
+    const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
+    const int output_width = input_width * 2;
+    const int output_height = input_height * 2;
+
+    TestOneResizeBilinear<uint8>(batch, depth, input_width, input_height,
+                                 output_width, output_height, 1e-5);
   }
 }
 
@@ -79,8 +113,8 @@ TEST(ResizeBilinear, TestResizeBilinear) {
     const int output_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
     const int output_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
 
-    TestOneResizeBilinear(batch, depth, input_width, input_height, output_width,
-                          output_height);
+    TestOneResizeBilinear<float>(batch, depth, input_width, input_height,
+                                 output_width, output_height, 1e-5);
   }
 }
 
@@ -94,8 +128,8 @@ TEST(ResizeBilinear2x2, TestResizeBilinear) {
     const int output_width = input_width * 2;
     const int output_height = input_height * 2;
 
-    TestOneResizeBilinear(batch, depth, input_width, input_height, output_width,
-                          output_height);
+    TestOneResizeBilinear<float>(batch, depth, input_width, input_height,
+                                 output_width, output_height, 1e-5);
   }
 }
 }  // namespace

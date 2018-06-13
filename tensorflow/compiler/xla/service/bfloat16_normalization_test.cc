@@ -250,8 +250,8 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleCrossReplicaSum) {
 
   HloInstruction* crs =
       builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
-          ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b},
-          reduction));
+          ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
+          /*replica_group_ids=*/{}, /*barrier=*/""));
   HloInstruction* gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, crs, 1));
 

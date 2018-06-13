@@ -151,7 +151,14 @@ cc_library(
         "@llvm//:target",  # fixdeps: keep
         "@llvm//:x86_code_gen",  # fixdeps: keep
         "@llvm//:x86_disassembler",  # fixdeps: keep
-    ],
+    ] + select({
+        "@org_tensorflow//tensorflow:linux_ppc64le": [
+            "@llvm//:powerpc_disassembler",
+            "@llvm//:powerpc_code_gen",
+        ],
+        "//conditions:default": [
+        ],
+    }),
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -898,6 +905,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
     ],

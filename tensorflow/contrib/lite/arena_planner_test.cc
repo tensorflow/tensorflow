@@ -209,11 +209,8 @@ TEST_F(ArenaPlannerTest, ZeroSizedTensors) {
   TestGraph graph({1}, {{{1}, {2}, {}}}, {2});
   (*graph.tensors())[1].bytes = 0;
   SetGraph(&graph);
-  // TODO(ahentz): this is currently broken because the arena finds two
-  // allocations with the same offset and returns an error.
-  ASSERT_FALSE(planner_->ExecuteAllocations(0, 10) == kTfLiteOk);
-  // EXPECT_EQ(GetOffset(1), 0);
-  // EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  ASSERT_EQ(planner_->ExecuteAllocations(0, 10), kTfLiteOk);
+  EXPECT_EQ((*graph_->tensors())[1].data.raw, nullptr);
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraph) {
