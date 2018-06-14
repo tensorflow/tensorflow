@@ -21,50 +21,12 @@ namespace tensorflow {
 
 REGISTER_OP("GcsConfigureCredentials")
     .Input("json: string")
-    .SetShapeFn(shape_inference::NoOutputs)
-    .Doc(R"doc(
-Configures the credentials used by the GCS client of the local TF runtime.
-
-The json input can be of the format:
-
-1. Refresh Token:
-{
-  "client_id": "<redacted>",
-  "client_secret": "<redacted>",
-  "refresh_token: "<redacted>",
-  "type": "authorized_user",
-}
-
-2. Service Account:
-{
-  "type": "service_account",
-  "project_id": "<redacted>",
-  "private_key_id": "<redacted>",
-  "private_key": "------BEGIN PRIVATE KEY-----\n<REDACTED>\n-----END PRIVATE KEY------\n",
-  "client_email": "<REDACTED>@<REDACTED>.iam.gserviceaccount.com",
-  "client_id": "<REDACTED>",
-  # Some additional fields elided
-}
-
-Note the credentials established through this method are shared across all
-sessions run on this runtime.
-
-Note be sure to feed the inputs to this op to ensure the credentials are not
-stored in a constant op within the graph that might accidentally be checkpointed
-or in other ways be persisted or exfiltrated.
-)doc");
+    .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("GcsConfigureBlockCache")
     .Input("max_cache_size: uint64")
     .Input("block_size: uint64")
     .Input("max_staleness: uint64")
-    .SetShapeFn(shape_inference::NoOutputs)
-    .Doc(R"doc(
-Re-configures the GCS block cache with the new configuration values.
-
-If the values are the same as already configured values, this op is a no-op. If
-they are different, the current contents of the block cache is dropped, and a
-new block cache is created fresh.
-)doc");
+    .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow
