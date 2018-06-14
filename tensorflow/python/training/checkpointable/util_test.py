@@ -1243,6 +1243,18 @@ class CheckpointingTests(test.TestCase):
       self.assertEqual(42., self.evaluate(optimizer.variables()[0]))
 
 
+class _ManualScope(checkpointable.Checkpointable):
+
+  def __call__(self):
+    with variable_scope.variable_scope("ManualScope") as vs:
+      self.variable_scope = vs
+      with checkpointable_utils.capture_dependencies(template=self):
+        return self._build()
+
+  def _build(self):
+    return variable_scope.get_variable(name="in_manual_scope", shape=[])
+
+
 class TemplateTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
@@ -1255,14 +1267,23 @@ class TemplateTests(test.TestCase):
       v2 = variable_scope.get_variable(
           "v2", shape=[1], initializer=init_ops.zeros_initializer(),
           use_resource=True)
-      return v, v + 1., v2
+      manual = _ManualScope()
+      return v, v + 1., v2, manual, manual()
 
     save_template = template.make_template("s1", _templated)
-    v1_save, _, v2_save = save_template()
+    v1_save, _, v2_save, manual_scope, manual_scope_v = save_template()
+    six.assertCountEqual(
+        self,
+        [v1_save, v2_save, manual_scope, manual_scope_v, save_template],
+        checkpointable_utils.list_objects(save_template))
+    manual_dep, = manual_scope._checkpoint_dependencies
+    self.assertEqual("in_manual_scope", manual_dep.name)
+    self.assertIs(manual_scope_v, manual_dep.ref)
     optimizer = adam.AdamOptimizer(0.0)
     save_root = checkpointable_utils.Checkpoint(
         my_template=save_template, optimizer=optimizer)
     optimizer.minimize(v1_save.read_value)
+    self.evaluate([v.initializer for v in save_template.variables])
     self.evaluate([v.initializer for v in optimizer.variables()])
     self.evaluate(v1_save.assign([12.]))
     self.evaluate(v2_save.assign([14.]))
@@ -1275,11 +1296,13 @@ class TemplateTests(test.TestCase):
     load_root = checkpointable_utils.Checkpoint(
         my_template=load_template, optimizer=load_optimizer)
     status = load_root.restore(save_path)
-    var, var_plus_one, var2 = load_template()
+    var, var_plus_one, var2, _, _ = load_template()
     load_optimizer.minimize(var.read_value)
-    self.assertEqual(2, len(load_template._checkpoint_dependencies))
+    self.assertEqual(3, len(load_template._checkpoint_dependencies))
     self.assertEqual("v", load_template._checkpoint_dependencies[0].name)
     self.assertEqual("v2", load_template._checkpoint_dependencies[1].name)
+    self.assertEqual("ManualScope",
+                     load_template._checkpoint_dependencies[2].name)
     status.assert_consumed().run_restore_ops()
     self.assertAllEqual([12.], self.evaluate(var))
     self.assertAllEqual([13.], self.evaluate(var_plus_one))
