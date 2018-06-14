@@ -255,6 +255,9 @@ class TPUClusterResolver(ClusterResolver):
       request = self._service.projects().locations().nodes().get(name=full_name)
       response = request.execute()
 
+      if 'state' in response and response['state'] != 'READY':
+        raise RuntimeError('TPU "%s" is not yet ready; state: "%s"' %
+                           (self._tpu, response['state']))
       if 'health' in response and response['health'] != 'HEALTHY':
         raise RuntimeError('TPU "%s" is unhealthy: "%s"' % (self._tpu,
                                                             response['health']))
