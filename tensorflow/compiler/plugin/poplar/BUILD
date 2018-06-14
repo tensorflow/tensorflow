@@ -223,6 +223,9 @@ cc_library(
 tf_cc_test(
     name = "graph_compile_io_map_test",
     srcs = ["tests/graph_compile_io_map_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
     deps = [
         ":poplar_lib",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -233,6 +236,9 @@ tf_cc_test(
 tf_cc_test(
     name = "conversions_test",
     srcs = ["tests/conversions_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
     deps = [
         ":poplar_lib",
         "//tensorflow/compiler/xla/service:hlo_matchers",
