@@ -98,4 +98,7 @@ pip3 install --upgrade astor
 pip3 install --upgrade gast
 pip3 install --upgrade termcolor
 
+# Keras
+pip3.5 install keras_applications==1.0.2
+pip3.5 install keras_preprocessing==1.0.1
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.5_pip_packages.sh)
