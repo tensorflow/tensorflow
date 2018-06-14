@@ -207,28 +207,55 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(o, 0.0, 1.0, 3.0)
 
   def testTruncatedNormalInitalizer(self):
-    with ops.device("/device:IPU:0"):
-      with session_lib.Session() as sess:
-        with variable_scope.variable_scope("vs", use_resource=True):
-          i = init_ops.truncated_normal_initializer(mean=1.0, stddev=0.01)
-          z = variable_scope.get_variable(
-              "z1", shape=[], dtype=np.float32, initializer=i)
 
-        sess.run(variables.global_variables_initializer())
-        o = sess.run(z)
-        self.assertAllClose(o, 1.0, 0.2, 0.2)
+    with ops.device('cpu'):
+     report = gen_ipu_ops.ipu_event_trace()
+
+    with ops.device("/device:IPU:0"):
+      with variable_scope.variable_scope("", use_resource=True):
+        i = init_ops.truncated_normal_initializer(mean=1.0, stddev=0.01)
+        z = variable_scope.get_variable(
+          "z1", shape=[], dtype=np.float32, initializer=i)
+
+    with tu.ipu_session() as sess:
+      # Clean existing reports
+      sess.run(report)
+
+      sess.run(variables.global_variables_initializer())
+      o = sess.run(z)
+      self.assertAllClose(o, 1.0, 0.2, 0.2)
+
+      # Find of the names of compute sets
+      r = sess.run(report)
+      self.assertTrue(len(r) == 5)
+      cs_list = tu.get_compute_sets_from_report(r[2])
+
+      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/call/TruncatedNormal']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testDefaultTruncatedNormalInitalizer(self):
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
     with ops.device("/device:IPU:0"):
-      with session_lib.Session() as sess:
-        with variable_scope.variable_scope("vs", use_resource=True):
+        with variable_scope.variable_scope("", use_resource=True):
           i = init_ops.truncated_normal_initializer()
           z = variable_scope.get_variable(
               "z1", shape=[], dtype=np.float32, initializer=i)
 
-        sess.run(variables.global_variables_initializer())
-        o = sess.run(z)
-        self.assertAllClose(o, 1.0, 2.0, 2.0)
+    with tu.ipu_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      o = sess.run(z)
+      self.assertAllClose(o, 1.0, 2.0, 2.0)
+
+      # Find of the names of compute sets
+      r = sess.run(report)
+      self.assertTrue(len(r) == 5)
+      cs_list = tu.get_compute_sets_from_report(r[2])
+
+      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/call/TruncatedNormal']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testUniformRandomInitalizer(self):
     with ops.device("/device:IPU:0"):

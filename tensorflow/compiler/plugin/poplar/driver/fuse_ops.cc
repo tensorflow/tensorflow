@@ -174,14 +174,16 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kMultiply, true, 0, nullptr, {4, 3}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kWhile, true, 0, IsTruncatedNormalWhile, {5}},
-     {HloOpcode::kRng, true, 0, nullptr, {6, 7}},
+     {HloOpcode::kGetTupleElement, true, 0, nullptr, {5}},
+     {HloOpcode::kWhile, true, 0, IsTruncatedNormalWhile, {6}},
+     {HloOpcode::kTuple, true, 0, nullptr, {7, 8, 8}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kConstant, true, 0, nullptr, {}}},
 
     // Random truncated normal without post scale and add
-    {{HloOpcode::kWhile, true, 0, IsTruncatedNormalWhile, {1}},
-     {HloOpcode::kRng, true, 0, nullptr, {2, 3}},
+    {{HloOpcode::kGetTupleElement, true, 0, nullptr, {1}},
+     {HloOpcode::kWhile, true, 0, IsTruncatedNormalWhile, {2}},
+     {HloOpcode::kTuple, true, 0, nullptr, {3, 4, 4}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kConstant, true, 0, nullptr, {}}},
 

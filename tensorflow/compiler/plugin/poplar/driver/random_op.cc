@@ -32,39 +32,7 @@ StatusOr<poplar::program::Program> TruncatedNormalScale(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   const HloInstruction* root = inst->to_apply()->root_instruction();
-  const HloInstruction* mean1 = root->operand(1);
-  const HloInstruction* sd1 = root->operand(0)->operand(1);
-  const HloInstruction* mean2 =
-      root->operand(0)->operand(0)->operand(0)->operand(0);
-  const HloInstruction* sd2 =
-      root->operand(0)->operand(0)->operand(0)->operand(1);
-
-  double mean1_val;
-  TF_ASSIGN_OR_RETURN(mean1_val, DoubleValueOfScalarLiteral(mean1->literal()));
-  double mean2_val;
-  TF_ASSIGN_OR_RETURN(mean2_val, DoubleValueOfScalarLiteral(mean2->literal()));
-  double sd1_val;
-  TF_ASSIGN_OR_RETURN(sd1_val, DoubleValueOfScalarLiteral(sd1->literal()));
-  double sd2_val;
-  TF_ASSIGN_OR_RETURN(sd2_val, DoubleValueOfScalarLiteral(sd2->literal()));
-
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(
-      out, AddTensor(graph, std::make_pair(inst, 0), output_shape, res));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-
-  poplar::program::Sequence seq;
-  res.random.truncatedNormal(graph, out, mean1_val + mean2_val,
-                             sd1_val * sd2_val, 1.0, seq, GetDebugName(inst));
-
-  return seq;
-}
-
-StatusOr<poplar::program::Program> TruncatedNormal(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map) {
-  const HloInstruction* root = inst->to_apply()->root_instruction();
-  const HloInstruction* mean = root->operand(0)->operand(0);
+  const HloInstruction* mean = root->operand(1);
   const HloInstruction* sd = root->operand(0)->operand(1);
 
   double mean_val;
@@ -79,6 +47,21 @@ StatusOr<poplar::program::Program> TruncatedNormal(
 
   poplar::program::Sequence seq;
   res.random.truncatedNormal(graph, out, mean_val, sd_val, 1.0, seq,
+                             GetDebugName(inst));
+
+  return seq;
+}
+
+StatusOr<poplar::program::Program> TruncatedNormal(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(
+      out, AddTensor(graph, std::make_pair(inst, 0), output_shape, res));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  poplar::program::Sequence seq;
+  res.random.truncatedNormal(graph, out, 0.0, 1.0, 1.0, seq,
                              GetDebugName(inst));
 
   return seq;

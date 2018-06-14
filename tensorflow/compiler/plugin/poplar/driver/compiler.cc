@@ -370,6 +370,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloCSE>(true);
     pipeline.AddPass<WideConstFinder>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
+    pipeline.AddPass<HloDCE>();
     pipeline.AddPass<FuseOps>(resources.annotations);
     pipeline.AddPass<Outliner>(resources.annotations);
     pipeline.AddPass<InplaceFinder>(resources.annotations);
