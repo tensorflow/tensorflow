@@ -150,7 +150,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
-        "@grpc//:grpc++",
+        "//tensorflow:grpc++",
     ],
     alwayslink = 1,
 )
@@ -170,7 +170,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@grpc//:grpc++",
+        "//tensorflow:grpc++",
     ],
     alwayslink = 1,
 )
