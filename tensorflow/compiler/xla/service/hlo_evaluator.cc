@@ -903,10 +903,7 @@ Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
 }
 
 Status HloEvaluator::HandleGenerateToken(HloInstruction* token) {
-  // Literals cannot represent a TOKEN shape so just create an empty tuple as
-  // the "result" of the kGenerateToken operation.
-  // TODO(b/109929053): Add support for TOKENs in Literals.
-  evaluated_[token] = Literal::MakeTuple({});
+  evaluated_[token] = Literal::CreateToken();
   return Status::OK();
 }
 

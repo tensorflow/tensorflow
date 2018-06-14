@@ -148,8 +148,7 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
 
       piece->emplace_back(std::move(child_piece));
     }
-  } else {
-    CHECK(ShapeUtil::IsArray(shape));
+  } else if (ShapeUtil::IsArray(shape)) {
     if (allocate_arrays) {
       if (LayoutUtil::IsSparseArray(shape)) {
         // For sparse arrays, the buffer must be of the size of the maximum
@@ -165,6 +164,10 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
         piece->set_buffer(new char[piece->size_bytes()]);
       }
     }
+  } else {
+    // If the shape is neither an array nor tuple, then it must be
+    // zero-sized. Otherwise, some memory needs to be allocated for it.
+    CHECK_EQ(piece->size_bytes(), 0);
   }
 }
 
@@ -325,6 +328,10 @@ Status Literal::CopyElementFrom(const LiteralSlice& src_literal,
     memcpy(dest_address, source_address, primitive_size);
   }
   return Status::OK();
+}
+
+/* static */ std::unique_ptr<Literal> Literal::CreateToken() {
+  return MakeUnique<Literal>(ShapeUtil::MakeTokenShape());
 }
 
 std::vector<Literal> Literal::DecomposeTuple() {
@@ -1365,6 +1372,11 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
     }
     pieces->push_back(tensorflow::str_util::Join(tuple_pieces, ",\n"));
     pieces->push_back("\n)");
+    return;
+  }
+
+  if (ShapeUtil::IsToken(subshape)) {
+    pieces->push_back("token");
     return;
   }
 

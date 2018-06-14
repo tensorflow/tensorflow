@@ -472,6 +472,10 @@ class CopyRemover {
         // between copies added around aliased operations (kWhile) guarantees
         // this strict order.
         for (const HloValue* value_a : buffer.values()) {
+          if (ShapeUtil::IsToken(value_a->shape())) {
+            // Token values have no representation and cannot interfere.
+            continue;
+          }
           for (const HloValue* value_b : buffer.values()) {
             if (value_a != value_b) {
               DCHECK(ordering_.LiveRangeStrictlyBefore(*value_a, *value_b,

@@ -706,6 +706,9 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
       }
       break;
     }
+    case TOKEN:
+      // Tokens have no on-device representation and are trivially equal.
+      return Status::OK();
     default:
       LOG(FATAL)
           << "Unsupported primitive type in LiteralTestUtil::ExpectEqual: "

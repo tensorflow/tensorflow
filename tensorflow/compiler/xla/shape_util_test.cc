@@ -172,6 +172,41 @@ TEST(ShapeUtilTest, CompatibleIdenticalShapes) {
   ASSERT_TRUE(ShapeUtil::Compatible(shape1, shape2));
 }
 
+TEST(ShapeUtilTest, TokenCompatibility) {
+  EXPECT_TRUE(ShapeUtil::Compatible(ShapeUtil::MakeTokenShape(),
+                                    ShapeUtil::MakeTokenShape()));
+  EXPECT_FALSE(ShapeUtil::Compatible(ShapeUtil::MakeTokenShape(),
+                                     ShapeUtil::MakeShape(F32, {})));
+  EXPECT_FALSE(ShapeUtil::Compatible(ShapeUtil::MakeShape(F32, {}),
+                                     ShapeUtil::MakeTokenShape()));
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeTokenShape()}),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeTokenShape()})));
+}
+
+TEST(ShapeUtilTest, TokensEqualShapes) {
+  EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeTokenShape(),
+                               ShapeUtil::MakeTokenShape()));
+  EXPECT_FALSE(ShapeUtil::Equal(ShapeUtil::MakeTokenShape(),
+                                ShapeUtil::MakeShape(F32, {})));
+  EXPECT_FALSE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {}),
+                                ShapeUtil::MakeTokenShape()));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTokenShape(),
+           ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1})}),
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTokenShape(),
+           ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1})})));
+  EXPECT_FALSE(ShapeUtil::Equal(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTokenShape(),
+           ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1})}),
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTokenShape(),
+           ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {1, 0})})));
+}
+
 TEST(ShapeUtilTest, CompatibleNotIdenticalShapes) {
   Shape shape_1 = ShapeUtil::MakeShape(F32, {3, 2});
   auto layout_1 = shape_1.mutable_layout();

@@ -523,21 +523,7 @@ HloInstruction* HloComputation::CreateFusionInstruction(
 StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
     ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index) {
-  if (ShapeUtil::IsArray(instruction->shape())) {
-    if (indices_to_copy == nullptr || indices_to_copy->element(*index)) {
-      // Use kCopy to copy array elements
-      HloInstruction* copy = AddInstruction(HloInstruction::CreateUnary(
-          instruction->shape(), HloOpcode::kCopy, instruction));
-      if (copies_added != nullptr) {
-        *copies_added->mutable_element(*index) = copy;
-      }
-      return copy;
-    } else {
-      // Array elements which are not to be copied are passed through
-      // transparently.
-      return instruction;
-    }
-  } else if (ShapeUtil::IsTuple(instruction->shape())) {
+  if (ShapeUtil::IsTuple(instruction->shape())) {
     std::vector<HloInstruction*> elements;
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
          i++) {
@@ -554,13 +540,26 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
       index->pop_back();
     }
     return AddInstruction(HloInstruction::CreateTuple(elements));
-  } else {
-    // Tokens, opaques, etc are not copyable.
-    if (indices_to_copy == nullptr || indices_to_copy->element(*index)) {
-      return FailedPrecondition(
-          "Cannot copy instruction of shape: %s",
-          ShapeUtil::HumanString(instruction->shape()).c_str());
+  }
+  if (ShapeUtil::IsToken(instruction->shape())) {
+    // Tokens have no on-device representation and cannot be copied. Pass
+    // through transparently.
+    return instruction;
+  }
+
+  // Array shape.
+  TF_RET_CHECK(ShapeUtil::IsArray(instruction->shape()));
+  if (indices_to_copy == nullptr || indices_to_copy->element(*index)) {
+    // Use kCopy to copy array elements
+    HloInstruction* copy = AddInstruction(HloInstruction::CreateUnary(
+        instruction->shape(), HloOpcode::kCopy, instruction));
+    if (copies_added != nullptr) {
+      *copies_added->mutable_element(*index) = copy;
     }
+    return copy;
+  } else {
+    // Elements which are not to be copied are passed through
+    // transparently.
     return instruction;
   }
 }

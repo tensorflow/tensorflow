@@ -193,6 +193,10 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     // An Opaque is like a void*, use i8*.
     case OPAQUE:
       return llvm::Type::getInt8PtrTy(module->getContext());
+    case TOKEN:
+      // Tokens do not have a physical representation, but the compiler needs
+      // some placeholder type, so use int8*.
+      return llvm::Type::getInt8PtrTy(module->getContext());
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }

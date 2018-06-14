@@ -28,8 +28,6 @@ namespace {
 
 class TokenHloTest : public HloTestBase {};
 
-// TODO(b/79770375): Compile, not just verify the HLO module when the backends
-// support kGenerateToken.
 XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
   std::unique_ptr<HloModule> module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
@@ -118,6 +116,41 @@ XLA_TEST_F(TokenHloTest, InvalidOperandToTokenInstruction) {
   EXPECT_THAT(status.error_message(),
               ::testing::HasSubstr(
                   "Operands of token instructions must be TOKEN types"));
+}
+
+XLA_TEST_F(TokenHloTest, TokenInWhileLoop) {
+  // Thread a token around a while loop. Token is created and consumed by a
+  // GenerateToken instruction in the while body.
+  string module_string = R"(
+HloModule TokenInWhileLoop
+
+%Body (param.1: (s32[], token[])) -> (s32[], token[]) {
+  %param.1 = (s32[], token[]) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element((s32[], token[]) %param.1), index=0
+  %constant.1 = s32[] constant(1)
+  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
+  %get-tuple-element.2 = token[] get-tuple-element((s32[], token[]) %param.1), index=1
+  %generate-token = token[] generate-token(token[] %get-tuple-element.2)
+  ROOT %tuple = (s32[], token[]) tuple(s32[] %add, token[] %generate-token)
+}
+
+%Cond (param: (s32[], token[])) -> pred[] {
+  %param = (s32[], token[]) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element((s32[], token[]) %param), index=0
+  %constant = s32[] constant(42)
+  ROOT %less-than = pred[] less-than(s32[] %get-tuple-element, s32[] %constant)
+}
+
+ENTRY %TokenInWhileLoop () -> s32[] {
+  %zero = s32[] constant(0)
+  %init_token = token[] generate-token()
+  %init_tuple = (s32[], token[]) tuple(s32[] %zero, token[] %init_token)
+  %while = (s32[], token[]) while((s32[], token[]) %init_tuple), condition=%Cond, body=%Body
+  ROOT %root = s32[] get-tuple-element((s32[], token[]) %while), index=0
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(module_string, error_spec_));
 }
 
 }  // namespace

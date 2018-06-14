@@ -645,15 +645,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
-  if (IsArray(lhs)) {
-    return SameElementType(lhs, rhs) && SameDimensions(lhs, rhs);
-  } else if (lhs.element_type() == TUPLE) {
-    return rhs.element_type() == TUPLE &&
-           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(), Compatible);
-  } else {
-    // Opaque, token, etc types are vacuously compatible.
-    return true;
-  }
+  return CompareShapes(lhs, rhs, /*compare_layouts=*/false);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
