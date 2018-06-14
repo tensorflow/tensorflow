@@ -19,6 +19,7 @@
 
 
 RELEASE_URL_PREFIX="https://storage.googleapis.com/tensorflow/libtensorflow"
+TF_ECOSYSTEM_URL="https://github.com/tensorflow/ecosystem.git"
 
 # By default we deploy to both ossrh and bintray. These two
 # environment variables can be set to skip either repository.
@@ -44,7 +45,9 @@ clean() {
   # (though if run inside a clean docker container, there won't be any dirty
   # artifacts lying around)
   mvn -q clean
-  rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow_jni_gpu/src libtensorflow_jni_gpu/target libtensorflow/src libtensorflow/target tensorflow-android/target
+  rm -rf libtensorflow_jni/src libtensorflow_jni/target libtensorflow_jni_gpu/src libtensorflow_jni_gpu/target \
+    libtensorflow/src libtensorflow/target tensorflow-android/target proto/src proto/target \
+    hadoop/src hadoop/target spark-connector/src spark-connector/target
 }
 
 update_version_in_pom() {
@@ -183,6 +186,43 @@ generate_java_protos() {
   rm -rf "${DIR}/proto/tmp"
 }
 
+
+# Download the TensorFlow ecosystem source from git.
+# The pom files from this repo do not inherit from the parent pom so the maven version
+# is updated for each module.
+download_tf_ecosystem() {
+  ECOSYSTEM_DIR="/tmp/tensorflow-ecosystem"
+  HADOOP_DIR="${DIR}/hadoop"
+  SPARK_DIR="${DIR}/spark-connector"
+
+  # Clean any previous attempts
+  rm -rf "${ECOSYSTEM_DIR}"
+
+  # Clone the TensorFlow ecosystem project
+  mkdir -p  "${ECOSYSTEM_DIR}"
+  cd "${ECOSYSTEM_DIR}"
+  git clone "${TF_ECOSYSTEM_URL}"
+  cd ecosystem
+  git checkout r${TF_VERSION}
+
+  # Copy the TensorFlow Hadoop source
+  cp -r "${ECOSYSTEM_DIR}/ecosystem/hadoop/src" "${HADOOP_DIR}"
+  cp "${ECOSYSTEM_DIR}/ecosystem/hadoop/pom.xml" "${HADOOP_DIR}"
+  cd "${HADOOP_DIR}"
+  update_version_in_pom
+
+  # Copy the TensorFlow Spark connector source
+  cp -r "${ECOSYSTEM_DIR}/ecosystem/spark/spark-tensorflow-connector/src" "${SPARK_DIR}"
+  cp "${ECOSYSTEM_DIR}/ecosystem/spark/spark-tensorflow-connector/pom.xml" "${SPARK_DIR}"
+  cd "${SPARK_DIR}"
+  update_version_in_pom
+
+  # Cleanup
+  rm -rf "${ECOSYSTEM_DIR}"
+
+  cd "${DIR}"
+}
+
 # Deploy artifacts using a specific profile.
 # Arguments:
 #   profile - name of selected profile.
@@ -240,7 +280,8 @@ cd "${DIR}"
 # Comment lines out appropriately if debugging/tinkering with the release
 # process.
 # gnupg2 is required for signing
-apt-get -qq update && apt-get -qqq install -y gnupg2
+apt-get -qq update && apt-get -qqq install -y gnupg2 git
+
 clean
 update_version_in_pom
 download_libtensorflow
@@ -248,6 +289,8 @@ download_libtensorflow_jni
 download_libtensorflow_jni_gpu
 update_tensorflow_android
 generate_java_protos
+download_tf_ecosystem
+
 # Build the release artifacts
 mvn verify
 # Push artifacts to repository
