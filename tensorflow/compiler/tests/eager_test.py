@@ -31,11 +31,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import adam
 
 
 class EagerTest(XLATestCase):
@@ -159,6 +161,114 @@ class EagerTest(XLATestCase):
       values = []
       for _ in range(100):
         values.append(var.value())
+
+  # The shape, shape_n, size, and rank are tested here because their
+  # execution kernels (as opposed to compilation only tf2xla kernels)
+  # are distincts from tf2xla kernels.
+
+  def testShape(self):
+    def const(value):
+      return array_ops.shape(
+          constant_op.constant(value)).numpy()
+
+    def ones(value):
+      return array_ops.shape(
+          array_ops.ones(value)).numpy()
+
+    with self.test_scope():
+      # Shapes of directly constructed tensors
+      self.assertAllEqual([], const(3))
+      self.assertAllEqual([3], const([1.0, 2.0, 3.0]))
+      self.assertAllEqual([2, 2], const([[1.0, 2.0], [3.0, 4.0]]))
+      self.assertAllEqual([2, 1, 2], const([[[1.0, 2.0]], [[3.0, 4.0]]]))
+
+      # Shapes of tensors created by op running on device
+      # We make this distinction because directly constructed tensors
+      # are treated differently in a few places that can influence shape:
+      #  - they always have on_host_tensor
+      #  - they and their shapes can be cached
+      #  - they end up on device via a copy, instead of as program output
+      self.assertAllEqual([], ones([]))
+      self.assertAllEqual([3], ones([3]))
+      self.assertAllEqual([2, 2], ones([2, 2]))
+      self.assertAllEqual([2, 1, 2], ones([2, 1, 2]))
+
+  def testShapeN(self):
+    with self.test_scope():
+      # Shapes of directly constructed tensors
+      shapes = array_ops.shape_n([
+          constant_op.constant(1.0),
+          constant_op.constant([1.0, 2.0, 3.0]),
+          constant_op.constant([[1.0, 2.0], [3.0, 4.0]])])
+      self.assertAllEqual(
+          [[], [3], [2, 2]],
+          [x.numpy().tolist() for x in shapes])
+
+      # Shapes of tensors created by op running on device
+      shapes = array_ops.shape_n([
+          array_ops.ones([]),
+          array_ops.ones([3]),
+          array_ops.ones([2, 2])])
+      self.assertAllEqual(
+          [[], [3], [2, 2]],
+          [x.numpy().tolist() for x in shapes])
+
+  def testSize(self):
+    with self.test_scope():
+      self.assertEqual(
+          1, array_ops.size(constant_op.constant(1.0)).numpy())
+      self.assertEqual(
+          3, array_ops.size(constant_op.constant([1.0, 2.0, 3.0])).numpy())
+      self.assertEqual(
+          4, array_ops.size(
+              constant_op.constant([[1.0, 2.0], [3.0, 4.0]])).numpy())
+
+  def testRank(self):
+    with self.test_scope():
+      self.assertEqual(
+          0, array_ops.rank(constant_op.constant(1.0)).numpy())
+      self.assertEqual(
+          1, array_ops.rank(constant_op.constant([1.0, 2.0, 3.0])).numpy())
+      self.assertEqual(
+          2, array_ops.rank(
+              constant_op.constant([[1.0, 2.0], [3.0, 4.0]])).numpy())
+
+  def testAdam(self):
+    with self.test_scope():
+      optimizer = adam.AdamOptimizer(0.1)
+      x = resource_variable_ops.ResourceVariable(10.0)
+      with backprop.GradientTape() as tape:
+        y = x * x
+      dy_dx = tape.gradient(y, x)
+      optimizer.apply_gradients([(dy_dx, x)])
+      self.assertAlmostEqual(9.9, x.numpy(), places=3)
+
+  def testAdamSparse(self):
+    with ops.device('/cpu:0'):
+      # Create 2-D embedding for 3 objects on CPU because sparse/sliced updates
+      # are not implemented on TPU.
+      embedding_matrix = resource_variable_ops.ResourceVariable(
+          array_ops.ones([3, 2]))
+
+    with self.test_scope():
+      with backprop.GradientTape() as tape:
+        embedding = embedding_ops.embedding_lookup(embedding_matrix, [1])
+        y = math_ops.reduce_sum(embedding)
+      dy_dx = tape.gradient(y, embedding_matrix)
+      self.assertIsInstance(dy_dx, ops.IndexedSlices)
+      optimizer = adam.AdamOptimizer(0.1)
+      # The gradient application operations will run on CPU because optimizer
+      # updates are always collocated with the variable.
+      optimizer.apply_gradients([(dy_dx, embedding_matrix)])
+
+      # This assign_add will run on CPU because when an input to an
+      # operation is a resource, this operation is placed on the resource's
+      # device by the eager runtime.
+      embedding_matrix.assign_add(array_ops.ones([3, 2]))
+
+    self.assertAllClose([[2.0, 2.0],
+                         [1.9, 1.9],
+                         [2.0, 2.0]], embedding_matrix.numpy())
 
 
 class EagerFunctionTest(XLATestCase):

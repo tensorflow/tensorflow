@@ -494,7 +494,7 @@ void ConvertTransposeConvOperator(const Model& model,
   const auto& weights_array = model.GetArray(weights_array_name);
   CHECK(weights_array.buffer->type == ArrayDataType::kFloat);
   ConvertFloatTensorConst(model, weights_array_name, AxesOrder::kOHWI,
-                          AxesOrder::kHWIO, tensorflow_graph);
+                          AxesOrder::kHWOI, tensorflow_graph);
   auto& strides = (*conv2d_op->mutable_attr())["strides"];
   strides.mutable_list()->add_i(1);
   strides.mutable_list()->add_i(src_op.stride_height);

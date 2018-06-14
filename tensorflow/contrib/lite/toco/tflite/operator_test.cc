@@ -74,8 +74,10 @@ class OperatorTest : public ::testing::Test {
     auto new_toco_op = op.Deserialize(output_options->builtin_options(),
                                       output_options->custom_options());
 
-    CHECK(dynamic_cast<T*>(new_toco_op.get()))
-        << "Cannot cast " << HelpfulOperatorTypeName(*new_toco_op) << " to "
+    CHECK(new_toco_op->type == toco_op.type)
+        << "The type of the serialized and deserialized"
+        << HelpfulOperatorTypeName(*new_toco_op)
+        << " does not match the type of the original "
         << HelpfulOperatorTypeName(toco_op);
 
     return std::unique_ptr<T>(dynamic_cast<T*>(new_toco_op.release()));
@@ -123,6 +125,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                                OperatorType::kTensorFlowEqual);
   CheckSimpleOperator<TensorFlowNotEqualOperator>(
       "NOT_EQUAL", OperatorType::kTensorFlowNotEqual);
+  CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

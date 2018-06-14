@@ -371,11 +371,11 @@ TEST_F(BufferAssignmentTest, Basic) {
   // param1[100] --------------/--------/
   auto builder = HloComputation::Builder(TestName());
   auto paramscalar =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, ""));
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, f32vec100_, ""));
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
   auto param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, f32vec100_, ""));
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_, HloOpcode::kMultiply, paramscalar, param0));
   auto add = builder.AddInstruction(
@@ -418,11 +418,11 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
   // share anything.
   auto builder = HloComputation::Builder(TestName());
   auto paramscalar =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, ""));
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, f32vec100_, ""));
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
   auto param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, f32vec100_, ""));
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_, HloOpcode::kMultiply, paramscalar, param0));
   auto add = builder.AddInstruction(
@@ -477,11 +477,11 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
   // have the color 0, which allows the mul and add to share buffers.
   auto builder = HloComputation::Builder(TestName());
   auto paramscalar =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, ""));
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, f32vec100_, ""));
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
   auto param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, f32vec100_, ""));
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_, HloOpcode::kMultiply, paramscalar, param0));
   auto add = builder.AddInstruction(
@@ -547,11 +547,11 @@ TEST_F(BufferAssignmentTest, MultipleUsersForNode) {
   //
   auto builder = HloComputation::Builder(TestName());
   auto paramscalar =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, ""));
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, f32vec100_, ""));
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
   auto param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, f32vec100_, ""));
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_, HloOpcode::kMultiply, paramscalar, param0));
   auto add = builder.AddInstruction(
@@ -601,7 +601,7 @@ TEST_F(BufferAssignmentTest, TrivialMap) {
   // Creates the main kernel and verifies instruction counts.
   auto builder = HloComputation::Builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32a100x10_, ""));
+      HloInstruction::CreateParameter(0, f32a100x10_, "p"));
   auto map = builder.AddInstruction(
       HloInstruction::CreateMap(f32a100x10_, {param0}, map_computation));
   module->AddEntryComputation(builder.Build());
@@ -654,7 +654,7 @@ TEST_F(BufferAssignmentTest, CannotReuseInputBufferOfReduce) {
 
   auto builder = HloComputation::Builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32a100x10_, ""));
+      HloInstruction::CreateParameter(0, f32a100x10_, "p"));
   auto exp1 = builder.AddInstruction(
       HloInstruction::CreateUnary(f32a100x10_, HloOpcode::kExp, param0));
   auto exp2 = builder.AddInstruction(
@@ -818,7 +818,7 @@ TEST_F(BufferAssignmentTest, UnaryOpReuseChain) {
   // param0[100] ---> (exp) ---> (tanh) ---> (exp) ---> (neg)
   auto builder = HloComputation::Builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32vec100_, ""));
+      HloInstruction::CreateParameter(0, f32vec100_, "p"));
   auto exp1 = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kExp, param0));
   auto tanh = builder.AddInstruction(
@@ -1496,11 +1496,11 @@ TEST_F(BufferAssignmentTest, TrivialPeakBuffers) {
   // param1[100] --------------/--------/
   auto builder = HloComputation::Builder(TestName());
   auto paramscalar =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, ""));
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, f32vec100_, ""));
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
   auto param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, f32vec100_, ""));
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_, HloOpcode::kMultiply, paramscalar, param0));
   auto add = builder.AddInstruction(
@@ -1536,7 +1536,7 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
   // be {%rev, %neg, %concat}. This occurs right at the concat itself.
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32vec100_, ""));
+      HloInstruction::CreateParameter(0, f32vec100_, "p"));
   auto log = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kLog, param));
   auto rev = builder.AddInstruction(
@@ -1673,7 +1673,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64 alignment = 1) {
     auto sequence =
-        CreateMemoryMinimizingSequence(*module, ByteSizeOf).ConsumeValueOrDie();
+        ScheduleComputationsInModule(*module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
                module, xla::MakeUnique<SequentialHloOrdering>(module, sequence),
                ByteSizeOf,
@@ -2103,7 +2103,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   RunCopyInsertion(module.get());
 
   auto sequence =
-      CreateMemoryMinimizingSequence(*module, ByteSizeOf).ConsumeValueOrDie();
+      ScheduleComputationsInModule(*module, ByteSizeOf).ConsumeValueOrDie();
 
   // To trigger b/38494731, we want a specific Hlo sequence for the
   // root computation, so we overwrite that entry with a manually

@@ -74,7 +74,7 @@ class EagerGrpcServer : public GrpcServer {
           this->eager_service_.reset(
               new eager::GrpcEagerServiceImpl(worker_env, server_builder));
         },
-        nullptr));
+        nullptr, nullptr));
 
     worker_session_ = WorkerSession::CreateWithBorrowedDeviceMgr(
         "", worker_name_,

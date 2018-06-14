@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.framework import with_shape
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
@@ -29,6 +30,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import deprecation
 
 
 def dense_to_sparse_batch(batch_size, row_shape):
@@ -101,10 +103,7 @@ class UnbatchDataset(dataset_ops.Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.unbatch_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):
@@ -218,6 +217,8 @@ def filter_irregular_batches(batch_size):
   return _apply_fn
 
 
+@deprecation.deprecated(
+    None, "Use `tf.data.Dataset.batch(..., drop_remainder=True)`.")
 def batch_and_drop_remainder(batch_size):
   """A batching transformation that omits the final small batch (if present).
 
@@ -250,12 +251,16 @@ def batch_and_drop_remainder(batch_size):
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
+    # TODO(jsimsa): Switch to using `batch(..., drop_remainder=True)` any time
+    # after 6/30/2018.
     batched = dataset.batch(batch_size)
     return filter_irregular_batches(batch_size)(batched)
 
   return _apply_fn
 
 
+@deprecation.deprecated(
+    None, "Use `tf.data.Dataset.padded_batch(..., drop_remainder=True)`.")
 def padded_batch_and_drop_remainder(batch_size,
                                     padded_shapes,
                                     padding_values=None):
@@ -284,6 +289,8 @@ def padded_batch_and_drop_remainder(batch_size,
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
+    # TODO(jsimsa): Switch to using `padded_batch(..., drop_remainder=True)`
+    # any time after 6/30/2018.
     batched = dataset.padded_batch(
         batch_size, padded_shapes=padded_shapes, padding_values=padding_values)
     return filter_irregular_batches(batch_size)(batched)
@@ -309,11 +316,8 @@ class DenseToSparseBatchDataset(dataset_ops.Dataset):
     return gen_dataset_ops.dense_to_sparse_batch_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._batch_size,
-        row_shape=dataset_ops._partial_shape_to_tensor(self._row_shape),  # pylint: disable=protected-access
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
+        row_shape=convert.partial_shape_to_tensor(self._row_shape),
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):
@@ -490,10 +494,7 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
         batch_size=self._batch_size_t,
         num_parallel_calls=self._num_parallel_calls_t,
         drop_remainder=self._drop_remainder_t,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
     # pylint: enable=protected-access
 
   @property

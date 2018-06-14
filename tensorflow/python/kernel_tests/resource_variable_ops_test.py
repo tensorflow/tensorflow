@@ -152,6 +152,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(resource_variable_ops.assign_variable_op(
         id_handle, constant_op.constant(0, dtype=dtypes.int32)))
 
+  def testUnreadOpName(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.assertNotEqual(v.name, v.assign_add(1.0).name)
+
   @test_util.run_in_graph_and_eager_modes()
   def testCreateRead(self):
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])

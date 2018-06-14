@@ -1230,7 +1230,7 @@ StatusOr<bool> HloRematerialization::Run(
 
   XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
   // Create initial sequence of HLO instructions.
-  TF_ASSIGN_OR_RETURN(*sequence, CreateMemoryMinimizingSequence(
+  TF_ASSIGN_OR_RETURN(*sequence, ScheduleComputationsInModule(
                                      *module,
                                      [this](const BufferValue& buffer) {
                                        return size_function_(buffer.shape());

@@ -1148,5 +1148,30 @@ TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
                                                                  call, {}));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, LoopFusionWithElementwiseOperand) {
+  Shape full_shape = ShapeUtil::MakeShape(F32, {16, 32});
+  Shape broadcast_shape = ShapeUtil::MakeShape(F32, {16});
+
+  auto builder = HloComputation::Builder(TestName() + "_fusion");
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, full_shape, "full"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, broadcast_shape, "small"));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(full_shape, param1, {0}));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      full_shape, HloOpcode::kAdd, param0, broadcast));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {add, broadcast}, HloInstruction::FusionKind::kLoop);
+  RunAnalysis();
+
+  EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {}));
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                  fusion, {}));
+}
+
 }  // namespace
 }  // namespace xla

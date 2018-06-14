@@ -209,6 +209,30 @@ class TestSequential(test.TestCase):
       x2 = model.predict(val_a)
       assert np.abs(np.sum(x1 - x2)) > 1e-5
 
+  def test_sequential_deferred_build_serialization(self):
+    num_hidden = 5
+    input_dim = 3
+    batch_size = 5
+    num_classes = 2
+
+    model = keras.models.Sequential()
+    # We don't specify the input shape.
+    model.add(keras.layers.Dense(num_hidden))
+    model.add(keras.layers.Dense(num_classes))
+    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    self.assertFalse(model.built)
+
+    x = np.random.random((batch_size, input_dim))
+    y = np.random.random((batch_size, num_classes))
+    model.train_on_batch(x, y)
+    self.assertTrue(model.built)
+
+    config = model.get_config()
+    new_model = keras.models.Sequential.from_config(config)
+    self.assertTrue(new_model.built)
+    self.assertEqual(len(model.layers), 2)
+    self.assertEqual(len(model.weights), 4)
+
 
 if __name__ == '__main__':
   test.main()
