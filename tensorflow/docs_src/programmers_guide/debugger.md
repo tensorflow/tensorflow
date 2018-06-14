@@ -17,7 +17,7 @@ how to use the graphical user interface (GUI) of tfdbg, i.e., the
 Note: The TensorFlow debugger uses a
 [curses](https://en.wikipedia.org/wiki/Curses_\(programming_library\))-based text
 user interface. On Mac OS X, the `ncurses` library is required and can be
-installed with `brew install homebrew/dupes/ncurses`. On Windows, curses isn't as
+installed with `brew install ncurses`. On Windows, curses isn't as
 well supported, so a [readline](https://en.wikipedia.org/wiki/GNU_Readline)-based
 interface can be used with tfdbg by installing `pyreadline` with `pip`. If you
 use Anaconda3, you can install it with a command such as
