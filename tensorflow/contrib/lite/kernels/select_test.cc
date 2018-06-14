@@ -88,11 +88,11 @@ TEST(SelectOpTest, SelectUInt8) {
                       TensorType_UINT8);
 
   model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
-  model.PopulateTensor<uint8>(model.input2(), {1, 2, 3, 4});
-  model.PopulateTensor<uint8>(model.input3(), {5, 6, 7, 8});
+  model.PopulateTensor<uint8_t>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<uint8_t>(model.input3(), {5, 6, 7, 8});
   model.Invoke();
 
-  EXPECT_THAT(model.GetOutput<uint8>(), ElementsAreArray({5, 2, 7, 8}));
+  EXPECT_THAT(model.GetOutput<uint8_t>(), ElementsAreArray({5, 2, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
 }
 
@@ -101,11 +101,11 @@ TEST(SelectOpTest, SelectInt32) {
                       TensorType_INT32);
 
   model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
-  model.PopulateTensor<int32>(model.input2(), {1, 2, 3, 4});
-  model.PopulateTensor<int32>(model.input3(), {5, 6, 7, 8});
+  model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
   model.Invoke();
 
-  EXPECT_THAT(model.GetOutput<int32>(), ElementsAreArray({5, 2, 7, 8}));
+  EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 2, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
 }
 
@@ -113,11 +113,11 @@ TEST(SelectOpTest, RankOneSelectInt32) {
   SelectOpModel model({2}, {2, 1, 2, 1}, {2, 1, 2, 1}, TensorType_INT32);
 
   model.PopulateTensor<bool>(model.input1(), {false, true});
-  model.PopulateTensor<int32>(model.input2(), {1, 2, 3, 4});
-  model.PopulateTensor<int32>(model.input3(), {5, 6, 7, 8});
+  model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
   model.Invoke();
 
-  EXPECT_THAT(model.GetOutput<int32>(), ElementsAreArray({5, 6, 3, 4}));
+  EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 6, 3, 4}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 2, 1}));
 }
 
@@ -125,11 +125,11 @@ TEST(SelectOpTest, RankZeroSelectInt32) {
   SelectOpModel model({1}, {1, 2, 2, 1}, {1, 2, 2, 1}, TensorType_INT32);
 
   model.PopulateTensor<bool>(model.input1(), {false});
-  model.PopulateTensor<int32>(model.input2(), {1, 2, 3, 4});
-  model.PopulateTensor<int32>(model.input3(), {5, 6, 7, 8});
+  model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
   model.Invoke();
 
-  EXPECT_THAT(model.GetOutput<int32>(), ElementsAreArray({5, 6, 7, 8}));
+  EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 6, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2, 1}));
 }
 
