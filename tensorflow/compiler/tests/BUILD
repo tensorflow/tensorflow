@@ -51,6 +51,15 @@ py_library(
     ],
 )
 
+py_test(
+    name = "xla_test_test",
+    size = "small",
+    srcs = ["xla_test_test.py"],
+    deps = [
+        ":xla_test",
+    ],
+)
+
 tf_xla_py_test(
     name = "adagrad_test",
     size = "small",
