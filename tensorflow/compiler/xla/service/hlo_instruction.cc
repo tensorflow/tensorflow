@@ -178,10 +178,14 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kConstant: {
-      CHECK(proto.has_literal());
-      TF_ASSIGN_OR_RETURN(auto literal,
-                          Literal::CreateFromProto(proto.literal()));
-      instruction = CreateConstant(std::move(literal));
+      // TODO(b/110214922): Revert this to CHECK(proto.has_literal()).
+      if (proto.has_literal()) {
+        TF_ASSIGN_OR_RETURN(auto literal,
+                            Literal::CreateFromProto(proto.literal()));
+        instruction = CreateConstant(std::move(literal));
+      } else {
+        instruction = MakeUnique<HloConstantInstruction>(proto.shape());
+      }
       break;
     }
     case HloOpcode::kTrace: {

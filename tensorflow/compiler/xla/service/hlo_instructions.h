@@ -436,6 +436,8 @@ class HloSliceInstruction : public HloInstruction {
 class HloConstantInstruction : public HloInstruction {
  public:
   explicit HloConstantInstruction(std::unique_ptr<Literal> literal);
+  // Used when the literal is too large and dropped.
+  explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.
   const Literal& literal() const { return *literal_; }
   // Returns a serialized representation of this instruction.

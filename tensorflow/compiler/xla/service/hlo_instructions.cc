@@ -610,9 +610,14 @@ HloConstantInstruction::HloConstantInstruction(std::unique_ptr<Literal> literal)
     : HloInstruction(HloOpcode::kConstant, CHECK_NOTNULL(literal)->shape()),
       literal_(std::move(literal)) {}
 
+HloConstantInstruction::HloConstantInstruction(const Shape& shape)
+    : HloInstruction(HloOpcode::kConstant, shape) {}
+
 HloInstructionProto HloConstantInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_literal() = literal_->ToProto();
+  if (literal_ != nullptr) {
+    *proto.mutable_literal() = literal_->ToProto();
+  }
   return proto;
 }
 
@@ -658,8 +663,9 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     CanonicalNameMap* canonical_name_map) const {
   string operands;
   // For constants, show the actual value in place of an empty operand list.
-  if ((ShapeUtil::IsArray(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
-      options.print_large_constants()) {
+  if (literal_ != nullptr &&
+      ((ShapeUtil::IsArray(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
+       options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.
     string tmp = literal().ToString();
