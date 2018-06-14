@@ -300,12 +300,6 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateWithSubstitutions(
       instruction->CloneWithNewOperands(instruction->shape(), operands);
   auto result = Evaluate(cloned_instruction.get());
 
-  // Clean up our cloned instructions before returning.
-  cloned_instruction->DetachFromOperands();
-  for (auto& operand : owned_operands) {
-    operand->DetachFromOperands();
-  }
-
   return result;
 }
 
@@ -321,7 +315,6 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseBinaryOp(
                                    rhs_instr.get());
   auto result = Evaluate(cloned_instruction.get());
 
-  cloned_instruction->DetachFromOperands();
   return result;
 }
 
@@ -334,7 +327,6 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseUnaryOp(
       HloInstruction::CreateUnary(operand.shape(), opcode, operand_instr.get());
   auto result = Evaluate(cloned_instruction.get());
 
-  cloned_instruction->DetachFromOperands();
   return result;
 }
 

@@ -1210,7 +1210,29 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   return clone;
 }
 
-HloInstruction::~HloInstruction() {}
+HloInstruction::~HloInstruction() {
+  // Detach from operands. An instruction may be repeated as an operand. To
+  // avoid calling RemoveUser twice on the same operand, check before remove.
+  for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
+    HloInstruction* operand = operands_[operand_num];
+    if (operand == nullptr) {
+      continue;
+    }
+    if (operand->user_set_.find(this) != operand->user_set_.end()) {
+      operand->RemoveUser(this);
+    }
+    operands_[operand_num] = nullptr;
+  }
+
+  // Update users. Set `nullptr` to the correpsonding operand slot for users.
+  for (auto& user : this->users()) {
+    for (int i = 0; i < user->operand_count(); ++i) {
+      if (user->operands_[i] == this) {
+        user->operands_[i] = nullptr;
+      }
+    }
+  }
+}
 
 std::unique_ptr<HloInstruction> HloInstruction::Clone(
     const string& suffix, HloCloneContext* context) const {
@@ -1609,22 +1631,6 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
   return Status::OK();
 }
 
-void HloInstruction::DetachFromOperands() {
-  VLOG(3) << "DetachFromOperands:\n  " << ToString();
-  CHECK_EQ(0, user_count());
-  // An instruction may be repeated as an operand. To avoid calling RemoveUser
-  // twice on the same operand, keep a set of already detached operands.
-  std::set<HloInstruction*> detached_operands;
-  for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
-    HloInstruction* operand = operands_[operand_num];
-    if (!ContainsKey(detached_operands, operand)) {
-      operand->RemoveUser(this);
-      detached_operands.insert(operand);
-    }
-    operands_[operand_num] = nullptr;
-  }
-}
-
 HloComputation* HloInstruction::to_apply() const {
   switch (opcode_) {
     case HloOpcode::kCall:
@@ -1884,6 +1890,11 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
   }
   operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
+    // If operand is already been deleted, put `null` to the string output.
+    if (operand == nullptr) {
+      StrAppend(out, "null ");
+      return;
+    }
     std::vector<string> str;
     if (options.print_operand_shape()) {
       str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));

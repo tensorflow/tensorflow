@@ -234,7 +234,6 @@ Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   TF_RET_CHECK(instruction_iterators_.count(instruction) != 0);
   auto inst_it = instruction_iterators_.at(instruction);
   (*inst_it)->set_parent(nullptr);
-  instruction->DetachFromOperands();
   instructions_.erase(inst_it);
   return Status::OK();
 }
@@ -868,15 +867,6 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     }
   }
   context->MapComputation(this, result.get());
-  // We cloned the elements of 'replacements', so they're all going to be
-  // destroyed. HloInstructions need to be detached from their operands before
-  // they're destroyed, otherwise they stick around in the operands' users lists
-  // and cause use-after-frees.
-  for (auto& kv : replacements) {
-    if (std::unique_ptr<HloInstruction>& new_instr = kv.second) {
-      new_instr->DetachFromOperands();
-    }
-  }
   return result;
 }
 

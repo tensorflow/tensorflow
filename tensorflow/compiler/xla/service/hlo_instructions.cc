@@ -831,10 +831,8 @@ void HloFusionInstruction::MergeFusionInstruction(
   // Fuse 'unfused_instructions' into 'this'.
   for (auto& instruction : unfused_instructions) {
     FuseInstruction(instruction);
-    instruction->DetachFromOperands();
   }
   CHECK_EQ(0, cloned_fusion->user_count());
-  cloned_fusion->DetachFromOperands();
   TF_CHECK_OK(parent()->parent()->RemoveEmbeddedComputation(
       cloned_fusion->fused_instructions_computation()));
 }

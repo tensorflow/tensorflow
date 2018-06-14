@@ -824,13 +824,6 @@ class HloInstruction {
   // root to new_producer.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
 
-  // Detaches an instruction from its operands. That is, remove the instruction
-  // from each operand's user set. This should only be called prior to
-  // deallocating the instruction.
-  //
-  // TODO(b/78305363): Make this automatic when deleting an instruction.
-  void DetachFromOperands();
-
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
   // complete. If ignore_control_predecessors is true, instructions only
