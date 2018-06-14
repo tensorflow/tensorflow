@@ -215,6 +215,13 @@ class BaselineClassifier(estimator.Estimator):
 
   * if `weight_column` is not `None`, a feature with
      `key=weight_column` whose value is a `Tensor`.
+
+  @compatibility(eager)
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
+  @end_compatibility
   """
 
   def __init__(self,
@@ -313,6 +320,13 @@ class BaselineRegressor(estimator.Estimator):
 
   * if `weight_column` is not `None`, a feature with
      `key=weight_column` whose value is a `Tensor`.
+
+  @compatibility(eager)
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
+  @end_compatibility
   """
 
   def __init__(self,

@@ -714,7 +714,15 @@ def _create_regression_head(label_dimension, weight_column=None):
 
 @estimator_export('estimator.BoostedTreesClassifier')
 class BoostedTreesClassifier(estimator.Estimator):
-  """A Classifier for Tensorflow Boosted Trees models."""
+  """A Classifier for Tensorflow Boosted Trees models.
+
+  @compatibility(eager)
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
+  @end_compatibility
+  """
 
   def __init__(self,
                feature_columns,
@@ -832,7 +840,15 @@ class BoostedTreesClassifier(estimator.Estimator):
 
 @estimator_export('estimator.BoostedTreesRegressor')
 class BoostedTreesRegressor(estimator.Estimator):
-  """A Regressor for Tensorflow Boosted Trees models."""
+  """A Regressor for Tensorflow Boosted Trees models.
+
+  @compatibility(eager)
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
+  @end_compatibility
+  """
 
   def __init__(self,
                feature_columns,

@@ -103,6 +103,15 @@ class Estimator(object):
   None of `Estimator`'s methods can be overridden in subclasses (its
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
+
+  @compatbility(eager)
+  Calling methods of `Estimator` will work while eager execution is enabled.
+  However, the `model_fn` and `input_fn` is not executed eagerly, `Estimator`
+  will switch to graph model before calling all user-provided functions (incl.
+  hooks), so their code has to be compatible with graph mode execution. Note
+  that `input_fn` code using `tf.data` generally works in both graph and eager
+  modes.
+  @end_compatibility
   """
 
   def __init__(self, model_fn, model_dir=None, config=None, params=None,
