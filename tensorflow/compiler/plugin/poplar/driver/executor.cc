@@ -248,30 +248,11 @@ Status PoplarExecutor::InitializePoplarDevice(
 
   tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
-  auto ds = poplar::DeviceSet::getDeviceSet();
-
   if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
-    if (ds.getNumDevices() > 0) {
-      type = tensorflow::IPUOptions::DeviceConfig::IPU;
-    } else {
       type = tensorflow::IPUOptions::DeviceConfig::CPU;
-    }
   }
 
   switch (type) {
-    case tensorflow::IPUOptions::DeviceConfig::IPU: {
-      try {
-        poplar_device_ = ds.getDevice(poplar::TargetType::IPU,
-                                      cfg.ipu_model_config().num_ipus());
-        profile_compilation_ = cfg.profiling().enable_compilation_trace();
-        profile_poplar_text_ = cfg.profiling().enable_poplar_reports_text();
-        profile_execution_ = cfg.profiling().enable_execution_trace();
-        profile_io_ = cfg.profiling().enable_io_trace();
-      } catch (std::logic_error) {
-        return xla::InternalError("No IPU devices found on ordinal %d",
-                                  ordinal_);
-      }
-    }
     case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL: {
       poplar::IPUModel model;
       if (cfg.ipu_model_config().num_ipus() != 0) {
