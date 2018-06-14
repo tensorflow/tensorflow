@@ -20,7 +20,17 @@ Naming conventions:
 Below are AutoGraph-specific conventions. In the event of conflict,
 it supercedes all previous conventions.
 
-1.  __Citations in Docstrings.__ Write a `#### References` subsection at the
+1. __Types in docstrings.__ Use [PEP 484][https://www.python.org/dev/peps/pep-0484/]
+    notation to describe the type for args, return values and attributes.
+
+    Example:
+
+    ```
+    Args:
+      foo: Dict[str, List[int]], a dictionary of sorts
+    ```
+
+2.  __Citations in Docstrings.__ Write a `#### References` subsection at the
     bottom of any docstring with citations. Use ICLR’s bibliography style to
     write references; for example, order entries by the first author's last
     name. Add a link to the paper if the publication is open source (ideally,
@@ -60,12 +70,12 @@ it supercedes all previous conventions.
          https://arxiv.org/abs/1803.04386
     ```
 
-2.  Avoid LaTeX in docstrings.
+3.  Avoid LaTeX in docstrings.
 
     *   It is not rendered in many (if not most) editors and can be hard to read
         for both LaTeX experts and non-experts.
 
-3. Write docstring and comment math using ASCII friendly notation; python using
+4. Write docstring and comment math using ASCII friendly notation; python using
     operators. E.g., `x**2` better than `x^2`, `x[i, j]` better than `x_{i,j}`,
     `sum{ f(x[i]) : i=1...n }` better than `\sum_{i=1}^n f(x_i)` `int{sin(x) dx:
     x in [0, 2 pi]}` better than `\int_0^{2\pi} sin(x) dx`.
