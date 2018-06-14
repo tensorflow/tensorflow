@@ -633,6 +633,23 @@ class FunctionTest(test.TestCase):
     y = model(x)
     self.assertAllEqual([[[[4.0]]]], y.numpy())
 
+  def testVariablesAreTracked(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    def foo(x):
+      return v * x
+
+    defined = function.defun(foo)
+
+    x = constant_op.constant([1.0])
+    self.assertAllEqual(defined.variables, [])
+    _ = defined(x)
+    self.assertAllEqual(defined.variables, [v])
+
+    x = constant_op.constant([1.0, 2.0])
+    _ = defined(x)  # ensure the variables list remains the same
+    self.assertAllEqual(defined.variables, [v])
+
 
 @test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):

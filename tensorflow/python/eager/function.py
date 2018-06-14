@@ -222,6 +222,11 @@ def _inference_name(n):
   return "__inference_%s_%s" % (n, ops.uid())
 
 
+def _register(fn):
+  """Registers the function `fn`."""
+  context.context().add_function(fn)
+
+
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
 # so it doesn't have the definition-generating logic and is just a container for
 # an already-defined function.
@@ -591,7 +596,7 @@ def _get_defun_inputs(args):
   return nest.pack_sequence_as(args, ret)
 
 
-def _defun_internal(name, func, compiled, args, kwds):
+def _trace_and_define_function(name, func, compiled, args, kwds):
   """Defines and returns graph-mode version of func."""
   graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
   with context.graph_mode():
@@ -699,42 +704,57 @@ def _cache_key(x):
   return x
 
 
-def _register(fn):
-  """Registers the function `fn`."""
-  context.context().add_function(fn)
-
-
-# TODO(apassos): better error messages for non-hashable arguments.
-def named_defun(func, name, compiled=False):
-  """Defines a function with a given name.
+class _PolymorphicFunction(object):
+  """Wrapper class for the graph functions defined for a Python function.
 
   See the documentation for `defun` for more information on the semantics of
-  this function.
-
-  Args:
-    func: the function to be wrapped.
-    name: the name given to it.
-    compiled: if true, the framework will attempt to compile func with XLA.
-
-  Returns:
-    the wrapped function.
+  defined functions.
   """
-  arguments_to_functions = {}
 
-  def decorated(*args, **kwds):
-    """Decorated version of func."""
-    # Macroexpand on non-Tensor arguments
-    cache_key = tuple(_cache_key(x) for x in args)
+  def __init__(self, python_function, name, compiled=False):
+    """Initializes a polymorphic function.
+
+    Args:
+      python_function: the function to be wrapped.
+      name: the name given to it.
+      compiled: if True, the framework will attempt to compile func with XLA.
+    """
+
+    self._python_function = python_function
+    self._name = name
+    self._compiled = compiled
+    self._arguments_to_functions = {}
+    self._variables = []
+
+  def _maybe_define_function(self, *args, **kwds):
+    """Gets a function for these inputs, defining it if necessary."""
+
+    # TODO(akshayka): Remove this restriction.
     if any(isinstance(x, ops.EagerTensor) for x in kwds.values()):
       raise ValueError("Tensor keyword arguments are not supported.")
+
+    # TODO(apassos): Better error messages for non-hashable arguments.
+    cache_key = tuple(_cache_key(x) for x in args)
     cache_key = (cache_key, tuple(kwds.items()))
 
-    if cache_key not in arguments_to_functions:
-      arguments_to_functions[cache_key] = _defun_internal(
-          name, func, compiled, args, kwds)
-    return arguments_to_functions[cache_key](*args)
+    if cache_key not in self._arguments_to_functions:
+      graph_function = _trace_and_define_function(
+          self._name, self._python_function, self._compiled, args, kwds)
+      self._arguments_to_functions[cache_key] = graph_function
+      self._variables.extend(
+          [v for v in graph_function.variables if v not in self._variables])
+      return graph_function
+    else:
+      return self._arguments_to_functions[cache_key]
 
-  return decorated
+  def __call__(self, *args, **kwds):
+    """Calls a graph function specialized for this input signature."""
+    return self._maybe_define_function(*args, **kwds)(*args)
+
+  @property
+  def variables(self):
+    """Returns a list of variables used in any of the defined functions."""
+    return self._variables
 
 
 # TODO(akshayka): Remove the `compiled` flag and create a separate
@@ -991,7 +1011,7 @@ def defun(func=None, compiled=False):
     except AttributeError:
       name = "function"
     return tf_decorator.make_decorator(
-        function, named_defun(function, name, compiled=compiled))
+        function, _PolymorphicFunction(function, name, compiled=compiled))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:
@@ -1056,7 +1076,7 @@ def make_defun_op(func, *args, **kwds):
   name = func.__name__
   if any(isinstance(x, ops.EagerTensor) for x in kwds.values()):
     raise ValueError("Tensor keyword arguments are not supported.")
-  return _defun_internal(name, func, False, args, kwds)
+  return _trace_and_define_function(name, func, False, args, kwds)
 
 
 class AutomaticControlDependencies(object):
