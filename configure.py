@@ -1100,10 +1100,13 @@ def set_tf_nccl_install_path(environ_cp):
     # Then ask the user if we should use that. Instead of a single
     # NCCL_INSTALL_PATH, pass separate NCCL_LIB_PATH and NCCL_HDR_PATH to
     # nccl_configure.bzl
-    # For OS where debians are installed at standard locations
-    ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
-    nccl2_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
-    nccl2_path_from_ldconfig = re.search('.*libnccl.so .* => (.*)',
+
+    # First check to see if NCCL is in the ldconfig.
+    # If its found, use that location.
+    if is_linux():
+      ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
+      nccl2_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
+      nccl2_path_from_ldconfig = re.search('.*libnccl.so .* => (.*)',
                                            nccl2_path_from_ldconfig)
     if nccl2_path_from_ldconfig:
       nccl2_path_from_ldconfig = nccl2_path_from_ldconfig.group(1)
@@ -1111,17 +1114,18 @@ def set_tf_nccl_install_path(environ_cp):
         nccl_install_path = os.path.dirname(nccl2_path_from_ldconfig)
         print('NCCL libraries found in ' + nccl2_path_from_ldconfig)
         
-        # Check if this is the main system lib location
-        if re.search('.*linux-gnu', nccl_install_path):
+        # Check if this is the main Linux system lib location
+        # If so, mark the install root path as simply /usr
+        # so nccl_configure.bzl can find both the header and lib
+        if nccl_install_path.startswith("/usr/lib") and re.search('.*linux-gnu', nccl_install_path):
           nccl_install_path = "/usr"
           print("This looks like a system path. Using: " + nccl_install_path)
         else:
           nccl_install_path = nccl_install_path + "/.."
   
         # Look for header
-        #nccl_hdr_path = os.path.join(nccl_install_path, '/include/nccl.h')
         nccl_hdr_path = nccl_install_path + "/include/nccl.h"
-        print("Assuming header is "+nccl_hdr_path)
+        print("Assuming header is " + nccl_hdr_path)
         if os.path.exists(nccl_hdr_path):
           # Set NCCL_INSTALL_PATH
           environ_cp['NCCL_INSTALL_PATH'] = nccl_install_path
@@ -1130,9 +1134,10 @@ def set_tf_nccl_install_path(environ_cp):
         else:
           print('The header for NCCL2 cannot be found. Please install the libnccl-dev package.')
       else:
-          print('NCCL2 is listed by ldconfig but the library is not found.' 
-                'ldconfig is out of date. Please run sudo ldconfig.')
+          print('NCCL2 is listed by ldconfig but the library is not found. ' 
+                'Your ldconfig is out of date. Please run sudo ldconfig.')
     else:
+      # NCCL is not found in ldconfig. Ask the user for the location.
       default_nccl_path = environ_cp.get('CUDA_TOOLKIT_PATH')
       ask_nccl_path = (r'Please specify the location where NCCL %s library is '
                      'installed. Refer to README.md for more details. [Default '
@@ -1142,24 +1147,53 @@ def set_tf_nccl_install_path(environ_cp):
 
       # Result returned from "read" will be used unexpanded. That make "~"
       # unusable. Going through one more level of expansion to handle that.
+      print("nccl_install_path " + nccl_install_path)
       nccl_install_path = os.path.realpath(os.path.expanduser(nccl_install_path))
+      print("nccl_install_path " + nccl_install_path)
       if is_windows() or is_cygwin():
         nccl_install_path = cygpath(nccl_install_path)
 
-      if is_windows():
-        nccl_lib_path = 'lib/x64/nccl.lib'
-      elif is_linux():
-        nccl_lib_path = 'lib64/libnccl.so.%s' % tf_nccl_version
-      elif is_macos():
-        nccl_lib_path = 'lib/libnccl.%s.dylib' % tf_nccl_version
+      # Check if what we got is the main Linux system lib location
+      if nccl_install_path.startswith("/usr/lib") and re.search('.*linux-gnu', nccl_install_path):
+        nccl_lib_path = 'libnccl.so.%s' % tf_nccl_version
+        nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
+        print("This looks like a system path. Using: " + nccl_install_path + nccl_lib_path)
 
-      nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
-      nccl_hdr_path = os.path.join(nccl_install_path, 'include/nccl.h')
-      if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
-        # Set NCCL_INSTALL_PATH
-        environ_cp['NCCL_INSTALL_PATH'] = nccl_install_path
-        write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_install_path)
-        break
+        # Look for header
+        nccl_hdr_path = "/usr/include/nccl.h"
+        print("Assuming header is " + nccl_hdr_path)
+      
+        if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
+          # Set NCCL_INSTALL_PATH
+          # Since this is the main system lib location, use /usr
+          # so nccl_configure.bzl can find both the header and lib
+          environ_cp['NCCL_INSTALL_PATH'] = "/usr"
+          write_action_env_to_bazelrc('NCCL_INSTALL_PATH', '/usr')
+          break
+      else:
+        # NCCL does not reside in a the standard system location
+        if is_windows():
+          nccl_lib_path = 'lib/x64/nccl.lib'
+        elif is_linux():
+          nccl_lib_path = 'lib64/libnccl.so.%s' % tf_nccl_version
+        elif is_macos():
+          nccl_lib_path = 'lib/libnccl.%s.dylib' % tf_nccl_version
+        nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
+        nccl_lib_path = os.path.realpath(os.path.expanduser(nccl_lib_path))
+        nccl_root_path = nccl_lib_path + "/../.."
+        print("nccl root" + nccl_root_path)
+
+        # Look for header
+        nccl_hdr_path = nccl_root_path + "/include/nccl.h"
+        nccl_hdr_path = os.path.realpath(os.path.expanduser(nccl_hdr_path))
+        print("Assuming header is " + nccl_hdr_path)
+
+        if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
+          # Set NCCL_INSTALL_PATH
+          environ_cp['NCCL_INSTALL_PATH'] = nccl_root_path
+          write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_root_path)
+          break
+
 
       # Reset and Retry
       print('Invalid path to NCCL %s toolkit, %s or %s not found. Please use the '
