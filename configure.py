@@ -1123,11 +1123,13 @@ def set_tf_nccl_install_path(environ_cp):
     # Then ask the user if we should use that. Instead of a single
     # NCCL_INSTALL_PATH, pass separate NCCL_LIB_PATH and NCCL_HDR_PATH to
     # nccl_configure.bzl
-    #
-    # Frist, check ldconfig for NCCL locations
-    ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
-    nccl2_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
-    nccl2_path_from_ldconfig = re.search('.*libnccl.so .* => (.*)',
+
+    # First check to see if NCCL is in the ldconfig.
+    # If its found, use that location.
+    if is_linux():
+      ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
+      nccl2_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
+      nccl2_path_from_ldconfig = re.search('.*libnccl.so .* => (.*)',
                                            nccl2_path_from_ldconfig)
     if nccl2_path_from_ldconfig:
       nccl2_path_from_ldconfig = nccl2_path_from_ldconfig.group(1)
@@ -1157,10 +1159,10 @@ def set_tf_nccl_install_path(environ_cp):
         else:
           print('The header for NCCL2 cannot be found. Please install the libnccl-dev package.')
       else:
-          print('NCCL2 is listed by ldconfig but the library is not found.' 
-                'ldconfig is out of date. Please run sudo ldconfig.')
+          print('NCCL2 is listed by ldconfig but the library is not found. ' 
+                'Your ldconfig is out of date. Please run sudo ldconfig.')
     else:
-      # ldconfig is unaware of NCCL, ask the user
+      # NCCL is not found in ldconfig. Ask the user for the location.
       default_nccl_path = environ_cp.get('CUDA_TOOLKIT_PATH')
       ask_nccl_path = (r'Please specify the location where NCCL %s library is '
                      'installed. Refer to README.md for more details. [Default '
@@ -1170,7 +1172,9 @@ def set_tf_nccl_install_path(environ_cp):
 
       # Result returned from "read" will be used unexpanded. That make "~"
       # unusable. Going through one more level of expansion to handle that.
+      print("nccl_install_path " + nccl_install_path)
       nccl_install_path = os.path.realpath(os.path.expanduser(nccl_install_path))
+      print("nccl_install_path " + nccl_install_path)
       if is_windows() or is_cygwin():
         nccl_install_path = cygpath(nccl_install_path)
 
@@ -1193,8 +1197,6 @@ def set_tf_nccl_install_path(environ_cp):
 
       nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
       nccl_hdr_path = os.path.join(nccl_install_path, 'include/nccl.h')
-      print("lib at " + nccl_lib_path)
-      print("hdr at " + nccl_hdr_path)
       print("Assuming NCCL header path is "+nccl_hdr_path)
       if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
         # Set NCCL_INSTALL_PATH
