@@ -238,6 +238,19 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_execution_profiler",
+    srcs = ["hlo_execution_profiler.cc"],
+    hdrs = ["hlo_execution_profiler.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_execution_profile",
+        "//tensorflow/compiler/xla/service:pool",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
     name = "gpu_executable",
     srcs = [
         "conditional_thunk.cc",
@@ -278,6 +291,7 @@ cc_library(
         ":backend_configs",
         ":buffer_allocations",
         ":cudnn_convolution_runner",
+        ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
         ":partition_assignment",
