@@ -2553,7 +2553,7 @@ def _get_graph_for_variable(var):
 
 
 class _SharedEmbeddingColumn(
-    _DenseColumn,
+    _DenseColumn, _SequenceDenseColumn,
     collections.namedtuple(
         '_SharedEmbeddingColumn',
         ('categorical_column', 'dimension', 'combiner', 'initializer',
@@ -2600,7 +2600,11 @@ class _SharedEmbeddingColumn(
       self._shape = tensor_shape.vector(self.dimension)
     return self._shape
 
-  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+  def _get_dense_tensor_internal(self,
+                                 inputs,
+                                 weight_collections=None,
+                                 trainable=None):
+    """Private method that follows the signature of _get_dense_tensor."""
     # This method is called from a variable_scope with name _var_scope_name,
     # which is shared among all shared embeddings. Open a name_scope here, so
     # that the ops for different columns have distinct names.
@@ -2640,6 +2644,44 @@ class _SharedEmbeddingColumn(
           combiner=self.combiner,
           name='%s_weights' % self.name,
           max_norm=self.max_norm)
+
+  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    if isinstance(self.categorical_column, _SequenceCategoricalColumn):
+      raise ValueError(
+          'In embedding_column: {}. '
+          'categorical_column must not be of type _SequenceCategoricalColumn. '
+          'Suggested fix A: If you wish to use input_layer, use a '
+          'non-sequence categorical_column_with_*. '
+          'Suggested fix B: If you wish to create sequence input, use '
+          'sequence_input_layer instead of input_layer. '
+          'Given (type {}): {}'.format(self.name, type(self.categorical_column),
+                                       self.categorical_column))
+    return self._get_dense_tensor_internal(
+        inputs=inputs,
+        weight_collections=weight_collections,
+        trainable=trainable)
+
+  def _get_sequence_dense_tensor(self,
+                                 inputs,
+                                 weight_collections=None,
+                                 trainable=None):
+    if not isinstance(self.categorical_column, _SequenceCategoricalColumn):
+      raise ValueError(
+          'In embedding_column: {}. '
+          'categorical_column must be of type _SequenceCategoricalColumn '
+          'to use sequence_input_layer. '
+          'Suggested fix: Use one of sequence_categorical_column_with_*. '
+          'Given (type {}): {}'.format(self.name, type(self.categorical_column),
+                                       self.categorical_column))
+    dense_tensor = self._get_dense_tensor_internal(  # pylint: disable=protected-access
+        inputs=inputs,
+        weight_collections=weight_collections,
+        trainable=trainable)
+    sparse_tensors = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
+        sparse_tensors.id_tensor)
+    return _SequenceDenseColumn.TensorSequenceLengthPair(
+        dense_tensor=dense_tensor, sequence_length=sequence_length)
 
 
 def _create_tuple(shape, value):
