@@ -937,6 +937,11 @@ LayoutAssignment::LayoutAssignment(
     ChannelLayoutConstraints* channel_constraints)
     : entry_computation_layout_(entry_computation_layout),
       channel_layout_constraints_(channel_constraints) {
+  if (channel_layout_constraints_ != nullptr) {
+    // Save a copy of the input ChannelLayoutConstraints so that we can reset it
+    // if we have to undo previous operations (ClearPreviousPassSideEffects()).
+    channel_constraints_ = *channel_layout_constraints_;
+  }
   VLOG(1) << "Entry computation layout given to layout assignment: "
           << entry_computation_layout_->ToString();
   // Layouts of all parameter instructions must be set.
@@ -1614,13 +1619,57 @@ Status LayoutAssignment::RunOnComputation(
 
   // Record the layouts assigned for any communication ops in
   // channel_constraints so that they are constrained for future modules.
+  if (channel_constraints != nullptr) {
+    TF_RETURN_IF_ERROR(
+        ConstrainChannelLayouts(computation, channel_constraints));
+  }
+  return Status::OK();
+}
+
+Status LayoutAssignment::ConstrainChannelLayouts(
+    HloComputation* computation,
+    ChannelLayoutConstraints* channel_constraints) {
+  // We go through the kRecvDone before. These must either impose their layout,
+  // of find a matching one already existing (ConstrainChannel() returns
+  // nullptr).
   for (HloInstruction* instruction : computation->instructions()) {
+    if (instruction->opcode() == HloOpcode::kRecvDone) {
+      const Layout* layout = channel_constraints->ConstrainChannel(
+          instruction->channel_id(), instruction->shape().layout());
+      TF_RET_CHECK(layout == nullptr)
+          << instruction->ToString()
+          << " cannot constrain layout as it was set to "
+          << LayoutUtil::HumanString(*layout);
+    }
+  }
+  // After that we go through the kSend. These are likely going to have a kCopy
+  // as operand (otherwise we add it), so in case the constrained layout does
+  // not match, we can change the kCopy layout (and the kSend one as well).
+  for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
     if (instruction->opcode() == HloOpcode::kSend) {
-      channel_constraints->ConstrainChannel(
-          instruction->channel_id(), instruction->operand(0)->shape().layout());
-    } else if (instruction->opcode() == HloOpcode::kRecvDone) {
-      channel_constraints->ConstrainChannel(instruction->channel_id(),
-                                            instruction->shape().layout());
+      HloInstruction* operand = instruction->mutable_operand(0);
+      const Layout* layout = channel_constraints->ConstrainChannel(
+          instruction->channel_id(), operand->shape().layout());
+      if (layout != nullptr) {
+        // We found an already constrained layout which does not match the one
+        // the kSend wants to impose. Eitehr add a new kCopy, or use the
+        // existing one to marshal the correct shape.
+        Shape shape = operand->shape();
+        *shape.mutable_layout() = *layout;
+        if (operand->opcode() != HloOpcode::kCopy) {
+          HloInstruction* copy = operand->parent()->AddInstruction(
+              HloInstruction::CreateUnary(shape, HloOpcode::kCopy, operand));
+          RegisterAddedCopy(copy);
+          SetupCopiedInstruction(*operand, copy, {});
+          TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(0, copy));
+          operand = copy;
+        } else {
+          *operand->mutable_shape() = shape;
+        }
+        Shape* send_shape =
+            ShapeUtil::GetMutableSubshape(instruction->mutable_shape(), {0});
+        *send_shape = shape;
+      }
     }
   }
   return Status::OK();
@@ -1743,6 +1792,7 @@ Status LayoutAssignment::ClearPreviousPassSideEffects(HloModule* module) {
     TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
     TF_RETURN_IF_ERROR(dce.Run(module).status());
   }
+  ResetChannelConstraints();
   return Status::OK();
 }
 
