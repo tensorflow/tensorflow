@@ -39,7 +39,7 @@ class ExpandDimsOpModel : public SingleOpModel {
   void SetInputFloat(std::initializer_list<float> data) {
     PopulateTensor<float>(input_, data);
   }
-  void SetAxis(int axis) { PopulateTensor<int32>(axis_, {axis}); }
+  void SetAxis(int axis) { PopulateTensor<int32_t>(axis_, {axis}); }
   std::vector<float> GetValuesFloat() { return ExtractVector<float>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
@@ -51,7 +51,7 @@ class ExpandDimsOpModel : public SingleOpModel {
 
 TEST(ExpandDimsOpTest, DifferentAxis) {
   ExpandDimsOpModel m({2, 2}, TensorType_FLOAT32);
-  const auto values = {-1.f, 1.f, -2.f, 2.f};
+  std::initializer_list<float> values = {-1.f, 1.f, -2.f, 2.f};
   m.SetInputFloat(values);
   m.SetAxis(0);
   m.Invoke();

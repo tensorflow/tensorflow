@@ -537,7 +537,7 @@ TEST(StridedSliceOpTest, RunTwice) {
 }
 
 TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1Uint8) {
-  StridedSliceOpModel<uint8, TensorType_UINT8> m({2, 3, 2}, {3}, {3}, {3}, 0, 0,
+  StridedSliceOpModel<uint8_t, TensorType_UINT8> m({2, 3, 2}, {3}, {3}, {3}, 0, 0,
                                                  0, 0, 1);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
