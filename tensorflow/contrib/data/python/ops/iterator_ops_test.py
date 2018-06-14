@@ -44,7 +44,7 @@ class CheckpointInputPipelineHookTest(test.TestCase):
     latest_feature = variables.Variable(
         0, name='latest_feature', dtype=dtypes.int64)
     store_latest_feature_op = latest_feature.assign(features)
-    ops.add_to_collection('my_vars', global_step.read_value())
+    ops.add_to_collection('my_vars', global_step)
     ops.add_to_collection('my_vars', latest_feature)
     return model_fn.EstimatorSpec(
         mode='train',

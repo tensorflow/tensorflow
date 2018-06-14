@@ -520,6 +520,8 @@ class TrainTest(test.TestCase):
 
     run_root = glob.glob(os.path.join(dump_root, 'run_*'))[-1]
     dump = debug_data.DebugDumpDir(run_root)
+    self.assertAllEqual(0,
+                        dump.get_tensors('global_step', 0, 'DebugIdentity')[0])
 
   def testTrainWithTrace(self):
     logdir = os.path.join(
@@ -545,7 +547,7 @@ class TrainTest(test.TestCase):
           log_every_n_steps=10,
           trace_every_n_steps=100)
     self.assertIsNotNone(loss)
-    for trace_step in [0, 100, 200]:
+    for trace_step in [1, 101, 201]:
       trace_filename = 'tf_trace-%d.json' % trace_step
       self.assertTrue(os.path.isfile(os.path.join(logdir, trace_filename)))
 

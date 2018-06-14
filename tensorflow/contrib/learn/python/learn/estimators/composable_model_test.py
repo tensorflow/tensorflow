@@ -56,7 +56,7 @@ def _base_model_fn(features, labels, mode, params):
 
   def _train_op_fn(loss):
     global_step = training_util.get_global_step()
-    assert global_step is not None
+    assert global_step
     train_step = model.get_train_step(loss)
 
     with ops.control_dependencies(train_step):
