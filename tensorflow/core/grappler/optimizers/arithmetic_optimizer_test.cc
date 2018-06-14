@@ -1510,7 +1510,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesThroughChain) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  ArithmeticOptimizer optimizer;
+  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 

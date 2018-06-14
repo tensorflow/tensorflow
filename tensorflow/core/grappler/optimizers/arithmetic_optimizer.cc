@@ -1084,8 +1084,11 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
     NodeDef* tail = node;
-    tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
-                                    *ctx().nodes_to_preserve);
+    // TODO(rmlarsen): Enable after debugging breakage in Bayesflow.
+    if (ctx().opt_level == RewriterConfig::AGGRESSIVE) {
+      tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
+                                      *ctx().nodes_to_preserve);
+    }
     NodeDef* first_transpose;
     TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &first_transpose));
 
@@ -2713,7 +2716,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   }
 
   const GraphOptimizerContext ctx(&nodes_to_preserve_, optimized_graph_,
-                                  graph_properties_.get(), node_map_.get());
+                                  graph_properties_.get(), node_map_.get(),
+                                  opt_level_);
   const ArithmeticOptimizerContext ctx_ext(&nodes_to_simplify);
 
   // Stop pipeline after first stage returning non-empty simplified tensor name.
