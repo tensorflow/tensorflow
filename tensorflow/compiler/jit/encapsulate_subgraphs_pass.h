@@ -28,6 +28,9 @@ limitations under the License.
 namespace tensorflow {
 
 // A rewriting function to apply to each subgraph during encapsulation.
+// 'arg_source_tensors' are the tensors corresponding to the arguments in the
+// original source graph (*not* 'graph').
+//
 // 'graph' is the subgraph. The rewriting may renumber the inputs and outputs;
 // 'input_permutation' is a mapping from old argument numbers to new argument
 // numbers, whereas 'output_permutation' is the same for outputs. Both
@@ -37,6 +40,7 @@ namespace tensorflow {
 // The rewrite may also change the NodeDef's operator name, and that
 // name will be used as the name of the generated function.
 typedef std::function<Status(
+    const std::vector<OutputTensor>& arg_source_tensors,
     std::unique_ptr<Graph>* graph, std::vector<int>* input_permutation,
     std::vector<int>* output_permutation, NodeDef* node_def)>
     RewriteSubgraphFn;

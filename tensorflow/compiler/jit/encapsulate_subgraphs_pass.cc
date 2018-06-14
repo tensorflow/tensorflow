@@ -459,7 +459,7 @@ class Encapsulator {
     std::unordered_map<OutputTensor, int, OutputTensor::Hash> args_by_src_;
     std::unordered_map<InputTensor, int, InputTensor::Hash> args_by_dst_;
 
-    // The _Arg nodes in the subgraph, in order by argument number.
+    // The arguments to the subgraph, in order.
     std::vector<Node*> args_;
 
     // Map from source tensor in the input graph to result #.
@@ -1047,14 +1047,19 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   call_node_def_.set_device(device_);
 
   if (rewrite_subgraph_fn) {
+    std::vector<OutputTensor> arg_source_tensors(args_by_src_.size());
+    for (const auto& arg : args_by_src_) {
+      arg_source_tensors.at(arg.second) = arg.first;
+    }
     // Initialize the input and output permutations to the identity.
     std::vector<int> input_permutation(args_by_src_.size());
     std::iota(input_permutation.begin(), input_permutation.end(), 0);
     std::vector<int> output_permutation(results_.size());
     std::iota(output_permutation.begin(), output_permutation.end(), 0);
 
-    TF_RETURN_IF_ERROR(rewrite_subgraph_fn(
-        &graph_, &input_permutation, &output_permutation, &call_node_def_));
+    TF_RETURN_IF_ERROR(
+        rewrite_subgraph_fn(arg_source_tensors, &graph_, &input_permutation,
+                            &output_permutation, &call_node_def_));
 
     // Apply the input/output permutations to the 'args_by_...' and 'results_'
     // mappings, so when we build edges in BuildOutputGraph() we
@@ -2453,64 +2458,66 @@ Status EncapsulateSubgraphsPass::Run(
   FunctionLibraryRuntime* flr =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
-  auto rewrite_subgraph = [flr](std::unique_ptr<Graph>* subgraph,
-                                std::vector<int>* input_permutation,
-                                std::vector<int>* output_permutation,
-                                NodeDef* node) {
-    // Optimize the subgraph.
-    OptimizeGraph(flr, subgraph);
+  auto rewrite_subgraph =
+      [flr](const std::vector<OutputTensor>& arg_source_tensors,
+            std::unique_ptr<Graph>* subgraph,
+            std::vector<int>* input_permutation,
+            std::vector<int>* output_permutation, NodeDef* node) {
+        // Optimize the subgraph.
+        OptimizeGraph(flr, subgraph);
 
-    const int num_args = input_permutation->size();
-    std::vector<bool> const_args(num_args);
-    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(**subgraph, &const_args));
+        const int num_args = input_permutation->size();
+        std::vector<bool> const_args(num_args);
+        TF_RETURN_IF_ERROR(BackwardsConstAnalysis(**subgraph, &const_args));
 
-    DataTypeVector arg_types(num_args);
-    TF_RETURN_IF_ERROR(GetArgTypes(**subgraph, &arg_types));
+        DataTypeVector arg_types(num_args);
+        TF_RETURN_IF_ERROR(GetArgTypes(**subgraph, &arg_types));
 
-    // Compute a permutation of the arguments such that the constant arguments
-    // are first.
-    const int num_consts =
-        std::count(const_args.begin(), const_args.end(), true);
+        // Compute a permutation of the arguments such that the constant
+        // arguments are first.
+        const int num_consts =
+            std::count(const_args.begin(), const_args.end(), true);
 
-    const int num_resources =
-        std::count(arg_types.begin(), arg_types.end(), DT_RESOURCE);
-    const int num_nonconsts = num_args - num_resources - num_consts;
-    if (num_nonconsts < 0) {
-      return errors::Internal("num_nonconsts should be >= 0, was ",
-                              num_nonconsts);
-    }
-
-    int const_pos = 0;
-    int arg_pos = num_consts;
-    int resource_pos = num_consts + num_nonconsts;
-    for (int i = 0; i < num_args; ++i) {
-      if (const_args[i]) {
-        if (arg_types[i] == DT_RESOURCE) {
-          return errors::Internal(
-              "Resource arguments cannot be constant (argument ", i, ")");
+        const int num_resources =
+            std::count(arg_types.begin(), arg_types.end(), DT_RESOURCE);
+        const int num_nonconsts = num_args - num_resources - num_consts;
+        if (num_nonconsts < 0) {
+          return errors::Internal("num_nonconsts should be >= 0, was ",
+                                  num_nonconsts);
         }
-        (*input_permutation)[i] = const_pos;
-        ++const_pos;
-      } else if (arg_types[i] == DT_RESOURCE) {
-        (*input_permutation)[i] = resource_pos;
-        ++resource_pos;
-      } else {
-        (*input_permutation)[i] = arg_pos;
-        ++arg_pos;
-      }
-    }
 
-    // Renumber argument nodes in the graph.
-    TF_RETURN_IF_ERROR(RenumberArguments(subgraph->get(), *input_permutation));
+        int const_pos = 0;
+        int arg_pos = num_consts;
+        int resource_pos = num_consts + num_nonconsts;
+        for (int i = 0; i < num_args; ++i) {
+          if (const_args[i]) {
+            if (arg_types[i] == DT_RESOURCE) {
+              return errors::Internal(
+                  "Resource arguments cannot be constant (argument ", i, ")");
+            }
+            (*input_permutation)[i] = const_pos;
+            ++const_pos;
+          } else if (arg_types[i] == DT_RESOURCE) {
+            (*input_permutation)[i] = resource_pos;
+            ++resource_pos;
+          } else {
+            (*input_permutation)[i] = arg_pos;
+            ++arg_pos;
+          }
+        }
 
-    // TODO(phawkins): add a forward is-constant analysis, similarly split
-    // outputs into host-memory constants and device-memory non-constants.
+        // Renumber argument nodes in the graph.
+        TF_RETURN_IF_ERROR(
+            RenumberArguments(subgraph->get(), *input_permutation));
 
-    AddNodeAttr(kXlaCompiledKernelAttr, true, node);
-    AddNodeAttr(kXlaNumConstantArgsAttr, num_consts, node);
-    AddNodeAttr(kXlaNumResourceArgsAttr, num_resources, node);
-    return Status::OK();
-  };
+        // TODO(phawkins): add a forward is-constant analysis, similarly split
+        // outputs into host-memory constants and device-memory non-constants.
+
+        AddNodeAttr(kXlaCompiledKernelAttr, true, node);
+        AddNodeAttr(kXlaNumConstantArgsAttr, num_consts, node);
+        AddNodeAttr(kXlaNumResourceArgsAttr, num_resources, node);
+        return Status::OK();
+      };
 
   TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
       kXlaClusterAttr, kXlaOutsideCompilationAttr, **options.graph,

@@ -757,7 +757,8 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_encapsulate", "_outside", graph_before,
       /*rewrite_subgraph_fn=*/
-      [&guaranteed_consts](std::unique_ptr<Graph>* graph_ptr,
+      [&guaranteed_consts](const std::vector<OutputTensor>& arg_source_tensors,
+                           std::unique_ptr<Graph>* graph_ptr,
                            std::vector<int>* input_permutation,
                            std::vector<int>* output_permutation,
                            NodeDef* call_def) {
@@ -801,7 +802,8 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_encapsulate", "_outside", graph_before,
       /*rewrite_subgraph_fn=*/
-      [&guaranteed_consts](std::unique_ptr<Graph>* graph_ptr,
+      [&guaranteed_consts](const std::vector<OutputTensor>& arg_source_tensors,
+                           std::unique_ptr<Graph>* graph_ptr,
                            std::vector<int>* input_permutation,
                            std::vector<int>* output_permutation,
                            NodeDef* call_def) {
