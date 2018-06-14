@@ -53,12 +53,12 @@ cc_library(
         ":grpc_verbs_service_impl",
         ":rdma_mgr",
         ":verbs_service_proto_cc",
+        "//tensorflow:grpc++",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/core/distributed_runtime/rpc:grpc_call",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "//tensorflow:grpc++",
     ],
     alwayslink = 1,
 )

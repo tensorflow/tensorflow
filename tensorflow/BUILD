@@ -436,7 +436,6 @@ cc_library(
         ":linux_s390x": ["@grpc//:grpc_unsecure"],
         "//conditions:default": ["@grpc"],
     }),
-
 )
 
 cc_library(
