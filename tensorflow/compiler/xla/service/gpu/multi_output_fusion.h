@@ -42,6 +42,9 @@ class GpuMultiOutputFusion : public MultiOutputFusion {
   // instr1 and instr2, common operands will not be loaded twice. The profit is
   // estimated as the size of the common operands b/w instr1 and instr2.
   int64 GetProfit(HloInstruction* instr1, HloInstruction* instr2) override;
+
+  // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
+  bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2) override;
 };
 
 }  // namespace gpu
