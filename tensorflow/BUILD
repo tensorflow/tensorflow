@@ -450,6 +450,7 @@ filegroup(
 # depend on libtensorflow_framework.so unless they opt in.
 tf_cc_shared_object(
     name = "libtensorflow_framework.so",
+    framework_so = [],
     linkopts = select({
         "//tensorflow:darwin": [],
         "//tensorflow:windows": [],
@@ -459,7 +460,6 @@ tf_cc_shared_object(
             "$(location //tensorflow:tf_framework_version_script.lds)",
         ],
     }),
-    framework_so = [],
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
