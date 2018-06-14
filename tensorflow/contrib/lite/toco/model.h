@@ -1222,8 +1222,10 @@ struct TensorFlowSumOperator : Operator {
 };
 
 // TensorFlow Tile equivalent. Refer to TensorFlow documentation for details.
-// Not fully supported, just a placeholder to handle TensorFlow graphs and
-// support graph transformations to other operator types by matching sub-graphs.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//   inputs[1]: required: int array with length of rank(input[0])
 struct TensorFlowTileOperator : Operator {
   TensorFlowTileOperator() : Operator(OperatorType::kTensorFlowTile) {}
 };

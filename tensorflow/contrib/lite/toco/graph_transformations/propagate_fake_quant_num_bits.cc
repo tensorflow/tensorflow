@@ -103,6 +103,7 @@ bool DoesOpBlockBackwardPropagation(const Operator& op) {
     case OperatorType::kTensorFlowReshape:
     case OperatorType::kTranspose:
     case OperatorType::kSelect:
+    case OperatorType::kTensorFlowTile:
       // Reshapes and transposes don't change values.
       return false;
     default:
@@ -123,6 +124,9 @@ bool DoesOpInputBlockBackwardPropagation(const Operator& op, int input_index) {
     case OperatorType::kTensorFlowReshape:
     case OperatorType::kTranspose:
       // Ignore reshape/transpose shapes/dimensions.
+      return input_index != 0;
+    case OperatorType::kTensorFlowTile:
+      // Ignore tile multiples.
       return input_index != 0;
     default:
       return false;
