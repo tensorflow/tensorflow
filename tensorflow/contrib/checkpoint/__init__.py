@@ -16,6 +16,7 @@
 
 Visualization and inspection:
 @@dot_graph_from_checkpoint
+@@list_objects
 @@object_metadata
 
 Managing dependencies:
@@ -42,9 +43,9 @@ from tensorflow.python.training.checkpointable.base import Checkpointable
 from tensorflow.python.training.checkpointable.base import NoDependency
 from tensorflow.python.training.checkpointable.data_structures import List
 from tensorflow.python.training.checkpointable.data_structures import Mapping
+from tensorflow.python.training.checkpointable.util import list_objects
 from tensorflow.python.training.checkpointable.util import object_metadata
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 remove_undocumented(module_name=__name__)
-
