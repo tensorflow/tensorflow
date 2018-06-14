@@ -211,12 +211,6 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   // might as well calculate the output shape and ensure it matches the
   // specified one
 
-  // Check if we have already run.
-  auto& output_array = model->GetArray(op->outputs[0]);
-  if (output_array.has_shape()) {
-    return;
-  }
-
   // SPECIFIED OUTPUT SHAPE
   // The below is the specified, or prescribed output shape, _given_ to the
   // operator as an input.
@@ -284,7 +278,17 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   // Set the output shape according to the specified output shape.
   std::vector<int32> const& specified_output_shape =
       specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+  auto& output_array = model->GetArray(op->outputs[0]);
   *(output_array.mutable_shape()->mutable_dims()) = specified_output_shape;
+
+  // Set im2col array dimensions if there is one.
+  if (op->outputs.size() == 2) {
+    const int input_depth = weights_shape.dims(3);
+    auto& im2col_array = model->GetArray(op->outputs[1]);
+    im2col_array.copy_shape(
+        Shape{specified_output_shape[0], specified_output_shape[1],
+              specified_output_shape[2], input_depth * kheight * kwidth});
+  }
 }
 
 void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {

@@ -3825,7 +3825,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                           const float* filter_data, const Dims<4>& filter_dims,
                           int stride_width, int stride_height, int pad_width,
                           int pad_height, float* output_data,
-                          const Dims<4>& output_dims) {
+                          const Dims<4>& output_dims, float* /*im2col_data*/,
+                          const Dims<4>& /*im2col_dims*/) {
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
   const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
