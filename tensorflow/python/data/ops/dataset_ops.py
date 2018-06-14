@@ -1422,110 +1422,26 @@ class _GeneratorDataset(Dataset):
     init_args_types = nest.pack_sequence_as(
         init_args, [t.dtype for t in nest.flatten(init_args)])
 
-    @function.Defun(*defun_args(
-        input_types=init_args_types, input_classes=init_args_classes))
-    def tf_init_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      nested_args = restructure_args(
-          args, input_shapes=init_args_shapes, input_types=init_args_types,
-          input_classes=init_args_classes)
-      ret = init_func(*nested_args)
+    wrapped_init_func = StructuredFunctionWrapper(
+        init_func, "GeneratorDataset", input_classes=init_args_classes,
+        input_shapes=init_args_shapes, input_types=init_args_types)
+    self._state_classes = wrapped_init_func.output_classes
+    self._state_shapes = wrapped_init_func.output_shapes
+    self._state_types = wrapped_init_func.output_types
+    self._init_func = wrapped_init_func.function
 
-      # If `init_func` returns a list of tensors, `nest.flatten()` and
-      # `ops.convert_to_tensor()` would conspire to attempt to stack
-      # those tensors into a single tensor, because the customized
-      # version of `nest.flatten()` does not recurse into lists. Since
-      # it is more likely that the list arose from returning the
-      # result of an operation (such as `tf.py_func()`) that returns a
-      # list of not-necessarily-stackable tensors, we treat the
-      # returned value is a `tuple` instead. A user wishing to pack
-      # the return value into a single tensor can use an explicit
-      # `tf.stack()` before returning.
-      if isinstance(ret, list):
-        ret = tuple(ret)
+    wrapped_next_func = StructuredFunctionWrapper(
+        next_func, "GeneratorDataset", input_classes=self._state_classes,
+        input_shapes=self._state_shapes, input_types=self._state_types)
+    self._output_classes = wrapped_next_func.output_classes
+    self._output_shapes = wrapped_next_func.output_shapes
+    self._output_types = wrapped_next_func.output_types
+    self._next_func = wrapped_next_func.function
 
-      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
-      # values to tensors.
-      ret = nest.pack_sequence_as(ret, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(t)
-          for t in nest.flatten(ret)
-      ])
-
-      self._state_classes = sparse.get_classes(ret)
-      self._state_shapes = nest.pack_sequence_as(
-          ret, [t.get_shape() for t in nest.flatten(ret)])
-      self._state_types = nest.pack_sequence_as(
-          ret, [t.dtype for t in nest.flatten(ret)])
-
-      # Serialize any sparse tensors.
-      ret = nest.pack_sequence_as(
-          ret, [t for t in nest.flatten(sparse.serialize_sparse_tensors(ret))])
-      return nest.flatten(ret)
-
-    self._init_func = tf_init_func
-    self._init_func.add_to_graph(ops.get_default_graph())
-
-    # These members will be initialized by `tf_next_func`.
-    self._output_classes = None
-    self._output_shapes = None
-    self._output_types = None
-
-    @function.Defun(*defun_args(
-        input_types=self._state_types, input_classes=self._state_classes))
-    def tf_next_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      nested_args = restructure_args(
-          args, input_shapes=self._state_shapes, input_types=self._state_types,
-          input_classes=self._state_classes)
-      ret = next_func(*nested_args)
-
-      # If `next_func` returns a list of tensors, `nest.flatten()` and
-      # `ops.convert_to_tensor()` would conspire to attempt to stack
-      # those tensors into a single tensor, because the customized
-      # version of `nest.flatten()` does not recurse into lists. Since
-      # it is more likely that the list arose from returning the
-      # result of an operation (such as `tf.py_func()`) that returns a
-      # list of not-necessarily-stackable tensors, we treat the
-      # returned value is a `tuple` instead. A user wishing to pack
-      # the return value into a single tensor can use an explicit
-      # `tf.stack()` before returning.
-      if isinstance(ret, list):
-        ret = tuple(ret)
-
-      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
-      # values to tensors.
-      ret = nest.pack_sequence_as(ret, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(t)
-          for t in nest.flatten(ret)
-      ])
-
-      self._output_classes = sparse.get_classes(ret)
-      self._output_shapes = nest.pack_sequence_as(
-          ret, [t.get_shape() for t in nest.flatten(ret)])
-      self._output_types = nest.pack_sequence_as(
-          ret, [t.dtype for t in nest.flatten(ret)])
-
-      # Serialize any sparse tensors.
-      ret = nest.pack_sequence_as(
-          ret, [t for t in nest.flatten(sparse.serialize_sparse_tensors(ret))])
-      return nest.flatten(ret)
-
-    self._next_func = tf_next_func
-    self._next_func.add_to_graph(ops.get_default_graph())
-
-    @function.Defun(*defun_args(
-        input_types=self._state_types, input_classes=self._state_classes))
-    def tf_finalize_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      nested_args = restructure_args(
-          args, input_shapes=self._state_shapes, input_types=self._state_types,
-          input_classes=self._state_classes)
-      return finalize_func(*nested_args)
-
-    self._finalize_func = tf_finalize_func
-    self._finalize_func.add_to_graph(ops.get_default_graph())
+    wrapped_finalize_func = StructuredFunctionWrapper(
+        finalize_func, "GeneratorDataset", input_classes=self._state_classes,
+        input_shapes=self._state_shapes, input_types=self._state_types)
+    self._finalize_func = wrapped_finalize_func.function
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.generator_dataset(
