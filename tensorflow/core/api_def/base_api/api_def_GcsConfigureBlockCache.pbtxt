@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "GcsConfigureBlockCache"
+  summary: "Re-configures the GCS block cache with the new configuration values."
+  description: <<END
+If the values are the same as already configured values, this op is a no-op. If
+they are different, the current contents of the block cache is dropped, and a
+new block cache is created fresh.
+END
+}
