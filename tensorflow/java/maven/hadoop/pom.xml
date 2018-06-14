@@ -1,0 +1,24 @@
+<project
+        xmlns="http://maven.apache.org/POM/4.0.0"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <!-- Placeholder pom which is replaced by TensorFlow ecosystem Hadoop pom during build -->
+    <modelVersion>4.0.0</modelVersion>
+    <description>TensorFlow TFRecord InputFormat/OutputFormat for Apache Hadoop</description>
+    <artifactId>hadoop</artifactId>
+    <packaging>jar</packaging>
+
+    <scm>
+        <url>https://github.com/tensorflow/ecosystem.git</url>
+        <connection>git@github.com:tensorflow/ecosystem.git</connection>
+        <developerConnection>scm:git:https://github.com/tensorflow/ecosystem.git</developerConnection>
+    </scm>
+
+    <url>https://github.com/tensorflow/ecosystem/</url>
+    <parent>
+        <groupId>org.tensorflow</groupId>
+        <artifactId>parentpom</artifactId>
+        <version>1.9.0-rc0</version>
+        <relativePath>../</relativePath>
+    </parent>
+</project>
