@@ -187,9 +187,7 @@ class S3RandomAccessFile : public RandomAccessFile {
       return Status(error::OUT_OF_RANGE, "Read less bytes than requested");
     }
     n = getObjectOutcome.GetResult().GetContentLength();
-    std::stringstream ss;
-    ss << getObjectOutcome.GetResult().GetBody().rdbuf();
-    ss.read(scratch, n);
+    getObjectOutcome.GetResult().GetBody().read(scratch, n);
 
     *result = StringPiece(scratch, n);
     return Status::OK();
