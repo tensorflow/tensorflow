@@ -1755,7 +1755,6 @@ template <FusedActivationFunctionType Ac, typename Scalar>
 void Concatenation(int concat_dim, const Scalar* const* input_data,
                    const Dims<4>* const* input_dims, int inputs_count,
                    Scalar* output_data, const Dims<4>& output_dims) {
-  TFLITE_DCHECK_GT(inputs_count, 1);
   int concat_size = 0;
   for (int i = 0; i < inputs_count; i++) {
     for (int j = 0; j < 4; j++) {
@@ -1766,7 +1765,9 @@ void Concatenation(int concat_dim, const Scalar* const* input_data,
     concat_size += ArraySize(*input_dims[i], concat_dim);
   }
   TFLITE_DCHECK_EQ(concat_size, ArraySize(output_dims, concat_dim));
-  TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  // For now we don't have a model with a Concatenation with fused activation.
+  TFLITE_DCHECK_EQ(Ac, FusedActivationFunctionType::kNone);
   int outer_size = 1;
   for (int i = concat_dim + 1; i < 4; i++) {
     outer_size *= output_dims.sizes[i];
@@ -3794,7 +3795,7 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
 
 template <typename T>
 void Transpose(const T* input, const Dims<4>& input_dims, T* output,
-               const Dims<4>& output_dims, int* permuted_axes) {
+               const Dims<4>& output_dims, const int* permuted_axes) {
   int out_sizes[4];
   // Compute the inverse permutation array so we can do an output centered
   // transpose. Also, check to make sure output_dims is matching input_dims.
@@ -3844,7 +3845,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   // computing their influence on the output, rather than looping through the
   // output elements in the typical "gather" access pattern of a conv. We
   // therefore must initialize the output array to zero.
-  for (int i = 0; i < FlatSize(output_dims); i++) {
+  const int num_elements = FlatSize(output_dims);
+  for (int i = 0; i < num_elements; i++) {
     output_data[i] = 0.0f;
   }
 
