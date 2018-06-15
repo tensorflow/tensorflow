@@ -222,9 +222,9 @@ void TRTEngineOp::ExecuteCalibration(tensorflow::OpKernelContext* ctx,
           StrCat("Unsupported data type encountered in input ", i)));
       return;
     }
+    // Check the allocated buffer is sufficient for input
     const auto device_tensor = dev_tensors_.at(i).AccessTensor(ctx);
-    CHECK_EQ(t.TotalBytes(),
-             device_tensor->TotalBytes());  // use the tensor so TF keeps it
+    CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
     input_data.emplace(StrCat(kInputPHName, i), data_address);
   }
   VLOG(2) << "Filled map for sending";
