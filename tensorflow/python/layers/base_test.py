@@ -25,6 +25,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import backend
+from tensorflow.python.keras.engine import base_layer as keras_base_layer
 from tensorflow.python.layers import base as base_layers
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
@@ -589,6 +591,63 @@ class BaseLayerTest(test.TestCase):
         ValueError, 'Input graph and Layer graph are not the same'):
       layer.apply(constant_op.constant([[1.]]))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testOnlyCastInputsWhenDtypeSpecified(self):
+    class MyLayerBase(keras_base_layer.Layer):
+
+      def call(self, inputs):
+        self.x = inputs[0]
+        self.y = inputs[1]
+        return self.x + 1, self.y + 2
+
+    # Inherit from both the Keras Layer and base_layers.Layer to ensure we
+    # still get the base_layers.Layer behavior when directly inheriting from
+    # the Keras Layer.
+    class MyLayer(MyLayerBase, base_layers.Layer):
+      pass
+
+    # Test inputs are casted.
+    input1 = array_ops.constant(1.0, dtype=dtypes.float64)
+    input2 = array_ops.constant(1.0, dtype=dtypes.float32)
+    layer = MyLayer(dtype=dtypes.float16)
+    output1, output2 = layer([input1, input2])
+    self.assertEqual(output1.dtype, dtypes.float16)
+    self.assertEqual(output2.dtype, dtypes.float16)
+
+    # Test inputs are not casted.
+    input1 = array_ops.constant(1.0, dtype=dtypes.float64)
+    input2 = array_ops.constant(1.0, dtype=dtypes.float32)
+    layer = MyLayer()
+    output1, output2 = layer([input1, input2])
+    self.assertEqual(output1.dtype, dtypes.float64)
+    self.assertEqual(output2.dtype, dtypes.float32)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testVariablesDefaultToFloat32(self):
+    class MyLayerBase(keras_base_layer.Layer):
+
+      def build(self, input_shape):
+        self.x = self.add_weight('x', ())
+
+      def call(self, inputs):
+        return inputs + self.x
+
+    # Inherit from both the Keras Layer and base_layers.Layer to ensure we
+    # still get the base_layers.Layer behavior when directly inheriting from
+    # the Keras Layer.
+    class MyLayer(MyLayerBase, base_layers.Layer):
+      pass
+
+    try:
+      # The behavior of Keras Layers is to default to floatx. Ensure that this
+      # behavior is overridden to instead default to float32.
+      backend.set_floatx('float16')
+      layer = MyLayer()
+      layer.build(())
+      self.assertEqual(layer.dtype, None)
+      self.assertEqual(layer.x.dtype.base_dtype, dtypes.float32)
+    finally:
+      backend.set_floatx('float32')
 
 if __name__ == '__main__':
   test.main()

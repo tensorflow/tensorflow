@@ -41,6 +41,7 @@ from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint:
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -88,16 +89,24 @@ class Layer(checkpointable.CheckpointableBase):
     once. Should actually perform the logic of applying the layer to the
     input tensors (which should be passed in as the first argument).
 
+  By default, layers will cast all their inputs and arguments to the layer's
+  dtype, if set. This is useful for creating a model with multiple dtypes, as
+  the user does not need to explicitly cast tensors. If a `Layer` descendant
+  wants only a subset of inputs/arguments to be casted, or none of them,
+  `_cast_inputs_and_args()` should be overridden.
+
   Arguments:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
-    dtype: Default dtype of the layer's weights (default of `None` means use the
-      type of the first input).
+    dtype: Default dtype of the layer's weights and computations (default of
+      `None` means use the type of the first input). If not None, inputs will be
+      casted to this dtype.
 
   Read-only properties:
     name: The name of the layer (string).
-    dtype: Default dtype of the layer's weights (default of `None` means use the
-      type of the first input).
+    dtype: Default dtype of the layer's weights and computations. (default of
+      `None` means use the type of the first input). If not None, inputs will be
+      casted to this dtype.
     trainable_variables: List of trainable variables.
     non_trainable_variables: List of non-trainable variables.
     variables: List of all variables of this layer, trainable and
@@ -666,6 +675,13 @@ class Layer(checkpointable.CheckpointableBase):
         kwargs['mask'] = previous_mask
 
     input_shapes = None
+    # We only cast inputs if self.dtype was previous set, which occurs when
+    # a dtype was passed to the constructor, or when this layer has previously
+    # been called. We cast floating point inputs to self.dtype to ensure the
+    # layer runs with the correct dtype.
+    # TODO(b/77478433): Perhaps we should only cast inputs if a dtype was passed
+    # to the constructor, not when the layer has previously been called.
+    inputs_should_be_cast = (self.dtype is not None)
 
     with ops.name_scope(self._name_scope()):
       if not self.built:
@@ -700,7 +716,12 @@ class Layer(checkpointable.CheckpointableBase):
         self._assert_input_compatibility(inputs)
 
       if not in_deferred_mode:
-        outputs = self.call(inputs, *args, **kwargs)
+        if inputs_should_be_cast:
+          cast_inputs, cast_args, cast_kwargs = self._cast_inputs_and_args(
+              inputs, *args, **kwargs)
+        else:
+          cast_inputs, cast_args, cast_kwargs = inputs, args, kwargs
+        outputs = self.call(cast_inputs, *cast_args, **cast_kwargs)
         if outputs is None:
           raise ValueError('A layer\'s `call` method should return a Tensor '
                            'or a list of Tensors, not None (layer: ' +
@@ -715,6 +736,9 @@ class Layer(checkpointable.CheckpointableBase):
         output_shapes = nest.flatten(output_shapes)
         outputs = [
             # TODO(fchollet): name the deferred tensors?
+            # TODO(b/77478433): Compute the proper dtype here, by adding a
+            # compute_output_dtype method. Currently keras Models do not
+            # properly compute the output dtype.
             DeferredTensor(shape=shape, dtype=self._dtype)
             for shape in output_shapes
         ]
@@ -772,6 +796,40 @@ class Layer(checkpointable.CheckpointableBase):
       Output tensor(s).
     """
     return self.__call__(inputs, *args, **kwargs)
+
+  def _cast_fn(self, x):
+    """If x is a tensor, casts to this layer's dtype."""
+    # TODO(b/77478433): Cast tensor-like things like SparseTensors, Variables,
+    # ResourceVariables, etc.
+    if (isinstance(x, ops.Tensor) and x.dtype.is_floating and
+        dtypes.as_dtype(self.dtype).is_floating):
+      return math_ops.cast(x, self.dtype)
+    else:
+      return x
+
+  def _cast_inputs_and_args(self, inputs, *args, **kwargs):
+    """Casts the inputs, args, and kwargs of a layer to the layer's dtype.
+
+    This is intended to be potentially overridden by layer subclasses. By
+    default, inputs, args, and kwargs are automatically casted to the layer's
+    dtype. Overriding this method allows only some of the inputs, args, and
+    kwargs (or none of them) to be casted.
+
+    Does not modify inputs, args, or kwargs.
+
+    Args:
+      inputs: The inputs to self.__call__.
+      *args: The args to self.__call__.
+      **kwargs: The kwargs to self.__call__.
+
+    Returns:
+      The tuple (new_inputs, new_args, new_kwargs), where tensors in inputs,
+      args, and kwargs have been casted to self.dtype.
+    """
+    new_inputs = nest.map_structure(self._cast_fn, inputs)
+    new_args = nest.map_structure(self._cast_fn, args)
+    new_kwargs = nest.map_structure(self._cast_fn, kwargs)
+    return new_inputs, new_args, new_kwargs
 
   def _set_learning_phase_metadata(self, inputs, outputs):
     # Update learning phase info. To work with subclassed models,

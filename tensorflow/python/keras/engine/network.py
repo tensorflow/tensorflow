@@ -887,8 +887,16 @@ class Network(base_layer.Layer):
               if 'training' in tf_inspect.getargspec(layer.call).args:
                 kwargs.setdefault('training', training)
 
+              if layer.dtype is not None:
+                cast_computed_tensors, cast_args, cast_kwargs = (
+                    layer._cast_inputs_and_args(computed_tensor, **kwargs))
+              else:
+                cast_computed_tensors = [computed_tensor]
+                cast_args = ()
+                cast_kwargs = kwargs
+
               output_tensors = nest.flatten(
-                  layer.call(computed_tensor, **kwargs))
+                  layer.call(cast_computed_tensors, *cast_args, **cast_kwargs))
               if hasattr(layer, 'compute_mask'):
                 output_masks = layer.compute_mask(computed_tensor,
                                                   computed_mask)
@@ -908,8 +916,16 @@ class Network(base_layer.Layer):
               if 'training' in tf_inspect.getargspec(layer.call).args:
                 kwargs.setdefault('training', training)
 
+              if layer.dtype is not None:
+                cast_computed_tensors, cast_args, cast_kwargs = (
+                    layer._cast_inputs_and_args(computed_tensors, **kwargs))
+              else:
+                cast_computed_tensors = computed_tensors
+                cast_args = ()
+                cast_kwargs = kwargs
+
               output_tensors = nest.flatten(
-                  layer.call(computed_tensors, **kwargs))
+                  layer.call(cast_computed_tensors, *cast_args, **cast_kwargs))
 
               if hasattr(layer, 'compute_mask'):
                 output_masks = layer.compute_mask(computed_tensors,

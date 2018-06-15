@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import numpy as np
 
 from tensorflow.python import keras
@@ -909,6 +911,170 @@ class TopologyConstructionTest(test.TestCase):
       out = model2.predict(x)
       assert out.shape == (4, 3, 2, 1)
       self.assertAllClose(out, x * 0.2 + x * 0.3, atol=1e-4)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_casting_args(self):
+    # args of type B will be casted, as we cast elements of namedtuples
+    B = collections.namedtuple('B', ['x', 'y', 'z'])  # pylint: disable=invalid-name
+
+    # args of type C will not be casted, as we do not look at object
+    # attributes for tensors to cast
+    class C(object):
+
+      def __init__(self, w):
+        self.w = w
+
+    inp = array_ops.ones((1,), name='input', dtype='float64')
+    a = array_ops.ones((1,), name='a', dtype='float64')
+    b = B(array_ops.ones((1,), name='a', dtype='float64'), None,
+          np.ones((1,), 'float64'))  # Numpy tensors should not be casted
+    c = C(array_ops.ones((1,), name='a', dtype='float64'))
+
+    # Test inputs are automatically casted.
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs, a, b, c):
+        self.a = a
+        self.b = b
+        self.c = c
+        return inputs
+
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
+    layer = MyLayer(dtype='float16')
+    out = layer(inp, a=a, b=b, c=c)
+    self.assertEqual(out.dtype, dtypes.float16)
+    self.assertEqual(layer.a.dtype, dtypes.float16)
+    self.assertEqual(layer.b.x.dtype, dtypes.float16)
+    self.assertEqual(layer.b.y, None)
+    self.assertEqual(layer.b.z.dtype, np.float64)
+    self.assertEqual(layer.c.w.dtype, dtypes.float64)
+
+    # Test overriding _cast_inputs_and_args
+    class MyLayerOverrideCastInputs(MyLayer):
+
+      def _cast_inputs_and_args(self, inputs, a, b, c):
+        new_inputs = self._cast_fn(inputs)
+        new_a = a
+        new_b = b
+        new_c = C(self._cast_fn(c.w))
+        return new_inputs, (new_a, new_b, new_c), {}
+
+    layer = MyLayerOverrideCastInputs(dtype='float16')
+    out = layer(inp, a=a, b=b, c=c)
+    self.assertEqual(out.dtype, dtypes.float16)
+    self.assertEqual(layer.a.dtype, dtypes.float64)
+    self.assertEqual(layer.b.x.dtype, dtypes.float64)
+    self.assertEqual(layer.b.y, None)
+    self.assertEqual(layer.b.z.dtype, np.float64)
+    self.assertEqual(layer.c.w.dtype, dtypes.float16)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_do_not_cast_ints(self):
+    class MyLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.v = self.add_variable('v', (), 'int32')
+        super(MyLayer, self).build(input_shape)
+
+      def call(self, inputs):
+        return inputs + self.v
+
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
+    a = array_ops.ones((10, 32), dtype='int32')
+    layer = MyLayer(dtype='float32')
+    b = layer(a)
+    self.assertEqual(layer.v.dtype.base_dtype, dtypes.int32)
+    self.assertEqual(b.dtype, dtypes.int32)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_casting_when_dtype_not_passed_to_constructor(self):
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, a):
+        self.a = a
+        return a
+
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
+    # Do not cast inputs for the first __call__ if a dtype is not passed to the
+    # constructor.
+    a = array_ops.ones((10, 32), dtype='float64')
+    layer = MyLayer()
+    self.assertEqual(layer.dtype, None)
+    b = layer(a)
+    self.assertEqual(layer.dtype, 'float64')
+    self.assertEqual(layer.a.dtype, dtypes.float64)
+    self.assertEqual(b.dtype, dtypes.float64)
+
+    # For a subsequent __call__, the layer's dtype has been set so inputs should
+    # be casted to the dtype of the input to the first __call__.
+    a = array_ops.ones((10, 32), dtype='float32')
+    b = layer(a)
+    self.assertEqual(layer.dtype, 'float64')
+    self.assertEqual(layer.a.dtype, dtypes.float64)
+    self.assertEqual(b.dtype, dtypes.float64)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_casting_with_build_before_call(self):
+    a = keras.Input(shape=(32,), name='input_a', dtype='float32')
+    dense_layer = keras.layers.Dense(16, dtype='float16')
+    dense_layer.build((32,))
+    b = dense_layer(a)
+
+    self.assertEqual(dense_layer.dtype, 'float16')
+    self.assertEqual(dense_layer.input, a)
+    self.assertEqual(dense_layer.output, b)
+    self.assertEqual(a.dtype, dtypes.float32)
+    self.assertEqual(dense_layer.kernel.dtype.base_dtype, dtypes.float16)
+    self.assertEqual(dense_layer.bias.dtype.base_dtype, dtypes.float16)
+    self.assertEqual(b.dtype, dtypes.float16)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_casting_in_network(self):
+
+    class SingleInputLayer(keras.layers.Layer):
+
+      def call(self, a):
+        self.a = a
+        return a
+
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
+    class MultiInputLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        a, b = inputs
+        self.a = a
+        self.b = b
+        return a + b
+
+      def compute_output_shape(self, input_shapes):
+        return input_shapes[0]
+
+    x = keras.layers.Input((32,), dtype='float64')
+    layer1 = SingleInputLayer()
+    layer2 = SingleInputLayer(dtype='float32')
+    layer3 = MultiInputLayer(dtype='float16')
+    i1 = layer1(x)
+    i2 = layer2(i1)
+    y = layer3((i1, i2))
+    network = keras.engine.Network(x, y)
+    x2 = array_ops.ones((32,), dtype='float16')
+    y2 = network(x2)
+    self.assertEqual(layer1.dtype, dtypes.float64)
+    self.assertEqual(layer1.a.dtype, dtypes.float64)
+    self.assertEqual(layer2.dtype, dtypes.float32)
+    self.assertEqual(layer2.a.dtype, dtypes.float32)
+    self.assertEqual(layer3.dtype, dtypes.float16)
+    self.assertEqual(layer3.a.dtype, dtypes.float16)
+    self.assertEqual(layer3.b.dtype, dtypes.float16)
+    self.assertEqual(y2.dtype, dtypes.float16)
 
 
 class DeferredModeTest(test.TestCase):

@@ -43,13 +43,15 @@ class Layer(base_layer.Layer):
   Arguments:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
-    dtype: Default dtype of the layer's weights (default of `None` means use the
-      type of the first input).
+    dtype: Default dtype of the layer's weights and computations (default of
+      `None` means use the type of the first input). If not None, inputs will be
+      casted to this dtype.
 
   Read-only properties:
     name: The name of the layer (string).
-    dtype: Default dtype of the layer's weights (default of `None` means use the
-      type of the first input).
+    dtype: Default dtype of the layer's weights and computations. (default of
+      `None` means use the type of the first input). If not None, inputs will be
+      casted to this dtype.
     trainable_variables: List of trainable variables.
     non_trainable_variables: List of non-trainable variables.
     variables: List of all variables of this layer, trainable and
@@ -191,7 +193,7 @@ class Layer(base_layer.Layer):
       RuntimeError: If called with partioned variable regularization and
         eager execution is enabled.
     """
-    
+
     def _should_add_regularizer(variable, existing_variable_set):
       if isinstance(variable, tf_variables.PartitionedVariable):
         for var in variable:
