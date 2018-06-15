@@ -22,6 +22,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.HashSet;
 import java.util.Iterator;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -127,6 +128,26 @@ public class GraphTest {
       g.toGraphDef();
     } catch (IllegalStateException e) {
       // expected exception.
+    }
+  }
+  
+  @Test
+  public void addGradientsComputationOpsToGraph() {
+    try (Graph g = new Graph()) {
+      Output<Integer> a = TestUtil.constant(g, "A", new int[][] {{1},{2}});
+      Output<Integer> b = TestUtil.placeholder(g, "B", Integer.class);
+      Output<Integer> c = TestUtil.placeholder(g, "C", Integer.class);
+      Output<Integer> ab = TestUtil.matmul(g, "AxB", a, b, false, false);
+      Output<Integer> abc = TestUtil.matmul(g, "AxBxC", ab, c, false, false);
+      
+      Output<?>[] grad = g.addGradients(new Output<?>[] {abc}, new Output<?>[] {b, c}, null);
+      
+      assertNotNull(grad);
+      assertEquals(2, grad.length);
+      assertNotNull(grad[0]);
+      assertEquals(DataType.INT32, grad[0].dataType());
+      assertNotNull(grad[1]);
+      assertEquals(DataType.INT32, grad[1].dataType());
     }
   }
 }
