@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1821,8 +1821,8 @@ void DilatedIm2col(const T* input_data, const Dims<4>& input_dims,
 
   // Use dimensions M and N to construct dims for indexing directly into im2col
   Dims<4> im2col_dims;
-  im2col_dims.sizes[0] = col_dims.strides[3];
-  im2col_dims.sizes[1] = row_dims.strides[3];
+  im2col_dims.sizes[0] = FlatSize(col_dims);
+  im2col_dims.sizes[1] = FlatSize(row_dims);
   im2col_dims.sizes[2] = 1;
   im2col_dims.sizes[3] = 1;
   ComputeStrides(&im2col_dims);
@@ -1831,8 +1831,8 @@ void DilatedIm2col(const T* input_data, const Dims<4>& input_dims,
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
-        // Each row is an output pixel. Arrange the input data into this row in
-        // an order we can conveniently multiply with the filter data.
+        // Each im2col row is an output pixel. Arrange the input data in this
+        // row in an order we can conveniently multiply with the filter data.
         int row_offset = Offset(row_dims, out_x, out_y, batch, 0);
         const int in_x_origin = (out_x * stride_width) - pad_width;
         const int in_y_origin = (out_y * stride_height) - pad_height;
@@ -1848,7 +1848,7 @@ void DilatedIm2col(const T* input_data, const Dims<4>& input_dims,
               T* dst = im2col_data +
                        Offset(im2col_dims, col_offset, row_offset, 0, 0);
               if ((in_x >= 0) && (in_x < input_width)) {
-                // Filter pixel is within the input, copy the data.
+                // Filter pixel is within the input, copy the input data.
                 T const* src =
                     input_data + Offset(input_dims, 0, in_x, in_y, batch);
                 memcpy(dst, src, input_depth * sizeof(T));
@@ -1858,7 +1858,7 @@ void DilatedIm2col(const T* input_data, const Dims<4>& input_dims,
               }
             }
           } else {
-            // Filter row is outside the input, zero out the entire im2col row.
+            // Filter row is outside the input, zero out the entire filter row.
             int col_offset = Offset(col_dims, 0, 0, filter_y, 0);
             T* dst =
                 im2col_data + Offset(im2col_dims, col_offset, row_offset, 0, 0);
@@ -1922,7 +1922,7 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
   (void)im2col_dims;
   gemmlowp::ScopedProfilingLabel label("Conv");
 
-  // A float set to 0x00000000h == 0.0f
+  // NB: static_cast<float>(0x00000000h) == 0.0f
   const uint8 float_zero_byte = 0x00;
   const float* gemm_input_data = nullptr;
   const Dims<4>* gemm_input_dims = nullptr;
@@ -2366,12 +2366,15 @@ inline void Relu6(const float* input_data, const Dims<4>& input_dims,
 }
 
 template <FusedActivationFunctionType Ac>
-void L2Normalization(const float* input_data, const Dims<4>& input_dims,
-                     float* output_data, const Dims<4>& output_dims) {
+void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
+                     float* output_data, const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("L2Normalization");
   static_assert(Ac == FusedActivationFunctionType::kNone, "");
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
   for (int i = 0; i < outer_size; ++i) {
     float squared_l2_norm = 0;
     for (int c = 0; c < depth; ++c) {
@@ -2434,17 +2437,20 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
   *output_shift *= kReverseShift;
 }
 
-inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
+inline void L2Normalization(const uint8* input_data,
+                            const RuntimeShape& input_shape,
                             int32 input_zero_point, uint8* output_data,
-                            const Dims<4>& output_dims) {
+                            const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("L2Normalization/8bit");
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
   for (int i = 0; i < outer_size; ++i) {
     int32 square_l2_norm = 0;
     for (int c = 0; c < depth; c++) {
+      // Note that input_data advances by depth in the second pass below.
       int32 diff = input_data[c] - input_zero_point;
       square_l2_norm += diff * diff;
     }
@@ -6365,69 +6371,84 @@ void Transpose(const T* input, const Dims<4>& input_dims, T* output,
   }
 }
 
-inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
-                          const float* filter_data, const Dims<4>& filter_dims,
-                          int stride_width, int stride_height, int pad_width,
-                          int pad_height, float* output_data,
-                          const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("TransposeConv");
-  // THIS FUNCTION IS A COPY FROM reference_ops.h.
-  // To optimize, start by using the conv code with transposed weights for the
-  // case of stride_height = stride_width = 1.
+template <typename T>
+void TransposeIm2col(const T* input_data, const Dims<4>& input_dims,
+                     const Dims<4>& filter_dims, int stride_width,
+                     int stride_height, int pad_width, int pad_height,
+                     const Dims<4>& output_dims, uint8 zero_byte,
+                     T* im2col_data) {
+  gemmlowp::ScopedProfilingLabel label("TransposeIm2col");
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  TFLITE_DCHECK(im2col_data);
+
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
-  const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
   const int input_height = ArraySize(input_dims, 2);
   const int input_width = ArraySize(input_dims, 1);
+  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 3);
   const int filter_height = ArraySize(filter_dims, 2);
   const int filter_width = ArraySize(filter_dims, 1);
   const int output_height = ArraySize(output_dims, 2);
   const int output_width = ArraySize(output_dims, 1);
+  MatchingArraySize(output_dims, 0, filter_dims, 0);  // output_depth
 
-  // Although transpose convolution simplifies to convolution with transposed
-  // weights for strides of 1, non-unitary striding complicates matters. To
-  // keep this reference implementation as clear as possible, we use a "scatter"
-  // access pattern, where we loop through all the input elements, computing
-  // their influence on the output, rather than looping through the output
-  // elements in the typical "gather" access pattern of a conv. We therefore
-  // must initialize the output array to zero.
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          output_data[Offset(output_dims, out_channel, out_x, out_y, batch)] =
-              0.0f;
-        }
-      }
-    }
-  }
+  // Construct the MxN sized im2col matrix.
+  // The rows M, are sub-ordered B x H x W
+  Dims<4> row_dims;
+  row_dims.sizes[0] = output_width;
+  row_dims.sizes[1] = output_height;
+  row_dims.sizes[2] = batches;
+  row_dims.sizes[3] = 1;
+  ComputeStrides(&row_dims);
 
-  // Loop through input elements one at a time.
+  // The columns, N, are sub-ordered Kh x Kw x Din
+  Dims<4> col_dims;
+  col_dims.sizes[0] = input_depth;
+  col_dims.sizes[1] = filter_width;
+  col_dims.sizes[2] = filter_height;
+  col_dims.sizes[3] = 1;
+  ComputeStrides(&col_dims);
+
+  // Use dimensions M and N to construct dims for indexing directly into im2col
+  Dims<4> im2col_dims;
+  im2col_dims.sizes[0] = FlatSize(col_dims);
+  im2col_dims.sizes[1] = FlatSize(row_dims);
+  im2col_dims.sizes[2] = 1;
+  im2col_dims.sizes[3] = 1;
+  ComputeStrides(&im2col_dims);
+
+  // Build the im2col matrix by looping through all the input pixels,
+  // computing their influence on the output, rather than looping through all
+  // the output pixels. We therefore must initialize the im2col array to zero.
+  // This is potentially inefficient because we subsequently overwrite bytes
+  // set here. However, in practice memset is very fast and costs negligible.
+  memset(im2col_data, zero_byte, FlatSize(im2col_dims) * sizeof(T));
+
+  // Loop through the output batches
   for (int batch = 0; batch < batches; ++batch) {
+    // Loop through input pixels one at a time.
     for (int in_y = 0; in_y < input_height; ++in_y) {
       for (int in_x = 0; in_x < input_width; ++in_x) {
-        for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-          // Loop through the output elements it will influence
-          const int out_x_origin = (in_x * stride_width) - pad_width;
-          const int out_y_origin = (in_y * stride_height) - pad_height;
-          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+        // Loop through the output pixels it will influence
+        const int out_x_origin = (in_x * stride_width) - pad_width;
+        const int out_y_origin = (in_y * stride_height) - pad_height;
+        for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+          const int out_y = out_y_origin + filter_y;
+          // Is output pixel within height bounds?
+          if ((out_y >= 0) && (out_y < output_height)) {
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int out_channel = 0; out_channel < output_depth;
-                   ++out_channel) {
-                // Compute output element location
-                const int out_x = out_x_origin + filter_x;
-                const int out_y = out_y_origin + filter_y;
-                // We cannot accumulate out of bounds
-                if ((out_x >= 0) && (out_x < output_width) && (out_y >= 0) &&
-                    (out_y < output_height)) {
-                  float input_value = input_data[Offset(input_dims, in_channel,
-                                                        in_x, in_y, batch)];
-                  float filter_value =
-                      filter_data[Offset(filter_dims, in_channel, filter_x,
-                                         filter_y, out_channel)];
-                  output_data[Offset(output_dims, out_channel, out_x, out_y,
-                                     batch)] += input_value * filter_value;
-                }
+              const int out_x = out_x_origin + filter_x;
+              // Is output pixel within width bounds?
+              if ((out_x >= 0) && (out_x < output_width)) {
+                // Copy the input elements of this pixel
+                T const* src =
+                    input_data + Offset(input_dims, 0, in_x, in_y, batch);
+                T* dst = im2col_data +
+                         Offset(im2col_dims,
+                                Offset(col_dims, 0, filter_x, filter_y, 0),
+                                Offset(row_dims, out_x, out_y, batch, 0), 0, 0);
+                memcpy(dst, src, input_depth * sizeof(T));
               }
             }
           }
@@ -6435,6 +6456,31 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
+                          const float* filter_data, const Dims<4>& filter_dims,
+                          int stride_width, int stride_height, int pad_width,
+                          int pad_height, float* output_data,
+                          const Dims<4>& output_dims, float* im2col_data,
+                          const Dims<4>& im2col_dims) {
+  gemmlowp::ScopedProfilingLabel label("TransposeConv");
+
+  // Note we could use transposed weights with forward conv for unstrided
+  // cases. But we are already getting good performance with this code as-is.
+  TFLITE_DCHECK(im2col_data);
+  TransposeIm2col(input_data, input_dims, filter_dims, stride_width,
+                  stride_height, pad_width, pad_height, output_dims, 0,
+                  im2col_data);
+
+  const auto im2col_matrix_map =
+      MapAsMatrixWithFirstDimAsRows(im2col_data, im2col_dims);
+  const auto filter_matrix_map =
+      MapAsMatrixWithLastDimAsCols(filter_data, filter_dims);
+  auto output_matrix_map =
+      MapAsMatrixWithFirstDimAsRows(output_data, output_dims);
+
+  Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
 }
 
 }  // namespace optimized_ops

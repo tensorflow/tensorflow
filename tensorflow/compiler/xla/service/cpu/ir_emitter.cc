@@ -226,10 +226,13 @@ Status IrEmitter::HandleCopy(HloInstruction* copy) {
     // kCopy shallow copies a tuple so just memcpy the top-level buffer.
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(copy));
     return EmitMemcpy(*(copy->operand(0)), *copy);
-  } else {
-    // Use the elemental emitter for non-tuple shapes.
+  } else if (ShapeUtil::IsArray(copy->shape())) {
+    // Use the elemental emitter for array shapes.
     return DefaultAction(copy);
   }
+  return Unimplemented(
+      "unsupported operand type %s for copy instruction",
+      PrimitiveType_Name(copy->shape().element_type()).c_str());
 }
 
 // Calculate the alignment of a buffer allocated for a given primitive type.
@@ -1873,7 +1876,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(slice));
 
-  if (ShapeUtil::HasZeroElements(slice->shape())) {
+  if (ShapeUtil::IsZeroElementArray(slice->shape())) {
     return Status::OK();
   }
 
@@ -2528,6 +2531,13 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleGenerateToken(HloInstruction* gen_token) {
+  TF_RET_CHECK(ByteSizeOf(gen_token->shape()) == 0);
+  // No code to generate, but we need to emit an address for book-keeping.
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(gen_token));
+  return Status::OK();
+}
+
 Status IrEmitter::FinishVisit(HloInstruction* root) {
   // When this method is called, we should have already emitted an IR value for
   // the root (return) op. The IR value holds the address of the buffer holding
@@ -2809,7 +2819,10 @@ Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
     // For the root node, we write directly to the output buffer of the
     // function.
     llvm::Argument* retval = compute_function_->result_arg();
-    if (!ShapeUtil::IsNil(target_shape)) {
+    if ((ShapeUtil::IsArray(target_shape) &&
+         !ShapeUtil::IsZeroElementArray(target_shape)) ||
+        (ShapeUtil::IsTuple(target_shape) &&
+         !ShapeUtil::IsEmptyTuple(target_shape))) {
       llvm::AttrBuilder attr_builder;
       attr_builder.addAlignmentAttr(MinimumAlignmentForShape(target_shape));
       attr_builder.addDereferenceableAttr(ByteSizeOf(target_shape));

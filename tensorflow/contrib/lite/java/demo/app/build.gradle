@@ -52,7 +52,7 @@ dependencies {
     compile 'com.android.support:support-annotations:25.3.1'
     compile 'com.android.support:support-v13:25.2.0'
 
-    compile 'org.tensorflow:tensorflow-lite:+'
+    compile 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
 
     testCompile 'junit:junit:4.12'
 }

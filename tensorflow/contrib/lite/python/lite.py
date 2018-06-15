@@ -22,6 +22,7 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 @@Interpreter
 @@OpHint
 @@convert_op_hints_to_stubs
+@@build_toco_convert_protos
 
 @@FLOAT
 @@QUANTIZED_UINT8
