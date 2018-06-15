@@ -714,7 +714,7 @@ void LaunchDepthwiseConv2dGPU(const GpuDevice& device,
 #if GOOGLE_CUDA
                                   : device.getNumCudaMultiProcessors();
 #elif TENSORFLOW_USE_ROCM
-                                  : device.getNumHipMultiProcessors();
+                                  : device.getNumGpuMultiProcessors();
 #endif
   GPU_LAUNCH_KERNEL(kernel,
            dim3(std::min(max_block_count, config.block_count)),

@@ -67,9 +67,9 @@ struct CheckNumericsLaunch {
         (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
         block_size;
 #elif TENSORFLOW_USE_ROCM
-    const int32 block_size = d.maxHipThreadsPerBlock();
+    const int32 block_size = d.maxGpuThreadsPerBlock();
     const int32 num_blocks =
-        (d.getNumHipMultiProcessors() * d.maxHipThreadsPerMultiProcessor()) /
+        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 #endif
 

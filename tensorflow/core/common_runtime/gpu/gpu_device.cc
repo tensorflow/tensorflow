@@ -93,7 +93,7 @@ using se::cuda::ScopedActivateExecutorContext;
 
 typedef hipStream_t gpuStream_t;
 typedef hipDeviceProp_t gpuDeviceProp_t;
-#define EIGEN_GPU_SCRATCH_SIZE (Eigen::kHipScratchSize)
+#define EIGEN_GPU_SCRATCH_SIZE (Eigen::kGpuScratchSize)
 using se::rocm::ScopedActivateExecutorContext;
 
 #endif
