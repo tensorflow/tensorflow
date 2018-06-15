@@ -2336,6 +2336,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
 FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/op_segment.h",
     "framework/rendezvous.h",  # only needed for tests
+    "framework/resource_var.h",
     "framework/tensor_reference.h",
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
