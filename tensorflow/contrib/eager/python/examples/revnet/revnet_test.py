@@ -75,30 +75,66 @@ class RevnetTest(tf.test.TestCase):
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
 
     # Loss should be decreasing after each optimization step
-    for _ in range(3):
+    for _ in range(1):
       loss_ = self.model.train_step(self.x, self.t, optimizer, report=True)
       self.assertTrue(loss_.numpy() <= loss.numpy())
       loss = loss_
 
   def test_call_defun(self):
-    """Test `call` function with tfe.defun apply."""
+    """Test `call` function with defun."""
 
     y, _ = tfe.defun(self.model.call)(self.x, training=False)
     self.assertEqual(y.shape, [self.config.batch_size, self.config.n_classes])
 
+  def test_compute_gradients_defun(self):
+    """Test `compute_gradients` function with defun."""
+    compute_gradients = tfe.defun(self.model.compute_gradients)
+    grads, vars_ = compute_gradients(self.x, self.t)
+    self.assertTrue(isinstance(grads, list))
+    self.assertTrue(isinstance(vars_, list))
+    self.assertEqual(len(grads), len(vars_))
+    for grad, var in zip(grads, vars_):
+      if grad is not None:
+        self.assertEqual(grad.shape, var.shape)
+
   def test_train_step_defun(self):
+    """Test `train_step` function with defun."""
     self.model.call = tfe.defun(self.model.call)
     logits, _ = self.model(self.x, training=True)
     loss = self.model.compute_loss(logits=logits, labels=self.t)
     optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
 
-    for _ in range(3):
+    for _ in range(1):
       loss_ = self.model.train_step(self.x, self.t, optimizer, report=True)
       self.assertTrue(loss_.numpy() <= loss.numpy())
       loss = loss_
 
     # Initialize new model, so that other tests are not affected
     self.model = revnet.RevNet(config=self.config)
+
+  def test_training_graph(self):
+    """Test model training in graph mode."""
+
+    with tf.Graph().as_default():
+      x = tf.random_normal(
+          shape=(self.config.batch_size,) + self.config.input_shape)
+      t = tf.random_uniform(
+          shape=(self.config.batch_size,),
+          minval=0,
+          maxval=self.config.n_classes,
+          dtype=tf.int32)
+      global_step = tfe.Variable(0., trainable=False)
+      model = revnet.RevNet(config=self.config)
+      grads_all, vars_all = model.compute_gradients(x, t, training=True)
+      optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+      with tf.control_dependencies(model.updates):
+        train_op = optimizer.apply_gradients(
+            zip(grads_all, vars_all), global_step=global_step)
+
+      with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        for _ in range(1):
+          sess.run(train_op)
 
 
 # Benchmark related

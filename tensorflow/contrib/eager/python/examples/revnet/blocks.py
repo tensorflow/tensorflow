@@ -189,8 +189,8 @@ class _Residual(tf.keras.Model):
     """Manually compute backward gradients given input and output grads."""
 
     with tf.GradientTape(persistent=True) as tape:
-      x_stop = tf.stop_gradient(x)
-      x1, x2 = tf.split(x_stop, num_or_size_splits=2, axis=self.axis)
+      x = tf.identity(x)  # TODO(lxuechen): Remove after b/110264016 is fixed
+      x1, x2 = tf.split(x, num_or_size_splits=2, axis=self.axis)
       tape.watch([x1, x2])
       # Stitch back x for `call` so tape records correct grads
       x = tf.concat([x1, x2], axis=self.axis)

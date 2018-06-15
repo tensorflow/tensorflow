@@ -31,10 +31,6 @@ import tensorflow as tf
 from tensorflow.contrib.eager.python.examples.revnet import blocks
 
 
-# Global Conventions:
-# 1) Default data format is NCWH, targeting GPU
-# 2) Each block has attribute axis, inferred from data_format
-# 3) Default training option to True for batch normalization
 class RevNet(tf.keras.Model):
   """RevNet that depends on all the blocks."""
 
@@ -203,6 +199,7 @@ class RevNet(tf.keras.Model):
     # Manually backprop through last block
     x = saved_hidden[-1]
     with tf.GradientTape() as tape:
+      x = tf.identity(x)  # TODO(lxuechen): Remove after b/110264016 is fixed
       tape.watch(x)
       logits = self._final_block(x, training=training)
       cost = self.compute_loss(logits, labels)
@@ -251,13 +248,3 @@ class RevNet(tf.keras.Model):
       loss = self.compute_loss(logits, labels)
 
       return loss
-
-  def eval_step(self, inputs, labels):
-    """Evaluate."""
-
-    logits, _ = self.call(inputs, training=False)
-    preds = tf.cast(tf.argmax(logits, axis=1), tf.int32)
-    corrects = tf.cast(tf.equal(preds, labels), tf.float32)
-    accuracy = tf.reduce_mean(corrects)
-
-    return accuracy
