@@ -121,12 +121,17 @@ tensorflow::Status BuildNodeMap(
 }  // namespace
 // Function to get calibration from ResourceMgr and put them into nodedef.
 tensorflow::Status ConvertCalibGraphToInferGraph(
-    const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* infer_graph) {
+    const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* infer_graph,
+    bool is_dyn_op) {
   VLOG(0) << "Starting Calib Conversion";
   infer_graph->CopyFrom(graph_def);
   auto trt_rm = tensorflow::tensorrt::TRTResourceManager::instance();
   auto calib_rm = trt_rm->getManager("TRTCalibration");
   int num_nodes = infer_graph->node_size();
+  if (!is_dyn_op) {
+    LOG(WARNING) << "Construction of static int8 engine is not implemented "
+                    "yet!. Dynamic engine will be constructed";
+  }
   for (int i = 0; i < num_nodes; ++i) {
     auto n = infer_graph->mutable_node(i);
     if (n->op() == "TRTEngineOp") {
@@ -255,8 +260,12 @@ EngineInfo GetEngineInfo(
     for (const auto edge : node->in_edges()) {
       auto input_node = edge->src();
       if (segment_nodes.count(input_node->name()) == 0) {
-        if (input_node->type_string() ==
-            "Const") {  // Add constant input into segment
+        // Add constant input node into the segment. We don't care if it has
+        // other output edges going into other engines or TF nodes. Since we add
+        // it only to the subsegment node list, not the subsegment itself, it
+        // won't be removed from the graph. If it doesn't have any edges, TF
+        // will prune it out.
+        if (input_node->type_string() == "Const") {
           subgraph_node_ids.push_back(input_node->id());
         } else if (!edge->IsControlEdge() && !input_node->IsSource()) {
           string s(input_node->name());
@@ -401,11 +410,15 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
       builder->setHalf2Mode(true);
     }
     builder->setMaxWorkspaceSize(info.max_workspace_size_bytes);
+#if NV_TENSORRT_MAJOR > 3
+    builder->setGpuAllocator(alloc);
+#endif
     nvinfer1::ICudaEngine* engine = nullptr;
     // TODO(sami): What happens if 1st dim is not batch?
     auto status = ConvertSubgraphToEngine(info.segment_graph_def, builder.get(),
                                           shapes, &engine, info.precision_mode);
     if (!status.ok()) {
+      if (engine) engine->destroy();
       return status;
     }
     if (engine) {
@@ -549,8 +562,8 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
       VLOG(1) << "Updating funcdef input " << node_arg->name() << ":" << 0
               << " - > " << edge->dst()->name() << ":" << edge->dst_input();
       if (!s.ok()) {
-        LOG(ERROR) << "Failed to update edge from " << node_arg->name() << " to "
-                   << edge->dst()->name() << ":" << edge->dst_input();
+        LOG(ERROR) << "Failed to update edge from " << node_arg->name()
+                   << " to " << edge->dst()->name() << ":" << edge->dst_input();
       }
     }
     sgraph.RemoveNode(node);
@@ -584,7 +597,8 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     s = sgraph.UpdateEdge(edge->src(), edge->src_output(), node_ret, 0);
     if (!s.ok()) {
       LOG(ERROR) << "Failed to update edge from " << edge->src()->name() << ":"
-                 << edge->src_output() << " - > " << node_ret->name() << ":" << 0;
+                 << edge->src_output() << " - > " << node_ret->name() << ":"
+                 << 0;
     }
     sgraph.RemoveNode(node);
   }
@@ -662,7 +676,12 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   std::vector<tensorflow::NodeDef*> trt_nodes;
   trt_nodes.reserve(engine_segments.size());
   int old_cuda_device = 0;
-  cudaGetDevice(&old_cuda_device);
+  auto err = cudaGetDevice(&old_cuda_device);
+  if (err != cudaSuccess) {
+    LOG(ERROR) << "Couldn't get current device error is "
+               << cudaGetErrorString(err);
+  }
+  VLOG(1) << "Current cuda device is " << old_cuda_device;
   for (int i = 0; i < engine_segments.size(); ++i) {
     auto trt_node = new tensorflow::NodeDef;
     trt_nodes.push_back(trt_node);
@@ -674,8 +693,11 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
         (engine_sizes.at(i) / total_engine_size +
          segments.at(i).first.size() / total_num_nodes_in_segments) /
         2.0;
-    std::shared_ptr<nvinfer1::IGpuAllocator> alloc(new TRTCudaAllocator());
+    std::shared_ptr<nvinfer1::IGpuAllocator> alloc;
     int cuda_device_id = 0;
+    // we need to us PM here since in python path there is no way to get
+    // to allocators
+    auto pm = tensorflow::ProcessState::singleton();
     if (params.cluster) {  // get allocator
       const auto device =
           params.cluster->GetDeviceSet()->FindDeviceByName(engine.device);
@@ -692,9 +714,6 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
           cuda_device_id = cuda_gpu_id.value();
         }
         tensorflow::GPUOptions gpuoptions;
-        // we need to us PM here since in python path there is no way to get
-        // to allocators
-        auto pm = tensorflow::ProcessState::singleton();
         // this should be instantiated by now
         auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
         VLOG(1) << "Got an allocator for device tf_device=" << tf_gpu_id.value()
@@ -702,6 +721,60 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
                 << dev_allocator;
         alloc.reset(new TRTDeviceAllocator(dev_allocator));
       }
+    } else {
+      int found_device = 0;
+      bool try_gpu_ids = true;
+      auto checkDeviceId = [](int tfid) -> int {
+        tensorflow::TfGpuId tf_gpu_id(tfid);
+        CudaGpuId cuda_gpu_id;
+        Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
+        if (s.ok()) {
+          VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
+                  << cuda_gpu_id.value();
+          return cuda_gpu_id.value();
+        }
+        VLOG(2) << "TF GPU with id " << tfid << " do not exist " << s;
+        return -1;
+      };
+      // if device is set, try to find the device. Might be a problem for multi
+      // host case but TensorRT do not support multi host setups yet.
+      if (!engine.device.empty()) {
+        auto res = str_util::Split(engine.device, ":");
+        if (res.size() > 0) {
+          tensorflow::StringPiece s(res.back());
+          tensorflow::str_util::RemoveWhitespaceContext(&s);
+          uint64 dev_id = 0;
+          if (str_util::ConsumeLeadingDigits(&s, &dev_id)) {
+            found_device = dev_id;
+            cuda_device_id = checkDeviceId(found_device);
+            if (cuda_device_id >= 0) try_gpu_ids = false;
+          }
+        }
+      }
+      if (try_gpu_ids) {
+        while (found_device < 100) {
+          cuda_device_id = checkDeviceId(found_device);
+          if (cuda_device_id >= 0) {
+            break;
+          }
+          found_device++;
+        }
+      }
+      if (found_device == 100) {
+        LOG(ERROR) << " Can't find a GPU device to work with. Please "
+                      "instantiate a session to initialize devices";
+        return tensorflow::errors::NotFound(
+            "Can't find a GPU device to work with");
+      }
+      LOG(WARNING)
+          << "Can't determine the device constructing an allocator at device "
+          << found_device;
+      tensorflow::GPUOptions gpuoptions;
+      gpuoptions.set_allow_growth(
+          true);  // this will be a noop if device is already initialized
+      tensorflow::TfGpuId tf_gpu_id(found_device);
+      auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
+      alloc.reset(new TRTDeviceAllocator(dev_allocator));
     }
     cudaSetDevice(cuda_device_id);
     auto status = CreateTRTNode(&graph, engine_segments, i, trt_node,

@@ -75,6 +75,16 @@ def create_inference_graph(input_graph_def,
   compiled_version = get_linked_tensorrt_version()
   loaded_version = get_loaded_tensorrt_version()
   version_mismatch = False
+  if loaded_version[0] < compiled_version[0]:
+    tf_logging.error(
+        "TensorRT version mismatch. Tensorflow was compiled against " +
+        "TensorRT %s but library loaded from environment is TensorRT %s" %
+        (".".join([str(x) for x in compiled_version]),
+         ".".join([str(x) for x in loaded_version])) +
+        ". Please make sure that correct version of TensorRT "\
+        "is available in the system and added to ldconfig or LD_LIBRARY_PATH"
+    )
+    raise RuntimeError("Incompatible TensorRT library version")
   for i in zip(loaded_version, compiled_version):
     if i[0] != i[1]:
       tf_logging.warn("TensorRT mismatch. Compiled against version " +
@@ -143,11 +153,12 @@ def create_inference_graph(input_graph_def,
   return output_graph_def
 
 
-def calib_graph_to_infer_graph(calibration_graph_def):
+def calib_graph_to_infer_graph(calibration_graph_def, is_dynamic_op=False):
   """Convert an existing calibration graph to inference graph.
 
   Args:
     calibration_graph_def: the calibration GraphDef object with calibration data
+    is_dynamic_op        : whether to create dynamic engines or static engines from calibration
   Returns:
     New GraphDef with TRTEngineOps placed in graph replacing calibration nodes.
   Raises:
@@ -167,13 +178,13 @@ def calib_graph_to_infer_graph(calibration_graph_def):
   is_calib_graph = False
   for n in calibration_graph_def.node:
     if n.op == "TRTEngineOp":
-      is_calib_graph = len(n.attr["calibration_data"].s) == 0
+      is_calib_graph = is_calib_graph or len(n.attr["calibration_data"].s) == 0
   if not is_calib_graph:
     tf_logging.error(
         "Not a calib graph. Doesn't seem to contain any calibration nodes.")
     return None
   graph_str = calibration_graph_def.SerializeToString()
-  out = calib_convert(graph_str)
+  out = calib_convert(graph_str, is_dynamic_op)
   status = to_string(out[0])
   output_graph_def_string = out[1]
   del graph_str  # Save some memory

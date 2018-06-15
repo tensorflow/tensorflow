@@ -50,7 +50,7 @@ TRTDeviceAllocator::TRTDeviceAllocator(tensorflow::Allocator* allocator)
 }
 
 void TRTDeviceAllocator::free(void* memory) {
-  VLOG(2) << "Deallocating " << memory;
+  VLOG(2) << "Deallocating @ " << memory;
   allocator_->DeallocateRaw(memory);
 }
 

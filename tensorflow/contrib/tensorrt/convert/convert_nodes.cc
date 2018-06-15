@@ -2159,6 +2159,7 @@ tensorflow::Status ConvertSubgraphToEngine(
   VLOG(1) << "Starting engine conversion ";
   Converter converter(trt_network.get(), ws.get(), precision_mode == FP16MODE);
   std::vector<std::pair<string, string>> output_tensors;
+  // graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
     VLOG(1) << "Converting op name=" << node_name << ", op=" << node_def.op();
