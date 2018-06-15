@@ -78,14 +78,15 @@ def gen_crossentropy(y_true, y_pred, q=0.7, k=-1.0):
       # mean[ (1-y_ok^q)/q ]
     return K.mean(math_ops.divide(math_ops.subtract(um,math_ops.pow(y_ok,q)),q),axis=-1)  
   else:      # truncated cross entropy loss
-      # Array with (1-k^q)/q: Where() there is no broadcasting  
+
     k = np.float64(k)
-    vetk = gen_array_ops.fill(array_ops.shape(y_ok),(um-k**q)/q)           
-      # (1-k^q)/q if y_ok < k else (1-y_ok^q)/q
-    vfunct = array_ops.where (gen_math_ops.less_equal(y_ok,k), vetk,
+      # if y_ok < k
+      #     [ (1-k^q)/q    ]  (no broadcasting in Where())  
+      #     [ (1-y_ok^q)/q ]
+    vfunct = array_ops.where (gen_math_ops.less_equal(y_ok,k), 
+          gen_array_ops.fill(array_ops.shape(y_ok),(um-k**q)/q),
 	      math_ops.divide(math_ops.subtract(um,math_ops.pow(y_ok,q)),q))     
     return K.mean(vfunct, axis=-1)    # mean [ above values ]
-
 
 @tf_export('keras.metrics.mean_absolute_percentage_error',
            'keras.metrics.mape',
