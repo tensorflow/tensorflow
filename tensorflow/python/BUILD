@@ -1600,6 +1600,9 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "resource_variable_ops_gen",
+    visibility = [
+        "//tensorflow/compiler/tf2xla:internal",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
