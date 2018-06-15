@@ -202,7 +202,10 @@ def cc_proto_library(
   )
 
   if use_grpc_plugin:
-    cc_libs += ["//external:grpc_lib"]
+    cc_libs += select({
+        "//tensorflow:linux_s390x": ["//external:grpc_lib_unsecure"],
+        "//conditions:default": ["//external:grpc_lib"],
+    })
 
   if default_header:
     header_only_name = name

@@ -783,6 +783,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@grpc//:grpc++",
   )
 
+  native.bind(
+      name = "grpc_lib_unsecure",
+      actual = "@grpc//:grpc++_unsecure",
+  )
+
   # Needed by gRPC
   native.bind(
       name = "libssl",
