@@ -56,9 +56,9 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
 
   // Evaluate the constant, reshaping to a 1-vector if it is a scalar.
   xla::Literal axes_literal;
-  OP_REQUIRES_OK(
-      ctx, ctx->ConstantInputReshaped(1, {axes_tensor_shape.num_elements()},
-                                      &axes_literal));
+  OP_REQUIRES_OK(ctx,
+                 ctx->ConstantInputReshaped(
+                     1, {axes_tensor_shape.num_elements()}, &axes_literal));
 
   VLOG(1) << "data shape: " << data_shape.DebugString();
   VLOG(1) << "axes      : " << axes_literal.ToString();

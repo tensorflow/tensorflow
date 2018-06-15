@@ -83,7 +83,7 @@ class XlaContext : public ResourceBase {
 
   // As for Retval, but for return values that are compile-time constants.
   Status AddConstRetval(int retval_index, DataType dtype,
-                        const xla::LiteralSlice& literal);
+                        const xla::Literal& literal);
 
   // Creates a resource with resource `kind` and initial value `handle`. `name`
   // is a descriptive name for use in error messages. See the `XlaResource`

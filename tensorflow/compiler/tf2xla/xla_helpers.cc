@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -247,7 +248,6 @@ Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64 depth, int axis,
       return errors::InvalidArgument("Invalid argument type ",
                                      DataTypeString(index_type));
   }
-
   xla::BorrowingLiteral linspace_literal;
   TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(linspace, &linspace_literal));
 

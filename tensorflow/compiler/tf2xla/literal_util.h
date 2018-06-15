@@ -26,6 +26,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Copies 'host_tensor' to an XLA Literal. Fails if host_tensor is of an
+// unsupported type.
+Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal);
+
 // Returns a BorrowingLiteral that utilizes the same underlying buffer owned by
 // 'host_tensor'.
 Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
