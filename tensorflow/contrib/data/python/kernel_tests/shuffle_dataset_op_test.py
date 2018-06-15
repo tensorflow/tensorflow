@@ -48,10 +48,10 @@ class ShuffleDatasetSerializationTest(
   def testShuffleCore(self):
 
     seed = 55
-    range_limit = 10
-    num_repeats = 5
+    range_limit = 5
+    num_repeats = 2
     num_outputs = range_limit * num_repeats
-    buffer_sizes = [1, 3, 8, 10, 25, 50]
+    buffer_sizes = [1, 3, 5, 8, 10]
     # pylint: disable=cell-var-from-loop
     # pylint: disable=g-long-lambda
     for reshuffle_each_iteration in [True, False]:
@@ -75,10 +75,10 @@ class ShuffleDatasetSerializationTest(
 
   def testNonDeterministicSeeding(self):
 
-    range_limit = 10
-    num_repeats = 5
+    range_limit = 5
+    num_repeats = 2
     num_outputs = range_limit * num_repeats
-    buffer_sizes = [1, 3, 8, 10, 25, 50]
+    buffer_sizes = [1, 3, 5, 8, 10]
     for reshuffle_each_iteration in [True, False]:
       for buffer_size in buffer_sizes:
 
@@ -111,10 +111,10 @@ class ShuffleDatasetSerializationTest(
         self.match(expected, actual)
 
   def testMultipleIterators(self):
-    range_limit = 10
-    num_repeats = 5
+    range_limit = 5
+    num_repeats = 2
     num_outputs = range_limit * num_repeats
-    buffer_sizes = [1, 3, 8, 10, 25, 50]
+    buffer_sizes = [1, 3, 5, 8, 10]
 
     for reshuffle_each_iteration in [True, False]:
       for buffer_size in buffer_sizes:
