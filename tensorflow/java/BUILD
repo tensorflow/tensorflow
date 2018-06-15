@@ -57,8 +57,8 @@ java_library(
     javacopts = JAVACOPTS,
     resources = glob(["src/gen/resources/META-INF/services/javax.annotation.processing.Processor"]),
     deps = [
-        "@com_squareup_javapoet",
         "@com_google_guava",
+        "@com_squareup_javapoet",
     ],
 )
 
