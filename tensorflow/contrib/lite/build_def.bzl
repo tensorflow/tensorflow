@@ -221,8 +221,7 @@ def generated_test_models():
         "local_response_norm",
         "log_softmax",
         "log",
-        # TODO(b/110143200): Enable after resolving issues with LSTM conversion.
-        # "lstm",
+        "lstm",
         "max_pool",
         "maximum",
         "mean",

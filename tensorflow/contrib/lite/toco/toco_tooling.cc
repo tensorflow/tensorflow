@@ -56,6 +56,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialStackToReshape);
+  transformations->Add(new ConvertTrivialTileToConcat);
   transformations->Add(new ConvertTrivialTransposeToReshape);
   transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
@@ -76,6 +77,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMatMul);
   transformations->Add(new FuseBinaryIntoPrecedingAffine);
   transformations->Add(new FuseBinaryIntoFollowingAffine);
+  transformations->Add(new FuseBroadcastIntoFollowingBinary);
   transformations->Add(new MergeReshapeIntoPrecedingTranspose);
   transformations->Add(new ReorderElementwiseUnary);
   transformations->Add(new ReorderReshapeTranspose);
@@ -94,7 +96,6 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMerge);
   transformations->Add(new ResolveSqueezeAttributes);
   transformations->Add(new ResolveTensorFlowSwitch);
-  transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
   transformations->Add(new IdentifyDilatedConv);

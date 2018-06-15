@@ -631,7 +631,7 @@ Status BFloat16Propagation::ResolveInconsistentFusions(HloModule* module) {
                   subshape, converted_outputs.element(parent_index),
                   output_index.back()));
         }
-        if (ShapeUtil::IsTuple(subshape)) {
+        if (!ShapeUtil::IsArray(subshape)) {
           continue;
         }
         if (!ShapeUtil::Compatible(

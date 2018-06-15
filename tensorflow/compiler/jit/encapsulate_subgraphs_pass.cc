@@ -106,41 +106,11 @@ void MarkGuaranteedConstants(
   }
 }
 
-// A node/slot pair.
-// TODO(phawkins): is there a common definition of this?
-struct NodeSlot {
-  NodeSlot() : node(nullptr), slot(-1), dtype(DT_INVALID) {}
-  NodeSlot(const Node* node, int slot)
-      : node(node), slot(slot), dtype(DT_INVALID) {}
-  NodeSlot(const Node* node, int slot, DataType dtype)
-      : node(node), slot(slot), dtype(dtype) {}
-
-  const Node* node;
-  int slot;
-
-  // Optional: used to record the destination type of a source NodeSlot in case
-  // the source output is a Ref type that is cast to a Tensor at the
-  // destination.
-  DataType dtype;
-
-  bool operator==(const NodeSlot& other) const {
-    return node == other.node && slot == other.slot && dtype == other.dtype;
+struct OutputInputTensorPairHasher {
+  uint64 operator()(std::pair<OutputTensor, InputTensor> const& s) const {
+    return Hash64Combine(OutputTensor::Hash()(s.first),
+                         InputTensor::Hash()(s.second));
   }
-
-  // Leave dtype out of the hash since there are never two NodeSlots with the
-  // same node and slot and different dtypes.
-  struct Hasher {
-    uint64 operator()(NodeSlot const& s) const {
-      return Hash64Combine(std::hash<const Node*>()(s.node),
-                           std::hash<int>()(s.slot));
-    }
-  };
-
-  struct PairHasher {
-    uint64 operator()(std::pair<NodeSlot, NodeSlot> const& s) const {
-      return Hash64Combine(Hasher()(s.first), Hasher()(s.second));
-    }
-  };
 };
 
 // TODO(phawkins) add a canonical copy of these operator names and refactor
@@ -376,7 +346,7 @@ class Encapsulator {
       // Map from source (producer node/slot) tensors in the original graph to
       // input index (slot number in the HostCompute/RecvAtHost nodes that will
       // be created) for the outside_compilation subgraph.
-      std::unordered_map<NodeSlot, int, NodeSlot::Hasher> inputs;
+      std::unordered_map<OutputTensor, int, OutputTensor::Hash> inputs;
 
       // Set of nodes in the original graph that are the source of control edges
       // that cross from the containing compiled subgraph into the
@@ -392,8 +362,15 @@ class Encapsulator {
       // node/slot) tensors in the original graph to output index (slot number
       // in the SendFromHost/HostCompute nodes that will be created) for the
       // outside_compilation subgraph.
-      std::unordered_map<NodeSlot, int, NodeSlot::Hasher> outputs_by_src;
-      std::unordered_map<NodeSlot, int, NodeSlot::Hasher> outputs_by_dst;
+      struct ArgNumAndType {
+        int index;
+        DataType dtype;
+
+        ArgNumAndType(int i, DataType t) : index(i), dtype(t) {}
+      };
+      std::unordered_map<OutputTensor, ArgNumAndType, OutputTensor::Hash>
+          outputs_by_src;
+      std::unordered_map<InputTensor, int, InputTensor::Hash> outputs_by_dst;
 
       // Set of nodes in the original graph that are the destination of control
       // edges that cross from the outside_compilation subgraph into the
@@ -479,14 +456,14 @@ class Encapsulator {
     // (consumer node/slot) tensors in the input graph to _Arg numbers in
     // the subgraph. The source map is one-to-one, whereas the dest map may be
     // many-to-one.
-    std::unordered_map<NodeSlot, int, NodeSlot::Hasher> args_by_src_;
-    std::unordered_map<NodeSlot, int, NodeSlot::Hasher> args_by_dst_;
+    std::unordered_map<OutputTensor, int, OutputTensor::Hash> args_by_src_;
+    std::unordered_map<InputTensor, int, InputTensor::Hash> args_by_dst_;
 
-    // The _Arg nodes in the subgraph, in order by argument number.
+    // The arguments to the subgraph, in order.
     std::vector<Node*> args_;
 
     // Map from source tensor in the input graph to result #.
-    std::unordered_map<NodeSlot, int, NodeSlot::Hasher> results_;
+    std::unordered_map<OutputTensor, int, OutputTensor::Hash> results_;
 
     // The outside_compilation clusters in this subgraph.
     std::unordered_map<string, OutsideCompilationSubgraph>
@@ -583,8 +560,8 @@ class Encapsulator {
       const string& dst_outside_compilation_id,
       const std::unordered_map<const Node*, Node*>& node_images,
       Graph* graph_out,
-      std::unordered_set<std::pair<NodeSlot, NodeSlot>, NodeSlot::PairHasher>*
-          edges_added);
+      std::unordered_set<std::pair<OutputTensor, InputTensor>,
+                         OutputInputTensorPairHasher>* edges_added);
 
   // Adds control dependencies between subgraph call nodes that have
   // dependencies via outside_compilation edges.
@@ -716,11 +693,11 @@ void TopologicalClusterSort(
 Node* Encapsulator::Subgraph::GetCallNode() const { return call_node_; }
 
 int Encapsulator::Subgraph::GetArgIndexForEdge(const Edge* edge) const {
-  return args_by_dst_.at(NodeSlot(edge->dst(), edge->dst_input()));
+  return args_by_dst_.at(InputTensor(edge->dst(), edge->dst_input()));
 }
 
 int Encapsulator::Subgraph::GetResultIndexForEdge(const Edge* edge) const {
-  return results_.at(NodeSlot(edge->src(), edge->src_output()));
+  return results_.at(OutputTensor(edge->src(), edge->src_output()));
 }
 
 Node* Encapsulator::Subgraph::GetRecvAtHostNode(
@@ -732,7 +709,7 @@ Node* Encapsulator::Subgraph::GetRecvAtHostNode(
 int Encapsulator::Subgraph::GetRecvAtHostSlot(
     const string& outside_compilation_subgraph_name, const Edge* edge) const {
   return outside_compilation_subgraphs_.at(outside_compilation_subgraph_name)
-      .inputs.at(NodeSlot(edge->src(), edge->src_output()));
+      .inputs.at(OutputTensor(edge->src(), edge->src_output()));
 }
 
 Node* Encapsulator::Subgraph::GetSendFromHostNode(
@@ -744,7 +721,7 @@ Node* Encapsulator::Subgraph::GetSendFromHostNode(
 int Encapsulator::Subgraph::GetSendFromHostSlot(
     const string& outside_compilation_subgraph_name, const Edge* edge) const {
   return outside_compilation_subgraphs_.at(outside_compilation_subgraph_name)
-      .outputs_by_dst.at(NodeSlot(edge->dst(), edge->dst_input()));
+      .outputs_by_dst.at(InputTensor(edge->dst(), edge->dst_input()));
 }
 
 Node* Encapsulator::Subgraph::MakeNodeImage(const Graph* graph_in, Node* node) {
@@ -769,10 +746,10 @@ Status Encapsulator::Subgraph::RecordArg(
     std::vector<std::pair<const Node*, Node*>>* src_arg_pairs) {
   Node* src_node = edge->src();
   int src_slot = edge->src_output();
-  std::unordered_map<NodeSlot, int, NodeSlot::Hasher>::iterator iter;
+  std::unordered_map<OutputTensor, int, OutputTensor::Hash>::iterator iter;
   bool inserted;
-  std::tie(iter, inserted) =
-      args_by_src_.emplace(NodeSlot(src_node, src_slot), args_by_src_.size());
+  std::tie(iter, inserted) = args_by_src_.emplace(
+      OutputTensor(src_node, src_slot), args_by_src_.size());
   int arg_index = iter->second;
   if (inserted) {
     NodeDef arg_def;
@@ -793,7 +770,7 @@ Status Encapsulator::Subgraph::RecordArg(
   Node* dst_node = edge->dst();
   Node* dst_image = node_images.at(dst_node);
   int dst_slot = edge->dst_input();
-  args_by_dst_[NodeSlot(dst_node, dst_slot)] = arg_index;
+  args_by_dst_[InputTensor(dst_node, dst_slot)] = arg_index;
   graph_->AddEdge(args_[arg_index], 0, dst_image, dst_slot);
   return Status::OK();
 }
@@ -804,10 +781,10 @@ Status Encapsulator::Subgraph::RecordResult(
   Node* src_node = edge->src();
   Node* src_image = node_images.at(src_node);
   int src_slot = edge->src_output();
-  std::unordered_map<NodeSlot, int, NodeSlot::Hasher>::iterator iter;
+  std::unordered_map<OutputTensor, int, OutputTensor::Hash>::iterator iter;
   bool inserted;
   std::tie(iter, inserted) =
-      results_.emplace(NodeSlot(src_node, src_slot), results_.size());
+      results_.emplace(OutputTensor(src_node, src_slot), results_.size());
   int ret_index = iter->second;
   if (inserted) {
     NodeDef ret_def;
@@ -845,8 +822,8 @@ void Encapsulator::Subgraph::RecordOutsideCompilationInputOrControl(
     outside_subgraph->control_inputs.insert(edge->src());
   } else {
     int input_index = outside_subgraph->inputs.size();
-    outside_subgraph->inputs.emplace(NodeSlot(edge->src(), edge->src_output()),
-                                     input_index);
+    outside_subgraph->inputs.emplace(
+        OutputTensor(edge->src(), edge->src_output()), input_index);
   }
 }
 
@@ -860,11 +837,13 @@ void Encapsulator::Subgraph::RecordOutsideCompilationOutputOrControl(
     DataType dtype = edge->dst()->input_type(edge->dst_input());
     auto output_iter =
         outside_subgraph->outputs_by_src
-            .emplace(NodeSlot(edge->src(), edge->src_output(), dtype),
-                     outside_subgraph->outputs_by_src.size())
+            .emplace(OutputTensor(edge->src(), edge->src_output()),
+                     OutsideCompilationSubgraph::ArgNumAndType(
+                         outside_subgraph->outputs_by_src.size(), dtype))
             .first;
-    int output_index = output_iter->second;
-    outside_subgraph->outputs_by_dst[NodeSlot(edge->dst(), edge->dst_input())] =
+    const int output_index = output_iter->second.index;
+    outside_subgraph
+        ->outputs_by_dst[InputTensor(edge->dst(), edge->dst_input())] =
         output_index;
   }
 }
@@ -946,7 +925,7 @@ Status Encapsulator::Subgraph::AddHostComputes(
       for (const auto& input_src : oc_subgraph.inputs) {
         const Node* src_node = input_src.first.node;
         Node* src_image = node_images.at(src_node);
-        int src_slot = input_src.first.slot;
+        int src_slot = input_src.first.index;
         int input_index = input_src.second;
 
         DataType dtype = src_node->output_type(src_slot);
@@ -954,8 +933,8 @@ Status Encapsulator::Subgraph::AddHostComputes(
         input_dtypes[input_index] = dtype;
       }
       for (const auto& output : oc_subgraph.outputs_by_src) {
-        DataType dtype = output.first.dtype;
-        int output_index = output.second;
+        DataType dtype = output.second.dtype;
+        int output_index = output.second.index;
         output_dtypes[output_index] = dtype;
       }
 
@@ -993,7 +972,7 @@ Status Encapsulator::Subgraph::AddHostComputes(
       for (auto& input_src : oc_subgraph.inputs) {
         const Node* src_node = input_src.first.node;
         Node* src_image = node_images.at(src_node);
-        int src_slot = input_src.first.slot;
+        int src_slot = input_src.first.index;
         int input_index = input_src.second;
         graph_->AddEdge(src_image, src_slot, host_compute, input_index);
       }
@@ -1015,7 +994,7 @@ Status Encapsulator::Subgraph::AddHostComputes(
       for (const auto& output : oc_subgraph.outputs_by_dst) {
         const Node* dst_node = output.first.node;
         Node* dst_image = node_images.at(dst_node);
-        int dst_slot = output.first.slot;
+        int dst_slot = output.first.index;
         int output_index = output.second;
 
         graph_->AddEdge(host_compute, output_index, dst_image, dst_slot);
@@ -1068,14 +1047,19 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   call_node_def_.set_device(device_);
 
   if (rewrite_subgraph_fn) {
+    std::vector<OutputTensor> arg_source_tensors(args_by_src_.size());
+    for (const auto& arg : args_by_src_) {
+      arg_source_tensors.at(arg.second) = arg.first;
+    }
     // Initialize the input and output permutations to the identity.
     std::vector<int> input_permutation(args_by_src_.size());
     std::iota(input_permutation.begin(), input_permutation.end(), 0);
     std::vector<int> output_permutation(results_.size());
     std::iota(output_permutation.begin(), output_permutation.end(), 0);
 
-    TF_RETURN_IF_ERROR(rewrite_subgraph_fn(
-        &graph_, &input_permutation, &output_permutation, &call_node_def_));
+    TF_RETURN_IF_ERROR(
+        rewrite_subgraph_fn(arg_source_tensors, &graph_, &input_permutation,
+                            &output_permutation, &call_node_def_));
 
     // Apply the input/output permutations to the 'args_by_...' and 'results_'
     // mappings, so when we build edges in BuildOutputGraph() we
@@ -1226,7 +1210,7 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
 
   for (const auto& input : oc_subgraph->inputs) {
     const Node* src_node = input.first.node;
-    int src_slot = input.first.slot;
+    int src_slot = input.first.index;
     int input_index = input.second;
 
     DataType dtype = src_node->output_type(src_slot);
@@ -1280,8 +1264,8 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
   for (const auto& output : oc_subgraph->outputs_by_src) {
     const Node* src_node = output.first.node;
     Node* src_image = node_images.at(src_node);
-    int src_slot = output.first.slot;
-    int output_index = output.second;
+    int src_slot = output.first.index;
+    int output_index = output.second.index;
 
     DataType dtype = src_node->output_type(src_slot);
     dtypes[output_index] = dtype;
@@ -1680,8 +1664,8 @@ Status Encapsulator::CopyEdgeToOutputGraph(
     const string& src_outside_compilation_id, const string& dst_func_id,
     const string& dst_outside_compilation_id,
     const std::unordered_map<const Node*, Node*>& node_images, Graph* graph_out,
-    std::unordered_set<std::pair<NodeSlot, NodeSlot>, NodeSlot::PairHasher>*
-        edges_added) {
+    std::unordered_set<std::pair<OutputTensor, InputTensor>,
+                       OutputInputTensorPairHasher>* edges_added) {
   Node* src_image;
   TF_RETURN_IF_ERROR(FindOutputImageOfEdgeSrc(
       src_func_id, src_outside_compilation_id, dst_func_id,
@@ -1696,7 +1680,8 @@ Status Encapsulator::CopyEdgeToOutputGraph(
   if (edge->IsControlEdge()) {
     // Add the control edge, if we have not already added it, using the images
     // determined above (potentially call operators or RecvAtHost/SendFromHost).
-    if (edges_added->emplace(NodeSlot(src_image, -1), NodeSlot(dst_image, -1))
+    if (edges_added
+            ->emplace(OutputTensor(src_image, -1), InputTensor(dst_image, -1))
             .second) {
       graph_out->AddControlEdge(src_image, dst_image);
     }
@@ -1714,8 +1699,8 @@ Status Encapsulator::CopyEdgeToOutputGraph(
 
   // Add the edge, if we have not already added it.
   if (edges_added
-          ->emplace(NodeSlot(src_image, src_output),
-                    NodeSlot(dst_image, dst_input))
+          ->emplace(OutputTensor(src_image, src_output),
+                    InputTensor(dst_image, dst_input))
           .second) {
     graph_out->AddEdge(src_image, src_output, dst_image, dst_input);
   }
@@ -1739,7 +1724,8 @@ Status Encapsulator::AddEdgesToOutputGraph(
   // Set of edges already added to the output graph, represented as (src, dst)
   // pairs. We use the set to deduplicate edges; multiple edges in the input
   // graph may map to one edge in the output graph.
-  std::unordered_set<std::pair<NodeSlot, NodeSlot>, NodeSlot::PairHasher>
+  std::unordered_set<std::pair<OutputTensor, InputTensor>,
+                     OutputInputTensorPairHasher>
       edges_added;
 
   for (const Edge* edge : graph_in_->edges()) {
@@ -2472,64 +2458,66 @@ Status EncapsulateSubgraphsPass::Run(
   FunctionLibraryRuntime* flr =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
-  auto rewrite_subgraph = [flr](std::unique_ptr<Graph>* subgraph,
-                                std::vector<int>* input_permutation,
-                                std::vector<int>* output_permutation,
-                                NodeDef* node) {
-    // Optimize the subgraph.
-    OptimizeGraph(flr, subgraph);
+  auto rewrite_subgraph =
+      [flr](const std::vector<OutputTensor>& arg_source_tensors,
+            std::unique_ptr<Graph>* subgraph,
+            std::vector<int>* input_permutation,
+            std::vector<int>* output_permutation, NodeDef* node) {
+        // Optimize the subgraph.
+        OptimizeGraph(flr, subgraph);
 
-    const int num_args = input_permutation->size();
-    std::vector<bool> const_args(num_args);
-    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(**subgraph, &const_args));
+        const int num_args = input_permutation->size();
+        std::vector<bool> const_args(num_args);
+        TF_RETURN_IF_ERROR(BackwardsConstAnalysis(**subgraph, &const_args));
 
-    DataTypeVector arg_types(num_args);
-    TF_RETURN_IF_ERROR(GetArgTypes(**subgraph, &arg_types));
+        DataTypeVector arg_types(num_args);
+        TF_RETURN_IF_ERROR(GetArgTypes(**subgraph, &arg_types));
 
-    // Compute a permutation of the arguments such that the constant arguments
-    // are first.
-    const int num_consts =
-        std::count(const_args.begin(), const_args.end(), true);
+        // Compute a permutation of the arguments such that the constant
+        // arguments are first.
+        const int num_consts =
+            std::count(const_args.begin(), const_args.end(), true);
 
-    const int num_resources =
-        std::count(arg_types.begin(), arg_types.end(), DT_RESOURCE);
-    const int num_nonconsts = num_args - num_resources - num_consts;
-    if (num_nonconsts < 0) {
-      return errors::Internal("num_nonconsts should be >= 0, was ",
-                              num_nonconsts);
-    }
-
-    int const_pos = 0;
-    int arg_pos = num_consts;
-    int resource_pos = num_consts + num_nonconsts;
-    for (int i = 0; i < num_args; ++i) {
-      if (const_args[i]) {
-        if (arg_types[i] == DT_RESOURCE) {
-          return errors::Internal(
-              "Resource arguments cannot be constant (argument ", i, ")");
+        const int num_resources =
+            std::count(arg_types.begin(), arg_types.end(), DT_RESOURCE);
+        const int num_nonconsts = num_args - num_resources - num_consts;
+        if (num_nonconsts < 0) {
+          return errors::Internal("num_nonconsts should be >= 0, was ",
+                                  num_nonconsts);
         }
-        (*input_permutation)[i] = const_pos;
-        ++const_pos;
-      } else if (arg_types[i] == DT_RESOURCE) {
-        (*input_permutation)[i] = resource_pos;
-        ++resource_pos;
-      } else {
-        (*input_permutation)[i] = arg_pos;
-        ++arg_pos;
-      }
-    }
 
-    // Renumber argument nodes in the graph.
-    TF_RETURN_IF_ERROR(RenumberArguments(subgraph->get(), *input_permutation));
+        int const_pos = 0;
+        int arg_pos = num_consts;
+        int resource_pos = num_consts + num_nonconsts;
+        for (int i = 0; i < num_args; ++i) {
+          if (const_args[i]) {
+            if (arg_types[i] == DT_RESOURCE) {
+              return errors::Internal(
+                  "Resource arguments cannot be constant (argument ", i, ")");
+            }
+            (*input_permutation)[i] = const_pos;
+            ++const_pos;
+          } else if (arg_types[i] == DT_RESOURCE) {
+            (*input_permutation)[i] = resource_pos;
+            ++resource_pos;
+          } else {
+            (*input_permutation)[i] = arg_pos;
+            ++arg_pos;
+          }
+        }
 
-    // TODO(phawkins): add a forward is-constant analysis, similarly split
-    // outputs into host-memory constants and device-memory non-constants.
+        // Renumber argument nodes in the graph.
+        TF_RETURN_IF_ERROR(
+            RenumberArguments(subgraph->get(), *input_permutation));
 
-    AddNodeAttr(kXlaCompiledKernelAttr, true, node);
-    AddNodeAttr(kXlaNumConstantArgsAttr, num_consts, node);
-    AddNodeAttr(kXlaNumResourceArgsAttr, num_resources, node);
-    return Status::OK();
-  };
+        // TODO(phawkins): add a forward is-constant analysis, similarly split
+        // outputs into host-memory constants and device-memory non-constants.
+
+        AddNodeAttr(kXlaCompiledKernelAttr, true, node);
+        AddNodeAttr(kXlaNumConstantArgsAttr, num_consts, node);
+        AddNodeAttr(kXlaNumResourceArgsAttr, num_resources, node);
+        return Status::OK();
+      };
 
   TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
       kXlaClusterAttr, kXlaOutsideCompilationAttr, **options.graph,

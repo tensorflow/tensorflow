@@ -30,6 +30,7 @@ py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

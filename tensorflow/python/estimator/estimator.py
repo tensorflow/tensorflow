@@ -103,6 +103,15 @@ class Estimator(object):
   None of `Estimator`'s methods can be overridden in subclasses (its
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
+
+  @compatbility(eager)
+  Calling methods of `Estimator` will work while eager execution is enabled.
+  However, the `model_fn` and `input_fn` is not executed eagerly, `Estimator`
+  will switch to graph model before calling all user-provided functions (incl.
+  hooks), so their code has to be compatible with graph mode execution. Note
+  that `input_fn` code using `tf.data` generally works in both graph and eager
+  modes.
+  @end_compatibility
   """
 
   def __init__(self, model_fn, model_dir=None, config=None, params=None,
@@ -1150,13 +1159,10 @@ class Estimator(object):
                 input_fn, model_fn_lib.ModeKeys.TRAIN))
         worker_hooks.extend(input_hooks)
         global_step_tensor = self._create_and_assert_global_step(g)
-        # The default destination for the global_step_tensor fetch call is the
-        # CPU.
-        global_step_read_tensor = self._distribution.fetch(global_step_tensor)
         # we want to add to the global collection in the main thread not the
         # tower threads.
         ops.add_to_collection(training_util.GLOBAL_STEP_READ_KEY,
-                              global_step_read_tensor)
+                              self._distribution.read_var(global_step_tensor))
         grouped_estimator_spec = self._distribution.call_for_each_tower(
             self._call_model_fn,
             features,
@@ -1254,7 +1260,7 @@ class Estimator(object):
             training_chief_hooks=training_chief_hooks,
             scaffold=scaffold)
         return self._train_with_estimator_spec(estimator_spec, worker_hooks,
-                                               hooks, global_step_read_tensor,
+                                               hooks, global_step_tensor,
                                                saving_listeners)
 
   def _train_with_estimator_spec(self, estimator_spec, worker_hooks, hooks,

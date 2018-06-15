@@ -435,9 +435,9 @@ class HloInstruction {
   // For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
   // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
   //
-  // `channel_id`: for Allreduce nodes from different models, if they have the
-  // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
-  // applied cross models.
+  // `all_reduce_id`: for Allreduce nodes from different modules, if they have
+  // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
+  // not be applied cross modules.
   //
   // TODO(b/79737069): Rename this to AllReduce.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
@@ -445,7 +445,7 @@ class HloInstruction {
       HloComputation* reduce_computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
       tensorflow::StringPiece barrier,
-      const tensorflow::gtl::optional<int64>& channel_id =
+      const tensorflow::gtl::optional<int64>& all_reduce_id =
           tensorflow::gtl::nullopt);
 
   // Creates a conversion instruction, where operand is the data to convert and
@@ -824,13 +824,6 @@ class HloInstruction {
   // root to new_producer.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
 
-  // Detaches an instruction from its operands. That is, remove the instruction
-  // from each operand's user set. This should only be called prior to
-  // deallocating the instruction.
-  //
-  // TODO(b/78305363): Make this automatic when deleting an instruction.
-  void DetachFromOperands();
-
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
   // complete. If ignore_control_predecessors is true, instructions only
@@ -907,14 +900,6 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kCustomCall
   const string& custom_call_target() const;
 
-  // Returns the config for the Outfeed instruction.
-  // Precondition: opcode() == HloOpcode::kOutfeed
-  const string& outfeed_config() const;
-
-  // Returns the shape for the Outfeed instruction.
-  // Precondition: opcode() == HloOpcode::kOutfeed
-  const Shape& outfeed_shape() const;
-
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
   //
@@ -988,12 +973,6 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kHostCompute
   string channel_name() const { return channel_name_; }
 
-  // Returns the infeed configuration string. The infeed configuration includes
-  // any metadata needed for the backend compiler (e.g., infeed buffer address)
-  // and is target-dependent.
-  string infeed_config() const { return infeed_config_; }
-  void set_infeed_config(const string& config) { infeed_config_ = config; }
-
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
   bool IsFused() const;
@@ -1059,6 +1038,19 @@ class HloInstruction {
   // today, the metadata and sharding will be propagated to the derived
   // instruction.
   void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
+
+  // TODO(b/80249101): Remove these methods once HLO scheduling and copy
+  // insertion are integrated, and we don't need to run a separate pass
+  // of copy elision anymore.
+  bool CopyElisionAllowed() const {
+    CHECK_EQ(HloOpcode::kCopy, opcode_);
+    return copy_elision_allowed_;
+  }
+
+  void SetCopyElisionAllowed(bool value) {
+    CHECK_EQ(HloOpcode::kCopy, opcode_);
+    copy_elision_allowed_ = value;
+  }
 
   // Returns the size of the slice in the given dimension for a dynamic
   // slice node.
@@ -1422,26 +1414,34 @@ class HloInstruction {
   // Delegates to HloGetTupleElementInstruction::tuple_index.
   int64 tuple_index() const;
 
-  // Returns the number of exponent bits for a reduce-precision node.
+  // Delegates to HloReducePrecisionInstruction::exponent_bits.
   int32 exponent_bits() const;
 
-  // Returns the number of mantissa bits for a reduce-precision node.
+  // Delegates to HloReducePrecisionInstruction::mantissa_bits.
   int32 mantissa_bits() const;
+
+  // Delegates to HloInfeedInstruction::infeed_config.
+  string infeed_config() const;
+
+  // Delegates to HloInfeedInstruction::set_infeed_config.
+  void set_infeed_config(const string& config);
+
+  // Returns the config for the Outfeed instruction.
+  const string& outfeed_config() const;
+
+  // Returns the shape for the Outfeed instruction.
+  const Shape& outfeed_shape() const;
+
+  // Delegates to HloAllReduceInstruction::replica_group_ids.
+  const std::vector<int64>& replica_group_ids() const;
+
+  // Delegates to HloAllReduceInstruction::cross_replica_sum_barrier.
+  string cross_replica_sum_barrier() const;
+  void set_cross_replica_sum_barrier(const string& barrier);
+
+  // Delegates to HloAllReduceInstruction::all_reduce_id.
+  tensorflow::gtl::optional<int64> all_reduce_id() const;
   // Old methods kept for smooth subclassing transition END.
-
-  // Returns the group ids of each replica for CrossReplicaSum op.
-  const std::vector<int64>& replica_group_ids() const {
-    return replica_group_ids_;
-  }
-
-  // Returns the barrier config used for the CrossReplicaSum implementation of
-  // each backend.
-  string cross_replica_sum_barrier() const {
-    return cross_replica_sum_barrier_;
-  }
-  void set_cross_replica_sum_barrier(string barrier) {
-    cross_replica_sum_barrier_ = barrier;
-  }
 
  protected:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
@@ -1555,9 +1555,6 @@ class HloInstruction {
   // The computation in which this instruction is contained.
   HloComputation* parent_ = nullptr;
 
-  // Shape of outfeed request.
-  Shape outfeed_shape_;
-
   // Result shape of this instruction.
   Shape shape_;
 
@@ -1572,6 +1569,9 @@ class HloInstruction {
 
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_window_bounds_;
+
+  // Used to tag kCopy instructions that are eligible for copy elision.
+  bool copy_elision_allowed_ = true;
 
   // Describes the [start, start + size) range size for a dynamic slice
   // ('start' is specified dynamically in the second operand of the operation).
@@ -1616,27 +1616,15 @@ class HloInstruction {
     kFalseComputationIndex = 1,
   };
 
-  // Outfeed configuration information, only present for kOutfeed.
-  string outfeed_config_;
-
   // A trace instruction that consumes this instruction.
   //
   // Invariant: if trace_instruction_ != nullptr, trace_instruction has this as
   // an operand.
   HloInstruction* trace_instruction_ = nullptr;
 
-  // The string representation of the infeed configuration.
-  string infeed_config_;
-
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   string backend_config_;
-
-  // The group id of each replica for CrossReplicaSum.
-  std::vector<int64> replica_group_ids_;
-
-  // The string representation of the barrier config used for CrossReplicaSum.
-  string cross_replica_sum_barrier_;
 
   // String identifier for instruction.
   string name_;
