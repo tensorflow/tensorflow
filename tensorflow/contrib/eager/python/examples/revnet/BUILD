@@ -62,6 +62,9 @@ cuda_py_test(
         ":blocks",
         "//tensorflow:tensorflow_py",
     ],
+    tags = [
+        "optonly",
+    ],
 )
 
 cuda_py_test(
@@ -72,5 +75,8 @@ cuda_py_test(
         ":config",
         ":revnet",
         "//tensorflow:tensorflow_py",
+    ],
+    tags = [
+        "optonly",
     ],
 )

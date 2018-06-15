@@ -473,7 +473,10 @@ py_test(
     size = "medium",
     srcs = ["shuffle_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:iterator_ops",

@@ -279,6 +279,9 @@ py_test(
     size = "medium",
     srcs = ["canned/boosted_trees_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "optonly",
+    ],
     deps = [
         ":boosted_trees",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
