@@ -34,6 +34,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -1453,11 +1454,11 @@ class _MultiLabelHeadWithSigmoidCrossEntropyLoss(_BinaryLogisticHeadWithSigmoidC
     labels = _check_dense_labels_match_logits_and_reshape(
         labels=labels, logits=logits, expected_labels_dimension=self.logits_dimension)
     if self._label_vocabulary is not None:
-      sparse_labels = tf.string_split(labels, '.')
+      sparse_labels = string_ops.string_split(labels, '.')
       label_values = lookup_ops.index_table_from_tensor(
               vocabulary_list=tuple(self._label_vocabulary),
               name='label_id_lookup').lookup(sparse_labels.values)
-      labels = tf.sparse_to_dense(sparse_labels.indices, sparse_labels.dense_shape, label_values)
+      labels = sparse_ops.sparse_to_dense(sparse_labels.indices, sparse_labels.dense_shape, label_values)
     labels = math_ops.to_float(labels)
     labels = _assert_range(labels, n_classes=self.logits_dimension)
     if self._loss_fn:
