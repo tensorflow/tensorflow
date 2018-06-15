@@ -58,6 +58,9 @@ To get a model, either:
 
 Now you can build and run the demo app.
 
+Some additional details are available on the
+[TF Lite Android App page](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/README.md).
+
 
 ## Build TensorFlow Lite and the demo app from source
 
