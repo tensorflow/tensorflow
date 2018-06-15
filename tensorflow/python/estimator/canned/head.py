@@ -1393,6 +1393,59 @@ class _MultiLabelHeadWithSigmoidCrossEntropyLoss(_BinaryLogisticHeadWithSigmoidC
   def logits_dimension(self):
     return self._n_labels
 
+  def _eval_metric_opss(self,
+                        labels,
+                        logits,
+                        class_ids,
+                        weights,
+                        unreduced_loss,
+                        regularization_loss):
+
+    with ops.name_scope(None, 'metrics',
+                        (labels, logits, class_ids, weights,
+                         unreduced_loss, regularization_loss)):
+      keys = metric_keys.MetricKeys
+      labels_mean = _indicator_labels_mean(
+          labels=labels, weights=weights, name=keys.LABEL_MEAN)
+
+      metric_ops = {
+          # Estimator already adds a metric for loss.
+          _summary_key(self._name, keys.LOSS_MEAN):
+              metrics_lib.mean(
+                  values=unreduced_loss,
+                  weights=weights,
+                  name=keys.LOSS_MEAN),
+          _summary_key(self._name, keys.ACCURACY):
+              metrics_lib.accuracy(
+                  labels=labels,
+                  predictions=class_ids,
+                  weights=weights,
+                  name=keys.ACCURACY),
+          _summary_key(self._name, keys.PRECISION):
+              metrics_lib.precision(
+                  labels=labels,
+                  predictions=class_ids,
+                  weights=weights,
+                  name=keys.PRECISION),
+          _summary_key(self._name, keys.RECALL):
+              metrics_lib.recall(
+                  labels=labels,
+                  predictions=class_ids,
+                  weights=weights,
+                  name=keys.RECALL),
+          _summary_key(self._name, keys.LABEL_MEAN):
+              labels_mean,
+          _summary_key(self._name, keys.ACCURACY_BASELINE):
+              _accuracy_baseline(labels_mean)
+      }
+      if regularization_loss is not None:
+        metric_ops[_summary_key(self._name, keys.LOSS_REGULARIZATION)] = (
+            metrics_lib.mean(
+                values=regularization_loss,
+                name=keys.LOSS_REGULARIZATION))
+
+      return metric_ops
+
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
     del mode  # Unused for this head.
@@ -1478,7 +1531,7 @@ class _MultiLabelHeadWithSigmoidCrossEntropyLoss(_BinaryLogisticHeadWithSigmoidC
             predictions=predictions,
             loss=regularized_training_loss,
             eval_metrics=_create_eval_metrics_tuple(
-                self._eval_metric_ops,
+                self._eval_metric_opss,
                 {
                     'labels': processed_labels,
                     'logits': logits,
