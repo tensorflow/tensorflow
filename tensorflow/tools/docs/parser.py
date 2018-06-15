@@ -25,12 +25,12 @@ import itertools
 import json
 import os
 import re
-import sys
 
 import astor
 import six
 
 from google.protobuf.message import Message as ProtoMessage
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
@@ -53,7 +53,7 @@ class _Errors(object):
     template = 'ERROR:\n    output file name: %s\n    %s\n\n'
 
     for full_name, message in self._errors:
-      print(template % (full_name, message), file=sys.stderr)
+      logging.warn(template, full_name, message)
 
   def append(self, full_name, message):
     """Add an error to the collection.
@@ -761,8 +761,9 @@ def _generate_signature(func, reverse_index):
                 lookup_text = public_name + default_text[len(internal_name):]
                 break
             if default_text is lookup_text:
-              print('WARNING: Using default arg, failed lookup: %s, repr: %r' %
-                    (default_text, default))
+              logging.warn(
+                  'WARNING: Using default arg, failed lookup: %s, repr: %r',
+                  default_text, default)
             else:
               default_text = lookup_text
       else:
@@ -1213,8 +1214,6 @@ class _ClassPageInfo(object):
         if not child_doc.brief.strip() and short_name in [
             '__del__', '__copy__'
         ]:
-          print('Skipping %s, defined in %s, no docstring.' % (child_name,
-                                                               defining_class))
           continue
 
         try:
