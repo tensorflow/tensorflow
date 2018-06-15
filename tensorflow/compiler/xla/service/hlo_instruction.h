@@ -435,9 +435,9 @@ class HloInstruction {
   // For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
   // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
   //
-  // `channel_id`: for Allreduce nodes from different models, if they have the
-  // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
-  // applied cross models.
+  // `all_reduce_id`: for Allreduce nodes from different modules, if they have
+  // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
+  // not be applied cross modules.
   //
   // TODO(b/79737069): Rename this to AllReduce.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
@@ -445,7 +445,7 @@ class HloInstruction {
       HloComputation* reduce_computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
       tensorflow::StringPiece barrier,
-      const tensorflow::gtl::optional<int64>& channel_id =
+      const tensorflow::gtl::optional<int64>& all_reduce_id =
           tensorflow::gtl::nullopt);
 
   // Creates a conversion instruction, where operand is the data to convert and
@@ -1414,10 +1414,10 @@ class HloInstruction {
   // Delegates to HloGetTupleElementInstruction::tuple_index.
   int64 tuple_index() const;
 
-  // // Delegates to HloReducePrecisionInstruction::exponent_bits.
+  // Delegates to HloReducePrecisionInstruction::exponent_bits.
   int32 exponent_bits() const;
 
-  // // Delegates to HloReducePrecisionInstruction::mantissa_bits.
+  // Delegates to HloReducePrecisionInstruction::mantissa_bits.
   int32 mantissa_bits() const;
 
   // Delegates to HloInfeedInstruction::infeed_config.
@@ -1431,21 +1431,17 @@ class HloInstruction {
 
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;
+
+  // Delegates to HloAllReduceInstruction::replica_group_ids.
+  const std::vector<int64>& replica_group_ids() const;
+
+  // Delegates to HloAllReduceInstruction::cross_replica_sum_barrier.
+  string cross_replica_sum_barrier() const;
+  void set_cross_replica_sum_barrier(const string& barrier);
+
+  // Delegates to HloAllReduceInstruction::all_reduce_id.
+  tensorflow::gtl::optional<int64> all_reduce_id() const;
   // Old methods kept for smooth subclassing transition END.
-
-  // Returns the group ids of each replica for CrossReplicaSum op.
-  const std::vector<int64>& replica_group_ids() const {
-    return replica_group_ids_;
-  }
-
-  // Returns the barrier config used for the CrossReplicaSum implementation of
-  // each backend.
-  string cross_replica_sum_barrier() const {
-    return cross_replica_sum_barrier_;
-  }
-  void set_cross_replica_sum_barrier(string barrier) {
-    cross_replica_sum_barrier_ = barrier;
-  }
 
  protected:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
@@ -1629,12 +1625,6 @@ class HloInstruction {
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   string backend_config_;
-
-  // The group id of each replica for CrossReplicaSum.
-  std::vector<int64> replica_group_ids_;
-
-  // The string representation of the barrier config used for CrossReplicaSum.
-  string cross_replica_sum_barrier_;
 
   // String identifier for instruction.
   string name_;

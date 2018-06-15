@@ -269,6 +269,68 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
       Cast<HloRecvInstruction>(new_operands[0]));
 }
 
+HloAllReduceInstruction::HloAllReduceInstruction(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    HloComputation* reduce_computation,
+    tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+    tensorflow::StringPiece barrier,
+    const tensorflow::gtl::optional<int64>& all_reduce_id)
+    : HloInstruction(HloOpcode::kCrossReplicaSum, shape),
+      replica_group_ids_(replica_group_ids.begin(), replica_group_ids.end()),
+      cross_replica_sum_barrier_(barrier.begin(), barrier.end()),
+      all_reduce_id_(all_reduce_id) {
+  // TODO(b/79737069): Remove the CHECK when supported.
+  CHECK(!all_reduce_id_.has_value());
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  AppendComputation(reduce_computation);
+}
+
+HloInstructionProto HloAllReduceInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  for (int64 i : replica_group_ids_) {
+    proto.add_replica_group_ids(i);
+  }
+  // TODO(b/79737069): handle barrier and all_reduce_id.
+  return proto;
+}
+
+std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  std::vector<string> result = {
+      StrCat("replica_group_ids={", Join(replica_group_ids(), ","), "}")};
+  if (!cross_replica_sum_barrier().empty()) {
+    result.push_back(StrCat("barrier=\"", cross_replica_sum_barrier(), "\""));
+  }
+  if (all_reduce_id_.has_value()) {
+    result.push_back(StrCat("all_reduce_id=", *all_reduce_id_));
+  }
+  return result;
+}
+
+bool HloAllReduceInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
+  return replica_group_ids() == casted_other.replica_group_ids() &&
+         eq_computations(to_apply(), casted_other.to_apply()) &&
+         cross_replica_sum_barrier() ==
+             casted_other.cross_replica_sum_barrier() &&
+         all_reduce_id() == casted_other.all_reduce_id();
+}
+
+std::unique_ptr<HloInstruction>
+HloAllReduceInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* /*context*/) const {
+  return MakeUnique<HloAllReduceInstruction>(
+      shape, new_operands, to_apply(), replica_group_ids(),
+      cross_replica_sum_barrier(), all_reduce_id());
+}
+
 HloReverseInstruction::HloReverseInstruction(
     const Shape& shape, HloInstruction* operand,
     tensorflow::gtl::ArraySlice<int64> dimensions)

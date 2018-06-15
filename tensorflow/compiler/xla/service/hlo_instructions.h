@@ -207,6 +207,63 @@ class HloRecvDoneInstruction : public HloSendRecvInstruction {
       HloCloneContext* context) const override;
 };
 
+class HloAllReduceInstruction : public HloInstruction {
+ public:
+  explicit HloAllReduceInstruction(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloComputation* reduce_computation,
+      tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+      tensorflow::StringPiece barrier,
+      const tensorflow::gtl::optional<int64>& all_reduce_id =
+          tensorflow::gtl::nullopt);
+
+  // Returns the group ids of each replica for CrossReplicaSum op.
+  const std::vector<int64>& replica_group_ids() const {
+    return replica_group_ids_;
+  }
+
+  // Returns the barrier config used for the CrossReplicaSum implementation of
+  // each backend.
+  string cross_replica_sum_barrier() const {
+    return cross_replica_sum_barrier_;
+  }
+  void set_cross_replica_sum_barrier(string barrier) {
+    cross_replica_sum_barrier_ = barrier;
+  }
+
+  tensorflow::gtl::optional<int64> all_reduce_id() const {
+    return all_reduce_id_;
+  }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // The group id of each replica for CrossReplicaSum.
+  std::vector<int64> replica_group_ids_;
+
+  // The string representation of the barrier config used for CrossReplicaSum.
+  string cross_replica_sum_barrier_;
+
+  // For Allreduce nodes from different modules, if they have the same
+  // all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will not be
+  // applied cross modules.
+  tensorflow::gtl::optional<int64> all_reduce_id_;
+};
+
 class HloReverseInstruction : public HloInstruction {
  public:
   explicit HloReverseInstruction(const Shape& shape, HloInstruction* operand,
