@@ -1632,8 +1632,7 @@ XlaOp XlaBuilder::CrossReplicaSum(
     const tensorflow::gtl::optional<ChannelHandle>& channel_id) {
   return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (channel_id.has_value()) {
-      return Unimplemented(
-          "replica_group_ids and channel_id and is not supported in AllReduce");
+      return Unimplemented("channel_id is not supported in AllReduce");
     }
 
     HloInstructionProto instr;

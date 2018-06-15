@@ -45,6 +45,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
       break;
+    case TensorType_INT16:
+      *type = kTfLiteInt16;
+      break;
     case TensorType_INT32:
       *type = kTfLiteInt32;
       break;
@@ -849,7 +852,16 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const char* buffer_ptr;
     TF_LITE_ENSURE_STATUS(get_readonly_data(&buffer_ptr, &buffer_size));
 
+    bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
+      if (is_variable) {
+        error_reporter_->Report(
+            "Tensor %d is a variable tensor with buffer. "
+            "It's not supported now.\n",
+            i);
+        status = kTfLiteError;
+      }
+
       if (interpreter->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_) != kTfLiteOk) {
@@ -858,8 +870,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      if (interpreter->SetTensorParametersReadWrite(
-              i, type, get_name(tensor), dims, quantization) != kTfLiteOk) {
+      if (interpreter->SetTensorParametersReadWrite(i, type, get_name(tensor),
+                                                    dims, quantization,
+                                                    is_variable) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;
@@ -942,6 +955,15 @@ TfLiteStatus InterpreterBuilder::operator()(
     return cleanup_and_error();
   if (ParseTensors(buffers, tensors, interpreter->get()) != kTfLiteOk)
     return cleanup_and_error();
+
+  std::vector<int> variables;
+  for (int i = 0; i < (*interpreter)->tensors_size(); ++i) {
+    auto* tensor = (*interpreter)->tensor(i);
+    if (tensor->is_variable) {
+      variables.push_back(i);
+    }
+  }
+  (**interpreter).SetVariables(variables);
 
   return kTfLiteOk;
 }

@@ -52,9 +52,17 @@ using ::testing::ElementsAre;
 class LayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* module,
-                     ComputationLayout* entry_computation_layout) {
-    LayoutAssignment layout_assignment(entry_computation_layout);
+                     ComputationLayout* entry_computation_layout,
+                     ChannelLayoutConstraints* channel_constraints = nullptr) {
+    LayoutAssignment layout_assignment(
+        entry_computation_layout, /*channel_constraints=*/channel_constraints);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
+  }
+
+  std::vector<int64> LayoutOf(HloModule* module, tensorflow::StringPiece name) {
+    auto minor_to_major =
+        FindInstruction(module, name)->shape().layout().minor_to_major();
+    return std::vector<int64>(minor_to_major.begin(), minor_to_major.end());
   }
 };
 
@@ -707,17 +715,10 @@ TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
       LayoutUtil::MakeLayout({2, 1, 0}));
   AssignLayouts(module.get(), &computation_layout);
 
-  auto layout_of = [&](tensorflow::StringPiece name) {
-    return FindInstruction(module.get(), name)
-        ->shape()
-        .layout()
-        .minor_to_major();
-  };
-
-  EXPECT_THAT(layout_of("gte0"), ElementsAre(0, 1, 2));
-  EXPECT_THAT(layout_of("gte1a"), ElementsAre(1, 2, 0));
-  EXPECT_THAT(layout_of("gte1b"), ElementsAre(2, 0, 1));
-  EXPECT_THAT(layout_of("fresult"), ElementsAre(2, 1, 0));
+  EXPECT_THAT(LayoutOf(module.get(), "gte0"), ElementsAre(0, 1, 2));
+  EXPECT_THAT(LayoutOf(module.get(), "gte1a"), ElementsAre(1, 2, 0));
+  EXPECT_THAT(LayoutOf(module.get(), "gte1b"), ElementsAre(2, 0, 1));
+  EXPECT_THAT(LayoutOf(module.get(), "fresult"), ElementsAre(2, 1, 0));
   EXPECT_THAT(FindInstruction(module.get(), "gte1")
                   ->shape()
                   .tuple_shapes(0)
@@ -814,6 +815,45 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
       error_status.error_message(),
       ::testing::HasSubstr(
           "Unexpected bitcast operation seen during layout assignment"));
+}
+
+TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
+  // Pin non matching layouts to parameter and root.
+  const char* module_str = R"(
+    HloModule test_module
+
+    ENTRY entry_computation {
+      param = (f32[2,2]) parameter(0)
+      gte = f32[2,2] get-tuple-element(param), index=0
+      recv = (f32[2,2], u32[]) recv(), channel_id=1, sharding={maximal device=1}
+      ROOT recv-done = f32[2,2] recv-done(recv), channel_id=1,
+        sharding={maximal device=1}
+      send = (f32[2,2], u32[]) send(gte), channel_id=1,
+        sharding={maximal device=0}
+      send-done = () send-done(send), channel_id=1, sharding={maximal device=0}
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  Shape param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1})});
+  TF_ASSERT_OK(
+      computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
+          param_shape));
+  computation_layout.mutable_result_layout()->ResetLayout(
+      LayoutUtil::MakeLayout({1, 0}));
+
+  ChannelLayoutConstraints channel_constraints;
+  AssignLayouts(module.get(), &computation_layout, &channel_constraints);
+
+  EXPECT_THAT(LayoutOf(module.get(), "gte"), ElementsAre(0, 1));
+  EXPECT_THAT(LayoutOf(module.get(), "recv-done"), ElementsAre(1, 0));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::GetSubshape(
+                           FindInstruction(module.get(), "send")->shape(), {0}),
+                       ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0})));
 }
 
 }  // namespace

@@ -89,7 +89,8 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
                                        cond_lt};
   module_sequence[body_computation] = {body_param};
   module_sequence[entry_computation] = {iter, data, tuple, while_op};
-  EXPECT_EQ(56, MinimumMemoryForModule(module_sequence, size_fn).ValueOrDie());
+  EXPECT_EQ(56, HeapSimulator::MinimumMemoryForModule(module_sequence, size_fn)
+                    .ValueOrDie());
 }
 
 const char kAlloc[] = "Alloc";

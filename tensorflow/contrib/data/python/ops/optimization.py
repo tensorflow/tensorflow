@@ -61,6 +61,7 @@ class OptimizeDataset(dataset_ops.Dataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._optimizations,
         **dataset_ops.flat_structure(self))
+
   @property
   def output_classes(self):
     return self._input_dataset.output_classes

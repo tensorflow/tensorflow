@@ -81,22 +81,6 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
                           get_element_shape(element_instr_2));
 }
 
-bool GpuMultiOutputFusion::IsProfitableOperand(HloInstruction* instr) {
-  // kConstant instruction will not have memory reads, so it won't be a profit
-  // source. Skip them.
-  if (instr->opcode() == HloOpcode::kConstant &&
-      ShapeUtil::IsEffectiveScalar(instr->shape())) {
-    return false;
-  }
-  // We don't target to fuse producer/consumer instructions -- this should
-  // be taken care of by the instruction_fusion pass. If instr has only
-  // one user, it will not have sibling instructions. We won't consider it.
-  if (instr->user_count() < 2) {
-    return false;
-  }
-  return true;
-}
-
 namespace {
 bool IsReduction(HloInstruction* instr) {
   if (instr->IsMultiOutputFusion()) {
@@ -116,7 +100,13 @@ bool IsReduction(HloInstruction* instr) {
 }  // namespace
 
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
-  return IsReduction(instr);
+  // We can fuse reduces and loop fusions.
+  return IsReduction(instr) ||
+         (instr->opcode() == HloOpcode::kFusion &&
+          instr->fusion_kind() == HloInstruction::FusionKind::kLoop &&
+          // TODO(b/110202584): bitcasts make nested fusions, GPU has no support
+          // for nested fusions.
+          instr->fused_expression_root()->opcode() != HloOpcode::kBitcast);
 }
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
@@ -138,6 +128,23 @@ int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
   VLOG(2) << "Fusing instr1=" << instr1->name() << " instr2=" << instr2->name()
           << ", the profit is =" << profit;
   return profit;
+}
+
+bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
+                                       HloInstruction* instr2) {
+  if (!MultiOutputFusion::LegalToFuse(instr1, instr2)) {
+    return false;
+  }
+  // If we're fusing fusions only do it if the fusion kind matches. Loop fusions
+  // merge into bigger loop fusions and input (reduce) fusions become fusions
+  // with multiple reduce outputs. We could fuse reduce and loop fusions
+  // together too (the result being an input fusion) if we find cases where this
+  // improves things.
+  CHECK(instr1->opcode() == HloOpcode::kFusion);
+  if (instr2->opcode() == HloOpcode::kFusion) {
+    return instr1->fusion_kind() == instr2->fusion_kind();
+  }
+  return instr1->fusion_kind() != HloInstruction::FusionKind::kLoop;
 }
 
 }  // namespace gpu

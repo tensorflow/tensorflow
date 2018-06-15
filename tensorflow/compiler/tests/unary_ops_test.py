@@ -201,6 +201,16 @@ class UnaryOpsTest(XLATestCase):
           expected=np.array([1.54308063, 3.76219569, 10.067662, 27.30823284],
                             dtype=dtype))
 
+      # Disable float16 testing for now
+      if dtype != np.float16:
+        x = np.arange(-10, 10, 1).astype(dtype)
+        with self.test_session() as session:
+          erf_x = session.run(math_ops.erf(x))
+          erfc_x = session.run(math_ops.erfc(x))
+
+        self._assertOpOutputMatchesExpected(math_ops.erf, x, expected=erf_x)
+        self._assertOpOutputMatchesExpected(math_ops.erfc, x, expected=erfc_x)
+
       self._assertOpOutputMatchesExpected(
           math_ops.exp,
           np.array([[-1, 1]], dtype=dtype),

@@ -363,7 +363,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::IsNil(const Shape& shape) {
-  return IsTuple(shape) ? IsEmptyTuple(shape) : HasZeroElements(shape);
+  return IsEmptyTuple(shape);
 }
 
 /* static */ int64 ShapeUtil::TupleElementCount(const Shape& shape) {
@@ -413,8 +413,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       std::multiplies<int64>());
 }
 
-/* static */ bool ShapeUtil::HasZeroElements(const Shape& shape) {
-  return ElementsIn(shape) == 0;
+/* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
+  return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
 }
 
 /* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
@@ -645,15 +645,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
-  if (IsArray(lhs)) {
-    return SameElementType(lhs, rhs) && SameDimensions(lhs, rhs);
-  } else if (lhs.element_type() == TUPLE) {
-    return rhs.element_type() == TUPLE &&
-           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(), Compatible);
-  } else {
-    // Opaque, token, etc types are vacuously compatible.
-    return true;
-  }
+  return CompareShapes(lhs, rhs, /*compare_layouts=*/false);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
@@ -901,6 +893,21 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     return_shape = &return_shape->tuple_shapes(i);
   }
   return *return_shape;
+}
+
+/* static */ StatusOr<const Shape*> ShapeUtil::TryGetSubshape(
+    const Shape& shape, ShapeIndexView index) {
+  const Shape* return_shape = &shape;
+  for (auto i : index) {
+    if (!IsTuple(*return_shape) || i < 0 ||
+        i >= return_shape->tuple_shapes_size()) {
+      return InvalidArgument(
+          "Shape index %s not a valid subshape index for tuple with shape %s",
+          index.ToString().c_str(), shape.DebugString().c_str());
+    }
+    return_shape = &return_shape->tuple_shapes(i);
+  }
+  return return_shape;
 }
 
 /* static */ Shape* ShapeUtil::GetMutableSubshape(Shape* shape,
