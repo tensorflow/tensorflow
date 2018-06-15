@@ -48,7 +48,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
+#include "tensorflow/core/util/device_name_utils.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -614,6 +616,82 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   return tensorflow::Status::OK();
 }
 
+std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
+    ConversionParams& params, EngineInfo& engine) {
+  int cuda_device_id = -1;
+  // we need to us PM here since in python path there is no way to get
+  // to allocators
+  auto CheckDeviceID = [](int tfid) -> int {
+    tensorflow::TfGpuId tf_gpu_id(tfid);
+    CudaGpuId cuda_gpu_id;
+    Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
+    if (s.ok()) {
+      VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
+              << cuda_gpu_id.value();
+      return cuda_gpu_id.value();
+    }
+    VLOG(2) << "TF GPU with id " << tfid << " do not exist " << s;
+    return -1;
+  };
+  tensorflow::Allocator* dev_allocator = nullptr;
+  auto pm = tensorflow::ProcessState::singleton();
+  if (params.cluster) {  // get allocator
+    const tensorflow::Device* device = nullptr;
+    if (params.cluster->GetDeviceSet()) {
+      device = params.cluster->GetDeviceSet()->FindDeviceByName(engine.device);
+    }
+    if (device) {
+      cuda_device_id = CheckDeviceID(device->parsed_name().id);
+      if (cuda_device_id < 0) {
+        LOG(ERROR) << "Cuda device identification failed, using device "
+                      "0.";
+        cuda_device_id = 0;
+      }
+      tensorflow::GPUOptions gpuoptions;
+      // this should be instantiated by now
+      tensorflow::TfGpuId tf_gpu_id(device->parsed_name().id);
+      dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
+      VLOG(1) << "Got an allocator for device tf_device=" << tf_gpu_id.value()
+              << " cuda device= " << cuda_device_id << " at " << dev_allocator;
+    }
+  } else {  // cluster not found, possibly a python call
+    int found_device = 0;
+    bool try_gpu_ids = true;
+    // if device is set, try to find the device. Might be a problem for multi
+    // host case but TensorRT do not support multi host setups yet.
+    if (!engine.device.empty()) {
+      tensorflow::DeviceNameUtils::ParsedName parsed_name;
+      if (tensorflow::DeviceNameUtils::ParseFullName(engine.device,
+                                                     &parsed_name)) {
+        cuda_device_id = parsed_name.has_id ? parsed_name.id : -1;
+      }
+      try_gpu_ids = !parsed_name.has_id;
+    }
+    if (try_gpu_ids) {
+      while (found_device < 100) {
+        cuda_device_id = CheckDeviceID(found_device);
+        if (cuda_device_id >= 0) {
+          break;
+        }
+        found_device++;
+      }
+    }
+    if (found_device == 100) {
+      LOG(ERROR) << " Can't find a GPU device to work with. Please "
+                    "instantiate a session to initialize devices";
+      return std::make_pair(cuda_device_id, dev_allocator);
+    }
+    LOG(WARNING)
+        << "Can't determine the device constructing an allocator at device "
+        << found_device;
+    tensorflow::GPUOptions gpuoptions;
+    gpuoptions.set_allow_growth(
+        true);  // this will be a noop if device is already initialized
+    tensorflow::TfGpuId tf_gpu_id(found_device);
+    dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
+  }
+  return std::make_pair(cuda_device_id, dev_allocator);
+}
 // Entry function from optimization pass.
 tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   // Segment the graph into subgraphs that can be converted to TensorRT
@@ -694,87 +772,14 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
          segments.at(i).first.size() / total_num_nodes_in_segments) /
         2.0;
     std::shared_ptr<nvinfer1::IGpuAllocator> alloc;
+    auto device_alloc = GetDeviceAndAllocator(params, engine);
     int cuda_device_id = 0;
-    // we need to us PM here since in python path there is no way to get
-    // to allocators
-    auto pm = tensorflow::ProcessState::singleton();
-    if (params.cluster) {  // get allocator
-      const auto device =
-          params.cluster->GetDeviceSet()->FindDeviceByName(engine.device);
-      if (device) {
-        tensorflow::TfGpuId tf_gpu_id(device->parsed_name().id);
-        CudaGpuId cuda_gpu_id;
-        Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
-        if (!s.ok()) {
-          LOG(ERROR) << "Cuda device identification failed, using device "
-                        "0. Error= "
-                     << s;
-          cuda_device_id = 0;
-        } else {
-          cuda_device_id = cuda_gpu_id.value();
-        }
-        tensorflow::GPUOptions gpuoptions;
-        // this should be instantiated by now
-        auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
-        VLOG(1) << "Got an allocator for device tf_device=" << tf_gpu_id.value()
-                << " cuda device= " << cuda_device_id << " at "
-                << dev_allocator;
-        alloc.reset(new TRTDeviceAllocator(dev_allocator));
-      }
-    } else {
-      int found_device = 0;
-      bool try_gpu_ids = true;
-      auto checkDeviceId = [](int tfid) -> int {
-        tensorflow::TfGpuId tf_gpu_id(tfid);
-        CudaGpuId cuda_gpu_id;
-        Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
-        if (s.ok()) {
-          VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
-                  << cuda_gpu_id.value();
-          return cuda_gpu_id.value();
-        }
-        VLOG(2) << "TF GPU with id " << tfid << " do not exist " << s;
-        return -1;
-      };
-      // if device is set, try to find the device. Might be a problem for multi
-      // host case but TensorRT do not support multi host setups yet.
-      if (!engine.device.empty()) {
-        auto res = str_util::Split(engine.device, ":");
-        if (res.size() > 0) {
-          tensorflow::StringPiece s(res.back());
-          tensorflow::str_util::RemoveWhitespaceContext(&s);
-          uint64 dev_id = 0;
-          if (str_util::ConsumeLeadingDigits(&s, &dev_id)) {
-            found_device = dev_id;
-            cuda_device_id = checkDeviceId(found_device);
-            if (cuda_device_id >= 0) try_gpu_ids = false;
-          }
-        }
-      }
-      if (try_gpu_ids) {
-        while (found_device < 100) {
-          cuda_device_id = checkDeviceId(found_device);
-          if (cuda_device_id >= 0) {
-            break;
-          }
-          found_device++;
-        }
-      }
-      if (found_device == 100) {
-        LOG(ERROR) << " Can't find a GPU device to work with. Please "
-                      "instantiate a session to initialize devices";
-        return tensorflow::errors::NotFound(
-            "Can't find a GPU device to work with");
-      }
-      LOG(WARNING)
-          << "Can't determine the device constructing an allocator at device "
-          << found_device;
-      tensorflow::GPUOptions gpuoptions;
-      gpuoptions.set_allow_growth(
-          true);  // this will be a noop if device is already initialized
-      tensorflow::TfGpuId tf_gpu_id(found_device);
-      auto dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
-      alloc.reset(new TRTDeviceAllocator(dev_allocator));
+    if (device_alloc.first >= 0) {
+      cuda_device_id = device_alloc.first;
+      alloc.reset(new TRTDeviceAllocator(device_alloc.second));
+    } else {  // Setting allocator as nullptr should get revert to the
+              // cudamalloc
+      LOG(WARNING) << "Can't identify the cuda device. Running on device 0 ";
     }
     cudaSetDevice(cuda_device_id);
     auto status = CreateTRTNode(&graph, engine_segments, i, trt_node,
