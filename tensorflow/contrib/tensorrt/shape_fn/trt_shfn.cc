@@ -29,8 +29,32 @@ namespace tensorflow {
 namespace shape_inference {
 
 tensorflow::Status TRTEngineOpShapeInference(InferenceContext* context) {
+  std::vector<tensorflow::TensorShape> shapes;
   for (int i = 0; i < context->num_outputs(); ++i) {
     context->set_output(i, context->UnknownShape());
+  }
+  auto status = context->GetAttr("input_shapes", &shapes);
+  // it is ok to not to have shapes
+  if (!status.ok()) return Status::OK();
+  if ((int)shapes.size() != context->num_inputs()) return Status::OK();
+  bool different_input = false;
+  for (int i = 0; i < context->num_inputs(); ++i) {
+    if (shapes.at(i) != context->input_tensor(i)->shape())
+      different_input = true;
+  }
+  if (different_input) return Status::OK();
+  shapes.resize(0);
+  status = context->GetAttr("output_shapes", &shapes);
+  if (!status.ok()) return Status::OK();
+  if ((int)shapes.size() != context->num_outputs()) return Status::OK();
+  std::vector<ShapeHandle> shape_handles(shapes.size());
+  for (size_t i = 0; i < shapes.size(); ++i) {
+    status =
+        context->MakeShapeFromTensorShape(shapes.at(i), &shape_handles.at(i));
+    if (!status.ok()) return Status::OK();
+  }
+  for (int i = 0; i < context->num_outputs(); ++i) {
+    context->set_output(i, shape_handles.at(i));
   }
   return Status::OK();
 }

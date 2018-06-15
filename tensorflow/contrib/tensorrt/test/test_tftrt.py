@@ -65,7 +65,9 @@ def get_simple_graph_def():
 def execute_graph(gdef, dumm_inp):
   """Run given graphdef once."""
   print("executing")
-  gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
+  gpu_options = None
+  if (trt.trt_convert.get_linked_tensorrt_version()[0] == 3):
+    gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   sessconfig = cpb2.ConfigProto(gpu_options=gpu_options)
   ops.reset_default_graph()
   g = ops.Graph()
@@ -83,7 +85,9 @@ def execute_graph(gdef, dumm_inp):
 # for calibration. For this test script it is random data.
 def execute_calibration(gdef, dumm_inp):
   """Run given calibration graph multiple times."""
-  gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
+  gpu_options = None
+  if (trt.trt_convert.get_linked_tensorrt_version()[0] == 3):
+    gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   ops.reset_default_graph()
   g = ops.Graph()
   with g.as_default():
@@ -165,7 +169,9 @@ def auto():
   custom_op.parameter_map["max_batch_size"].i = inp_dims[0]
   custom_op.parameter_map["max_workspace_size_bytes"].i = 1 << 25
   print(custom_op)
-  gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
+  gpu_options = None
+  if (trt.trt_convert.get_linked_tensorrt_version()[0] == 3):
+    gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   graph_options = cpb2.GraphOptions(rewrite_options=opt_config)
   sessconfig = cpb2.ConfigProto(
       gpu_options=gpu_options, graph_options=graph_options)

@@ -148,12 +148,12 @@ std::pair<string, string> trt_convert(
     out_status = "InvalidArgument;Size of the output_names vector is 0";
     return std::pair<string, string>{out_status, ""};
   }
-  tensorflow::GraphDef outGraph;
+  tensorflow::GraphDef out_graph;
   tensorflow::Status conversion_status =
       tensorflow::tensorrt::convert::ConvertGraphDefToTensorRT(
           graph_def, output_names, max_batch_size, max_workspace_size_bytes,
-          &outGraph, precision_mode, minimum_segment_size, 
-          is_dyn_op,max_cached_engines, cached_engine_batches);
+          &out_graph, precision_mode, minimum_segment_size,
+          is_dyn_op, max_cached_engines, cached_engine_batches);
   if (!conversion_status.ok()) {
     auto retCode = (int)conversion_status.code();
     char buff[2000];
@@ -163,7 +163,7 @@ std::pair<string, string> trt_convert(
     return std::pair<string, string>{out_status, ""};
   }
   string result;
-  if (!outGraph.SerializeToString(&result)) {
+  if (!out_graph.SerializeToString(&result)) {
     out_status = "InvalidArgument;Couldn't serialize output as a GraphDef";
     return std::pair<string, string>{out_status, ""};
   }
@@ -176,7 +176,7 @@ std::pair<string, string> trt_convert(
 }
 
 std::pair<string, string> calib_convert(
-    string graph_def_string
+    string graph_def_string, bool is_dyn_op
     // unfortunately we can't use TF_Status here since it
     // is in c/c_api and brings in a lot of other libraries
     // which in turn declare ops. These ops are included
@@ -195,11 +195,12 @@ std::pair<string, string> calib_convert(
     out_status = "InvalidArgument;Couldn't interpret input as a GraphDef";
     return std::pair<string, string>{out_status, ""};
   }
-
-  tensorflow::GraphDef outGraph;
+  graph_def_string.resize(0);
+  tensorflow::GraphDef out_graph;
   tensorflow::Status conversion_status =
       tensorflow::tensorrt::convert::ConvertCalibGraphToInferGraph(graph_def,
-                                                                   &outGraph);
+                                                                   &out_graph,
+                                                                   is_dyn_op);
   if (!conversion_status.ok()) {
     auto retCode = (int)conversion_status.code();
     char buff[2000];
@@ -209,7 +210,7 @@ std::pair<string, string> calib_convert(
     return std::pair<string, string>{out_status, ""};
   }
   string result;
-  if (!outGraph.SerializeToString(&result)) {
+  if (!out_graph.SerializeToString(&result)) {
     out_status = "InvalidArgument;Couldn't serialize output as a GraphDef";
     return std::pair<string, string>{out_status, ""};
   }
@@ -242,7 +243,7 @@ version_struct get_loaded_tensorrt_version(){
 
 %}
 
-std::pair<string, string> calib_convert(string graph_def_string);
+std::pair<string, string> calib_convert(string graph_def_string, bool is_dyn_op);
 
 std::pair<string, string> trt_convert(string graph_def_string,
                                       std::vector<string> output_names,

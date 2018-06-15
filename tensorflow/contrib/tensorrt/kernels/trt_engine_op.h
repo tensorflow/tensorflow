@@ -85,13 +85,12 @@ class TRTEngineOp : public AsyncOpKernel {
 
   nvinfer1::IGpuAllocator* GetAllocator(OpKernelContext* ctx);
 
-  // map to keep engines and their execution context for given key.
+  // map to keep engines and their execution context for given batch size.
   std::unordered_map<int, EngineCtxPair> engine_map_;
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
   // keep device allocator for TRT.
-  std::unordered_map<string, std::shared_ptr<TRTDeviceAllocator>>
-      allocators_;
+  std::unordered_map<string, std::shared_ptr<TRTDeviceAllocator>> allocators_;
   // serialized protobuf segment or trt engine depending on static_engine_ flag.
   string serialized_segment_;
   // Name of the function for TF native execution of the segment.

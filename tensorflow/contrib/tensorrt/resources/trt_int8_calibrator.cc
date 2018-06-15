@@ -19,7 +19,6 @@ limitations under the License.
 #include <chrono>
 #include <unordered_map>
 
-
 #include "tensorflow/core/platform/logging.h"
 
 #if GOOGLE_CUDA
@@ -38,7 +37,7 @@ TRTInt8Calibrator::TRTInt8Calibrator(
     : batch_size_(batch_size),
       done_(false),
       dev_buffers_(dev_buffers),
-      calib_running_(false),
+      calib_running_(true),
       batch_is_set_(false),
       engine_name_(engine_name) {}
 

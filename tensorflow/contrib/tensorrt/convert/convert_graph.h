@@ -55,13 +55,14 @@ struct ConversionParams {
   bool is_dyn_op;  //  Whether to create engine on conversion or execution time
   bool fixed_input_size;   // Assume non-batch ranks of input tensors are fixed
   int max_cached_engines;  // maximum number of cached engines
-  std::vector<int> cached_engine_batches;  // list of cached engines 
+  std::vector<int> cached_engine_batches;  // list of cached engines
 };
 
 // This method extracts calibration information from the resource managers
 // and puts them in to engine nodedefs.
 tensorflow::Status ConvertCalibGraphToInferGraph(
-    const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* new_graph_def);
+    const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* new_graph_def,
+    bool is_dyn_op);
 
 // max_batch_size: maximum batch size which can be used for inference for
 //                 optimization targets inference run with max batch size.

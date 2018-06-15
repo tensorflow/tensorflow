@@ -32,8 +32,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-static const string kInputPHName = "InputPH_";
-static const string kOutputPHName = "OutputPH_";
+static const char* kInputPHName = "InputPH_";
+static const char* kOutputPHName = "OutputPH_";
 namespace convert {
 
 const int FP32MODE = 0;
