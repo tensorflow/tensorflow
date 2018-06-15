@@ -373,12 +373,6 @@ class BucketizedColumnTest(test.TestCase):
         'source_column must be a column generated with numeric_column'):
       fc.bucketized_column(a, boundaries=[0, 1])
 
-  def test_invalid_source_column_shape(self):
-    a = fc.numeric_column('aaa', shape=[2, 3])
-    with self.assertRaisesRegexp(
-        ValueError, 'source_column must be one-dimensional column'):
-      fc.bucketized_column(a, boundaries=[0, 1])
-
   def test_invalid_boundaries(self):
     a = fc.numeric_column('aaa')
     with self.assertRaisesRegexp(

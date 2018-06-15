@@ -1132,26 +1132,24 @@ def bucketized_column(source_column, boundaries):
   ```
 
   Args:
-    source_column: A one-dimensional dense column which is generated with
-      `numeric_column`.
+    source_column: A dense column which is generated with `numeric_column`
+      or `sequence_numeric_column`.
     boundaries: A sorted list or tuple of floats specifying the boundaries.
 
   Returns:
     A `_BucketizedColumn`.
 
   Raises:
-    ValueError: If `source_column` is not a numeric column, or if it is not
-      one-dimensional.
+    ValueError: If `source_column` is not a numeric column.
     ValueError: If `boundaries` is not a sorted list or tuple.
   """
-  if not isinstance(source_column, _NumericColumn):
+  # TODO: remove this check? the implementation of the column would
+  #       fail anyway if the input is not a `_NumericColumn`.
+  # TODO: write a test for ndims == 2?
+  if not isinstance(source_column, (_NumericColumn, _SequenceDenseColumn)):
     raise ValueError(
-        'source_column must be a column generated with numeric_column(). '
-        'Given: {}'.format(source_column))
-  if len(source_column.shape) > 1:
-    raise ValueError(
-        'source_column must be one-dimensional column. '
-        'Given: {}'.format(source_column))
+        'source_column must be a column generated with numeric_column() or '
+        'sequence_numeric_column(). Given: {}'.format(source_column))
   if (not boundaries or
       not (isinstance(boundaries, list) or isinstance(boundaries, tuple))):
     raise ValueError('boundaries must be a sorted list.')
@@ -2379,9 +2377,11 @@ class _NumericColumn(_DenseColumn,
     return inputs.get(self)
 
 
-class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
-                        collections.namedtuple('_BucketizedColumn', [
-                            'source_column', 'boundaries'])):
+class _BucketizedColumn(
+    _DenseColumn,
+    _CategoricalColumn,
+    _SequenceDenseColumn,
+    collections.namedtuple('_BucketizedColumn', ['source_column', 'boundaries'])):
   """See `bucketized_column`."""
 
   @property
@@ -2404,6 +2404,20 @@ class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
         tuple(self.source_column.shape) + (len(self.boundaries) + 1,))
 
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    if isinstance(self.source_column, _SequenceDenseColumn):
+      # TODO: generalize the message and extract from here as well
+      #       as from  _EmbeddingColumn?
+      raise ValueError(
+        'In bucketized_column: {}. '
+        'source_column must not be of type _SequenceDenseColumn. '
+        'Suggested fix A: If you wish to use input_layer, use a '
+        'non-sequence numeric_column. '
+        'Suggested fix B: If you wish to create sequence input, use '
+        'sequence_input_layer instead of input_layer. '
+        'Given (type {}): {}'.format(
+          self.name, type(self.source_column),
+          self.source_column))
+
     del weight_collections
     del trainable
     input_tensor = inputs.get(self)
@@ -2412,6 +2426,38 @@ class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
         depth=len(self.boundaries) + 1,
         on_value=1.,
         off_value=0.)
+
+  def _get_sequence_dense_tensor(
+      self, inputs, weight_collections=None, trainable=None):
+    # TODO: generalize the message and extract from here as well
+    #       as from  _EmbeddingColumn?
+    if not isinstance(self.source_column, _SequenceDenseColumn):
+      raise ValueError(
+        'In bucketized_column: {}. '
+        'sequence_column must be of type _SequenceDenseColumn '
+        'to use sequence_input_layer. '
+        'Suggested fix: Use sequence_numeric_column. '
+        'Given (type {}): {}'.format(
+          self.name, type(self.source_column),
+          self.source_column))
+
+    input_tensor, sequence_length = \
+      self.source_column._get_sequence_dense_tensor(
+        # pylint: disable=protected-access
+        inputs=inputs,
+        weight_collections=weight_collections,
+        trainable=trainable)
+
+    input_tensor = math_ops._bucketize( # pylint: disable=protected-access
+      input_tensor,
+      self.boundaries)
+    dense_tensor = array_ops.one_hot(
+        indices=math_ops.to_int64(input_tensor),
+        depth=len(self.boundaries) + 1,
+        on_value=1.,
+        off_value=0.)
+    return _SequenceDenseColumn.TensorSequenceLengthPair(
+        dense_tensor=dense_tensor, sequence_length=sequence_length)
 
   @property
   def _num_buckets(self):

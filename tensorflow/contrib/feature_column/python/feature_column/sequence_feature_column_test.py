@@ -578,6 +578,84 @@ class SequenceEmbeddingColumnTest(test.TestCase):
           expected_sequence_length, sequence_length.eval(session=sess))
 
 
+class SequenceBucketizedColumnTest(test.TestCase):
+
+  def test_get_sequence_dense_tensor(self):
+    sparse_input = sparse_tensor.SparseTensorValue(
+        # example 0, ids [42]
+        # example 1, ids [2.5, 10]
+        # example 2, ids []
+        # example 3, ids [1]
+        indices=((0, 0), (1, 0), (1, 1), (3, 0)),
+        values=(42.0, 2.5, 10.0, 1.0),
+        dense_shape=(4, 2))
+
+    zero = [[1.0, 0.0, 0.0, 0.0]]
+    expected_lookups = [
+        # example 0, ids [42]
+        [[[0.0, 0.0, 0.0, 1.0]], zero],
+        # example 1, ids [0, 10]
+        [[[0.0, 0.0, 1.0, 0.0]], [[0.0, 0.0, 0.0, 1.0]]],
+        # example 2, ids []
+        [zero, zero],
+        # example 3, ids [1]
+        [[[0.0, 1.0, 0.0, 0.0]], zero]
+    ]
+
+    numeric_column = sfc.sequence_numeric_column('aaa')
+    bucketized_column = fc.bucketized_column(numeric_column, [1.0, 2.0, 3.0])
+
+    bucketized, _ = bucketized_column._get_sequence_dense_tensor(
+        _LazyBuilder({'aaa': sparse_input}))
+
+    with monitored_session.MonitoredSession() as sess:
+      self.assertAllEqual(expected_lookups, bucketized.eval(session=sess))
+
+  def _test_sequence_length(self):
+    sparse_input = sparse_tensor.SparseTensorValue(
+        # example 0, ids [2]
+        # example 1, ids [0, 1]
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(2.0, 0.0, 1.0),
+        dense_shape=(2, 2))
+    expected_sequence_length = [1, 2]
+
+    numeric_column = sfc.sequence_numeric_column(key='aaa')
+    bucketized_column = fc.bucketized_column(numeric_column, [1.0, 2.0, 3.0])
+
+    _, sequence_length = bucketized_column._get_sequence_dense_tensor(
+        _LazyBuilder({'aaa': sparse_input}))
+
+    with monitored_session.MonitoredSession() as sess:
+      sequence_length = sess.run(sequence_length)
+      self.assertAllEqual(expected_sequence_length, sequence_length)
+      self.assertEqual(np.int64, sequence_length.dtype)
+
+  def _test_sequence_length_with_empty_rows(self):
+    """Tests _sequence_length when some examples do not have ids."""
+    sparse_input = sparse_tensor.SparseTensorValue(
+        # example 0, ids []
+        # example 1, ids [2]
+        # example 2, ids [0, 1]
+        # example 3, ids []
+        # example 4, ids [1]
+        # example 5, ids []
+        indices=((1, 0), (2, 0), (2, 1), (4, 0)),
+        values=(2.0, 0.0, 1.0, 1.0),
+        dense_shape=(6, 2))
+    expected_sequence_length = [0, 1, 2, 0, 1, 0]
+
+    numeric_column = sfc.sequence_numeric_column(key='aaa')
+    bucketized_column = fc.bucketized_column(numeric_column, [1.0, 2.0, 3.0])
+
+    _, sequence_length = bucketized_column._get_sequence_dense_tensor(
+        _LazyBuilder({'aaa': sparse_input}))
+
+    with monitored_session.MonitoredSession() as sess:
+      self.assertAllEqual(
+          expected_sequence_length, sequence_length.eval(session=sess))
+
+
 class SequenceIndicatorColumnTest(test.TestCase):
 
   def test_get_sequence_dense_tensor(self):
