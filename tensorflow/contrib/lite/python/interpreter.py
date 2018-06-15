@@ -109,7 +109,7 @@ class Interpreter(object):
     ]
 
   def set_tensor(self, tensor_index, value):
-    """Sets the value of the input.
+    """Sets the value of the input tensor.
 
     Args:
       tensor_index: Tensor index of tensor to set. This value can be gotten from
@@ -147,7 +147,7 @@ class Interpreter(object):
     ]
 
   def get_tensor(self, tensor_index):
-    """Sets the value of the input.
+    """Gets the value of the tensor.
 
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
