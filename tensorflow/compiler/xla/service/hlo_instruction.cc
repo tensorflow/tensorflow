@@ -1493,10 +1493,6 @@ bool HloInstruction::IdenticalSlowPath(
       return protobuf_util::ProtobufEquals(padding_config(),
                                            other.padding_config());
     case HloOpcode::kCall:
-    case HloOpcode::kCrossReplicaSum:
-      return replica_group_ids() == other.replica_group_ids() &&
-             cross_replica_sum_barrier() == other.cross_replica_sum_barrier() &&
-             eq_computations(to_apply(), other.to_apply());
     case HloOpcode::kCustomCall:
       if ((window_ == nullptr) != (other.window_ == nullptr) ||
           (window_ != nullptr &&
@@ -1547,6 +1543,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
+    case HloOpcode::kCrossReplicaSum:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
