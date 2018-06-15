@@ -696,6 +696,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":cond_v2_impl",
         ":dtypes",
         ":framework_ops",
         ":graph_to_function_def",
@@ -712,6 +713,7 @@ py_library(
     srcs = ["framework/graph_to_function_def.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cond_v2_impl",
         ":op_def_registry",
         "//tensorflow/core:protos_all_py",
     ],
@@ -1052,7 +1054,6 @@ tf_gen_op_wrapper_private_py(
     name = "functional_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/contrib/control_flow:__pkg__",
     ],
 )
 
@@ -1830,6 +1831,7 @@ py_library(
         "tensor_shape",
         ":array_ops",
         ":array_ops_gen",
+        ":cond_v2_impl",
         ":constant_op",
         ":control_flow_ops_gen",
         ":control_flow_util",
@@ -1855,6 +1857,37 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
+    ],
+)
+
+py_library(
+    name = "cond_v2",
+    srcs = [
+        "ops/cond_v2.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cond_v2_impl",
+        ":function",
+        ":function_def_to_graph",
+        ":gradients",
+    ],
+)
+
+py_library(
+    name = "cond_v2_impl",
+    srcs = [
+        "ops/cond_v2_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":c_api_util",
+        ":framework_ops",
+        ":functional_ops_gen",
+        ":pywrap_tensorflow",
+        ":util",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -1940,6 +1973,7 @@ py_library(
         ":array_grad",
         ":array_ops",
         ":bitwise_ops",
+        ":cond_v2_impl",
         ":control_flow_grad",
         ":control_flow_ops",
         ":control_flow_util",

@@ -92,6 +92,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/timeseries:timeseries_pip",
     "//tensorflow/contrib/tpu",
     "//tensorflow/examples/tutorials/mnist:package",
+    "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:spectral_ops_test_util",

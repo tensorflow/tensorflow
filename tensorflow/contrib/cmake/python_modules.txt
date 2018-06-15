@@ -115,8 +115,6 @@ tensorflow/contrib/coder/python/ops
 tensorflow/contrib/compiler
 tensorflow/contrib/constrained_optimization
 tensorflow/contrib/constrained_optimization/python
-tensorflow/contrib/control_flow
-tensorflow/contrib/control_flow/python
 tensorflow/contrib/copy_graph
 tensorflow/contrib/copy_graph/python
 tensorflow/contrib/copy_graph/python/util

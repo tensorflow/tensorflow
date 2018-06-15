@@ -11,11 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
+"""cond_v2 wrapper module.
 
-"""New implementations of TF control flow ops.
-
-@@cond_v2
+This imports the cond_v2 method and all necessary dependencies (this is to avoid
+circular dependencies in the cond_v2 implementation). See cond_v2_impl for more
+information.
 """
 
 from __future__ import absolute_import
@@ -23,9 +24,9 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-from tensorflow.contrib.control_flow.python.cond_v2 import cond_v2
+from tensorflow.python.framework import function
+from tensorflow.python.framework import function_def_to_graph
+from tensorflow.python.ops import gradients_impl
+
+from tensorflow.python.ops.cond_v2_impl import cond_v2
 # pylint: enable=unused-import
-
-from tensorflow.python.util.all_util import remove_undocumented
-
-remove_undocumented(__name__)

@@ -24,6 +24,7 @@ from __future__ import print_function
 import abc
 import collections
 import functools
+import os
 
 import six
 
@@ -38,6 +39,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
@@ -56,6 +58,10 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
+
+
+_ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
+
 
 # We override the 'tuple' for a control flow op, so we keep python's
 # existing 'tuple' for later use in this module.
@@ -1994,6 +2000,9 @@ def cond(pred,
   ```
 
   """
+  if _ENABLE_COND_V2:
+    return cond_v2_impl.cond_v2(pred, true_fn, false_fn, name)
+
   # We needed to make true_fn/false_fn keyword arguments for
   # backwards-compatibility. This check exists so that we can convert back to
   # having them be positional arguments.

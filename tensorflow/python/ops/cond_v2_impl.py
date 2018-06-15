@@ -17,6 +17,10 @@
 This is a version of cond that emits a single If op, as well as the gradient
 function for If ops produced by cond_v2. This will eventually replace the
 current tf.cond implementation once it reaches feature and performance parity.
+
+NOTE: most users of cond_v2 should import cond_v2, not this module! This module
+does not contain all the necessary imports to prevent circular dependencies,
+while cond_v2 does.
 """
 
 from __future__ import absolute_import
@@ -25,14 +29,17 @@ from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import c_api_util
-from tensorflow.python.framework import function
-from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_functional_ops
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.util import compat
 
+
+# The following modules cannot be imported directly because they cause circular
+# dependencies. These are set in each corresponding module.
+_function = None
+_function_def_to_graph = None
+_gradients_impl = None
 
 # NOTE(skyewm): TensorFlow uses protected class methods and fields to signify
 # that they aren't part of the official public API. These protected members
@@ -58,14 +65,14 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
 
     func_name_prefix = scope.replace("/", "_")
 
-    true_graph = function.func_graph_from_py_func(
+    true_graph = _function.func_graph_from_py_func(
         true_fn, [], [],
         name="%strue" % func_name_prefix,
         device=caller_device,
         colocation_stack=caller_colocation_stack,
         collections_ref=caller_collection_ref,
         container=caller_container)
-    false_graph = function.func_graph_from_py_func(
+    false_graph = _function.func_graph_from_py_func(
         false_fn, [], [],
         name="%sfalse" % func_name_prefix,
         device=caller_device,
@@ -169,11 +176,13 @@ def _get_func_graphs(if_op):
     A 2-tuple of the `_FuncGraph`s of the then_branch and else_branch.
   """
   def _get_func_graph_for_branch(branch_name):
+    """Generates and returns a _FuncGraph for the given branch."""
     extra_inputs = if_op.inputs[1:]  # First input is pred.
     input_shapes = [t.shape for t in extra_inputs]
     func_name = if_op.get_attr(branch_name).name
     fdef = if_op.graph._get_function(func_name).definition
-    func_graph = function_def_to_graph.function_def_to_graph(fdef, input_shapes)
+    func_graph = _function_def_to_graph.function_def_to_graph(
+        fdef, input_shapes)
     func_graph.extra_inputs = extra_inputs
     func_graph.extra_args = func_graph.inputs
     func_graph._captured = dict(zip(extra_inputs, func_graph.inputs))
@@ -205,7 +214,7 @@ def _grad_fn(func_graph, grads):
   ys = []
   grad_ys = []
   for y, grad_y in zip(func_graph.outputs, grads):
-    if not gradients_impl._IsTrainable(y):
+    if not _gradients_impl._IsTrainable(y):
       continue
     ys.append(y)
     grad_ys.append(grad_y)
@@ -214,7 +223,7 @@ def _grad_fn(func_graph, grads):
   # func_graph in the current graph, which requires capturing tensors from
   # func_graph. The captured func_graph tensors are resolved to external tensors
   # in _get_grad_inputs.
-  result = gradients_impl._GradientsHelper(
+  result = _gradients_impl._GradientsHelper(
       ys, func_graph.inputs, grad_ys=grad_ys,
       src_graph=func_graph)
 
@@ -230,8 +239,8 @@ def _grad_fn(func_graph, grads):
 
 def _create_grad_func(func_graph, grads, name):
   """Returns the _FuncGraph representation of _grad_fn."""
-  return function.func_graph_from_py_func(lambda: _grad_fn(func_graph, grads),
-                                          [], [], name)
+  return _function.func_graph_from_py_func(lambda: _grad_fn(func_graph, grads),
+                                           [], [], name)
 
 
 def _get_grad_inputs(if_op, cond_graph, grad_graph):
@@ -297,8 +306,8 @@ def _create_new_tf_function(func_graph):
   # TODO(b/109833212): this sucks, we're serializing the TF_Function*,
   # deserializing it into a Python FunctionDef, then reserializing it to create
   # a new TF_Function that we add to the graph.
-  fdef = function.function_def_from_tf_function(c_func)
-  defined_func = function._from_definition(fdef)
+  fdef = _function.function_def_from_tf_function(c_func)
+  defined_func = _function._from_definition(fdef)
   defined_func.add_to_graph(ops.get_default_graph())
 
   return func_graph.name

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import contextlib
+import sys
 import warnings
 
 import numpy as np
@@ -36,6 +37,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -52,6 +54,9 @@ from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
+
+# This is to avoid a circular dependency with cond_v2_impl.
+cond_v2_impl._gradients_impl = sys.modules[__name__]  # pylint: disable=protected-access
 
 # Warn the user if we convert a sparse representation to dense with at
 # least this number of elements.
