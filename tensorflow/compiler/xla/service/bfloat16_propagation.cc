@@ -559,7 +559,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
 
 void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
     HloModule* module) {
-  std::list<HloComputation*> computations_topological_order =
+  const auto& computations_topological_order =
       module->MakeComputationPostOrder();
   tensorflow::gtl::FlatSet<const HloComputation*> resolved;
   for (auto comp_it = computations_topological_order.rbegin();
@@ -742,7 +742,7 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
 
   TF_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
 
-  std::list<HloComputation*> computations_topological_order =
+  const auto& computations_topological_order =
       module->MakeComputationPostOrder();
   // The first step is a forward pass (parameters to root), where we determine
   // the potential candidate instructions to use bfloat16 in the outputs that

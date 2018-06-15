@@ -451,7 +451,7 @@ int64 HloModule::instruction_count() const {
   return n;
 }
 
-std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
+std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the
   // module).
@@ -469,7 +469,7 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // order. This prevents duplication as an embedded computation may be called
   // from two different root computations.
   std::set<HloComputation*> added_computations;
-  std::list<HloComputation*> post_order;
+  std::vector<HloComputation*> post_order;
   for (auto& computation : computations_) {
     if (nonroot_computations.count(computation.get()) == 0) {
       for (HloComputation* embedded_computation :

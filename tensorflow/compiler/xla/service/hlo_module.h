@@ -154,7 +154,7 @@ class HloModule {
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
-  std::list<HloComputation*> MakeComputationPostOrder() const;
+  std::vector<HloComputation*> MakeComputationPostOrder() const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
