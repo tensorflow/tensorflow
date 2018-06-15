@@ -596,6 +596,10 @@ def _get_defun_inputs(args):
   return nest.pack_sequence_as(args, ret)
 
 
+def _deterministic_dict_values(kwds):
+  return tuple(kwds[key] for key in sorted(kwds))
+
+
 def _trace_and_define_function(name, func, compiled, args, kwds):
   """Defines and returns graph-mode version of func."""
   graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
@@ -613,7 +617,8 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
       tmp_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
           collection)
     with tmp_graph.as_default(), AutomaticControlDependencies() as a:
-      func_inputs = _get_defun_inputs(args)
+      func_args = _get_defun_inputs(args)
+      func_kwds = _get_defun_inputs(kwds)
 
       def convert(x):
         if x is None:
@@ -624,7 +629,7 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
 
       this_tape = tape.push_new_tape()
       try:
-        func_outputs = func(*func_inputs, **kwds)
+        func_outputs = func(*func_args, **func_kwds)
         func_outputs = nest.map_structure(convert, func_outputs)
       finally:
         tape.pop_tape(this_tape)
@@ -648,8 +653,11 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
           x.shape if isinstance(x, ops.Tensor) else None
           for x in outputs_list)
 
-  flat_inputs = [x for x in nest.flatten(func_inputs)
-                 if isinstance(x, ops.Tensor)]
+  func_kwds_values = _deterministic_dict_values(func_kwds)
+  flat_inputs = [
+      x for x in nest.flatten(func_args) + nest.flatten(func_kwds_values)
+      if isinstance(x, ops.Tensor)
+  ]
   all_inputs = flat_inputs + list(extra_placeholders)
   all_ignored_ops = frozenset(x.op for x in all_inputs)
   fname = _inference_name(name)
@@ -727,29 +735,36 @@ class _PolymorphicFunction(object):
     self._variables = []
 
   def _maybe_define_function(self, *args, **kwds):
-    """Gets a function for these inputs, defining it if necessary."""
+    """Gets a function for these inputs, defining it if necessary.
 
-    # TODO(akshayka): Remove this restriction.
-    if any(isinstance(x, ops.EagerTensor) for x in kwds.values()):
-      raise ValueError("Tensor keyword arguments are not supported.")
+    Args:
+      *args: args for the Python function; used to compute the signature
+      **kwds: kwds for the Python function; used to compute the signature
+
+    Returns:
+      A graph function corresponding to the input signature implied by args and
+      kwds, as well as the inputs that the object should be called with.
+    """
 
     # TODO(apassos): Better error messages for non-hashable arguments.
-    cache_key = tuple(_cache_key(x) for x in args)
-    cache_key = (cache_key, tuple(kwds.items()))
+    kwd_values = _deterministic_dict_values(kwds)
+    inputs = args + kwd_values
+    signature = tuple(_cache_key(x) for x in inputs)
 
-    if cache_key not in self._arguments_to_functions:
+    if signature not in self._arguments_to_functions:
       graph_function = _trace_and_define_function(
           self._name, self._python_function, self._compiled, args, kwds)
-      self._arguments_to_functions[cache_key] = graph_function
+      self._arguments_to_functions[signature] = graph_function
       self._variables.extend(
           [v for v in graph_function.variables if v not in self._variables])
-      return graph_function
+      return graph_function, inputs
     else:
-      return self._arguments_to_functions[cache_key]
+      return self._arguments_to_functions[signature], inputs
 
   def __call__(self, *args, **kwds):
     """Calls a graph function specialized for this input signature."""
-    return self._maybe_define_function(*args, **kwds)(*args)
+    graph_function, inputs = self._maybe_define_function(*args, **kwds)
+    return graph_function(*inputs)
 
   @property
   def variables(self):
@@ -777,10 +792,9 @@ def defun(func=None, compiled=False):
   Python functions might take less time than executing their corresponding
   `defun`-generated graphs.
 
-  For a Python function to be compatible with `defun`, the values of its keyword
-  arguments cannot be Tensors and all of its arguments, including its keyword
-  arguments, must be hashable Python objects or lists thereof. Additionally, it
-  must return zero or more @{tf.Tensor} objects.
+  For a Python function to be compatible with `defun`, all of its arguments must
+  be hashable Python objects or lists thereof. Additionally, it must return zero
+  or more @{tf.Tensor} objects.
 
   _Example Usage_
 
@@ -853,15 +867,15 @@ def defun(func=None, compiled=False):
 
   _Tracing and Input Signatures_.
   The signature of inputs supplied to `F` is defined to be a tuple of the shapes
-  and dtypes of Tensor-typed arguments and the values of non-Tensor arguments
-  and keyword arguments. Every time `F` is invoked, the signature of its inputs
-  are inferred. The first time `F(*args, **kwargs)` is invoked with a particular
-  signature, `f(*args, **kwargs)` is executed and all the TensorFlow operations
-  that `f` executes, along with the Tensors that flow between them, are recorded
-  in a TensorFlow graph. `F` caches this graph and binds it to the inputs'
-  signature; every subsequent invocation of `F` with inputs conforming to this
-  signature will immediately retrieve the cached graph and pass it to the
-  TensorFlow runtime for execution.
+  and dtypes of Tensor-typed arguments and the values of non-Tensor arguments,
+  where "arguments" includes both args and kwargs. Every time `F` is invoked,
+  the signature of its inputs are inferred. The first time `F(*args, **kwargs)`
+  is invoked with a particular signature, `f(*args, **kwargs)` is executed and
+  all the TensorFlow operations that `f` executes, along with the Tensors that
+  flow between them, are recorded in a TensorFlow graph. `F` caches this graph
+  and binds it to the inputs' signature; every subsequent invocation of `F` with
+  inputs conforming to this signature will immediately retrieve the cached graph
+  and pass it to the TensorFlow runtime for execution.
 
   Be aware that because `F` only logs TensorFlow operations, all non-TensorFlow
   operations that `f` executes will only shape the _construction_ of the graphs
@@ -1068,15 +1082,8 @@ def make_defun_op(func, *args, **kwds):
      A wrapper object which can be queried for its output properties,
      and which can be called directly the way a `@defun` wrapped function
      can.
-
-  Raises:
-    ValueError: if any of the keyword arguments to `func` are `EagerTensor`
-      objects (not yet supported).
   """
-  name = func.__name__
-  if any(isinstance(x, ops.EagerTensor) for x in kwds.values()):
-    raise ValueError("Tensor keyword arguments are not supported.")
-  return _trace_and_define_function(name, func, False, args, kwds)
+  return _trace_and_define_function(func.__name__, func, False, args, kwds)
 
 
 class AutomaticControlDependencies(object):

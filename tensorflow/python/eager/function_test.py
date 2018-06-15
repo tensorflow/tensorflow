@@ -650,6 +650,73 @@ class FunctionTest(test.TestCase):
     _ = defined(x)  # ensure the variables list remains the same
     self.assertAllEqual(defined.variables, [v])
 
+  def testTensorKeywordArguments(self):
+
+    def foo(a, b):
+      del a
+      return b
+
+    defined = function.defun(foo)
+    a = constant_op.constant(2.0)
+    b = constant_op.constant([1.0, 2.0])
+    one = defined(a, b)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
+    two = defined(a=a, b=b)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
+    three = defined(b=b, a=a)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
+    four = defined(a, b=b)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
+    # The next call corresponds to a new input signature, hence
+    # we expect another function to be defined.
+    five = defined(b, a)
+    self.assertEqual(len(defined._arguments_to_functions), 2)
+
+    six = defined(a=b, b=a)
+    self.assertEqual(len(defined._arguments_to_functions), 2)
+
+    seven = defined(b=a, a=b)
+    self.assertEqual(len(defined._arguments_to_functions), 2)
+
+    self.assertAllEqual(one, [1.0, 2.0])
+    self.assertAllEqual(two, [1.0, 2.0])
+    self.assertAllEqual(three, [1.0, 2.0])
+    self.assertAllEqual(four, [1.0, 2.0])
+    self.assertAllEqual(five, 2.0)
+    self.assertAllEqual(six, 2.0)
+    self.assertAllEqual(seven, 2.0)
+
+  def testGradientWithKeywordArguments(self):
+    matmul = function.defun(math_ops.matmul)
+
+    def sq(x):
+      return matmul(a=x, b=x, transpose_a=True)
+
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    grad_t, = backprop.gradients_function(sq, [0])(t)
+    self.assertAllEqual(grad_t, [[6, 6], [14, 14]])
+
+    with backprop.GradientTape(persistent=True) as gtape:
+      gtape.watch(t)
+      one = matmul(t, b=t, transpose_a=True)
+      two = matmul(b=t, a=t, transpose_a=True)
+      three = matmul(a=t, b=t, transpose_a=True)
+
+    for output in [one, two, three]:
+      self.assertAllEqual(gtape.gradient(output, t), [[6, 6], [14, 14]])
+
+  def testGradientInFunctionWithKeywordArguments(self):
+
+    @function.defun
+    def f(x):
+      return backprop.gradients_function(lambda y: y * y, [0])(x)[0]
+
+    self.assertAllEqual(f(x=constant_op.constant(1.0)), 2.0)
+
 
 @test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):
