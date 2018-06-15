@@ -647,7 +647,14 @@ cc_library(
         ":split_v_op",
         ":strided_slice_op",
         ":tile_ops",
-        ":transpose_op",
+    ] + if_mkl(
+        [
+            ":mkl_transpose_op",
+        ],
+        [
+            ":transpose_op",
+        ],
+    ) + [
         ":unique_op",
         ":unpack_op",
         ":unravel_index_op",
@@ -885,18 +892,27 @@ tf_kernel_library(
     deps = ARRAY_DEPS,
 )
 
-tf_kernel_library(
-    name = "transpose_op",
-    srcs = [
-        "transpose_op.cc",
-    ] + if_mkl([
-        "mkl_transpose_op.cc",
-    ]),
-    hdrs = ["transpose_op.h"],
-    deps = ARRAY_DEPS + if_mkl([
-        "//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn",
-    ]),
+if_mkl(
+    [tf_mkl_kernel_library(
+        name = "mkl_transpose_op",
+        srcs = [
+            "transpose_op.cc",
+            "mkl_transpose_op.cc",
+        ],
+        hdrs = ["transpose_op.h"],
+        deps = ARRAY_DEPS + if_mkl([
+            "//third_party/mkl:intel_binary_blob",
+            "@mkl_dnn",
+        ]),
+    )],
+    [tf_kernel_library(
+        name = "transpose_op",
+        srcs = [
+            "transpose_op.cc",
+        ],
+        hdrs = ["transpose_op.h"],
+        deps = ARRAY_DEPS,
+    )],
 )
 
 tf_kernel_library(
