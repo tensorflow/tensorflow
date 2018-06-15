@@ -1729,7 +1729,7 @@ class DepthwiseConv2D(Conv2D):
         dilation_rate=self.dilation_rate,
         data_format=self.data_format)
 
-    if self.bias:
+    if self.use_bias:
       outputs = backend.bias_add(
           outputs,
           self.bias,
