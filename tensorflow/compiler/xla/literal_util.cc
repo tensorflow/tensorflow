@@ -2355,7 +2355,6 @@ LiteralSlice::LiteralSlice(const LiteralBase& literal,
 BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
     : LiteralBase(), shape_(MakeUnique<Shape>(shape)) {
   CHECK(ShapeUtil::IsArray(*shape_));
-  CHECK_NE(src_buf_ptr, nullptr);
   CHECK(LayoutUtil::HasLayout(*shape_));
 
   root_piece_ = Piece();
