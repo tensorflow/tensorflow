@@ -24,6 +24,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::tensorflow::str_util::CEscape;
 using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
@@ -266,6 +267,68 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 1);
   return MakeUnique<HloRecvDoneInstruction>(
       Cast<HloRecvInstruction>(new_operands[0]));
+}
+
+HloAllReduceInstruction::HloAllReduceInstruction(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    HloComputation* reduce_computation,
+    tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+    tensorflow::StringPiece barrier,
+    const tensorflow::gtl::optional<int64>& all_reduce_id)
+    : HloInstruction(HloOpcode::kCrossReplicaSum, shape),
+      replica_group_ids_(replica_group_ids.begin(), replica_group_ids.end()),
+      cross_replica_sum_barrier_(barrier.begin(), barrier.end()),
+      all_reduce_id_(all_reduce_id) {
+  // TODO(b/79737069): Remove the CHECK when supported.
+  CHECK(!all_reduce_id_.has_value());
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  AppendComputation(reduce_computation);
+}
+
+HloInstructionProto HloAllReduceInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  for (int64 i : replica_group_ids_) {
+    proto.add_replica_group_ids(i);
+  }
+  // TODO(b/79737069): handle barrier and all_reduce_id.
+  return proto;
+}
+
+std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  std::vector<string> result = {
+      StrCat("replica_group_ids={", Join(replica_group_ids(), ","), "}")};
+  if (!cross_replica_sum_barrier().empty()) {
+    result.push_back(StrCat("barrier=\"", cross_replica_sum_barrier(), "\""));
+  }
+  if (all_reduce_id_.has_value()) {
+    result.push_back(StrCat("all_reduce_id=", *all_reduce_id_));
+  }
+  return result;
+}
+
+bool HloAllReduceInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
+  return replica_group_ids() == casted_other.replica_group_ids() &&
+         eq_computations(to_apply(), casted_other.to_apply()) &&
+         cross_replica_sum_barrier() ==
+             casted_other.cross_replica_sum_barrier() &&
+         all_reduce_id() == casted_other.all_reduce_id();
+}
+
+std::unique_ptr<HloInstruction>
+HloAllReduceInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* /*context*/) const {
+  return MakeUnique<HloAllReduceInstruction>(
+      shape, new_operands, to_apply(), replica_group_ids(),
+      cross_replica_sum_barrier(), all_reduce_id());
 }
 
 HloReverseInstruction::HloReverseInstruction(
@@ -609,9 +672,14 @@ HloConstantInstruction::HloConstantInstruction(std::unique_ptr<Literal> literal)
     : HloInstruction(HloOpcode::kConstant, CHECK_NOTNULL(literal)->shape()),
       literal_(std::move(literal)) {}
 
+HloConstantInstruction::HloConstantInstruction(const Shape& shape)
+    : HloInstruction(HloOpcode::kConstant, shape) {}
+
 HloInstructionProto HloConstantInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_literal() = literal_->ToProto();
+  if (literal_ != nullptr) {
+    *proto.mutable_literal() = literal_->ToProto();
+  }
   return proto;
 }
 
@@ -657,8 +725,9 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     CanonicalNameMap* canonical_name_map) const {
   string operands;
   // For constants, show the actual value in place of an empty operand list.
-  if ((!ShapeUtil::IsTuple(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
-      options.print_large_constants()) {
+  if (literal_ != nullptr &&
+      ((ShapeUtil::IsArray(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
+       options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.
     string tmp = literal().ToString();
@@ -830,10 +899,8 @@ void HloFusionInstruction::MergeFusionInstruction(
   // Fuse 'unfused_instructions' into 'this'.
   for (auto& instruction : unfused_instructions) {
     FuseInstruction(instruction);
-    instruction->DetachFromOperands();
   }
   CHECK_EQ(0, cloned_fusion->user_count());
-  cloned_fusion->DetachFromOperands();
   TF_CHECK_OK(parent()->parent()->RemoveEmbeddedComputation(
       cloned_fusion->fused_instructions_computation()));
 }
@@ -1282,6 +1349,84 @@ HloReducePrecisionInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 1);
   return MakeUnique<HloReducePrecisionInstruction>(
       shape, new_operands[0], exponent_bits(), mantissa_bits());
+}
+
+HloInfeedInstruction::HloInfeedInstruction(const Shape& shape,
+                                           const string& config)
+    : HloInstruction(HloOpcode::kInfeed, shape), infeed_config_(config) {}
+
+HloInstructionProto HloInfeedInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_infeed_config(infeed_config_);
+  return proto;
+}
+
+std::vector<string> HloInfeedInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (infeed_config_.empty()) {
+    return {};
+  }
+  return {StrCat("infeed_config=\"", CEscape(infeed_config_), "\"")};
+}
+
+bool HloInfeedInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  // Not yet supported.
+  return false;
+}
+
+std::unique_ptr<HloInstruction> HloInfeedInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 0);
+  return MakeUnique<HloInfeedInstruction>(shape, infeed_config());
+}
+
+HloOutfeedInstruction::HloOutfeedInstruction(
+    const Shape& shape, HloInstruction* operand,
+    tensorflow::StringPiece outfeed_config)
+    : HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()),
+      outfeed_shape_(shape),
+      outfeed_config_(outfeed_config.begin(), outfeed_config.end()) {
+  CHECK(ShapeUtil::Compatible(operand->shape(), shape))
+      << "Outfeed shape " << shape << " must be compatible with operand shape "
+      << operand->shape();
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloOutfeedInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_outfeed_config(outfeed_config());
+  *proto.mutable_outfeed_shape() = outfeed_shape();
+  return proto;
+}
+
+std::vector<string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (outfeed_config_.empty()) {
+    return {};
+  }
+  return {StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\"")};
+}
+
+bool HloOutfeedInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  // Not yet supported.
+  return false;
+}
+
+std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return MakeUnique<HloOutfeedInstruction>(outfeed_shape(), new_operands[0],
+                                           outfeed_config());
 }
 
 }  // namespace xla

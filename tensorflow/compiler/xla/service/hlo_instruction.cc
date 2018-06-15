@@ -178,10 +178,14 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kConstant: {
-      CHECK(proto.has_literal());
-      TF_ASSIGN_OR_RETURN(auto literal,
-                          Literal::CreateFromProto(proto.literal()));
-      instruction = CreateConstant(std::move(literal));
+      // TODO(b/110214922): Revert this to CHECK(proto.has_literal()).
+      if (proto.has_literal()) {
+        TF_ASSIGN_OR_RETURN(auto literal,
+                            Literal::CreateFromProto(proto.literal()));
+        instruction = CreateConstant(std::move(literal));
+      } else {
+        instruction = MakeUnique<HloConstantInstruction>(proto.shape());
+      }
       break;
     }
     case HloOpcode::kTrace: {
@@ -243,6 +247,28 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           CreateReducePrecision(proto.shape(), operands(0),
                                 proto.exponent_bits(), proto.mantissa_bits());
       break;
+    case HloOpcode::kInfeed:
+      instruction = CreateInfeed(proto.shape(), proto.infeed_config());
+      break;
+    case HloOpcode::kOutfeed:
+      instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
+                                  proto.outfeed_config());
+      break;
+    case HloOpcode::kCrossReplicaSum: {
+      CHECK_EQ(proto.called_computation_ids_size(), 1);
+      std::vector<HloInstruction*> all_operands(proto.operand_ids_size());
+      c_transform(proto.operand_ids(), all_operands.begin(),
+                  [&instruction_map](int64 operand_id) {
+                    return instruction_map.at(operand_id);
+                  });
+      instruction = CreateCrossReplicaSum(
+          proto.shape(), all_operands, computations(0),
+          /*replica_group_ids=*/
+          std::vector<int64>(proto.replica_group_ids().begin(),
+                             proto.replica_group_ids().end()),
+          /*barrier=*/"");
+      break;
+    }
     default: {
       instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -293,10 +319,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->padding_config_ =
         MakeUnique<PaddingConfig>(proto.padding_config());
   }
-  instruction->outfeed_config_ = proto.outfeed_config();
-  instruction->infeed_config_ = proto.infeed_config();
   instruction->custom_call_target_ = proto.custom_call_target();
-  instruction->outfeed_shape_ = proto.outfeed_shape();
 
   if (proto.has_sharding()) {
     TF_ASSIGN_OR_RETURN(const auto& sharding,
@@ -314,10 +337,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   instruction->channel_name_ = proto.channel_name();
   instruction->cost_estimate_ns_ = proto.cost_estimate_ns();
-
-  for (int64 replica_group_id : proto.replica_group_ids()) {
-    instruction->replica_group_ids_.push_back(replica_group_id);
-  }
 
   return std::move(instruction);
 }
@@ -531,40 +550,21 @@ HloInstruction::CreateCrossReplicaSum(
     HloComputation* reduce_computation,
     tensorflow::gtl::ArraySlice<int64> replica_group_ids,
     tensorflow::StringPiece barrier,
-    const tensorflow::gtl::optional<int64>& channel_id) {
-  // TODO(b/79737069): Remove the CHECK when supported.
-  CHECK(!channel_id.has_value());
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kCrossReplicaSum, shape));
-  for (auto operand : operands) {
-    instruction->AppendOperand(operand);
-  }
-  instruction->called_computations_.push_back(reduce_computation);
-  instruction->replica_group_ids_.assign(replica_group_ids.begin(),
-                                         replica_group_ids.end());
-  instruction->cross_replica_sum_barrier_ = std::string(barrier);
-  return instruction;
+    const tensorflow::gtl::optional<int64>& all_reduce_id) {
+  return MakeUnique<HloAllReduceInstruction>(
+      shape, operands, reduce_computation, replica_group_ids, barrier,
+      all_reduce_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
     const Shape& shape, const string& config) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kInfeed, shape));
-  instruction->set_infeed_config(config);
-  return instruction;
+  return MakeUnique<HloInfeedInstruction>(shape, config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
     const Shape& shape, HloInstruction* operand,
     tensorflow::StringPiece outfeed_config) {
-  std::unique_ptr<HloInstruction> instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()));
-  CHECK(ShapeUtil::Compatible(operand->shape(), shape))
-      << "Outfeed shape " << shape << " must be compatible with operand shape "
-      << operand->shape();
-  instruction->AppendOperand(operand);
-  instruction->outfeed_config_ = std::string(outfeed_config);
-  instruction->outfeed_shape_ = shape;
-  return instruction;
+  return MakeUnique<HloOutfeedInstruction>(shape, operand, outfeed_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
@@ -1040,6 +1040,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1136,11 +1139,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateDot(shape, new_operands[0], new_operands[1],
                         *dot_dimension_numbers_);
       break;
-    case HloOpcode::kCrossReplicaSum:
-      clone =
-          CreateCrossReplicaSum(shape, new_operands, to_apply(),
-                                replica_group_ids_, cross_replica_sum_barrier_);
-      break;
     case HloOpcode::kPad:
       CHECK_EQ(new_operands.size(), 2);
       clone =
@@ -1179,14 +1177,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone =
           CreateWhile(shape, while_condition(), while_body(), new_operands[0]);
       break;
-    case HloOpcode::kInfeed:
-      CHECK_EQ(new_operands.size(), 0);
-      clone = CreateInfeed(shape, infeed_config());
-      break;
-    case HloOpcode::kOutfeed:
-      CHECK_EQ(new_operands.size(), 1);
-      clone = CreateOutfeed(outfeed_shape_, new_operands[0], outfeed_config());
-      break;
     case HloOpcode::kConditional:
       CHECK_EQ(new_operands.size(), 3);
       clone = CreateConditional(shape, new_operands[0], new_operands[1],
@@ -1222,7 +1212,29 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   return clone;
 }
 
-HloInstruction::~HloInstruction() {}
+HloInstruction::~HloInstruction() {
+  // Detach from operands. An instruction may be repeated as an operand. To
+  // avoid calling RemoveUser twice on the same operand, check before remove.
+  for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
+    HloInstruction* operand = operands_[operand_num];
+    if (operand == nullptr) {
+      continue;
+    }
+    if (operand->user_set_.find(this) != operand->user_set_.end()) {
+      operand->RemoveUser(this);
+    }
+    operands_[operand_num] = nullptr;
+  }
+
+  // Update users. Set `nullptr` to the correpsonding operand slot for users.
+  for (auto& user : this->users()) {
+    for (int i = 0; i < user->operand_count(); ++i) {
+      if (user->operands_[i] == this) {
+        user->operands_[i] = nullptr;
+      }
+    }
+  }
+}
 
 std::unique_ptr<HloInstruction> HloInstruction::Clone(
     const string& suffix, HloCloneContext* context) const {
@@ -1505,8 +1517,6 @@ bool HloInstruction::IdenticalSlowPath(
              eq_computations(false_computation(), other.false_computation());
 
     // These opcodes are not yet supported.
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
     case HloOpcode::kHostCompute:
       return false;
@@ -1535,6 +1545,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -1621,22 +1633,6 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
   return Status::OK();
 }
 
-void HloInstruction::DetachFromOperands() {
-  VLOG(3) << "DetachFromOperands:\n  " << ToString();
-  CHECK_EQ(0, user_count());
-  // An instruction may be repeated as an operand. To avoid calling RemoveUser
-  // twice on the same operand, keep a set of already detached operands.
-  std::set<HloInstruction*> detached_operands;
-  for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
-    HloInstruction* operand = operands_[operand_num];
-    if (!ContainsKey(detached_operands, operand)) {
-      operand->RemoveUser(this);
-      detached_operands.insert(operand);
-    }
-    operands_[operand_num] = nullptr;
-  }
-}
-
 HloComputation* HloInstruction::to_apply() const {
   switch (opcode_) {
     case HloOpcode::kCall:
@@ -1661,6 +1657,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
     case HloOpcode::kMap:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
+    case HloOpcode::kCrossReplicaSum:
       CHECK_EQ(called_computations_.size(), 1);
       called_computations_[0] = computation;
       break;
@@ -1673,11 +1670,6 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
 const string& HloInstruction::custom_call_target() const {
   CHECK_EQ(opcode_, HloOpcode::kCustomCall);
   return custom_call_target_;
-}
-
-const string& HloInstruction::outfeed_config() const {
-  CHECK_EQ(opcode_, HloOpcode::kOutfeed);
-  return outfeed_config_;
 }
 
 HloComputation* HloInstruction::while_condition() const {
@@ -1901,6 +1893,11 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
   }
   operands = Join(slice, ", ", [&](string* out, HloInstruction* operand) {
+    // If operand is already been deleted, put `null` to the string output.
+    if (operand == nullptr) {
+      StrAppend(out, "null ");
+      return;
+    }
     std::vector<string> str;
     if (options.print_operand_shape()) {
       str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
@@ -2008,6 +2005,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kMap:
       case HloOpcode::kReduceWindow:
       case HloOpcode::kReduce:
+      case HloOpcode::kCrossReplicaSum:
         extra.push_back(
             StrCat("to_apply=\n", to_apply()->ToString(new_options)));
         break;
@@ -2036,24 +2034,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                                 }),
                            "}"));
   }
-  if (opcode() == HloOpcode::kInfeed && !infeed_config_.empty()) {
-    extra.push_back(StrCat("infeed_config=\"", CEscape(infeed_config_), "\""));
-  }
-  if (opcode() == HloOpcode::kOutfeed && !outfeed_config_.empty()) {
-    extra.push_back(
-        StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
-  }
   if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
     extra.push_back(StrCat("domain={kind=\"", operand_side_metadata_->Kind(),
                            "\", entry=", operand_side_metadata_->ToString(),
                            ", exit=", user_side_metadata_->ToString(), "}"));
-  }
-  if (!replica_group_ids().empty()) {
-    extra.push_back(
-        StrCat("replica_group_ids={", Join(replica_group_ids(), ","), "}"));
-  }
-  if (!cross_replica_sum_barrier().empty()) {
-    extra.push_back(StrCat("barrier=\"", cross_replica_sum_barrier(), "\""));
   }
 
   // By contract, we print the custom call target even if
@@ -2125,10 +2109,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   if (padding_config_ != nullptr) {
     *proto.mutable_padding_config() = *padding_config_;
   }
-  proto.set_outfeed_config(outfeed_config_);
-  proto.set_infeed_config(infeed_config_);
   proto.set_custom_call_target(custom_call_target_);
-  *proto.mutable_outfeed_shape() = outfeed_shape_;
 
   if (has_sharding()) {
     *proto.mutable_sharding() = sharding().ToProto();
@@ -2136,9 +2117,6 @@ HloInstructionProto HloInstruction::ToProto() const {
 
   proto.set_channel_name(channel_name_);
   proto.set_cost_estimate_ns(cost_estimate_ns_);
-  for (int64 replica_group_id : replica_group_ids_) {
-    proto.add_replica_group_ids(replica_group_id);
-  }
 
   return proto;
 }
@@ -2627,12 +2605,6 @@ Status HloInstruction::AcceptOrdered(
   }
 
   return visitor->FinishVisit(this);
-}
-
-const Shape& HloInstruction::outfeed_shape() const {
-  DCHECK_EQ(opcode_, HloOpcode::kOutfeed);
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
-  return outfeed_shape_;
 }
 
 const Shape& HloInstruction::shape() const {
@@ -3168,4 +3140,38 @@ int32 HloInstruction::exponent_bits() const {
 int32 HloInstruction::mantissa_bits() const {
   return Cast<HloReducePrecisionInstruction>(this)->mantissa_bits();
 }
+
+string HloInstruction::infeed_config() const {
+  return Cast<HloInfeedInstruction>(this)->infeed_config();
+}
+
+void HloInstruction::set_infeed_config(const string& config) {
+  return Cast<HloInfeedInstruction>(this)->set_infeed_config(config);
+}
+
+const Shape& HloInstruction::outfeed_shape() const {
+  return Cast<HloOutfeedInstruction>(this)->outfeed_shape();
+}
+
+const string& HloInstruction::outfeed_config() const {
+  return Cast<HloOutfeedInstruction>(this)->outfeed_config();
+}
+
+const std::vector<int64>& HloInstruction::replica_group_ids() const {
+  return Cast<HloAllReduceInstruction>(this)->replica_group_ids();
+}
+
+string HloInstruction::cross_replica_sum_barrier() const {
+  return Cast<HloAllReduceInstruction>(this)->cross_replica_sum_barrier();
+}
+
+void HloInstruction::set_cross_replica_sum_barrier(const string& barrier) {
+  return Cast<HloAllReduceInstruction>(this)->set_cross_replica_sum_barrier(
+      barrier);
+}
+
+tensorflow::gtl::optional<int64> HloInstruction::all_reduce_id() const {
+  return Cast<HloAllReduceInstruction>(this)->all_reduce_id();
+}
+
 }  // namespace xla

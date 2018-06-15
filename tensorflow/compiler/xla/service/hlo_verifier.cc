@@ -431,7 +431,8 @@ Status ShapeVerifier::HandleGenerateToken(HloInstruction* token) {
   for (const HloInstruction* operand : token->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(token, ShapeInference::InferTokenShape(operand_shapes));
+  return CheckShape(token,
+                    ShapeInference::InferGenerateTokenShape(operand_shapes));
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,

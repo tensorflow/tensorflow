@@ -375,7 +375,7 @@ int64 SumLogicalBufferSizes(
   return size;
 }
 
-StatusOr<std::vector<const HloInstruction*>> ScheduleComputationsInModule(
+StatusOr<std::vector<const HloInstruction*>> ScheduleComputationHelper(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
@@ -498,29 +498,29 @@ StatusOr<std::vector<const HloInstruction*>> DefaultMemoryScheduler(
       std::vector<const HloInstruction*> list_sequence,
       ListMemoryScheduler(computation, points_to_analysis, size_function,
                           memory_by_computation));
-  TF_ASSIGN_OR_RETURN(
-      const int64 list_memory,
-      MinimumMemoryForComputation(computation, list_sequence,
-                                  points_to_analysis, size_function));
+  TF_ASSIGN_OR_RETURN(const int64 list_memory,
+                      HeapSimulator::MinimumMemoryForComputation(
+                          computation, list_sequence, points_to_analysis,
+                          size_function, &memory_by_computation));
   VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
 
   TF_ASSIGN_OR_RETURN(std::vector<const HloInstruction*> dfs_sequence,
                       DFSMemoryScheduler(computation, points_to_analysis,
                                          size_function, memory_by_computation));
-  TF_ASSIGN_OR_RETURN(
-      const int64 dfs_memory,
-      MinimumMemoryForComputation(computation, dfs_sequence, points_to_analysis,
-                                  size_function));
+  TF_ASSIGN_OR_RETURN(const int64 dfs_memory,
+                      HeapSimulator::MinimumMemoryForComputation(
+                          computation, dfs_sequence, points_to_analysis,
+                          size_function, &memory_by_computation));
   VLOG(2) << "Min-memory dfs sequence: " << HumanReadableNumBytes(dfs_memory);
 
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> post_order_sequence,
       PostOrderMemoryScheduler(computation, points_to_analysis, size_function,
                                memory_by_computation));
-  TF_ASSIGN_OR_RETURN(
-      const int64 post_order_memory,
-      MinimumMemoryForComputation(computation, post_order_sequence,
-                                  points_to_analysis, size_function));
+  TF_ASSIGN_OR_RETURN(const int64 post_order_memory,
+                      HeapSimulator::MinimumMemoryForComputation(
+                          computation, post_order_sequence, points_to_analysis,
+                          size_function, &memory_by_computation));
   VLOG(2) << "Min-memory post order sequence: "
           << HumanReadableNumBytes(post_order_memory);
 
@@ -551,12 +551,13 @@ StatusOr<SequentialHloOrdering::HloModuleSequence> ScheduleComputationsInModule(
   for (const auto* computation : module.MakeComputationPostOrder()) {
     if (!computation->IsFusionComputation()) {
       TF_ASSIGN_OR_RETURN(auto one_computation_sequence,
-                          ScheduleComputationsInModule(
+                          ScheduleComputationHelper(
                               *computation, *points_to_analysis, size_function,
                               algorithm, memory_by_computation));
       memory_by_computation[computation] =
-          MinimumMemoryForComputation(*computation, one_computation_sequence,
-                                      *points_to_analysis, size_function)
+          HeapSimulator::MinimumMemoryForComputation(
+              *computation, one_computation_sequence, *points_to_analysis,
+              size_function, &memory_by_computation)
               .ValueOrDie();
       sequence[computation] = std::move(one_computation_sequence);
     }
@@ -571,8 +572,8 @@ StatusOr<std::vector<const HloInstruction*>> ScheduleOneComputation(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation.parent()));
   tensorflow::gtl::FlatMap<const HloComputation*, int64> empty_map;
-  return ScheduleComputationsInModule(computation, *points_to_analysis,
-                                      size_function, nullptr, empty_map);
+  return ScheduleComputationHelper(computation, *points_to_analysis,
+                                   size_function, nullptr, empty_map);
 }
 
 }  // namespace xla

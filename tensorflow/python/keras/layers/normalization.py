@@ -364,11 +364,12 @@ class BatchNormalization(Layer):
   def _assign_moving_average(self, variable, value, momentum):
     with ops.name_scope(None, 'AssignMovingAvg',
                         [variable, value, momentum]) as scope:
-      decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
-      if decay.dtype != variable.dtype.base_dtype:
-        decay = math_ops.cast(decay, variable.dtype.base_dtype)
-      update_delta = (variable - value) * decay
-      return state_ops.assign_sub(variable, update_delta, name=scope)
+      with ops.colocate_with(variable):
+        decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
+        if decay.dtype != variable.dtype.base_dtype:
+          decay = math_ops.cast(decay, variable.dtype.base_dtype)
+        update_delta = (variable - value) * decay
+        return state_ops.assign_sub(variable, update_delta, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""

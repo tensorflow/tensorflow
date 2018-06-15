@@ -20,6 +20,7 @@ from __future__ import print_function
 import math
 import time
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
@@ -40,7 +41,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class BatchDatasetTest(test.TestCase):
+class BatchDatasetTest(test.TestCase, parameterized.TestCase):
 
   def assertSparseValuesEqual(self, a, b):
     self.assertAllEqual(a.indices, b.indices)
@@ -427,9 +428,13 @@ class BatchDatasetTest(test.TestCase):
     self.assertEqual([None], dataset.output_shapes[1][0].as_list())
     self.assertEqual([None, 30], dataset.output_shapes[1][1].as_list())
 
-  def _testMapAndBatchDatasetHelper(self,
-                                    num_parallel_calls=None,
-                                    num_parallel_batches=None):
+  @parameterized.named_parameters(
+      ("default", None, None),
+      ("sequential_calls", 1, None),
+      ("parallel_calls", 2, None),
+      ("parallel_batches", None, 10),
+  )
+  def testMapAndBatch(self, num_parallel_calls, num_parallel_batches):
     """Test a dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset ->
     # RepeatDataset(count) -> MapAndBatchDataset(square_3, batch_size).
@@ -500,19 +505,11 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(init_op, feed_dict={count: 14, batch_size: 0})
 
-  def testMapAndBatch(self):
-    return self._testMapAndBatchDatasetHelper()
-
-  def testMapAndBatchWithParallelBatches(self):
-    return self._testMapAndBatchDatasetHelper(num_parallel_batches=10)
-
-  def testMapAndBatchWithSequentialCalls(self):
-    return self._testMapAndBatchDatasetHelper(num_parallel_calls=1)
-
-  def testMapAndBatchWithParallelCalls(self):
-    return self._testMapAndBatchDatasetHelper(num_parallel_calls=2)
-
-  def _testMapAndBatchPartialBatchHelper(self, drop_remainder=False):
+  @parameterized.named_parameters(
+      ("even", False),
+      ("uneven", True),
+  )
+  def testMapAndBatchPartialBatch(self, drop_remainder):
     iterator = (
         dataset_ops.Dataset.range(10).apply(
             batching.map_and_batch(
@@ -531,12 +528,6 @@ class BatchDatasetTest(test.TestCase):
         self.assertAllEqual([[64], [81]], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
-
-  def testMapAndBatchPartialBatch(self):
-    return self._testMapAndBatchPartialBatchHelper()
-
-  def testMapAndBatchPartialBatchDropRemainder(self):
-    return self._testMapAndBatchPartialBatchHelper(drop_remainder=True)
 
   def testMapAndBatchYieldsPartialBatch(self):
     iterator = (dataset_ops.Dataset.range(10)
@@ -614,7 +605,7 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  def testMapAndBatchDatasetFails(self):
+  def testMapAndBatchFails(self):
     """Test a dataset that maps a TF function across its input elements."""
     dataset = dataset_ops.Dataset.from_tensors(
         array_ops.check_numerics(
@@ -628,7 +619,7 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
         sess.run(init_op, feed_dict={batch_size: 14})
 
-  def testMapAndBatchDatasetShapeMismatch(self):
+  def testMapAndBatchShapeMismatch(self):
     """Test a dataset that maps a TF function across its input elements."""
 
     def generator():

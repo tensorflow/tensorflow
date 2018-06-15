@@ -207,6 +207,63 @@ class HloRecvDoneInstruction : public HloSendRecvInstruction {
       HloCloneContext* context) const override;
 };
 
+class HloAllReduceInstruction : public HloInstruction {
+ public:
+  explicit HloAllReduceInstruction(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloComputation* reduce_computation,
+      tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+      tensorflow::StringPiece barrier,
+      const tensorflow::gtl::optional<int64>& all_reduce_id =
+          tensorflow::gtl::nullopt);
+
+  // Returns the group ids of each replica for CrossReplicaSum op.
+  const std::vector<int64>& replica_group_ids() const {
+    return replica_group_ids_;
+  }
+
+  // Returns the barrier config used for the CrossReplicaSum implementation of
+  // each backend.
+  string cross_replica_sum_barrier() const {
+    return cross_replica_sum_barrier_;
+  }
+  void set_cross_replica_sum_barrier(string barrier) {
+    cross_replica_sum_barrier_ = barrier;
+  }
+
+  tensorflow::gtl::optional<int64> all_reduce_id() const {
+    return all_reduce_id_;
+  }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // The group id of each replica for CrossReplicaSum.
+  std::vector<int64> replica_group_ids_;
+
+  // The string representation of the barrier config used for CrossReplicaSum.
+  string cross_replica_sum_barrier_;
+
+  // For Allreduce nodes from different modules, if they have the same
+  // all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will not be
+  // applied cross modules.
+  tensorflow::gtl::optional<int64> all_reduce_id_;
+};
+
 class HloReverseInstruction : public HloInstruction {
  public:
   explicit HloReverseInstruction(const Shape& shape, HloInstruction* operand,
@@ -436,6 +493,8 @@ class HloSliceInstruction : public HloInstruction {
 class HloConstantInstruction : public HloInstruction {
  public:
   explicit HloConstantInstruction(std::unique_ptr<Literal> literal);
+  // Used when the literal is too large and dropped.
+  explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.
   const Literal& literal() const { return *literal_; }
   // Returns a serialized representation of this instruction.
@@ -721,6 +780,67 @@ class HloReducePrecisionInstruction : public HloInstruction {
   // The bit sizes for a reduce-precision operation.
   int32 exponent_bits_ = 0;
   int32 mantissa_bits_ = 0;
+};
+
+class HloInfeedInstruction : public HloInstruction {
+ public:
+  explicit HloInfeedInstruction(const Shape& shape, const string& config);
+  // Returns the infeed configuration string. The infeed configuration includes
+  // any metadata needed for the backend compiler (e.g., infeed buffer address)
+  // and is target-dependent.
+  string infeed_config() const { return infeed_config_; }
+  void set_infeed_config(const string& config) { infeed_config_ = config; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // The string representation of the infeed configuration.
+  string infeed_config_;
+};
+
+class HloOutfeedInstruction : public HloInstruction {
+ public:
+  explicit HloOutfeedInstruction(const Shape& shape, HloInstruction* operand,
+                                 tensorflow::StringPiece outfeed_config);
+  // Returns the shape for the Outfeed instruction.
+  const Shape& outfeed_shape() const {
+    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape()));
+    return outfeed_shape_;
+  }
+  // Returns the config for the Outfeed instruction.
+  const string& outfeed_config() const { return outfeed_config_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // Shape of outfeed request.
+  Shape outfeed_shape_;
+  // Outfeed configuration information, only present for kOutfeed.
+  string outfeed_config_;
 };
 }  // namespace xla
 

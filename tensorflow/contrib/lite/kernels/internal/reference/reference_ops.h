@@ -950,11 +950,14 @@ inline void Relu6(const float* input_data, const Dims<4>& input_dims,
 }
 
 template <FusedActivationFunctionType Ac>
-void L2Normalization(const float* input_data, const Dims<4>& input_dims,
-                     float* output_data, const Dims<4>& output_dims) {
+void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
+                     float* output_data, const RuntimeShape& output_shape) {
   static_assert(Ac == FusedActivationFunctionType::kNone, "");
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
   for (int i = 0; i < outer_size; ++i) {
     float squared_l2_norm = 0;
     for (int c = 0; c < depth; ++c) {
@@ -1015,16 +1018,19 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
   *output_shift *= kReverseShift;
 }
 
-inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
+inline void L2Normalization(const uint8* input_data,
+                            const RuntimeShape& input_shape,
                             int32 input_zero_point, uint8* output_data,
-                            const Dims<4>& output_dims) {
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+                            const RuntimeShape& output_shape) {
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
   for (int i = 0; i < outer_size; ++i) {
     int32 square_l2_norm = 0;
     for (int c = 0; c < depth; c++) {
-      int32 diff =
-          input_data[Offset(input_dims, c, i, 0, 0)] - input_zero_point;
+      int32 diff = input_data[depth * i + c] - input_zero_point;
       square_l2_norm += diff * diff;
     }
     int32 inv_l2norm_multiplier;
@@ -1033,14 +1039,12 @@ inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
                                      &inv_l2norm_shift);
 
     for (int c = 0; c < depth; c++) {
-      int32 diff =
-          input_data[Offset(input_dims, c, i, 0, 0)] - input_zero_point;
+      int32 diff = input_data[depth * i + c] - input_zero_point;
       int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
           128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
       int32 unclamped_output_val = 128 + rescaled_diff;
       int32 output_val = std::min(255, std::max(0, unclamped_output_val));
-      output_data[Offset(output_dims, c, i, 0, 0)] =
-          static_cast<uint8>(output_val);
+      output_data[depth * i + c] = static_cast<uint8>(output_val);
     }
   }
 }
@@ -3821,7 +3825,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                           const float* filter_data, const Dims<4>& filter_dims,
                           int stride_width, int stride_height, int pad_width,
                           int pad_height, float* output_data,
-                          const Dims<4>& output_dims) {
+                          const Dims<4>& output_dims, float* /*im2col_data*/,
+                          const Dims<4>& /*im2col_dims*/) {
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
   const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
