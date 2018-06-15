@@ -627,6 +627,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       licenses = ["notice"],  # Apache 2.0
   )
 
+  java_import_external(
+      name = "com_squareup_javapoet",
+      jar_sha256 = "5bb5abdfe4366c15c0da3332c57d484e238bd48260d6f9d6acf2b08fdde1efea",
+      jar_urls = [
+          "http://mirror.bazel.build/repo1.maven.org/maven2/com/squareup/javapoet/1.9.0/javapoet-1.9.0.jar",
+          "http://repo1.maven.org/maven2/com/squareup/javapoet/1.9.0/javapoet-1.9.0.jar",
+      ],
+      licenses = ["notice"],  # Apache 2.0
+  )
+
   tf_http_archive(
       name = "com_google_pprof",
       urls = [
