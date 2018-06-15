@@ -156,7 +156,7 @@ config_setting(
 
 config_setting(
     name = "linux_s390x",
-    values = {"cpu": "x390x"},
+    values = {"cpu": "s390x"},
     visibility = ["//visibility:public"],
 )
 
