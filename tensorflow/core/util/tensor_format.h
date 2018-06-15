@@ -59,6 +59,12 @@ enum TensorFormat {
   // In the future we may change the meaning of these enums to include vectors
   // of other types such as int16x2, with op implementations automatically
   // determining which format is implied based on the datatype.
+
+  // FORMAT_HWNC is for TPUs.
+  FORMAT_HWNC = 4,
+
+  // FORMAT_HWCN is for TPUs.
+  FORMAT_HWCN = 5,
 };
 
 // Tensor format for convolutional filters.
@@ -105,11 +111,11 @@ string ToString(FilterTensorFormat format);
 inline int GetTensorSpatialDims(int num_dims, TensorFormat format) {
   switch (format) {
     case FORMAT_NHWC:
-      return num_dims - 2;  // Exclude N,C.
     case FORMAT_NCHW:
+    case FORMAT_HWNC:
+    case FORMAT_HWCN:
       return num_dims - 2;  // Exclude N,C.
     case FORMAT_NCHW_VECT_C:
-      return num_dims - 3;  // Exclude N,C,VectDim.
     case FORMAT_NHWC_VECT_W:
       // Note: the VECT_W is not counted as an independent spatial dim here,
       // since it just a component of the width dimension.
@@ -132,6 +138,8 @@ inline int GetTensorDimsFromSpatialDims(int num_spatial_dims,
   switch (format) {
     case FORMAT_NHWC:
     case FORMAT_NCHW:
+    case FORMAT_HWNC:
+    case FORMAT_HWCN:
       return num_spatial_dims + 2;  // Include N,C.
     case FORMAT_NCHW_VECT_C:
     case FORMAT_NHWC_VECT_W:
@@ -158,6 +166,10 @@ inline int GetTensorBatchDimIndex(int num_dims, TensorFormat format) {
     case FORMAT_NCHW_VECT_C:
     case FORMAT_NHWC_VECT_W:
       return 0;
+    case FORMAT_HWNC:
+      return num_dims - 2;
+    case FORMAT_HWCN:
+      return num_dims - 1;
     default:
       LOG(FATAL) << "Unknown format " << format;
       return -1;  // Avoid compiler warning about missing return value
@@ -170,8 +182,10 @@ inline int GetTensorBatchDimIndex(int num_dims, TensorFormat format) {
 inline int GetTensorFeatureDimIndex(int num_dims, TensorFormat format) {
   switch (format) {
     case FORMAT_NHWC:
+    case FORMAT_HWNC:
       return num_dims - 1;
     case FORMAT_NHWC_VECT_W:
+    case FORMAT_HWCN:
       return num_dims - 2;
     case FORMAT_NCHW:
     case FORMAT_NCHW_VECT_C:
@@ -210,6 +224,9 @@ inline int GetTensorSpatialDimIndex(int num_dims, TensorFormat format,
     case FORMAT_NCHW:
     case FORMAT_NCHW_VECT_C:
       return spatial_dim + 2;
+    case FORMAT_HWNC:
+    case FORMAT_HWCN:
+      return spatial_dim;
     default:
       LOG(FATAL) << "Unknown format " << format;
       return -1;  // Avoid compiler warning about missing return value
@@ -306,6 +323,32 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
       case '2': return 4;
       case 'H': return NUM_SPATIAL_DIMS;
       case 'W': return NUM_SPATIAL_DIMS + 1;
+      default:
+        LOG(FATAL) << "Invalid dimension: " << dimension;
+        return -1;  // Avoid compiler warning about missing return value
+    }
+  } else if (format == FORMAT_HWNC) {
+    switch (dimension) {
+      case '0': return 0;
+      case '1': return 1;
+      case '2': return 2;
+      case 'H': return NUM_SPATIAL_DIMS - 2;
+      case 'W': return NUM_SPATIAL_DIMS - 1;
+      case 'N': return NUM_SPATIAL_DIMS;
+      case 'C': return NUM_SPATIAL_DIMS + 1;
+      default:
+        LOG(FATAL) << "Invalid dimension: " << dimension;
+        return -1;  // Avoid compiler warning about missing return value
+    }
+  } else if (format == FORMAT_HWCN) {
+    switch (dimension) {
+      case '0': return 0;
+      case '1': return 1;
+      case '2': return 2;
+      case 'H': return NUM_SPATIAL_DIMS - 2;
+      case 'W': return NUM_SPATIAL_DIMS - 1;
+      case 'C': return NUM_SPATIAL_DIMS;
+      case 'N': return NUM_SPATIAL_DIMS + 1;
       default:
         LOG(FATAL) << "Invalid dimension: " << dimension;
         return -1;  // Avoid compiler warning about missing return value
