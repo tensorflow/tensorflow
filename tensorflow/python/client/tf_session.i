@@ -610,7 +610,7 @@ def TF_Reset(target, containers=None, config=None):
   }
 
   for (size_t i = 0; i < $1.size(); ++i) {
-    PyList_SET_ITEM($result, i, PyInt_FromLong($1[i]));
+    PyList_SET_ITEM($result, i, PyLong_FromLong($1[i]));
   }
 }
 
