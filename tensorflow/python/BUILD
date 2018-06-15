@@ -2428,6 +2428,7 @@ py_library(
     srcs = ["ops/script_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":framework_for_generated_wrappers",
         ":script_ops_gen",
         "//third_party/py/numpy",
