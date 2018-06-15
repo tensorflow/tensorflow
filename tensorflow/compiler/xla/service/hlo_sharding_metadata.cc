@@ -235,6 +235,23 @@ StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
 
 Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
                            const HloSharding& sharding) {
+  // Here is the place to call external sharding normalizers, which are
+  // implemented in other modules (ie, spatial partitioning).
+  // The signature of the external normalizer function should be something
+  // like:
+  //
+  //   StatusOr<bool> Normalizer(const DomainMetadata::Domain&,
+  //                             const HloSharding& sharding);
+  //
+  // The function should return true if it has processed the domain
+  // normalization, false if domain was not one recognized by it, or an error.
+  // We will call the functions in order below, and fall back to local code if
+  // none of the external normalizers acted on the domain.
+  // External normalizers should not handle the cases that are already handled
+  // locally.
+
+  // None of the external normalizers handled the domain sharding, try to see
+  // whether this is a single sharding first.
   auto single_sharding = sharding.ExtractSingleSharding();
   if (single_sharding) {
     // Shortcut the simple case. We have a unique sharding, so we call
