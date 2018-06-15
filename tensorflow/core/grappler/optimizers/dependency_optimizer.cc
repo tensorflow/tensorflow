@@ -65,7 +65,7 @@ void DeleteNodes(const std::set<int>& nodes_to_delete, GraphDef* graph) {
 
 }  // namespace
 
-bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) {
+bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
   if (!IsIdentity(node)) {
     return true;
   }
@@ -108,7 +108,7 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) {
   return true;
 }
 
-bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
+bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
   if (!fetch_nodes_known_ ||
       nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
@@ -137,6 +137,61 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
   }
   if (NumNonControlOutputs(node, *node_map_) > 0) {
     // The output values of this node may be needed.
+    return false;
+  }
+  return true;
+}
+
+bool DependencyOptimizer::BypassingNodeIsBeneficial(
+    const NodeDef& node, const std::vector<NodeDef*>& input_nodes,
+    const std::vector<NodeDef*>& output_nodes) const {
+  const bool is_identity = IsIdentity(node);
+  const int num_outputs = output_nodes.size();
+  const int num_inputs = node.input_size();
+
+  // Don't increase the number of edges in the graph.
+  if (num_inputs * num_outputs > num_inputs + num_outputs) {
+    return false;
+  }
+
+  // Make sure that we don't increase the number of edges that cross
+  // device boundaries.
+  if ((num_inputs == 1 && num_outputs > 1 &&
+       input_nodes[0]->device() != node.device()) ||
+      (num_inputs > 1 && num_outputs == 1 &&
+       output_nodes[0]->device() != node.device())) {
+    return false;
+  }
+
+  // TODO(rmlarsen): Not all device crossings are equally expensive.
+  // Assign a cost to each based on device affinity and compute a
+  // cost before and after.
+  const string& node_dev = node.device();
+  int num_cross_in = 0;
+  for (NodeDef* input_node : input_nodes) {
+    num_cross_in += static_cast<int>(input_node->device() != node_dev);
+  }
+  int num_cross_out = 0;
+  for (NodeDef* output_node : output_nodes) {
+    num_cross_out += static_cast<int>(output_node->device() != node_dev);
+  }
+  if (is_identity && num_cross_in > 0 && num_cross_out > 0) {
+    // This identity node follows a device crossing, so it might be
+    // following a _Recv node after partioning. Do not remove such nodes,
+    // unless they only have consumers on the same device as themselves.
+    return false;
+  }
+
+  // Make sure we do not increase the number of device crossings.
+  const int num_cross_before = num_cross_in + num_cross_out;
+  int num_cross_after = 0;
+  for (NodeDef* input_node : input_nodes) {
+    for (NodeDef* output_node : output_nodes) {
+      num_cross_after +=
+          static_cast<int>(input_node->device() != output_node->device());
+    }
+  }
+  if (num_cross_after > num_cross_before) {
     return false;
   }
   return true;
@@ -269,21 +324,11 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
   //    y --^> |          | --^> b       /\    +---+
   //           +----------+             y --^> b
 
-  if (is_noop || is_identity) {
-    if (is_identity && !SafeToRemoveIdentity(*node)) {
-      return;
-    }
-
+  if (is_noop || (is_identity && SafeToRemoveIdentity(*node))) {
     const auto& output_node_set = node_map_->GetOutputs(node_name);
     const std::vector<NodeDef*> output_nodes(output_node_set.begin(),
                                              output_node_set.end());
-    const int num_outputs = output_nodes.size();
     const int num_inputs = node->input_size();
-
-    // Don't increase the number of edges in the graph.
-    if (num_inputs * num_outputs > num_inputs + num_outputs) {
-      return;
-    }
     std::vector<NodeDef*> input_nodes;
     for (int i = 0; i < num_inputs; ++i) {
       NodeDef* input_node = node_map_->GetNode(node->input(i));
@@ -294,44 +339,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       input_nodes.push_back(input_node);
     }
 
-    // Make sure that we don't increase the number of edges that cross
-    // device boundaries.
-    if ((num_inputs == 1 && num_outputs > 1 &&
-         input_nodes[0]->device() != node->device()) ||
-        (num_inputs > 1 && num_outputs == 1 &&
-         output_nodes[0]->device() != node->device())) {
-      return;
-    }
-
-    // TODO(rmlarsen): Not all device crossings are equally expensive.
-    // Assign a cost to each based on device affinity and compute a
-    // cost before and after.
-    const string& node_dev = node->device();
-    int num_cross_in = 0;
-    for (NodeDef* input_node : input_nodes) {
-      num_cross_in += static_cast<int>(input_node->device() != node_dev);
-    }
-    int num_cross_out = 0;
-    for (NodeDef* output_node : output_nodes) {
-      num_cross_out += static_cast<int>(output_node->device() != node_dev);
-    }
-    if (is_identity && num_cross_in > 0 && num_cross_out > 0) {
-      // This identity node follows a device crossing, so it might be
-      // following a _Recv node after partioning. Do not remove such nodes,
-      // unless they only have consumers on the same device as themselves.
-      return;
-    }
-
-    // Make sure we do not increase the number of device crossings.
-    const int num_cross_before = num_cross_in + num_cross_out;
-    int num_cross_after = 0;
-    for (NodeDef* input_node : input_nodes) {
-      for (NodeDef* output_node : output_nodes) {
-        num_cross_after +=
-            static_cast<int>(input_node->device() != output_node->device());
-      }
-    }
-    if (num_cross_after > num_cross_before) {
+    if (!BypassingNodeIsBeneficial(*node, input_nodes, output_nodes)) {
       return;
     }
 
