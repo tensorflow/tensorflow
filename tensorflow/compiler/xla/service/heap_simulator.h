@@ -34,21 +34,6 @@ limitations under the License.
 
 namespace xla {
 
-// Returns the minimum memory required to compute an HLO module where all
-// computations have been scheduled (represented by the given module_sequence),
-// assuming no fragmentation.
-StatusOr<int64> MinimumMemoryForModule(
-    const SequentialHloOrdering::HloModuleSequence& module_sequence,
-    const LogicalBuffer::SizeFunction& size_function);
-
-// Returns the minimum memory required to compute the given computation,
-// assuming no fragmentation.
-StatusOr<int64> MinimumMemoryForComputation(
-    const HloComputation& computation,
-    const std::vector<const HloInstruction*>& sequence,
-    const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function);
-
 // Forward declare classes defined below.
 class HeapAlgorithm;
 
@@ -100,6 +85,23 @@ class HeapSimulator {
     const BufferValueFlatSet* buffers_to_assign;
   };
 
+  // Returns the minimum memory required to compute an HLO module where all
+  // computations have been scheduled (represented by the given
+  // module_sequence), assuming no fragmentation.
+  static StatusOr<int64> MinimumMemoryForModule(
+      const SequentialHloOrdering::HloModuleSequence& module_sequence,
+      const LogicalBuffer::SizeFunction& size_function);
+
+  // Returns the minimum memory required to compute the given computation,
+  // assuming no fragmentation.
+  static StatusOr<int64> MinimumMemoryForComputation(
+      const HloComputation& computation,
+      const std::vector<const HloInstruction*>& sequence,
+      const TuplePointsToAnalysis& points_to_analysis,
+      const LogicalBuffer::SizeFunction& size_function,
+      const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+          memory_by_computation = nullptr);
+
   // Run the heap simulation with the given algorithm, assuming the given
   // module_sequence, which must contain a topologically-consistent total
   // ordering of all instructions within each computation. The result is invalid
@@ -126,7 +128,9 @@ class HeapSimulator {
       const std::vector<const HloInstruction*>& instruction_sequence,
       const TuplePointsToAnalysis& points_to_analysis,
       const BufferValue::SizeFunction& size_fn,
-      const Options& options = Options());
+      const Options& options = Options(),
+      const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+          memory_by_computation = nullptr);
 
  private:
   // If 'module_sequence' is non-null, it is used to find kCall and kWhile
@@ -135,7 +139,9 @@ class HeapSimulator {
   HeapSimulator(
       std::unique_ptr<HeapAlgorithm> algorithm,
       const BufferValue::SizeFunction& size_fn, const Options& options,
-      const SequentialHloOrdering::HloModuleSequence* module_sequence);
+      const SequentialHloOrdering::HloModuleSequence* module_sequence = nullptr,
+      const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+          memory_by_computation = nullptr);
   ~HeapSimulator();
 
   Status RunComputation(
@@ -159,7 +165,13 @@ class HeapSimulator {
   const std::unique_ptr<HeapAlgorithm> algorithm_;
   const BufferValue::SizeFunction size_fn_;
   const Options options_;
+  // module_sequence_ is set by buffer assignment, and memory_by_computation_ is
+  // set by hlo scheduling. Then, in RunComputation, we check both in order to
+  // handle subcomputations. It would be good to unify the handling of
+  // subcomputations, but it's not clear how.
   const SequentialHloOrdering::HloModuleSequence* module_sequence_;
+  const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+      memory_by_computation_;
 
   // In addition to Alloc and Free, the heap simulator exposes a concept of
   // buffer sharing.  When ShareBuffer is called, instead of allocating new
@@ -204,6 +216,11 @@ class HeapAlgorithm {
   // Alloc allocates a buffer of 'size' bytes.
   virtual void Alloc(const BufferValue* buffer, int64 size) = 0;
 
+  virtual void AccountForSubcomputationMemory(
+      const HloInstruction* instruction,
+      const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+          memory_by_computation) {}
+
   // Free de-allocates a previously allocated buffer.
   virtual void Free(const BufferValue* buffer, int64 size) = 0;
 
@@ -222,7 +239,14 @@ class NoFragmentationStatsHeap : public HeapAlgorithm {
   ~NoFragmentationStatsHeap() override = default;
 
   void Alloc(const BufferValue* buffer, int64 size) override;
+
+  void AccountForSubcomputationMemory(
+      const HloInstruction* instruction,
+      const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+          memory_by_computation) override;
+
   void Free(const BufferValue* buffer, int64 size) override;
+
   Result Finish() override;
 
  private:

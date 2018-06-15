@@ -1101,6 +1101,7 @@ tf_cc_test(
     srcs = ["hlo_scheduling_test.cc"],
     deps = [
         ":buffer_value",
+        ":heap_simulator",
         ":hlo",
         ":hlo_ordering",
         ":hlo_scheduling",

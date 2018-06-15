@@ -631,8 +631,9 @@ Status BufferAssignment::ComputeSummaryStats() {
     }
   }
   if (module_sequence.size() == module_->computation_count()) {
-    TF_ASSIGN_OR_RETURN(const int64 min_size,
-                        MinimumMemoryForModule(module_sequence, buffer_size_));
+    TF_ASSIGN_OR_RETURN(
+        const int64 min_size,
+        HeapSimulator::MinimumMemoryForModule(module_sequence, buffer_size_));
     stats_.total_fragmentation_bytes = stats_.total_allocation_bytes - min_size;
   }
 
