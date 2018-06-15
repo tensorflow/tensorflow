@@ -353,12 +353,12 @@ void VerboseLogUnknownDimensionSources(
 class TopoQueue {
  public:
   explicit TopoQueue(const std::unordered_map<const NodeDef*, int>& topo_order)
-      : queue_(CompareNodes(topo_order)) {}
-  void push(const NodeDef* n) { queue_.insert(n); }
+      : topo_order_(topo_order) {}
+  void push(const NodeDef* n) { queue_.emplace(n, topo_order_.at(n)); }
   const NodeDef* pop() {
     CHECK(!empty());
     auto it = queue_.begin();
-    const NodeDef* n = *it;
+    const NodeDef* n = it->first;
     queue_.erase(it);
     return n;
   }
@@ -367,20 +367,16 @@ class TopoQueue {
   std::size_t size() const { return queue_.size(); }
 
  private:
+  using NodeAndId = std::pair<const NodeDef*, int>;
   // Graph nodes are created in (roughly) topological order. Therefore we can
   // use their id to ensure they're sorted topologically.
-  struct CompareNodes {
-    explicit CompareNodes(
-        const std::unordered_map<const NodeDef*, int>& topo_ordering)
-        : topo_order(topo_ordering) {}
-    bool operator()(const NodeDef* lhs, const NodeDef* rhs) const {
-      return topo_order.at(lhs) < topo_order.at(rhs);
+  struct OrderByIdAscending {
+    bool operator()(const NodeAndId& lhs, const NodeAndId& rhs) const {
+      return lhs.second < rhs.second;
     }
-
-   private:
-    const std::unordered_map<const NodeDef*, int>& topo_order;
   };
-  std::set<const NodeDef*, CompareNodes> queue_;
+  const std::unordered_map<const NodeDef*, int>& topo_order_;
+  std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
 // Processes symbolic shapes.
