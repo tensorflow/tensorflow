@@ -20,12 +20,22 @@ limitations under the License.
 
 namespace tensorflow {
 
+/* ABSL_CONST_INIT */ thread_local int per_thread_max_parallism = 1000000;
+
+void SetPerThreadMaxParallelism(int max_parallelism) {
+  CHECK_LE(0, max_parallelism);
+  per_thread_max_parallism = max_parallelism;
+}
+
+int GetPerThreadMaxParallelism() { return per_thread_max_parallism; }
+
 void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
            int64 cost_per_unit, std::function<void(int64, int64)> work) {
   CHECK_GE(total, 0);
   if (total == 0) {
     return;
   }
+  max_parallelism = std::min(max_parallelism, GetPerThreadMaxParallelism());
   if (max_parallelism <= 1) {
     // Just inline the whole work since we only have 1 thread (core).
     work(0, total);
