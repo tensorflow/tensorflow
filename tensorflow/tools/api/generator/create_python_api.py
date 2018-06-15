@@ -338,7 +338,8 @@ def create_api_files(
     if module or not root_init_template:
       contents = (
           _GENERATED_FILE_HEADER %
-          get_module_docstring(module, package, api_name) + text)
+          get_module_docstring(module, package, api_name) +
+          text + _GENERATED_FILE_FOOTER)
     else:
       # Read base init file
       with open(root_init_template, 'r') as root_init_template_file:
