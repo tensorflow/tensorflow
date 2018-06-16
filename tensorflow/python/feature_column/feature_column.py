@@ -3581,6 +3581,3 @@ class _SequenceCategoricalColumn(
     return _CategoricalColumn.IdWeightPair(id_tensor, weight_tensor)
 
 
-# TODO(xiejw): Remove the following alias once call sites are updated.
-_clean_feature_columns = _normalize_feature_columns
-_to_sparse_input = _to_sparse_input_and_drop_ignore_values
