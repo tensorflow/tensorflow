@@ -33,13 +33,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import serialization
 from tensorflow.python.util.tf_export import tf_export
 
-# pylint: disable=g-import-not-at-top
-try:
-  import h5py
-  HDF5_OBJECT_HEADER_LIMIT = 64512
-except ImportError:
-  h5py = None
-
 try:
   import yaml
 except ImportError:
@@ -73,8 +66,11 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
   Raises:
       ImportError: if h5py is not available.
   """
-
-  if h5py is None:
+  # pylint: disable=g-import-not-at-top
+  try:
+    import h5py
+    HDF5_OBJECT_HEADER_LIMIT = 64512
+  except ImportError:
     raise ImportError('`save_model` requires h5py.')
 
   from tensorflow.python.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
