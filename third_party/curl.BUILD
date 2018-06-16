@@ -7,6 +7,7 @@ exports_files(["COPYING"])
 
 CURL_WIN_COPTS = [
     "/Iexternal/curl/lib",
+    "/DBUILDING_LIBCURL",
     "/DHAVE_CONFIG_H",
     "/DCURL_DISABLE_FTP",
     "/DCURL_DISABLE_NTLM",
@@ -262,6 +263,7 @@ cc_library(
         "//conditions:default": [
             "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
+            "-DBUILDING_LIBCURL",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_FTP",
             "-DCURL_DISABLE_NTLM",  # turning it off in configure is not enough
@@ -682,6 +684,7 @@ genrule(
         "#  define SIZEOF_INT 4",
         "#  define SIZEOF_LONG 8",
         "#  define SIZEOF_OFF_T 8",
+        "#  define SIZEOF_CURL_OFF_T 8",
         "#  define SIZEOF_SHORT 2",
         "#  define SIZEOF_SIZE_T 8",
         "#  define SIZEOF_TIME_T 8",
