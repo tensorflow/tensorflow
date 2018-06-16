@@ -27,6 +27,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import resource_loader
 
 _image_ops_so = loader.load_op_library(
@@ -507,6 +510,82 @@ def connected_components(images):
       return components[0, :, :]
     else:
       return components
+
+def recursive_fill(mask, threshold, total_dims, max_iter=None):
+  """Recursively iterates until the provided 0-1s 2D or 3D mask is filled.
+  If max_iter is provided, it will iterate for a number of times.
+  If total_dims is 2, threshold is recommended to be 4.
+  If total_dims is 3, threshold is recommended to be 13.
+
+  Args:
+    mask: A 2D or 3D `Tensor` of 0s and 1s representing the mask to be filled.
+    threshold: A threshold indicating sensitive the hole detector will be.
+    total_dims: Number of dimensions of the mask. Only 2 or 3 allowed.
+    max_iter: Number of maximum iterations performed to fill the mask. If
+      max_iter=1 it will be the same as performing "dilation".
+
+  Returns:
+    The mask filled.
+
+  Example:
+
+  ```python
+  init_array = (np.random.random((10,10,10))>0.4)*1
+  inp = tf.placeholder(tf.float32,name="my_input")
+  res_fill = recursive_mask_fill(inp,13,3)
+
+  sess = tf.Session()
+  filled_mask = sess.run(res_fill,feed_dict={inp:init_array})
+  ```
+
+  """
+  if not total_dims in [2, 3]:
+    raise Exception("total_dims is expected to be 2 or 3")
+
+  with ops.name_scope("recursive_fill"):
+    mask = ops.convert_to_tensor(mask, name="mask")
+    orig_dim = array_ops.shape(mask)
+    filter_cube_size = math_ops.pow(3, total_dims)
+
+    filt = variables.Variable(array_ops.ones(filter_cube_size),
+                              validate_shape=False)
+    center_index = math_ops.cast(filter_cube_size/2, dtypes.int32)
+    filt = state_ops.scatter_update(filt, center_index, -99)
+    filt = array_ops.reshape(filt, [3 for _ in range(total_dims)]+[1, 1])
+
+    mask = array_ops.expand_dims(mask, 0)
+    mask = array_ops.expand_dims(mask, -1)
+    new_voxels = array_ops.ones_like(mask)
+
+    # Note: the "y" argument needs to be given because as while_loop returns
+    # two elements, it requires two inputs as well.
+    def loop_body(x, y): # pylint: disable=unused-argument
+      """ Internal function use to convole to fill and detect the holes.
+          It will return the mask filled and the location of the holes.
+
+          Args:
+            x: The mask `Tensor` with values 0 or 1 to be filled.
+            y: A `Tensor` corresponding to the filter used to detect holes.
+
+          Return:
+            A list of two elements:
+            1) A `Tensor` with the mask filled after a single iteration.
+            2) A sparse `Tensor` where the ones represent the location of
+               the holes.
+      """
+      if total_dims == 2:
+        conv = nn_ops.conv2d(x, filt, strides=[1, 1, 1, 1], padding="SAME")
+      else:
+        conv = nn_ops.conv3d(x, filt, strides=[1, 1, 1, 1, 1], padding="SAME")
+      holes = array_ops.where(conv >= threshold,
+                              array_ops.ones_like(x), array_ops.zeros_like(x))
+      return [x+holes, holes]
+
+    loop_cond = lambda x, y: math_ops.not_equal(math_ops.reduce_sum(y), 0)
+    r = control_flow_ops.while_loop(loop_cond, loop_body, [mask, new_voxels],
+                                    maximum_iterations=max_iter)
+
+    return array_ops.reshape(r[0], orig_dim)
 
 
 ops.NotDifferentiable("BipartiteMatch")
