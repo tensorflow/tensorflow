@@ -22,6 +22,7 @@ namespace custom {
 
 TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
 TfLiteRegistration* Register_MFCC();
+TfLiteRegistration* Register_SSD_POSTPROCESS();
 
 }  // namespace custom
 
@@ -180,6 +181,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
   AddCustom("AudioSpectrogram",
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
+  AddCustom("TFLite_SSD_PostProcess",
+            tflite::ops::custom::Register_SSD_POSTPROCESS());
 }
 
 }  // namespace builtin

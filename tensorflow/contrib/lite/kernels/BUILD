@@ -174,6 +174,7 @@ cc_library(
         "sparse_to_dense.cc",
         "split.cc",
         "squeeze.cc",
+        "ssd_postprocessing.cc",
         "strided_slice.cc",
         "sub.cc",
         "svdf.cc",
@@ -236,6 +237,20 @@ tf_cc_test(
     name = "mfcc_test",
     size = "small",
     srcs = ["mfcc_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "ssd_postprocess_test",
+    size = "small",
+    srcs = ["ssd_postprocess_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
