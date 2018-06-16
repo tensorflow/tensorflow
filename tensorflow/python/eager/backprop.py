@@ -681,8 +681,8 @@ class GradientTape(object):
     g.watch(x)
     y = x * x
     z = y * y
-  dz_dx = g.gradient(z, x)  # 108.0 (4*x^3 at x = 3)
-  dy_dx = g.gradient(y, x)  # 6.0
+  dz_dx = g.gradient(z, x)  # 6.0
+  dy_dx = g.gradient(y, x)  # 108.0 (4*x^3 at x = 3)
   del g  # Drop the reference to the tape
   ```
 
