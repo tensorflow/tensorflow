@@ -155,6 +155,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_s390x",
+    values = {"cpu": "s390x"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "debug",
     values = {
         "compilation_mode": "dbg",
@@ -422,6 +428,22 @@ filegroup(
 filegroup(
     name = "docs_src",
     data = glob(["docs_src/**/*.md"]),
+)
+
+cc_library(
+    name = "grpc",
+    deps = select({
+        ":linux_s390x": ["@grpc//:grpc_unsecure"],
+        "//conditions:default": ["@grpc"],
+    }),
+)
+
+cc_library(
+    name = "grpc++",
+    deps = select({
+        ":linux_s390x": ["@grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@grpc//:grpc++"],
+    }),
 )
 
 # A shared object which includes registration mechanisms for ops and
