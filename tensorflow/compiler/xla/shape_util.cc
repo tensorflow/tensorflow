@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
@@ -944,6 +945,11 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
     }
   });
   return leaves;
+}
+
+/* static */ bool ShapeUtil::HasDegenerateDimensions(const Shape& shape) {
+  CHECK(ShapeUtil::IsArray(shape));
+  return ArrayContains<int64>(AsInt64Slice(shape.dimensions()), 1);
 }
 
 namespace {
