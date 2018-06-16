@@ -1,7 +1,7 @@
 
 So we all need to make sure thst this womderful world of artificial sophistication does not corrupt the DSL of our
 
-emotional monotheistic God's planet as Earth...as i previously stated in 2017 and 2018 ....is still "Gods fucking planet for human beings"
+emotional monotheistic God's planet as Earth...as i previ"ously stated in 2017 and 2018 ....is still "Gods fucking planet for human beings""
 
 So heres the deal from my east coast trauma: 
 
