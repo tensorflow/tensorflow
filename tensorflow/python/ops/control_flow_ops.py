@@ -602,7 +602,6 @@ def _EnforceShapeInvariant(merge_var, next_var):
       enter = merge_var.op.inputs[0].op
       assert util.IsLoopEnter(enter)
       input_t = enter.inputs[0]
-      assert input_t.shape == m_shape
       raise ValueError(
           "Input tensor '%s' enters the loop with shape %s, but has shape %s "
           "after one iteration. To allow the shape to vary across iterations, "
