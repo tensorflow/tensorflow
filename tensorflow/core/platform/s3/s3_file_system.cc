@@ -24,9 +24,9 @@ limitations under the License.
 #include <aws/core/config/AWSProfileConfigLoader.h>
 #include <aws/core/utils/FileSystemUtils.h>
 #include <aws/core/utils/StringUtils.h>
+#include <aws/core/utils/StringUtils.h>
 #include <aws/core/utils/logging/AWSLogging.h>
 #include <aws/core/utils/logging/LogSystemInterface.h>
-#include <aws/core/utils/StringUtils.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/S3Errors.h>
 #include <aws/s3/model/CopyObjectRequest.h>
@@ -256,7 +256,8 @@ class S3WritableFile : public WritableFile {
     outfile_->clear();
     outfile_->seekp(offset);
     if (!putObjectOutcome.IsSuccess()) {
-      return errors::Unknown(putObjectOutcome.GetError().GetExceptionName(), ": ", putObjectOutcome.GetError().GetMessage());
+      return errors::Unknown(putObjectOutcome.GetError().GetExceptionName(),
+                             ": ", putObjectOutcome.GetError().GetMessage());
     }
     return Status::OK();
   }
@@ -409,7 +410,8 @@ Status S3FileSystem::GetChildren(const string& dir,
     auto listObjectsOutcome =
         this->GetS3Client()->ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
-      return errors::Unknown(listObjectsOutcome.GetError().GetExceptionName(), ": ", listObjectsOutcome.GetError().GetMessage());
+      return errors::Unknown(listObjectsOutcome.GetError().GetExceptionName(),
+                             ": ", listObjectsOutcome.GetError().GetMessage());
     }
 
     listObjectsResult = listObjectsOutcome.GetResult();
@@ -443,7 +445,8 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
     headBucketRequest.WithBucket(bucket.c_str());
     auto headBucketOutcome = this->GetS3Client()->HeadBucket(headBucketRequest);
     if (!headBucketOutcome.IsSuccess()) {
-      return errors::Unknown(headBucketOutcome.GetError().GetExceptionName(), ": ", headBucketOutcome.GetError().GetMessage());
+      return errors::Unknown(headBucketOutcome.GetError().GetExceptionName(),
+                             ": ", headBucketOutcome.GetError().GetMessage());
     }
     stats->length = 0;
     stats->is_directory = 1;
@@ -504,7 +507,8 @@ Status S3FileSystem::DeleteFile(const string& fname) {
   auto deleteObjectOutcome =
       this->GetS3Client()->DeleteObject(deleteObjectRequest);
   if (!deleteObjectOutcome.IsSuccess()) {
-    return errors::Unknown(deleteObjectOutcome.GetError().GetExceptionName(), ": ", deleteObjectOutcome.GetError().GetMessage());
+    return errors::Unknown(deleteObjectOutcome.GetError().GetExceptionName(),
+                           ": ", deleteObjectOutcome.GetError().GetMessage());
   }
   return Status::OK();
 }
@@ -602,7 +606,8 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
     auto listObjectsOutcome =
         this->GetS3Client()->ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
-      return errors::Unknown(listObjectsOutcome.GetError().GetExceptionName(), ": ", listObjectsOutcome.GetError().GetMessage());
+      return errors::Unknown(listObjectsOutcome.GetError().GetExceptionName(),
+                             ": ", listObjectsOutcome.GetError().GetMessage());
     }
 
     listObjectsResult = listObjectsOutcome.GetResult();
@@ -620,7 +625,8 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       auto copyObjectOutcome =
           this->GetS3Client()->CopyObject(copyObjectRequest);
       if (!copyObjectOutcome.IsSuccess()) {
-        return errors::Unknown(copyObjectOutcome.GetError().GetExceptionName(), ": ", copyObjectOutcome.GetError().GetMessage());
+        return errors::Unknown(copyObjectOutcome.GetError().GetExceptionName(),
+                               ": ", copyObjectOutcome.GetError().GetMessage());
       }
 
       deleteObjectRequest.SetBucket(src_bucket.c_str());
@@ -629,7 +635,9 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       auto deleteObjectOutcome =
           this->GetS3Client()->DeleteObject(deleteObjectRequest);
       if (!deleteObjectOutcome.IsSuccess()) {
-        return errors::Unknown(deleteObjectOutcome.GetError().GetExceptionName(), ": ", deleteObjectOutcome.GetError().GetMessage());
+        return errors::Unknown(
+            deleteObjectOutcome.GetError().GetExceptionName(), ": ",
+            deleteObjectOutcome.GetError().GetMessage());
       }
     }
     listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
