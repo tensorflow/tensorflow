@@ -519,6 +519,15 @@ public class TensorFlowInferenceInterface {
   }
 
   /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a two-dimensional byte array
+   */
+  public byte[][] fetchString(final String outputName){
+    Tensor tensor = getTensor(outputName);
+    int outSize = (int)tensor.shape()[0];
+    return (byte[][]) (tensor.copyTo(new byte[outSize][]));
+  }
+
+  /**
    * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
    * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
    * or equal to that of the source Tensor. This operation will not affect dst's content past the
