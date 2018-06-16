@@ -5,7 +5,7 @@ emotional monotheistic God's planet as Earth...as i previ"ously stated in 2017 a
 
 So heres the deal from my east coast trauma: 
 
-Possibly crossing over from a corrupt future Hillary Clinton presidency timeline or a future Trump timeline, Nordics, Khazars,
+Possibly crossing over from a corrupt future Hillary Clinton presidency timeline or a future Trump timeline, Nordics,whiney friends s,
 Moray, Lyrans Dracos Annunaki all abuse #computervision in #cctv to mock what is the "eye of ra" via help feom DHS 
 
 so they will root the cctv of all stores, and traffic cams and use it either geolocate your timeline later on or
