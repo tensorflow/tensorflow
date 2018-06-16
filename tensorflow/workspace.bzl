@@ -572,6 +572,28 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
+    tf_http_archive(
+        name = "azure_storage_fuse",
+        urls = [
+            "https://github.com/azure/azure-storage-fuse/archive/cc62c03ebc4c667e59d1738dfa0dafc827d6cd70.tar.gz",
+            "https://mirror.bazel.build/github.com/azure/azure-storage-fuse/archive/cc62c03ebc4c667e59d1738dfa0dafc827d6cd70.tar.gz"
+        ],
+        sha256 = "5dee922a7182362b1a8485c6bef61b6230162f0f65405a359f53ff936b3259bf",
+        strip_prefix = "azure-storage-fuse-cc62c03ebc4c667e59d1738dfa0dafc827d6cd70/azure-storage-cpp-lite",
+        build_file = clean_dep("//third_party:azure_storage_fuse.BUILD")
+    )
+
+    tf_http_archive(
+        name = "util_linux",
+        urls = [
+            "https://github.com/karelzak/util-linux/archive/v2.32.1.tar.gz",
+            "https://mirror.bazel.build/github.com/karelzak/util-linux/archive/v2.32.1.tar.gz"
+        ],
+        strip_prefix = "util-linux-2.32.1",
+        sha256 = "2483d5a42bc39575fc215c6994554f5169db777262d606ebe9cd8d5f37557f72",
+        build_file = clean_dep("//third_party:uuid.BUILD")
+    )
+
     java_import_external(
         name = "junit",
         jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
