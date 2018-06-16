@@ -569,8 +569,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
             reducers.push_back(inst->to_apply());
             reduce_output_shapes.push_back(std::move(output_shape_index));
           } else {
-            CHECK(ShapeUtil::Compatible(first_reduce->operand(0)->shape(),
-                                        inst->shape()));
+            CHECK(ShapeUtil::CompatibleIgnoringElementType(
+                first_reduce->operand(0)->shape(), inst->shape()));
             extra_output_gens.emplace_back(fused_emitter.GetGenerator(inst),
                                            std::move(output_shape_index));
           }

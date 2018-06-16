@@ -514,5 +514,44 @@ XLA_TEST_F(MultiOutputFusionTest,
                    Literal::CreateR2<float>({{6, 6}, {6, 8}}))));
 }
 
+XLA_TEST_F(MultiOutputFusionTest,
+           DISABLED_ON_CPU(MultiOutputReduceFusionDifferentElementTypes)) {
+  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+    fused_reduce (p0: f16[2,2,2]) -> (f32[2,2], f32[2,2], f16[2,2,2]) {
+      p0 = f16[2,2,2]{2,1,0} parameter(0)
+      convert = f32[2,2,2]{2,1,0} convert(p0)
+      c0 = f32[] constant(0)
+      r1 = f32[2,2]{1,0} reduce(convert, c0), dimensions={2}, to_apply=Add
+      mul = f32[2,2,2]{2,1,0} multiply(convert, convert)
+      c1 = f32[] constant(5)
+      r2 = f32[2,2]{1,0} reduce(mul, c1), dimensions={2}, to_apply=Max
+      ROOT tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}, f16[2,2,2]{2,1,0})
+                   tuple(r1, r2, p0)
+    }
+
+    ENTRY reduce {
+      p = f16[2,2,2]{2,1,0} parameter(0)
+      ROOT fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}, f16[2,2,2]{2,1,0}) fusion(p),
+                    kind=kInput, calls=fused_reduce
+    })");
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR3<Eigen::half>(
+      {{{Eigen::half(1), Eigen::half(2)}, {Eigen::half(3), Eigen::half(4)}},
+       {{Eigen::half(5), Eigen::half(6)}, {Eigen::half(7), Eigen::half(8)}}});
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *Literal::MakeTupleOwned(
+          Literal::CreateR2<float>({{3, 7}, {11, 15}}),
+          Literal::CreateR2<float>({{5, 16}, {36, 64}}),
+          Literal::CreateR3<Eigen::half>({{{Eigen::half(1), Eigen::half(2)},
+                                           {Eigen::half(3), Eigen::half(4)}},
+                                          {{Eigen::half(5), Eigen::half(6)},
+                                           {Eigen::half(7), Eigen::half(8)}}})),
+      *result));
+}
+
 }  // namespace
 }  // namespace xla
