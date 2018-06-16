@@ -512,6 +512,48 @@ class FunctionTest(test.TestCase):
     g = backprop.gradients_function(wrapper, [0])(constant_op.constant(0.0))
     self.assertAllEqual(g[0], 1.)
 
+  def testNestedDifferentiableFunction(self):
+    @function.defun
+    def foo(a, b):
+      return a * math_ops.add(a, b)
+
+    @function.defun
+    def bar(x):
+      return foo(x, 1.0)
+
+    x = constant_op.constant(5.0)
+    with backprop.GradientTape() as tp:
+      tp.watch(x)
+      result = bar(x)
+    grad = tp.gradient(result, x)
+
+    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  def testNestedDifferentiableFunctionNoneOutputs(self):
+    @function.defun
+    def foo(a, b):
+      return None, a * math_ops.add(a, b), None, 2*a
+
+    @function.defun
+    def bar(x):
+      return foo(x, 1.0)
+
+    x = constant_op.constant(5.0)
+    with backprop.GradientTape(persistent=True) as tp:
+      tp.watch(x)
+      none1, r1, none2, r2 = bar(x)
+    g1 = tp.gradient(r1, x)  # pylint: disable=unused-variable
+    g2 = tp.gradient(r2, x)
+
+    self.assertAllEqual(r1, 30.0)
+    self.assertAllEqual(r2, 10.0)
+    self.assertIs(none1, None)
+    self.assertIs(none2, None)
+    # TODO(b/110213087) Differentiating nested tfe.defuns returning some
+    # Nones does not work. The following returns 1 instead of correct 11.
+    # self.assertAllEqual(g1, 2 * 5.0 + 1.0)
+    self.assertAllEqual(g2, 2.0)
+
   def testNoneOutput(self):
 
     @function.defun

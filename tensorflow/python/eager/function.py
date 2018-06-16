@@ -449,8 +449,11 @@ class GraphModeFunction(object):
       if not outputs:
         return op
       outputs = [outputs] if isinstance(outputs, ops.Tensor) else list(outputs)
-      for i, s in enumerate(self._output_shapes):
-        outputs[i].set_shape(s)
+
+      shapes = [shape for shape in self._output_shapes if shape is not None]
+      for i, shape in enumerate(shapes):
+        outputs[i].set_shape(shape)
+
     real_outputs = outputs[:len(self._returns)]
     side_outputs = outputs[len(self._returns):]
 
@@ -543,8 +546,10 @@ class GraphModeFunction(object):
       result = op.outputs
       if not result:
         return op
-      for i, s in enumerate(self._output_shapes):
-        result[i].set_shape(s)
+
+      shapes = [shape for shape in self._output_shapes if shape is not None]
+      for i, shape in enumerate(shapes):
+        result[i].set_shape(shape)
 
     return self._build_call_outputs(result)
 

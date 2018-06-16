@@ -49,6 +49,21 @@ class EagerTest(XLATestCase):
       product = three * five
       self.assertAllEqual(15, product)
 
+  def testGradientTape(self):
+    with self.test_scope():
+
+      x = constant_op.constant(1.0)
+      y = constant_op.constant(10.0)
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(x)
+        tape.watch(y)
+        a = x + y + x * y
+      da_dx = tape.gradient(a, x)
+      da_dy = tape.gradient(a, y)
+
+    self.assertEqual(11.0, da_dx.numpy())
+    self.assertEqual(2.0, da_dy.numpy())
+
   def testExecuteListOutputLen0(self):
     with self.test_scope():
       empty = constant_op.constant([], dtype=dtypes.float32)
@@ -384,6 +399,24 @@ class EagerFunctionTest(XLATestCase):
 
     self.assertEqual(75, y.numpy())
     self.assertEqual(30, dy.numpy())
+
+  def testSliceInDefun(self):
+    with self.test_scope():
+
+      @function.defun(compiled=True)
+      def f(x, y):
+        return x[0::2, y:, ...]
+
+      x = array_ops.ones([2, 3, 4])
+      y = array_ops.ones([], dtype=dtypes.int32)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        tape.watch(y)
+        z = f(x, y)
+      dz = tape.gradient(z, x)
+
+      self.assertAllEqual(np.ones([1, 2, 4]), z.numpy())
+      self.assertAllEqual((2, 3, 4), dz.shape.as_list())
 
 
 class ExcessivePaddingTest(XLATestCase):
