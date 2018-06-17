@@ -1137,7 +1137,12 @@ class GlorotUniform(VarianceScaling):
   def __init__(self,
                seed=None,
                dtype=dtypes.float32):
-    super(GlorotUniform, self).__init__(scale=1.0, mode="fan_avg", distribution="uniform", seed=seed, dtype=dtype)
+    super(GlorotUniform, self).__init__(
+        scale=1.0,
+        mode="fan_avg",
+        distribution="uniform",
+        seed=seed,
+        dtype=dtype)
 
   def get_config(self):
     return {
@@ -1166,7 +1171,12 @@ class GlorotNormal(VarianceScaling):
   def __init__(self,
                seed=None,
                dtype=dtypes.float32):
-    super(GlorotNormal, self).__init__(scale=1.0, mode="fan_avg", distribution="normal", seed=seed, dtype=dtype)
+    super(GlorotNormal, self).__init__(
+        scale=1.0,
+        mode="fan_avg",
+        distribution="normal",
+        seed=seed,
+        dtype=dtype)
 
   def get_config(self):
     return {
