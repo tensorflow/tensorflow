@@ -3524,8 +3524,6 @@ inline void Exp(const T* input_data, const size_t num_elements,
 }
 
 // A generic reduce method that can be used for reduce_sum, reduce_mean, etc.
-// It takes a reducer function as input and returns false when numeric overflow
-// is detected.
 // This method iterates through input data and reduce elements along the
 // dimensions given in axis.
 template <typename In, typename Out>
@@ -3533,8 +3531,7 @@ inline bool Reduce(const In* input_data, const int* input_dims,
                    const int* output_dims, const int input_num_dims,
                    const int output_num_dims, const int* axis,
                    const int num_axis, int* input_iter,
-                   Out reducer(Out current, const In in, bool* overflow),
-                   Out* output_data) {
+                   Out reducer(Out current, const In in), Out* output_data) {
   // Reset input iterator.
   TFLITE_DCHECK(input_num_dims > 0);
   for (int idx = 0; idx < input_num_dims; ++idx) {
@@ -3546,10 +3543,8 @@ inline bool Reduce(const In* input_data, const int* input_dims,
         ReducedOutputOffset(input_num_dims, input_dims, input_iter, 0, nullptr);
     size_t output_offset = ReducedOutputOffset(input_num_dims, input_dims,
                                                input_iter, num_axis, axis);
-    bool overflow = false;
-    output_data[output_offset] = reducer(output_data[output_offset],
-                                         input_data[input_offset], &overflow);
-    if (overflow) return false;
+    output_data[output_offset] =
+        reducer(output_data[output_offset], input_data[input_offset]);
   } while (NextIndex(input_num_dims, input_dims, input_iter));
   return true;
 }
@@ -3584,13 +3579,46 @@ inline bool ReduceSumImpl(const In* input_data, const int* input_dims,
                           const int output_num_dims, const int* axis,
                           const int num_axis, int* input_iter,
                           Out* output_data) {
-  auto reducer = [](Out current, const In in, bool* overflow) -> Out {
+  auto reducer = [](Out current, const In in) -> Out {
     const Out actual_in = static_cast<Out>(in);
     return current + actual_in;
   };
   return Reduce<In, Out>(input_data, input_dims, output_dims, input_num_dims,
                          output_num_dims, axis, num_axis, input_iter, reducer,
                          output_data);
+}
+
+// Computes the sum of elements across dimensions given in axis.
+template <typename T>
+inline bool Sum(const T* input_data, const int* input_dims,
+                const int input_num_dims, T* output_data,
+                const int* output_dims, const int output_num_dims,
+                const int* axis, const int num_axis_dimensions, bool keep_dims,
+                int* temp_index, int* resolved_axis) {
+  // Reset output data.
+  size_t num_outputs = 1;
+  for (int idx = 0; idx < output_num_dims; ++idx) {
+    size_t current = static_cast<size_t>(output_dims[idx]);
+    // Overflow prevention.
+    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
+      return false;
+    }
+    num_outputs *= current;
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = T();
+  }
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
+                   &num_resolved_axis)) {
+    return false;
+  }
+
+  return ReduceSumImpl<T, T>(input_data, input_dims, output_dims,
+                             input_num_dims, output_num_dims, resolved_axis,
+                             num_resolved_axis, temp_index, output_data);
 }
 
 // Computes the mean of elements across dimensions given in axis.

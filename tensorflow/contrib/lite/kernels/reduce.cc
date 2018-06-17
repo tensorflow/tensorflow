@@ -25,21 +25,21 @@ limitations under the License.
 namespace tflite {
 namespace ops {
 namespace builtin {
-namespace mean {
+namespace reduce {
 
-// This file has reference implementation of Mean.
+// This file has reference implementation of reduce_* operators.
 enum KernelType {
   kReference,
 };
 
-struct MeanContext {
-  MeanContext(TfLiteContext* context, TfLiteNode* node) {
-    params = reinterpret_cast<TfLiteMeanParams*>(node->builtin_data);
+struct OpContext {
+  OpContext(TfLiteContext* context, TfLiteNode* node) {
+    params = reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
     input = GetInput(context, node, 0);
     axis = GetInput(context, node, 1);
     output = GetOutput(context, node, 0);
   }
-  TfLiteMeanParams* params;
+  TfLiteReducerParams* params;
   const TfLiteTensor* input;
   const TfLiteTensor* axis;
   TfLiteTensor* output;
@@ -58,7 +58,7 @@ void Free(TfLiteContext* context, void* buffer) {
 }
 
 // Resizes the temp tensor that stores resolved axis.
-TfLiteStatus ResizeTempAxis(TfLiteContext* context, MeanContext* op_context,
+TfLiteStatus ResizeTempAxis(TfLiteContext* context, OpContext* op_context,
                             TfLiteTensor* resolved_axis) {
   TfLiteIntArray* axis_size = TfLiteIntArrayCreate(1);
   axis_size->data[0] = static_cast<int>(NumElements(op_context->axis));
@@ -66,7 +66,7 @@ TfLiteStatus ResizeTempAxis(TfLiteContext* context, MeanContext* op_context,
 }
 
 // Resizes the temp tensor that stores temp sum of reduced elements.
-TfLiteStatus ResizeTempSum(TfLiteContext* context, MeanContext* op_context,
+TfLiteStatus ResizeTempSum(TfLiteContext* context, OpContext* op_context,
                            TfLiteTensor* temp_sum) {
   TfLiteIntArray* size = TfLiteIntArrayCreate(1);
   size->data[0] = static_cast<int>(NumElements(op_context->output));
@@ -74,8 +74,7 @@ TfLiteStatus ResizeTempSum(TfLiteContext* context, MeanContext* op_context,
 }
 
 // Resizes output array based on the input size and resolved axis.
-TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
-                                MeanContext* op_context) {
+TfLiteStatus ResizeOutputTensor(TfLiteContext* context, OpContext* op_context) {
   size_t num_axis = NumElements(op_context->axis);
   const TfLiteIntArray* input_dims = op_context->input->dims;
   int input_num_dims = NumDimensions(op_context->input);
@@ -140,7 +139,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
 
 // Initializes temp tensors to store index and resolved axis.
 TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
-                                   MeanContext* op_context) {
+                                   OpContext* op_context) {
   // Creates a temp index to iterate through input data.
   int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);
   TfLiteIntArrayFree(node->temporaries);
@@ -180,33 +179,44 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  MeanContext op_context(context, node);
+  OpContext op_context(context, node);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
 
   TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
-  TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
   // Leaves work to Eval if axis is not constant; else resizes output.
   if (!IsConstantTensor(op_context.axis)) {
     SetTensorToDynamic(op_context.output);
     SetTensorToDynamic(resolved_axis);
-    SetTensorToDynamic(temp_sum);
     return kTfLiteOk;
   }
   resolved_axis->allocation_type = kTfLiteArenaRw;
   TF_LITE_ENSURE_OK(context,
                     ResizeTempAxis(context, &op_context, resolved_axis));
   TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
+  return kTfLiteOk;
+}
+
+TfLiteStatus PrepareMean(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_OK(context, PrepareSimple(context, node));
+
+  // reduce_mean requires a buffer to store intermediate sum result.
+  OpContext op_context(context, node);
+  TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
+  if (!IsConstantTensor(op_context.axis)) {
+    SetTensorToDynamic(temp_sum);
+    return kTfLiteOk;
+  }
   temp_sum->allocation_type = kTfLiteArenaRw;
   return ResizeTempSum(context, &op_context, temp_sum);
 }
 
 template <KernelType kernel_type>
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  MeanContext op_context(context, node);
+TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
+  OpContext op_context(context, node);
   int num_axis = static_cast<int>(NumElements(op_context.axis));
   TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
   TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
@@ -255,16 +265,75 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 #undef TF_LITE_MEAN
   return kTfLiteOk;
 }
-}  // namespace mean
+
+template <KernelType kernel_type>
+TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
+  OpContext op_context(context, node);
+  int num_axis = static_cast<int>(NumElements(op_context.axis));
+  TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
+  // Resize the output tensor if the output tensor is dynamic.
+  if (IsDynamicTensor(op_context.output)) {
+    TF_LITE_ENSURE_OK(context,
+                      ResizeTempAxis(context, &op_context, resolved_axis));
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
+  }
+
+#define TF_LITE_SUM(kernel_type, data_type)                         \
+  kernel_type::Sum<>(                                               \
+      GetTensorData<data_type>(op_context.input),                   \
+      op_context.input->dims->data, op_context.input->dims->size,   \
+      GetTensorData<data_type>(op_context.output),                  \
+      op_context.output->dims->data, op_context.output->dims->size, \
+      GetTensorData<int>(op_context.axis), num_axis,                \
+      op_context.params->keep_dims, GetTensorData<int>(temp_index), \
+      GetTensorData<int>(resolved_axis))
+
+  if (kernel_type == kReference) {
+    switch (op_context.input->type) {
+      case kTfLiteFloat32:
+        TF_LITE_ENSURE(context, TF_LITE_SUM(reference_ops, float));
+        break;
+      case kTfLiteInt32:
+        TF_LITE_ENSURE(context, TF_LITE_SUM(reference_ops, int));
+        break;
+      case kTfLiteInt64:
+        TF_LITE_ENSURE(context, TF_LITE_SUM(reference_ops, int64_t));
+        break;
+      case kTfLiteUInt8:
+        TF_LITE_ENSURE_EQ(context, op_context.input->params.scale,
+                          op_context.output->params.scale);
+        TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point,
+                          op_context.output->params.zero_point);
+        TF_LITE_ENSURE(context, TF_LITE_SUM(reference_ops, uint8_t));
+        break;
+      default:
+        return kTfLiteError;
+    }
+  }
+#undef TF_LITE_SUM
+  return kTfLiteOk;
+}
+
+}  // namespace reduce
 
 TfLiteRegistration* Register_MEAN_REF() {
-  static TfLiteRegistration r = {mean::Init, mean::Free, mean::Prepare,
-                                 mean::Eval<mean::kReference>};
+  static TfLiteRegistration r = {reduce::Init, reduce::Free,
+                                 reduce::PrepareMean,
+                                 reduce::EvalMean<reduce::kReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_SUM_REF() {
+  static TfLiteRegistration r = {reduce::Init, reduce::Free,
+                                 reduce::PrepareSimple,
+                                 reduce::EvalSum<reduce::kReference>};
   return &r;
 }
 
 // TODO(kanlig): add optimized implementation of Mean.
 TfLiteRegistration* Register_MEAN() { return Register_MEAN_REF(); }
+TfLiteRegistration* Register_SUM() { return Register_SUM_REF(); }
 
 }  // namespace builtin
 }  // namespace ops

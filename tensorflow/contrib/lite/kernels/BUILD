@@ -157,12 +157,12 @@ cc_library(
         "lsh_projection.cc",
         "lstm.cc",
         "maximum_minimum.cc",
-        "mean.cc",
         "mfcc.cc",
         "mul.cc",
         "neg.cc",
         "pad.cc",
         "pooling.cc",
+        "reduce.cc",
         "register.cc",
         "reshape.cc",
         "resize_bilinear.cc",
@@ -569,9 +569,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "mean_test",
+    name = "reduce_test",
     size = "small",
-    srcs = ["mean_test.cc"],
+    srcs = ["reduce_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

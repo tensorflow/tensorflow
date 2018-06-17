@@ -215,7 +215,7 @@ typedef struct {
 
 typedef struct {
   bool keep_dims;
-} TfLiteMeanParams;
+} TfLiteReducerParams;
 
 typedef struct {
   int num_splits;

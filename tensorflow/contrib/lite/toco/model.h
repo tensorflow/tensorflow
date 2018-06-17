@@ -1208,14 +1208,12 @@ struct SubOperator : Operator {
   SubOperator() : Operator(OperatorType::kSub) {}
 };
 
-// Global sum reduction: computes the sum of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Sum reduction: computes the sum of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Sum --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Sum
 struct TensorFlowSumOperator : Operator {
   TensorFlowSumOperator() : Operator(OperatorType::kTensorFlowSum) {}
   bool keep_dims = false;

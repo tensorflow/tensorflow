@@ -154,6 +154,7 @@ enum BuiltinOperator : byte {
   EQUAL = 71,
   NOT_EQUAL = 72,
   LOG = 73,
+  SUM=74,
 }
 
 // Options for the builtin operators.
@@ -184,7 +185,7 @@ union BuiltinOptions {
   BatchToSpaceNDOptions,
   SpaceToBatchNDOptions,
   TransposeOptions,
-  MeanOptions,
+  ReducerOptions,
   SubOptions,
   DivOptions,
   SqueezeOptions,
@@ -411,7 +412,7 @@ table TransposeOptions {
 table ExpOptions {
 }
 
-table MeanOptions {
+table ReducerOptions {
   keep_dims: bool;
 }
 

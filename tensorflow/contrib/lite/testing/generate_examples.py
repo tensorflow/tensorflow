@@ -834,6 +834,12 @@ def make_mean_tests(zip_path):
   return make_reduce_tests(tf.reduce_mean)(zip_path)
 
 
+def make_sum_tests(zip_path):
+  """Make a set of tests to do sum."""
+
+  return make_reduce_tests(tf.reduce_sum)(zip_path)
+
+
 def make_exp_tests(zip_path):
   """Make a set of tests to do exp."""
 

@@ -214,6 +214,7 @@ def generated_test_models():
         "global_batch_norm",
         "greater",
         "greater_equal",
+        "sum",
         "l2norm",
         "l2_pool",
         "less",

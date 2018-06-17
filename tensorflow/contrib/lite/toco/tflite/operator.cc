@@ -688,14 +688,33 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
   }
 };
 
-class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
-                                    ::tflite::BuiltinOptions_MeanOptions> {
+class Mean : public BuiltinOperator<MeanOperator, ::tflite::ReducerOptions,
+                                    ::tflite::BuiltinOptions_ReducerOptions> {
  public:
   using BuiltinOperator::BuiltinOperator;
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateMeanOptions(*builder, op.keep_dims);
+    return ::tflite::CreateReducerOptions(*builder, op.keep_dims);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->keep_dims = options.keep_dims();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class Sum
+    : public BuiltinOperator<TensorFlowSumOperator, ::tflite::ReducerOptions,
+                             ::tflite::BuiltinOptions_ReducerOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateReducerOptions(*builder, op.keep_dims);
   }
 
   void ReadOptions(const TfLiteOptions& options,
@@ -1060,6 +1079,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                  OperatorType::kTranspose));
   ops.emplace_back(
       new Mean(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
+  ops.emplace_back(
+      new Sum(::tflite::BuiltinOperator_SUM, OperatorType::kTensorFlowSum));
   ops.emplace_back(new ResizeBilinear(::tflite::BuiltinOperator_RESIZE_BILINEAR,
                                       OperatorType::kResizeBilinear));
   ops.emplace_back(

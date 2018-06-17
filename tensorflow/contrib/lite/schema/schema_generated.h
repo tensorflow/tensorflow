@@ -127,8 +127,8 @@ struct TransposeOptionsT;
 struct ExpOptions;
 struct ExpOptionsT;
 
-struct MeanOptions;
-struct MeanOptionsT;
+struct ReducerOptions;
+struct ReducerOptionsT;
 
 struct SqueezeOptions;
 struct SqueezeOptionsT;
@@ -329,11 +329,12 @@ enum BuiltinOperator {
   BuiltinOperator_EQUAL = 71,
   BuiltinOperator_NOT_EQUAL = 72,
   BuiltinOperator_LOG = 73,
+  BuiltinOperator_SUM = 74,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_LOG
+  BuiltinOperator_MAX = BuiltinOperator_SUM
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[73] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[74] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -407,7 +408,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[73] {
     BuiltinOperator_EXPAND_DIMS,
     BuiltinOperator_EQUAL,
     BuiltinOperator_NOT_EQUAL,
-    BuiltinOperator_LOG
+    BuiltinOperator_LOG,
+    BuiltinOperator_SUM
   };
   return values;
 }
@@ -488,6 +490,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "EQUAL",
     "NOT_EQUAL",
     "LOG",
+    "SUM",
     nullptr
   };
   return names;
@@ -526,7 +529,7 @@ enum BuiltinOptions {
   BuiltinOptions_BatchToSpaceNDOptions = 24,
   BuiltinOptions_SpaceToBatchNDOptions = 25,
   BuiltinOptions_TransposeOptions = 26,
-  BuiltinOptions_MeanOptions = 27,
+  BuiltinOptions_ReducerOptions = 27,
   BuiltinOptions_SubOptions = 28,
   BuiltinOptions_DivOptions = 29,
   BuiltinOptions_SqueezeOptions = 30,
@@ -587,7 +590,7 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[55] {
     BuiltinOptions_BatchToSpaceNDOptions,
     BuiltinOptions_SpaceToBatchNDOptions,
     BuiltinOptions_TransposeOptions,
-    BuiltinOptions_MeanOptions,
+    BuiltinOptions_ReducerOptions,
     BuiltinOptions_SubOptions,
     BuiltinOptions_DivOptions,
     BuiltinOptions_SqueezeOptions,
@@ -648,7 +651,7 @@ inline const char **EnumNamesBuiltinOptions() {
     "BatchToSpaceNDOptions",
     "SpaceToBatchNDOptions",
     "TransposeOptions",
-    "MeanOptions",
+    "ReducerOptions",
     "SubOptions",
     "DivOptions",
     "SqueezeOptions",
@@ -794,8 +797,8 @@ template<> struct BuiltinOptionsTraits<TransposeOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_TransposeOptions;
 };
 
-template<> struct BuiltinOptionsTraits<MeanOptions> {
-  static const BuiltinOptions enum_value = BuiltinOptions_MeanOptions;
+template<> struct BuiltinOptionsTraits<ReducerOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ReducerOptions;
 };
 
 template<> struct BuiltinOptionsTraits<SubOptions> {
@@ -1145,13 +1148,13 @@ struct BuiltinOptionsUnion {
     return type == BuiltinOptions_TransposeOptions ?
       reinterpret_cast<const TransposeOptionsT *>(value) : nullptr;
   }
-  MeanOptionsT *AsMeanOptions() {
-    return type == BuiltinOptions_MeanOptions ?
-      reinterpret_cast<MeanOptionsT *>(value) : nullptr;
+  ReducerOptionsT *AsReducerOptions() {
+    return type == BuiltinOptions_ReducerOptions ?
+      reinterpret_cast<ReducerOptionsT *>(value) : nullptr;
   }
-  const MeanOptionsT *AsMeanOptions() const {
-    return type == BuiltinOptions_MeanOptions ?
-      reinterpret_cast<const MeanOptionsT *>(value) : nullptr;
+  const ReducerOptionsT *AsReducerOptions() const {
+    return type == BuiltinOptions_ReducerOptions ?
+      reinterpret_cast<const ReducerOptionsT *>(value) : nullptr;
   }
   SubOptionsT *AsSubOptions() {
     return type == BuiltinOptions_SubOptions ?
@@ -3839,16 +3842,16 @@ inline flatbuffers::Offset<ExpOptions> CreateExpOptions(
 
 flatbuffers::Offset<ExpOptions> CreateExpOptions(flatbuffers::FlatBufferBuilder &_fbb, const ExpOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
-struct MeanOptionsT : public flatbuffers::NativeTable {
-  typedef MeanOptions TableType;
+struct ReducerOptionsT : public flatbuffers::NativeTable {
+  typedef ReducerOptions TableType;
   bool keep_dims;
-  MeanOptionsT()
+  ReducerOptionsT()
       : keep_dims(false) {
   }
 };
 
-struct MeanOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
-  typedef MeanOptionsT NativeTableType;
+struct ReducerOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ReducerOptionsT NativeTableType;
   enum {
     VT_KEEP_DIMS = 4
   };
@@ -3860,38 +3863,38 @@ struct MeanOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<uint8_t>(verifier, VT_KEEP_DIMS) &&
            verifier.EndTable();
   }
-  MeanOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(MeanOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<MeanOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const MeanOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  ReducerOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ReducerOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ReducerOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ReducerOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
-struct MeanOptionsBuilder {
+struct ReducerOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_keep_dims(bool keep_dims) {
-    fbb_.AddElement<uint8_t>(MeanOptions::VT_KEEP_DIMS, static_cast<uint8_t>(keep_dims), 0);
+    fbb_.AddElement<uint8_t>(ReducerOptions::VT_KEEP_DIMS, static_cast<uint8_t>(keep_dims), 0);
   }
-  explicit MeanOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit ReducerOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  MeanOptionsBuilder &operator=(const MeanOptionsBuilder &);
-  flatbuffers::Offset<MeanOptions> Finish() {
+  ReducerOptionsBuilder &operator=(const ReducerOptionsBuilder &);
+  flatbuffers::Offset<ReducerOptions> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<MeanOptions>(end);
+    auto o = flatbuffers::Offset<ReducerOptions>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<MeanOptions> CreateMeanOptions(
+inline flatbuffers::Offset<ReducerOptions> CreateReducerOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     bool keep_dims = false) {
-  MeanOptionsBuilder builder_(_fbb);
+  ReducerOptionsBuilder builder_(_fbb);
   builder_.add_keep_dims(keep_dims);
   return builder_.Finish();
 }
 
-flatbuffers::Offset<MeanOptions> CreateMeanOptions(flatbuffers::FlatBufferBuilder &_fbb, const MeanOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<ReducerOptions> CreateReducerOptions(flatbuffers::FlatBufferBuilder &_fbb, const ReducerOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct SqueezeOptionsT : public flatbuffers::NativeTable {
   typedef SqueezeOptions TableType;
@@ -5134,8 +5137,8 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const TransposeOptions *builtin_options_as_TransposeOptions() const {
     return builtin_options_type() == BuiltinOptions_TransposeOptions ? static_cast<const TransposeOptions *>(builtin_options()) : nullptr;
   }
-  const MeanOptions *builtin_options_as_MeanOptions() const {
-    return builtin_options_type() == BuiltinOptions_MeanOptions ? static_cast<const MeanOptions *>(builtin_options()) : nullptr;
+  const ReducerOptions *builtin_options_as_ReducerOptions() const {
+    return builtin_options_type() == BuiltinOptions_ReducerOptions ? static_cast<const ReducerOptions *>(builtin_options()) : nullptr;
   }
   const SubOptions *builtin_options_as_SubOptions() const {
     return builtin_options_type() == BuiltinOptions_SubOptions ? static_cast<const SubOptions *>(builtin_options()) : nullptr;
@@ -5353,8 +5356,8 @@ template<> inline const TransposeOptions *Operator::builtin_options_as<Transpose
   return builtin_options_as_TransposeOptions();
 }
 
-template<> inline const MeanOptions *Operator::builtin_options_as<MeanOptions>() const {
-  return builtin_options_as_MeanOptions();
+template<> inline const ReducerOptions *Operator::builtin_options_as<ReducerOptions>() const {
+  return builtin_options_as_ReducerOptions();
 }
 
 template<> inline const SubOptions *Operator::builtin_options_as<SubOptions>() const {
@@ -6864,28 +6867,28 @@ inline flatbuffers::Offset<ExpOptions> CreateExpOptions(flatbuffers::FlatBufferB
       _fbb);
 }
 
-inline MeanOptionsT *MeanOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
-  auto _o = new MeanOptionsT();
+inline ReducerOptionsT *ReducerOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new ReducerOptionsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void MeanOptions::UnPackTo(MeanOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+inline void ReducerOptions::UnPackTo(ReducerOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
   { auto _e = keep_dims(); _o->keep_dims = _e; };
 }
 
-inline flatbuffers::Offset<MeanOptions> MeanOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const MeanOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
-  return CreateMeanOptions(_fbb, _o, _rehasher);
+inline flatbuffers::Offset<ReducerOptions> ReducerOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ReducerOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateReducerOptions(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<MeanOptions> CreateMeanOptions(flatbuffers::FlatBufferBuilder &_fbb, const MeanOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<ReducerOptions> CreateReducerOptions(flatbuffers::FlatBufferBuilder &_fbb, const ReducerOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const MeanOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ReducerOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _keep_dims = _o->keep_dims;
-  return tflite::CreateMeanOptions(
+  return tflite::CreateReducerOptions(
       _fbb,
       _keep_dims);
 }
@@ -7708,8 +7711,8 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const TransposeOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case BuiltinOptions_MeanOptions: {
-      auto ptr = reinterpret_cast<const MeanOptions *>(obj);
+    case BuiltinOptions_ReducerOptions: {
+      auto ptr = reinterpret_cast<const ReducerOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
     case BuiltinOptions_SubOptions: {
@@ -7942,8 +7945,8 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const TransposeOptions *>(obj);
       return ptr->UnPack(resolver);
     }
-    case BuiltinOptions_MeanOptions: {
-      auto ptr = reinterpret_cast<const MeanOptions *>(obj);
+    case BuiltinOptions_ReducerOptions: {
+      auto ptr = reinterpret_cast<const ReducerOptions *>(obj);
       return ptr->UnPack(resolver);
     }
     case BuiltinOptions_SubOptions: {
@@ -8164,9 +8167,9 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const TransposeOptionsT *>(value);
       return CreateTransposeOptions(_fbb, ptr, _rehasher).Union();
     }
-    case BuiltinOptions_MeanOptions: {
-      auto ptr = reinterpret_cast<const MeanOptionsT *>(value);
-      return CreateMeanOptions(_fbb, ptr, _rehasher).Union();
+    case BuiltinOptions_ReducerOptions: {
+      auto ptr = reinterpret_cast<const ReducerOptionsT *>(value);
+      return CreateReducerOptions(_fbb, ptr, _rehasher).Union();
     }
     case BuiltinOptions_SubOptions: {
       auto ptr = reinterpret_cast<const SubOptionsT *>(value);
@@ -8386,8 +8389,8 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
       value = new TransposeOptionsT(*reinterpret_cast<TransposeOptionsT *>(u.value));
       break;
     }
-    case BuiltinOptions_MeanOptions: {
-      value = new MeanOptionsT(*reinterpret_cast<MeanOptionsT *>(u.value));
+    case BuiltinOptions_ReducerOptions: {
+      value = new ReducerOptionsT(*reinterpret_cast<ReducerOptionsT *>(u.value));
       break;
     }
     case BuiltinOptions_SubOptions: {
@@ -8635,8 +8638,8 @@ inline void BuiltinOptionsUnion::Reset() {
       delete ptr;
       break;
     }
-    case BuiltinOptions_MeanOptions: {
-      auto ptr = reinterpret_cast<MeanOptionsT *>(value);
+    case BuiltinOptions_ReducerOptions: {
+      auto ptr = reinterpret_cast<ReducerOptionsT *>(value);
       delete ptr;
       break;
     }

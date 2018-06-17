@@ -597,9 +597,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_MEAN: {
-      auto* params = MallocPOD<TfLiteMeanParams>();
-      if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
+    case BuiltinOperator_MEAN:
+    case BuiltinOperator_SUM: {
+      auto* params = MallocPOD<TfLiteReducerParams>();
+      if (auto* schema_params = op->builtin_options_as_ReducerOptions()) {
         params->keep_dims = schema_params->keep_dims();
       }
       *builtin_data = reinterpret_cast<void*>(params);
