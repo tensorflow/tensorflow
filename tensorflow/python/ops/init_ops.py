@@ -1146,6 +1146,35 @@ class GlorotUniform(VarianceScaling):
     }
 
 
+@tf_export("glorot_normal_initializer")
+class GlorotNormal(VarianceScaling):
+  """The Glorot normal initializer, also called Xavier normal initializer.
+
+  It draws samples from a truncated normal distribution centered on 0
+  with `stddev = sqrt(2 / (fan_in + fan_out))`
+  where `fan_in` is the number of input units in the weight tensor
+  and `fan_out` is the number of output units in the weight tensor.
+
+  Reference: http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
+
+  Args:
+    seed: A Python integer. Used to create random seeds. See
+      @{tf.set_random_seed}
+      for behavior.
+    dtype: The data type. Only floating point types are supported.
+  """
+  def __init__(self,
+               seed=None,
+               dtype=dtypes.float32):
+    super(GlorotNormal, self).__init__(scale=1.0, mode="fan_avg", distribution="normal", seed=seed, dtype=dtype)
+
+  def get_config(self):
+    return {
+        "seed": self.seed,
+        "dtype": self.dtype.name
+    }
+
+
 # Aliases.
 
 # pylint: disable=invalid-name
@@ -1158,6 +1187,7 @@ truncated_normal_initializer = TruncatedNormal
 uniform_unit_scaling_initializer = UniformUnitScaling
 variance_scaling_initializer = VarianceScaling
 glorot_uniform_initializer = GlorotUniform
+glorot_normal_initializer = GlorotNormal
 orthogonal_initializer = Orthogonal
 identity_initializer = Identity
 convolutional_delta_orthogonal = ConvolutionDeltaOrthogonal
