@@ -1188,11 +1188,13 @@ static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
   return true;
 }
 
-// Given a "caller" in "graph", which is a function call of a function
+// Given a "caller" in graph "g", which is a function call of a function
 // to "fbody". Replaces the "caller" with fbody->graph and connects
-// edges properly.
+// edges properly. "override_device" specifies whether inlining should replace
+// explicitly specified devices inside fbody with the callee's device.
 void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
-                        Node* caller, const FunctionBody* fbody) {
+                        Node* caller, const FunctionBody* fbody,
+                        bool override_device) {
   if (!ValidateInlining(caller, fbody)) {
     LOG(WARNING) << "Inlining mismatch: " << caller->DebugString() << " vs. "
                  << DebugString(fbody->graph);
@@ -1227,7 +1229,9 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
     ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
-    ndef.set_device(caller->def().device());
+    if (override_device || ndef.device().empty()) {
+      ndef.set_device(caller->def().device());
+    }
     Node* clone = g->AddNode(ndef, &s);
     TF_CHECK_OK(s);
     node_map[n->id()] = clone;

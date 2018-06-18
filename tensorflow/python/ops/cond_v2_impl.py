@@ -27,10 +27,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.util import compat
 
@@ -109,6 +111,22 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
         _create_new_tf_function(true_graph),
         _create_new_tf_function(false_graph),
         name=scope)
+
+    # Set the flag to enable lowering on the `if` op if necessary
+    # Lowering allows cond_v2 to avoid some of the limitations of Functions,
+    # allowing users to specify devices & colocation inside of cond_v2 branches,
+    # and enabling non-strict evaluation & partial pruning of cond_v2 branches.
+    # This brings cond_v2 closer to feature parity with tf.cond.
+    #
+    # However, we do not lower `If` in the XLA context because it is easier for
+    # XLA to apply its own optimizations when dealing with un-lowered `If`
+    # operators than with lowered switch/merge control flow.
+    #
+    # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
+    if_op = tensors[0].op
+    if not control_flow_util.IsInXLAContext(if_op):
+      if_op._set_attr("_lower_using_switch_merge",
+                      attr_value_pb2.AttrValue(b=True))
 
     return tensors[:num_cond_outputs]
 
