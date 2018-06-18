@@ -191,21 +191,17 @@ Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
   return Status::OK();
 }
 
-Status Service::ValidateResultShapeWithLayout(const Shape& shape_with_layout,
-                                              const Shape& result_shape) const {
-  if (!ShapeUtil::Compatible(shape_with_layout, result_shape)) {
+Status Service::ValidateResultShape(const Shape& client_shape,
+                                    const Shape& result_shape) const {
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
+  if (!ShapeUtil::Compatible(client_shape, result_shape)) {
     return InvalidArgument(
         "Shape used to set computation result layout %s is not compatible "
         "with result shape %s",
-        ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
+        ShapeUtil::HumanStringWithLayout(client_shape).c_str(),
         ShapeUtil::HumanString(result_shape).c_str());
   }
-  if (!LayoutUtil::HasLayout(shape_with_layout)) {
-    return InvalidArgument(
-        "Shape used to set computation result layout %s does not have layout",
-        ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str());
-  }
-  return ShapeUtil::ValidateShape(shape_with_layout);
+  return Status::OK();
 }
 
 StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
@@ -277,8 +273,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
       execution_options->has_shape_with_output_layout()) {
     const auto& shape_with_output_layout =
         execution_options->shape_with_output_layout();
-    TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(shape_with_output_layout,
-                                                     program_shape.result()));
+    TF_RETURN_IF_ERROR(
+        ValidateResultShape(shape_with_output_layout, program_shape.result()));
     TF_RETURN_IF_ERROR(
         host_computation_layout->mutable_result_layout()->CopyLayoutFromShape(
             shape_with_output_layout));
@@ -382,18 +378,20 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
 }
 
 Status Service::ValidateEntryComputationLayout(HloModule* module) {
+  const ComputationLayout& on_host = module->host_entry_computation_layout();
   const ComputationLayout& on_device =
       module->device_entry_computation_layout();
   for (int64 i = 0; i < on_device.parameter_count(); ++i) {
-    TF_RET_CHECK(ShapeUtil::Equal(
-        on_device.parameter_shape(i),
-        execute_backend_->transfer_manager()->HostShapeToDeviceShape(
-            module->host_entry_computation_layout().parameter_shape(i))));
+    TF_RET_CHECK(ShapeUtil::Compatible(on_device.parameter_shape(i),
+                                       on_host.parameter_shape(i)))
+        << ShapeUtil::HumanStringWithLayout(on_device.parameter_shape(i))
+        << " vs "
+        << ShapeUtil::HumanStringWithLayout(on_host.parameter_shape(i));
   }
-  TF_RET_CHECK(ShapeUtil::Equal(
-      module->device_entry_computation_layout().result_shape(),
-      execute_backend_->transfer_manager()->HostShapeToDeviceShape(
-          module->host_entry_computation_layout().result_shape())));
+  TF_RET_CHECK(
+      ShapeUtil::Compatible(on_device.result_shape(), on_host.result_shape()))
+      << ShapeUtil::HumanStringWithLayout(on_device.result_shape()) << " vs "
+      << ShapeUtil::HumanStringWithLayout(on_host.result_shape());
   return Status::OK();
 }
 

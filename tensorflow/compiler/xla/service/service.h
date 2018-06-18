@@ -266,11 +266,11 @@ class Service : public ServiceInterface {
   // will be the result of this computation.
   Status ExecuteOneToN(const ExecuteGraphRequest* arg, ExecuteResponse* result);
 
-  // Convenience function which checks whether the given shape_with_layout
+  // Convenience function which checks whether the given client_shape
   // (presumably passed by the client to set the result layout) is valid for the
   // given computation result shape.
-  Status ValidateResultShapeWithLayout(const Shape& shape_with_layout,
-                                       const Shape& result_shape) const;
+  Status ValidateResultShape(const Shape& client_shape,
+                             const Shape& result_shape) const;
 
   // Returns the stream executors assigned to the replicas represented by the
   // given device handle. Each device_handle is a virtual replicated device that
