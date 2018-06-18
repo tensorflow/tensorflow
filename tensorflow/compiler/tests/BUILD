@@ -840,6 +840,18 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "sort_ops_test",
+    size = "small",
+    srcs = ["sort_ops_test.py"],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+    ],
+)
+
+tf_xla_py_test(
     name = "xla_device_test",
     size = "small",
     srcs = ["xla_device_test.py"],

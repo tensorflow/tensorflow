@@ -79,6 +79,7 @@ tf_kernel_library(
         "shape_util.cc",
         "slice_op.cc",
         "softmax_op.cc",
+        "sort_ops.cc",
         "spacetobatch_op.cc",
         "spacetodepth_op.cc",
         "split_op.cc",
