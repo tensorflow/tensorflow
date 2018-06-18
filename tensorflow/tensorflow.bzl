@@ -241,6 +241,9 @@ def tf_opts_nortti_if_android():
 
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
+def tf_features_nomodules_if_android():
+  return if_android(["-use_header_modules"])
+
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
 def tf_gen_op_libs(op_lib_names, deps=None, is_external=True):
@@ -959,6 +962,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   if not cuda_deps:
     cuda_deps = []
 
+  kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
   native.cc_library(
       deps=deps + if_cuda(cuda_deps + [
           clean_dep("//tensorflow/core:cuda"),
