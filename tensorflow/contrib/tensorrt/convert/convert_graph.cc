@@ -256,6 +256,13 @@ EngineInfo GetEngineInfo(
     auto node_device = node->requested_device();
     if (!node_device.empty()) {
       segment_devices.insert(node_device);
+    } else {
+      if (node->has_assigned_device_name()) {
+        segment_devices.insert(node->assigned_device_name());
+      } else {
+        VLOG(2) << "Node " << node->name()
+                << " neither have requested device nor assigned device";
+      }
     }
     int node_id = node->id();
     subgraph_node_ids.push_back(node_id);
@@ -315,11 +322,15 @@ EngineInfo GetEngineInfo(
                            &info.engine_name);
   info.engine_type = EngineInfo::EngineType::TRTStatic;
   // TODO(sami): This should not happen once segmenter is updated.
-  if (segment_devices.size() > 1) {
+  if (segment_devices.size() == 1) {
+    info.device = *segment_devices.begin();
+  } else if (segment_devices.size() > 1) {
     LOG(WARNING) << "Detected multiple(" << segment_devices.size()
                  << ") devices for the segment. Picking first one to continue "
                  << "but this shouldn't have happened";
     info.device = *segment_devices.begin();
+  } else {
+    VLOG(1) << "Segment devices size is 0";
   }
   return info;
 }
@@ -653,8 +664,12 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
       dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
       VLOG(1) << "Got an allocator for device tf_device=" << tf_gpu_id.value()
               << " cuda device= " << cuda_device_id << " at " << dev_allocator;
+    } else {
+      LOG(WARNING) << "Cluster is set but device " << engine.device
+                   << " is not found in the cluster";
     }
   } else {  // cluster not found, possibly a python call
+    VLOG(1) << "Cluster is not set, probably called from python";
     int found_device = 0;
     bool try_gpu_ids = true;
     // if device is set, try to find the device. Might be a problem for multi
