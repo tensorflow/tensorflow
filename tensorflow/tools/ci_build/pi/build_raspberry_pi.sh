@@ -79,7 +79,6 @@ if [[ $1 == "PI_ONE" ]]; then
   --linkopt=-L${OPENBLAS_INSTALL_PATH}/lib/
   --linkopt=-l:libopenblas.a"
   echo "Building for the Pi One/Zero, with no NEON support"
-  WHEEL_ARCH=linux_armv6l
 else
   PI_COPTS='--copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
   --copt=-std=gnu11 --copt=-DS_IREAD=S_IRUSR --copt=-DS_IWRITE=S_IWUSR
@@ -87,7 +86,6 @@ else
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8'
-  WHEEL_ARCH=linux_armv7l
   echo "Building for the Pi Two/Three, with NEON acceleration"
 fi
 
@@ -102,8 +100,6 @@ bazel build -c opt ${PI_COPTS} \
   --copt=-fomit-frame-pointer --cpu=armeabi \
   --crosstool_top=@local_config_arm_compiler//:toolchain \
   --verbose_failures \
-  //tensorflow:libtensorflow.so \
-  //tensorflow:libtensorflow_framework.so \
   //tensorflow/tools/benchmark:benchmark_model \
   //tensorflow/tools/pip_package:build_pip_package
 
@@ -116,12 +112,10 @@ BDIST_OPTS="--universal" \
   bazel-bin/tensorflow/tools/pip_package/build_pip_package "${OUTDIR}"
 
 OLD_FN=$(ls "${OUTDIR}" | grep -m 1 \.whl)
-SUB='s/tensorflow-([^-]+)-([^-]+)-.*/tensorflow-\1-\2-none-'${WHEEL_ARCH}'.whl/; print'
+SUB='s/tensorflow-([^-]+)-([^-]+)-.*/tensorflow-\1-\2-none-any.whl/; print'
 NEW_FN=$(echo "${OLD_FN}" | perl -ne "${SUB}")
 mv "${OUTDIR}/${OLD_FN}" "${OUTDIR}/${NEW_FN}"
 cp bazel-bin/tensorflow/tools/benchmark/benchmark_model "${OUTDIR}"
-cp bazel-bin/tensorflow/libtensorflow.so "${OUTDIR}"
-cp bazel-bin/tensorflow/libtensorflow_framework.so "${OUTDIR}"
 
 echo "Output can be found here:"
 find "${OUTDIR}"

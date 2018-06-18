@@ -467,8 +467,7 @@ class VarianceScaling(Initializer):
     else:
       scale /= max(1., (fan_in + fan_out) / 2.)
     if self.distribution == "normal":
-      # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
-      stddev = math.sqrt(scale) / .87962566103423978
+      stddev = math.sqrt(scale)
       return random_ops.truncated_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
     else:

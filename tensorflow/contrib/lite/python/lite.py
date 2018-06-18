@@ -34,8 +34,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from six import PY3
-
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
@@ -56,7 +54,6 @@ from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops.variables import global_variables_initializer
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
-# from tensorflow.python.util.all_util import remove_undocumented
 
 
 class TocoConverter(object):
@@ -206,12 +203,6 @@ class TocoConverter(object):
       except (_text_format.ParseError, DecodeError):
         try:
           print("Ignore 'tcmalloc: large alloc' warnings.")
-
-          if not isinstance(file_content, str):
-            if PY3:
-              file_content = file_content.decode('utf-8')
-            else:
-              file_content = file_content.encode('utf-8')
           _text_format.Merge(file_content, graph_def)
         except (_text_format.ParseError, DecodeError):
           raise ValueError(
@@ -391,5 +382,3 @@ def _freeze_graph(sess, output_tensors):
                                                         output_arrays)
   else:
     return sess.graph_def
-
-# remove_undocumented(__name__)

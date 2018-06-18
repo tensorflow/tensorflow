@@ -178,7 +178,7 @@ ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
   else if (dtype == DT_STRING)
     return ArrayDataType::kString;
   else
-    LOG(INFO) << "Unsupported data type in placeholder op: " << dtype;
+    LOG(INFO) << "Unsupported data type in placehoder op: " << dtype;
   return ArrayDataType::kNone;
 }
 

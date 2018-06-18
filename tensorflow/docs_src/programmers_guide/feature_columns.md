@@ -528,10 +528,10 @@ suggested by the following snippet:
 categorical_column = ... # Create any categorical column
 
 # Represent the categorical column as an embedding column.
-# This means creating an embedding vector lookup table with one element for each category.
+# This means creating a one-hot vector with one element for each category.
 embedding_column = tf.feature_column.embedding_column(
     categorical_column=categorical_column,
-    dimension=embedding_dimensions)
+    dimension=dimension_of_embedding_vector)
 ```
 
 @{$programmers_guide/embedding$Embeddings} is a significant topic within machine

@@ -283,10 +283,10 @@ def compute_gradient(x,
   numbers.  For example, if `x` is complex with shape `[m]` and `y` is complex
   with shape `[n]`, each Jacobian `J` will have shape `[m * 2, n * 2]` with
 
-      J[::2, ::2] = d(Re y)/d(Re x)
-      J[::2, 1::2] = d(Im y)/d(Re x)
-      J[1::2, ::2] = d(Re y)/d(Im x)
-      J[1::2, 1::2] = d(Im y)/d(Im x)
+      J[:m, :n] = d(Re y)/d(Re x)
+      J[:m, n:] = d(Im y)/d(Re x)
+      J[m:, :n] = d(Re y)/d(Im x)
+      J[m:, n:] = d(Im y)/d(Im x)
 
   Args:
     x: a tensor or list of tensors

@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -410,13 +409,11 @@ class Model(Network):
         else:
           if sample_weight_mode == 'temporal':
             sample_weights.append(array_ops.placeholder_with_default(
-                constant_op.constant([[1.]], dtype=K.floatx()),
-                shape=[None, None], name=name + '_sample_weights'))
+                [[1.]], shape=[None, None], name=name + '_sample_weights'))
             sample_weight_modes.append('temporal')
           else:
             sample_weights.append(array_ops.placeholder_with_default(
-                constant_op.constant([1.], dtype=K.floatx()),
-                shape=[None], name=name + '_sample_weights'))
+                [1.], shape=[None], name=name + '_sample_weights'))
             sample_weight_modes.append(None)
     self.sample_weight_modes = sample_weight_modes
     self._feed_sample_weight_modes = []

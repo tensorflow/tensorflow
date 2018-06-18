@@ -71,7 +71,7 @@ class KerasInitializersTest(test.TestCase):
                                                       stddev=1,
                                                       seed=126),
                    tensor_shape,
-                   target_mean=0., target_max=2, target_min=-2)
+                   target_mean=0., target_std=None, target_max=2)
 
   def test_constant(self):
     tensor_shape = (5, 6, 4)
@@ -83,49 +83,49 @@ class KerasInitializersTest(test.TestCase):
     tensor_shape = (5, 6, 4, 2)
     with self.test_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
-      std = np.sqrt(1. / fan_in)
+      scale = np.sqrt(3. / fan_in)
       self._runner(keras.initializers.lecun_uniform(seed=123), tensor_shape,
-                   target_mean=0., target_std=std)
+                   target_mean=0., target_max=scale, target_min=-scale)
 
   def test_glorot_uniform(self):
     tensor_shape = (5, 6, 4, 2)
     with self.test_session():
       fan_in, fan_out = init_ops._compute_fans(tensor_shape)
-      std = np.sqrt(2. / (fan_in + fan_out))
+      scale = np.sqrt(6. / (fan_in + fan_out))
       self._runner(keras.initializers.glorot_uniform(seed=123), tensor_shape,
-                   target_mean=0., target_std=std)
+                   target_mean=0., target_max=scale, target_min=-scale)
 
   def test_he_uniform(self):
     tensor_shape = (5, 6, 4, 2)
     with self.test_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
-      std = np.sqrt(2. / fan_in)
+      scale = np.sqrt(6. / fan_in)
       self._runner(keras.initializers.he_uniform(seed=123), tensor_shape,
-                   target_mean=0., target_std=std)
+                   target_mean=0., target_max=scale, target_min=-scale)
 
   def test_lecun_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.test_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
-      std = np.sqrt(1. / fan_in)
+      scale = np.sqrt(1. / fan_in)
       self._runner(keras.initializers.lecun_normal(seed=123), tensor_shape,
-                   target_mean=0., target_std=std)
+                   target_mean=0., target_std=None, target_max=2 * scale)
 
   def test_glorot_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.test_session():
       fan_in, fan_out = init_ops._compute_fans(tensor_shape)
-      std = np.sqrt(2. / (fan_in + fan_out))
+      scale = np.sqrt(2. / (fan_in + fan_out))
       self._runner(keras.initializers.glorot_normal(seed=123), tensor_shape,
-                   target_mean=0., target_std=std)
+                   target_mean=0., target_std=None, target_max=2 * scale)
 
   def test_he_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.test_session():
       fan_in, _ = init_ops._compute_fans(tensor_shape)
-      std = np.sqrt(2. / fan_in)
+      scale = np.sqrt(2. / fan_in)
       self._runner(keras.initializers.he_normal(seed=123), tensor_shape,
-                   target_mean=0., target_std=std)
+                   target_mean=0., target_std=None, target_max=2 * scale)
 
   def test_orthogonal(self):
     tensor_shape = (20, 20)

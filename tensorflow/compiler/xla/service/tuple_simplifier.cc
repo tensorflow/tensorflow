@@ -30,17 +30,10 @@ limitations under the License.
 
 namespace xla {
 
-TupleSimplifier::TupleSimplifier(bool exclude_entry_computation) :
-    exclude_entry_computation_(exclude_entry_computation) {}
-
 StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
   // Initially add all GTE and Tuple instructions to the worklist.
   std::queue<HloInstruction*> worklist;
   for (auto* computation : module->computations()) {
-    if (exclude_entry_computation_ &&
-        computation == module->entry_computation()) {
-      continue;
-    }
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kTuple ||
           instruction->opcode() == HloOpcode::kGetTupleElement) {

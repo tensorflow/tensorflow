@@ -68,16 +68,15 @@ def pandas_input_fn(x,
   Raises:
     ValueError: if `x` already contains a column with the same name as `y`, or
       if the indexes of `x` and `y` don't match.
-    ValueError: if 'shuffle' is not provided or a bool.
+    TypeError: `shuffle` is not bool.
   """
   if not HAS_PANDAS:
     raise TypeError(
         'pandas_input_fn should not be called without pandas installed')
 
   if not isinstance(shuffle, bool):
-    raise ValueError('shuffle must be provided and explicitly set as boolean '
-                     '(it is recommended to set it as True for training); '
-                     'got {}'.format(shuffle))
+    raise TypeError('shuffle must be explicitly set as boolean; '
+                    'got {}'.format(shuffle))
 
   x = x.copy()
   if y is not None:

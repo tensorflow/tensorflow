@@ -123,7 +123,7 @@ class Network(base_layer.Layer):
     # Entries are unique. Includes input and output layers.
     self._layers = []
 
-    # Used in symbolic mode only, only in conjunction with graph-networks
+    # Used in symbolic mode only, only in conjonction with graph-networks
     self._outbound_nodes = []
     self._inbound_nodes = []
 

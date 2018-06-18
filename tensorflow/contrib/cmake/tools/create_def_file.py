@@ -44,8 +44,7 @@ UNDNAME = "undname.exe"
 DUMPBIN = "dumpbin.exe"
 
 # Exclude if matched
-EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::|Internal|"
-                        r"python_op_gen_internal|grappler")
+EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::")
 
 # Include if matched before exclude
 INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
@@ -57,10 +56,6 @@ INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"tensorflow::ops::internal::Enter|"
                            r"tensorflow::strings::internal::AppendPieces|"
                            r"tensorflow::strings::internal::CatPieces|"
-                           r"tensorflow::errors::Internal|"
-                           r"tensorflow::Tensor::CopyFromInternal|"
-                           r"tensorflow::kernel_factory::"
-                           r"OpKernelRegistrar::InitInternal|"
                            r"tensorflow::io::internal::JoinPathImpl")
 
 # Include if matched after exclude
@@ -69,7 +64,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"tensorflow::|"
                         r"functor::|"
                         r"\?nsync_|"
-                        r"stream_executor::")
+                        r"perftools::gputools")
 
 # We want to identify data members explicitly in the DEF file, so that no one
 # can implicitly link against the DLL if they use one of the variables exported

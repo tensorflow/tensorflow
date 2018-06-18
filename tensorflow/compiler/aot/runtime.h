@@ -25,8 +25,8 @@ namespace tensorflow {
 namespace tfcompile {
 namespace runtime {
 
-// Align to 64-bytes, to mimic tensorflow::Allocator::kAllocatorAlignment.
-static constexpr size_t kAlign = 64;
+// Align to 32-bytes, to mimic tensorflow::Allocator::kAllocatorAlignment.
+static constexpr size_t kAlign = 32;
 
 // aligned_buffer_bytes returns the sum of each size in `sizes`, skipping -1
 // values.  There are `n` entries in `sizes`.  Each buffer is aligned to kAlign

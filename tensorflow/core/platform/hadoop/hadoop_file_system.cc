@@ -115,17 +115,18 @@ class LibHDFS {
     const char* kLibHdfsDso = "libhdfs.so";
 #endif
     char* hdfs_home = getenv("HADOOP_HDFS_HOME");
-    if (hdfs_home != nullptr) {
-      string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
-      status_ = TryLoadAndBind(path.c_str(), &handle_);
-      if (status_.ok()) {
-        return;
-      }
+    if (hdfs_home == nullptr) {
+      status_ = errors::FailedPrecondition(
+          "Environment variable HADOOP_HDFS_HOME not set");
+      return;
     }
-
-    // Try to load the library dynamically in case it has been installed
-    // to a in non-standard location.
-    status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
+    string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
+    status_ = TryLoadAndBind(path.c_str(), &handle_);
+    if (!status_.ok()) {
+      // try load libhdfs.so using dynamic loader's search path in case
+      // libhdfs.so is installed in non-standard location
+      status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
+    }
   }
 
   Status status_;

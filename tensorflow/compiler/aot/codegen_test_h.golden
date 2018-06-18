@@ -56,9 +56,9 @@ namespace bar {
 //
 // Memory stats:
 //   arg bytes total:    104
-//   arg bytes aligned:  192
+//   arg bytes aligned:  128
 //   temp bytes total:   126
-//   temp bytes aligned: 320
+//   temp bytes aligned: 224
 class MyClass : public tensorflow::XlaCompiledCpuFunction {
  public:
   // Number of input arguments for the compiled computation.

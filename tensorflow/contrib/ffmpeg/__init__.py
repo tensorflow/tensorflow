@@ -28,6 +28,7 @@ from __future__ import print_function
 from tensorflow.contrib.ffmpeg.ffmpeg_ops import decode_audio
 from tensorflow.contrib.ffmpeg.ffmpeg_ops import decode_video
 from tensorflow.contrib.ffmpeg.ffmpeg_ops import encode_audio
+from tensorflow.contrib.ffmpeg.ffmpeg_ops import decode_video
 
 from tensorflow.python.util.all_util import remove_undocumented
 

@@ -67,8 +67,13 @@ struct AllocatorStats {
 // device memory.
 class Allocator {
  public:
+#ifdef EIGEN_VECTORIZE_AVX512
   // Align to 64 byte boundary.
   static constexpr size_t kAllocatorAlignment = 64;
+#else
+  // Align to 32 byte boundary.
+  static constexpr size_t kAllocatorAlignment = 32;
+#endif
 
   virtual ~Allocator();
 

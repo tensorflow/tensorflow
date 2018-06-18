@@ -610,6 +610,7 @@ class SymbolicShapeRefiner {
     }
   };
 
+  // Compute the shape of the tensors outputed by node 'node' at output port
   // 'port_index' as the union of shape1 and shape2.
   ShapeHandle OutputAsUnion(const NodeDef* node, int port_index,
                             ShapeHandle shape1, ShapeHandle shape2) {

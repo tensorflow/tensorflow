@@ -699,9 +699,7 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
-        ":abi",
         ":lib_platform",
-        ":stacktrace",
     ],
 )
 
@@ -3091,8 +3089,6 @@ cc_library(
         # we now need at least "str_util".
         ":lib",
         ":lib_platform",
-        ":stacktrace_handler",
-        ":test_lite",
         "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,
@@ -3573,10 +3569,7 @@ tf_cc_tests_gpu(
 tf_cc_test_mkl(
     name = "mkl_runtime_tests",
     size = "small",
-    srcs = [
-        "common_runtime/mkl_cpu_allocator_test.cc",
-        "common_runtime/mkl_threadpool_device_test.cc",
-    ],
+    srcs = ["common_runtime/mkl_cpu_allocator_test.cc"],
     linkstatic = 1,
     deps = [
         ":core",

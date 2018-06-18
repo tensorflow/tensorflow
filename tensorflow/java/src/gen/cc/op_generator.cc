@@ -376,6 +376,9 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
     }
   }
   // op annotations
+  op_class.add_annotation(
+      Annotation::Create("Generated", "javax.annotation")
+          .attributes("value = \"TensorFlow Java Op Generator\""));
   if (endpoint.deprecated()) {
     op_class.add_annotation(Annotation::Create("Deprecated"));
     string explanation;
@@ -412,12 +415,8 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
   SourceFileWriter writer(op_file.get());
   std::list<Type> dependencies;
   CollectOpDependencies(op, mode, &dependencies);
-  writer.Write(kLicense)
-      .EndLine()
-      .Write("// This class has been generated, DO NOT EDIT!")
-      .EndLine()
-      .EndLine()
-      .BeginType(op_class, PUBLIC | FINAL, &dependencies, &op_javadoc);
+  writer.Write(kLicense).EndLine().BeginType(op_class, PUBLIC | FINAL,
+                                             &dependencies, &op_javadoc);
   if (!op.optional_attributes().empty()) {
     RenderOptionsClass(op, op_class, &writer);
   }

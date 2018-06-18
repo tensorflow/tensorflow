@@ -151,24 +151,16 @@ class SinhArcsinhBijectorTest(test.TestCase):
         self.assertAllClose(y, bijector.forward(x).eval(), rtol=1e-4, atol=0.)
         self.assertAllClose(x, bijector.inverse(y).eval(), rtol=1e-4, atol=0.)
 
-        # On IBM PPC systems, longdouble (np.float128) is same as double except that it can have more precision.
-        # Type double being of 8 bytes, can't hold square of max of float64 (which is also 8 bytes) and
-        # below test fails due to overflow error giving inf. So this check avoids that error by skipping square
-        # calculation and corresponding assert.
-
-        if np.amax(y) <= np.sqrt(np.finfo(np.float128).max) and \
-           np.fabs(np.amin(y)) <= np.sqrt(np.fabs(np.finfo(np.float128).min)):
-
-          # Do the numpy calculation in float128 to avoid inf/nan.
-          y_float128 = np.float128(y)
-          self.assertAllClose(
-              np.log(np.cosh(
-                  np.arcsinh(y_float128) / tailweight - skewness) / np.sqrt(
-                      y_float128**2 + 1)) -
-              np.log(tailweight),
-              bijector.inverse_log_det_jacobian(y, event_ndims=0).eval(),
-              rtol=1e-4,
-              atol=0.)
+        # Do the numpy calculation in float128 to avoid inf/nan.
+        y_float128 = np.float128(y)
+        self.assertAllClose(
+            np.log(np.cosh(
+                np.arcsinh(y_float128) / tailweight - skewness) / np.sqrt(
+                    y_float128**2 + 1)) -
+            np.log(tailweight),
+            bijector.inverse_log_det_jacobian(y, event_ndims=0).eval(),
+            rtol=1e-4,
+            atol=0.)
         self.assertAllClose(
             -bijector.inverse_log_det_jacobian(y, event_ndims=0).eval(),
             bijector.forward_log_det_jacobian(x, event_ndims=0).eval(),

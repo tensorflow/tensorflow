@@ -71,8 +71,6 @@ def pyx_library(
         name = filename + "_cython_translation",
         srcs = [filename],
         outs = [filename.split(".")[0] + ".cpp"],
-        # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
-        # works. Windows has issues with cython_binary so skip PYTHON_BIN_PATH.
         cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
         tools = ["@cython//:cython_binary"] + pxd_srcs,
     )

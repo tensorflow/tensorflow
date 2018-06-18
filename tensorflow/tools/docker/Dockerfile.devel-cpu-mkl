@@ -3,7 +3,7 @@ FROM tensorflow/tensorflow:latest-devel
 LABEL maintainer="Clayne Robison<clayne.b.robison@intel.com>"
 
 # These arguments are parameterized. Use --build-args to override.
-ARG TF_BRANCH=r1.9
+ARG TF_BRANCH=r1.8
 ARG WHL_DIR=/whl
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

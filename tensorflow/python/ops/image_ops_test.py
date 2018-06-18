@@ -533,37 +533,6 @@ class FlipImageBenchmark(test.Benchmark):
         iters=benchmark_rounds,
         wall_time=step_time)
 
-  def _benchmarkBatchedRandomFlipLeftRight(self, device, cpu_count):
-    image_shape = [16, 299, 299, 3]
-    warmup_rounds = 100
-    benchmark_rounds = 1000
-    config = config_pb2.ConfigProto()
-    if cpu_count is not None:
-      config.inter_op_parallelism_threads = 1
-      config.intra_op_parallelism_threads = cpu_count
-    with session.Session("", graph=ops.Graph(), config=config) as sess:
-      with ops.device(device):
-        inputs = variables.Variable(
-            random_ops.random_uniform(image_shape, dtype=dtypes.float32) * 255,
-            trainable=False,
-            dtype=dtypes.float32)
-        run_op = image_ops.random_flip_left_right(inputs)
-        sess.run(variables.global_variables_initializer())
-        for i in xrange(warmup_rounds + benchmark_rounds):
-          if i == warmup_rounds:
-            start = time.time()
-          sess.run(run_op)
-    end = time.time()
-    step_time = (end - start) / benchmark_rounds
-    tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
-    print("benchmarkBatchedRandomFlipLeftRight_16_299_299_3_%s step_time: "
-          "%.2f us" %
-          (tag, step_time * 1e6))
-    self.report_benchmark(
-        name="benchmarkBatchedRandomFlipLeftRight_16_299_299_3_%s" % (tag),
-        iters=benchmark_rounds,
-        wall_time=step_time)
-
   def benchmarkFlipLeftRightCpu1(self):
     self._benchmarkFlipLeftRight("/cpu:0", 1)
 
@@ -581,15 +550,6 @@ class FlipImageBenchmark(test.Benchmark):
 
   def benchmarkRandomFlipLeftRightGpu(self):
     self._benchmarkRandomFlipLeftRight(test.gpu_device_name(), None)
-
-  def benchmarkBatchedRandomFlipLeftRightCpu1(self):
-    self._benchmarkBatchedRandomFlipLeftRight("/cpu:0", 1)
-
-  def benchmarkBatchedRandomFlipLeftRightCpuAll(self):
-    self._benchmarkBatchedRandomFlipLeftRight("/cpu:0", None)
-
-  def benchmarkBatchedRandomFlipLeftRightGpu(self):
-    self._benchmarkBatchedRandomFlipLeftRight(test.gpu_device_name(), None)
 
 
 class AdjustHueBenchmark(test.Benchmark):
@@ -1027,7 +987,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf, seed=seed)
+      y = image_ops.random_flip_left_right(x_tf)
       self.assertTrue(y.op.name.startswith("random_flip_left_right"))
 
       count_flipped = 0
@@ -1047,50 +1007,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       # Six Sigma: 50 - (5 * 6) = 20
       self.assertGreaterEqual(count_flipped, 20)
       self.assertGreaterEqual(count_unflipped, 20)
-
-  def testRandomFlipLeftRightWithBatch(self):
-    batch_size = 16
-    seed = 42
-
-    # create single item of test data
-    x_np_raw = np.array(
-        [[1, 2, 3], [1, 2, 3]], dtype=np.uint8
-    ).reshape([1, 2, 3, 1])
-    y_np_raw = np.array(
-        [[3, 2, 1], [3, 2, 1]], dtype=np.uint8
-    ).reshape([1, 2, 3, 1])
-
-    # create batched test data
-    x_np = np.vstack([x_np_raw for _ in range(batch_size)])
-    y_np = np.vstack([y_np_raw for _ in range(batch_size)])
-
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf, seed=seed)
-      self.assertTrue(y.op.name.startswith("random_flip_left_right"))
-
-      count_flipped = 0
-      count_unflipped = 0
-      for _ in range(100):
-        y_tf = y.eval()
-
-        # check every element of the batch
-        for i in range(batch_size):
-          if y_tf[i][0][0] == 1:
-            self.assertAllEqual(y_tf[i], x_np[i])
-            count_unflipped += 1
-          else:
-            self.assertAllEqual(y_tf[i], y_np[i])
-            count_flipped += 1
-
-      # 100 trials, each containing batch_size elements
-      # Mean: 50 * batch_size
-      # Std Dev: ~5 * sqrt(batch_size)
-      # Six Sigma: 50 * batch_size - (5 * 6 * sqrt(batch_size))
-      #          = 50 * batch_size - 30 * sqrt(batch_size) = 800 - 30 * 4 = 680
-      six_sigma = 50 * batch_size - 30 * np.sqrt(batch_size)
-      self.assertGreaterEqual(count_flipped, six_sigma)
-      self.assertGreaterEqual(count_unflipped, six_sigma)
 
   def testInvolutionUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1141,11 +1057,9 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
 
-    seed = 42
-
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf, seed=seed)
+      y = image_ops.random_flip_up_down(x_tf, seed=42)
       self.assertTrue(y.op.name.startswith("random_flip_up_down"))
       count_flipped = 0
       count_unflipped = 0
@@ -1164,50 +1078,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       # Six Sigma: 50 - (5 * 6) = 20
       self.assertGreaterEqual(count_flipped, 20)
       self.assertGreaterEqual(count_unflipped, 20)
-
-  def testRandomFlipUpDownWithBatch(self):
-    batch_size = 16
-    seed = 42
-
-    # create single item of test data
-    x_np_raw = np.array(
-        [[1, 2, 3], [4, 5, 6]], dtype=np.uint8
-    ).reshape([1, 2, 3, 1])
-    y_np_raw = np.array(
-        [[4, 5, 6], [1, 2, 3]], dtype=np.uint8
-    ).reshape([1, 2, 3, 1])
-
-    # create batched test data
-    x_np = np.vstack([x_np_raw for _ in range(batch_size)])
-    y_np = np.vstack([y_np_raw for _ in range(batch_size)])
-
-    with self.test_session(use_gpu=True):
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf, seed=seed)
-      self.assertTrue(y.op.name.startswith("random_flip_up_down"))
-
-      count_flipped = 0
-      count_unflipped = 0
-      for _ in range(100):
-        y_tf = y.eval()
-
-        # check every element of the batch
-        for i in range(batch_size):
-          if y_tf[i][0][0] == 1:
-            self.assertAllEqual(y_tf[i], x_np[i])
-            count_unflipped += 1
-          else:
-            self.assertAllEqual(y_tf[i], y_np[i])
-            count_flipped += 1
-
-      # 100 trials, each containing batch_size elements
-      # Mean: 50 * batch_size
-      # Std Dev: ~5 * sqrt(batch_size)
-      # Six Sigma: 50 * batch_size - (5 * 6 * sqrt(batch_size))
-      #          = 50 * batch_size - 30 * sqrt(batch_size) = 800 - 30 * 4 = 680
-      six_sigma = 50 * batch_size - 30 * np.sqrt(batch_size)
-      self.assertGreaterEqual(count_flipped, six_sigma)
-      self.assertGreaterEqual(count_unflipped, six_sigma)
 
   def testInvolutionTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1286,7 +1156,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     #Ops that support 4D input
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
-        image_ops.random_flip_left_right, image_ops.random_flip_up_down,
         image_ops.transpose_image, image_ops.rot90
     ]:
       transformed_unknown_dims_4 = op(p_unknown_dims_4)
@@ -1296,6 +1165,14 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError,
                                    "must be at least three-dimensional"):
         op(p_wrong_rank)
+
+    for op in [
+        image_ops.random_flip_left_right,
+        image_ops.random_flip_up_down,
+    ]:
+      with self.assertRaisesRegexp(ValueError, "must be three-dimensional"):
+        op(p_wrong_rank)
+
 
   def testRot90GroupOrder(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
@@ -1330,6 +1207,41 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       for k in xrange(4):
         y_np = np.rot90(image, k=k, axes=(1, 2))
         self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
+
+class RandomFlipTest(test_util.TensorFlowTestCase):
+
+  def testRandomLeftRight(self):
+    x_np = np.array([0, 1], dtype=np.uint8).reshape([1, 2, 1])
+    num_iterations = 500
+
+    hist = [0, 0]
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.random_flip_left_right(x_tf)
+      for _ in xrange(num_iterations):
+        y_np = y.eval().flatten()[0]
+        hist[y_np] += 1
+
+    # Ensure that each entry is observed within 4 standard deviations.
+    four_stddev = 4.0 * np.sqrt(num_iterations / 2.0)
+    self.assertAllClose(hist, [num_iterations / 2.0] * 2, atol=four_stddev)
+
+  def testRandomUpDown(self):
+    x_np = np.array([0, 1], dtype=np.uint8).reshape([2, 1, 1])
+    num_iterations = 500
+
+    hist = [0, 0]
+    with self.test_session(use_gpu=True):
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.random_flip_up_down(x_tf)
+      for _ in xrange(num_iterations):
+        y_np = y.eval().flatten()[0]
+        hist[y_np] += 1
+
+    # Ensure that each entry is observed within 4 standard deviations.
+    four_stddev = 4.0 * np.sqrt(num_iterations / 2.0)
+    self.assertAllClose(hist, [num_iterations / 2.0] * 2, atol=four_stddev)
+
 
 class AdjustContrastTest(test_util.TensorFlowTestCase):
 
@@ -3966,89 +3878,6 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       actual_sobel = sobel.eval()
       self.assertAllClose(expected_batch, actual_sobel)
-
-
-class DecodeImageTest(test_util.TensorFlowTestCase):
-
-  def testJpegUint16(self):
-    with self.test_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/jpeg/testdata"
-      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
-      image0 = image_ops.decode_image(jpeg0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
-                                             dtypes.uint16)
-      image0, image1 = sess.run([image0, image1])
-      self.assertAllEqual(image0, image1)
-
-  def testPngUint16(self):
-    with self.test_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/png/testdata"
-      png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
-      image0 = image_ops.decode_image(png0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(
-          image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.uint16)
-      image0, image1 = sess.run([image0, image1])
-      self.assertAllEqual(image0, image1)
-
-  def testGifUint16(self):
-    with self.test_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/gif/testdata"
-      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
-      image0 = image_ops.decode_image(gif0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
-                                             dtypes.uint16)
-      image0, image1 = sess.run([image0, image1])
-      self.assertAllEqual(image0, image1)
-
-  def testBmpUint16(self):
-    with self.test_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/bmp/testdata"
-      bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
-      image0 = image_ops.decode_image(bmp0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
-                                             dtypes.uint16)
-      image0, image1 = sess.run([image0, image1])
-      self.assertAllEqual(image0, image1)
-
-  def testJpegFloat32(self):
-    with self.test_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/jpeg/testdata"
-      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
-      image0 = image_ops.decode_image(jpeg0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
-                                             dtypes.float32)
-      image0, image1 = sess.run([image0, image1])
-      self.assertAllEqual(image0, image1)
-
-  def testPngFloat32(self):
-    with self.test_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/png/testdata"
-      png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
-      image0 = image_ops.decode_image(png0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(
-          image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.float32)
-      image0, image1 = sess.run([image0, image1])
-      self.assertAllEqual(image0, image1)
-
-  def testGifFloat32(self):
-    with self.test_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/gif/testdata"
-      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
-      image0 = image_ops.decode_image(gif0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
-                                             dtypes.float32)
-      image0, image1 = sess.run([image0, image1])
-      self.assertAllEqual(image0, image1)
-
-  def testBmpFloat32(self):
-    with self.test_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/bmp/testdata"
-      bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
-      image0 = image_ops.decode_image(bmp0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
-                                             dtypes.float32)
-      image0, image1 = sess.run([image0, image1])
-      self.assertAllEqual(image0, image1)
 
 
 if __name__ == "__main__":

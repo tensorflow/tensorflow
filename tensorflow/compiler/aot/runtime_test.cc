@@ -24,7 +24,7 @@ namespace runtime {
 namespace {
 
 TEST(Runtime, AlignmentValue) {
-  // We've chosen 64 byte alignment for the tfcompile runtime to mimic the
+  // We've chosen 32 byte alignment for the tfcompile runtime to mimic the
   // regular tensorflow allocator, which was chosen to play nicely with Eigen.
   // The tfcompile runtime also has a requirement that comes from the xla
   // generated code, on the relation: buffer_size >= 16 ? 2 * sizeof(void*) : 8
@@ -39,13 +39,13 @@ TEST(Runtime, AlignedBufferBytes) {
   EXPECT_EQ(aligned_buffer_bytes(sizesA, 1), 0);
 
   static constexpr intptr_t sizesB[1] = {3};
-  EXPECT_EQ(aligned_buffer_bytes(sizesB, 1), 64);
+  EXPECT_EQ(aligned_buffer_bytes(sizesB, 1), 32);
 
   static constexpr intptr_t sizesC[1] = {32};
-  EXPECT_EQ(aligned_buffer_bytes(sizesC, 1), 64);
+  EXPECT_EQ(aligned_buffer_bytes(sizesC, 1), 32);
 
   static constexpr intptr_t sizesD[7] = {1, -1, 32, -1, 64, 2, 3};
-  EXPECT_EQ(aligned_buffer_bytes(sizesD, 7), 320);
+  EXPECT_EQ(aligned_buffer_bytes(sizesD, 7), 192);
 }
 
 void* add_ptr(void* base, uintptr_t delta) {
@@ -101,11 +101,11 @@ TEST(Runtime, MallocFreeContiguousBuffers) {
   EXPECT_NE(base, nullptr);
   EXPECT_EQ(bufD[0], add_ptr(base, 0));
   EXPECT_EQ(bufD[1], nullptr);
-  EXPECT_EQ(bufD[2], add_ptr(base, 64));
+  EXPECT_EQ(bufD[2], add_ptr(base, 32));
   EXPECT_EQ(bufD[3], nullptr);
-  EXPECT_EQ(bufD[4], add_ptr(base, 128));
-  EXPECT_EQ(bufD[5], add_ptr(base, 192));
-  EXPECT_EQ(bufD[6], add_ptr(base, 256));
+  EXPECT_EQ(bufD[4], add_ptr(base, 64));
+  EXPECT_EQ(bufD[5], add_ptr(base, 128));
+  EXPECT_EQ(bufD[6], add_ptr(base, 160));
   for (int i = 0; i < 7; ++i) {
     const intptr_t size = sizesD[i];
     if (size != -1) {

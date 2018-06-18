@@ -28,8 +28,6 @@ namespace {
 using ops::BiasAdd;
 using ops::Conv2D;
 using ops::Elu;
-using ops::FractionalAvgPool;
-using ops::FractionalMaxPool;
 using ops::L2Loss;
 using ops::LogSoftmax;
 using ops::LRN;
@@ -43,8 +41,6 @@ using ops::Relu;
 using ops::Relu6;
 using ops::Selu;
 using ops::Softmax;
-using ops::Softplus;
-using ops::Softsign;
 
 class NNGradTest : public ::testing::Test {
  protected:
@@ -75,30 +71,22 @@ class NNGradTest : public ::testing::Test {
     EXPECT_LT(max_error, 1e-3);
   }
 
-  // Sets tensor with random values, ensuring that every pair of elements are at
-  // least a reasonable amount apart.
-  // This is an issue for max pooling operations, in which perturbations by the
-  // numeric gradient computation in the gradient checker can change the max
-  // value if a pool has values that are too close together.
+  // Sets tensor with random values, ensuring that the max value is largest by
+  // a reasonable amount.
+  // This is an issue for MaxPool, MaxPoolV2 and MaxPool3D, in which
+  // perturbations by the numeric gradient computation in the gradient checker
+  // can change the max value if values are too close together.
   template <typename T>
-  void SetRandomValuesForMaxPooling(Tensor* tensor) {
+  void SetRandomValuesWithBumpedMax(Tensor* tensor) {
     auto tensor_flat = tensor->flat<T>();
-    // First set the array to an increasing sequence of values spaced
-    // a reasonable amount apart
-    T cur = 0;
-    for (size_t i = 0; i < tensor->NumElements(); i++) {
-      tensor_flat(i) = cur;
-      cur += 5e-2;
+    tensor_flat.setRandom();
+    int32 max_index = 0;
+    for (size_t i = 1; i < tensor->NumElements(); i++) {
+      if (tensor_flat(i) > tensor_flat(max_index)) {
+        max_index = i;
+      }
     }
-    // Fischer-Yates shuffle the array
-    for (size_t i = tensor->NumElements() - 1; i >= 1; i--) {
-      // j <- random integer 0 <= j <= i
-      size_t j = random::New64() % (i + 1);
-      // swap values at i, j
-      T tmp = tensor_flat(i);
-      tensor_flat(i) = tensor_flat(j);
-      tensor_flat(j) = tmp;
-    }
+    tensor_flat(max_index) += 1e-2;
   }
 
   Scope scope_;
@@ -201,7 +189,7 @@ TEST_F(NNGradTest, MaxPoolGradHelper) {
   const std::vector<int> strides{1, 2, 2, 1};
   auto y = MaxPool(scope_, x, ksize, strides, "VALID");
   Tensor x_init_value = Tensor(DT_FLOAT, x_shape);
-  SetRandomValuesForMaxPooling<float>(&x_init_value);
+  SetRandomValuesWithBumpedMax<float>(&x_init_value);
   RunTest(x, x_init_value, y, y_shape);
 }
 
@@ -214,7 +202,7 @@ TEST_F(NNGradTest, MaxPoolGradV2Helper) {
   Tensor strides = test::AsTensor<int>({1, 2, 2, 1}, {4});
   auto y = MaxPoolV2(scope_, x, ksize, strides, "VALID");
   Tensor x_init_value = Tensor(DT_FLOAT, x_shape);
-  SetRandomValuesForMaxPooling<float>(&x_init_value);
+  SetRandomValuesWithBumpedMax<float>(&x_init_value);
   RunTest(x, x_init_value, y, y_shape);
 }
 
@@ -227,7 +215,7 @@ TEST_F(NNGradTest, MaxPool3DGradHelper) {
   const std::vector<int> strides{1, 3, 3, 3, 1};
   auto y = MaxPool3D(scope_, x, ksize, strides, "VALID");
   Tensor x_init_value = Tensor(DT_FLOAT, x_shape);
-  SetRandomValuesForMaxPooling<float>(&x_init_value);
+  SetRandomValuesWithBumpedMax<float>(&x_init_value);
   RunTest(x, x_init_value, y, y_shape);
 }
 
@@ -258,46 +246,6 @@ TEST_F(NNGradTest, LRN){
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto y = LRN(scope_, x);
   RunTest(x, x_shape, y, x_shape);
-}
-
-TEST_F(NNGradTest, SoftplusGrad) {
-  TensorShape shape({3, 7});
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto y = Softplus(scope_, x);
-  RunTest(x, shape, y, shape);
-}
-
-TEST_F(NNGradTest, SoftsignGrad) {
-  TensorShape shape({3, 7});
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto y = Softsign(scope_, x);
-  RunTest(x, shape, y, shape);
-}
-
-TEST_F(NNGradTest, FractionalAvgPoolGradHelper) {
-  TensorShape x_shape({1, 3, 7, 1});
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  // Force consistent pooling regions for unit testing.
-  auto y = FractionalAvgPool(
-      scope_, x, {1, 1.2, 1.9, 1},
-      FractionalAvgPool::Deterministic(true).Overlapping(true).Seed(1).Seed2(
-          2));
-  TensorShape y_shape({1, 2, 3, 1});
-  RunTest(x, x_shape, y.output, y_shape);
-}
-
-TEST_F(NNGradTest, FractionalMaxPoolGradHelper) {
-  TensorShape x_shape({1, 3, 7, 1});
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  // Force consistent pooling regions for unit testing.
-  auto y = FractionalMaxPool(
-      scope_, x, {1, 1.2, 1.9, 1},
-      FractionalMaxPool::Deterministic(true).Overlapping(true).Seed(1).Seed2(
-          2));
-  Tensor x_init_value = Tensor(DT_FLOAT, x_shape);
-  SetRandomValuesForMaxPooling<float>(&x_init_value);
-  TensorShape y_shape({1, 2, 3, 1});
-  RunTest(x, x_init_value, y.output, y_shape);
 }
 
 }  // namespace

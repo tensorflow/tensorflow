@@ -197,21 +197,7 @@ class GatherNdTest(test.TestCase):
     self.assertEqual(None, shape.ndims)
     self.assertEqual(None, shape[0].value)
 
-  def testBadIndicesCPU(self):
-    with self.test_session(use_gpu=False):
-      params = [0, 1, 2]
-      indices = [[[0], [7]]]  # Make this one higher rank
-      gather_nd = array_ops.gather_nd(params, indices)
-      with self.assertRaisesOpError(
-          r"flat indices\[1, :\] = \[7\] does not index into param "
-          r"\(shape: \[3\]\)"):
-        gather_nd.eval()
-
-  def _disabledTestBadIndicesGPU(self):
-    # TODO disabled due to different behavior on GPU and CPU
-    # On GPU the bad indices do not raise error but fetch 0 values
-    if not test.is_gpu_available():
-      return
+  def testBadIndices(self):
     with self.test_session(use_gpu=True):
       params = [0, 1, 2]
       indices = [[[0], [7]]]  # Make this one higher rank
@@ -221,21 +207,7 @@ class GatherNdTest(test.TestCase):
           r"\(shape: \[3\]\)"):
         gather_nd.eval()
 
-  def testBadIndicesWithSlicesCPU(self):
-    with self.test_session(use_gpu=False):
-      params = [[0, 1, 2]]
-      indices = [[[0], [0], [1]]]  # Make this one higher rank
-      gather_nd = array_ops.gather_nd(params, indices)
-      with self.assertRaisesOpError(
-          r"flat indices\[2, :\] = \[1\] does not index into param "
-          r"\(shape: \[1,3\]\)"):
-        gather_nd.eval()
-
-  def _disabledTestBadIndicesWithSlicesGPU(self):
-    # TODO disabled due to different behavior on GPU and CPU
-    # On GPU the bad indices do not raise error but fetch 0 values
-    if not test.is_gpu_available():
-      return
+  def testBadIndicesWithSlices(self):
     with self.test_session(use_gpu=True):
       params = [[0, 1, 2]]
       indices = [[[0], [0], [1]]]  # Make this one higher rank

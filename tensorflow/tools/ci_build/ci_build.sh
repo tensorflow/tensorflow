@@ -134,12 +134,6 @@ if [[ $? != "0" ]]; then
   die "ERROR: docker build failed. Dockerfile is at ${DOCKERFILE_PATH}"
 fi
 
-# If caller wants the with_the_same_user script to allow bad usernames, 
-# pass the var to the docker environment
-if [ -n "${CI_BUILD_USER_FORCE_BADNAME}" ]; then
-        CI_BUILD_USER_FORCE_BADNAME_ENV="-e CI_BUILD_USER_FORCE_BADNAME=yes"
-fi
-
 # Run the command inside the container.
 echo "Running '${COMMAND[*]}' inside ${DOCKER_IMG_NAME}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
@@ -154,7 +148,6 @@ ${DOCKER_BINARY} run --rm --pid=host \
     -e "CI_BUILD_GROUP=$(id -g -n)" \
     -e "CI_BUILD_GID=$(id -g)" \
     -e "CI_TENSORFLOW_SUBMODULE_PATH=${CI_TENSORFLOW_SUBMODULE_PATH}" \
-    ${CI_BUILD_USER_FORCE_BADNAME_ENV} \
     -v ${WORKSPACE}:/workspace \
     -w /workspace \
     ${GPU_EXTRA_PARAMS} \

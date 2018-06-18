@@ -21,8 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-
-from six.moves.urllib.request import urlretrieve
+import urllib
 
 import tensorflow as tf
 
@@ -39,7 +38,9 @@ FEATURE_KEYS = ['sepal_length', 'sepal_width', 'petal_length', 'petal_width']
 def maybe_download_iris_data(file_name, download_url):
   """Downloads the file and returns the number of data."""
   if not os.path.exists(file_name):
-    urlretrieve(download_url, file_name)
+    raw = urllib.urlopen(download_url).read()
+    with open(file_name, 'w') as f:
+      f.write(raw)
 
   # The first line is a comma-separated string. The first one is the number of
   # total data in the file.

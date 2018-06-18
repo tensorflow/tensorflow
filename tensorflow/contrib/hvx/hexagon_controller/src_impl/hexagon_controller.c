@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "hexagon_controller.h"
 
-#include <stdlib.h>
+#include <malloc.h>
 #include <stdio.h>
 
 #include "adspmsgd.h"

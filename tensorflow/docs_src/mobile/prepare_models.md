@@ -105,8 +105,8 @@ inline constants so everything’s in one file.  To handle the conversion, you�
 need the `freeze_graph.py` script, that’s held in
 [`tensorflow/python/tools/freeze_graph.py`](https://www.tensorflow.org/code/tensorflow/python/tools/freeze_graph.py). You’ll run it like this:
 
-    bazel build tensorflow/python/tools:freeze_graph
-    bazel-bin/tensorflow/python/tools/freeze_graph \
+    bazel build tensorflow/tools:freeze_graph
+    bazel-bin/tensorflow/tools/freeze_graph \
     --input_graph=/tmp/model/my_graph.pb \
     --input_checkpoint=/tmp/model/model.ckpt-1000 \
     --output_graph=/tmp/frozen_graph.pb \

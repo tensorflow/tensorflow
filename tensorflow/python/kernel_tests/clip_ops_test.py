@@ -18,12 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test
@@ -416,16 +413,6 @@ class ClipTest(test.TestCase):
       tf_ans = ans.eval()
 
     self.assertAllClose(np_ans, tf_ans)
-
-  def testClipByValueEmptyTensor(self):
-    # Test case for GitHub issue 19337
-    zero = array_ops.placeholder(dtype=dtypes.float32, shape=None)
-    x = clip_ops.clip_by_value(zero, zero, zero)
-    y = clip_ops.clip_by_value(zero, 1.0, 1.0)
-    z = clip_ops.clip_by_value(zero, zero, 1.0)
-    w = clip_ops.clip_by_value(zero, 1.0, zero)
-    with self.test_session(use_gpu=True) as sess:
-      sess.run([x, y, z, w], feed_dict={zero: np.zeros((7, 0))})
 
 
 if __name__ == '__main__':

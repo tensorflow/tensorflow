@@ -305,8 +305,7 @@ class BFCAllocator : public VisitableAllocator {
   // Try to add a new memory region that can satisfy an allocation of
   // 'rounded_bytes' bytes.  Returns true on success and false on
   // failure.
-  bool Extend(size_t alignment, size_t rounded_bytes)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  bool Extend(size_t rounded_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Returns a pointer to an underlying allocated chunk of size
   // 'rounded_bytes'.

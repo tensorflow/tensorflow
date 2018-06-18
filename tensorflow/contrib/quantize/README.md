@@ -6,7 +6,7 @@ inference. The details of the transformation implemented in this package is
 described here [1].
 
 This is done using the
-[fake quantization op](https://www.tensorflow.org/api_guides/python/array_ops#Fake_quantization).
+[fake quantization op](https://www.tensorflow.org/versions/r0.12/api_docs/python/array_ops/fake_quantization).
 
 Literature has shown that fixed point networks provide comparable performance to
 floating point networks [2]. This is achieved by modeling the quantization

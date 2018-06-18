@@ -178,7 +178,6 @@ cc_library(
         ":runtime_matmul",
         ":runtime_matmul_mkl",
         ":runtime_single_threaded_conv2d",
-        ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
         "@llvm//:execution_engine",
         "@llvm//:core",
@@ -517,6 +516,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
@@ -574,22 +574,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "runtime_single_threaded_fft",
-    srcs = [
-        "runtime_fft_impl.h",
-        "runtime_single_threaded_fft.cc",
-    ],
-    hdrs = ["runtime_single_threaded_fft.h"],
-    copts = runtime_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )

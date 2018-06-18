@@ -312,8 +312,8 @@ class Conv2DTest(test.TestCase):
       expected_values = self.evaluate(expected_results)
       computed_values = self.evaluate(computed_results)
       for e_value, c_value in zip(expected_values, computed_values):
-        tf_logging.info("expected = ", e_value)
-        tf_logging.info("actual = ", c_value)
+        print("expected = ", e_value)
+        print("actual = ", c_value)
         self.assertAllClose(
             e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-4)
 
@@ -337,8 +337,8 @@ class Conv2DTest(test.TestCase):
       for i in range(len(tensors)):
         conv = tensors[i]
         value = values[i]
-        tf_logging.info("expected = ", expected)
-        tf_logging.info("actual = ", value)
+        print("expected = ", expected)
+        print("actual = ", value)
         tol = 1e-5
         if value.dtype == np.float16:
           tol = 1e-3
@@ -547,8 +547,8 @@ class Conv2DTest(test.TestCase):
       # "values" consists of two tensors for two backprops
       value = self.evaluate(conv)
       self.assertShapeEqual(value, conv)
-    tf_logging.info("expected = ", expected)
-    tf_logging.info("actual = ", value)
+    print("expected = ", expected)
+    print("actual = ", value)
     self.assertArrayNear(expected, value.flatten(), err)
 
   def _CompareBackpropInput(self, input_sizes, filter_sizes, output_sizes,
@@ -723,8 +723,8 @@ class Conv2DTest(test.TestCase):
             data_format=data_format)
         value = self.evaluate(conv)
         self.assertShapeEqual(value, conv)
-      tf_logging.info("expected = ", expected)
-      tf_logging.info("actual = ", value)
+      print("expected = ", expected)
+      print("actual = ", value)
       self.assertArrayNear(expected, value.flatten(), 1e-5)
 
   def _CompareBackFilter(self, input_sizes, filter_sizes, output_sizes,
@@ -912,8 +912,8 @@ class Conv2DTest(test.TestCase):
         value_2 = sess.run(conv_2)
         self.assertShapeEqual(value, conv)
         self.assertShapeEqual(value_2, conv_2)
-      tf_logging.info("expected = ", value_2)
-      tf_logging.info("actual = ", value)
+      print("expected = ", value_2)
+      print("actual = ", value)
       self.assertArrayNear(value_2.flatten(), value.flatten(), err)
 
   # Testing for backprops
@@ -965,8 +965,8 @@ class Conv2DTest(test.TestCase):
         value_2 = sess.run(conv_2)
         self.assertShapeEqual(value, conv)
         self.assertShapeEqual(value_2, conv_2)
-      tf_logging.info("expected = ", value_2)
-      tf_logging.info("actual = ", value)
+      print("expected = ", value_2)
+      print("actual = ", value)
       self.assertArrayNear(value_2.flatten(), value.flatten(), err)
 
   def testConv2D2x2Depth3ValidBackpropFilterStride1x1Dilation2x1(self):
@@ -1178,7 +1178,7 @@ class Conv2DTest(test.TestCase):
           # since fp16 numerical gradients are too imprecise.
           err = np.fabs(jacob_t - reference_jacob_t).max()
 
-        tf_logging.info("conv_2d gradient error = ", err)
+        print("conv_2d gradient error = ", err)
         self.assertLess(err, 0.002)
 
   def testInputGradientValidPaddingStrideOne(self):
@@ -1546,7 +1546,7 @@ class DepthwiseConv2DTest(test.TestCase):
       conv = nn_impl.depthwise_conv2d(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
       value = sess.run(conv)
-    tf_logging.info("value = ", value)
+    print("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
 
@@ -1668,7 +1668,7 @@ class SeparableConv2DTest(test.TestCase):
         conv = array_ops.transpose(conv, [0, 2, 3, 1])
 
       value = sess.run(conv)
-    tf_logging.info("value = ", value)
+    print("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
 
@@ -1826,7 +1826,7 @@ class Conv2DBenchmark(test.Benchmark):
         wall_time = time.time() - start
         self.report_benchmark(
             name="conv_stack_iter_%d" % iter_index, wall_time=wall_time)
-        tf_logging.info("conv_stack_iter_%d: %.4f" % (iter_index, wall_time))
+        print("conv_stack_iter_%d: %.4f" % (iter_index, wall_time))
 
 
 def GetInceptionFwdTest(input_size, filter_size, stride, padding,

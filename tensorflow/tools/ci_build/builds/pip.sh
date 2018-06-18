@@ -322,10 +322,6 @@ create_activate_virtualenv_and_install_tensorflow() {
   pip install -v ${PIP_FLAGS} ${WHL_PATH} || \
     die "pip install (forcing to reinstall tensorflow) FAILED"
   echo "Successfully installed pip package ${TF_WHEEL_PATH}"
-
-  # Force downgrade setuptools.
-  pip install --upgrade setuptools==39.1.0
-
 }
 
 ################################################################################

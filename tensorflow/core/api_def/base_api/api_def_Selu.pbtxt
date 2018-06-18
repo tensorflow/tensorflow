@@ -4,10 +4,6 @@ op {
   description: <<END
 if < 0, `scale * features` otherwise.
 
-To be used together with
-`initializer = tf.variance_scaling_initializer(factor=1.0, mode='FAN_IN')`.
-For correct dropout, use `tf.contrib.nn.alpha_dropout`.
-
 See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
 END
 }

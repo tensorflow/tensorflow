@@ -70,9 +70,8 @@ class PandasIoTest(test.TestCase):
       return
     x, _ = self.makeTestDataFrame()
     y_noindex = pd.Series(np.arange(-32, -28))
-    with self.assertRaisesRegexp(ValueError,
-                                 'shuffle must be provided and explicitly '
-                                 'set as boolean'):
+    with self.assertRaisesRegexp(TypeError,
+                                 'shuffle must be explicitly set as boolean'):
       # Default shuffle is None
       pandas_io.pandas_input_fn(x, y_noindex)
 

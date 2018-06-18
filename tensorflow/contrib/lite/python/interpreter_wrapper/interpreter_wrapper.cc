@@ -397,14 +397,9 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
-    PyObject* data) {
-  char * buf = nullptr;
-  Py_ssize_t length;
-  if (PY_TO_CPPSTRING(data, &buf, &length) == -1) {
-    return nullptr;
-  }
+    const char* data, size_t len) {
   std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::BuildFromBuffer(buf, length);
+      tflite::FlatBufferModel::BuildFromBuffer(data, len);
   return model ? new InterpreterWrapper(std::move(model)) : nullptr;
 }
 

@@ -35,9 +35,8 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # Assert and Print are special symbols in python, so we must
-# have an upper-case version of them.  For users with Python 3 or Python 2.7
-# with `from __future__ import print_function`, we also allow lowercase.
-@tf_export("Print", "print")
+# use an upper-case version of them.
+@tf_export("Print")
 def Print(input_, data, message=None, first_n=None, summarize=None,
           name=None):
   """Prints a list of tensors.

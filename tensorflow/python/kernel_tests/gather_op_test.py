@@ -27,8 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.platform import test
 
-_TEST_TYPES = (dtypes.int64, dtypes.float32,
-               dtypes.complex64, dtypes.complex128)
+_TEST_TYPES = (dtypes.float32, dtypes.complex64, dtypes.complex128)
 
 
 class GatherTest(test.TestCase):
@@ -123,9 +122,6 @@ class GatherTest(test.TestCase):
                 gather, [tf_params, tf_indices, tf_axis], gather_grad)
             self.assertEqual(indices_grad, None)
             self.assertEqual(axis_grad, None)
-            if dtype.is_integer:
-              self.assertEqual(params_grad, None)
-              continue
             # For axis 0, we are able to create an efficient IndexedSlices for
             # the gradient.
             if axis == 0:
@@ -181,19 +177,7 @@ class GatherTest(test.TestCase):
     gather_t = array_ops.gather(params, indices, axis=axis)
     self.assertEqual(None, gather_t.shape)
 
-  def testBadIndicesCPU(self):
-    with self.test_session(use_gpu=False):
-      params = [[0, 1, 2], [3, 4, 5]]
-      with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 2\)"):
-        array_ops.gather(params, [[7]], axis=0).eval()
-      with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 3\)"):
-        array_ops.gather(params, [[7]], axis=1).eval()
-
-  def _disabledTestBadIndicesGPU(self):
-    # TODO disabled due to different behavior on GPU and CPU
-    # On GPU the bad indices do not raise error but fetch 0 values
-    if not test.is_gpu_available():
-      return
+  def testBadIndices(self):
     with self.test_session(use_gpu=True):
       params = [[0, 1, 2], [3, 4, 5]]
       with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 2\)"):

@@ -159,13 +159,7 @@ class ScatterTest(test.TestCase):
 
           # Clips small values to avoid division by zero.
           def clip_small_values(x):
-            threshold = 1e-4
-            sign = np.sign(x)
-
-            if isinstance(x, np.int32):
-              threshold = 1
-              sign = np.random.choice([-1, 1])
-            return threshold * sign if np.abs(x) < threshold else x
+            return 1e-4 * np.sign(x) if np.abs(x) < 1e-4 else x
 
           updates = np.vectorize(clip_small_values)(updates)
           old = _AsType(np.random.randn(*((first_dim,) + extra_shape)), vtype)
@@ -187,11 +181,7 @@ class ScatterTest(test.TestCase):
                          tf_scatter,
                          repeat_indices=False,
                          updates_are_scalar=False):
-    vtypes = [np.float32, np.float64]
-    if tf_scatter != state_ops.scatter_div:
-      vtypes.append(np.int32)
-
-    for vtype in vtypes:
+    for vtype in (np.float32, np.float64):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(tf_scatter, vtype, itype, repeat_indices,
                                updates_are_scalar)

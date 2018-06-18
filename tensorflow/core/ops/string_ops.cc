@@ -78,7 +78,7 @@ REGISTER_OP("ReduceJoin")
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr("T: {int8, int16, int32, int64, complex64, float, double, bool}")
+    .Attr("T: {int32, int64, complex64, float, double, bool, int8}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")
@@ -123,24 +123,6 @@ REGISTER_OP("StringSplit")
     .Output("values: string")
     .Output("shape: int64")
     .Attr("skip_empty: bool = true")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-
-      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
-      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(2, c->Vector(2));
-      return Status::OK();
-    });
-
-REGISTER_OP("StringSplitV2")
-    .Input("input: string")
-    .Input("sep: string")
-    .Output("indices: int64")
-    .Output("values: string")
-    .Output("shape: int64")
-    .Attr("maxsplit: int = -1")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));

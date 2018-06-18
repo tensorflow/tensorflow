@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "RemoteFusedGraphExecuteInfoProto";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+//add go_package externally
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";

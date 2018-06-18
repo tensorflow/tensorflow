@@ -1172,13 +1172,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
       {int8_ptr_type, int8_ptr_type, int8_ptr_type, int32_type, int32_type,
        int64_type, int64_type, int64_type, int64_type},
       /*isVarArg=*/false);
-
-  bool multi_threaded_eigen =
-      hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
-  const char* fn_name = multi_threaded_eigen
-                            ? runtime::kEigenFftSymbolName
-                            : runtime::kEigenSingleThreadedFftSymbolName;
-
+  const char* fn_name = runtime::kEigenFftSymbolName;
   llvm::Function* fft_func = llvm::cast<llvm::Function>(
       module_->getOrInsertFunction(fn_name, fft_type));
   fft_func->setCallingConv(llvm::CallingConv::C);

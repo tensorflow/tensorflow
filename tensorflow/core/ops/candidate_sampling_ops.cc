@@ -145,15 +145,12 @@ REGISTER_OP("ComputeAccidentalHits")
       int64 num_true;
       TF_RETURN_IF_ERROR(c->GetAttr("num_true", &num_true));
 
-      // Validate true_classes, must be a matrix.
+      // Validate true_classes.
       ShapeHandle true_classes;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &true_classes));
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(
           c->WithValue(c->Dim(true_classes, 1), num_true, &unused));
-      // Validate sampled_candidates, must be a vector.
-      ShapeHandle sampled_candidates;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &sampled_candidates));
 
       // All three outputs are the same shape.
       ShapeHandle v = c->Vector(InferenceContext::kUnknownDim);

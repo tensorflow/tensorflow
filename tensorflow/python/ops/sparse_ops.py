@@ -84,8 +84,6 @@ def _convert_to_sparse_tensors(sp_inputs):
 
 # pylint: disable=protected-access
 @tf_export("sparse_concat")
-@deprecation.deprecated_args(
-    None, "concat_dim is deprecated, use axis instead", "concat_dim")
 def sparse_concat(axis,
                   sp_inputs,
                   name=None,
@@ -599,8 +597,6 @@ class KeywordRequired(object):
 
 
 @tf_export("sparse_split")
-@deprecation.deprecated_args(
-    None, "split_dim is deprecated, use axis instead", "split_dim")
 def sparse_split(keyword_required=KeywordRequired(),
                  sp_input=None,
                  num_split=None,

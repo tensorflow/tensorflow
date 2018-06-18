@@ -119,8 +119,8 @@ def are_tensors_near(a, b, tolerance):
   flat_a = a.flatten()
   flat_b = b.flatten()
   if len(flat_a) != len(flat_b):
-    tf_logging.info("Tensors are different sizes: " + str(len(flat_a)) + " vs "
-                    + str(len(flat_b)))
+    print("Tensors are different sizes: " + str(len(flat_a)) + " vs " + str(
+        len(flat_b)))
     return False
   value_count = len(flat_a)
   how_many_different = 0
@@ -140,10 +140,10 @@ def are_tensors_near(a, b, tolerance):
   if how_many_different == 0:
     return True
   else:
-    tf_logging.info("Tensors have {0} different values ({1}%), with mean"
-                    " difference {2} and mean absolute difference {3}".format(
-                        how_many_different, proportion_different * 100,
-                        mean_difference, mean_abs_difference))
+    print("Tensors have {0} different values ({1}%), with mean difference"
+          " {2} and mean absolute difference {3}".format(
+              how_many_different, proportion_different * 100, mean_difference,
+              mean_abs_difference))
     return False
 
 

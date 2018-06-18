@@ -128,6 +128,7 @@ TensorFlow operation not listed above are likely unsupported. Notably, the
 following common ops are not supported at the moment:
 
 *   [tf.depth_to_space](https://www.tensorflow.org/api_docs/python/tf/depth_to_space)
+*   [tf.gather](https://www.tensorflow.org/api_docs/python/tf/gather)
 *   [tf.image.resize_bilinear](https://www.tensorflow.org/api_docs/python/tf/image/resize_bilinear)
 *   [tf.tanh](https://www.tensorflow.org/api_docs/python/tf/tanh)
 
@@ -302,19 +303,6 @@ Outputs {
 }
 Options {
   fused_activation_function:  NONE|RELU|RELU6
-}
-```
-
-**GATHER**
-
-```
-Inputs {
-  0: params tensor
-  1: indices tensor
-  2: axis tensor (optional)
-}
-Outputs {
-  0: a tensor with same type as the params tensor.
 }
 ```
 

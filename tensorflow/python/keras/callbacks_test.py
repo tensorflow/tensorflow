@@ -653,8 +653,6 @@ class KerasCallbacksTest(test.TestCase):
       model.add(
           keras.layers.Dense(
               NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      # non_trainable_weights: moving_variance, moving_mean
-      model.add(keras.layers.BatchNormalization())
       model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
       model.compile(
           loss='categorical_crossentropy',

@@ -129,7 +129,7 @@ cudaStream_t CudaStreamForMPI();
  *  has the fully accumulated Segment 1; and so on. The scatter-reduce is
  * complete.
  *
- *  Next, the allgather distributes these fully accumulated chunks across all
+ *  Next, the allgather distributes these fully accumululated chunks across all
  * nodes. Communication proceeds in the same ring, once again in N-1 steps. At
  * the ith step, node j will send chunk (j - i + 1) and receive chunk (j - i).
  * For example, at the first iteration, the following transfers will occur:

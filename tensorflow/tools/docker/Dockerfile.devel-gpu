@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-cusparse-dev-9-0 \
         curl \
         git \
-        libcudnn7=7.1.4.18-1+cuda9.0 \
-        libcudnn7-dev=7.1.4.18-1+cuda9.0 \
+        libcudnn7=7.0.5.15-1+cuda9.0 \
+        libcudnn7-dev=7.0.5.15-1+cuda9.0 \
         libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
@@ -85,7 +85,7 @@ RUN mkdir /bazel && \
 
 # Download and build TensorFlow.
 WORKDIR /tensorflow
-RUN git clone --branch=r1.9 --depth=1 https://github.com/tensorflow/tensorflow.git .
+RUN git clone --branch=r1.8 --depth=1 https://github.com/tensorflow/tensorflow.git .
 
 # Configure the build for our CUDA configuration.
 ENV CI_BUILD_PYTHON python

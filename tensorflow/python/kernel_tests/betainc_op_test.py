@@ -172,7 +172,7 @@ class BetaincTest(test.TestCase):
       tf_gout_t = math_ops.betainc(tf_ga_s, tf_gb_s, tf_gx_s)
       err = gradient_checker.compute_gradient_error(
           [tf_gx_s], [gx_s.shape], tf_gout_t, gx_s.shape)
-      tf_logging.info("betainc gradient err = %g " % err)
+      print("betainc gradient err = %g " % err)
       self.assertLess(err, err_tolerance)
 
       # Test broadcast gradient
@@ -181,7 +181,7 @@ class BetaincTest(test.TestCase):
       tf_gout_t = math_ops.betainc(tf_ga_s, tf_gb_s, tf_gx_s)
       err = gradient_checker.compute_gradient_error(
           [tf_gx_s], [()], tf_gout_t, ga_s.shape)
-      tf_logging.info("betainc gradient err = %g " % err)
+      print("betainc gradient err = %g " % err)
       self.assertLess(err, err_tolerance)
 
 

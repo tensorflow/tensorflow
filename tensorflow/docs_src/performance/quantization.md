@@ -227,8 +227,8 @@ of 30.0f, and an 8-bit array, the quantized values represent the following:
   <table>
     <tr><th>Quantized</th><th>Float</th></tr>
     <tr><td>0</td><td>-10.0</td></tr>
-    <tr><td>128</td><td>10.0</td></tr>
     <tr><td>255</td><td>30.0</td></tr>
+    <tr><td>128</td><td>10.0</td></tr>
   </table>
   <figcaption>
     <b>Table 2</b>: Example quantized value range

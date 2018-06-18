@@ -1786,23 +1786,6 @@ class variable_scope(object):
           assert v.name == "foo/bar/v:0"
   ```
 
-  Simple example of how to reenter a premade variable scope safely:
-
-  ```python
-  with tf.variable_scope("foo") as vs:
-    pass
-
-  # Re-enter the variable scope.
-  with tf.variable_scope(vs,
-                         auxiliary_name_scope=False) as vs1:
-    # Restore the original name_scope.
-    with tf.name_scope(vs1.original_name_scope):
-        v = tf.get_variable("v", [1])
-        assert v.name == "foo/v:0"
-        c = tf.constant([1], name="c")
-        assert c.name == "foo/c:0"
-  ```
-
   Basic example of sharing a variable AUTO_REUSE:
 
   ```python
@@ -1941,9 +1924,7 @@ class variable_scope(object):
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
       auxiliary_name_scope: If `True`, we create an auxiliary name scope with
-        the scope. If `False`, we don't create it. Note that the argument is
-        not inherited, and it only takes effect for once when creating. You
-        should only use it for re-entering a premade variable scope.
+        the scope. If `False`, we don't touch name scope.
 
     Returns:
       A scope that can be captured and reused.

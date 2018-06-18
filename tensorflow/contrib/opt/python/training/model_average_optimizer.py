@@ -62,7 +62,7 @@ class ModelAverageCustomGetter(object):
   """
 
   def __init__(self, worker_device):
-    """Create a new `ModelAverageCustomGetter`.
+    """Create a new `ElasticAverageCustomGetter`.
 
     Args:
       worker_device: String.  Name of the `worker` job.
