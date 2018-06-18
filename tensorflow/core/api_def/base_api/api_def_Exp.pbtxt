@@ -1,4 +1,4 @@
 op {
   graph_op_name: "Exp"
-  summary: "Computes exponential of x element-wise.  \\(y = e^x\\)."
+  summary: "Computes exponential of x element-wise.  \\\\(y = e^x\\\\)."
 }
