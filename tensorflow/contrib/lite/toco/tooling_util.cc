@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/dump_graphviz.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_graphviz_dump_options.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace toco {
@@ -583,6 +583,13 @@ void UnextendShape(Shape* shape, int new_shape_size) {
   }
   std::vector<int>& shape_dims = *shape->mutable_dims();
   shape_dims.erase(shape_dims.begin(), shape_dims.begin() + size_reduction);
+}
+
+bool IsValid(const Shape& shape) {
+  for (int i = 0; i < shape.dimensions_count(); ++i) {
+    if (shape.dims(i) < 1) return false;
+  }
+  return true;
 }
 
 void CheckShapeDimensions(const Shape& shape) {

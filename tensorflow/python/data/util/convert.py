@@ -69,3 +69,4 @@ def partial_shape_to_tensor(shape_like):
                       % (shape_like, ret.dtype.name))
 
     return ret
+

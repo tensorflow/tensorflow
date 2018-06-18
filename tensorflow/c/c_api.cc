@@ -2123,7 +2123,7 @@ TF_ImportGraphDefResults* TF_GraphImportGraphDefWithResults(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status) {
   GraphDef def;
-  if (!def.ParseFromArray(graph_def->data, graph_def->length)) {
+  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data, graph_def->length)) {
     status->status = InvalidArgument("Invalid GraphDef");
     return nullptr;
   }
@@ -2153,7 +2153,7 @@ void TF_GraphImportGraphDefWithReturnOutputs(
     return;
   }
   GraphDef def;
-  if (!def.ParseFromArray(graph_def->data, graph_def->length)) {
+  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data, graph_def->length)) {
     status->status = InvalidArgument("Invalid GraphDef");
     return;
   }

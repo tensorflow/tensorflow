@@ -202,6 +202,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       urls = [
           "https://mirror.bazel.build/www.nasm.us/pub/nasm/releasebuilds/2.12.02/nasm-2.12.02.tar.bz2",
           "http://pkgs.fedoraproject.org/repo/pkgs/nasm/nasm-2.12.02.tar.bz2/d15843c3fb7db39af80571ee27ec6fad/nasm-2.12.02.tar.bz2",
+          "http://www.nasm.us/pub/nasm/releasebuilds/2.12.02/nasm-2.12.02.tar.bz2",
       ],
       sha256 = "00b0891c678c065446ca59bcee64719d0096d54d6886e6e472aeee2e170ae324",
       strip_prefix = "nasm-2.12.02",
@@ -453,11 +454,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/582e5dd5553e3089fef97f9ab5a3f063e0160fa9.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/582e5dd5553e3089fef97f9ab5a3f063e0160fa9.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/45a02a4f8474b4b8c5cc106b5cecb06cf6e1b3c6.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/45a02a4f8474b4b8c5cc106b5cecb06cf6e1b3c6.tar.gz",
       ],
-      sha256 = "9a0e63469ae5a546e0c84b778955f0febabfc8497d312324546ec7d0db68430e",
-      strip_prefix = "llvm-582e5dd5553e3089fef97f9ab5a3f063e0160fa9",
+      sha256 = "056f7316a354d1f95e013176bd9b8be74e8f4d47fb0d908e0e742613187dbd59",
+      strip_prefix = "llvm-45a02a4f8474b4b8c5cc106b5cecb06cf6e1b3c6",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 
@@ -629,6 +630,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       licenses = ["notice"],  # Apache 2.0
   )
 
+  java_import_external(
+      name = "com_squareup_javapoet",
+      jar_sha256 = "5bb5abdfe4366c15c0da3332c57d484e238bd48260d6f9d6acf2b08fdde1efea",
+      jar_urls = [
+          "http://mirror.bazel.build/repo1.maven.org/maven2/com/squareup/javapoet/1.9.0/javapoet-1.9.0.jar",
+          "http://repo1.maven.org/maven2/com/squareup/javapoet/1.9.0/javapoet-1.9.0.jar",
+      ],
+      licenses = ["notice"],  # Apache 2.0
+  )
+
   tf_http_archive(
       name = "com_google_pprof",
       urls = [
@@ -780,10 +791,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@grpc//:grpc_python_plugin",
   )
 
-  # gRPC has three empty C++ functions which it wants the user to define
-  # at build time. https://github.com/grpc/grpc/issues/13590
   native.bind(
       name = "grpc_lib",
+      actual = "@grpc//:grpc++",
+  )
+
+  native.bind(
+      name = "grpc_lib_unsecure",
       actual = "@grpc//:grpc++_unsecure",
   )
 

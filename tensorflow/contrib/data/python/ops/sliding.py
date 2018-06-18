@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -43,10 +42,7 @@ class _SlideDataset(dataset_ops.Dataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         window_size=self._window_size,
         stride=self._stride,
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):

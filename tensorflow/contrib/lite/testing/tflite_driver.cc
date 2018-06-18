@@ -163,6 +163,7 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
     Invalidate("Failed build interpreter");
     return;
   }
+  interpreter_->UseNNAPI(use_nnapi_);
 
   must_allocate_tensors_ = true;
 }
@@ -284,7 +285,9 @@ bool TfLiteDriver::CheckResults() {
 }
 
 void TfLiteDriver::ResetLSTMStateTensors() {
-  // This is a workaround for initializing state tensors for LSTM.
+  interpreter_->ResetVariableTensorsToZero();
+
+  // Below is a workaround for initializing state tensors for LSTM.
   // TODO(ycling): Refactoring and find a better way to initialize state
   // tensors. Maybe write the reset instructions into the test data.
   for (auto node_index : interpreter_->execution_plan()) {
@@ -300,13 +303,6 @@ void TfLiteDriver::ResetLSTMStateTensors() {
         // The first 2 outputs of LSTM are state tensors.
         for (int i = 0; i < 2; ++i) {
           int node_index = node.outputs->data[i];
-          ResetTensor(node_index);
-        }
-      } else if (params->kernel_type == kTfLiteLSTMBasicKernel &&
-                 node.inputs->size == 5) {
-        // The 2th and 5th inputs are state tensors.
-        for (int i : {1, 4}) {
-          int node_index = node.inputs->data[i];
           ResetTensor(node_index);
         }
       }

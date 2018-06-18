@@ -2599,6 +2599,86 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       y = image_ops.resize_images(single_image, [55, 66])
       self.assertTrue(y.op.name.startswith("resize_images"))
 
+  def _ResizeImageCall(self, x, max_h, max_w, preserve_aspect_ratio,
+                       use_tensor_inputs):
+    if use_tensor_inputs:
+      target_max = ops.convert_to_tensor([max_h, max_w])
+      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
+      feed_dict = {x_tensor: x}
+    else:
+      target_max = [max_h, max_w]
+      x_tensor = x
+      feed_dict = {}
+
+    y = image_ops.resize_images(x_tensor, target_max,
+                                preserve_aspect_ratio=preserve_aspect_ratio)
+
+    with self.test_session(use_gpu=True):
+      return y.eval(feed_dict=feed_dict)
+
+  def _assertResizeEqual(self, x, x_shape, y, y_shape,
+                         preserve_aspect_ratio=True,
+                         use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    target_height, target_width, _ = y_shape
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      y_tf = self._ResizeImageCall(x, target_height, target_width,
+                                   preserve_aspect_ratio, use_tensor_inputs)
+      self.assertAllClose(y, y_tf)
+
+  def _assertResizeCheckShape(self, x, x_shape, target_shape,
+                              y_shape, preserve_aspect_ratio=True,
+                              use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    target_height, target_width = target_shape
+    x = np.array(x).reshape(x_shape)
+    y = np.zeros(y_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      y_tf = self._ResizeImageCall(x, target_height, target_width,
+                                   preserve_aspect_ratio, use_tensor_inputs)
+      self.assertShapeEqual(y, ops.convert_to_tensor(y_tf))
+
+  def testPreserveAspectRatioMultipleImages(self):
+    x_shape = [10, 100, 100, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [250, 250], [10, 250, 250, 10],
+                                 preserve_aspect_ratio=False)
+
+  def testPreserveAspectRatioNoOp(self):
+    x_shape = [10, 10, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeEqual(x, x_shape, x, x_shape)
+
+  def testPreserveAspectRatioSmaller(self):
+    x_shape = [100, 100, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [75, 50], [50, 50, 10])
+
+  def testPreserveAspectRatioSmallerMultipleImages(self):
+    x_shape = [10, 100, 100, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [75, 50], [10, 50, 50, 10])
+
+  def testPreserveAspectRatioLarger(self):
+    x_shape = [100, 100, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [150, 200], [150, 150, 10])
+
+  def testPreserveAspectRatioSameRatio(self):
+    x_shape = [1920, 1080, 3]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [3840, 2160], [3840, 2160, 3])
+
 
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 

@@ -2758,7 +2758,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(computation_status.status().ToString(),
               ::testing::ContainsRegex(
-                  "Expected non-opaque argument for lhs of binary operation"));
+                  "Expected array argument for lhs of binary operation"));
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, IdentityBroadcastOfSameRankIsAllowed) {

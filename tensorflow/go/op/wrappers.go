@@ -4210,69 +4210,6 @@ func Digamma(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// Shuffle dimensions of x according to a permutation.
-//
-// The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
-//   `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`
-func Transpose(scope *Scope, x tf.Output, perm tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Transpose",
-		Input: []tf.Input{
-			x, perm,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MinAttr is an optional argument to Min.
-type MinAttr func(optionalAttr)
-
-// MinKeepDims sets the optional keep_dims attribute to value.
-//
-// value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to false
-func MinKeepDims(value bool) MinAttr {
-	return func(m optionalAttr) {
-		m["keep_dims"] = value
-	}
-}
-
-// Computes the minimum of elements across dimensions of a tensor.
-//
-// Reduces `input` along the dimensions given in `axis`. Unless
-// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `axis`. If `keep_dims` is true, the reduced dimensions are
-// retained with length 1.
-//
-// Arguments:
-//	input: The tensor to reduce.
-//	axis: The dimensions to reduce. Must be in the range
-// `[-rank(input), rank(input))`.
-//
-// Returns The reduced tensor.
-func Min(scope *Scope, input tf.Output, axis tf.Output, optional ...MinAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Min",
-		Input: []tf.Input{
-			input, axis,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Conv2DBackpropFilterAttr is an optional argument to Conv2DBackpropFilter.
 type Conv2DBackpropFilterAttr func(optionalAttr)
 
@@ -6181,6 +6118,77 @@ func Mod(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Computes offsets of concat inputs within its output.
+//
+// For example:
+//
+// ```
+// # 'x' is [2, 2, 7]
+// # 'y' is [2, 3, 7]
+// # 'z' is [2, 5, 7]
+// concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
+// ```
+//
+// This is typically used by gradient computations for a concat operation.
+//
+// Arguments:
+//	concat_dim: The dimension along which to concatenate.
+//	shape: The `N` int32 vectors representing shape of tensors being concatenated.
+//
+// Returns The `N` int32 vectors representing the starting offset
+// of input tensors within the concatenated output.
+func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConcatOffset",
+		Input: []tf.Input{
+			concat_dim, tf.OutputList(shape),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if offset, idx, err = makeOutputList(op, idx, "offset"); err != nil {
+		scope.UpdateErr("ConcatOffset", err)
+		return
+	}
+	return offset
+}
+
+// Compute the lower regularized incomplete Gamma function `Q(a, x)`.
+//
+// The lower regularized incomplete Gamma function is defined as:
+//
+//
+// \\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
+//
+// where
+//
+// \\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\)
+//
+// is the lower incomplete Gamma function.
+//
+// Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
+// Gamma function.
+func Igamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Igamma",
+		Input: []tf.Input{
+			a, x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // DepthToSpaceAttr is an optional argument to DepthToSpace.
 type DepthToSpaceAttr func(optionalAttr)
 
@@ -6995,6 +7003,69 @@ func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output)
 		Input: []tf.Input{
 			value, bias,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Shuffle dimensions of x according to a permutation.
+//
+// The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
+//   `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`
+func Transpose(scope *Scope, x tf.Output, perm tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Transpose",
+		Input: []tf.Input{
+			x, perm,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MinAttr is an optional argument to Min.
+type MinAttr func(optionalAttr)
+
+// MinKeepDims sets the optional keep_dims attribute to value.
+//
+// value: If true, retain reduced dimensions with length 1.
+// If not specified, defaults to false
+func MinKeepDims(value bool) MinAttr {
+	return func(m optionalAttr) {
+		m["keep_dims"] = value
+	}
+}
+
+// Computes the minimum of elements across dimensions of a tensor.
+//
+// Reduces `input` along the dimensions given in `axis`. Unless
+// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+// `axis`. If `keep_dims` is true, the reduced dimensions are
+// retained with length 1.
+//
+// Arguments:
+//	input: The tensor to reduce.
+//	axis: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
+//
+// Returns The reduced tensor.
+func Min(scope *Scope, input tf.Output, axis tf.Output, optional ...MinAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Min",
+		Input: []tf.Input{
+			input, axis,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -11592,60 +11663,6 @@ func SparseDenseCwiseMul(scope *Scope, sp_indices tf.Output, sp_values tf.Output
 	return op.Output(0)
 }
 
-// ResizeAreaAttr is an optional argument to ResizeArea.
-type ResizeAreaAttr func(optionalAttr)
-
-// ResizeAreaAlignCorners sets the optional align_corners attribute to value.
-//
-// value: If true, the centers of the 4 corner pixels of the input and output tensors are
-// aligned, preserving the values at the corner pixels. Defaults to false.
-// If not specified, defaults to false
-func ResizeAreaAlignCorners(value bool) ResizeAreaAttr {
-	return func(m optionalAttr) {
-		m["align_corners"] = value
-	}
-}
-
-// Resize `images` to `size` using area interpolation.
-//
-// Input images can be of different types but output images are always float.
-//
-// The range of pixel values for the output image might be slightly different
-// from the range for the input image because of limited numerical precision.
-// To guarantee an output range, for example `[0.0, 1.0]`, apply
-// `tf.clip_by_value` to the output.
-//
-// Each output pixel is computed by first transforming the pixel's footprint into
-// the input tensor and then averaging the pixels that intersect the footprint. An
-// input pixel's contribution to the average is weighted by the fraction of its
-// area that intersects the footprint.  This is the same as OpenCV's INTER_AREA.
-//
-// Arguments:
-//	images: 4-D with shape `[batch, height, width, channels]`.
-//	size: = A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
-// new size for the images.
-//
-// Returns 4-D with shape
-// `[batch, new_height, new_width, channels]`.
-func ResizeArea(scope *Scope, images tf.Output, size tf.Output, optional ...ResizeAreaAttr) (resized_images tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResizeArea",
-		Input: []tf.Input{
-			images, size,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // 2D real-valued fast Fourier transform.
 //
 // Computes the 2-dimensional discrete Fourier transform of a real-valued signal
@@ -13635,170 +13652,6 @@ func TopK(scope *Scope, input tf.Output, k int64, optional ...TopKAttr) (values 
 	return op.Output(0), op.Output(1)
 }
 
-// ComplexAttr is an optional argument to Complex.
-type ComplexAttr func(optionalAttr)
-
-// ComplexTout sets the optional Tout attribute to value.
-// If not specified, defaults to DT_COMPLEX64
-func ComplexTout(value tf.DataType) ComplexAttr {
-	return func(m optionalAttr) {
-		m["Tout"] = value
-	}
-}
-
-// Converts two real numbers to a complex number.
-//
-// Given a tensor `real` representing the real part of a complex number, and a
-// tensor `imag` representing the imaginary part of a complex number, this
-// operation returns complex numbers elementwise of the form \\(a + bj\\), where
-// *a* represents the `real` part and *b* represents the `imag` part.
-//
-// The input tensors `real` and `imag` must have the same shape.
-//
-// For example:
-//
-// ```
-// # tensor 'real' is [2.25, 3.25]
-// # tensor `imag` is [4.75, 5.75]
-// tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
-// ```
-func Complex(scope *Scope, real tf.Output, imag tf.Output, optional ...ComplexAttr) (out tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Complex",
-		Input: []tf.Input{
-			real, imag,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ImagAttr is an optional argument to Imag.
-type ImagAttr func(optionalAttr)
-
-// ImagTout sets the optional Tout attribute to value.
-// If not specified, defaults to DT_FLOAT
-func ImagTout(value tf.DataType) ImagAttr {
-	return func(m optionalAttr) {
-		m["Tout"] = value
-	}
-}
-
-// Returns the imaginary part of a complex number.
-//
-// Given a tensor `input` of complex numbers, this operation returns a tensor of
-// type `float` that is the imaginary part of each element in `input`. All
-// elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
-// is the real part and *b* is the imaginary part returned by this operation.
-//
-// For example:
-//
-// ```
-// # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-// tf.imag(input) ==> [4.75, 5.75]
-// ```
-func Imag(scope *Scope, input tf.Output, optional ...ImagAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Imag",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the maximum along segments of a tensor.
-//
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
-//
-// Computes a tensor such that
-// \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
-// that `segment_ids[j] == i`.
-//
-// If the max is empty for a given segment ID `i`, `output[i] = 0`.
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
-// </div>
-//
-// Arguments:
-//
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
-// first dimension.  Values should be sorted and can be repeated.
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `k`, the number of segments.
-func SegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SegmentMax",
-		Input: []tf.Input{
-			data, segment_ids,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes hyperbolic tangent of `x` element-wise.
-func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Tanh",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates a dataset that skips `count` elements from the `input_dataset`.
-//
-// Arguments:
-//
-//	count: A scalar representing the number of elements from the `input_dataset`
-// that should be skipped.  If count is -1, skips everything.
-//
-//
-func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "SkipDataset",
-		Input: []tf.Input{
-			input_dataset, count,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
 //
 // The Hurwitz zeta function is defined as:
@@ -14059,49 +13912,6 @@ func Minimum(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 		Input: []tf.Input{
 			x, y,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// RealAttr is an optional argument to Real.
-type RealAttr func(optionalAttr)
-
-// RealTout sets the optional Tout attribute to value.
-// If not specified, defaults to DT_FLOAT
-func RealTout(value tf.DataType) RealAttr {
-	return func(m optionalAttr) {
-		m["Tout"] = value
-	}
-}
-
-// Returns the real part of a complex number.
-//
-// Given a tensor `input` of complex numbers, this operation returns a tensor of
-// type `float` that is the real part of each element in `input`. All elements in
-// `input` must be complex numbers of the form \\(a + bj\\), where *a* is the real
-//  part returned by this operation and *b* is the imaginary part.
-//
-// For example:
-//
-// ```
-// # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-// tf.real(input) ==> [-2.25, 3.25]
-// ```
-func Real(scope *Scope, input tf.Output, optional ...RealAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Real",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -19698,6 +19508,267 @@ func OrderedMapIncompleteSize(scope *Scope, dtypes []tf.DataType, optional ...Or
 	opspec := tf.OpSpec{
 		Type: "OrderedMapIncompleteSize",
 
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ComplexAttr is an optional argument to Complex.
+type ComplexAttr func(optionalAttr)
+
+// ComplexTout sets the optional Tout attribute to value.
+// If not specified, defaults to DT_COMPLEX64
+func ComplexTout(value tf.DataType) ComplexAttr {
+	return func(m optionalAttr) {
+		m["Tout"] = value
+	}
+}
+
+// Converts two real numbers to a complex number.
+//
+// Given a tensor `real` representing the real part of a complex number, and a
+// tensor `imag` representing the imaginary part of a complex number, this
+// operation returns complex numbers elementwise of the form \\(a + bj\\), where
+// *a* represents the `real` part and *b* represents the `imag` part.
+//
+// The input tensors `real` and `imag` must have the same shape.
+//
+// For example:
+//
+// ```
+// # tensor 'real' is [2.25, 3.25]
+// # tensor `imag` is [4.75, 5.75]
+// tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
+// ```
+func Complex(scope *Scope, real tf.Output, imag tf.Output, optional ...ComplexAttr) (out tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Complex",
+		Input: []tf.Input{
+			real, imag,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ImagAttr is an optional argument to Imag.
+type ImagAttr func(optionalAttr)
+
+// ImagTout sets the optional Tout attribute to value.
+// If not specified, defaults to DT_FLOAT
+func ImagTout(value tf.DataType) ImagAttr {
+	return func(m optionalAttr) {
+		m["Tout"] = value
+	}
+}
+
+// Returns the imaginary part of a complex number.
+//
+// Given a tensor `input` of complex numbers, this operation returns a tensor of
+// type `float` that is the imaginary part of each element in `input`. All
+// elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
+// is the real part and *b* is the imaginary part returned by this operation.
+//
+// For example:
+//
+// ```
+// # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+// tf.imag(input) ==> [4.75, 5.75]
+// ```
+func Imag(scope *Scope, input tf.Output, optional ...ImagAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Imag",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the maximum along segments of a tensor.
+//
+// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
+// segments.
+//
+// Computes a tensor such that
+// \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
+// that `segment_ids[j] == i`.
+//
+// If the max is empty for a given segment ID `i`, `output[i] = 0`.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
+// </div>
+//
+// Arguments:
+//
+//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+// first dimension.  Values should be sorted and can be repeated.
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `k`, the number of segments.
+func SegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SegmentMax",
+		Input: []tf.Input{
+			data, segment_ids,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes hyperbolic tangent of `x` element-wise.
+func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Tanh",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that skips `count` elements from the `input_dataset`.
+//
+// Arguments:
+//
+//	count: A scalar representing the number of elements from the `input_dataset`
+// that should be skipped.  If count is -1, skips everything.
+//
+//
+func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "SkipDataset",
+		Input: []tf.Input{
+			input_dataset, count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// RealAttr is an optional argument to Real.
+type RealAttr func(optionalAttr)
+
+// RealTout sets the optional Tout attribute to value.
+// If not specified, defaults to DT_FLOAT
+func RealTout(value tf.DataType) RealAttr {
+	return func(m optionalAttr) {
+		m["Tout"] = value
+	}
+}
+
+// Returns the real part of a complex number.
+//
+// Given a tensor `input` of complex numbers, this operation returns a tensor of
+// type `float` that is the real part of each element in `input`. All elements in
+// `input` must be complex numbers of the form \\(a + bj\\), where *a* is the real
+//  part returned by this operation and *b* is the imaginary part.
+//
+// For example:
+//
+// ```
+// # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+// tf.real(input) ==> [-2.25, 3.25]
+// ```
+func Real(scope *Scope, input tf.Output, optional ...RealAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Real",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ResizeAreaAttr is an optional argument to ResizeArea.
+type ResizeAreaAttr func(optionalAttr)
+
+// ResizeAreaAlignCorners sets the optional align_corners attribute to value.
+//
+// value: If true, the centers of the 4 corner pixels of the input and output tensors are
+// aligned, preserving the values at the corner pixels. Defaults to false.
+// If not specified, defaults to false
+func ResizeAreaAlignCorners(value bool) ResizeAreaAttr {
+	return func(m optionalAttr) {
+		m["align_corners"] = value
+	}
+}
+
+// Resize `images` to `size` using area interpolation.
+//
+// Input images can be of different types but output images are always float.
+//
+// The range of pixel values for the output image might be slightly different
+// from the range for the input image because of limited numerical precision.
+// To guarantee an output range, for example `[0.0, 1.0]`, apply
+// `tf.clip_by_value` to the output.
+//
+// Each output pixel is computed by first transforming the pixel's footprint into
+// the input tensor and then averaging the pixels that intersect the footprint. An
+// input pixel's contribution to the average is weighted by the fraction of its
+// area that intersects the footprint.  This is the same as OpenCV's INTER_AREA.
+//
+// Arguments:
+//	images: 4-D with shape `[batch, height, width, channels]`.
+//	size: = A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+// new size for the images.
+//
+// Returns 4-D with shape
+// `[batch, new_height, new_width, channels]`.
+func ResizeArea(scope *Scope, images tf.Output, size tf.Output, optional ...ResizeAreaAttr) (resized_images tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResizeArea",
+		Input: []tf.Input{
+			images, size,
+		},
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
@@ -30638,75 +30709,4 @@ func UnravelIndex(scope *Scope, indices tf.Output, dims tf.Output) (output tf.Ou
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// Compute the lower regularized incomplete Gamma function `Q(a, x)`.
-//
-// The lower regularized incomplete Gamma function is defined as:
-//
-//
-// \\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
-//
-// where
-//
-// \\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\)
-//
-// is the lower incomplete Gamma function.
-//
-// Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
-// Gamma function.
-func Igamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Igamma",
-		Input: []tf.Input{
-			a, x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes offsets of concat inputs within its output.
-//
-// For example:
-//
-// ```
-// # 'x' is [2, 2, 7]
-// # 'y' is [2, 3, 7]
-// # 'z' is [2, 5, 7]
-// concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
-// ```
-//
-// This is typically used by gradient computations for a concat operation.
-//
-// Arguments:
-//	concat_dim: The dimension along which to concatenate.
-//	shape: The `N` int32 vectors representing shape of tensors being concatenated.
-//
-// Returns The `N` int32 vectors representing the starting offset
-// of input tensors within the concatenated output.
-func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ConcatOffset",
-		Input: []tf.Input{
-			concat_dim, tf.OutputList(shape),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if offset, idx, err = makeOutputList(op, idx, "offset"); err != nil {
-		scope.UpdateErr("ConcatOffset", err)
-		return
-	}
-	return offset
 }

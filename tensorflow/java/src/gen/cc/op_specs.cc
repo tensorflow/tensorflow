@@ -376,7 +376,7 @@ EndpointSpec CreateEndpoint(const OpDef& op_def, const ApiDef& api_def,
     package = name_tokens.at(0);
     name = name_tokens.at(1);
   } else {
-    package = "core";  // generate unclassified ops in the 'core' package
+    package = kDefaultEndpointPackage;
     name = name_tokens.at(0);
   }
   return EndpointSpec(package,
