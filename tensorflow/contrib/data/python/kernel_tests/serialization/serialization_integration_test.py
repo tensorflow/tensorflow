@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Integration test for input pipeline serialization."""
+"""Integration test for dataset serialization."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,7 +26,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
 
 
-class MultipleInputPipelinesTest(test.TestCase):
+class SerializationIntegrationTest(test.TestCase):
 
   def _build_input_pipeline(self, name, num_outputs):
     with ops.name_scope(name):

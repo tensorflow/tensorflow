@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for the sequence datasets serialization."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.contrib.data.python.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.platform import test
 
 
-class SequenceDatasetSerializationTest(
+class SkipDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
   def _build_skip_dataset(self, count):
@@ -52,6 +52,10 @@ class SequenceDatasetSerializationTest(
                                  'Shape must be rank 0 but is rank 1'):
       self.run_core_tests(lambda: self._build_skip_dataset([1, 2]), None, 0)
 
+
+class TakeDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
   def _build_take_dataset(self, count):
     components = (np.arange(10),)
     return dataset_ops.Dataset.from_tensor_slices(components).take(count)
@@ -78,6 +82,10 @@ class SequenceDatasetSerializationTest(
     with self.assertRaisesRegexp(ValueError,
                                  'Shape must be rank 0 but is rank 1'):
       self.run_core_tests(lambda: self._build_take_dataset([1, 2]), None, 0)
+
+
+class RepeatDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
 
   def _build_repeat_dataset(self, count, take_count=3):
     components = (np.arange(10),)
@@ -117,5 +125,5 @@ class SequenceDatasetSerializationTest(
                           None, 0)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

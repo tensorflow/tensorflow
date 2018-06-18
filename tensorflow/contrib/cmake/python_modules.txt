@@ -129,6 +129,7 @@ tensorflow/contrib/data
 tensorflow/contrib/data/kernels
 tensorflow/contrib/data/python
 tensorflow/contrib/data/python/kernel_tests
+tensorflow/contrib/data/python/kernel_tests/serialization
 tensorflow/contrib/data/python/ops
 tensorflow/contrib/decision_trees
 tensorflow/contrib/decision_trees/proto

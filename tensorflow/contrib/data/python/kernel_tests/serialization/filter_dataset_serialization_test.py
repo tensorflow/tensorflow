@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for the FilterDataset serialization."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.contrib.data.python.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
@@ -35,7 +35,7 @@ class FilterDatasetSerializationTest(
 
   def testFilterCore(self):
     div = 3
-    num_outputs = np.sum([x % 3 is not 2 for x in range(100)])
+    num_outputs = np.sum([x % 3 != 2 for x in range(100)])
     self.run_core_tests(lambda: self._build_filter_range_graph(div),
                         lambda: self._build_filter_range_graph(div * 2),
                         num_outputs)

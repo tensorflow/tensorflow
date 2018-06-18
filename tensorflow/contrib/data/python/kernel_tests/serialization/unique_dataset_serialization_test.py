@@ -12,27 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for the UniqueDataset serialization."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.contrib.data.python.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.contrib.data.python.ops import unique
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.platform import test
 
 
-class PrefetchDatasetSerializationTest(
+class UniqueDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
-  def build_dataset(self, seed):
-    return dataset_ops.Dataset.range(100).prefetch(10).shuffle(
-        buffer_size=10, seed=seed, reshuffle_each_iteration=False)
+  def testUnique(self):
 
-  def testCore(self):
-    num_outputs = 100
-    self.run_core_tests(lambda: self.build_dataset(10),
-                        lambda: self.build_dataset(20), num_outputs)
+    def build_dataset(num_elements, unique_elem_range):
+      return dataset_ops.Dataset.range(num_elements).map(
+          lambda x: x % unique_elem_range).apply(unique.unique())
+
+    self.run_core_tests(lambda: build_dataset(200, 100),
+                        lambda: build_dataset(40, 100), 100)
 
 
 if __name__ == "__main__":
