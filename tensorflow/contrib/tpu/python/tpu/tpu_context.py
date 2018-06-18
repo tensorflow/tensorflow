@@ -384,9 +384,7 @@ class _InternalTPUContext(object):
     # On TPU
     if self.is_input_sharded_per_core() or (
         self.is_input_per_host_with_iterators()):
-      # We prohibit per core input sharding for the model parallelism case,
-      # therefore it is safe to use num_cores here.
-      return global_batch_size // self.num_cores
+      return global_batch_size // self.num_replicas
     else:
       return global_batch_size // self.num_hosts
 
