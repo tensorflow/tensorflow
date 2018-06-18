@@ -290,7 +290,7 @@ class EagerFunctionTest(XLATestCase):
 
   def testBasic(self):
     with self.test_scope():
-      matmul = function.defun(math_ops.matmul, compiled=True)
+      matmul = function.defun(math_ops.matmul)
       t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
       sq = matmul(t, t, transpose_a=True)
       self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
@@ -312,7 +312,7 @@ class EagerFunctionTest(XLATestCase):
       def model(x):
         x = conv(x)
         return pool(x)
-      model = function.defun(model, compiled=True)
+      model = function.defun(model)
 
       x = array_ops.ones([1, 4, 4, 1])
       y = model(x)
@@ -322,7 +322,7 @@ class EagerFunctionTest(XLATestCase):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(1.0)
 
-      @function.defun(compiled=True)
+      @function.defun
       def f():
         return v.read_value()
 
@@ -337,7 +337,7 @@ class EagerFunctionTest(XLATestCase):
         v.assign_add(1.0)
         return v
 
-      f = function.defun(f, compiled=True)
+      f = function.defun(f)
 
       var = f(v)
       self.assertEqual(2.0, var.numpy())
@@ -365,7 +365,7 @@ class EagerFunctionTest(XLATestCase):
         d = r2 * v2
         return a, b, c, d
 
-      foo = function.defun(foo, compiled=True)
+      foo = function.defun(foo)
 
       c1 = [0, 0]
       c2 = array_ops.ones([2], dtype=dtypes.int32)
@@ -387,7 +387,7 @@ class EagerFunctionTest(XLATestCase):
     with self.test_scope():
       v0 = resource_variable_ops.ResourceVariable(5.0)
 
-      @function.defun(compiled=True)
+      @function.defun
       def f(x):
         x = v0 * v0 * x
         return x
@@ -450,7 +450,7 @@ class ExcessivePaddingTest(XLATestCase):
   def testAsFunctionInput(self):
     with self.test_scope():
 
-      @function.defun(compiled=True)
+      @function.defun
       def f(x):
         return math_ops.reduce_sum(x, axis=2)
 
@@ -461,7 +461,7 @@ class ExcessivePaddingTest(XLATestCase):
   def testAsFunctionOutput(self):
     with self.test_scope():
 
-      @function.defun(compiled=True)
+      @function.defun
       def f(x):
         return x * constant_op.constant(100 * [[[10.0, 2.0]]])
 

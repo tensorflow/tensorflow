@@ -39,6 +39,11 @@ namespace tensorflow {
 
 namespace {
 
+// Copy of the definition in third_party/tensorflow/compiler/jit/defs.h
+// Copied here because we don't currently compile XLA on windows. So, can't
+// depend on it directly.
+const char* const kXlaCompileAttr = "_XlaCompile";
+
 // Initializes the step stats if needed.
 void MaybeInitializeStepStats(StepStats* step_stats, EagerContext* ctx) {
   // Lazily initialize the RunMetadata with information about all devices if
@@ -472,6 +477,15 @@ Status EagerLocalExecute(EagerOperation* op,
       device == nullptr ? "unspecified" : device->name());
   KernelAndDevice* kernel = ctx->GetCachedKernel(cache_key);
   if (kernel == nullptr) {
+    // If we are running a function on explicitly requested TPU,
+    // compile it with XLA.
+    // Note that it is not ideal, but currently ok, to set this
+    // attribute after computing the kernel cache key above.
+    if (op->is_function() && device != nullptr &&
+        device->device_type() == "TPU") {
+      op->MutableAttrs()->Set(kXlaCompileAttr, true);
+    }
+
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
       status = SelectDevice(ndef, ctx, &device);
