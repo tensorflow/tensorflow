@@ -22,6 +22,8 @@
   * (C++) `DatasetBase::MakeIterator()` has been renamed to `DatasetBase::MakeIteratorInternal()`.
   * (C++) `IteratorBase::Initialize()` method was added to support raising errors during iterator construction.
 * Eager Execution:
+  * Added the ability to pause recording operations for gradient computation via `tf.GradientTape.stop_recording`.
+  * Updated documentation, introductory notebooks.
 * `tf.keras`:
   * Move Keras code out of _impl folder and remove API files.
   * `tf.keras.Model.save_weights` now saves in TensorFlow format by default.
