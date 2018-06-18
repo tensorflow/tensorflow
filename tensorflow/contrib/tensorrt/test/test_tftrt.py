@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import numpy as np
+import six as _six
 
 # normally we should do import tensorflow as tf and then
 # tf.placeholder, tf.constant, tf.nn.conv2d etc but
@@ -37,6 +38,71 @@ from tensorflow.python.framework import ops as ops
 from tensorflow.python.ops import array_ops as aops
 from tensorflow.python.ops import nn as nn
 from tensorflow.python.ops import nn_ops as nn_ops
+
+
+def py2bytes(inp):
+  return inp
+
+
+def py3bytes(inp):
+  return inp.encode("utf-8", errors="surrogateescape")
+
+
+def py2string(inp):
+  return inp
+
+
+def py3string(inp):
+  return inp.decode("utf-8")
+
+
+if _six.PY2:
+  to_bytes = py2bytes
+  to_string = py2string
+else:
+  to_bytes = py3bytes
+  to_string = py3string
+
+
+def get_multi_engine_graph_def(mode="FP32"):
+  """Create a simple graph and return its graph_def."""
+  dtype = dtypes.float32
+  if mode.upper() == "FP16":
+    dtype = dtypes.float16
+  else:
+    pass
+
+  g = ops.Graph()
+  with g.as_default():
+    x = aops.placeholder(shape=[None, 3, 7, 5], name="input", dtype=dtype)
+    with g.name_scope("Global_scope") as scope:
+      with g.name_scope("first_scope"):
+        e = cop.constant(
+            np.random.randn(3, 2, 3, 4), name="weights", dtype=dtype)
+        conv = nn.conv2d(
+            input=x,
+            filter=e,
+            data_format="NCHW",
+            strides=[1, 1, 1, 1],
+            padding="VALID",
+            name="conv")
+        b = cop.constant(np.random.randn(1, 4, 1, 1), name="bias1", dtype=dtype)
+        t = conv * b
+
+        b = cop.constant(np.random.randn(1, 4, 1, 1), name="bias2", dtype=dtype)
+        q = conv / b
+        c = cop.constant(np.random.randn(1, 4, 1, 1), name="bias3", dtype=dtype)
+      edge = mops.sin(q)
+      edge1 = mops.cos(conv)
+      with g.name_scope("test_scope"):
+        de = edge + edge1
+        t = t - edge1
+        q = q * edge
+        t = t + q
+        t = t - de
+    k = aops.squeeze(t, name="output")
+  print(k.dtype)
+  return g.as_graph_def()
 
 
 def get_simple_graph_def():
@@ -66,7 +132,7 @@ def execute_graph(gdef, dumm_inp):
   """Run given graphdef once."""
   print("executing")
   gpu_options = None
-  if (trt.trt_convert.get_linked_tensorrt_version()[0] == 3):
+  if trt.trt_convert.get_linked_tensorrt_version()[0] == 3:
     gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   sessconfig = cpb2.ConfigProto(gpu_options=gpu_options)
   ops.reset_default_graph()
@@ -86,7 +152,7 @@ def execute_graph(gdef, dumm_inp):
 def execute_calibration(gdef, dumm_inp):
   """Run given calibration graph multiple times."""
   gpu_options = None
-  if (trt.trt_convert.get_linked_tensorrt_version()[0] == 3):
+  if trt.trt_convert.get_linked_tensorrt_version()[0] == 3:
     gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   ops.reset_default_graph()
   g = ops.Graph()
@@ -104,12 +170,17 @@ def execute_calibration(gdef, dumm_inp):
   return val
 
 
-def user(run_graph=execute_graph, run_calibration=execute_calibration):
+def user(multi_engine,
+         run_graph=execute_graph,
+         run_calibration=execute_calibration):
   """Example function that converts a graph to TFTRT graph."""
-
-  inp_dims = (100, 24, 24, 2)
+  if multi_engine:
+    inp_dims = (2, 3, 7, 5)
+    orig_graph = get_multi_engine_graph_def()
+  else:
+    inp_dims = (100, 24, 24, 2)
+    orig_graph = get_simple_graph_def()  # use a frozen graph for inference
   dummy_input = np.random.random_sample(inp_dims)
-  orig_graph = get_simple_graph_def()  # use a frozen graph for inference
   # Get optimized graph
   trt_graph = trt.create_inference_graph(
       input_graph_def=orig_graph,
@@ -155,22 +226,26 @@ def user(run_graph=execute_graph, run_calibration=execute_calibration):
   print("Pass")
 
 
-def auto():
+def auto(multi_engine):
   """Run the conversion as an optimization pass."""
-  inp_dims = (100, 24, 24, 2)
+  if multi_engine:
+    inp_dims = (2, 3, 7, 5)
+    orig_graph = get_multi_engine_graph_def()
+  else:
+    inp_dims = (100, 24, 24, 2)
+    orig_graph = get_simple_graph_def()  # use a frozen graph for inference
   dummy_input = np.random.random_sample(inp_dims)
-  orig_graph = get_simple_graph_def()
   opt_config = rwpb2.RewriterConfig()
   opt_config.optimizers.extend(["constfold", "layout"])
   custom_op = opt_config.custom_optimizers.add()
   custom_op.name = "TensorRTOptimizer"
   custom_op.parameter_map["minimum_segment_size"].i = 3
-  custom_op.parameter_map["precision_mode"].s = "FP32"
+  custom_op.parameter_map["precision_mode"].s = to_bytes("FP32")
   custom_op.parameter_map["max_batch_size"].i = inp_dims[0]
   custom_op.parameter_map["max_workspace_size_bytes"].i = 1 << 25
   print(custom_op)
   gpu_options = None
-  if (trt.trt_convert.get_linked_tensorrt_version()[0] == 3):
+  if trt.trt_convert.get_linked_tensorrt_version()[0] == 3:
     gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   graph_options = cpb2.GraphOptions(rewrite_options=opt_config)
   sessconfig = cpb2.ConfigProto(
@@ -180,7 +255,7 @@ def auto():
   ops.reset_default_graph()
   with g.as_default():
     inp, out = importer.import_graph_def(
-        graph_def=orig_graph, return_elements=["input", "output"])
+        graph_def=orig_graph, return_elements=["input", "output"], name="")
     inp = inp.outputs[0]
     out = out.outputs[0]
     with csess.Session(config=sessconfig, graph=g) as sess:
@@ -198,8 +273,14 @@ if "__main__" in __name__:
       action="store_true",
       help="Do TRT conversion automatically",
       default=False)
+  P.add_argument(
+      "--multi-engine",
+      "-m",
+      action="store_true",
+      help="Use a graph that will result in 2 engines",
+      default=False)
   flags, unparsed = P.parse_known_args()
   if flags.automatic:
-    auto()
+    auto(flags.multi_engine)
   else:
-    user()
+    user(flags.multi_engine)
