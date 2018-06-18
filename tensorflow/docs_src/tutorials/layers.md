@@ -475,20 +475,13 @@ loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
 Let's take a closer look at what's happening above.
 
-Our `labels` tensor contains a list of predictions for our examples, e.g. `[1,
-9, ...]`. By using `tf.losses.sparse_softmax_cross_entropy()` we do not need to convert `labels`
-to the corresponding
-[one-hot encoding](https://www.quora.com/What-is-one-hot-encoding-and-when-is-it-used-in-data-science)
-that is commonly used in machine learning applications.
+Our `labels` tensor contains a list of prediction indices for our examples, e.g. `[1,
+9, ...]`. `logits` contains the linear outputs of our last layer. 
 
-Next, we compute cross-entropy of `labels` and the softmax of the
-predictions from our logits layer. `tf.losses.sparse_softmax_cross_entropy()` takes
-`labels` and `logits` as arguments, performs softmax activation on
-`logits`, calculates cross-entropy, and returns our `loss` as a scalar `Tensor`:
+`tf.losses.sparse_softmax_cross_entropy`, calculates the softmax crossentropy
+(aka: categorical crossentropy, negative log-likelihood) from these two inputs
+in an efficient, numerically stable way.
 
-```python
-loss = tf.losses.sparse_softmax_cross_entropy(labels=onehot_labels, logits=logits)
-```
 
 ### Configure the Training Op
 
