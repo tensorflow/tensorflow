@@ -92,6 +92,9 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
       return true;
+    case HloOpcode::kBitcast:
+      return hlo.shape().element_type() ==
+             hlo.operand(0)->shape().element_type();
     case HloOpcode::kDynamicSlice:
       return operand_index == 0;
     case HloOpcode::kDynamicUpdateSlice:
