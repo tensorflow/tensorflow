@@ -77,7 +77,12 @@ fi
 # to distinct them. This helps avoid building the same targets twice.
 echo "build --distinct_host_configuration=false" >> "${TMP_BAZELRC}"
 
-echo "import %workspace%/${TMP_BAZELRC}" >> .bazelrc
+# Enable short object file path to avoid long path issue on Windows.
+echo "build --output_user_root=${TMPDIR}" >> "${TMP_BAZELRC}"
+
+if ! grep -q "import %workspace%/${TMP_BAZELRC}" .bazelrc; then
+  echo "import %workspace%/${TMP_BAZELRC}" >> .bazelrc
+fi
 
 run_configure_for_cpu_build
 
