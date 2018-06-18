@@ -88,6 +88,10 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:random_ops",
     ],
+    tags = [
+        "manual",
+        "no_oss",
+    ],
 )
 
 cuda_py_test(
