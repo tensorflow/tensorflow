@@ -64,7 +64,7 @@ HloComputation::HloComputation(
     const string& name, int parameter_count,
     std::vector<std::unique_ptr<HloInstruction>>* instructions,
     HloInstruction* root_instruction, HloInstruction* fusion_instruction)
-    : name_(name),
+    : name_(NameUniquer::GetSanitizedName(name)),
       unique_id_(-1),
       root_instruction_(root_instruction),
       fusion_instruction_(fusion_instruction) {
@@ -234,7 +234,6 @@ Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   TF_RET_CHECK(instruction_iterators_.count(instruction) != 0);
   auto inst_it = instruction_iterators_.at(instruction);
   (*inst_it)->set_parent(nullptr);
-  instruction->DetachFromOperands();
   instructions_.erase(inst_it);
   return Status::OK();
 }
@@ -357,7 +356,6 @@ std::list<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   std::list<HloInstruction*> post_order;
   std::list<HloInstruction*> trace_instructions;
   tensorflow::gtl::FlatSet<HloInstruction*> added_instructions;
-  std::vector<HloInstruction> dfs_stack;
   for (auto& instruction : instructions_) {
     if (instruction->opcode() == HloOpcode::kTrace) {
       // Trace instructions aren't handled by the DFS visitor. Add trace
@@ -525,21 +523,7 @@ HloInstruction* HloComputation::CreateFusionInstruction(
 StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
     ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index) {
-  if (ShapeUtil::IsArray(instruction->shape())) {
-    if (indices_to_copy == nullptr || indices_to_copy->element(*index)) {
-      // Use kCopy to copy array elements
-      HloInstruction* copy = AddInstruction(HloInstruction::CreateUnary(
-          instruction->shape(), HloOpcode::kCopy, instruction));
-      if (copies_added != nullptr) {
-        *copies_added->mutable_element(*index) = copy;
-      }
-      return copy;
-    } else {
-      // Array elements which are not to be copied are passed through
-      // transparently.
-      return instruction;
-    }
-  } else if (ShapeUtil::IsTuple(instruction->shape())) {
+  if (ShapeUtil::IsTuple(instruction->shape())) {
     std::vector<HloInstruction*> elements;
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
          i++) {
@@ -556,9 +540,27 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
       index->pop_back();
     }
     return AddInstruction(HloInstruction::CreateTuple(elements));
+  }
+  if (ShapeUtil::IsToken(instruction->shape())) {
+    // Tokens have no on-device representation and cannot be copied. Pass
+    // through transparently.
+    return instruction;
+  }
+
+  // Array shape.
+  TF_RET_CHECK(ShapeUtil::IsArray(instruction->shape()));
+  if (indices_to_copy == nullptr || indices_to_copy->element(*index)) {
+    // Use kCopy to copy array elements
+    HloInstruction* copy = AddInstruction(HloInstruction::CreateUnary(
+        instruction->shape(), HloOpcode::kCopy, instruction));
+    if (copies_added != nullptr) {
+      *copies_added->mutable_element(*index) = copy;
+    }
+    return copy;
   } else {
-    return FailedPrecondition(
-        "Can only copy array and tuple shaped instructions");
+    // Elements which are not to be copied are passed through
+    // transparently.
+    return instruction;
   }
 }
 
@@ -864,15 +866,6 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     }
   }
   context->MapComputation(this, result.get());
-  // We cloned the elements of 'replacements', so they're all going to be
-  // destroyed. HloInstructions need to be detached from their operands before
-  // they're destroyed, otherwise they stick around in the operands' users lists
-  // and cause use-after-frees.
-  for (auto& kv : replacements) {
-    if (std::unique_ptr<HloInstruction>& new_instr = kv.second) {
-      new_instr->DetachFromOperands();
-    }
-  }
   return result;
 }
 

@@ -588,13 +588,27 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     }
     case HloOpcode::kCrossReplicaSum: {
       optional<HloComputation*> to_apply;
+      optional<std::vector<int64>> replica_group_ids;
+      optional<string> barrier;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
+      attrs["replica_group_ids"] = {
+          /*required=*/false, AttrTy::kBracedInt64List, &replica_group_ids};
+      attrs["barrier"] = {/*required=*/false, AttrTy::kString, &barrier};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateCrossReplicaSum(shape, operands, *to_apply));
+
+      if (replica_group_ids) {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
+                shape, operands, *to_apply, *replica_group_ids,
+                barrier ? *barrier : ""));
+      } else {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
+                shape, operands, *to_apply, {}, barrier ? *barrier : ""));
+      }
       break;
     }
     case HloOpcode::kReshape: {
@@ -604,6 +618,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(
           HloInstruction::CreateReshape(shape, operands[0]));
+      break;
+    }
+    case HloOpcode::kGenerateToken: {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateGenerateToken(operands));
       break;
     }
     case HloOpcode::kTuple: {
@@ -777,6 +799,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
+      optional<std::vector<tensorflow::int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                             &dimensions};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1137,7 +1162,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
                                HloOpcodeString(opcode)));
   }
 
-  instruction->set_name(name);
+  instruction->SetAndSanitizeName(name);
+  if (instruction->name() != name) {
+    return Error(name_loc,
+                 StrCat("illegal instruction name: ", name,
+                        "; suggest renaming to: ", instruction->name()));
+  }
 
   // Add shared attributes like metadata to the instruction, if they were seen.
   if (sharding) {

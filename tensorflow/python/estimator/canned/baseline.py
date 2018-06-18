@@ -24,10 +24,10 @@ Example:
 classifier = BaselineClassifier(n_classes=3)
 
 # Input builders
-def input_fn_train: # returns x, y (where y represents label's class index).
+def input_fn_train(): # returns x, y (where y represents label's class index).
   pass
 
-def input_fn_eval: # returns x, y (where y represents label's class index).
+def input_fn_eval(): # returns x, y (where y represents label's class index).
   pass
 
 # Fit model.
@@ -59,7 +59,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.training import training_util
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 # The default learning rate of 0.3 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
@@ -174,7 +174,7 @@ def _baseline_model_fn(features, labels, mode, head, optimizer,
       train_op_fn=train_op_fn)
 
 
-@tf_export('estimator.BaselineClassifier')
+@estimator_export('estimator.BaselineClassifier')
 class BaselineClassifier(estimator.Estimator):
   """A classifier that can establish a simple baseline.
 
@@ -215,6 +215,13 @@ class BaselineClassifier(estimator.Estimator):
 
   * if `weight_column` is not `None`, a feature with
      `key=weight_column` whose value is a `Tensor`.
+
+  @compatibility(eager)
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
+  @end_compatibility
   """
 
   def __init__(self,
@@ -277,7 +284,7 @@ class BaselineClassifier(estimator.Estimator):
         config=config)
 
 
-@tf_export('estimator.BaselineRegressor')
+@estimator_export('estimator.BaselineRegressor')
 class BaselineRegressor(estimator.Estimator):
   """A regressor that can establish a simple baseline.
 
@@ -313,6 +320,13 @@ class BaselineRegressor(estimator.Estimator):
 
   * if `weight_column` is not `None`, a feature with
      `key=weight_column` whose value is a `Tensor`.
+
+  @compatibility(eager)
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
+  @end_compatibility
   """
 
   def __init__(self,

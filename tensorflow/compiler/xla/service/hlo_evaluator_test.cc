@@ -1248,7 +1248,7 @@ void BM_ReducePrecisely(int num_iters) {
   HloComputation::Builder b("BM_ReducePrecisely");
   HloModuleConfig config;
   config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-  HloModule module("BM_ReducePrecisely", VersionedComputationHandle(), config);
+  HloModule module("BM_ReducePrecisely", config);
 
   constexpr int kNumElements = 1 << 25;  // float += 1 saturates at 1<<24
   std::vector<float> v(kNumElements, 1.0f);

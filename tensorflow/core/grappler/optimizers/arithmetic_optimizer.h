@@ -75,6 +75,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool replace_mul_with_square = true;
     bool simplify_aggregation = true;
     bool convert_pow = true;
+    bool convert_log1p = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.

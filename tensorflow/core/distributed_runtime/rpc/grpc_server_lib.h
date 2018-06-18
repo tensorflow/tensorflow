@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "grpc++/grpc++.h"
-#include "grpc++/security/credentials.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/security/credentials.h"
 
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -40,6 +41,11 @@ class Master;
 // function that creates a RendezvousMgr.
 typedef std::function<RendezvousMgrInterface*(const WorkerEnv*)>
     RendezvousMgrCreationFunction;
+
+// function that creates a CollectiveExecutorMgr.
+typedef std::function<CollectiveExecutorMgrInterface*(
+    const ConfigProto&, const WorkerEnv*, WorkerCacheInterface*)>
+    CollectiveMgrCreationFunction;
 
 // function that registers a service to the server. The service needs to
 // be registered before builder.BuildAndStart().
@@ -71,13 +77,19 @@ class GrpcServer : public ServerInterface {
  protected:
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+              const CollectiveMgrCreationFunction& collective_mgr_func,
               const WorkerCreationFunction& worker_func,
               const StatsPublisherFactory& stats_factory);
 
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+              const CollectiveMgrCreationFunction& collective_mgr_func,
               const WorkerCreationFunction& worker_func);
 
+  Status Init(ServiceInitFunction service_func,
+              const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+              const CollectiveMgrCreationFunction& collective_mgr_func);
+    
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func);
 

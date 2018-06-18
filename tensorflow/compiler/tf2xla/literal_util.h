@@ -22,12 +22,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
 // Copies 'host_tensor' to an XLA Literal. Fails if host_tensor is of an
 // unsupported type.
 Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal);
+
+// Returns a BorrowingLiteral that utilizes the same underlying buffer owned by
+// 'host_tensor'.
+Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
+                                    xla::BorrowingLiteral* literal);
+
+// Returns a BorrowingLiteral tuple that utilizes the same underlying buffers
+// owned by 'host_tensors'.
+Status HostTensorsToBorrowingLiteralTuple(
+    tensorflow::gtl::ArraySlice<Tensor> host_tensors,
+    xla::BorrowingLiteral* literal);
 
 // Copies 'literal' to freshly allocated 'host_tensor', which is allocated of
 // type <target_type>.

@@ -39,7 +39,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 # TODO(nponomareva): Reveal pruning params here.
 _TreeHParams = collections.namedtuple('TreeHParams', [
@@ -712,9 +712,17 @@ def _create_regression_head(label_dimension, weight_column=None):
   # pylint: enable=protected-access
 
 
-@tf_export('estimator.BoostedTreesClassifier')
+@estimator_export('estimator.BoostedTreesClassifier')
 class BoostedTreesClassifier(estimator.Estimator):
-  """A Classifier for Tensorflow Boosted Trees models."""
+  """A Classifier for Tensorflow Boosted Trees models.
+
+  @compatibility(eager)
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
+  @end_compatibility
+  """
 
   def __init__(self,
                feature_columns,
@@ -830,9 +838,17 @@ class BoostedTreesClassifier(estimator.Estimator):
         model_fn=_model_fn, model_dir=model_dir, config=config)
 
 
-@tf_export('estimator.BoostedTreesRegressor')
+@estimator_export('estimator.BoostedTreesRegressor')
 class BoostedTreesRegressor(estimator.Estimator):
-  """A Regressor for Tensorflow Boosted Trees models."""
+  """A Regressor for Tensorflow Boosted Trees models.
+
+  @compatibility(eager)
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
+  @end_compatibility
+  """
 
   def __init__(self,
                feature_columns,

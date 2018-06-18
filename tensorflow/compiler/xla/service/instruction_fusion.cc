@@ -96,6 +96,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
+    case HloOpcode::kGenerateToken:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
       return false;

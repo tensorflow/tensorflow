@@ -668,6 +668,24 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
         return 2;
     }
   }
+
+  std::vector<bool> GetMutatingInputVariables(
+      const Operator& op) const override {
+    const auto& lstm_op = static_cast<const LstmCellOperator&>(op);
+
+    switch (lstm_op.kernel_type) {
+      case LstmCellOperator::KERNEL_FULL:
+        // TODO(ycling): Change the full kernel to use the new variable tensor
+        // design. This requires moving the state tensors from output to input.
+        return std::vector<bool>();
+      case LstmCellOperator::KERNEL_BASIC: {
+        std::vector<bool> mutating_input_variables(op.inputs.size(), false);
+        mutating_input_variables[LstmCellOperator::PREV_ACTIV_INPUT] = true;
+        mutating_input_variables[LstmCellOperator::PREV_STATE_INPUT] = true;
+        return mutating_input_variables;
+      }
+    }
+  }
 };
 
 class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
@@ -1112,16 +1130,18 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "LESS", OperatorType::kTensorFlowLess));
   ops.emplace_back(new SimpleOperator<TensorFlowLessEqualOperator>(
       "LESS_EQUAL", OperatorType::kTensorFlowLessEqual));
+  ops.emplace_back(new SimpleOperator<TensorFlowEqualOperator>(
+      "EQUAL", OperatorType::kTensorFlowEqual));
+  ops.emplace_back(new SimpleOperator<TensorFlowNotEqualOperator>(
+      "NOT_EQUAL", OperatorType::kTensorFlowNotEqual));
   ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   ops.emplace_back(
       new SimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect));
   ops.emplace_back(
       new SimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice));
+  // Element-wise operator
   ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
-  ops.emplace_back(new SimpleOperator<TensorFlowEqualOperator>(
-      "EQUAL", OperatorType::kTensorFlowEqual));
-  ops.emplace_back(new SimpleOperator<TensorFlowNotEqualOperator>(
-      "NOT_EQUAL", OperatorType::kTensorFlowNotEqual));
+  ops.emplace_back(new SimpleOperator<LogOperator>("LOG", OperatorType::kLog));
 
   return ops;
 }

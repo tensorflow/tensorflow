@@ -82,6 +82,9 @@ class InterpreterInfo : public GraphInfo {
   const std::vector<int>& outputs() const override {
     return interpreter_->outputs();
   }
+  const std::vector<int>& variables() const override {
+    return interpreter_->variables();
+  }
 
  public:
   Interpreter* interpreter_;
@@ -302,6 +305,13 @@ TfLiteStatus Interpreter::SetOutputs(std::vector<int> outputs) {
   return kTfLiteOk;
 }
 
+TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
+  TF_LITE_ENSURE_OK(&context_, CheckTensorIndices("variables", variables.data(),
+                                                  variables.size()));
+  variables_ = std::move(variables);
+  return kTfLiteOk;
+}
+
 TfLiteStatus Interpreter::CheckTensorIndices(const char* label,
                                              const int* indices, int length) {
   // Making sure kOptionalTensor is not re-defined to something other than -1.
@@ -334,6 +344,9 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteFloat32:
       *bytes = sizeof(float) * count;
       break;
+    case kTfLiteInt16:
+      *bytes = sizeof(int16_t) * count;
+      break;
     case kTfLiteInt32:
       *bytes = sizeof(int32_t) * count;
       break;
@@ -347,9 +360,9 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
       *bytes = sizeof(bool) * count;
       break;
     default:
-      ReportError(
-          &context_,
-          "Only float32, int32, int64, uint8, bool supported currently.");
+      ReportError(&context_,
+                  "Only float32, int16, int32, int64, uint8, bool supported "
+                  "currently.");
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -367,11 +380,31 @@ TfLiteStatus Interpreter::AllocateTensors() {
   }
 
   TF_LITE_ENSURE_STATUS(PrepareOpsAndTensors());
+
   if (state_ == kStateUninvokable) {
     state_ = kStateInvokable;
   }
   TF_LITE_ENSURE(&context_, state_ == kStateInvokable ||
                                 state_ == kStateInvokableAndImmutable);
+  return kTfLiteOk;
+}
+
+// TODO(ycling): Consider to provide other functions to initialize variable
+// tensors to non-zero values.
+TfLiteStatus Interpreter::ResetVariableTensorsToZero() {
+  for (auto& tensor : tensors_) {
+    if (!tensor.is_variable) {
+      continue;
+    }
+
+    // Variable tensors have to be `kTfLiteArenaRwPersistent`, and must be
+    // allocated after the initial `PrepareOpsAndTensors()` is called.
+    TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type,
+                      kTfLiteArenaRwPersistent);
+    TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
+
+    memset(tensor.data.raw, 0, tensor.bytes);
+  }
   return kTfLiteOk;
 }
 
@@ -687,7 +720,7 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
     state_ = kStateUninvokable;
     TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
                       quantization, const_cast<char*>(buffer), bytes,
-                      kTfLiteMmapRo, allocation, &tensor);
+                      kTfLiteMmapRo, allocation, false, &tensor);
   }
   return kTfLiteOk;
 }
@@ -698,7 +731,7 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 // to Interpreter.
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
-    const int* dims, TfLiteQuantizationParams quantization) {
+    const int* dims, TfLiteQuantizationParams quantization, bool is_variable) {
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         &context_,
@@ -716,11 +749,23 @@ TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     TF_LITE_ENSURE_OK(&context_,
                       BytesRequired(type, dims, rank, &required_bytes));
   }
+
+  TfLiteAllocationType allocation_type = kTfLiteArenaRw;
+  if (type == kTfLiteString) {
+    if (is_variable) {
+      // We don't have a real use case for string variable tensor.
+      ReportError(&context_, "String variable tensor isn't supported.");
+      return kTfLiteError;
+    }
+    allocation_type = kTfLiteDynamic;
+  } else if (is_variable) {
+    allocation_type = kTfLiteArenaRwPersistent;
+  }
+
   TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
                     quantization,
-                    /*buffer=*/nullptr, required_bytes,
-                    type == kTfLiteString ? kTfLiteDynamic : kTfLiteArenaRw,
-                    nullptr, &context_.tensors[tensor_index]);
+                    /*buffer=*/nullptr, required_bytes, allocation_type,
+                    nullptr, is_variable, &context_.tensors[tensor_index]);
   return kTfLiteOk;
 }
 
@@ -736,7 +781,8 @@ TfLiteStatus Interpreter::ResizeTensorImpl(TfLiteTensor* tensor,
                                            TfLiteIntArray* new_size) {
   // Note that in theory we could resize kTfLiteArenaRwPersistent tensors too.
   if (tensor->allocation_type == kTfLiteArenaRw ||
-      tensor->allocation_type == kTfLiteDynamic) {
+      tensor->allocation_type == kTfLiteDynamic ||
+      tensor->allocation_type == kTfLiteArenaRwPersistent) {
     if (tensor->type != kTfLiteString) {
       size_t bytesRequired;
       TfLiteStatus status = BytesRequired(tensor->type, new_size->data,

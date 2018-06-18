@@ -34,6 +34,7 @@ enum TensorType : byte {
   INT64 = 4,
   STRING = 5,
   BOOL = 6,
+  INT16 = 7,
 }
 
 // Parameters for converting a quantized tensor back to float. Given a
@@ -63,6 +64,8 @@ table Tensor {
   buffer:uint;
   name:string;  // For debugging and importing back into tensorflow.
   quantization:QuantizationParameters;  // Optional.
+
+  is_variable:bool = false;
 }
 
 // A list of builtin operators. Builtin operators are slightly faster than custom
@@ -150,6 +153,7 @@ enum BuiltinOperator : byte {
   EXPAND_DIMS = 70,
   EQUAL = 71,
   NOT_EQUAL = 72,
+  LOG = 73,
 }
 
 // Options for the builtin operators.
@@ -519,6 +523,16 @@ table Operator {
   builtin_options:BuiltinOptions;
   custom_options:[ubyte];
   custom_options_format:CustomOptionsFormat;
+
+  // A list of booleans indicating the input tensors which are being mutated by
+  // this operator.(e.g. used by RNN and LSTM).
+  // For example, if the "inputs" array refers to 5 tensors and the second and
+  // fifth are mutable variables, then this list will contain
+  // [false, true, false, false, true].
+  //
+  // If the list is empty, no variable is mutated in this operator.
+  // The list either has the same length as `inputs`, or is empty.
+  mutating_variable_inputs:[bool];
 }
 
 // The root type, defining a subgraph, which typically represents an entire

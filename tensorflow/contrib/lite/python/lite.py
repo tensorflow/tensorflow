@@ -22,6 +22,7 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 @@Interpreter
 @@OpHint
 @@convert_op_hints_to_stubs
+@@build_toco_convert_protos
 
 @@FLOAT
 @@QUANTIZED_UINT8
@@ -38,6 +39,7 @@ from six import PY3
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
+from tensorflow.contrib.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert import tensor_name
 from tensorflow.contrib.lite.python.convert import toco_convert
 from tensorflow.contrib.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
@@ -98,6 +100,12 @@ class TocoConverter(object):
       weights followed by dequantize operations. Computation is still done in
       float, but reduces model size (at the cost of accuracy and latency).
       (default False)
+    dump_graphviz_dir: Full filepath of folder to dump the graphs at various
+      stages of processing GraphViz .dot files. Preferred over
+      --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
+      output file. (default None)
+    dump_graphviz_video: Boolean indicating whether to dump the graph after
+      every graph transformation. (default False)
 
   Example usage:
 
@@ -140,6 +148,8 @@ class TocoConverter(object):
     self.change_concat_input_ranges = False
     self.allow_custom_ops = False
     self.quantize_weights = False
+    self.dump_graphviz_dir = None
+    self.dump_graphviz_video = False
 
   @classmethod
   def from_session(cls, sess, input_tensors, output_tensors):
@@ -215,7 +225,7 @@ class TocoConverter(object):
 
       # Check if graph is frozen.
       if not _is_frozen_graph(sess):
-        raise ValueError("Please freeze the graph using freeze_graph.py")
+        raise ValueError("Please freeze the graph using freeze_graph.py.")
 
       # Create TocoConverter class.
       return cls(sess.graph_def, input_tensors, output_tensors)
@@ -316,7 +326,9 @@ class TocoConverter(object):
         reorder_across_fake_quant=self.reorder_across_fake_quant,
         change_concat_input_ranges=self.change_concat_input_ranges,
         allow_custom_ops=self.allow_custom_ops,
-        quantize_weights=self.quantize_weights)
+        quantize_weights=self.quantize_weights,
+        dump_graphviz_dir=self.dump_graphviz_dir,
+        dump_graphviz_video=self.dump_graphviz_video)
     return result
 
   def get_input_arrays(self):

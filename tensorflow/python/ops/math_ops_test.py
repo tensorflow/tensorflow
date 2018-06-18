@@ -235,6 +235,15 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
         z_tf = self.evaluate(math_ops.approximate_equal(x, y, tolerance=0.0001))
         self.assertAllEqual(z, z_tf)
 
+  def testApproximateEqualShape(self):
+    for dtype in [np.float32, np.double]:
+      x = np.array([1, 2], dtype=np.float32)
+      y = np.array([[1, 2]], dtype=np.float32)
+      # The inputs 'x' and 'y' must have the same shape.
+      with self.assertRaisesRegexp(
+          ValueError, "Shapes must be equal rank, but are 1 and 2"):
+        math_ops.approximate_equal(x, y)
+
 
 class ScalarMulTest(test_util.TensorFlowTestCase):
 

@@ -249,25 +249,30 @@ class ChannelLayoutConstraints {
   // Given `shape`, apply the layout for `channel_id`. `channel_id` must already
   // be constrained.
   Shape LayoutShapeForChannel(Shape shape, int64 channel_id) const {
-    CHECK(IsChannelConstrained(channel_id));
-    *shape.mutable_layout() = constraints_.at(channel_id);
+    auto it = constraints_.find(channel_id);
+    CHECK(it != constraints_.end()) << "Channel " << channel_id;
+    *shape.mutable_layout() = it->second;
     return shape;
   }
 
   // Returns the layout constraint for `channel_id`, which must already be
   // constrained.
-  Layout LayoutForChannel(int64 channel_id) const {
-    CHECK(IsChannelConstrained(channel_id));
-    return constraints_.at(channel_id);
+  const Layout& LayoutForChannel(int64 channel_id) const {
+    auto it = constraints_.find(channel_id);
+    CHECK(it != constraints_.end()) << "Channel " << channel_id;
+    return it->second;
   }
 
   // Adds a new layout constraint for `channel_id`. If a constraint for
-  // `channel_id` already exists, this operation requires that the new layout is
-  // the same as the previously constrained layout.
-  void ConstrainChannel(int64 channel_id, const Layout& layout) {
-    CHECK(!IsChannelConstrained(channel_id) ||
-          LayoutUtil::Equal(layout, constraints_[channel_id]));
-    constraints_[channel_id] = layout;
+  // `channel_id` has been added, this API returns nullptr, otherwise returns
+  // the layout which has already been set for the channel.
+  const Layout* ConstrainChannel(int64 channel_id, const Layout& layout) {
+    auto it = constraints_.emplace(std::make_pair(channel_id, layout));
+    if (it.second) {
+      return nullptr;
+    }
+    return LayoutUtil::Equal(layout, it.first->second) ? nullptr
+                                                       : &it.first->second;
   }
 
  private:
@@ -464,6 +469,20 @@ class LayoutAssignment : public HloPassInterface {
   // itself).
   Status AddCopyForOperand(HloInstruction* instruction, int64 operand_number);
 
+  // Apply the channel layout constraints by populating the channel_constraints
+  // data structure passed in at constructor time. Eventually adds copies in
+  // case two ends of a channel ended up with a different leyout.
+  Status ConstrainChannelLayouts(HloComputation* computation,
+                                 ChannelLayoutConstraints* channel_constraints);
+
+  // Resets the input ChannelLayoutConstraints to the original copy received
+  // from the constructor input.
+  void ResetChannelConstraints() {
+    if (channel_layout_constraints_ != nullptr) {
+      *channel_layout_constraints_ = channel_constraints_;
+    }
+  }
+
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller
@@ -474,7 +493,14 @@ class LayoutAssignment : public HloPassInterface {
   // here.
   tensorflow::gtl::FlatSet<HloInstruction*> added_copies_;
 
-  ChannelLayoutConstraints* channel_layout_constraints_;
+  // The pointer to the channel layout constraints passed in with the
+  // constructor. If not nullptr, this is an input/output argument.
+  ChannelLayoutConstraints* channel_layout_constraints_ = nullptr;
+
+  // A copy of the input layout constraints used to reset the above pointer in
+  // case we have to undo operations due to the multiple passes over the
+  // computations/instructions.
+  ChannelLayoutConstraints channel_constraints_;
 };
 
 }  // namespace xla
