@@ -551,17 +551,14 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
           if (root->opcode() == HloOpcode::kTuple) {
             output_shape_index = {i};
           }
-          // TODO(kramerb): CHECK that layouts are equal. Currently this
-          // breaks multioutputfusion_test. The test has pre-fused
-          // instructions, but layout_assignment will not assign any layouts
-          // for instructions inside of a fused computation. It just removes
-          // the layouts instead.
           if (inst->opcode() == HloOpcode::kReduce) {
-            CHECK(ShapeUtil::Compatible(first_reduce->shape(), inst->shape()));
-            CHECK(ShapeUtil::Compatible(first_reduce->operand(0)->shape(),
-                                        inst->operand(0)->shape()));
-            CHECK(ShapeUtil::Compatible(first_reduce->operand(1)->shape(),
-                                        inst->operand(1)->shape()));
+            // Shapes, layouts and dimensions must be the same for all reduces
+            // inside of this fusion.
+            CHECK(ShapeUtil::Equal(first_reduce->shape(), inst->shape()));
+            CHECK(ShapeUtil::Equal(first_reduce->operand(0)->shape(),
+                                   inst->operand(0)->shape()));
+            CHECK(ShapeUtil::Equal(first_reduce->operand(1)->shape(),
+                                   inst->operand(1)->shape()));
             CHECK(first_reduce->dimensions() == inst->dimensions());
             input_gens.push_back(fused_emitter.GetGenerator(inst->operand(0)));
             init_value_gens.push_back(
@@ -569,8 +566,13 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
             reducers.push_back(inst->to_apply());
             reduce_output_shapes.push_back(std::move(output_shape_index));
           } else {
+            // For extra outputs we can relax shape equality to allow different
+            // types (with the same number of elements). Layouts still have to
+            // match.
             CHECK(ShapeUtil::CompatibleIgnoringElementType(
                 first_reduce->operand(0)->shape(), inst->shape()));
+            CHECK(LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
+                                    inst->shape().layout()));
             extra_output_gens.emplace_back(fused_emitter.GetGenerator(inst),
                                            std::move(output_shape_index));
           }
