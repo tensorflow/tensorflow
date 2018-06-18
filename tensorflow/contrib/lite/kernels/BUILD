@@ -142,6 +142,7 @@ cc_library(
         "conv.cc",
         "depthwise_conv.cc",
         "dequantize.cc",
+        "detection_postprocess.cc",
         "div.cc",
         "elementwise.cc",
         "embedding_lookup.cc",
@@ -174,7 +175,6 @@ cc_library(
         "sparse_to_dense.cc",
         "split.cc",
         "squeeze.cc",
-        "ssd_postprocessing.cc",
         "strided_slice.cc",
         "sub.cc",
         "svdf.cc",
@@ -248,9 +248,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "ssd_postprocess_test",
+    name = "detection_postprocess_test",
     size = "small",
-    srcs = ["ssd_postprocess_test.cc"],
+    srcs = ["detection_postprocess_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

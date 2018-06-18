@@ -27,7 +27,7 @@ limitations under the License.
 namespace tflite {
 namespace ops {
 namespace custom {
-namespace ssd_postprocess {
+namespace detection_postprocess {
 
 // Input tensors
 constexpr int kInputTensorBoxEncodings = 0;
@@ -574,13 +574,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   return kTfLiteOk;
 }
+}  // namespace detection_postprocess
 
-}  // namespace ssd_postprocess
-
-TfLiteRegistration* Register_SSD_POSTPROCESS() {
-  static TfLiteRegistration r = {ssd_postprocess::Init, ssd_postprocess::Free,
-                                 ssd_postprocess::Prepare,
-                                 ssd_postprocess::Eval};
+TfLiteRegistration* Register_DETECTION_POSTPROCESS() {
+  static TfLiteRegistration r = {detection_postprocess::Init,
+                                 detection_postprocess::Free,
+                                 detection_postprocess::Prepare,
+                                 detection_postprocess::Eval};
   return &r;
 }
 

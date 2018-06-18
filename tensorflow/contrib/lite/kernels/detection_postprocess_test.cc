@@ -27,17 +27,19 @@ namespace tflite {
 namespace ops {
 namespace custom {
 
-TfLiteRegistration* Register_SSD_POSTPROCESS();
+TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 
 namespace {
 
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 
-class BaseSSDPostprocessOpModel : public SingleOpModel {
+class BaseDetectionPostprocessOpModel : public SingleOpModel {
  public:
-  BaseSSDPostprocessOpModel(const TensorData& input1, const TensorData& input2,
-                            const TensorData& input3, const TensorData& output1,
+  BaseDetectionPostprocessOpModel(const TensorData& input1,
+                            const TensorData& input2,
+                            const TensorData& input3,
+                            const TensorData& output1,
                             const TensorData& output2,
                             const TensorData& output3,
                             const TensorData& output4) {
@@ -62,8 +64,8 @@ class BaseSSDPostprocessOpModel : public SingleOpModel {
       fbb.Float("w_scale", 5.0);
     });
     fbb.Finish();
-    SetCustomOp("TFLite_SSD_PostProcess", fbb.GetBuffer(),
-                Register_SSD_POSTPROCESS);
+    SetCustomOp("TFLite_Detection_PostProcess", fbb.GetBuffer(),
+                Register_DETECTION_POSTPROCESS);
     BuildInterpreter({GetShape(input1_), GetShape(input2_), GetShape(input3_)});
   }
 
@@ -121,8 +123,8 @@ class BaseSSDPostprocessOpModel : public SingleOpModel {
   int output4_;
 };
 
-TEST(SSDPostprocessOpTest, FloatTest) {
-  BaseSSDPostprocessOpModel m(
+TEST(DetectionPostprocessOpTest, FloatTest) {
+  BaseDetectionPostprocessOpModel m(
       {TensorType_FLOAT32, {1, 6, 4}}, {TensorType_FLOAT32, {1, 6, 3}},
       {TensorType_FLOAT32, {6, 4}}, {TensorType_FLOAT32, {}},
       {TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}},
@@ -146,9 +148,7 @@ TEST(SSDPostprocessOpTest, FloatTest) {
   //   0.0, 10.0, 1.0, 11.0,
   //   0.0, 10.1, 1.0, 11.1,
   //   0.0, 100.0, 1.0, 101.0}
-
   m.Invoke();
-
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -175,13 +175,12 @@ TEST(SSDPostprocessOpTest, FloatTest) {
               ElementsAreArray(ArrayFloatNear({3.0}, 1e-1)));
 }
 
-TEST(SSDPostprocessOpTest, QuantizedTest) {
-  BaseSSDPostprocessOpModel m(
+TEST(DetectionPostprocessOpTest, QuantizedTest) {
+  BaseDetectionPostprocessOpModel m(
       {TensorType_UINT8, {1, 6, 4}, -1.0, 1.0},
       {TensorType_UINT8, {1, 6, 3}, 0.0, 1.0}, {TensorType_FLOAT32, {6, 4}},
       {TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}},
       {TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}});
-
   // six boxes in center-size encoding
   std::vector<std::initializer_list<float>> inputs1 = {
       {0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0,
@@ -197,7 +196,6 @@ TEST(SSDPostprocessOpTest, QuantizedTest) {
                       0.5, 0.5,  1.0, 1.0, 0.5, 10.5,  1.0, 1.0,
                       0.5, 10.5, 1.0, 1.0, 0.5, 100.5, 1.0, 1.0});
   m.Invoke();
-
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
