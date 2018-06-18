@@ -590,24 +590,27 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
       optional<string> barrier;
+      optional<int64> all_reduce_id;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_group_ids"] = {
           /*required=*/false, AttrTy::kBracedInt64List, &replica_group_ids};
       attrs["barrier"] = {/*required=*/false, AttrTy::kString, &barrier};
+      attrs["all_reduce_id"] = {/*required=*/false, AttrTy::kInt64,
+                                &all_reduce_id};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-
       if (replica_group_ids) {
         instruction =
             builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
                 shape, operands, *to_apply, *replica_group_ids,
-                barrier ? *barrier : ""));
+                barrier ? *barrier : "", all_reduce_id));
       } else {
         instruction =
             builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
-                shape, operands, *to_apply, {}, barrier ? *barrier : ""));
+                shape, operands, *to_apply, {}, barrier ? *barrier : "",
+                all_reduce_id));
       }
       break;
     }

@@ -261,12 +261,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                   [&instruction_map](int64 operand_id) {
                     return instruction_map.at(operand_id);
                   });
+      tensorflow::gtl::optional<int64> all_reduce_id;
+      if (proto.all_reduce_id() > 0) {
+        all_reduce_id = proto.all_reduce_id();
+      }
       instruction = CreateCrossReplicaSum(
           proto.shape(), all_operands, computations(0),
           /*replica_group_ids=*/
           std::vector<int64>(proto.replica_group_ids().begin(),
                              proto.replica_group_ids().end()),
-          /*barrier=*/"");
+          /*barrier=*/proto.cross_replica_sum_barrier(),
+          /*all_reduce_id=*/all_reduce_id);
       break;
     }
     default: {

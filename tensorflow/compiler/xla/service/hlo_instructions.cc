@@ -280,7 +280,7 @@ HloAllReduceInstruction::HloAllReduceInstruction(
       cross_replica_sum_barrier_(barrier.begin(), barrier.end()),
       all_reduce_id_(all_reduce_id) {
   // TODO(b/79737069): Remove the CHECK when supported.
-  CHECK(!all_reduce_id_.has_value());
+  CHECK(!all_reduce_id_);
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -292,7 +292,11 @@ HloInstructionProto HloAllReduceInstruction::ToProto() const {
   for (int64 i : replica_group_ids_) {
     proto.add_replica_group_ids(i);
   }
-  // TODO(b/79737069): handle barrier and all_reduce_id.
+  // Proto3 is so sad.
+  if (all_reduce_id_) {
+    proto.set_all_reduce_id(*all_reduce_id_);
+  }
+  proto.set_cross_replica_sum_barrier(cross_replica_sum_barrier_);
   return proto;
 }
 
@@ -303,7 +307,7 @@ std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
   if (!cross_replica_sum_barrier().empty()) {
     result.push_back(StrCat("barrier=\"", cross_replica_sum_barrier(), "\""));
   }
-  if (all_reduce_id_.has_value()) {
+  if (all_reduce_id_) {
     result.push_back(StrCat("all_reduce_id=", *all_reduce_id_));
   }
   return result;
