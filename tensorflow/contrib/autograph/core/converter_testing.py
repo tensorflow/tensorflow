@@ -131,7 +131,7 @@ class TestCase(test.TestCase):
         recursive=recursive,
         autograph_decorators=autograph_decorators,
         partial_types=None,
-        ag_module=None,
+        autograph_module=None,
         uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
     entity_info = transformer.EntityInfo(
         source_code=source,

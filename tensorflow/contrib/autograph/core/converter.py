@@ -53,6 +53,10 @@ Below is the overal flow at conversion:
         entity = converter.visit(entity)
 
       <add entity's dependencies to program_ctx>
+
+Note that pyct contains a small number of transformers used for static analysis.
+These implement transformer.Base, rather than converter.Base, to avoid a
+dependency on AutoGraph.
 """
 
 from __future__ import absolute_import
@@ -87,7 +91,7 @@ class ProgramContext(object):
         in the generated code
     name_map: Dict[str, str], map of original entity name to the name of
         their converted counterparts
-    ag_module: Module, a reference to the autograph module. This
+    autograph_module: Module, a reference to the autograph module. This
         needs to be specified by the caller to avoid circular dependencies.
     uncompiled_modules: Set[Tuple[str, ...]], with each tuple representing the
         fully qualified name of a package containing functions that will not be
@@ -97,19 +101,18 @@ class ProgramContext(object):
         to the closures of each entity, which are attached dynamically.
   """
 
-  # TODO(mdan): Rename ag_module to autograph_module?
   def __init__(
       self,
       recursive,
       autograph_decorators,
       partial_types,
-      ag_module,
+      autograph_module,
       uncompiled_modules,
   ):
     self.recursive = recursive
     self.autograph_decorators = autograph_decorators
     self.partial_types = partial_types if partial_types else ()
-    self.ag_module = ag_module
+    self.autograph_module = autograph_module
     self.uncompiled_modules = uncompiled_modules
 
     # Required to output dependencies in discovery order, which should match
@@ -189,11 +192,19 @@ class Base(transformer.Base):
 
   def __init__(self, ctx):
     super(Base, self).__init__(ctx.info)
-    self._used = False
     self.ctx = ctx  # Keeping this short because it's used frequently.
 
+    self._used = False
+    self._ast_depth = 0
+
   def visit(self, node):
-    if self._used:
-      raise ValueError('visit may only be called once')
-    self._used = True
-    super(Base, self).visit(node)
+    if not self._ast_depth:
+      if self._used:
+        raise ValueError('converter objects cannot be reused')
+      self._used = True
+
+    self._ast_depth += 1
+    try:
+      return super(Base, self).visit(node)
+    finally:
+      self._ast_depth -= 1
