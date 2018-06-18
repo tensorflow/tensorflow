@@ -732,7 +732,7 @@ def slice_arrays(arrays, indices, contiguous=True):
   """Slices batches out of provided arrays (workaround for eager tensors).
 
   Unfortunately eager tensors don't have the same slicing behavior as
-  Numpy arrays (they folow  the same slicing behavior as symbolic TF tensors),
+  Numpy arrays (they follow the same slicing behavior as symbolic TF tensors),
   hence we cannot use `generic_utils.slice_arrays` directly
   and we have to implement this workaround based on `concat`. This has a
   performance cost.

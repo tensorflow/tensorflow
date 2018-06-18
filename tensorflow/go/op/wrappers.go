@@ -10955,7 +10955,7 @@ func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistorted
 // SampleDistortedBoundingBoxAreaRange sets the optional area_range attribute to value.
 //
 // value: The cropped area of the image must contain a fraction of the
-// supplied image within in this range.
+// supplied image within this range.
 // If not specified, defaults to <f:0.05 f:1 >
 func SampleDistortedBoundingBoxAreaRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
@@ -18098,8 +18098,9 @@ func SparseFillEmptyRowsGrad(scope *Scope, reverse_index_map tf.Output, grad_val
 }
 
 // Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
-//
 // if < 0, `scale * features` otherwise.
+//
+// Assumes weights to have zero mean and variance 1.0 / fan_in.
 //
 // See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
 func Selu(scope *Scope, features tf.Output) (activations tf.Output) {
@@ -21625,7 +21626,7 @@ func ImageSummaryBadColor(value tf.Tensor) ImageSummaryAttr {
 //    generated sequentially as '*tag*/image/0', '*tag*/image/1', etc.
 //
 // The `bad_color` argument is the color to use in the generated images for
-// non-finite input values.  It is a `unit8` 1-D tensor of length `channels`.
+// non-finite input values.  It is a `uint8` 1-D tensor of length `channels`.
 // Each element must be in the range `[0, 255]` (It represents the value of a
 // pixel in the output image).  Non-finite values in the input tensor are
 // replaced by this tensor in the output image.  The default value is the color
@@ -24018,7 +24019,7 @@ func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistort
 // SampleDistortedBoundingBoxV2AreaRange sets the optional area_range attribute to value.
 //
 // value: The cropped area of the image must contain a fraction of the
-// supplied image within in this range.
+// supplied image within this range.
 // If not specified, defaults to <f:0.05 f:1 >
 func SampleDistortedBoundingBoxV2AreaRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
@@ -24714,8 +24715,7 @@ type DecodeProtoV2Attr func(optionalAttr)
 // If not specified, defaults to "local://"
 func DecodeProtoV2DescriptorSource(value string) DecodeProtoV2Attr {
 	return func(m optionalAttr) {
-		m["descriptor_source"] = value
-	}
+		m["descriptor_source"] = value	}
 }
 
 // DecodeProtoV2MessageFormat sets the optional message_format attribute to value.

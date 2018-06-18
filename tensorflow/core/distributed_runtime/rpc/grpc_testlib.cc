@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_session.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -50,9 +51,14 @@ Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
   }
 
   for (int i = 0; i < n; ++i) {
+    string server_file =
+        strings::StrCat(testing::TensorFlowSrcRoot(),
+                        "/core/distributed_runtime/rpc/grpc_testlib_server");
+    if (!options.env->FileExists(server_file).ok()) {
+      return errors::Internal("Could not find grpc_testlib_server");
+    }
     const std::vector<string> argv(
-        {strings::StrCat(testing::TensorFlowSrcRoot(),
-                         "/core/distributed_runtime/rpc/grpc_testlib_server"),
+        {server_file,
          /* see grpc_testlib_server.cc for flags */
          tf_jobs, "--tf_job=localhost", strings::StrCat("--tf_task=", i),
          strings::StrCat("--num_cpus=", num_cpus),

@@ -102,9 +102,25 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         EXPECT_EQ(2, shape.dim(0).size());
         EXPECT_EQ(1, shape.dim(1).size());
         if (node->name() == y->name()) {
+#ifdef INTEL_MKL
+          // if MKL is used, it goes through various additional 
+          // graph rewrite pass. In TF, everytime a graph pass 
+          // happens, "constant" nodes are allocated
+          // and deallocated. Each allocation calls the
+          // (FindChunkPtr of BFCAllocator),
+          // which increments the value of AllocationId. 
+          // Thus AllocationId becomes more than 3 and 4 if 
+          // MKL is used. Now they are 9 and 10 for MKL. 
+          EXPECT_EQ(19, cm->AllocationId(node, 0));
+#else
           EXPECT_EQ(21, cm->AllocationId(node, 0));
+#endif 
         } else {
+#ifdef INTEL_MKL
+          EXPECT_EQ(20, cm->AllocationId(node, 0));
+#else
           EXPECT_EQ(22, cm->AllocationId(node, 0));
+#endif 
         }
       }
       EXPECT_LE(0, cm->MaxExecutionTime(node));

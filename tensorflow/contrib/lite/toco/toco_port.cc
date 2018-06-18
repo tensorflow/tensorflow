@@ -20,6 +20,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
+#if defined(__ANDROID__) && defined(__ARM_ARCH_7A__)
+namespace std {
+double round(double x) { return ::round(x); }
+}  // namespace std
+#endif
+
 namespace toco {
 namespace port {
 void CopyToBuffer(const string& src, char* dest) {

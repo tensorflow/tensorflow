@@ -40,8 +40,7 @@ class InterpreterWrapper {
   static InterpreterWrapper* CreateWrapperCPPFromFile(const char* model_path);
 
   // SWIG caller takes ownership of pointer.
-  static InterpreterWrapper* CreateWrapperCPPFromBuffer(const char* data,
-                                                        size_t len);
+  static InterpreterWrapper* CreateWrapperCPPFromBuffer(PyObject* data);
 
   ~InterpreterWrapper();
   bool AllocateTensors();

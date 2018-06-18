@@ -58,7 +58,7 @@ tf_module {
   }
   member_method {
     name: "decode_image"
-    argspec: "args=[\'contents\', \'channels\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'uint8\'>\", \'None\'], "
   }
   member_method {
     name: "decode_jpeg"

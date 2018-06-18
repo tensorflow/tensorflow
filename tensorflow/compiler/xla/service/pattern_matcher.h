@@ -204,7 +204,7 @@ class LayoutPattern {
   // Modifies the pattern to match only if the layout equals the given proto.
   // The layout must outlive the returned pattern.
   constexpr LayoutPattern<LayoutType, LayoutPatternEqualImpl<Impl>> EqualTo(
-      const Layout* layout) const {
+      const ::xla::Layout* layout) const {
     return LayoutPattern<LayoutType, LayoutPatternEqualImpl<Impl>>(
         LayoutPatternEqualImpl<Impl>(impl_, layout), matched_layout_);
   }

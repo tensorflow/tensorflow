@@ -147,7 +147,9 @@ MasterService::Stub::Stub(
 }
 
 MasterService::AsyncService::AsyncService() {
-  for (int i = 0; i < 10; ++i) {
+  int method_len = sizeof(grpcMasterService_method_names) / 
+                    sizeof(grpcMasterService_method_names[0]);
+  for (int i = 0; i < method_len; ++i) {
     AddMethod(new ::grpc::internal::RpcServiceMethod(
         grpcMasterService_method_names[i],
         ::grpc::internal::RpcMethod::NORMAL_RPC, nullptr));

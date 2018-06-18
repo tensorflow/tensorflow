@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -200,8 +201,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
         }
       }
       if (optimizable) {
-        VLOG(2) << "Optimizing fused batch norm node " << node.DebugString()
-                << std::endl;
+        VLOG(1) << "Optimizing fused batch norm node " << node.DebugString();
         AddBatchNormNodes(optimized_graph, node);
         continue;
       }

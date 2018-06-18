@@ -38,6 +38,7 @@ REGISTER_NO_GRADIENT_OP("NotEqual");
 REGISTER_NO_GRADIENT_OP("LogicalAnd");
 REGISTER_NO_GRADIENT_OP("LogicalOr");
 REGISTER_NO_GRADIENT_OP("LogicalNot");
+REGISTER_NO_GRADIENT_OP("Floor");
 
 // Conjugate helper function returns the conjugate of an Output if it
 // is complex valued.

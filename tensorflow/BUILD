@@ -475,7 +475,7 @@ tf_cc_shared_object(
 # excludes all but a subset of function names.
 # On MacOS, the linker does not support version_script, but has an
 # an "-exported_symbols_list" command.  -z defs disallows undefined
-# symbols in object files and -s strips the output.
+# symbols in object files.
 
 tf_cc_shared_object(
     name = "libtensorflow.so",
@@ -489,7 +489,6 @@ tf_cc_shared_object(
         "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
-            "-s",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "$(location //tensorflow/c:version_script.lds)",
         ],
@@ -515,7 +514,6 @@ tf_cc_shared_object(
         "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
-            "-s",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "$(location //tensorflow:tf_version_script.lds)",
         ],

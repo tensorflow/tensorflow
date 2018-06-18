@@ -34,6 +34,24 @@ limitations under the License.
 #define TFLITE_PROTO_NS google::protobuf
 #endif
 
+#ifdef __ANDROID__
+#include <sstream>
+namespace std {
+
+template <typename T>
+std::string to_string(T value)
+{
+    std::ostringstream os ;
+    os << value ;
+    return os.str() ;
+}
+
+#ifdef __ARM_ARCH_7A__
+double round(double x);
+#endif
+}
+#endif
+
 namespace toco {
 namespace port {
 
