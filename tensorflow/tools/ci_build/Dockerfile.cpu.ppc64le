@@ -13,7 +13,7 @@ RUN /install/install_bazel_from_source.sh
 RUN /install/install_proto3.sh
 RUN /install/install_buildifier_from_source.sh
 RUN /install/install_auditwheel.sh
-RUN /install/install_golang_ppc64el.sh
+RUN /install/install_golang_ppc64le.sh
 
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc
