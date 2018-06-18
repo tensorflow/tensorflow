@@ -548,8 +548,11 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
-    # TODO(b/31361304): enable RNG ops on GPU when parallelized.
     disabled_backends = [
+        # TODO(b/110300529): RngNormal doesn't return values with the expected variance
+        "cpu",
+        "cpu_ondemand",
+        # TODO(b/31361304): enable RNG ops on GPU when parallelized.
         "gpu",
     ],
     deps = [

@@ -205,14 +205,9 @@ class TruncatedNormalOp : public XlaOpKernel {
 
     xla::XlaBuilder* b = ctx->builder();
 
-    auto two_sd = [dtype](bool negate, xla::XlaBuilder* b) {
-      return XlaHelpers::FloatLiteral(b, dtype, negate ? -2.0 : 2.0);
-    };
-    auto out_of_range_mask = [two_sd](xla::XlaOp candidate,
-                                      xla::XlaBuilder* b) {
-      xla::XlaOp too_large = b->Gt(candidate, two_sd(false, b));
-      xla::XlaOp too_small = b->Lt(candidate, two_sd(true, b));
-      return b->Or(too_large, too_small);
+    auto out_of_range_mask = [dtype](xla::XlaOp candidate, xla::XlaBuilder* b) {
+      xla::XlaOp two_sd = XlaHelpers::FloatLiteral(b, dtype, 2.0);
+      return b->Gt(b->Abs(candidate), two_sd);
     };
 
     // The algorithm we're using is roughly:
