@@ -761,6 +761,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://mirror.bazel.build/github.com/bazelbuild/rules_android/archive/v0.1.1.zip",
           "https://github.com/bazelbuild/rules_android/archive/v0.1.1.zip",
       ],
+      strip_prefix = "rules_android-0.1.1",
   )
 
   ##############################################################################
