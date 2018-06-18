@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
@@ -164,9 +163,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true);
-
-      // Rewrite gather ops into smaller ones.
-      pass.AddPass<GatherExpander>();
 
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
