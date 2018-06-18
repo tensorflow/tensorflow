@@ -207,7 +207,7 @@ XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
   std::unique_ptr<Literal> result =
       ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::MakeTupleOwned(Literal::CreateR0<int32>(42))));
+      *Literal::MakeTupleOwned(Literal::CreateR0<int32>(42)), *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
@@ -235,8 +235,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
   auto param = Literal::CreateR1<float>({1.0, 2.0, 3.0, -1.0});
   std::unique_ptr<Literal> result =
       ExecuteNoHloPasses(std::move(module), {param.get()});
-  EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::CreateR1<float>({0.0, 4.0, 9.0, 1.0})));
+  LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0, 1.0}, *result);
 }
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
@@ -269,8 +268,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
   auto param = Literal::CreateR1<float>({1.0, 2.0, 3.0});
   std::unique_ptr<Literal> result =
       ExecuteNoHloPasses(std::move(module), {param.get()});
-  EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::CreateR1<float>({0.0, 4.0, 9.0})));
+  LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0}, *result);
 }
 
 const char* const kScalarOps = R"(
@@ -314,9 +312,9 @@ XLA_TEST_F(MultiOutputFusionTest,
   std::unique_ptr<Literal> result =
       ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result,
       *Literal::MakeTupleOwned(Literal::CreateR2<float>({{3, 7}, {11, 15}}),
-                               Literal::CreateR2<float>({{5, 16}, {36, 64}}))));
+                               Literal::CreateR2<float>({{5, 16}, {36, 64}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -344,9 +342,9 @@ XLA_TEST_F(MultiOutputFusionTest,
   std::unique_ptr<Literal> result =
       ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::MakeTupleOwned(
-                   Literal::CreateR2<float>({{6, 8}, {10, 12}}),
-                   Literal::CreateR2<float>({{25, 36}, {49, 64}}))));
+      *Literal::MakeTupleOwned(Literal::CreateR2<float>({{6, 8}, {10, 12}}),
+                               Literal::CreateR2<float>({{25, 36}, {49, 64}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -375,9 +373,10 @@ XLA_TEST_F(MultiOutputFusionTest,
   std::unique_ptr<Literal> result =
       ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::MakeTupleOwned(Literal::CreateR1<float>({14, 22}),
-                                        Literal::CreateR1<float>({36, 64}),
-                                        Literal::CreateR1<float>({66, 138}))));
+      *Literal::MakeTupleOwned(Literal::CreateR1<float>({14, 22}),
+                               Literal::CreateR1<float>({36, 64}),
+                               Literal::CreateR1<float>({66, 138})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -406,11 +405,11 @@ XLA_TEST_F(MultiOutputFusionTest,
   std::unique_ptr<Literal> result =
       ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result,
       *Literal::MakeTupleOwned(
           Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}),
           Literal::CreateR2<float>({{3, 7}, {11, 15}}),
-          Literal::CreateR2<float>({{5, 16}, {36, 64}}))));
+          Literal::CreateR2<float>({{5, 16}, {36, 64}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -439,11 +438,11 @@ XLA_TEST_F(MultiOutputFusionTest,
   std::unique_ptr<Literal> result =
       ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result,
       *Literal::MakeTupleOwned(
           Literal::CreateR2<float>({{6, 8}, {10, 12}}),
           Literal::CreateR3<float>({{{1, 4}, {9, 16}}, {{25, 36}, {49, 64}}}),
-          Literal::CreateR2<float>({{25, 36}, {49, 64}}))));
+          Literal::CreateR2<float>({{25, 36}, {49, 64}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -472,12 +471,12 @@ XLA_TEST_F(MultiOutputFusionTest,
   std::unique_ptr<Literal> result =
       ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result,
       *Literal::MakeTupleOwned(
           Literal::CreateR1<float>({14, 22}),
           Literal::CreateR3<float>({{{1, 4}, {9, 16}}, {{25, 36}, {49, 64}}}),
           Literal::CreateR3<float>(
-              {{{5, 10}, {15, 20}}, {{25, 30}, {35, 40}}}))));
+              {{{5, 10}, {15, 20}}, {{25, 30}, {35, 40}}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -508,9 +507,10 @@ XLA_TEST_F(MultiOutputFusionTest,
   std::unique_ptr<Literal> result = ExecuteNoHloPasses(
       std::move(module), {param.get(), init1.get(), init2.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::MakeTupleOwned(
-                   Literal::CreateR2<float>({{167, 172}, {176, 180}}),
-                   Literal::CreateR2<float>({{6, 6}, {6, 8}}))));
+      *Literal::MakeTupleOwned(
+          Literal::CreateR2<float>({{167, 172}, {176, 180}}),
+          Literal::CreateR2<float>({{6, 6}, {6, 8}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
