@@ -4076,6 +4076,19 @@ py_test(
     ],
 )
 
+py_test(
+    name = "tf_record_test",
+    size = "small",
+    srcs = ["lib/io/tf_record_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":errors",
+        ":lib",
+        ":util",
+    ],
+)
+
 cuda_py_test(
     name = "adam_test",
     size = "small",
