@@ -79,7 +79,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Ensure that weights and inputs have the same channel dimension.
   // Note: TOCO will reorder weights in the following format: OHWI.
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 3),
-                    SizeOfDimension(weights, 0));
+                    SizeOfDimension(weights, 3));
 
   if (!IsConstantTensor(output_shape)) {
     SetTensorToDynamic(output);
@@ -119,10 +119,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Currently only support float32.
   switch (input->type) {
     case kTfLiteFloat32:
-      optimized_ops::TransposeConv(
+      reference_ops::TransposeConv(
           GetTensorData<float>(input), GetTensorDims(input),
           GetTensorData<float>(weights), GetTensorDims(weights), stride_width,
           stride_height, padding_size.width, padding_size.height,
+          GetTensorData<float>(output), GetTensorDims(output),
+          // Last two args specify im2col which reference_ops ignores.
+          // (Note this does not lead to a performance regression, as the
+          // previous optimized version was just a copy of the reference code.)
+          // TODO(b/110208176): Allocate im2col tensors and switch to
+          // optimized_ops.
           GetTensorData<float>(output), GetTensorDims(output));
       break;
     default:

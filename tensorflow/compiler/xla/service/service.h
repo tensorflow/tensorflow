@@ -26,14 +26,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/allocation_tracker.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
-#include "tensorflow/compiler/xla/service/compilation_cache.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/execution_tracker.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -296,9 +294,6 @@ class Service : public ServiceInterface {
 
   // Tracks asynchronously launched executions via the API.
   ExecutionTracker execution_tracker_;
-
-  // Cache containing previously built Executables.
-  CompilationCache compilation_cache_;
 
   // Backend to compile and execute computations on.
   std::unique_ptr<Backend> execute_backend_;

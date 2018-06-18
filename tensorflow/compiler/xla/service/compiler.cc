@@ -35,6 +35,20 @@ Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
   return {};
 }
 
+// Define a default version where metadata is not used.
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+Compiler::CompileAheadOfTime(
+    std::vector<std::unique_ptr<HloModule>> modules,
+    const AotCompilationOptions& options,
+    std::unique_ptr<AotCompilationMetadata>* metadata) {
+  if (metadata != nullptr) {
+    return Unimplemented(
+        "Populating AotCompilationMetadata is not implemented on this "
+        "compiler.");
+  }
+  return CompileAheadOfTime(std::move(modules), options);
+}
+
 /* static */ std::map<se::Platform::Id, Compiler::CompilerFactory>*
 Compiler::GetPlatformCompilerFactories() {
   static auto* r = new std::map<se::Platform::Id, CompilerFactory>;

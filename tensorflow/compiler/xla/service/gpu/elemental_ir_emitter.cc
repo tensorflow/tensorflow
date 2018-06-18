@@ -53,11 +53,17 @@ using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 using tensorflow::strings::StrAppend;
 
+namespace {
 // Returns whether operand is a floating-point literal with the given value.
 bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
-  return operand->opcode() == HloOpcode::kConstant &&
-         operand->literal().IsAllFloat(value);
+  if (operand->opcode() == HloOpcode::kConstant &&
+      operand->literal().IsAllFloat(value)) {
+    return true;
+  }
+  return operand->opcode() == HloOpcode::kBroadcast &&
+         IsFPLiteralWithValue(operand->operand(0), value);
 }
+}  // namespace
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,

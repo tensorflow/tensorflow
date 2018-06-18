@@ -488,10 +488,9 @@ TEST_F(MapTest, MapOperantionWithBuildError) {
 
   StatusOr<XlaComputation> computation_status = builder.Build();
   ASSERT_TRUE(!computation_status.ok());
-  EXPECT_THAT(
-      computation_status.status().ToString(),
-      ::testing::HasSubstr("error from: ErrorAdd: Binary op BINOP_ADD with "
-                           "different element types: f32[] and u16[]"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              ::testing::HasSubstr("error from: ErrorAdd: Binary op add with "
+                                   "different element types: f32[] and u16[]"));
 }
 
 // MapTest disables inline and algsimp. MapTestWithFullOpt runs all

@@ -449,7 +449,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
   // Filter out and remove empty operands.
   std::vector<HloInstruction*> nonempty_operands;
   for (HloInstruction* operand : operands) {
-    if (!ShapeUtil::HasZeroElements(operand->shape())) {
+    if (!ShapeUtil::IsZeroElementArray(operand->shape())) {
       nonempty_operands.push_back(operand);
     }
   }
@@ -1058,9 +1058,9 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   }
 
   // Replace a zero element dot with a broadcast of the constant 0.
-  if (ShapeUtil::HasZeroElements(dot->shape()) ||
-      ShapeUtil::HasZeroElements(lhs->shape()) ||
-      ShapeUtil::HasZeroElements(rhs->shape())) {
+  if (ShapeUtil::IsZeroElementArray(dot->shape()) ||
+      ShapeUtil::IsZeroElementArray(lhs->shape()) ||
+      ShapeUtil::IsZeroElementArray(rhs->shape())) {
     auto zero = computation_->AddInstruction(
         HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
     return ReplaceWithNewInstruction(
@@ -1392,7 +1392,7 @@ Status AlgebraicSimplifierVisitor::HandleImag(HloInstruction* imag) {
 }
 
 Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
-  if (ShapeUtil::HasZeroElements(pad->operand(0)->shape())) {
+  if (ShapeUtil::IsZeroElementArray(pad->operand(0)->shape())) {
     return ReplaceWithNewInstruction(
         pad, HloInstruction::CreateBroadcast(pad->shape(),
                                              pad->mutable_operand(1), {}));
@@ -1638,7 +1638,7 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
 
   // Reshape directly to empty constant if the shape contains zero-element
   // dimension.
-  if (ShapeUtil::HasZeroElements(reshape->shape())) {
+  if (ShapeUtil::IsZeroElementArray(reshape->shape())) {
     auto empty_constant = HloInstruction::CreateConstant(
         Literal::CreateFromShape(reshape->shape()));
 
@@ -1739,7 +1739,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // If any dimension of update is 0, elide the DynamicUpdateSlice.  This
   // optimization becomes invalid should we later prefer to warn about out of
   // bound indices.
-  if (ShapeUtil::HasZeroElements(update->shape())) {
+  if (ShapeUtil::IsZeroElementArray(update->shape())) {
     return ReplaceInstruction(dynamic_update_slice,
                               dynamic_update_slice->mutable_operand(0));
   }
@@ -1751,8 +1751,8 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
   auto init_value = reduce->mutable_operand(1);
   tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
-  if (ShapeUtil::HasZeroElements(arg->shape()) ||
-      ShapeUtil::HasZeroElements(reduce->shape())) {
+  if (ShapeUtil::IsZeroElementArray(arg->shape()) ||
+      ShapeUtil::IsZeroElementArray(reduce->shape())) {
     return ReplaceWithNewInstruction(
         reduce,
         HloInstruction::CreateBroadcast(reduce->shape(), init_value, {}));
@@ -1783,6 +1783,37 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
     return ReplaceWithNewInstruction(
         reduce, HloInstruction::CreateReshape(reduce->shape(), arg));
   }
+
+  // If a reduce feeds a reduce with the same computation and initial value,
+  // they can be combined into a single reduce.
+  if (arg->opcode() == HloOpcode::kReduce &&
+      init_value->Identical(*arg->operand(1)) &&
+      *function == *arg->to_apply()) {
+    // Create a new reduce with the combined reduction dimensions of both
+    // reduces.
+    std::vector<int64> arg_dims = arg->dimensions();
+    std::sort(arg_dims.begin(), arg_dims.end());
+    std::vector<int64> reduce_dims = reduce->dimensions();
+    std::sort(reduce_dims.begin(), reduce_dims.end());
+    // Transform reduce_dims to the same rank as the operand of the operand.
+    for (int64 arg_dim : arg_dims) {
+      for (int64& dim : reduce_dims) {
+        if (dim >= arg_dim) {
+          ++dim;
+        }
+      }
+    }
+    std::vector<int64> new_dimensions;
+    new_dimensions.reserve(arg->dimensions().size() +
+                           reduce->dimensions().size());
+    std::merge(arg_dims.begin(), arg_dims.end(), reduce_dims.begin(),
+               reduce_dims.end(), std::back_inserter(new_dimensions));
+    return ReplaceWithNewInstruction(
+        reduce,
+        HloInstruction::CreateReduce(reduce->shape(), arg->mutable_operand(0),
+                                     init_value, new_dimensions, function));
+  }
+
   // A reshape that collapses multiple dimensions into a dimension being
   // reduced can just reduce all of those dimensions instead of doing a
   // collapsing reshape before a reduction.
@@ -1832,7 +1863,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
 
 Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     HloInstruction* reduce_window) {
-  if (ShapeUtil::HasZeroElements(reduce_window->operand(0)->shape())) {
+  if (ShapeUtil::IsZeroElementArray(reduce_window->operand(0)->shape())) {
     return ReplaceWithNewInstruction(
         reduce_window,
         HloInstruction::CreateBroadcast(reduce_window->shape(),
@@ -2028,8 +2059,8 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
     HloInstruction* convolution) {
   auto lhs = convolution->mutable_operand(0);
   auto rhs = convolution->mutable_operand(1);
-  if (ShapeUtil::HasZeroElements(lhs->shape()) ||
-      ShapeUtil::HasZeroElements(rhs->shape())) {
+  if (ShapeUtil::IsZeroElementArray(lhs->shape()) ||
+      ShapeUtil::IsZeroElementArray(rhs->shape())) {
     return ReplaceWithNewInstruction(
         convolution,
         HloInstruction::CreateBroadcast(

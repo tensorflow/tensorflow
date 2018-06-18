@@ -113,3 +113,9 @@ pip3 install --upgrade termcolor
 # Install last working version of setuptools.
 pip2 install --upgrade setuptools==39.1.0
 pip3 install --upgrade setuptools==39.1.0
+
+# Keras
+pip2 install keras_applications==1.0.2
+pip3 install keras_applications==1.0.2
+pip2 install keras_preprocessing==1.0.1
+pip3 install keras_preprocessing==1.0.1

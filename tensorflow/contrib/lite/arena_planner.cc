@@ -31,7 +31,7 @@ struct AllocationInfo {
   // The tensor index to be allocated or deallocated.
   int tensor;
   // Whether to allocate or deallocate
-  enum { ALLOC, DEALLOC } type;
+  enum Type { ALLOC, DEALLOC } type;
 };
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
@@ -67,6 +67,33 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 
   // Keeps track of references to each tensor.
   std::vector<int> refcounts(graph_info_->num_tensors(), 0);
+  // `allocated` and `deallocated` are technically list of boolean values.
+  // We're saving the compiled binary size by using `vector<int>`.
+  std::vector<int> allocated(graph_info_->num_tensors(), false);
+  std::vector<int> deallocated(graph_info_->num_tensors(), false);
+
+  auto allocate = [this, &allocated, &deallocated](int node,
+                                                   int tensor) -> TfLiteStatus {
+    if (allocated[tensor]) {
+      return kTfLiteOk;
+    }
+    TF_LITE_ENSURE(context_, !deallocated[tensor]);
+    alloc_queue_.push_back({node, tensor, AllocationInfo::ALLOC});
+    allocated[tensor] = true;
+    return kTfLiteOk;
+  };
+
+  auto deallocate = [this, &allocated, &deallocated](
+                        int node, int tensor) -> TfLiteStatus {
+    if (!allocated[tensor]) {
+      // Do not enqueue a DEALLOC if the tensor is never allocated.
+      // This happened with the constant tensors.
+      return kTfLiteOk;
+    }
+    TF_LITE_ENSURE(context_, !deallocated[tensor]);
+    alloc_queue_.push_back({node, tensor, AllocationInfo::DEALLOC});
+    return kTfLiteOk;
+  };
 
   // There will be an entry in alloc_queue_ for the allocation of each tensor
   // and another for their deallocation.
@@ -77,6 +104,28 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   // for deallocation.
   for (int tensor_index : graph_info_->outputs()) {
     refcounts[tensor_index]++;
+  }
+
+  // Variable tensors should are also never overwritten and need to be alive all
+  // the time.
+  for (int tensor_index : graph_info_->variables()) {
+    refcounts[tensor_index]++;
+  }
+
+  // Queue all graph inputs for allocation.
+  for (int tensor_index : graph_info_->inputs()) {
+    if (tensor_index != kOptionalTensor) {
+      TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
+    }
+  }
+
+  // Queue all graph variable tensors for allocation.
+  for (int tensor_index : graph_info_->variables()) {
+    if (tensor_index != kOptionalTensor) {
+      // Increase the reference count for input tensors by one, so it will
+      // never be deallocated.
+      TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
+    }
   }
 
   // Count references to node input tensors.
@@ -94,10 +143,9 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   // Queue all graph inputs for allocation.
   for (int tensor_index : graph_info_->inputs()) {
     if (tensor_index != kOptionalTensor) {
-      alloc_queue_.push_back({0, tensor_index, AllocationInfo::ALLOC});
+      TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
     }
   }
-
   // Go through the graph in execution order.
   for (int i = 0; i < graph_info_->num_nodes(); ++i) {
     const TfLiteNode& node = graph_info_->node(i);
@@ -106,7 +154,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     TfLiteIntArray* node_outputs = node.outputs;
     for (int j = 0; j < node_outputs->size; ++j) {
       int tensor_index = node_outputs->data[j];
-      alloc_queue_.push_back({i, tensor_index, AllocationInfo::ALLOC});
+      TF_LITE_ENSURE_STATUS(allocate(i, tensor_index));
     }
 
     // Then update the ref-counts of the node's inputs, and if necessary queue
@@ -117,7 +165,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
       if (tensor_index != kOptionalTensor) {
         refcounts[tensor_index]--;
         if (refcounts[tensor_index] == 0) {
-          alloc_queue_.push_back({i, tensor_index, AllocationInfo::DEALLOC});
+          TF_LITE_ENSURE_STATUS(deallocate(i, tensor_index));
         }
       }
     }

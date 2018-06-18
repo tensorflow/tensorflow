@@ -1925,7 +1925,8 @@ class variable_scope(object):
         for this scope as well as all sub-scopes; if tf.AUTO_REUSE, we create
         variables if they do not exist, and return them otherwise; if None, we
         inherit the parent scope's reuse flag. When eager execution is enabled,
-        this argument is always forced to be tf.AUTO_REUSE.
+        new variables are always created unless an EagerVariableStore or
+        template is currently active.
       dtype: type of variables created in this scope (defaults to the type
         in the passed scope, or inherited from parent scope).
       use_resource: If False, all variables will be regular Variables. If True,

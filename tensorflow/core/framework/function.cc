@@ -815,6 +815,10 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
     entries.push_back(
         strings::StrCat("_state_handle", "=", options.state_handle));
   }
+  if (!options.executor_type.empty()) {
+    entries.push_back(
+        strings::StrCat("_executor_type", "=", options.executor_type));
+  }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
 }

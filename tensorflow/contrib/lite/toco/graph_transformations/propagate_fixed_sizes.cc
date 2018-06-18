@@ -211,12 +211,6 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   // might as well calculate the output shape and ensure it matches the
   // specified one
 
-  // Check if we have already run.
-  auto& output_array = model->GetArray(op->outputs[0]);
-  if (output_array.has_shape()) {
-    return;
-  }
-
   // SPECIFIED OUTPUT SHAPE
   // The below is the specified, or prescribed output shape, _given_ to the
   // operator as an input.
@@ -278,13 +272,23 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
       << "TransposeConv input shape must have 4 dimensions. Input \""
       << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
       << toco::ShapeToString(weights_shape) << ".";
-  CHECK_EQ(input_shape.dims(3), weights_shape.dims(0))
+  CHECK_EQ(input_shape.dims(3), weights_shape.dims(3))
       << "Input shape depth and weight depth do not agree";
 
   // Set the output shape according to the specified output shape.
   std::vector<int32> const& specified_output_shape =
       specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+  auto& output_array = model->GetArray(op->outputs[0]);
   *(output_array.mutable_shape()->mutable_dims()) = specified_output_shape;
+
+  // Set im2col array dimensions if there is one.
+  if (op->outputs.size() == 2) {
+    const int input_depth = weights_shape.dims(3);
+    auto& im2col_array = model->GetArray(op->outputs[1]);
+    im2col_array.copy_shape(
+        Shape{specified_output_shape[0], specified_output_shape[1],
+              specified_output_shape[2], input_depth * kheight * kwidth});
+  }
 }
 
 void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
@@ -1505,6 +1509,48 @@ void ProcessSparseToDenseOperator(Model* model, SparseToDenseOperator* op) {
   }
 }
 
+void ProcessTileOperator(Model* model, TensorFlowTileOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  CHECK_EQ(op->outputs.size(), 1);
+
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // We have already run.
+    return;
+  }
+
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  if (!input_array.has_shape()) {
+    // Yield until input dims have been resolved.
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+
+  auto& multiples_array = model->GetArray(op->inputs[1]);
+  if (!multiples_array.has_shape()) {
+    // Yield until multiples shape been resolved.
+    return;
+  }
+  if (!multiples_array.buffer) {
+    // Yield until the multiples is constant.
+    return;
+  }
+  CHECK(multiples_array.data_type == ArrayDataType::kInt32)
+      << "Tile multiples input must be int32";
+
+  std::vector<int32> const& multiples =
+      multiples_array.GetBuffer<ArrayDataType::kInt32>().data;
+  CHECK_EQ(multiples.size(), input_shape.dimensions_count())
+      << "Tile multiples input " << op->inputs[1]
+      << " must be same length as input dimensions";
+
+  auto* mutable_dims = output_array.mutable_shape()->mutable_dims();
+  mutable_dims->resize(multiples.size());
+  for (int i = 0; i < mutable_dims->size(); ++i) {
+    (*mutable_dims)[i] = input_shape.dims(i) * multiples[i];
+  }
+}
+
 }  // namespace
 
 bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
@@ -1623,14 +1669,6 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessSliceOperator(model, static_cast<SliceOperator*>(op));
       break;
 
-    case OperatorType::kTensorFlowTile:
-      // We don't currently implement the propagation of fixed sizes through
-      // a TensorFlow Tile.
-      //
-      // Fortunately, we don't need to: so far, we have only dealt with Tile
-      // or Slice ops in subgraphs that are identified as L2Normalization.
-      // See IdentifyL2Normalization.
-      break;
     case OperatorType::kTensorFlowSwitch:
       // We can't know the sizes of the outputs until we have resolved the
       // predicate, and once we have resolved the predicate, the whole
@@ -1733,6 +1771,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSparseToDense:
       ProcessSparseToDenseOperator(model,
                                    static_cast<SparseToDenseOperator*>(op));
+      break;
+    case OperatorType::kTensorFlowTile:
+      ProcessTileOperator(model, static_cast<TensorFlowTileOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

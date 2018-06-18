@@ -427,5 +427,27 @@ llvm::Value* LlvmVariable::Get() const {
 void LlvmVariable::Set(llvm::Value* new_value) {
   ir_builder_->CreateStore(new_value, alloca_);
 }
+
+TileVariable::TileVariable(VectorSupportLibrary* vector_support,
+                           std::vector<llvm::Value*> initial_value) {
+  for (llvm::Value* initial_vector_value : initial_value) {
+    storage_.emplace_back(vector_support, initial_vector_value);
+  }
+}
+
+std::vector<llvm::Value*> TileVariable::Get() const {
+  std::vector<llvm::Value*> result;
+  c_transform(storage_, std::back_inserter(result),
+              [&](VectorVariable vect_var) { return vect_var.Get(); });
+  return result;
+}
+
+void TileVariable::Set(tensorflow::gtl::ArraySlice<llvm::Value*> value) {
+  CHECK_EQ(value.size(), storage_.size());
+  for (int64 i = 0, e = value.size(); i < e; i++) {
+    storage_[i].Set(value[i]);
+  }
+}
+
 }  // namespace cpu
 }  // namespace xla

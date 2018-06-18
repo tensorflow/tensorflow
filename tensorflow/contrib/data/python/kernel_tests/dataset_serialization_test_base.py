@@ -467,7 +467,8 @@ class DatasetSerializationTestBase(test.TestCase):
                   ckpt_saved=False,
                   init_before_restore=False,
                   sparse_tensors=False,
-                  verify_exhausted=True):
+                  verify_exhausted=True,
+                  save_checkpoint_at_end=True):
     """Generates elements from input dataset while stopping at break points.
 
     Produces `num_outputs` outputs and saves the state of the iterator in the
@@ -490,6 +491,10 @@ class DatasetSerializationTestBase(test.TestCase):
       sparse_tensors:  Whether dataset is built from SparseTensor(s).
       verify_exhausted: Whether to verify that the iterator has been exhausted
         after producing `num_outputs` elements.
+      save_checkpoint_at_end: Whether to save a checkpoint after producing all
+        outputs. If False, checkpoints are saved each break point but not at the
+        end. Note that checkpoints overwrite each other so there is always only
+        a single checkpoint available. Defaults to True.
 
     Returns:
       A list of `num_outputs` items.
@@ -526,8 +531,9 @@ class DatasetSerializationTestBase(test.TestCase):
           if i == len(break_points) and verify_exhausted:
             with self.assertRaises(errors.OutOfRangeError):
               sess.run(get_next_op)
-          self._save(sess, saver)
-          ckpt_saved = True
+          if save_checkpoint_at_end or i < len(break_points):
+            self._save(sess, saver)
+            ckpt_saved = True
 
     return outputs
 

@@ -14,55 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 
-#include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
-// TODO(tucker): When we're ready to enable collectives this const will
-// transition to a settable config member.
-static const char FLAGS_collective_group_leader[] =
-    "/job:worker/replica:0/task:0";
-
 namespace tensorflow {
 namespace {
-// Supports client side cancellation of WorkerInterface calls via
-// registration with a CancellationManager.  Note that ParamResolverInterface
-// calls are done on behalf of an Op execution which needs to abort if the
-// step in which it executes is cancelled.
-class CancellableCall {
- public:
-  CancellableCall(CancellationManager* cancel_mgr, const string& remote_worker,
-                  WorkerCacheInterface* wc)
-      : cancel_mgr_(cancel_mgr), remote_worker_(remote_worker), wc_(wc) {
-    wi_ = wc_->CreateWorker(remote_worker_);
-  }
-  virtual ~CancellableCall() { wc_->ReleaseWorker(remote_worker_, wi_); }
-
-  virtual void IssueCall(const StatusCallback& done) = 0;
-
-  void Start(const StatusCallback& done) {
-    CancellationToken token = cancel_mgr_->get_cancellation_token();
-    const bool not_yet_cancelled = cancel_mgr_->RegisterCallback(
-        token, [this, token]() { opts_.StartCancel(); });
-    if (not_yet_cancelled) {
-      IssueCall([this, token, done](const Status& s) {
-        cancel_mgr_->DeregisterCallback(token);
-        done(s);
-      });
-    } else {
-      done(errors::Cancelled("RPC Request was cancelled"));
-    }
-  }
-
- protected:
-  mutable mutex mu_;
-  CancellationManager* cancel_mgr_;  // Not owned
-  const string remote_worker_;
-  WorkerCacheInterface* wc_;  // Not owned
-  WorkerInterface* wi_;       // Owned by wc_, must be released.
-  CallOptions opts_;
-};
 
 class CompleteGroupCall : public CancellableCall {
  public:
@@ -126,9 +84,9 @@ CollectiveParamResolverDistributed::CollectiveParamResolverDistributed(
     const string& task_name)
     : CollectiveParamResolverLocal(dev_mgr, dev_resolver, task_name),
       worker_cache_(worker_cache),
-      group_leader_(task_name == FLAGS_collective_group_leader
+      group_leader_(task_name == config.experimental().collective_group_leader()
                         ? ""
-                        : FLAGS_collective_group_leader) {}
+                        : config.experimental().collective_group_leader()) {}
 
 void CollectiveParamResolverDistributed::CompleteParamsAsync(
     const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,

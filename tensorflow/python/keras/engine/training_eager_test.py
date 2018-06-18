@@ -403,6 +403,24 @@ class TrainingTest(test.TestCase):
     model.train_on_batch(inputs, targets)
     model.test_on_batch(inputs, targets)
 
+  def test_generator_methods(self):
+    model = keras.Sequential()
+    model.add(keras.layers.Dense(4, input_shape=(3,)))
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    model.compile(optimizer, 'mse', metrics=['mae'])
+
+    x = np.random.random((10, 3))
+    y = np.random.random((10, 4))
+
+    def iterator():
+      while True:
+        yield x, y
+
+    model.fit_generator(iterator(), steps_per_epoch=3, epochs=1)
+    model.evaluate_generator(iterator(), steps=3)
+    out = model.predict_generator(iterator(), steps=3)
+    self.assertEqual(out.shape, (30, 4))
+
 
 class LossWeightingTest(test.TestCase):
 

@@ -85,11 +85,18 @@ OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
   return details;
 }
 
+tensorflow::StatSummarizerOptions GetProfileSummarizerOptions() {
+  auto options = tensorflow::StatSummarizerOptions();
+  options.show_summary = true;
+  options.show_memory = false;
+  return options;
+}
+
 }  // namespace
 
 ProfileSummarizer::ProfileSummarizer()
-    : stats_calculator_(new ::tensorflow::StatsCalculator(
-          tensorflow::StatSummarizerOptions())) {}
+    : stats_calculator_(
+          new ::tensorflow::StatsCalculator(GetProfileSummarizerOptions())) {}
 
 void ProfileSummarizer::ProcessProfiles(
     const std::vector<const ProfileEvent*>& profile_stats,

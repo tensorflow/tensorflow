@@ -43,7 +43,7 @@ class ShapeOp : public XlaOpKernel {
   DataType out_dtype_;
 };
 
-REGISTER_XLA_OP(Name("Shape"), ShapeOp);
+REGISTER_XLA_OP(Name("Shape").CompilationOnly(), ShapeOp);
 
 class ShapeNOp : public XlaOpKernel {
  public:
@@ -65,7 +65,7 @@ class ShapeNOp : public XlaOpKernel {
  private:
   DataType out_dtype_;
 };
-REGISTER_XLA_OP(Name("ShapeN"), ShapeNOp);
+REGISTER_XLA_OP(Name("ShapeN").CompilationOnly(), ShapeNOp);
 
 class RankOp : public XlaOpKernel {
  public:
@@ -81,7 +81,7 @@ class RankOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Rank"), RankOp);
+REGISTER_XLA_OP(Name("Rank").CompilationOnly(), RankOp);
 
 class SizeOp : public XlaOpKernel {
  public:
@@ -100,7 +100,7 @@ class SizeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Size"), SizeOp);
+REGISTER_XLA_OP(Name("Size").CompilationOnly(), SizeOp);
 
 class ExpandDimsOp : public XlaOpKernel {
  public:
@@ -189,10 +189,9 @@ class SqueezeOp : public XlaOpKernel {
       if (!wrapped_squeeze_dims.empty()) {
         if (wrapped_squeeze_dims.count(i) > 0) {
           OP_REQUIRES(ctx, existing_dim == 1,
-                      errors::InvalidArgument("Tried to explicitly squeeze "
-                                              "dimension ",
-                                              i, " but dimension was not 1: ",
-                                              existing_dim));
+                      errors::InvalidArgument(
+                          "Tried to explicitly squeeze dimension ", i,
+                          " but dimension was not 1: ", existing_dim));
         } else {
           // This dimension is not being squeezed.
           new_shape.push_back(existing_dim);
