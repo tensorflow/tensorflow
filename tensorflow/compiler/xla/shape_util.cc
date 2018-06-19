@@ -264,6 +264,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     tensorflow::gtl::ArraySlice<Shape> shapes) {
   Shape result;
   result.set_element_type(TUPLE);
+  result.mutable_tuple_shapes()->Reserve(shapes.size());
   for (const auto& shape : shapes) {
     AppendShapeToTuple(shape, &result);
   }
