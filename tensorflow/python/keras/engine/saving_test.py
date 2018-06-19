@@ -482,7 +482,7 @@ class TestWholeModelSaving(test.TestCase):
       with h5py.File(fname, 'r') as h5file:
         num_names_arrays = len([attr for attr in h5file['model_weights'].attrs
                                 if attr.startswith('layer_names')])
-      # The chunking of layer names array should have happend.
+      # The chunking of layer names array should have happened.
       self.assertGreater(num_names_arrays, 0)
       out2 = model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
@@ -527,7 +527,7 @@ class TestWholeModelSaving(test.TestCase):
         num_weight_arrays = len(
             [attr for attr in h5file['model_weights']['nested_model'].attrs
              if attr.startswith('weight_names')])
-      # The chunking of layer names array should have happend.
+      # The chunking of layer names array should have happened.
       self.assertGreater(num_weight_arrays, 0)
       out2 = model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)

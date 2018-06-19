@@ -216,8 +216,13 @@ TEST_F(ScopedAllocatorConcatOpTest, Success3) {
 }
 
 TEST_F(ScopedAllocatorConcatOpTest, Reshape) {
-  MakeOp({2, 2, 2}, DT_DOUBLE, true, "test", 120, 2);
-  ExecOp(DT_DOUBLE, 120, {{2, 2}, {2, 2}});
+  MakeOp({2, 2, 4}, DT_DOUBLE, true, "test", 120, 2);
+
+  // The elements of the third parameter to ExecOp must be multiples of
+  // Allocator::kAllocatorAlignment in size.  If they are not, the backing
+  // tensor allocated by PrepOp will have too many elements and reshaping
+  // will fail.
+  ExecOp(DT_DOUBLE, 120, {{2, 4}, {2, 4}});
 }
 
 TEST_F(ScopedAllocatorConcatOpTest, NoReshapeAttr) {

@@ -454,7 +454,9 @@ REGISTER_OP("DrawBoundingBoxes")
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 2), 4, &unused));
 
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+      // The rank of the input image (rank = 4) has already been restricted
+      // above, and the output is of the same shape as the input.
+      return shape_inference::UnchangedShape(c);
     });
 
 // --------------------------------------------------------------------------

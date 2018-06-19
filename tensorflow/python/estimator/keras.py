@@ -70,7 +70,7 @@ def _convert_tensor(x):
   return x
 
 
-def _any_variable_initalized():
+def _any_variable_initialized():
   """Check if any variable has been initialized in the Keras model.
 
   Returns:
@@ -511,7 +511,7 @@ def model_to_estimator(keras_model=None,
       keras_model_fn, model_dir=model_dir, config=config)
 
   # Check if we need to call get_weights:
-  if _any_variable_initalized():
+  if _any_variable_initialized():
     keras_weights = keras_model.get_weights()
     # Warn if config passed to estimator tries to update GPUOptions. If a
     # session has already been created, the GPUOptions passed to the first

@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-cusolver-9-0 \
         cuda-cusparse-9-0 \
         curl \
-        libcudnn7=7.0.5.15-1+cuda9.0 \
+        libcudnn7=7.1.4.18-1+cuda9.0 \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libpng12-dev \

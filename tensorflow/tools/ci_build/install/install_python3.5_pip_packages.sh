@@ -39,7 +39,6 @@ if [[ -z $pip35_version ]]; then
 fi
 
 set -e
-pip3.5 install --upgrade setuptools
 pip3.5 install --upgrade pip
 
 pip3.5 install --upgrade virtualenv
@@ -85,5 +84,8 @@ pip3.5 install --upgrade termcolor
 # Keras
 pip3.5 install keras_applications==1.0.2
 pip3.5 install keras_preprocessing==1.0.1
+
+# Install last working version of setuptools.
+pip3.5 install --upgrade setuptools==39.1.0
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.6_pip_packages.sh)

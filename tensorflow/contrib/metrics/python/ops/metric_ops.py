@@ -2503,7 +2503,7 @@ def _compute_recall_at_precision(tp, fp, fn, precision, name):
     name: An optional variable_scope name.
 
   Returns:
-    The recall at a the given `precision`.
+    The recall at a given `precision`.
   """
   precisions = math_ops.div(tp, tp + fp + _EPSILON)
   tf_index = math_ops.argmin(

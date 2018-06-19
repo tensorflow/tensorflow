@@ -814,6 +814,9 @@ void Generator::Generate(const FileDescriptor& fd) {
   // Add header to cc file.
   SetOutput(&cc_);
   Print("// GENERATED FILE - DO NOT MODIFY");
+  Print();
+  Print("#include <algorithm>");  // for `std::stable_sort()`
+  Print();
   headers = {GetProtoTextHeaderName(fd, true /* impl */)};
   AddHeadersToCurrentSection(headers);
   Print();

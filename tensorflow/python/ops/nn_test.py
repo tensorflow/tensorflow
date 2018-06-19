@@ -962,6 +962,16 @@ class LeakyReluTest(test_lib.TestCase):
       self.assertAllClose(
           outputs, [-0.4, -0.2, 0.0, 1.0, 2.0], rtol=tol, atol=tol)
 
+  def testName(self):
+    np_values = np.array([-2, -1, 0, 1, 2], dtype=np.float64)
+    outputs_with_name_set = nn_ops.leaky_relu(
+        constant_op.constant(np_values),
+        name='test_relu_op')
+    self.assertEqual(outputs_with_name_set.name, 'test_relu_op:0')
+    outputs_without_name_set = nn_ops.leaky_relu(
+        constant_op.constant(np_values))
+    self.assertEqual(outputs_without_name_set.name, 'LeakyRelu:0')
+
 
 class SwishTest(test_lib.TestCase):
 

@@ -93,6 +93,8 @@ def selu(x):
       - To be used together with the initialization "lecun_normal".
       - To be used together with the dropout variant "AlphaDropout".
 
+  References:
+      - [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
   """
   alpha = 1.6732632423543772848170429916717
   scale = 1.0507009873554804934193349852946

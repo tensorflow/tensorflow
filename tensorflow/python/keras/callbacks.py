@@ -724,15 +724,6 @@ class TensorBoard(Callback):
         for weight in layer.weights:
           mapped_weight_name = weight.name.replace(':', '_')
           tf_summary.histogram(mapped_weight_name, weight)
-          if self.write_grads:
-            grads = model.optimizer.get_gradients(model.total_loss, weight)
-
-            def is_indexed_slices(grad):
-              return type(grad).__name__ == 'IndexedSlices'
-
-            grads = [grad.values if is_indexed_slices(grad) else grad
-                     for grad in grads]
-            tf_summary.histogram('{}_grad'.format(mapped_weight_name), grads)
           if self.write_images:
             w_img = array_ops.squeeze(weight)
             shape = K.int_shape(w_img)
@@ -758,6 +749,18 @@ class TensorBoard(Callback):
             shape = K.int_shape(w_img)
             assert len(shape) == 4 and shape[-1] in [1, 3, 4]
             tf_summary.image(mapped_weight_name, w_img)
+
+        if self.write_grads:
+          for weight in layer.trainable_weights:
+            mapped_weight_name = weight.name.replace(':', '_')
+            grads = model.optimizer.get_gradients(model.total_loss, weight)
+
+            def is_indexed_slices(grad):
+              return type(grad).__name__ == 'IndexedSlices'
+
+            grads = [grad.values if is_indexed_slices(grad) else grad
+                     for grad in grads]
+            tf_summary.histogram('{}_grad'.format(mapped_weight_name), grads)
 
         if hasattr(layer, 'output'):
           tf_summary.histogram('{}_out'.format(layer.name), layer.output)

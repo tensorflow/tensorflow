@@ -301,8 +301,8 @@ class FusedConv2DBiasActivationTest(test.TestCase):
           conv = tensors[i]
           value = values[i]
           ref_value = ref_values[i]
-          print("expected = ", ref_value)
-          print("actual = ", value)
+          tf_logging.info("expected = ", ref_value)
+          tf_logging.info("actual = ", value)
           tol = 1e-5
           if value.dtype == np.float16:
             tol = 1e-3
@@ -843,7 +843,8 @@ class FusedConvInt8Tests(test.TestCase):
                                                 vertical_stride, padding_type)
     output_width = CalculateConvolvedOutputDim(input_width, filter_width,
                                                horizontal_stride, padding_type)
-    print("output_height=", output_height, ", output_width=", output_width)
+    tf_logging.info("output_height=", output_height, ", output_width=", 
+			                 output_width)
 
     side_input, _, _ = gen_array_ops.quantize_v2(
         random_ops.random_uniform(
@@ -880,8 +881,8 @@ class FusedConvInt8Tests(test.TestCase):
     with self.test_session(
         use_gpu=True, config=NoMemoryOptimizationConfig()) as sess:
       actual_y, expected_y = sess.run([actual, expected])
-      print("actual_y = ", actual_y)
-      print("expected_y = ", expected_y)
+      tf_logging.info("actual_y = ", actual_y)
+      tf_logging.info("expected_y = ", expected_y)
       self.assertTrue(np.array_equal(actual_y, expected_y))
 
   def testFusedConvInt8(self):

@@ -3519,6 +3519,37 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_DeviceTest) {
 }
 
 /////////////////////////////////////////////////////////////////////
+//         Post-rewrite fixup pass test
+
+TEST_F(MklLayoutPassTest, PostRewriteFixUpPass) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: '_MklInput'}"
+      "node { name: 'N' op: '_MklInput'}"
+      "node { name: 'C' op: '_MklConv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['A', 'B', 'M', 'N']}"
+      "node { name: 'D' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_UINT8 } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_UINT8 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'E' op: '_MklAdd'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['C', 'A', 'D', 'D']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklConv2D);D(Const);E(_MklAdd);"
+            "M(_MklInput);N(_MklInput)|A->C;A->E:1;B->C:1;C->E;C:2->E:2;"
+            "D->E:3;M->C:2;N->C:3");
+}
+
+/////////////////////////////////////////////////////////////////////
 
 static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
   testing::StopTiming();

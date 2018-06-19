@@ -2,7 +2,7 @@
 
 This folder contains building code for track one of the [Low Power ImageNet Recognition Challenge workshop at CVPR 2018.](https://rebootingcomputing.ieee.org/home/sitemap/14-lpirc/80-low-power-image-recognition-challenge-lpirc-2018)
 
-## Pre-requesits
+## Pre-requisite
 
 Follow the steps [here](https://www.tensorflow.org/mobile/tflite/demo_android) to install Tensorflow, Bazel, and the Android NDK and SDK.
 
@@ -49,7 +49,7 @@ Once you have a submission that follows the instructions from the [competition s
 You can call the validator binary below to verify that your model fits the format requirements. This often helps you to catch size mismatches (e.g. output should be [1, 1001] instead of [1,1,1,1001]). Let say the submission file is located at `/path/to/my_model.lite`, then call:
 
 ```sh
-bazel build --cxxopt--std=c++11 //tensorflow/contrib/lite/java/ovic:ovic_validator --cxxopt=-Wno-all
+bazel build --cxxopt=--std=c++11 //tensorflow/contrib/lite/java/ovic:ovic_validator --cxxopt=-Wno-all
 bazel-bin/tensorflow/contrib/lite/java/ovic/ovic_validator /path/to/my_model.lite
 ```
 
