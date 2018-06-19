@@ -233,8 +233,7 @@ if(WIN32)
   list(APPEND tf_core_lib_srcs ${tf_core_platform_windows_srcs})
 endif(WIN32)
 
-if(tensorflow_ENABLE_SSL_SUPPORT)
-  # Cloud libraries require boringssl.
+if(tensorflow_ENABLE_GCS_SUPPORT)
   file(GLOB tf_core_platform_cloud_srcs
       "${tensorflow_source_dir}/tensorflow/core/platform/cloud/*.h"
       "${tensorflow_source_dir}/tensorflow/core/platform/cloud/*.cc"
