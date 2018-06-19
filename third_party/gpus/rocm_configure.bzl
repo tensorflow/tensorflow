@@ -313,6 +313,10 @@ def _find_libs(repository_ctx, rocm_config):
           "MIOpen", repository_ctx, cpu_value, rocm_config.rocm_toolkit_path + "/miopen"),
   }
 
+def _rocmrt_static_linkopt(cpu_value):
+  """Returns additional platform-specific linkopts for rocmrt."""
+  return "" if cpu_value == "Darwin" else "\"-lrt\","
+
 def _get_rocm_config(repository_ctx):
   """Detects and returns information about the ROCm installation on the system.
 
@@ -385,6 +389,16 @@ def _create_dummy_repository(repository_ctx):
        })
   _tpl(repository_ctx, "rocm:BUILD",
        {
+           "%{rocmrt_static_lib}": _lib_name("rocmrt_static", cpu_value,
+                                             static=True),
+           "%{rocmrt_static_linkopt}": _rocmrt_static_linkopt(cpu_value),
+           "%{rocmrt_lib}": _lib_name("rocmrt", cpu_value),
+           "%{rocblas_lib}": _lib_name("rocblas", cpu_value),
+           "%{miopen_lib}": _lib_name("miopen", cpu_value),
+           "%{rocfft_lib}": _lib_name("rocfft", cpu_value),
+           "%{hiprand_lib}": _lib_name("hiprand", cpu_value),
+           "%{rocm_include_genrules}": '',
+           "%{rocm_headers}": '',
        })
 
   # Create dummy files for the ROCm toolkit since they are still required by
