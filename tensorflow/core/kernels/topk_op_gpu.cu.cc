@@ -432,7 +432,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
                         typename TTypes<T, 2>::Tensor values,
                         TTypes<int, 2>::Tensor indices) {
   const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-  const cudaStream_t& cu_stream = GetCudaStream(ctx);
+  const cudaStream_t& cu_stream = GetGpuStream(ctx);
   size_t temp_storage_bytes = -1;
 
   // TODO(ebrevdo): Once cub supports iterators for ValueT replace that tensor
@@ -546,7 +546,7 @@ struct TopKFunctor<GPUDevice, T> {
       return impl::LaunchSortKernel(context, input.data(), num_rows, num_cols,
                                     k, values, indices);
     } else {
-      const cudaStream_t& cu_stream = GetCudaStream(context);
+      const cudaStream_t& cu_stream = GetGpuStream(context);
       auto err = impl::LaunchTopKKernel(cu_stream, /* num_shards */ 0,
                                         input.data(), num_rows, num_cols, k,
                                         sorted, values.data(), indices.data());

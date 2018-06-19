@@ -68,7 +68,7 @@ using gpuError_t = hipError_t;
 #endif
 
 #if GOOGLE_CUDA
-#define GetGPUStream(context) GetCudaStream(context)
+#define GetGPUStream(context) context->eigen_gpu_device().stream()
 #elif TENSORFLOW_USE_ROCM
 #define GetGPUStream(context) context->eigen_gpu_device().stream()
 #endif
