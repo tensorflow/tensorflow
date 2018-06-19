@@ -812,16 +812,23 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableImportV2").Device(DEVICE_CPU),
       LookupTableOp<lookup::HashTable<key_dtype, value_dtype>, key_dtype, \
                     value_dtype>)
 
-REGISTER_KERNEL(string, double);
+REGISTER_KERNEL(string, string);
 REGISTER_KERNEL(string, float);
-REGISTER_KERNEL(string, int32);
+REGISTER_KERNEL(string, double);
 REGISTER_KERNEL(string, int64);
+REGISTER_KERNEL(string, int32);
+REGISTER_KERNEL(string, bool);
 REGISTER_KERNEL(int64, string);
 REGISTER_KERNEL(int64, int64);
+REGISTER_KERNEL(int64, int32);
 REGISTER_KERNEL(int64, float);
-REGISTER_KERNEL(string, string);
-REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int64, double);
+REGISTER_KERNEL(int64, bool);
+REGISTER_KERNEL(int32, string);
 REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32, float);
+REGISTER_KERNEL(int32, double);
+REGISTER_KERNEL(int32, bool);
 
 #undef REGISTER_KERNEL
 
@@ -842,11 +849,23 @@ REGISTER_KERNEL(int32, int32);
       LookupTableOp<lookup::MutableHashTableOfScalars<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
+REGISTER_KERNEL(string, string);
 REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, double);
 REGISTER_KERNEL(string, int64);
-REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(string, int32);
 REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(int64, int64);
+REGISTER_KERNEL(int64, int32);
 REGISTER_KERNEL(int64, float);
+REGISTER_KERNEL(int64, double);
+REGISTER_KERNEL(int64, bool);
+REGISTER_KERNEL(int32, string);
+REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32, float);
+REGISTER_KERNEL(int32, double);
+REGISTER_KERNEL(int32, bool);
 REGISTER_KERNEL(int64, Variant);
 
 #undef REGISTER_KERNEL
@@ -868,10 +887,24 @@ REGISTER_KERNEL(int64, Variant);
       LookupTableOp<lookup::MutableHashTableOfTensors<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
+REGISTER_KERNEL(string, string);
 REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, double);
 REGISTER_KERNEL(string, int64);
-REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(string, int32);
 REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(int64, int64);
+REGISTER_KERNEL(int64, int32);
+REGISTER_KERNEL(int64, float);
+REGISTER_KERNEL(int64, double);
+REGISTER_KERNEL(int64, bool);
+REGISTER_KERNEL(int32, string);
+REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32, float);
+REGISTER_KERNEL(int32, double);
+REGISTER_KERNEL(int32, bool);
+
 
 #undef REGISTER_KERNEL
 
@@ -892,12 +925,23 @@ REGISTER_KERNEL(string, bool);
       LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
+REGISTER_KERNEL(string, string);
+REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, double);
+REGISTER_KERNEL(string, int64);
+REGISTER_KERNEL(string, int32);
+REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int64, string);
 REGISTER_KERNEL(int64, int64);
+REGISTER_KERNEL(int64, int32);
 REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(int64, double);
-REGISTER_KERNEL(string, float);
-REGISTER_KERNEL(string, bool);
 REGISTER_KERNEL(int64, bool);
+REGISTER_KERNEL(int32, string);
+REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32, float);
+REGISTER_KERNEL(int32, double);
+REGISTER_KERNEL(int32, bool);
 REGISTER_KERNEL(int64, Variant);
 
 #undef REGISTER_KERNEL
