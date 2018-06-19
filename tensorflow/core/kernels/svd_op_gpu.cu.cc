@@ -59,7 +59,7 @@ namespace {
 // The result is stored in V[batch] and has the same sign as the
 // real value of V (which should be computed)
 template <class Scalar>
-__global__ void ComputeValueOfVKernel(Cuda2DLaunchConfig config, int64 m,
+__global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
                                       int64 ldu, const Scalar* M,
                                       const Scalar* U, const Scalar* S,
                                       Scalar* V) {
@@ -74,7 +74,7 @@ __global__ void ComputeValueOfVKernel(Cuda2DLaunchConfig config, int64 m,
 // Extracts the sign of V
 // V[i] = V[i]>=0 ? 1 : 0
 template <class Scalar>
-__global__ void ExtractSignOfVKernel(CudaLaunchConfig config, Scalar* V) {
+__global__ void ExtractSignOfVKernel(GpuLaunchConfig config, Scalar* V) {
   CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
     V[i] = V[i] >= 0 ? Scalar(1) : Scalar(-1);
   }
@@ -156,13 +156,13 @@ class SvdOpGpu : public AsyncOpKernel {
       // 1. compute the (batched) sum
       const GPUDevice& d = context->eigen_device<GPUDevice>();
       d.memset(outputVT_ptr, 0, batch_size * sizeof(Scalar));
-      Cuda2DLaunchConfig cfg2D = GetCuda2DLaunchConfig(batch_size, m, d);
+      Gpu2DLaunchConfig cfg2D = GetGpu2DLaunchConfig(batch_size, m, d);
       ComputeValueOfVKernel<<<cfg2D.block_count, cfg2D.thread_per_block, 0,
                               d.stream()>>>(
           cfg2D, m, full_matrices_ ? m : p, input_copy.flat<Scalar>().data(),
           outputU_ptr, outputS_ptr, outputVT_ptr);
       // 2. clamp V to -1 or +1
-      CudaLaunchConfig cfg1D = GetCudaLaunchConfig(batch_size, d);
+      GpuLaunchConfig cfg1D = GetGpuLaunchConfig(batch_size, d);
       ExtractSignOfVKernel<<<cfg1D.block_count, cfg1D.thread_per_block, 0,
                              d.stream()>>>(cfg1D, outputVT_ptr);
     }

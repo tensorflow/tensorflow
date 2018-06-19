@@ -128,7 +128,7 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
                   int* info) {
     const int64 num_matrices = output.size();
     const int64 n = lu_factor.dimension(2);
-    CudaLaunchConfig config = GetCudaLaunchConfig(num_matrices, device);
+    GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
     DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/false>
         <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
             config.virtual_thread_count, n, lu_factor.data(), pivots, nullptr,
@@ -149,7 +149,7 @@ struct LogDeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
                   typename TTypes<Scalar, 1>::Tensor log_abs_det) {
     const int64 num_matrices = sign.size();
     const int64 n = lu_factor.dimension(2);
-    CudaLaunchConfig config = GetCudaLaunchConfig(num_matrices, device);
+    GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
     DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/true>
         <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
             config.virtual_thread_count, n, lu_factor.data(), pivots,
