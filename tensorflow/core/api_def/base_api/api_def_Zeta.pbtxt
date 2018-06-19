@@ -1,6 +1,6 @@
 op {
   graph_op_name: "Zeta"
-  summary: "Compute the Hurwitz zeta function \\(\zeta(x, q)\\)."
+  summary: "Compute the Hurwitz zeta function \\\\(\\zeta(x, q)\\\\)."
   description: <<END
 The Hurwitz zeta function is defined as:
 
