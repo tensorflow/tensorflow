@@ -1489,12 +1489,20 @@ def main():
                 'with_s3_support', True, 's3')
   set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
                 'with_kafka_support', True, 'kafka')
+  set_build_var(environ_cp, 'TF_NEED_IGNITE', 'Apache Ignite Platform',
+                'with_ignite_support', True, 'ignite')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
                 False, 'gdr')
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
                 False, 'verbs')
+
+  if (environ_cp.get('TF_NEED_IGNITE') == '1'):
+    if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
+        'LD_LIBRARY_PATH') != '1':
+      write_action_env_to_bazelrc('LD_LIBRARY_PATH',
+                                  environ_cp.get('LD_LIBRARY_PATH'))
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':

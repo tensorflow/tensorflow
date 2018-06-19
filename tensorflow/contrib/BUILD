@@ -122,6 +122,12 @@ py_library(
             "//tensorflow/contrib/kafka",
         ],
         "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_ignite_support_windows_override": [],
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite",
+        ],
+        "//conditions:default": [],
     }) + if_not_windows([
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
@@ -153,6 +159,12 @@ cc_library(
             "//tensorflow/contrib/kafka:dataset_kernels",
         ],
         "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_ignite_support_windows_override": [],
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite:dataset_kernels",
+        ],
+        "//conditions:default": [],
     }),
 )
 
@@ -180,6 +192,12 @@ cc_library(
         "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
             "//tensorflow/contrib/kafka:dataset_ops_op_lib",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_ignite_support_windows_override": [],
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite:dataset_ops_op_lib",
         ],
         "//conditions:default": [],
     }),

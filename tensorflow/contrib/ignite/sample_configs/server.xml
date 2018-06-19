@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+    <bean class="org.apache.ignite.configuration.IgniteConfiguration">
+        <property name="binaryConfiguration">
+          <bean class="org.apache.ignite.configuration.BinaryConfiguration">
+            <property name="compactFooter" value="false"/>
+            <property name="nameMapper">
+              <bean class="org.apache.ignite.binary.BinaryBasicNameMapper">
+                <constructor-arg type="boolean" value="true"/>
+              </bean>
+            </property>
+            <property name="idMapper">
+              <bean class="org.apache.ignite.binary.BinaryBasicIdMapper">
+                <constructor-arg type="boolean" value="true"/>
+              </bean>
+              </property>
+           </bean>
+        </property>
+
+        <property name="cacheConfiguration">
+          <bean class="org.apache.ignite.configuration.CacheConfiguration">
+            <!-- Set a cache name. -->
+            <property name="name" value="test_cache"/>
+            <!-- Set cache mode. -->
+            <property name="cacheMode" value="PARTITIONED"/>
+            <!-- Other cache configurations. -->
+            <property name="writeSynchronizationMode" value="FULL_SYNC"/>... 
+          </bean>
+        </property>
+
+        <property name="communicationSpi">
+            <bean class="org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi">
+                <!-- Override local port. -->
+                <property name="localPort" value="49505"/>
+            </bean>
+        </property>
+    </bean>
+</beans>
