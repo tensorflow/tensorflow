@@ -79,6 +79,20 @@ class ScopedPerThreadMaxParallelism {
   int previous_ = -1;
 };
 
+// Implementation details for Shard().
+class Sharder {
+ public:
+  typedef std::function<void()> Closure;
+  typedef std::function<void(Closure)> Runner;
+  typedef std::function<void(int64, int64)> Work;
+
+  // Refers to Shard()'s comment for the meaning of total,
+  // cost_per_unit, work, max_parallelism. runner is an interface to
+  // schedule a closure. Shard() uses thread::ThreadPool instead.
+  static void Do(int64 total, int64 cost_per_unit, const Work& work,
+                 const Runner& runner, int max_parallelism);
+};
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_UTIL_WORK_SHARDER_H_
