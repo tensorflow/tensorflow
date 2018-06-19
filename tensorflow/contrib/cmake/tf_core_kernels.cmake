@@ -134,8 +134,7 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
   list(APPEND tf_core_kernels_srcs ${tf_contrib_kernels_srcs})
 endif(tensorflow_BUILD_CONTRIB_KERNELS)
 
-if(NOT tensorflow_ENABLE_SSL_SUPPORT)
-  # Cloud libraries require boringssl.
+if(NOT tensorflow_ENABLE_GCS_SUPPORT)
   file(GLOB tf_core_kernels_cloud_srcs
       "${tensorflow_source_dir}/tensorflow/contrib/cloud/kernels/*.h"
       "${tensorflow_source_dir}/tensorflow/contrib/cloud/kernels/*.cc"
