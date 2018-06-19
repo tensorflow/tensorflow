@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -88,12 +87,6 @@ def exponential_decay(learning_rate,
 
   Raises:
     ValueError: if `global_step` is not supplied.
-
-  @compatibility(eager)
-  When eager execution is enabled, this function returns a function which in
-  turn returns the decayed learning rate Tensor. This can be useful for changing
-  the learning rate value across different invocations of optimizer functions.
-  @end_compatibility
   """
   if global_step is None:
     raise ValueError("global_step is required for exponential_decay.")
@@ -102,22 +95,14 @@ def exponential_decay(learning_rate,
       [learning_rate, global_step, decay_steps, decay_rate]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
     decay_steps = math_ops.cast(decay_steps, dtype)
     decay_rate = math_ops.cast(decay_rate, dtype)
-
-    def decayed_lr():
-      """Helper to recompute learning rate; most helpful in eager-mode."""
-      global_step_recomp = math_ops.cast(global_step, dtype)
-      p = global_step_recomp / decay_steps
-      if staircase:
-        p = math_ops.floor(p)
-      return math_ops.multiply(
-          learning_rate, math_ops.pow(decay_rate, p), name=name)
-
-    if not context.executing_eagerly():
-      decayed_lr = decayed_lr()
-
-    return decayed_lr
+    p = global_step / decay_steps
+    if staircase:
+      p = math_ops.floor(p)
+    return math_ops.multiply(
+        learning_rate, math_ops.pow(decay_rate, p), name=name)
 
 
 @tf_export("train.piecewise_constant")
@@ -278,12 +263,6 @@ def polynomial_decay(learning_rate,
 
   Raises:
     ValueError: if `global_step` is not supplied.
-
-  @compatibility(eager)
-  When eager execution is enabled, this function returns a function which in
-  turn returns the decayed learning rate Tensor. This can be useful for changing
-  the learning rate value across different invocations of optimizer functions.
-  @end_compatibility
   """
   if global_step is None:
     raise ValueError("global_step is required for polynomial_decay.")
@@ -293,35 +272,27 @@ def polynomial_decay(learning_rate,
       ]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
+    decay_steps = math_ops.cast(decay_steps, dtype)
     end_learning_rate = math_ops.cast(end_learning_rate, dtype)
     power = math_ops.cast(power, dtype)
+    if cycle:
+      # Find the first multiple of decay_steps that is bigger than global_step.
+      # If global_step is zero set the multiplier to 1
+      multiplier = control_flow_ops.cond(
+          math_ops.equal(global_step, 0), lambda: 1.0,
+          lambda: math_ops.ceil(global_step / decay_steps))
+      decay_steps = math_ops.multiply(decay_steps, multiplier)
+    else:
+      # Make sure that the global_step used is not bigger than decay_steps.
+      global_step = math_ops.minimum(global_step, decay_steps)
 
-    def decayed_lr():
-      """Helper to recompute learning rate; most helpful in eager-mode."""
-      global_step_recomp = math_ops.cast(global_step, dtype)
-      decay_steps_recomp = math_ops.cast(decay_steps, dtype)
-      if cycle:
-        # Find the first multiple of decay_steps that is bigger than
-        # global_step. If global_step is zero set the multiplier to 1
-        multiplier = control_flow_ops.cond(
-            math_ops.equal(global_step_recomp, 0), lambda: 1.0,
-            lambda: math_ops.ceil(global_step_recomp / decay_steps))
-        decay_steps_recomp = math_ops.multiply(decay_steps_recomp, multiplier)
-      else:
-        # Make sure that the global_step used is not bigger than decay_steps.
-        global_step_recomp = math_ops.minimum(global_step_recomp, decay_steps)
-
-      p = math_ops.div(global_step_recomp, decay_steps_recomp)
-      return math_ops.add(
-          math_ops.multiply(learning_rate - end_learning_rate,
-                            math_ops.pow(1 - p, power)),
-          end_learning_rate,
-          name=name)
-
-    if not context.executing_eagerly():
-      decayed_lr = decayed_lr()
-
-    return decayed_lr
+    p = math_ops.div(global_step, decay_steps)
+    return math_ops.add(
+        math_ops.multiply(learning_rate - end_learning_rate,
+                          math_ops.pow(1 - p, power)),
+        end_learning_rate,
+        name=name)
 
 
 @tf_export("train.natural_exp_decay")
@@ -379,12 +350,6 @@ def natural_exp_decay(learning_rate,
 
   Raises:
     ValueError: if `global_step` is not supplied.
-
-  @compatibility(eager)
-  When eager execution is enabled, this function returns a function which in
-  turn returns the decayed learning rate Tensor. This can be useful for changing
-  the learning rate value across different invocations of optimizer functions.
-  @end_compatibility
   """
   if global_step is None:
     raise ValueError("global_step is required for natural_exp_decay.")
@@ -392,23 +357,14 @@ def natural_exp_decay(learning_rate,
                       [learning_rate, global_step, decay_rate]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
     decay_steps = math_ops.cast(decay_steps, dtype)
     decay_rate = math_ops.cast(decay_rate, dtype)
-
-    def decayed_lr():
-      """Helper to recompute learning rate; most helpful in eager-mode."""
-      global_step_recomp = math_ops.cast(global_step, dtype)
-      p = global_step_recomp / decay_steps
-      if staircase:
-        p = math_ops.floor(p)
-      exponent = math_ops.exp(
-          math_ops.multiply(math_ops.negative(decay_rate), p))
-      return math_ops.multiply(learning_rate, exponent, name=name)
-
-    if not context.executing_eagerly():
-      decayed_lr = decayed_lr()
-
-    return decayed_lr
+    p = global_step / decay_steps
+    if staircase:
+      p = math_ops.floor(p)
+    exponent = math_ops.exp(math_ops.multiply(math_ops.negative(decay_rate), p))
+    return math_ops.multiply(learning_rate, exponent, name=name)
 
 
 @tf_export("train.inverse_time_decay")
@@ -476,12 +432,6 @@ def inverse_time_decay(learning_rate,
 
   Raises:
     ValueError: if `global_step` is not supplied.
-
-  @compatibility(eager)
-  When eager execution is enabled, this function returns a function which in
-  turn returns the decayed learning rate Tensor. This can be useful for changing
-  the learning rate value across different invocations of optimizer functions.
-  @end_compatibility
   """
   if global_step is None:
     raise ValueError("global_step is required for inverse_time_decay.")
@@ -489,23 +439,15 @@ def inverse_time_decay(learning_rate,
                       [learning_rate, global_step, decay_rate]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
     decay_steps = math_ops.cast(decay_steps, dtype)
     decay_rate = math_ops.cast(decay_rate, dtype)
-
-    def decayed_lr():
-      """Helper to recompute learning rate; most helpful in eager-mode."""
-      global_step_recomp = math_ops.cast(global_step, dtype)
-      p = global_step_recomp / decay_steps
-      if staircase:
-        p = math_ops.floor(p)
-      const = math_ops.cast(constant_op.constant(1), dtype)
-      denom = math_ops.add(const, math_ops.multiply(decay_rate, p))
-      return math_ops.div(learning_rate, denom, name=name)
-
-    if not context.executing_eagerly():
-      decayed_lr = decayed_lr()
-
-    return decayed_lr
+    p = global_step / decay_steps
+    if staircase:
+      p = math_ops.floor(p)
+    const = math_ops.cast(constant_op.constant(1), learning_rate.dtype)
+    denom = math_ops.add(const, math_ops.multiply(decay_rate, p))
+    return math_ops.div(learning_rate, denom, name=name)
 
 
 @tf_export("train.cosine_decay")
@@ -550,12 +492,6 @@ def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
     learning rate.
   Raises:
     ValueError: if `global_step` is not supplied.
-
-  @compatibility(eager)
-  When eager execution is enabled, this function returns a function which in
-  turn returns the decayed learning rate Tensor. This can be useful for changing
-  the learning rate value across different invocations of optimizer functions.
-  @end_compatibility
   """
   if global_step is None:
     raise ValueError("cosine decay requires global_step")
@@ -563,23 +499,15 @@ def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
                       [learning_rate, global_step]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
     decay_steps = math_ops.cast(decay_steps, dtype)
+    global_step = math_ops.minimum(global_step, decay_steps)
+    completed_fraction = global_step / decay_steps
+    cosine_decayed = 0.5 * (
+        1.0 + math_ops.cos(constant_op.constant(math.pi) * completed_fraction))
 
-    def decayed_lr():
-      """Helper to recompute learning rate; most helpful in eager-mode."""
-      global_step_recomp = math_ops.cast(global_step, dtype)
-      global_step_recomp = math_ops.minimum(global_step_recomp, decay_steps)
-      completed_fraction = global_step_recomp / decay_steps
-      cosine_decayed = 0.5 * (1.0 + math_ops.cos(
-          constant_op.constant(math.pi) * completed_fraction))
-
-      decayed = (1 - alpha) * cosine_decayed + alpha
-      return math_ops.multiply(learning_rate, decayed)
-
-    if not context.executing_eagerly():
-      decayed_lr = decayed_lr()
-
-    return decayed_lr
+    decayed = (1 - alpha) * cosine_decayed + alpha
+    return math_ops.multiply(learning_rate, decayed)
 
 
 @tf_export("train.cosine_decay_restarts")
@@ -633,12 +561,6 @@ def cosine_decay_restarts(learning_rate,
     learning rate.
   Raises:
     ValueError: if `global_step` is not supplied.
-
-  @compatibility(eager)
-  When eager execution is enabled, this function returns a function which in
-  turn returns the decayed learning rate Tensor. This can be useful for changing
-  the learning rate value across different invocations of optimizer functions.
-  @end_compatibility
   """
   if global_step is None:
     raise ValueError("cosine decay restarts requires global_step")
@@ -646,48 +568,41 @@ def cosine_decay_restarts(learning_rate,
     learning_rate = ops.convert_to_tensor(
         learning_rate, name="initial_learning_rate")
     dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
     first_decay_steps = math_ops.cast(first_decay_steps, dtype)
     alpha = math_ops.cast(alpha, dtype)
     t_mul = math_ops.cast(t_mul, dtype)
     m_mul = math_ops.cast(m_mul, dtype)
 
-    def decayed_lr():
-      """Helper to recompute learning rate; most helpful in eager-mode."""
-      global_step_recomp = math_ops.cast(global_step, dtype)
-      completed_fraction = global_step_recomp / first_decay_steps
+    completed_fraction = global_step / first_decay_steps
 
-      def compute_step(completed_fraction, geometric=False):
-        """Helper for `cond` operation."""
-        if geometric:
-          i_restart = math_ops.floor(
-              math_ops.log(1.0 - completed_fraction * (1.0 - t_mul)) /
-              math_ops.log(t_mul))
+    def compute_step(completed_fraction, geometric=False):
+      """Compute restart step and completed fraction."""
+      if geometric:
+        i_restart = math_ops.floor(
+            math_ops.log(1.0 - completed_fraction * (1.0 - t_mul)) /
+            math_ops.log(t_mul))
 
-          sum_r = (1.0 - t_mul**i_restart) / (1.0 - t_mul)
-          completed_fraction = (completed_fraction - sum_r) / t_mul**i_restart
+        sum_r = (1.0 - t_mul**i_restart) / (1.0 - t_mul)
+        completed_fraction = (completed_fraction - sum_r) / t_mul**i_restart
 
-        else:
-          i_restart = math_ops.floor(completed_fraction)
-          completed_fraction -= i_restart
+      else:
+        i_restart = math_ops.floor(completed_fraction)
+        completed_fraction -= i_restart
 
-        return i_restart, completed_fraction
+      return i_restart, completed_fraction
 
-      i_restart, completed_fraction = control_flow_ops.cond(
-          math_ops.equal(t_mul, 1.0),
-          lambda: compute_step(completed_fraction, geometric=False),
-          lambda: compute_step(completed_fraction, geometric=True))
+    i_restart, completed_fraction = control_flow_ops.cond(
+        math_ops.equal(t_mul, 1.0),
+        lambda: compute_step(completed_fraction, geometric=False),
+        lambda: compute_step(completed_fraction, geometric=True))
 
-      m_fac = m_mul**i_restart
-      cosine_decayed = 0.5 * m_fac * (1.0 + math_ops.cos(
-          constant_op.constant(math.pi) * completed_fraction))
-      decayed = (1 - alpha) * cosine_decayed + alpha
+    m_fac = m_mul**i_restart
+    cosine_decayed = 0.5 * m_fac * (
+        1.0 + math_ops.cos(constant_op.constant(math.pi) * completed_fraction))
+    decayed = (1 - alpha) * cosine_decayed + alpha
 
-      return math_ops.multiply(learning_rate, decayed, name=name)
-
-    if not context.executing_eagerly():
-      decayed_lr = decayed_lr()
-
-    return decayed_lr
+  return math_ops.multiply(learning_rate, decayed, name=name)
 
 
 @tf_export("train.linear_cosine_decay")
@@ -750,12 +665,6 @@ def linear_cosine_decay(learning_rate,
     learning rate.
   Raises:
     ValueError: if `global_step` is not supplied.
-
-  @compatibility(eager)
-  When eager execution is enabled, this function returns a function which in
-  turn returns the decayed learning rate Tensor. This can be useful for changing
-  the learning rate value across different invocations of optimizer functions.
-  @end_compatibility
   """
   if global_step is None:
     raise ValueError("linear cosine decay requires global_step")
@@ -763,28 +672,21 @@ def linear_cosine_decay(learning_rate,
                       [learning_rate, global_step]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
     decay_steps = math_ops.cast(decay_steps, dtype)
     num_periods = math_ops.cast(num_periods, dtype)
+    global_step = math_ops.minimum(global_step, decay_steps)
     alpha = math_ops.cast(alpha, dtype)
     beta = math_ops.cast(beta, dtype)
 
-    def decayed_lr():
-      """Helper to recompute learning rate; most helpful in eager-mode."""
-      global_step_recomp = math_ops.cast(global_step, dtype)
-      global_step_recomp = math_ops.minimum(global_step_recomp, decay_steps)
-      linear_decayed = (decay_steps - global_step_recomp) / decay_steps
-      completed_fraction = global_step_recomp / decay_steps
-      fraction = 2.0 * num_periods * completed_fraction
-      cosine_decayed = 0.5 * (
-          1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
+    linear_decayed = (decay_steps - global_step) / decay_steps
+    completed_fraction = global_step / decay_steps
+    fraction = 2.0 * num_periods * completed_fraction
+    cosine_decayed = 0.5 * (
+        1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
 
-      linear_cosine_decayed = (alpha + linear_decayed) * cosine_decayed + beta
-      return math_ops.multiply(learning_rate, linear_cosine_decayed, name=name)
-
-    if not context.executing_eagerly():
-      decayed_lr = decayed_lr()
-
-    return decayed_lr
+    linear_cosine_decayed = (alpha + linear_decayed) * cosine_decayed + beta
+    return math_ops.multiply(learning_rate, linear_cosine_decayed, name=name)
 
 
 @tf_export("train.noisy_linear_cosine_decay")
@@ -855,12 +757,6 @@ def noisy_linear_cosine_decay(learning_rate,
     learning rate.
   Raises:
     ValueError: if `global_step` is not supplied.
-
-  @compatibility(eager)
-  When eager execution is enabled, this function returns a function which in
-  turn returns the decayed learning rate Tensor. This can be useful for changing
-  the learning rate value across different invocations of optimizer functions.
-  @end_compatibility
   """
   if global_step is None:
     raise ValueError("noisy linear cosine decay requires global_step")
@@ -868,36 +764,29 @@ def noisy_linear_cosine_decay(learning_rate,
                       [learning_rate, global_step]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
     decay_steps = math_ops.cast(decay_steps, dtype)
+    global_step = math_ops.minimum(global_step, decay_steps)
     initial_variance = math_ops.cast(initial_variance, dtype)
     variance_decay = math_ops.cast(variance_decay, dtype)
     num_periods = math_ops.cast(num_periods, dtype)
     alpha = math_ops.cast(alpha, dtype)
     beta = math_ops.cast(beta, dtype)
 
-    def decayed_lr():
-      """Helper to recompute learning rate; most helpful in eager-mode."""
-      global_step_recomp = math_ops.cast(global_step, dtype)
-      global_step_recomp = math_ops.minimum(global_step_recomp, decay_steps)
-      linear_decayed = (decay_steps - global_step_recomp) / decay_steps
-      variance = initial_variance / (
-          math_ops.pow(1.0 + global_step_recomp, variance_decay))
-      std = math_ops.sqrt(variance)
-      noisy_linear_decayed = (
-          linear_decayed + random_ops.random_normal(
-              linear_decayed.shape, stddev=std))
+    linear_decayed = (decay_steps - global_step) / decay_steps
+    variance = initial_variance / (
+        math_ops.pow(1.0 + global_step, variance_decay))
+    std = math_ops.sqrt(variance)
+    noisy_linear_decayed = (
+        linear_decayed +
+        random_ops.random_normal(linear_decayed.shape, stddev=std))
 
-      completed_fraction = global_step_recomp / decay_steps
-      fraction = 2.0 * num_periods * completed_fraction
-      cosine_decayed = 0.5 * (
-          1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
-      noisy_linear_cosine_decayed = (
-          (alpha + noisy_linear_decayed) * cosine_decayed + beta)
+    completed_fraction = global_step / decay_steps
+    fraction = 2.0 * num_periods * completed_fraction
+    cosine_decayed = 0.5 * (
+        1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
+    noisy_linear_cosine_decayed = (
+        (alpha + noisy_linear_decayed) * cosine_decayed + beta)
 
-      return math_ops.multiply(
-          learning_rate, noisy_linear_cosine_decayed, name=name)
-
-    if not context.executing_eagerly():
-      decayed_lr = decayed_lr()
-
-    return decayed_lr
+    return math_ops.multiply(
+        learning_rate, noisy_linear_cosine_decayed, name=name)
