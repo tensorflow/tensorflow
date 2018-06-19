@@ -158,7 +158,7 @@ def calib_graph_to_infer_graph(calibration_graph_def, is_dynamic_op=False):
 
   Args:
     calibration_graph_def: the calibration GraphDef object with calibration data
-    is_dynamic_op        : whether to create dynamic engines or static engines from calibration
+    is_dynamic_op: whether to create dynamic static engines from calibration
   Returns:
     New GraphDef with TRTEngineOps placed in graph replacing calibration nodes.
   Raises:
