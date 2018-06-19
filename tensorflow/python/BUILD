@@ -1990,6 +1990,7 @@ py_library(
         ":math_grad",
         ":math_ops",
         ":platform",
+        ":random_grad",
         ":resource_variable_ops",
         ":spectral_grad",
         ":util",
@@ -2365,6 +2366,19 @@ py_library(
         ":framework_for_generated_wrappers",
         ":platform",
         ":variable_scope",
+    ],
+)
+
+py_library(
+    name = "random_grad",
+    srcs = ["ops/random_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":dtypes",
+        ":framework_ops",
+        ":math_ops",
+        ":random_ops_gen",
     ],
 )
 
