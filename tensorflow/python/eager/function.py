@@ -313,7 +313,7 @@ class GraphModeFunction(object):
                graph,
                operations,
                outputs,
-               func_outputs,
+               python_func_outputs,
                output_shapes,
                variables=None,
                attrs=None):
@@ -332,9 +332,10 @@ class GraphModeFunction(object):
         definition.
       outputs: a flat list of the Tensors in the graph used as outputs to the
         function
-      func_outputs: a possibly nested python object which will be returned by
-        this function. The Tensors in this structure will be replaced by their
-        corresponding values in outputs.
+      python_func_outputs: a possibly nested python object which will be
+        returned by this function. The Tensors in this structure will be
+        replaced by their corresponding values in outputs. Note that this
+        structure might contain Python `None`s.
       output_shapes: List of shapes of all tensors in outputs
       variables: (optional) List of variables to watch during function
         execution.
@@ -356,9 +357,10 @@ class GraphModeFunction(object):
     self._function_def = defined_function
     self._num_outputs = len(defined_function.signature.output_arg)
     self._ops = operations
-    self._func_outputs = func_outputs
-    self._returns = [func_outputs] if isinstance(
-        func_outputs, (ops.Tensor, type(None))) else _flatten(func_outputs)
+    self._python_func_outputs = python_func_outputs
+    self._python_returns = [python_func_outputs] if isinstance(
+        python_func_outputs,
+        (ops.Tensor, type(None))) else _flatten(python_func_outputs)
     self._output_shapes = output_shapes
     self._variables = variables if variables is not None else []
 
@@ -373,7 +375,7 @@ class GraphModeFunction(object):
       c_captured_tensors = set()
 
       existing_op_len = len(self._graph.get_operations())
-      filtered_outputs = [x for x in self._returns if x is not None]
+      filtered_outputs = [x for x in self._python_returns if x is not None]
       self._out_grad_placeholders = [
           graph_placeholder(x.dtype, x.shape) for x in filtered_outputs]
       in_gradients = gradients_impl.gradients(
@@ -454,8 +456,11 @@ class GraphModeFunction(object):
       for i, shape in enumerate(shapes):
         outputs[i].set_shape(shape)
 
-    real_outputs = outputs[:len(self._returns)]
-    side_outputs = outputs[len(self._returns):]
+    # `real_outputs` are the actual outputs of the inference graph function;
+    # `side_outputs` are the intermediate Tensors that were added as outputs to
+    # the forward graph function so that we can compute its gradient.
+    real_outputs = outputs[:self._num_outputs]
+    side_outputs = outputs[self._num_outputs:]
 
     def backward_function(*args):
       return self._backward_function(*(list(args) + side_outputs))  # pylint: disable=not-callable
@@ -472,8 +477,8 @@ class GraphModeFunction(object):
   def output_shapes(self):
     """The function's output shapes."""
     # TODO(ebrevdo): Should we only keep the output shapes associated
-    # with len(self._returns) outputs?
-    outputs_list = nest.flatten(self._func_outputs)
+    # with len(self._python_returns) outputs?
+    outputs_list = nest.flatten(self._python_func_outputs)
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
@@ -487,12 +492,12 @@ class GraphModeFunction(object):
         else:
           outputs_list[i] = self._output_shapes[j]
           j += 1
-    return nest.pack_sequence_as(self._func_outputs, outputs_list)
+    return nest.pack_sequence_as(self._python_func_outputs, outputs_list)
 
   @property
   def output_dtypes(self):
     return nest.map_structure(
-        lambda x: x.dtype if x is not None else None, self._func_outputs)
+        lambda x: x.dtype if x is not None else None, self._python_func_outputs)
 
   @property
   def captured_inputs(self):
@@ -561,11 +566,11 @@ class GraphModeFunction(object):
     Returns:
       The actual call output.
     """
-    if self._func_outputs is None:
+    if self._python_func_outputs is None:
       return None
     # Use `nest.flatten` instead of `_flatten` in order to preserve any
-    # IndexedSlices in `self._func_outputs`.
-    outputs_list = nest.flatten(self._func_outputs)
+    # IndexedSlices in `self._python_func_outputs`.
+    outputs_list = nest.flatten(self._python_func_outputs)
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
@@ -585,7 +590,7 @@ class GraphModeFunction(object):
         else:
           outputs_list[i] = result[j]
           j += 1
-    ret = nest.pack_sequence_as(self._func_outputs, outputs_list)
+    ret = nest.pack_sequence_as(self._python_func_outputs, outputs_list)
     return ret
 
 
