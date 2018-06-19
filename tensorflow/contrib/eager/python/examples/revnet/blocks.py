@@ -200,19 +200,19 @@ class _Residual(tf.keras.Model):
           x2, self.filters // 2, self.strides, axis=self.axis)
 
     grads_combined = tape.gradient(
-        y2, [y1] + self.g.variables, output_gradients=[dy2])
+        y2, [y1] + self.g.trainable_variables, output_gradients=[dy2])
     dy2_y1, dg = grads_combined[0], grads_combined[1:]
     dy1_plus = dy2_y1 + dy1
 
     grads_combined = tape.gradient(
-        y1, [x1, x2] + self.f.variables, output_gradients=[dy1_plus])
+        y1, [x1, x2] + self.f.trainable_variables, output_gradients=[dy1_plus])
     dx1, dx2, df = grads_combined[0], grads_combined[1], grads_combined[2:]
     dx2 += tape.gradient(x2_down, [x2], output_gradients=[dy2])[0]
 
     del tape
 
     grads = df + dg
-    vars_ = self.f.variables + self.g.variables
+    vars_ = self.f.trainable_variables + self.g.trainable_variables
 
     return tf.concat([dx1, dx2], axis=self.axis), grads, vars_
 
@@ -246,7 +246,7 @@ def _BottleneckResidualInner(filters,
     model.add(
         tf.keras.layers.BatchNormalization(
             axis=axis, input_shape=input_shape, fused=fused))
-    model.add(tf.keras.layers.LeakyReLU(alpha=0.))
+    model.add(tf.keras.layers.Activation("relu"))
   model.add(
       tf.keras.layers.Conv2D(
           filters=filters // 4,
@@ -258,7 +258,7 @@ def _BottleneckResidualInner(filters,
           padding="SAME"))
 
   model.add(tf.keras.layers.BatchNormalization(axis=axis, fused=fused))
-  model.add(tf.keras.layers.LeakyReLU(alpha=0.))
+  model.add(tf.keras.layers.Activation("relu"))
   model.add(
       tf.keras.layers.Conv2D(
           filters=filters // 4,
@@ -269,7 +269,7 @@ def _BottleneckResidualInner(filters,
           padding="SAME"))
 
   model.add(tf.keras.layers.BatchNormalization(axis=axis, fused=fused))
-  model.add(tf.keras.layers.LeakyReLU(alpha=0.))
+  model.add(tf.keras.layers.Activation("relu"))
   model.add(
       tf.keras.layers.Conv2D(
           filters=filters,
@@ -310,7 +310,7 @@ def _ResidualInner(filters,
     model.add(
         tf.keras.layers.BatchNormalization(
             axis=axis, input_shape=input_shape, fused=fused))
-    model.add(tf.keras.layers.LeakyReLU(alpha=0.))
+    model.add(tf.keras.layers.Activation("relu"))
   model.add(
       tf.keras.layers.Conv2D(
           filters=filters,
@@ -322,7 +322,7 @@ def _ResidualInner(filters,
           padding="SAME"))
 
   model.add(tf.keras.layers.BatchNormalization(axis=axis, fused=fused))
-  model.add(tf.keras.layers.LeakyReLU(alpha=0.))
+  model.add(tf.keras.layers.Activation("relu"))
   model.add(
       tf.keras.layers.Conv2D(
           filters=filters,
