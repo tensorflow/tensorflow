@@ -32,7 +32,7 @@ namespace toco {
 
 using tflite::QuantizationParams;
 
-enum class OperatorType {
+enum class OperatorType : uint8 {
   kNone,
   // General-purpose neural network operators.
   kAdd,
@@ -174,7 +174,7 @@ enum class AxesOrder {
 // because we'll be dropping the array anyway (e.g. some exotic array types
 // may be involved only in debug-only subgraphs that we may not be interested
 // in actually supporting).
-enum class ArrayDataType {
+enum class ArrayDataType : uint8 {
   kNone,  // 0
   kBool,
   kFloat,
