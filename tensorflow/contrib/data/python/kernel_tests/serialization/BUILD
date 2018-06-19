@@ -88,7 +88,7 @@ py_test(
 
 py_test(
     name = "filter_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["filter_dataset_serialization_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
