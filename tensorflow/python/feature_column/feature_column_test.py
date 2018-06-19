@@ -5329,9 +5329,9 @@ class SharedEmbeddingColumnTest(test.TestCase):
     self.assertIsNone(embedding_column_a.ckpt_to_load_from)
     self.assertIsNone(embedding_column_b.ckpt_to_load_from)
     self.assertEqual('aaa_bbb_shared_embedding',
-                     embedding_column_a.var_scope_name)
+                     embedding_column_a.shared_embedding_collection_name)
     self.assertEqual('aaa_bbb_shared_embedding',
-                     embedding_column_b.var_scope_name)
+                     embedding_column_b.shared_embedding_collection_name)
     self.assertIsNone(embedding_column_a.tensor_name_in_ckpt)
     self.assertIsNone(embedding_column_b.tensor_name_in_ckpt)
     self.assertIsNone(embedding_column_a.max_norm)
@@ -5378,9 +5378,9 @@ class SharedEmbeddingColumnTest(test.TestCase):
     self.assertEqual('my_combiner', embedding_column_a.combiner)
     self.assertEqual('my_combiner', embedding_column_b.combiner)
     self.assertEqual('shared_embedding_collection_name',
-                     embedding_column_a.var_scope_name)
+                     embedding_column_a.shared_embedding_collection_name)
     self.assertEqual('shared_embedding_collection_name',
-                     embedding_column_b.var_scope_name)
+                     embedding_column_b.shared_embedding_collection_name)
     self.assertEqual('my_ckpt', embedding_column_a.ckpt_to_load_from)
     self.assertEqual('my_ckpt', embedding_column_b.ckpt_to_load_from)
     self.assertEqual('my_ckpt_tensor', embedding_column_a.tensor_name_in_ckpt)
@@ -5431,7 +5431,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
       self.assertEqual(embedding_dimension, embedding_column_a.dimension)
       self.assertEqual('my_combiner', embedding_column_a.combiner)
       self.assertEqual('shared_embedding_collection_name',
-                       embedding_column_a.var_scope_name)
+                       embedding_column_a.shared_embedding_collection_name)
       self.assertEqual('my_ckpt', embedding_column_a.ckpt_to_load_from)
       self.assertEqual('my_ckpt_tensor', embedding_column_a.tensor_name_in_ckpt)
       self.assertEqual(42., embedding_column_a.max_norm)
