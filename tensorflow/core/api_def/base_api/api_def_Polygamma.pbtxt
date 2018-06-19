@@ -1,6 +1,6 @@
 op {
   graph_op_name: "Polygamma"
-  summary: "Compute the polygamma function \\(\psi^{(n)}(x)\\)."
+  summary: "Compute the polygamma function \\\\(\\psi^{(n)}(x)\\\\)."
   description: <<END
 The polygamma function is defined as:
 
