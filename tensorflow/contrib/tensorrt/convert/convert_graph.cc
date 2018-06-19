@@ -423,10 +423,8 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
       info.precision_mode == INT8MODE) {
     // Create static engine and for int8 test validity of the engine.
     Logger trt_logger;
-    auto builder = std::unique_ptr<
-        nvinfer1::IBuilder, std::function<void(nvinfer1::IBuilder*)>>(
-        nvinfer1::createInferBuilder(trt_logger),
-        [](nvinfer1::IBuilder* p) { if (p) p->destroy(); });
+    TrtUniquePtrType<nvinfer1::IBuilder> builder(
+        nvinfer1::createInferBuilder(trt_logger));
     builder->setMaxBatchSize(max_batch_size);
     if (info.precision_mode == FP16MODE) builder->setHalf2Mode(true);
     builder->setMaxWorkspaceSize(info.max_workspace_size_bytes);
