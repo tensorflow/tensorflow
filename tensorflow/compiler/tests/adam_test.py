@@ -52,6 +52,7 @@ class AdamOptimizerTest(XLATestCase):
 
   def testBasic(self):
     for dtype in self.float_types:
+      # TODO: test fails for float16 due to excessive precision requirements.
       if dtype == np.float16:
         continue
       with self.test_session(), self.test_scope():
@@ -93,6 +94,7 @@ class AdamOptimizerTest(XLATestCase):
 
   def testTensorLearningRate(self):
     for dtype in self.float_types:
+      # TODO: test fails for float16 due to excessive precision requirements.
       if dtype == np.float16:
         continue
       with self.test_session(), self.test_scope():
@@ -134,6 +136,7 @@ class AdamOptimizerTest(XLATestCase):
 
   def testSharing(self):
     for dtype in self.float_types:
+      # TODO: test fails for float16 due to excessive precision requirements.
       if dtype == np.float16:
         continue
       with self.test_session(), self.test_scope():
