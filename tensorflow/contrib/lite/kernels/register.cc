@@ -98,6 +98,8 @@ TfLiteRegistration* Register_EXPAND_DIMS();
 TfLiteRegistration* Register_SPARSE_TO_DENSE();
 TfLiteRegistration* Register_EQUAL();
 TfLiteRegistration* Register_NOT_EQUAL();
+TfLiteRegistration* Register_SQRT();
+TfLiteRegistration* Register_RSQRT();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -177,6 +179,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE());
   AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL());
   AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL());
+  AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
+  AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

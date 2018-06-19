@@ -2437,7 +2437,7 @@ def _make_elementwise_tests(op):
     }]
 
     def build_graph(parameters):
-      """Build the sin op testing graph."""
+      """Build the unary op testing graph."""
       input_value = tf.placeholder(
           dtype=parameters["input_dtype"],
           name="input1",
@@ -2464,6 +2464,16 @@ def make_sin_tests(zip_path):
 def make_log_tests(zip_path):
   """Make a set of tests to do log."""
   return _make_elementwise_tests(tf.log)(zip_path)
+
+
+def make_sqrt_tests(zip_path):
+  """Make a set of tests to do sqrt."""
+  return _make_elementwise_tests(tf.sqrt)(zip_path)
+
+
+def make_rsqrt_tests(zip_path):
+  """Make a set of tests to do 1/sqrt."""
+  return _make_elementwise_tests(tf.rsqrt)(zip_path)
 
 
 def make_where_tests(zip_path):

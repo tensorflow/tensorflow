@@ -155,6 +155,8 @@ enum BuiltinOperator : byte {
   NOT_EQUAL = 72,
   LOG = 73,
   SUM=74,
+  SQRT = 75,
+  RSQRT = 76,
 }
 
 // Options for the builtin operators.

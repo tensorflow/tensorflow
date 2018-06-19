@@ -584,6 +584,17 @@ Options {
 }
 ```
 
+**RSQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise reciprocal square root of the input tensor
+}
+```
+
 **SLICE**
 
 ```
@@ -667,6 +678,17 @@ Outputs {
 }
 Options {
   num_splits: Specifies number of outputs
+}
+```
+
+**SQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise square root of the input tensor
 }
 ```
 

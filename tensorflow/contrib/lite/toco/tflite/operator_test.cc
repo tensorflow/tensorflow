@@ -126,6 +126,10 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<TensorFlowNotEqualOperator>(
       "NOT_EQUAL", OperatorType::kTensorFlowNotEqual);
   CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
+  CheckSimpleOperator<TensorFlowSqrtOperator>("SQRT",
+                                              OperatorType::kTensorFlowSqrt);
+  CheckSimpleOperator<TensorFlowRsqrtOperator>("RSQRT",
+                                               OperatorType::kTensorFlowRsqrt);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

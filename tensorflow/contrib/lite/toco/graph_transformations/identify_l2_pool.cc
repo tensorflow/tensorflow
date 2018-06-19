@@ -52,6 +52,13 @@ bool IdentifyL2Pool::Run(Model* model, std::size_t op_index) {
   const Operator* square_op;
 
   Operator* prev_to_sqrt_op = GetOpWithOutput(*model, sqrt_op->inputs[0]);
+  if (prev_to_sqrt_op == nullptr) {
+    AddMessageF(
+        "Giving up trying to identify L2Pool subgraph: "
+        "expected AveragePool op, but Sqrt op has no preceding op");
+    return false;
+  }
+
   if (prev_to_sqrt_op->type != OperatorType::kAveragePool) {
     AddMessageF(
         "Giving up trying to identify L2Pool subgraph: "

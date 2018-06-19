@@ -1117,8 +1117,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   // attributes.
   ops.emplace_back(
       new SimpleOperator<AddNOperator>("ADDN", OperatorType::kAddN));
-  ops.emplace_back(new SimpleOperator<TensorFlowRsqrtOperator>(
-      "RSQRT", OperatorType::kTensorFlowRsqrt));
+
   // Simple Operators.
   ops.emplace_back(new SimpleOperator<DequantizeOperator>(
       "DEQUANTIZE", OperatorType::kDequantize));
@@ -1163,6 +1162,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   // Element-wise operator
   ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
   ops.emplace_back(new SimpleOperator<LogOperator>("LOG", OperatorType::kLog));
+  ops.emplace_back(new SimpleOperator<TensorFlowSqrtOperator>(
+      "SQRT", OperatorType::kTensorFlowSqrt));
+  ops.emplace_back(new SimpleOperator<TensorFlowRsqrtOperator>(
+      "RSQRT", OperatorType::kTensorFlowRsqrt));
 
   return ops;
 }

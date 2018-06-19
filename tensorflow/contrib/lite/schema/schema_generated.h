@@ -330,11 +330,13 @@ enum BuiltinOperator {
   BuiltinOperator_NOT_EQUAL = 72,
   BuiltinOperator_LOG = 73,
   BuiltinOperator_SUM = 74,
+  BuiltinOperator_SQRT = 75,
+  BuiltinOperator_RSQRT = 76,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SUM
+  BuiltinOperator_MAX = BuiltinOperator_RSQRT
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[74] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[76] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -409,7 +411,9 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[74] {
     BuiltinOperator_EQUAL,
     BuiltinOperator_NOT_EQUAL,
     BuiltinOperator_LOG,
-    BuiltinOperator_SUM
+    BuiltinOperator_SUM,
+    BuiltinOperator_SQRT,
+    BuiltinOperator_RSQRT
   };
   return values;
 }
@@ -491,6 +495,8 @@ inline const char **EnumNamesBuiltinOperator() {
     "NOT_EQUAL",
     "LOG",
     "SUM",
+    "SQRT",
+    "RSQRT",
     nullptr
   };
   return names;
