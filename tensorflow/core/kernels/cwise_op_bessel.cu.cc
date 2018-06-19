@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
+#if GOOGLE_CUDA
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
 
-namespace xla {
+namespace tensorflow {
+namespace functor {
+DEFINE_UNARY3(bessel_i0e, Eigen::half, float, double);
+DEFINE_UNARY3(bessel_i1e, Eigen::half, float, double);
+}  // namespace functor
+}  // namespace tensorflow
 
-string VersionedComputationHandle::ToString() const {
-  return tensorflow::strings::StrCat(handle.handle(), ":v", version);
-}
-
-std::ostream& operator<<(std::ostream& out,
-                         const VersionedComputationHandle& versioned_handle) {
-  out << versioned_handle.ToString();
-  return out;
-}
-
-}  // namespace xla
+#endif  // GOOGLE_CUDA

@@ -53,7 +53,7 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/platform/cloud:gcs_file_system",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 

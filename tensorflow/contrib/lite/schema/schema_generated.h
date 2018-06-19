@@ -187,6 +187,12 @@ struct ExpandDimsOptionsT;
 struct SparseToDenseOptions;
 struct SparseToDenseOptionsT;
 
+struct EqualOptions;
+struct EqualOptionsT;
+
+struct NotEqualOptions;
+struct NotEqualOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -317,11 +323,14 @@ enum BuiltinOperator {
   BuiltinOperator_SPARSE_TO_DENSE = 68,
   BuiltinOperator_TILE = 69,
   BuiltinOperator_EXPAND_DIMS = 70,
+  BuiltinOperator_EQUAL = 71,
+  BuiltinOperator_NOT_EQUAL = 72,
+  BuiltinOperator_LOG = 73,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_EXPAND_DIMS
+  BuiltinOperator_MAX = BuiltinOperator_LOG
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[70] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[73] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -392,7 +401,10 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[70] {
     BuiltinOperator_TRANSPOSE_CONV,
     BuiltinOperator_SPARSE_TO_DENSE,
     BuiltinOperator_TILE,
-    BuiltinOperator_EXPAND_DIMS
+    BuiltinOperator_EXPAND_DIMS,
+    BuiltinOperator_EQUAL,
+    BuiltinOperator_NOT_EQUAL,
+    BuiltinOperator_LOG
   };
   return values;
 }
@@ -470,6 +482,9 @@ inline const char **EnumNamesBuiltinOperator() {
     "SPARSE_TO_DENSE",
     "TILE",
     "EXPAND_DIMS",
+    "EQUAL",
+    "NOT_EQUAL",
+    "LOG",
     nullptr
   };
   return names;
@@ -534,11 +549,13 @@ enum BuiltinOptions {
   BuiltinOptions_SparseToDenseOptions = 50,
   BuiltinOptions_TileOptions = 51,
   BuiltinOptions_ExpandDimsOptions = 52,
+  BuiltinOptions_EqualOptions = 53,
+  BuiltinOptions_NotEqualOptions = 54,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_ExpandDimsOptions
+  BuiltinOptions_MAX = BuiltinOptions_NotEqualOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[53] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[55] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -592,7 +609,9 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[53] {
     BuiltinOptions_TransposeConvOptions,
     BuiltinOptions_SparseToDenseOptions,
     BuiltinOptions_TileOptions,
-    BuiltinOptions_ExpandDimsOptions
+    BuiltinOptions_ExpandDimsOptions,
+    BuiltinOptions_EqualOptions,
+    BuiltinOptions_NotEqualOptions
   };
   return values;
 }
@@ -652,6 +671,8 @@ inline const char **EnumNamesBuiltinOptions() {
     "SparseToDenseOptions",
     "TileOptions",
     "ExpandDimsOptions",
+    "EqualOptions",
+    "NotEqualOptions",
     nullptr
   };
   return names;
@@ -872,6 +893,14 @@ template<> struct BuiltinOptionsTraits<TileOptions> {
 
 template<> struct BuiltinOptionsTraits<ExpandDimsOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_ExpandDimsOptions;
+};
+
+template<> struct BuiltinOptionsTraits<EqualOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_EqualOptions;
+};
+
+template<> struct BuiltinOptionsTraits<NotEqualOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_NotEqualOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1320,6 +1349,22 @@ struct BuiltinOptionsUnion {
   const ExpandDimsOptionsT *AsExpandDimsOptions() const {
     return type == BuiltinOptions_ExpandDimsOptions ?
       reinterpret_cast<const ExpandDimsOptionsT *>(value) : nullptr;
+  }
+  EqualOptionsT *AsEqualOptions() {
+    return type == BuiltinOptions_EqualOptions ?
+      reinterpret_cast<EqualOptionsT *>(value) : nullptr;
+  }
+  const EqualOptionsT *AsEqualOptions() const {
+    return type == BuiltinOptions_EqualOptions ?
+      reinterpret_cast<const EqualOptionsT *>(value) : nullptr;
+  }
+  NotEqualOptionsT *AsNotEqualOptions() {
+    return type == BuiltinOptions_NotEqualOptions ?
+      reinterpret_cast<NotEqualOptionsT *>(value) : nullptr;
+  }
+  const NotEqualOptionsT *AsNotEqualOptions() const {
+    return type == BuiltinOptions_NotEqualOptions ?
+      reinterpret_cast<const NotEqualOptionsT *>(value) : nullptr;
   }
 };
 
@@ -4781,6 +4826,86 @@ inline flatbuffers::Offset<SparseToDenseOptions> CreateSparseToDenseOptions(
 
 flatbuffers::Offset<SparseToDenseOptions> CreateSparseToDenseOptions(flatbuffers::FlatBufferBuilder &_fbb, const SparseToDenseOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct EqualOptionsT : public flatbuffers::NativeTable {
+  typedef EqualOptions TableType;
+  EqualOptionsT() {
+  }
+};
+
+struct EqualOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef EqualOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  EqualOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(EqualOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<EqualOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const EqualOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct EqualOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit EqualOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  EqualOptionsBuilder &operator=(const EqualOptionsBuilder &);
+  flatbuffers::Offset<EqualOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<EqualOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<EqualOptions> CreateEqualOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  EqualOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<EqualOptions> CreateEqualOptions(flatbuffers::FlatBufferBuilder &_fbb, const EqualOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct NotEqualOptionsT : public flatbuffers::NativeTable {
+  typedef NotEqualOptions TableType;
+  NotEqualOptionsT() {
+  }
+};
+
+struct NotEqualOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef NotEqualOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  NotEqualOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(NotEqualOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<NotEqualOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const NotEqualOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct NotEqualOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit NotEqualOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  NotEqualOptionsBuilder &operator=(const NotEqualOptionsBuilder &);
+  flatbuffers::Offset<NotEqualOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<NotEqualOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<NotEqualOptions> CreateNotEqualOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  NotEqualOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<NotEqualOptions> CreateNotEqualOptions(flatbuffers::FlatBufferBuilder &_fbb, const NotEqualOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -5068,6 +5193,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const ExpandDimsOptions *builtin_options_as_ExpandDimsOptions() const {
     return builtin_options_type() == BuiltinOptions_ExpandDimsOptions ? static_cast<const ExpandDimsOptions *>(builtin_options()) : nullptr;
   }
+  const EqualOptions *builtin_options_as_EqualOptions() const {
+    return builtin_options_type() == BuiltinOptions_EqualOptions ? static_cast<const EqualOptions *>(builtin_options()) : nullptr;
+  }
+  const NotEqualOptions *builtin_options_as_NotEqualOptions() const {
+    return builtin_options_type() == BuiltinOptions_NotEqualOptions ? static_cast<const NotEqualOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -5300,6 +5431,14 @@ template<> inline const TileOptions *Operator::builtin_options_as<TileOptions>()
 
 template<> inline const ExpandDimsOptions *Operator::builtin_options_as<ExpandDimsOptions>() const {
   return builtin_options_as_ExpandDimsOptions();
+}
+
+template<> inline const EqualOptions *Operator::builtin_options_as<EqualOptions>() const {
+  return builtin_options_as_EqualOptions();
+}
+
+template<> inline const NotEqualOptions *Operator::builtin_options_as<NotEqualOptions>() const {
+  return builtin_options_as_NotEqualOptions();
 }
 
 struct OperatorBuilder {
@@ -7196,6 +7335,52 @@ inline flatbuffers::Offset<SparseToDenseOptions> CreateSparseToDenseOptions(flat
       _validate_indices);
 }
 
+inline EqualOptionsT *EqualOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new EqualOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void EqualOptions::UnPackTo(EqualOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<EqualOptions> EqualOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EqualOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateEqualOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<EqualOptions> CreateEqualOptions(flatbuffers::FlatBufferBuilder &_fbb, const EqualOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const EqualOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateEqualOptions(
+      _fbb);
+}
+
+inline NotEqualOptionsT *NotEqualOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new NotEqualOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void NotEqualOptions::UnPackTo(NotEqualOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<NotEqualOptions> NotEqualOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const NotEqualOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateNotEqualOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<NotEqualOptions> CreateNotEqualOptions(flatbuffers::FlatBufferBuilder &_fbb, const NotEqualOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const NotEqualOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateNotEqualOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -7590,6 +7775,14 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const ExpandDimsOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_EqualOptions: {
+      auto ptr = reinterpret_cast<const EqualOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_NotEqualOptions: {
+      auto ptr = reinterpret_cast<const NotEqualOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -7816,6 +8009,14 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const ExpandDimsOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_EqualOptions: {
+      auto ptr = reinterpret_cast<const EqualOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_NotEqualOptions: {
+      auto ptr = reinterpret_cast<const NotEqualOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -8030,6 +8231,14 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const ExpandDimsOptionsT *>(value);
       return CreateExpandDimsOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_EqualOptions: {
+      auto ptr = reinterpret_cast<const EqualOptionsT *>(value);
+      return CreateEqualOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_NotEqualOptions: {
+      auto ptr = reinterpret_cast<const NotEqualOptionsT *>(value);
+      return CreateNotEqualOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -8242,6 +8451,14 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_ExpandDimsOptions: {
       value = new ExpandDimsOptionsT(*reinterpret_cast<ExpandDimsOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_EqualOptions: {
+      value = new EqualOptionsT(*reinterpret_cast<EqualOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_NotEqualOptions: {
+      value = new NotEqualOptionsT(*reinterpret_cast<NotEqualOptionsT *>(u.value));
       break;
     }
     default:
@@ -8508,6 +8725,16 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_ExpandDimsOptions: {
       auto ptr = reinterpret_cast<ExpandDimsOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_EqualOptions: {
+      auto ptr = reinterpret_cast<EqualOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_NotEqualOptions: {
+      auto ptr = reinterpret_cast<NotEqualOptionsT *>(value);
       delete ptr;
       break;
     }

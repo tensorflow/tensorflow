@@ -241,6 +241,12 @@ class UnaryOpTest(test.TestCase):
                       math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -286,6 +292,12 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.arcsin, math_ops.asin)
     self._compareBoth(x, np.arccos, math_ops.acos)
     self._compareBoth(x, np.arctan, math_ops.atan)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -334,6 +346,12 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(k, np.arcsin, math_ops.asin)
     self._compareBoth(k, np.arccos, math_ops.acos)
     self._compareBoth(k, np.tan, math_ops.tan)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -370,6 +388,12 @@ class UnaryOpTest(test.TestCase):
                       math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)

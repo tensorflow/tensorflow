@@ -38,9 +38,6 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 #ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
@@ -49,7 +46,12 @@ using mkldnn::convolution_backward_weights;
 using mkldnn::memory;
 using mkldnn::prop_kind;
 using mkldnn::stream;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 

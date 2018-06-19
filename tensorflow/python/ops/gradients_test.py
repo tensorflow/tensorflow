@@ -83,7 +83,6 @@ def _OpsBetween(to_ops, from_ops):
   return between_ops
 
 
-@test_util.with_c_api
 class GradientsTest(test_util.TensorFlowTestCase):
 
   def _OpNames(self, op_list):

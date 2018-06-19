@@ -765,7 +765,7 @@ add_F32.v3 {
 ENTRY MapBinaryAdder.v3 {
   param0 = f32[4]{0} parameter(0)
   param1 = f32[4]{0} parameter(1)
-  ROOT map = f32[4]{0} map(param0, param1), to_apply=add_F32.v3
+  ROOT map = f32[4]{0} map(param0, param1), dimensions={0}, to_apply=add_F32.v3
 }
 
 )"
@@ -918,6 +918,24 @@ ENTRY CRS {
 
 )"
 },
+// cross-replica-sum with subgroups
+{
+"CrossReplicaSumWithSubgroups",
+R"(HloModule CRS_Subgroups
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CrossReplicaSumWithSubgroups {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), to_apply=add, replica_group_ids={0,0,1,1}, barrier="abc"
+}
+
+)"
+}
   });
   // clang-format on
 }

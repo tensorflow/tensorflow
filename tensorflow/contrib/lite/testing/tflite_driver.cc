@@ -163,6 +163,7 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
     Invalidate("Failed build interpreter");
     return;
   }
+  interpreter_->UseNNAPI(use_nnapi_);
 
   must_allocate_tensors_ = true;
 }

@@ -17,6 +17,8 @@ limitations under the License.
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 // TODO(misard,phawkins): add tests.
 
+#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -55,6 +57,78 @@ class RandomUniformOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstInput("shape"),
                 RandomUniformOp);
+
+class RandomShuffleOp : public XlaOpKernel {
+ public:
+  explicit RandomShuffleOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    auto builder = ctx->builder();
+    xla::XlaOp input = ctx->Input(0);
+    TensorShape input_shape = ctx->InputShape(0);
+    const int64 n = input_shape.dim_size(0);
+    int64 num_elements = 1;
+    for (tensorflow::TensorShapeDim dimension : input_shape) {
+      num_elements *= dimension.size;
+    }
+    if (num_elements <= 1 || n <= 1) {
+      // No shuffling is required, so copy input directly to output
+      ctx->SetOutput(0, input);
+    } else {
+      // Generate the random swaps for the indices.
+      auto swaps_shape = xla::ShapeUtil::MakeShape(xla::S32, {n});
+      auto swaps =
+          builder->RngUniform(builder->ConstantR0<int32>(0),
+                              builder->ConstantR0<int32>(n), swaps_shape);
+
+      // Generate range(n) as the initial value for the indices to be swapped.
+      xla::XlaOp indices;
+      TF_CHECK_OK(XlaHelpers::Iota(builder, DataType::DT_INT32, n, &indices));
+
+      // Swap the indices at i and swaps[i].
+      auto swap_body_fn = [&](xla::XlaOp i,
+                              gtl::ArraySlice<xla::XlaOp> loop_vars,
+                              xla::XlaBuilder* builder)
+          -> xla::StatusOr<std::vector<xla::XlaOp>> {
+        auto swaps = loop_vars[0];
+        auto indices = loop_vars[1];
+        i = builder->Reshape(i, {1});
+        // temp = indices[i]
+        auto temp = builder->DynamicSlice(indices, i, {1});
+        // swap_index = swaps[i]
+        auto swap_index = builder->DynamicSlice(swaps, i, {1});
+        // swap_value = indices[swaps[i]]
+        auto swap_value = builder->DynamicSlice(indices, swap_index, {1});
+        // indices[i] = indices[swaps[i]]
+        indices = builder->DynamicUpdateSlice(indices, swap_value, i);
+        // indices[swaps[i]] = temp
+        indices = builder->DynamicUpdateSlice(indices, temp, swap_index);
+        return std::vector<xla::XlaOp>{swaps, indices};
+      };
+      // for i in range(n):
+      auto swap_loop_result =
+          XlaForEachIndex(n, xla::S32, swap_body_fn, {swaps, indices},
+                          "indices_swap_loop", builder)
+              .ValueOrDie();
+      auto swapped_indices = swap_loop_result[1];
+
+      // Gather the data using the swapped indices as the shuffled order.
+      auto indices_tensor_shape = TensorShape({n});
+      DataType type = ctx->expected_output_dtype(0);
+      xla::XlaOp gather;
+      OP_REQUIRES_OK(ctx, XlaGather(input, input_shape, swapped_indices,
+                                    indices_tensor_shape,
+                                    /*axis=*/0, /*indices_are_nd=*/false, type,
+                                    DT_INT32, builder, &gather));
+      ctx->SetOutput(0, gather);
+    }
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(RandomShuffleOp);
+};
+
+REGISTER_XLA_OP(Name("RandomShuffle"), RandomShuffleOp);
 
 class RandomUniformIntOp : public XlaOpKernel {
  public:

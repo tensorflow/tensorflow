@@ -63,7 +63,8 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
     const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
-    const AotCompilationOptions& options) {
+    const AotCompilationOptions& options,
+    std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
   for (const AotXlaComputationInstance& instance : computations) {
     TF_RET_CHECK(instance.computation.has_program_shape());
@@ -100,7 +101,8 @@ CompileOnlyService::CompileAheadOfTime(
     hlo_modules.push_back(std::move(hlo_module));
   }
 
-  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options);
+  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options,
+                                       metadata);
 }
 
 }  // namespace xla

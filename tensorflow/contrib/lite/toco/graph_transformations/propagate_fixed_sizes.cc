@@ -278,7 +278,7 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
       << "TransposeConv input shape must have 4 dimensions. Input \""
       << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
       << toco::ShapeToString(weights_shape) << ".";
-  CHECK_EQ(input_shape.dims(3), weights_shape.dims(0))
+  CHECK_EQ(input_shape.dims(3), weights_shape.dims(3))
       << "Input shape depth and weight depth do not agree";
 
   // Set the output shape according to the specified output shape.
@@ -1563,6 +1563,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowMaximum:
     case OperatorType::kTensorFlowMinimum:
     case OperatorType::kTensorFlowGreaterEqual:
+    case OperatorType::kTensorFlowEqual:
+    case OperatorType::kTensorFlowNotEqual:
       ProcessSimpleBinaryOperator(model, op);
       break;
     case OperatorType::kAddN:

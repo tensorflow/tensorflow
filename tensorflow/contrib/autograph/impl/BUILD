@@ -20,6 +20,7 @@ py_library(
         "api.py",
         "config.py",
         "conversion.py",
+        "directives.py",
         "naming.py",
         "special_functions.py",
     ],

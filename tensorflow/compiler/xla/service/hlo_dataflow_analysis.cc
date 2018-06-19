@@ -931,16 +931,17 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     }
     const HloUse& use = value.uses()[0];
 
-    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop &&
-        user->fused_expression_root()->opcode() ==
-            HloOpcode::kDynamicUpdateSlice) {
-      // Loop fusion with kDynamicUpdateSlice fused root.
-      //
-      // Returns true iff there is exactly one use of 'operand' at shape index
-      // 'operand_index', and this singleton use is the fused root at operand
-      // index 0.
-      return use.instruction == user->fused_expression_root() &&
-             use.operand_number == 0;
+    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+      if (user->fused_expression_root()->opcode() ==
+          HloOpcode::kDynamicUpdateSlice) {
+        // Loop fusion with kDynamicUpdateSlice fused root.
+        //
+        // Returns true iff there is exactly one use of 'operand' at shape index
+        // 'operand_index', and this singleton use is the fused root at operand
+        // index 0.
+        return use.instruction == user->fused_expression_root() &&
+               use.operand_number == 0;
+      }
     } else if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
                user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
@@ -967,6 +968,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
              use.operand_number == other_add_operand_index;
     }
   }
+
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
       user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in BufferLiveness::live_range_strictly_before,
@@ -998,8 +1000,13 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
             }) != uses.end();
     return uses.size() == 2 && found_caller_use && found_elementwise_callee_use;
   }
-  // Check if 'user' is element-wise.
-  return user->IsElementwise();
+
+  // Loop fusions that contain transposing copies won't reach here as they have
+  // different layouts, which fails the check in the beginning of this function.
+  //
+  // Multi-output fusion will fail the check here as tuples are not considered
+  // an elementwise operation.
+  return user->IsElementwiseOnOperand(user->operand_index(operand));
 }
 
 }  // namespace xla

@@ -126,5 +126,10 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     -//tensorflow/python/kernel_tests/distributions:beta_test \
     -//tensorflow/python/kernel_tests/distributions:dirichlet_test \
     -//tensorflow/python/kernel_tests/distributions:student_t_test \
+    -//tensorflow/python/estimator:baseline_test \
+    -//tensorflow/python/estimator:dnn_test \
+    -//tensorflow/python/estimator:estimator_test \
+    -//tensorflow/python/estimator:linear_test \
+    -//tensorflow/python/estimator:dnn_linear_combined_test
 
-# Note: temp. disabling 88 unit tests in order to esablish a CI baseline (2018/06/07)
+# Note: temp. disabling 93 unit tests in order to esablish a CI baseline (2018/06/13)

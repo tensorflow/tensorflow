@@ -15,6 +15,7 @@ tf_py_test(
     size = "small",
     srcs = ["batch_dataset_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

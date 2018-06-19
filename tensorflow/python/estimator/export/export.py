@@ -34,7 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.util import compat
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 _SINGLE_FEATURE_DEFAULT_NAME = 'feature'
 _SINGLE_RECEIVER_DEFAULT_NAME = 'input'
@@ -93,7 +93,7 @@ def _check_tensor_key(name, error_label='feature'):
     raise ValueError('{} keys must be strings: {}.'.format(error_label, name))
 
 
-@tf_export('estimator.export.ServingInputReceiver')
+@estimator_export('estimator.export.ServingInputReceiver')
 class ServingInputReceiver(
     collections.namedtuple(
         'ServingInputReceiver',
@@ -161,7 +161,7 @@ class ServingInputReceiver(
         receiver_tensors_alternatives=receiver_tensors_alternatives)
 
 
-@tf_export('estimator.export.TensorServingInputReceiver')
+@estimator_export('estimator.export.TensorServingInputReceiver')
 class TensorServingInputReceiver(
     collections.namedtuple(
         'TensorServingInputReceiver',
@@ -263,7 +263,7 @@ class SupervisedInputReceiver(
         receiver_tensors=receiver_tensors)
 
 
-@tf_export('estimator.export.build_parsing_serving_input_receiver_fn')
+@estimator_export('estimator.export.build_parsing_serving_input_receiver_fn')
 def build_parsing_serving_input_receiver_fn(feature_spec,
                                             default_batch_size=None):
   """Build a serving_input_receiver_fn expecting fed tf.Examples.
@@ -313,7 +313,7 @@ def _placeholders_from_receiver_tensors_dict(input_vals,
   }
 
 
-@tf_export('estimator.export.build_raw_serving_input_receiver_fn')
+@estimator_export('estimator.export.build_raw_serving_input_receiver_fn')
 def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
   """Build a serving_input_receiver_fn expecting feature Tensors.
 

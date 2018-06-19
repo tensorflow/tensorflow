@@ -1636,8 +1636,7 @@ void BM_SequentialWhiles(int num_iters, int num_whiles) {
   for (int i = 0; i < num_iters; ++i) {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    HloModule module("BM_SequentialWhiles", VersionedComputationHandle(),
-                     config);
+    HloModule module("BM_SequentialWhiles", config);
 
     auto builder = HloComputation::Builder("BM_SequentialWhiles");
     HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -1677,8 +1676,7 @@ void BM_ParallelWhiles(int num_iters, int num_whiles) {
   for (int i = 0; i < num_iters; ++i) {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    HloModule module("BM_SequentialWhiles", VersionedComputationHandle(),
-                     config);
+    HloModule module("BM_SequentialWhiles", config);
 
     auto builder = HloComputation::Builder("BM_ParallelWhiles");
     HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -1750,8 +1748,7 @@ void BM_ManyElementTuple(int num_iters, const int num_tuple_inputs) {
   std::vector<HloInstruction*> tuple_params(num_tuple_inputs);
   for (int i = 0; i < num_iters; ++i) {
     auto builder = HloComputation::Builder("BM_ParallelWhiles");
-    HloModule module("BM_ManyElementTuple", VersionedComputationHandle(),
-                     config);
+    HloModule module("BM_ManyElementTuple", config);
     for (int j = 0; j < num_tuple_inputs; ++j) {
       tuple_params[j] = builder.AddInstruction(
           HloInstruction::CreateParameter(j, element_shape, ""));

@@ -652,6 +652,7 @@ Status XlaCompiler::CompileSingleOp(
                         .Finalize(graph.get(), &node);
     TF_RETURN_IF_ERROR(status);
   }
+  FixupSourceAndSinkEdges(graph.get());
 
   return CompileGraph(options, name, std::move(graph), args, result);
 }

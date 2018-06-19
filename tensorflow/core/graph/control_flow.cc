@@ -24,8 +24,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status BuildControlFlowInfo(const Graph* g,
-                            std::vector<ControlFlowInfo>* info) {
+Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
+                            std::vector<string>* unreachable_nodes) {
   info->clear();
   info->resize(g->num_node_ids());
 
@@ -111,6 +111,13 @@ Status BuildControlFlowInfo(const Graph* g,
           out_info->parent_frame = parent;
           out_info->frame_name = frame_name;
         }
+      }
+    }
+  }
+  if (unreachable_nodes) {
+    for (const Node* node : g->op_nodes()) {
+      if (!parent_nodes[node->id()]) {
+        unreachable_nodes->push_back(node->name());
       }
     }
   }

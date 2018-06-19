@@ -47,6 +47,7 @@ from absl.testing import parameterized
 import six
 
 from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
+from tensorflow.contrib.distribute.python import multi_worker_strategy
 from tensorflow.contrib.distribute.python import one_device_strategy as one_device_lib
 from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
@@ -337,6 +338,34 @@ mirrored_strategy_with_two_gpus = NamedDistribution(
     lambda: mirrored_lib.MirroredStrategy(
         ["/gpu:0", "/gpu:1"], prefetch_on_device=False),
     required_gpus=2)
+
+multi_worker_strategy_with_cpu = NamedDistribution(
+    "MultiWorkerCPU",
+    lambda: multi_worker_strategy.MultiWorkerMirroredStrategy(
+        cluster={
+            "worker": [
+                "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"
+            ]
+        },
+        num_gpus_per_worker=0), 0)
+multi_worker_strategy_with_one_gpu = NamedDistribution(
+    "MultiWorker1GPU",
+    lambda: multi_worker_strategy.MultiWorkerMirroredStrategy(
+        cluster={
+            "worker": [
+                "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"
+            ]
+        },
+        num_gpus_per_worker=1), 1)
+multi_worker_strategy_with_two_gpus = NamedDistribution(
+    "MultiWorker2GPUs",
+    lambda: multi_worker_strategy.MultiWorkerMirroredStrategy(
+        cluster={
+            "worker": [
+                "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"
+            ]
+        },
+        num_gpus_per_worker=2), 2)
 
 adam_optimizer_v1_fn = NamedObject(
     "AdamV1", lambda: adam.AdamOptimizer(0.2, epsilon=1))

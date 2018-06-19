@@ -235,7 +235,6 @@ tf_proto_library(
     name = "protos_all",
     srcs = [],
     cc_api_version = 2,
-    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -882,6 +881,7 @@ cc_library(
     hdrs = [
         "util/stats_calculator.h",
     ],
+    copts = tf_copts(),
 )
 
 cc_library(
@@ -2252,7 +2252,6 @@ tf_proto_library(
     name = "error_codes_proto",
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
-    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -2275,7 +2274,6 @@ tf_proto_library(
     name = "protos_all_proto",
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
-    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -2651,6 +2649,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/dma_helper.h",
     "common_runtime/eigen_thread_pool.h",
     "common_runtime/executor.h",
+    "common_runtime/executor_factory.h",
     "common_runtime/graph_optimizer.h",
     "common_runtime/local_device.h",
     "common_runtime/lower_if_op.h",
@@ -2700,6 +2699,7 @@ tf_gpu_library(
         "common_runtime/device_resolver_local.cc",
         "common_runtime/device_set.cc",
         "common_runtime/executor.cc",
+        "common_runtime/executor_factory.cc",
         "common_runtime/function.cc",
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",

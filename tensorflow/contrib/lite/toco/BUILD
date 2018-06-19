@@ -374,6 +374,7 @@ tf_cc_test(
         ":toco_tooling",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_googletest//:gtest_main",
     ],
@@ -411,6 +412,7 @@ tf_cc_test(
     deps = [
         ":model",
         ":tooling_util",
+        "//tensorflow/core:lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

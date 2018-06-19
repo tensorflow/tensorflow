@@ -48,11 +48,11 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
 
   VLOG(1) << "Building If: " << input_types_.size() << " inputs";
 
-  std::vector<xla::XlaOp> inputs(input_types_.size());
   std::vector<XlaCompiler::Argument> arguments(input_types_.size());
   for (int i = 0; i < input_types_.size(); ++i) {
     XlaCompiler::Argument& arg = arguments[i];
     DataType type = ctx->input_type(i + 1);
+
     if (type == DT_RESOURCE) {
       XlaResource* resource;
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(i + 1, &resource));
@@ -60,7 +60,6 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       arg.initialized = resource->initialized();
       arg.kind = XlaCompiler::Argument::kResource;
       arg.resource_kind = resource->kind();
-      OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], b));
 
       arg.type = resource->type();
       arg.shape = resource->shape();
@@ -79,7 +78,6 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = input_types_[i];
       arg.shape = ctx->InputShape(i + 1);
-      inputs[i] = ctx->Input(i + 1);
       VLOG(2) << "Arg type: " << DataTypeString(arg.type)
               << " shape: " << arg.shape.DebugString();
     }
@@ -100,6 +98,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch_,
                                                 arguments, &else_result));
 
+  bool has_tensor_array_gradients = false;
   for (XlaCompiler::CompilationResult* result : {&then_result, &else_result}) {
     for (const XlaCompiler::ResourceUpdate& update : result->resource_updates) {
       XlaResource* resource;
@@ -121,7 +120,19 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       for (const auto& gradient : resource->tensor_array_gradients()) {
         arg.tensor_array_gradients.insert(gradient.first);
       }
+      if (!resource->tensor_array_gradients().empty())
+        has_tensor_array_gradients = true;
     }
+  }
+
+  // Recompile the functions to update the argument shapes for tensor arrays.
+  if (has_tensor_array_gradients) {
+    then_result = {};
+    OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, then_branch_,
+                                                  arguments, &then_result));
+    else_result = {};
+    OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch_,
+                                                  arguments, &else_result));
   }
 
   // Check that both branches have identical input shapes.
@@ -173,6 +184,19 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
         ctx, equal,
         errors::FailedPrecondition(
             "Mismatch in resource of then and else branch for resource ", i));
+  }
+
+  int num_inputs = then_result.input_mapping.size();
+  std::vector<xla::XlaOp> inputs(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    int input_num = then_result.input_mapping[i] + 1;
+    if (ctx->input_type(input_num) == DT_RESOURCE) {
+      XlaResource* resource;
+      OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
+      OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], b));
+    } else {
+      inputs[i] = ctx->Input(i + 1);
+    }
   }
 
   xla::XlaOp outputs =

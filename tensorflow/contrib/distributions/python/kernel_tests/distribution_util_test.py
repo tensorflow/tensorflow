@@ -29,7 +29,9 @@ from tensorflow.contrib.distributions.python.ops import mvn_diag
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import categorical
 from tensorflow.python.ops.distributions import normal
 from tensorflow.python.ops.linalg import linear_operator_diag
@@ -538,6 +540,52 @@ class PadDynamicTest(_PadTest, test.TestCase):
   @property
   def is_static_shape(self):
     return False
+
+
+class TestMoveDimension(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_move_dimension_static_shape(self):
+
+    x = random_ops.random_normal(shape=[200, 30, 4, 1, 6])
+
+    x_perm = distribution_util.move_dimension(x, 1, 1)
+    self.assertAllEqual(x_perm.shape.as_list(), [200, 30, 4, 1, 6])
+
+    x_perm = distribution_util.move_dimension(x, 0, 3)
+    self.assertAllEqual(x_perm.shape.as_list(), [30, 4, 1, 200, 6])
+
+    x_perm = distribution_util.move_dimension(x, 0, -2)
+    self.assertAllEqual(x_perm.shape.as_list(), [30, 4, 1, 200, 6])
+
+    x_perm = distribution_util.move_dimension(x, 4, 2)
+    self.assertAllEqual(x_perm.shape.as_list(), [200, 30, 6, 4, 1])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_move_dimension_dynamic_shape(self):
+
+    x_ = random_ops.random_normal(shape=[200, 30, 4, 1, 6])
+    x = array_ops.placeholder_with_default(input=x_, shape=None)
+
+    x_perm = distribution_util.move_dimension(x, 1, 1)
+    self.assertAllEqual(self.evaluate(array_ops.shape(x_perm)),
+                        [200, 30, 4, 1, 6])
+
+    x_perm = distribution_util.move_dimension(x, 0, 3)
+    self.assertAllEqual(self.evaluate(array_ops.shape(x_perm)),
+                        [30, 4, 1, 200, 6])
+
+    x_perm = distribution_util.move_dimension(x, 0, -2)
+    self.assertAllEqual(self.evaluate(array_ops.shape(x_perm)),
+                        [30, 4, 1, 200, 6])
+
+    x_perm = distribution_util.move_dimension(x, 4, 2)
+    self.assertAllEqual(self.evaluate(array_ops.shape(x_perm)),
+                        [200, 30, 6, 4, 1])
+
+    x_perm = distribution_util.move_dimension(x, -1, 2)
+    self.assertAllEqual(self.evaluate(array_ops.shape(x_perm)),
+                        [200, 30, 6, 4, 1])
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -1047,6 +1048,43 @@ TEST_F(XlaCompilerTest, NodeWithInvalidDataType) {
   EXPECT_TRUE(str_util::StrContains(status.error_message(),
                                     "is not in the list of allowed values"))
       << status.error_message();
+}
+
+TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  NodeDef no_op;
+  no_op.set_name("NoOp");
+  no_op.set_op("NoOp");
+  Status status;
+  graph->AddNode(no_op, &status);
+  TF_ASSERT_OK(status);
+
+  std::vector<XlaCompiler::Argument> args;
+  XlaCompiler compiler(DefaultOptions());
+  // No control edge linking NoOp with source/sink.
+  {
+    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
+    CopyGraph(*graph, graph_copy.get());
+    XlaCompiler::CompilationResult result;
+    status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
+                                   std::move(graph_copy), args, &result);
+    ASSERT_FALSE(status.ok());
+    EXPECT_TRUE(str_util::StrContains(status.error_message(),
+                                      "The following nodes are unreachable "
+                                      "from the source in the graph: NoOp"))
+        << status.error_message();
+  }
+
+  // Fix control edges for NoOp.
+  {
+    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
+    CopyGraph(*graph, graph_copy.get());
+    EXPECT_TRUE(FixupSourceAndSinkEdges(graph_copy.get()));
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
+                                       std::move(graph_copy), args, &result));
+    EXPECT_EQ(0, result.resource_updates.size());
+  }
 }
 
 }  // namespace

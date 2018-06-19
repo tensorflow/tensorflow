@@ -134,9 +134,9 @@ TEST(CommandLineFlagsTest, UsageString) {
   std::string some_name = "something";
   // Don't test float in this case, because precision is hard to predict and
   // match against, and we don't want a flakey test.
-  const string tool_name = "some_tool_name";
-  string usage = Flags::Usage(tool_name + " <flags>",
-                              {Flag("some_int", &some_int, "some int"),
+  const std::string tool_name = "some_tool_name";
+  std::string usage = Flags::Usage(
+      tool_name + " <flags>", {Flag("some_int", &some_int, "some int"),
                                Flag("some_int64", &some_int64, "some int64"),
                                Flag("some_switch", &some_switch, "some switch"),
                                Flag("some_name", &some_name, "some name")});

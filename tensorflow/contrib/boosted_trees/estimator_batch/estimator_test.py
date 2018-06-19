@@ -68,6 +68,28 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
     classifier.evaluate(input_fn=_eval_input_fn, steps=1)
     classifier.export(self._export_dir_base)
 
+  def testThatLeafIndexIsInPredictions(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 1
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.GradientBoostedDecisionTreeClassifier(
+        learner_config=learner_config,
+        num_trees=1,
+        examples_per_layer=3,
+        model_dir=model_dir,
+        config=config,
+        feature_columns=[contrib_feature_column.real_valued_column("x")],
+        output_leaf_index=True)
+
+    classifier.fit(input_fn=_train_input_fn, steps=15)
+    result_iter = classifier.predict(input_fn=_eval_input_fn)
+    for prediction_dict in result_iter:
+      self.assertTrue("leaf_index" in prediction_dict)
+      self.assertTrue("logits" in prediction_dict)
+
   def testFitAndEvaluateDontThrowExceptionWithCoreForEstimator(self):
     learner_config = learner_pb2.LearnerConfig()
     learner_config.num_classes = 2

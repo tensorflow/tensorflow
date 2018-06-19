@@ -27,6 +27,7 @@ from six.moves import queue
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
@@ -35,6 +36,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
@@ -532,14 +534,87 @@ class PyFuncTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testEagerReturningVariableRaisesError(self):
     def return_variable():
-      variable = resource_variable_ops.ResourceVariable(0.0)
-      return variable
+      return resource_variable_ops.ResourceVariable(0.0)
 
     with self.assertRaisesRegexp(errors.UnknownError,
                                  "Attempting to return a variable"):
       output = script_ops.eager_py_func(
           return_variable, inp=[], Tout=dtypes.float32)
       self.evaluate(output)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerGradientTape(self):
+
+    def f(x):
+      return x**2
+
+    x = constant_op.constant(3.0)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = script_ops.eager_py_func(f, inp=[x], Tout=dtypes.float32)
+    dy_dx = tape.gradient(y, x)
+    self.assertEqual(self.evaluate(dy_dx), 6.0)
+
+  def testEagerGradientGraph(self):
+
+    def f(x):
+      return x**2
+
+    x = constant_op.constant(3.0)
+    y = script_ops.eager_py_func(f, inp=[x], Tout=dtypes.float32)
+    dy_dx = gradients_impl.gradients(y, x)[0]
+    self.assertEqual(self.evaluate(dy_dx), 6.0)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerGradientTapeMultipleArgs(self):
+
+    def f(x, y):
+      return x**2 + y**2
+
+    x = constant_op.constant(3.0)
+    y = constant_op.constant(4.0)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      tape.watch(y)
+      z = script_ops.eager_py_func(f, inp=[x, y], Tout=dtypes.float32)
+
+    dz_dx, dz_dy = tape.gradient(z, [x, y])
+    self.assertEqual(self.evaluate(dz_dx), 6.0)
+    self.assertEqual(self.evaluate(dz_dy), 8.0)
+
+  def testEagerGradientGraphMultipleArgs(self):
+
+    def f(x, y):
+      return x**2 + y**2
+
+    x = constant_op.constant(3.0)
+    y = constant_op.constant(4.0)
+    z = script_ops.eager_py_func(f, inp=[x, y], Tout=dtypes.float32)
+
+    dz_dx, dz_dy = gradients_impl.gradients(z, [x, y])
+    self.assertEqual(self.evaluate(dz_dx), 6.0)
+    self.assertEqual(self.evaluate(dz_dy), 8.0)
+
+  def testEagerGradientGraphLogHuber(self):
+
+    def log_huber(x, m):
+      if math_ops.abs(x) <= m:
+        return x**2
+      else:
+        return m**2 * (1 - 2 * math_ops.log(m) + math_ops.log(x**2))
+
+    x = array_ops.placeholder(dtypes.float32)
+    m = array_ops.placeholder(dtypes.float32)
+
+    y = script_ops.eager_py_func(
+        func=log_huber, inp=[x, m], Tout=dtypes.float32)
+    dy_dx = gradients_impl.gradients(y, x)[0]
+
+    with self.test_session() as sess:
+      # Takes the first branch of log_huber.
+      y, dy_dx = sess.run([y, dy_dx], feed_dict={x: 1.0, m: 2.0})
+      self.assertEqual(y, 1.0)
+      self.assertEqual(dy_dx, 2.0)
 
 
 if __name__ == "__main__":

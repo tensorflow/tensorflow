@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/jit/legacy_flags/encapsulate_subgraphs_pass_flags.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
@@ -182,8 +181,7 @@ class Encapsulator {
 
   // Write a copy of the input graph to 'graph_out', where the subgraphs are
   // replaced with calls to the new functions.
-  Status BuildOutputGraph(bool parallel_checking, Graph* graph_out,
-                          FunctionLibraryDefinition* library);
+  Status BuildOutputGraph(Graph* graph_out, FunctionLibraryDefinition* library);
 
  private:
   // A subgraph of the input, all marked with a common 'group_attribute'
@@ -271,7 +269,7 @@ class Encapsulator {
     // Adds the function call node to graph_out.
     Status AddFunctionCallNode(
         const std::unordered_map<const Node*, Node*>& node_images,
-        bool parallel_checking, Graph* graph_out);
+        Graph* graph_out);
 
     // Adds _RecvAtHost and _SendFromHost nodes, where needed, to graph_out.
     Status AddOutsideCompilationHostIONodes(
@@ -284,11 +282,9 @@ class Encapsulator {
     // Subgraph.
     void GetOutsideCompilationSubgraphNames(std::vector<string>* names) const;
 
-    // Returns the Node that inputs to the function should be wired up to.
-    Node* GetCallNodeForInputs() const;
-
-    // Returns the Node that outputs to the function should be wired up to.
-    Node* GetCallNodeForOutputs() const;
+    // Returns the Node that the inputs and outputs of the function should be
+    // wired up to.
+    Node* GetCallNode() const;
 
     // Returns the index of the arg that the dst of edge should connect to.
     int GetArgIndexForEdge(const Edge* edge) const;
@@ -425,12 +421,6 @@ class Encapsulator {
     OutsideCompilationSubgraph* LookupOrCreateOutsideCompilationSubgraph(
         const string& outside_compilation_id);
 
-    // Builds a ParallelCheck op that compares the output of the original
-    // subgraph with the encapsulated subgraph.
-    Status BuildParallelCheckOp(
-        const std::unordered_map<const Node*, Node*>& node_images,
-        Graph* graph_out);
-
     // Builds a placeholder node used to provide the key input to a RecvAtHost
     // or SendFromHost node. This placeholder node will be removed by a later
     // pass.
@@ -482,13 +472,8 @@ class Encapsulator {
     // Not owned.
     Node* host_compute_key_placeholder_ = nullptr;
 
-    // Function call node(s) in the output graph. Not owned.
-    // If parallel_checking is enabled, 'call_node_inputs' is the function call
-    // node to which inputs should be fed, and 'call_node_outputs' is the
-    // parallel check op from which outputs should be read. If parallel checking
-    // is disabled, both point to the function call node.
-    Node* call_node_inputs_;
-    Node* call_node_outputs_;
+    // Function call node in the output graph. Not owned.
+    Node* call_node_;
 
     // Maps from source (producer node/slot) and destination
     // (consumer node/slot) tensors in the input graph to _Arg numbers in
@@ -541,13 +526,12 @@ class Encapsulator {
 
   // Copies all nodes that aren't in a compiled subgraph to the output graph.
   Status CopyNodesToOutputGraph(
-      bool parallel_checking, Graph* graph_out,
-      std::unordered_map<const Node*, Node*>* node_images);
+      Graph* graph_out, std::unordered_map<const Node*, Node*>* node_images);
 
   // Adds function call nodes for each compiled subgraph.
   Status AddFunctionCallNodes(
       const std::unordered_map<const Node*, Node*>& node_images,
-      bool parallel_checking, Graph* graph_out);
+      Graph* graph_out);
 
   // Adds _RecvAtHost and _SendFromHost nodes, where needed, for all
   // outside_compilation subgraphs.
@@ -598,7 +582,7 @@ class Encapsulator {
       const string& src_outside_compilation_id, const string& dst_func_id,
       const string& dst_outside_compilation_id,
       const std::unordered_map<const Node*, Node*>& node_images,
-      bool parallel_checking, Graph* graph_out,
+      Graph* graph_out,
       std::unordered_set<std::pair<NodeSlot, NodeSlot>, NodeSlot::PairHasher>*
           edges_added);
 
@@ -609,7 +593,7 @@ class Encapsulator {
   // Adds all edges to the output graph.
   Status AddEdgesToOutputGraph(
       const std::unordered_map<const Node*, Node*>& node_images,
-      bool parallel_checking, Graph* graph_out);
+      Graph* graph_out);
 
   // Constructs a minimal shape inference graph that can be used to determine
   // the shape of send_node at the time that the subgraph is compiled.
@@ -729,13 +713,7 @@ void TopologicalClusterSort(
 
 }  // namespace
 
-Node* Encapsulator::Subgraph::GetCallNodeForInputs() const {
-  return call_node_inputs_;
-}
-
-Node* Encapsulator::Subgraph::GetCallNodeForOutputs() const {
-  return call_node_outputs_;
-}
+Node* Encapsulator::Subgraph::GetCallNode() const { return call_node_; }
 
 int Encapsulator::Subgraph::GetArgIndexForEdge(const Edge* edge) const {
   return args_by_dst_.at(NodeSlot(edge->dst(), edge->dst_input()));
@@ -1075,7 +1053,7 @@ Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
 void Encapsulator::Subgraph::ConnectSequencerToCallNode(Graph* graph_out) {
   if (sequencer_ != nullptr) {
     VLOG(2) << "ConnectSequencerToCallNode";
-    graph_out->AddControlEdge(sequencer_, call_node_inputs_);
+    graph_out->AddControlEdge(sequencer_, call_node_);
   }
 }
 
@@ -1200,83 +1178,16 @@ Status Encapsulator::Subgraph::ReplaceFunctionDef(
   return Status::OK();
 }
 
-Status Encapsulator::Subgraph::BuildParallelCheckOp(
-    const std::unordered_map<const Node*, Node*>& node_images,
-    Graph* graph_out) {
-  // Build an index mapping output positions to node/slot pairs in the
-  // original graph.
-  std::vector<NodeSlot> results_by_num(results_.size());
-  for (const auto& entry : results_) {
-    results_by_num[entry.second] = entry.first;
-  }
-
-  // Build a parallel check NodeDef.
-  int num_results = results_by_num.size();
-  std::vector<DataType> result_dtypes(num_results);
-  std::vector<NodeDefBuilder::NodeOut> expected_outputs(num_results);
-  std::vector<NodeDefBuilder::NodeOut> actual_outputs(num_results);
-  for (int i = 0; i < num_results; ++i) {
-    const NodeSlot& node_slot = results_by_num[i];
-    result_dtypes[i] = node_slot.node->output_type(node_slot.slot);
-    expected_outputs[i] =
-        NodeDefBuilder::NodeOut(node_images.at(node_slot.node)->name(),
-                                node_slot.slot, result_dtypes[i]);
-    actual_outputs[i] =
-        NodeDefBuilder::NodeOut(call_node_def_.name(), i, result_dtypes[i]);
-  }
-  // Assign the parallel check op to a CPU on the same task as the cluster it is
-  // checking.
-  string device, dummy;
-  if (!DeviceNameUtils::SplitDeviceName(
-          call_node_inputs_->assigned_device_name(), &device, &dummy)) {
-    return errors::InvalidArgument("Could not parse device name");
-  }
-  strings::StrAppend(&device, "/cpu:0");
-
-  NodeDef check_def;
-  TF_RETURN_IF_ERROR(
-      NodeDefBuilder(graph_out->NewName(strings::StrCat(call_node_def_.name(),
-                                                        "_parallel_check")),
-                     "ParallelCheck")
-          .Device(device)
-          .Attr("T", result_dtypes)
-          .Input(expected_outputs)
-          .Input(actual_outputs)
-          .Finalize(&check_def));
-
-  Status s;
-  Node* check_op = graph_out->AddNode(check_def, &s);
-  if (!s.ok()) return s;
-  check_op->set_assigned_device_name(device);
-
-  // TODO(phawkins): it seems redundant to call AddEdge as well as
-  // pass Inputs to the NodeDefBuilder, but I have been unable to find a
-  // way to avoid it.
-  for (int i = 0; i < num_results; ++i) {
-    const NodeSlot& node_slot = results_by_num[i];
-    graph_out->AddEdge(node_images.at(node_slot.node), node_slot.slot, check_op,
-                       i);
-    graph_out->AddEdge(call_node_inputs_, i, check_op, num_results + i);
-  }
-
-  call_node_outputs_ = check_op;
-  return Status::OK();
-}
-
 Status Encapsulator::Subgraph::AddFunctionCallNode(
     const std::unordered_map<const Node*, Node*>& node_images,
-    bool parallel_checking, Graph* graph_out) {
+    Graph* graph_out) {
   Status s;
-  call_node_inputs_ = graph_out->AddNode(call_node_def_, &s);
+  call_node_ = graph_out->AddNode(call_node_def_, &s);
   if (!s.ok()) return s;
 
   // Copy the assigned device and the key_annotation over.
-  call_node_inputs_->set_assigned_device_name(device_);
-  call_node_outputs_ = call_node_inputs_;
+  call_node_->set_assigned_device_name(device_);
 
-  if (parallel_checking) {
-    TF_RETURN_IF_ERROR(BuildParallelCheckOp(node_images, graph_out));
-  }
   return Status::OK();
 }
 
@@ -1627,27 +1538,17 @@ Status Encapsulator::BuildFunctionDefs(
 }
 
 Status Encapsulator::CopyNodesToOutputGraph(
-    bool parallel_checking, Graph* graph_out,
-    std::unordered_map<const Node*, Node*>* node_images) {
+    Graph* graph_out, std::unordered_map<const Node*, Node*>* node_images) {
   for (Node* node : graph_in_->op_nodes()) {
     string func_id;
     string outside_compilation_id;
     TF_RETURN_IF_ERROR(
         GetFunctionNameAttr(node, &func_id, &outside_compilation_id));
 
-    // Don't copy nodes that going to be encapsulated, unless parallel checking
-    // is enabled.
-    if (IsInSubgraph(func_id, outside_compilation_id) && !parallel_checking)
-      continue;
+    // Don't copy nodes that are going to be encapsulated.
+    if (IsInSubgraph(func_id, outside_compilation_id)) continue;
 
     Node* image = graph_out->CopyNode(node);
-    if (!outside_compilation_id.empty()) {
-      if (parallel_checking) {
-        return errors::InvalidArgument(
-            "Parallel checking is not supported when outside_compilation "
-            "clusters are present.");
-      }
-    }
     (*node_images)[node] = image;
   }
   (*node_images)[graph_in_->source_node()] = graph_out->source_node();
@@ -1657,10 +1558,10 @@ Status Encapsulator::CopyNodesToOutputGraph(
 
 Status Encapsulator::AddFunctionCallNodes(
     const std::unordered_map<const Node*, Node*>& node_images,
-    bool parallel_checking, Graph* graph_out) {
+    Graph* graph_out) {
   for (auto& subgraph_entry : subgraphs_) {
-    TF_RETURN_IF_ERROR(subgraph_entry.second.AddFunctionCallNode(
-        node_images, parallel_checking, graph_out));
+    TF_RETURN_IF_ERROR(
+        subgraph_entry.second.AddFunctionCallNode(node_images, graph_out));
   }
   return Status::OK();
 }
@@ -1694,7 +1595,7 @@ Status Encapsulator::FindOutputImageOfEdgeSrc(
     } else {
       // The edge is from a subgraph to a regular node in the output graph so
       // use the subgraph's call node output.
-      *src_image = subgraphs_.at(src_func_id).GetCallNodeForOutputs();
+      *src_image = subgraphs_.at(src_func_id).GetCallNode();
     }
   } else {
     // The source of the edge is in the output graph so use the node image in
@@ -1742,7 +1643,7 @@ Status Encapsulator::FindOutputImageOfEdgeDst(
     } else {
       // The edge is to a subgraph from a regular node in the output graph so
       // use the subgraph's call node input.
-      *dst_image = subgraphs_.at(dst_func_id).GetCallNodeForInputs();
+      *dst_image = subgraphs_.at(dst_func_id).GetCallNode();
     }
   } else {
     // The destination of the edge is in the output graph so use the node image
@@ -1778,8 +1679,7 @@ Status Encapsulator::CopyEdgeToOutputGraph(
     const Edge* edge, const string& src_func_id,
     const string& src_outside_compilation_id, const string& dst_func_id,
     const string& dst_outside_compilation_id,
-    const std::unordered_map<const Node*, Node*>& node_images,
-    bool parallel_checking, Graph* graph_out,
+    const std::unordered_map<const Node*, Node*>& node_images, Graph* graph_out,
     std::unordered_set<std::pair<NodeSlot, NodeSlot>, NodeSlot::PairHasher>*
         edges_added) {
   Node* src_image;
@@ -1801,11 +1701,6 @@ Status Encapsulator::CopyEdgeToOutputGraph(
       graph_out->AddControlEdge(src_image, dst_image);
     }
 
-    // If parallel checking is enabled, also add a control edge to the
-    // corresponding parallel check op.
-    if (parallel_checking) {
-      graph_out->AddControlEdge(src_image, node_images.at(edge->dst()));
-    }
     return Status::OK();
   }
 
@@ -1816,14 +1711,6 @@ Status Encapsulator::CopyEdgeToOutputGraph(
   int dst_input =
       FindOutputSlotOfEdgeDst(src_func_id, src_outside_compilation_id,
                               dst_func_id, dst_outside_compilation_id, edge);
-
-  if (IsInSubgraph(dst_func_id, dst_outside_compilation_id) &&
-      parallel_checking) {
-    // If we are parallel checking, also feed the tensor as an input to the
-    // corresponding parallel check subgraph.
-    graph_out->AddEdge(src_image, src_output, node_images.at(edge->dst()),
-                       edge->dst_input());
-  }
 
   // Add the edge, if we have not already added it.
   if (edges_added
@@ -1839,8 +1726,8 @@ Status Encapsulator::AddCallNodeDependencies(Graph* graph_out) {
   for (const auto& ancestors : subgraph_ancestors_) {
     const string& subgraph = ancestors.first;
     for (const string& ancestor : ancestors.second) {
-      graph_out->AddControlEdge(subgraphs_[ancestor].GetCallNodeForOutputs(),
-                                subgraphs_[subgraph].GetCallNodeForInputs());
+      graph_out->AddControlEdge(subgraphs_[ancestor].GetCallNode(),
+                                subgraphs_[subgraph].GetCallNode());
     }
   }
   return Status::OK();
@@ -1848,7 +1735,7 @@ Status Encapsulator::AddCallNodeDependencies(Graph* graph_out) {
 
 Status Encapsulator::AddEdgesToOutputGraph(
     const std::unordered_map<const Node*, Node*>& node_images,
-    bool parallel_checking, Graph* graph_out) {
+    Graph* graph_out) {
   // Set of edges already added to the output graph, represented as (src, dst)
   // pairs. We use the set to deduplicate edges; multiple edges in the input
   // graph may map to one edge in the output graph.
@@ -1870,16 +1757,6 @@ Status Encapsulator::AddEdgesToOutputGraph(
     if (IsInSubgraph(src_func_id, src_outside_compilation_id) &&
         IsInSubgraph(dst_func_id, dst_outside_compilation_id) &&
         src_func_id == dst_func_id) {
-      if (parallel_checking) {
-        Node* src_image = node_images.at(edge->src());
-        Node* dst_image = node_images.at(edge->dst());
-        if (edge->IsControlEdge()) {
-          graph_out->AddControlEdge(src_image, dst_image);
-        } else {
-          graph_out->AddEdge(src_image, edge->src_output(), dst_image,
-                             edge->dst_input());
-        }
-      }
       continue;
     }
 
@@ -1887,8 +1764,7 @@ Status Encapsulator::AddEdgesToOutputGraph(
     // unclustered graph.
     TF_RETURN_IF_ERROR(CopyEdgeToOutputGraph(
         edge, src_func_id, src_outside_compilation_id, dst_func_id,
-        dst_outside_compilation_id, node_images, parallel_checking, graph_out,
-        &edges_added));
+        dst_outside_compilation_id, node_images, graph_out, &edges_added));
   }
 
   for (auto& subgraph_entry : subgraphs_) {
@@ -2504,18 +2380,15 @@ Status Encapsulator::GetShapeInfoForOutsideCompilationSends(
   return Status::OK();
 }
 
-Status Encapsulator::BuildOutputGraph(bool parallel_checking, Graph* graph_out,
+Status Encapsulator::BuildOutputGraph(Graph* graph_out,
                                       FunctionLibraryDefinition* library) {
   // Map from nodes in the input graph to nodes in the output graph.
   std::unordered_map<const Node*, Node*> node_images;
 
-  TF_RETURN_IF_ERROR(
-      CopyNodesToOutputGraph(parallel_checking, graph_out, &node_images));
-  TF_RETURN_IF_ERROR(
-      AddFunctionCallNodes(node_images, parallel_checking, graph_out));
+  TF_RETURN_IF_ERROR(CopyNodesToOutputGraph(graph_out, &node_images));
+  TF_RETURN_IF_ERROR(AddFunctionCallNodes(node_images, graph_out));
   TF_RETURN_IF_ERROR(AddOutsideCompilationHostIONodes(node_images, graph_out));
-  TF_RETURN_IF_ERROR(
-      AddEdgesToOutputGraph(node_images, parallel_checking, graph_out));
+  TF_RETURN_IF_ERROR(AddEdgesToOutputGraph(node_images, graph_out));
 
   TF_RETURN_IF_ERROR(
       GetShapeInfoForOutsideCompilationSends(graph_out, library));
@@ -2528,8 +2401,8 @@ Status Encapsulator::BuildOutputGraph(bool parallel_checking, Graph* graph_out,
 Status EncapsulateSubgraphsInFunctions(
     string group_attribute, string outside_compilation_attribute,
     const Graph& graph_in, const RewriteSubgraphFn& rewrite_subgraph_fn,
-    bool parallel_checking, bool reuse_existing_functions,
-    std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library) {
+    bool reuse_existing_functions, std::unique_ptr<Graph>* graph_out,
+    FunctionLibraryDefinition* library) {
   Status s;
 
   Encapsulator encapsulator(std::move(group_attribute),
@@ -2543,8 +2416,7 @@ Status EncapsulateSubgraphsInFunctions(
 
   std::unique_ptr<Graph> out(new Graph(library));
   out->set_versions(graph_in.versions());
-  TF_RETURN_IF_ERROR(
-      encapsulator.BuildOutputGraph(parallel_checking, out.get(), library));
+  TF_RETURN_IF_ERROR(encapsulator.BuildOutputGraph(out.get(), library));
 
   *graph_out = std::move(out);
   return Status::OK();
@@ -2585,8 +2457,6 @@ static Status RenumberArguments(Graph* graph,
 Status EncapsulateSubgraphsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "EncapsulateSubgraphsPass::Run";
-  legacy_flags::EncapsulateSubgraphsPassFlags* flags =
-      legacy_flags::GetEncapsulateSubgraphsPassFlags();
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile("before_encapsulate_subgraphs", **options.graph,
                                 options.flib_def);
@@ -2663,7 +2533,7 @@ Status EncapsulateSubgraphsPass::Run(
 
   TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
       kXlaClusterAttr, kXlaOutsideCompilationAttr, **options.graph,
-      rewrite_subgraph, flags->tf_xla_parallel_checking,
+      rewrite_subgraph,
       /*reuse_existing_functions=*/false, &graph_out, library));
 
   if (VLOG_IS_ON(1)) {

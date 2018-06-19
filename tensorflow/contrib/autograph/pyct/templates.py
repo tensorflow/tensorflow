@@ -239,8 +239,13 @@ def replace_as_expression(template, **replacements):
     raise ValueError(
         'single expression expected; for more general templates use replace')
   node = replacement[0]
-  if not isinstance(node, gast.Expr):
-    raise ValueError(
-        'the template is expected to generate an expression node; instead '
-        'found %s' % node)
-  return node.value
+  node = qual_names.resolve(node)
+
+  if isinstance(node, gast.Expr):
+    return node.value
+  elif isinstance(node, gast.Name):
+    return node
+
+  raise ValueError(
+      'the template is expected to generate an expression or a name node;'
+      ' instead found %s' % node)

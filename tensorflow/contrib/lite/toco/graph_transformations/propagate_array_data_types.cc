@@ -60,6 +60,8 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowLessEqual:
     case OperatorType::kTensorFlowGreater:
     case OperatorType::kTensorFlowGreaterEqual:
+    case OperatorType::kTensorFlowEqual:
+    case OperatorType::kTensorFlowNotEqual:
       // These operators unconditionally produce bool outputs
       SetDataTypeForAllOutputs(model, op, ArrayDataType::kBool);
       break;

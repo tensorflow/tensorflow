@@ -211,7 +211,7 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
   TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
 
   std::vector<int> sizes{2048, 4096, 1023, 2047, 1021,
-                         2047, 1023, 2046, 1021, 2048};
+                         2047, 1023, 2046, 0,    2048};
   for (int i = 0; i < sizes.size(); ++i) {
     interpreter.SetTensorParametersReadWrite(i, kTfLiteUInt8, "", {sizes[i]},
                                              quant);
@@ -228,6 +228,7 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
 
   ASSERT_EQ(interpreter.tensor(0)->data.raw, interpreter.tensor(4)->data.raw);
   ASSERT_EQ(interpreter.tensor(1)->data.raw, interpreter.tensor(7)->data.raw);
+  ASSERT_EQ(interpreter.tensor(8)->data.raw, nullptr);
 
   ASSERT_LT(interpreter.tensor(4)->data.raw, interpreter.tensor(1)->data.raw);
   ASSERT_LT(interpreter.tensor(6)->data.raw, interpreter.tensor(1)->data.raw);
@@ -312,6 +313,18 @@ TEST(BasicInterpreter, ResizingTensors) {
 
   ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 4}), kTfLiteOk);
   EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 1 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {0}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 0);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 0}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 0);
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
   // TODO(ahentz): We shouldn't have to force reallocation, but

@@ -1782,9 +1782,7 @@ class _EmbeddingColumnLayer(base.Layer):
     Args:
       embedding_shape: Shape of the embedding variable used for lookup.
       initializer: A variable initializer function to be used in embedding
-        variable initialization. If not specified, defaults to
-        `tf.truncated_normal_initializer` with mean `0.0` and standard deviation
-        `1/sqrt(dimension)`.
+        variable initialization.
       weight_collections: A list of collection names to which the Variable will
         be added. Note that, variables will also be added to collections
         `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.

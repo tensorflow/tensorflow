@@ -26,6 +26,41 @@ namespace xla {
 using tensorflow::gtl::FlatMap;
 using tensorflow::gtl::FlatSet;
 
+StatusOr<int64> MinimumMemoryForModule(
+    const SequentialHloOrdering::HloModuleSequence& module_sequence,
+    const LogicalBuffer::SizeFunction& size_function) {
+  if (module_sequence.empty()) {
+    return 0;
+  }
+
+  const HloModule* module = module_sequence.begin()->first->parent();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
+                      TuplePointsToAnalysis::Run(module));
+
+  // The absolute minimum memory required for a given sequence of instructions
+  // is determined by the sequence of Alloc and Free calls on a simulated heap,
+  // ignoring fragmentation. We run the heap simulation on the whole module,
+  // rather than summing each computation, since it gives us a better lower
+  // bound, by minimizing the liveness of sub-computations.
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), *module,
+                         module_sequence, *points_to_analysis, size_function));
+  return result.heap_size;
+}
+
+StatusOr<int64> MinimumMemoryForComputation(
+    const HloComputation& computation,
+    const std::vector<const HloInstruction*>& sequence,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function) {
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
+                         sequence, points_to_analysis, size_function));
+  return result.heap_size;
+}
+
 /*static*/
 StatusOr<HeapSimulator::Result> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm> algorithm, const HloModule& module,

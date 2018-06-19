@@ -342,7 +342,7 @@ TEST_F(HloInstructionTest, TrivialMap) {
   // Builds a parameter and feeds it to the map.
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32a100x10, ""));
+      HloInstruction::CreateParameter(0, f32a100x10, "p"));
   auto map = builder.AddInstruction(
       HloInstruction::CreateMap(f32a100x10, {param0}, add_f32));
   module->AddEntryComputation(builder.Build());
@@ -381,7 +381,7 @@ TEST_F(HloInstructionTest, TrivialReduce) {
   // Builds a parameter and an initial value and feeds them to the reduce.
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32a100x10, ""));
+      HloInstruction::CreateParameter(0, f32a100x10, "p"));
   auto const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   builder.AddInstruction(
@@ -978,6 +978,23 @@ TEST_F(HloInstructionTest, FullyElementwise) {
   for (int i = 0; i < add->operand_count(); ++i) {
     EXPECT_TRUE(add->IsElementwiseOnOperand(i));
   }
+}
+
+TEST_F(HloInstructionTest, MapIsElementwise) {
+  auto module = CreateNewModule();
+  const Shape r2f32 = ShapeUtil::MakeShapeWithLayout(F32, {10, 10}, {1, 0});
+  HloComputation::Builder builder(TestName());
+  HloComputation::Builder map_builder("id");
+  map_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  auto map_computation = module->AddEmbeddedComputation(map_builder.Build());
+  auto x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r2f32, "x"));
+  auto map = builder.AddInstruction(
+      HloInstruction::CreateMap(r2f32, {x}, map_computation));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(map->IsElementwise());
 }
 
 TEST_F(HloInstructionTest, PartiallyElementwise) {
