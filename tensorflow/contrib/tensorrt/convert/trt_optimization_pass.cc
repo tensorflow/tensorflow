@@ -191,6 +191,17 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   if (VLOG_IS_ON(1)) {
     PrintDebugInfo(cluster, item);
   }
+  // This is a hack to workaround optimizer issue. MetaOptimizer calls
+  // optimization passes on function objects as well, we should not modify
+  // generated funcdefs! This is fragile but we don't have any other option
+  // until framework fixes it.
+  if (item.id != "tf_graph") {
+    LOG(WARNING) << name_
+                 << " is probably called on funcdef! This optimizer must *NOT* "
+                    "be called on function objects.";
+    *optimized_graph = item.graph;
+    return tensorflow::Status::OK();
+  }
   int max_dim = -1;
   if (item.feed.size()) {
     for (const auto& f : item.feed) {
@@ -235,6 +246,7 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   cp.max_cached_engines = max_cached_batches_;
   auto status = tensorflow::tensorrt::convert::ConvertAfterShapes(cp);
   VLOG(2) << optimized_graph->DebugString();
+  VLOG(1) << "Returning from " << name_;
   return status;
 }
 
