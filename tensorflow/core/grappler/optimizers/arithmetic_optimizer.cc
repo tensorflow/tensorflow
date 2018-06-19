@@ -1083,6 +1083,14 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
+    NodeDef* tail = node;
+    // TODO(rmlarsen): Enable after debugging breakage in Bayesflow.
+    if (ctx().opt_level == RewriterConfig::AGGRESSIVE) {
+      tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
+                                      *ctx().nodes_to_preserve);
+    }
+    NodeDef* first_transpose;
+    TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &first_transpose));
 
     NodeDef* node_perm;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &node_perm));
@@ -1091,21 +1099,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     }
     std::vector<int64> node_perm_values;
     TF_RETURN_IF_ERROR(GetPermutation(*node_perm, &node_perm_values));
-
-    // Remove simple identity transposes.
-    if (IsIdentityPermutation(node_perm_values)) {
-      *simplified_node_name = node->input(0);
-      return Status::OK();
-    }
-
-    NodeDef* tail = node;
-    tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
-                                    *ctx().nodes_to_preserve);
-    NodeDef* first_transpose;
-    TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &first_transpose));
-
-    if (first_transpose->op() == node->op() &&
-        NumNonControlOutputs(*first_transpose, *ctx().node_map) == 1) {
+    if (first_transpose->op() == node->op()) {
       // Remove pairs of transposes that cancel each other.
       NodeDef* first_transpose_perm;
       TF_RETURN_IF_ERROR(
@@ -1129,6 +1123,11 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
           ForwardControlDependencies(tail, {first_transpose});
           *simplified_node_name = node->input(0);
         }
+      }
+    } else {
+      // Remove simple identity transposes.
+      if (IsIdentityPermutation(node_perm_values)) {
+        *simplified_node_name = node->input(0);
       }
     }
     return Status::OK();
@@ -1723,15 +1722,19 @@ class RemoveIdempotentStage : public ArithmeticOptimizerStage {
   ~RemoveIdempotentStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return node->input_size() == 1 && IsIdempotent(*node) &&
-           !IsInPreserveSet(*node);
+    return IsIdempotent(*node) && !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     NodeDef* input;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
-    if (input->op() == node->op() && input->device() == node->device()) {
-      *simplified_node_name = node->input(0);
+    auto root_scope_and_name = ParseNodeScopeAndName(node->name());
+    const string new_name = OptimizedNodeName(root_scope_and_name);
+    if (input->op() == node->op() && input->device() == node->device() &&
+        IsIdempotent(*input) && !ctx().node_map->NodeExists(new_name)) {
+      NodeDef* new_input_node = AddCopyNode(new_name, input);
+      ForwardControlDependencies(new_input_node, {node});
+      *simplified_node_name = new_input_node->name();
     }
     return Status::OK();
   }
@@ -2898,7 +2901,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<HoistCommonFactorOutOfAggregation>(ctx, ctx_ext);
   if (options_.minimize_broadcasts && can_use_shapes)
     pipeline.AddStage<MinimizeBroadcasts>(ctx, ctx_ext);
-  if (options_.remove_identity_transpose)
+  if (options_.remove_identity_transpose && can_use_shapes)
     pipeline.AddStage<RemoveIdentityTranspose>(ctx, ctx_ext);
   if (options_.remove_involution)
     pipeline.AddStage<RemoveInvolution>(ctx, ctx_ext);
@@ -2906,7 +2909,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveRedundantBitcastStage>(ctx, ctx_ext);
   if (options_.remove_redundant_cast)
     pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
-  if (options_.remove_redundant_reshape && can_use_shapes)
+  if (options_.remove_redundant_reshape)
     pipeline.AddStage<RemoveRedundantReshape>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);

@@ -2976,8 +2976,12 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
 TEST_F(ArithmeticOptimizerTest, RemoveIdempotent) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 3.14f, {32});
-  Output sn1 = ops::Snapshot(s.WithOpName("sn1"), a);
-  Output sn2 = ops::Snapshot(s.WithOpName("sn2"), sn1);
+  Output ctrl1 = ops::Const(s.WithOpName("ctrl1"), 1, {});
+  Output ctrl2 = ops::Const(s.WithOpName("ctrl2"), 2, {});
+  Output sn1 =
+      ops::Snapshot(s.WithOpName("sn1").WithControlDependencies(ctrl1), a);
+  Output sn2 =
+      ops::Snapshot(s.WithOpName("sn2").WithControlDependencies(ctrl2), sn1);
   Output out1 = ops::Identity(s.WithOpName("out1"), sn2);
   Output id1 = ops::Identity(s.WithOpName("id1"), a);
   Output id2 = ops::Identity(s.WithOpName("id2"), id1);
@@ -2993,24 +2997,32 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdempotent) {
   EnableOnlyRemoveIdempotent(&optimizer);
   OptimizeTwice(&optimizer, &item, &output);
 
-  EXPECT_EQ(7, output.node_size());
+  EXPECT_EQ(11, output.node_size());
   int found = 0;
   for (const NodeDef& node : output.node()) {
     if (node.name() == "out1") {
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("sn1", node.input(0));
+      EXPECT_EQ("ArithmeticOptimizer/RemoveIdempotent_sn2", node.input(0));
+      found++;
+    } else if (node.name() == "ArithmeticOptimizer/RemoveIdempotent_sn2") {
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("Snapshot", node.op());
+      EXPECT_EQ("a", node.input(0));
+      EXPECT_EQ("^ctrl1", node.input(1));
+      EXPECT_EQ("^ctrl2", node.input(2));
       found++;
     } else if (node.name() == "out2") {
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("id1", node.input(0));
+      EXPECT_EQ("ArithmeticOptimizer/RemoveIdempotent_id2", node.input(0));
       found++;
-    } else if (node.name() == "sn1") {
+    } else if (node.name() == "ArithmeticOptimizer/RemoveIdempotent_id2") {
+      EXPECT_EQ("Identity", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("a", node.input(0));
       found++;
     }
   }
-  EXPECT_EQ(3, found);
+  EXPECT_EQ(4, found);
 
   auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(tensors.size(), tensors_expected.size());
