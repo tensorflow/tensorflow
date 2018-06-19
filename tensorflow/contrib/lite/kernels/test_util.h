@@ -126,8 +126,10 @@ class SingleOpModel {
   SingleOpModel& operator=(const SingleOpModel&) = delete;
 
   // Add a TensorType input tensor and return its index.
-  int AddInput(TensorType type) { return AddInput(TensorData{type}); }
-  int AddInput(const TensorData& t);
+  int AddInput(TensorType type, bool is_variable = false) {
+    return AddInput(TensorData{type}, is_variable);
+  }
+  int AddInput(const TensorData& t, bool is_variable = false);
 
   // Templated version of AddConstInput().
   template <typename T>
@@ -260,7 +262,8 @@ class SingleOpModel {
   }
 
   template <typename T>
-  int AddTensor(TensorData t, std::initializer_list<T> data) {
+  int AddTensor(TensorData t, std::initializer_list<T> data,
+                bool is_variable = false) {
     int id = tensors_.size();
 
     // This is slightly different depending on whether we are adding a
@@ -309,7 +312,7 @@ class SingleOpModel {
     tensors_.push_back(CreateTensor(builder_,
                                     builder_.CreateVector<int>(t.shape), t.type,
                                     /*buffer=*/buffer_id,
-                                    /*name=*/0, q_params));
+                                    /*name=*/0, q_params, is_variable));
 
     tensor_data_[id] = t;
 

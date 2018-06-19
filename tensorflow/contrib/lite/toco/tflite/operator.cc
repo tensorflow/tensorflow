@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
 
+// TODO(ycling): Consider refactoring to extract the LSTM definition out of
+// graph_transformation module.
+#include "tensorflow/contrib/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/contrib/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/custom_operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/simple_operator.h"
@@ -673,18 +676,20 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
       const Operator& op) const override {
     const auto& lstm_op = static_cast<const LstmCellOperator&>(op);
 
+    std::vector<bool> mutating_input_variables(op.inputs.size(), false);
     switch (lstm_op.kernel_type) {
-      case LstmCellOperator::KERNEL_FULL:
-        // TODO(ycling): Change the full kernel to use the new variable tensor
-        // design. This requires moving the state tensors from output to input.
-        return std::vector<bool>();
+      case LstmCellOperator::KERNEL_FULL: {
+        mutating_input_variables[kInputActivationStateTensor] = true;
+        mutating_input_variables[kInputCellStateTensor] = true;
+        break;
+      }
       case LstmCellOperator::KERNEL_BASIC: {
-        std::vector<bool> mutating_input_variables(op.inputs.size(), false);
         mutating_input_variables[LstmCellOperator::PREV_ACTIV_INPUT] = true;
         mutating_input_variables[LstmCellOperator::PREV_STATE_INPUT] = true;
-        return mutating_input_variables;
+        break;
       }
     }
+    return mutating_input_variables;
   }
 };
 
