@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #include <algorithm>
 #include <list>
@@ -25,7 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
@@ -125,12 +126,10 @@ static std::vector<std::pair<int, int>> CreateSamePadding(
 
 string GetCommonNameScope(const string& op_name_a, const string& op_name_b) {
   size_t last_scope_separator = 0;
-  for (size_t i = 0; i < std::min(op_name_a.size(), op_name_b.size()); ++i) {
-    if (op_name_a[i] != op_name_b[i]) {
-      break;
-    } else if (op_name_a[i] == '/') {
-      last_scope_separator = i + 1;
-    }
+  const size_t min_size = std::min(op_name_a.size(), op_name_b.size());
+  for (size_t i = 0; i < min_size; ++i) {
+    if (op_name_a[i] != op_name_b[i]) break;
+    if (op_name_a[i] == '/') last_scope_separator = i + 1;
   }
   return op_name_a.substr(0, last_scope_separator);
 }
@@ -2144,10 +2143,14 @@ void Converter::register_op_converters() {
 
 }  // namespace
 
-tensorflow::Status ConvertSubgraphToEngine(
-    const tensorflow::GraphDef& gdef, nvinfer1::IBuilder* builder,
+tensorflow::Status ConvertSubGraphDefToEngine(
+    const tensorflow::GraphDef& gdef, int precision_mode,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
-    nvinfer1::ICudaEngine** engine, int precision_mode) {
+    nvinfer1::IBuilder* builder,
+    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
+    bool* convert_successfully) {
+  engine->reset();
+  if (convert_successfully) *convert_successfully = false;
   auto trt_network = infer_object(builder->createNetwork());
   if (!trt_network) {
     return tensorflow::errors::Internal(
@@ -2159,7 +2162,7 @@ tensorflow::Status ConvertSubgraphToEngine(
   VLOG(1) << "Starting engine conversion ";
   Converter converter(trt_network.get(), ws.get(), precision_mode == FP16MODE);
   std::vector<std::pair<string, string>> output_tensors;
-  // graph nodes are already topologically sorted during construction
+  // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
     VLOG(1) << "Converting op name=" << node_name << ", op=" << node_def.op();
@@ -2215,7 +2218,7 @@ tensorflow::Status ConvertSubgraphToEngine(
       }
     } else if (tensorflow::str_util::StartsWith(node_name, kOutputPHName) &&
                (node_def.op() == "Identity")) {
-      tensorflow::int32 slot_number = -1;
+      int32 slot_number = -1;
       if (!tensorflow::strings::safe_strto32(node_name.c_str() + 9,
                                              &slot_number)) {
         LOG(ERROR) << "Failed to parse slot number from " << node_name
@@ -2248,122 +2251,130 @@ tensorflow::Status ConvertSubgraphToEngine(
 
     converter.network()->markOutput(*tensor);
   }
+  if (convert_successfully) *convert_successfully = true;
+
+  // Build the engine.
   VLOG(1) << "Starting engine creation";
-  *engine = builder->buildCudaEngine(*converter.network());
+  engine->reset(builder->buildCudaEngine(*converter.network()));
+  if (engine->get() == nullptr) {
+    return tensorflow::errors::Internal("Failed to build TensorRT engine");
+  }
   VLOG(1) << "Finished conversion";
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertSegmentToGraphDef(
+tensorflow::Status ConvertSegmentToSubGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
-    const std::vector<int>& subgraph_node_ids,
-    std::vector<EngineConnections>* connections,
+    const std::vector<int>& subgraph_node_ids,  // In topological order
+    std::vector<EngineConnection>* connections,
     tensorflow::GraphDef* segment_def, string* common_scope) {
   std::set<string> marker_nodes;
+  // Update connection shapes/data types and add corresponding input/output
+  // nodes in the segment graphdef.
   for (size_t i = 0; i < connections->size(); ++i) {
     auto& connection = connections->at(i);
     auto outside_node = graph->FindNodeId(connection.outside_id);
-    if (outside_node) {
-      tensorflow::DataType input_type = tensorflow::DT_FLOAT;
-      tensorflow::PartialTensorShape partial_shape;
-      if (connection.is_input_edge) {
-        if (graph_properties.HasOutputProperties(
-                connection.outside_node_name)) {
-          auto output_params = graph_properties.GetOutputProperties(
-              connection.outside_node_name);
-          auto out_shape = output_params.at(connection.outside_port);
-          input_type = out_shape.dtype();
-          std::vector<tensorflow::int64> dims;
-          partial_shape = out_shape.shape();
-          connection.outside_shape = partial_shape;
-        } else {
-          VLOG(0) << "Unknown output shape" << outside_node->name();
-          input_type = graph->FindNodeId(connection.outside_id)
-                           ->output_type(connection.outside_port);
-        }
-        connection.connection_type = input_type;
-
-      } else {  // output edge
-        if (graph_properties.HasInputProperties(connection.outside_node_name)) {
-          auto input_params =
-              graph_properties.GetInputProperties(connection.outside_node_name);
-          auto in_shape = input_params.at(connection.outside_port);
-          input_type = in_shape.dtype();
-          partial_shape = in_shape.shape();
-          connection.inside_shape = partial_shape;
-        } else {
-          input_type = graph->FindNodeId(connection.inside_id)
-                           ->output_type(connection.outside_port);
-        }
-        connection.connection_type = input_type;
+    if (!outside_node) {
+      // TODO(aaroey): this should never happen, so make it a CHECK?
+      return tensorflow::errors::NotFound(
+          "Cannot find node with id ", connection.outside_id, " in the graph.");
+    }
+    // Updates the shape and data types of input/output connections.
+    tensorflow::DataType input_type = tensorflow::DT_FLOAT;
+    tensorflow::PartialTensorShape partial_shape;
+    if (connection.is_input_edge) {
+      if (graph_properties.HasOutputProperties(connection.outside_node_name)) {
+        auto output_params = graph_properties.GetOutputProperties(
+            connection.outside_node_name);
+        auto out_shape = output_params.at(connection.outside_port);
+        input_type = out_shape.dtype();
+        std::vector<tensorflow::int64> dims;
+        partial_shape = out_shape.shape();
+        connection.outside_shape = partial_shape;
+      } else {
+        VLOG(0) << "Unknown output shape" << outside_node->name();
+        input_type = graph->FindNodeId(connection.outside_id)
+                         ->output_type(connection.outside_port);
       }
+      connection.connection_type = input_type;
 
-      tensorflow::NodeDef dummy_placeholder;
-      string node_name;
-      if (connection.is_input_edge) {
-        StrAppend(&node_name, kInputPHName, connection.port_number);
-        if (marker_nodes.count(node_name)) {
-          VLOG(1) << "Reusing input " << node_name << " for the edge "
-                  << connection.outside_node_name << ":"
-                  << connection.outside_port << " -> "
-                  << connection.inside_node_name << ":"
-                  << connection.inside_port;
-          continue;
-        }
-        marker_nodes.insert(node_name);
-        auto seg_node = segment_def->add_node();
-        tensorflow::NodeDefBuilder dph_builder(node_name, "Placeholder");
-        auto status = dph_builder.Attr("shape", partial_shape)
-                          .Attr("dtype", input_type)
-                          .Finalize(seg_node);
-        VLOG(1) << "Constructing input " << node_name << " for the edge "
+    } else {  // output edge
+      if (graph_properties.HasInputProperties(connection.outside_node_name)) {
+        auto input_params =
+            graph_properties.GetInputProperties(connection.outside_node_name);
+        auto in_shape = input_params.at(connection.outside_port);
+        input_type = in_shape.dtype();
+        partial_shape = in_shape.shape();
+        connection.inside_shape = partial_shape;
+      } else {
+        input_type = graph->FindNodeId(connection.inside_id)
+                         ->output_type(connection.outside_port);
+      }
+      connection.connection_type = input_type;
+    }
+
+    // Add dummy input/output nodes to the segment graphdef.
+    if (connection.is_input_edge) {
+      const string node_name = StrCat(kInputPHName, connection.port_number);
+      if (marker_nodes.count(node_name)) {
+        VLOG(1) << "Reusing input " << node_name << " for the edge "
                 << connection.outside_node_name << ":"
                 << connection.outside_port << " -> "
-                << connection.inside_node_name << ":" << connection.inside_port;
-      } else {
-        StrAppend(&node_name, kOutputPHName, connection.port_number);
-        if (marker_nodes.count(node_name)) {
-          VLOG(1) << "Reusing output " << node_name << " for the edge "
-                  << connection.inside_node_name << ":"
-                  << connection.inside_port << " -> "
-                  << connection.outside_node_name << ":"
-                  << connection.outside_port;
-          continue;
-        }
-        marker_nodes.insert(node_name);
-        auto seg_node = segment_def->add_node();
-        tensorflow::NodeDefBuilder dph_builder(node_name, "Identity");
-        auto status =
-            dph_builder.Input(connection.inside_node_name, 0, input_type)
-                .Finalize(seg_node);
-        VLOG(1) << "Constructing output " << node_name << " for the edge "
-                << connection.inside_node_name << ":" << connection.inside_port
-                << " -> " << connection.outside_node_name << ":"
-                << connection.outside_port;
+                << connection.inside_node_name << ":"
+                << connection.inside_port;
+        continue;
       }
+      marker_nodes.insert(node_name);
+      auto seg_node = segment_def->add_node();
+      tensorflow::NodeDefBuilder builder(node_name, "Placeholder");
+      auto status = builder.Attr("shape", partial_shape)
+                        .Attr("dtype", input_type).Finalize(seg_node);
+      VLOG(1) << "Constructing input " << node_name << " for the edge "
+              << connection.outside_node_name << ":"
+              << connection.outside_port << " -> "
+              << connection.inside_node_name << ":" << connection.inside_port;
+    } else {
+      const string node_name = StrCat(kOutputPHName, connection.port_number);
+      if (marker_nodes.count(node_name)) {
+        VLOG(1) << "Reusing output " << node_name << " for the edge "
+                << connection.inside_node_name << ":"
+                << connection.inside_port << " -> "
+                << connection.outside_node_name << ":"
+                << connection.outside_port;
+        continue;
+      }
+      marker_nodes.insert(node_name);
+      auto seg_node = segment_def->add_node();
+      tensorflow::NodeDefBuilder builder(node_name, "Identity");
+      auto status = builder.Input(connection.inside_node_name, 0, input_type)
+                        .Finalize(seg_node);
+      VLOG(1) << "Constructing output " << node_name << " for the edge "
+              << connection.inside_node_name << ":" << connection.inside_port
+              << " -> " << connection.outside_node_name << ":"
+              << connection.outside_port;
     }
-  }
-  std::unordered_map<int, int> newIdMap;
-  // Copy nodes to new graphdef
+  }  // for each connection.
+
+  std::unordered_map<int, int> old_to_new_id_map;
+  // Copy internal nodes to new graphdef
   string local_scope = graph->FindNodeId(*subgraph_node_ids.begin())->name();
   for (const auto node_id : subgraph_node_ids) {
     const auto node = graph->FindNodeId(node_id);
     local_scope = GetCommonNameScope(local_scope, node->name());
-    if (node) {
-      newIdMap[node_id] = segment_def->node_size();
-      auto snode = segment_def->add_node();
-      snode->CopyFrom(node->def());
-      VLOG(1) << "Copying " << snode->name() << " to subgraph";
-    }
+    old_to_new_id_map[node_id] = segment_def->node_size();
+    auto snode = segment_def->add_node();
+    snode->CopyFrom(node->def());
+    VLOG(1) << "Copying " << snode->name() << " to subgraph";
   }
-  // update the inputs of the new nodes to point to dummy inputs
+  // Update the inputs of the new input nodes to point to placeholder nodes.
   for (int i = 0; i < connections->size(); ++i) {
     auto& connection = connections->at(i);
     if (!connection.is_input_edge) continue;
-    auto snode = segment_def->mutable_node(newIdMap[connection.inside_id]);
-    string placeholder_name(kInputPHName);
-    StrAppend(&placeholder_name, connection.port_number);
+    auto snode = segment_def->mutable_node(
+        old_to_new_id_map[connection.inside_id]);
+    const string placeholder_name =
+        StrCat(kInputPHName, connection.port_number);
     VLOG(1) << "Updating " << snode->name() << ":" << connection.inside_port
             << " from " << snode->input(connection.inside_port) << " to "
             << placeholder_name;
@@ -2373,6 +2384,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
   VLOG(0) << "Segment @scope '" << local_scope << "', converted to graph";
   return tensorflow::Status::OK();
 }
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

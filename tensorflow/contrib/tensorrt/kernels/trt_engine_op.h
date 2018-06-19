@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -33,7 +34,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-class Logger;
 class TRTInt8Calibrator;
 class TRTCalibrationResource;
 class AsyncHelper;
@@ -50,13 +50,6 @@ class TRTEngineOp : public AsyncOpKernel {
   ~TRTEngineOp();
 
  private:
-  template <typename T>
-  struct Destroyer {
-    void operator()(T* d) {
-      if (d) d->destroy();
-    }
-  };
-
   // Execute calibration
   void ExecuteCalibration(tensorflow::OpKernelContext* ctx,
                           AsyncHelper* helper);
@@ -74,11 +67,10 @@ class TRTEngineOp : public AsyncOpKernel {
       tensorflow::tensorrt::TRTCalibrationResource** cr);
 
   // TODO(samikama): context should go to a resource manager!
-  typedef std::pair<std::shared_ptr<nvinfer1::ICudaEngine>,
-                    std::shared_ptr<nvinfer1::IExecutionContext>>
+  typedef std::pair<TrtUniquePtrType<nvinfer1::ICudaEngine>,
+                    TrtUniquePtrType<nvinfer1::IExecutionContext>>
       EngineCtxPair;
-  EngineCtxPair GetEngine(int batch_size, OpKernelContext* ctx,
-                          bool ignore_dim_change = true);
+  EngineCtxPair& GetEngine(int batch_size, OpKernelContext* ctx);
 
   // Return engine batch closest to input batch.
   int GetEngineBatch(OpKernelContext* ctx);
@@ -89,32 +81,45 @@ class TRTEngineOp : public AsyncOpKernel {
   std::unordered_map<int, EngineCtxPair> engine_map_;
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
+
   // keep device allocator for TRT.
-  std::unordered_map<string, std::shared_ptr<TRTDeviceAllocator>> allocators_;
+  std::unique_ptr<TRTDeviceAllocator> allocator_;
+
   // serialized protobuf segment or trt engine depending on static_engine_ flag.
   string serialized_segment_;
+
   // Name of the function for TF native execution of the segment.
   string funcdef_name_;
+
   // GraphDef representation of the segment.
   tensorflow::GraphDef segment_graph_;
+
   // Lookup table for temporary staging areas of input tensors for calibration.
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
+
   // Temporary staging areas for calibration inputs.
   std::vector<tensorflow::PersistentTensor> dev_tensors_;
+
   // Engine Precision mode.
   int precision_mode_;
+
   // Whether engine is constructed during the conversion or needs to be
   // constructed from protobuf segment.
   bool static_engine_;
+
   // Whether to calibrate INT8 engine.
   bool calibration_mode_;
+
   // Whether non-batch ranks of the inputs are assumed to be fixed or not for
-  // engine construction
+  // engine construction.
   bool fixed_input_size_;
+
   // Batches of the cached engines
   std::vector<int> cached_engine_batches_;
+
   // Maximum number of cached engines
   int max_cached_engines_;
+
   tensorflow::int64 workspace_size_;
   tensorflow::mutex engine_mutex_;
   tensorflow::FunctionLibraryRuntime::Handle native_func_;
