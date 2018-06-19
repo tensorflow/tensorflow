@@ -28,7 +28,6 @@ else()
 option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" ON)
 endif()
 
-option(tensorflow_ENABLE_GCS_SUPPORT "Enable GCS support" OFF)
 option(tensorflow_ENABLE_GRPC_SUPPORT "Enable gRPC support" ON)
 option(tensorflow_ENABLE_HDFS_SUPPORT "Enable HDFS support" OFF)
 option(tensorflow_ENABLE_JEMALLOC_SUPPORT "Enable jemalloc support" OFF)
