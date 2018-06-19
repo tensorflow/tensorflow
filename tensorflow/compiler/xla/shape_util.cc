@@ -380,6 +380,13 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return shape.tuple_shapes(index);
 }
 
+/* static */ int64 ShapeUtil::SubshapeCount(const Shape& shape) {
+  int64 n = 0;
+  ForEachSubshape(shape, [&](const Shape& literal_subshape,
+                             const ShapeIndex& index) { ++n; });
+  return n;
+}
+
 /* static */ Shape ShapeUtil::SliceTuple(const Shape& tuple, int64 start,
                                          int64 limit) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(tuple));
@@ -421,7 +428,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
   return shape.element_type() == F32 && Rank(shape) == 0;
 }
-
 
 namespace {
 

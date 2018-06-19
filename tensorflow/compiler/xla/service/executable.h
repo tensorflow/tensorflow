@@ -88,8 +88,7 @@ class Executable {
   // called explicitly for other (async, for example) variants after the stream
   // has completed.
   virtual Status PopulateExecutionProfile(
-      HloExecutionProfile* hlo_execution_profile,
-      se::StreamExecutor* executor) {
+      HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
     return Status::OK();
   }
 

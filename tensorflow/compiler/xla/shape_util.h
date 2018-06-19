@@ -457,6 +457,9 @@ class ShapeUtil {
   // Precondition: IsTuple(shape) && TupleElementCount(shape) > index
   static const Shape& GetTupleElementShape(const Shape& shape, int64 index);
 
+  // Returns the number of elements, recursively, in the given shape.
+  static int64 SubshapeCount(const Shape& shape);
+
   // Slices tuple elements in the range [start, limit) and returns a new tuple
   // shape. E.g. a tuple like (f32, s32, u32) would slice via 1,3 to (s32, u32).
   static Shape SliceTuple(const Shape& tuple, int64 start, int64 limit);

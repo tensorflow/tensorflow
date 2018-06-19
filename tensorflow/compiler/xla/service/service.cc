@@ -64,25 +64,25 @@ namespace {
 // Records the arguments used to invoke a computation in an HloSnapshot proto.
 Status RecordArguments(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    se::StreamExecutor* executor, TransferManager* transfer_manager,
+    se::Stream* stream, TransferManager* transfer_manager,
     HloSnapshot* module) {
   module->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Literal> literal,
-        transfer_manager->TransferLiteralFromDevice(executor, *argument));
+        transfer_manager->TransferLiteralFromDevice(stream, *argument));
     *module->add_arguments() = literal->ToProto();
   }
   return Status::OK();
 }
 
 // Records the result of a computation in a HloSnapshot proto.
-Status RecordResult(const ShapedBuffer& result, se::StreamExecutor* executor,
+Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
                     TransferManager* transfer_manager, HloSnapshot* module) {
   module->clear_result();
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Literal> literal,
-      transfer_manager->TransferLiteralFromDevice(executor, result));
+      transfer_manager->TransferLiteralFromDevice(stream, result));
   *module->mutable_result() = literal->ToProto();
   return Status::OK();
 }
@@ -496,7 +496,7 @@ Service::ExecuteParallelAndRegisterResult(
     HloExecutionProfile hlo_profile(&executable->hlo_profile_printer_data(),
                                     &executable->hlo_profile_index_map());
     TF_RETURN_IF_ERROR(
-        executable->PopulateExecutionProfile(&hlo_profile, stream->parent()));
+        executable->PopulateExecutionProfile(&hlo_profile, stream));
     XLA_LOG_LINES(
         tensorflow::INFO,
         hlo_profile.ToString(streams[0]->parent()->GetDeviceDescription()));
@@ -721,8 +721,10 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
 
   for (int i = 0; i < executable_ptrs.size(); i++) {
     if (executable_ptrs[i]->dumping_snapshot()) {
-      TF_RETURN_IF_ERROR(RecordArguments(all_arguments[i].front(),
-                                         all_executors[i][0],
+      TF_ASSIGN_OR_RETURN(auto stream,
+                          execute_backend_->BorrowStream(
+                              all_executors[i][0]->device_ordinal()));
+      TF_RETURN_IF_ERROR(RecordArguments(all_arguments[i].front(), stream.get(),
                                          execute_backend_->transfer_manager(),
                                          executable_ptrs[i]->hlo_snapshot()));
     }
@@ -747,7 +749,9 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     if (executable_ptrs[i]->dumping_snapshot()) {
       TF_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
                           allocation_tracker_.ResolveForReplica(outputs[i], 0));
-      TF_RETURN_IF_ERROR(RecordResult(*result_buffer, all_executors[i][0],
+      TF_ASSIGN_OR_RETURN(auto stream,
+                          execute_backend_->BorrowStream(all_executors[i][0]));
+      TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
                                       execute_backend_->transfer_manager(),
                                       executable_ptrs[i]->hlo_snapshot()));
       // Dump out the ith snapshot.
@@ -895,12 +899,14 @@ Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
                       execute_backend_->default_stream_executor(),
                       /*device_allocator=*/nullptr));
 
+  TF_ASSIGN_OR_RETURN(auto stream,
+                      execute_backend_->BorrowStream(
+                          execute_backend_->default_stream_executor()));
   if (executable->dumping_snapshot()) {
     executable->hlo_snapshot()->set_execution_platform(
         execute_backend_->platform()->Name());
     TF_RETURN_IF_ERROR(RecordArguments(
-        replicated_arguments.front(),
-        execute_backend_->default_stream_executor(),
+        replicated_arguments.front(), stream.get(),
         execute_backend_->transfer_manager(), executable->hlo_snapshot()));
   }
 
@@ -914,9 +920,9 @@ Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
     TF_ASSIGN_OR_RETURN(
         const ShapedBuffer* result_buffer,
         allocation_tracker_.ResolveForReplica(result->output(), 0));
-    TF_RETURN_IF_ERROR(RecordResult(
-        *result_buffer, execute_backend_->default_stream_executor(),
-        execute_backend_->transfer_manager(), executable->hlo_snapshot()));
+    TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
+                                    execute_backend_->transfer_manager(),
+                                    executable->hlo_snapshot()));
     TF_RETURN_IF_ERROR(executable->DumpHloSnapshot());
   }
 
@@ -954,14 +960,13 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
     return_shape = &shaped_buffer->on_host_shape();
   }
 
-  TF_ASSIGN_OR_RETURN(
-      se::StreamExecutor * executor,
-      execute_backend_->stream_executor(shaped_buffer->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
+                                       shaped_buffer->device_ordinal()));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Literal> result_literal,
       execute_backend_->transfer_manager()->TransferLiteralFromDevice(
-          executor, *shaped_buffer));
+          stream.get(), *shaped_buffer));
 
   if (LayoutUtil::LayoutsInShapesEqual(*return_shape,
                                        result_literal->shape())) {
@@ -1011,9 +1016,10 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
         execute_backend_->transfer_manager()->AllocateScopedShapedBuffer(
             shape, execute_backend_->memory_allocator(),
             executor->device_ordinal()));
+    TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(executor));
     TF_RETURN_IF_ERROR(
         execute_backend_->transfer_manager()->TransferLiteralToDevice(
-            executor, *literal, shaped_buffer));
+            stream.get(), *literal, shaped_buffer));
     replicated_buffers.emplace_back(std::move(shaped_buffer));
   }
   TF_ASSIGN_OR_RETURN(*result->mutable_data(),

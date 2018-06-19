@@ -230,10 +230,9 @@ Status LocalExecutable::RecordResult(const ShapedBuffer* result,
 
 StatusOr<std::unique_ptr<Literal>> LocalExecutable::LiteralFromShapedBuffer(
     const ShapedBuffer& shaped_buffer) {
-  TF_ASSIGN_OR_RETURN(
-      se::StreamExecutor * executor,
-      backend_->stream_executor(shaped_buffer.device_ordinal()));
-  return backend_->transfer_manager()->TransferLiteralFromDevice(executor,
+  TF_ASSIGN_OR_RETURN(auto stream,
+                      backend_->BorrowStream(shaped_buffer.device_ordinal()));
+  return backend_->transfer_manager()->TransferLiteralFromDevice(stream.get(),
                                                                  shaped_buffer);
 }
 
@@ -288,19 +287,18 @@ StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
   TF_ASSIGN_OR_RETURN(auto scoped_buffer,
                       backend().transfer_manager()->AllocateScopedShapedBuffer(
                           literal.shape(), allocator, device_ordinal));
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                      backend().stream_executor(device_ordinal));
+  TF_ASSIGN_OR_RETURN(auto stream,
+                      mutable_backend()->BorrowStream(device_ordinal));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-      executor, literal, scoped_buffer));
+      stream.get(), literal, scoped_buffer));
   return std::move(scoped_buffer);
 }
 
 StatusOr<std::unique_ptr<Literal>> LocalClient::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
-  TF_ASSIGN_OR_RETURN(
-      se::StreamExecutor * executor,
-      backend().stream_executor(shaped_buffer.device_ordinal()));
-  return backend().transfer_manager()->TransferLiteralFromDevice(executor,
+  TF_ASSIGN_OR_RETURN(auto stream, mutable_backend()->BorrowStream(
+                                       shaped_buffer.device_ordinal()));
+  return backend().transfer_manager()->TransferLiteralFromDevice(stream.get(),
                                                                  shaped_buffer);
 }
 
