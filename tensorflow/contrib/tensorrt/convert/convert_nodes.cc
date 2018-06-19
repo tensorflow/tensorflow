@@ -420,20 +420,6 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   }
 }
 
-struct InferDeleter {
-  template <typename T>
-  void operator()(T* obj) const {
-    if (obj) {
-      obj->destroy();
-    }
-  }
-};
-
-template <typename T>
-inline std::shared_ptr<T> infer_object(T* obj) {
-  return std::shared_ptr<T>(obj, InferDeleter());
-}
-
 class Converter;
 
 using OpConverter =
@@ -2151,7 +2137,8 @@ tensorflow::Status ConvertSubGraphDefToEngine(
     bool* convert_successfully) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
-  auto trt_network = infer_object(builder->createNetwork());
+  auto trt_network =
+      TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetwork());
   if (!trt_network) {
     return tensorflow::errors::Internal(
         "Failed to create TensorRT network object");
@@ -2207,6 +2194,7 @@ tensorflow::Status ConvertSubGraphDefToEngine(
       nvinfer1::ITensor* input_tensor = converter.network()->addInput(
           node_name.c_str(), dtype, input_dim_pseudo_chw);
       if (!input_tensor) {
+        // TODO(aaroey): remove StrCat when constructing errors.
         return tensorflow::errors::InvalidArgument(
             StrCat("Failed to create Input layer tensor ", node_name,
                    " rank=", shape.dims() - 1));

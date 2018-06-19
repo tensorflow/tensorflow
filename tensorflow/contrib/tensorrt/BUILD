@@ -87,6 +87,7 @@ cc_library(
         ":trt_plugins",
         ":trt_resources",
         ":trt_conversion",
+        ":utils",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor_headers_lib",
@@ -94,7 +95,7 @@ cc_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),
-    # TODO(laigd)
+    # TODO(laigd): fix this by merging header file in cc file.
     alwayslink = 1,  # buildozer: disable=alwayslink-with-hdrs
 )
 
@@ -232,6 +233,7 @@ tf_cuda_library(
         ":trt_plugins",
         ":trt_logging",
         ":trt_resources",
+        ":utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
@@ -336,4 +338,9 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+)
+
+cc_library(
+    name = "utils",
+    hdrs = ["convert/utils.h"],
 )
