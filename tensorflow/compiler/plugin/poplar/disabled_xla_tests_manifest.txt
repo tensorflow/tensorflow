@@ -247,3 +247,5 @@ ReduceTest.ReduceR1_16M_F32_To_R0 POPLAR
 ReduceTest.ReduceR2_1000x1500_To_R0 POPLAR
 ReduceTest.ReduceR2_1024x1024_To_R0 POPLAR
 ReduceR3ToR2Test.ReduceR3ToR2 POPLAR
+
+TokenHloTest.TokenInWhileLoop POPLAR // Don't do tokens

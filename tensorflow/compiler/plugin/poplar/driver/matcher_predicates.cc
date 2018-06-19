@@ -39,16 +39,16 @@ bool IsRandomUniform(const HloInstruction *inst, const CompilerAnnotations &) {
 }
 
 bool IsConstantZero(const HloInstruction *inst, const CompilerAnnotations &) {
-  return !ShapeUtil::HasZeroElements(inst->shape()) && inst->literal().IsAll(0);
+  return !ShapeUtil::IsZeroElementArray(inst->shape()) && inst->literal().IsAll(0);
 }
 
 bool IsConstantHalf(const HloInstruction *inst, const CompilerAnnotations &) {
-  return !ShapeUtil::HasZeroElements(inst->shape()) &&
+  return !ShapeUtil::IsZeroElementArray(inst->shape()) &&
          inst->literal().IsAllFloat(0.5);
 }
 
 bool IsConstantOne(const HloInstruction *inst, const CompilerAnnotations &) {
-  return !ShapeUtil::HasZeroElements(inst->shape()) &&
+  return !ShapeUtil::IsZeroElementArray(inst->shape()) &&
          inst->literal().IsAllFloat(1.0);
 }
 

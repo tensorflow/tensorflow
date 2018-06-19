@@ -216,7 +216,7 @@ StatusOr<poplar::program::Program> CreateSimpleReduction(
   poplar::program::Sequence seq;
   poplar::Tensor out;
 
-  if (ShapeUtil::HasZeroElements(inst->operand(0)->shape())) {
+  if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 1));
     TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
@@ -266,7 +266,7 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
   poplar::program::Sequence seq;
   poplar::Tensor out;
 
-  if (ShapeUtil::HasZeroElements(inst->operand(0)->shape())) {
+  if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 1));
     TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
@@ -370,7 +370,7 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
   poplar::program::Sequence prog;
   poplar::Tensor out;
 
-  if (ShapeUtil::HasZeroElements(inst->operand(0)->shape())) {
+  if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 1));
     TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
@@ -663,7 +663,7 @@ StatusOr<poplar::program::Program> CreateReductionNoConvert(
     LOG(FATAL) << "Unsupported Op for Reduction init value";
   }
 
-  if (ShapeUtil::HasZeroElements(reduction_in->shape())) {
+  if (ShapeUtil::IsZeroElementArray(reduction_in->shape())) {
     TF_ASSIGN_OR_RETURN(out, BroadcastTensor(init_val, output_shape, {}));
   } else {
     // Find the input tensor in the map for the *inst* argument
