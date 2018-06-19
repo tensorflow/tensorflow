@@ -149,9 +149,21 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_IPU, XlaIpuDeviceFactory);
 // Kernel registrations
 
 static bool OpFilter(KernelDef* kdef) {
-  // TODO - probably remove int32/bool for some set of operators
-  // (or keep them for some given set)
+
+  if (kdef->op() == "Angle") return false;
+  if (kdef->op() == "Complex") return false;
+  if (kdef->op() == "ComplexAbs") return false;
+  if (kdef->op() == "Conj") return false;
+  if (kdef->op() == "FFT") return false;
+  if (kdef->op() == "FFT2D") return false;
+  if (kdef->op() == "FFT3D") return false;
+  if (kdef->op() == "IFFT") return false;
+  if (kdef->op() == "IFFT2D") return false;
+  if (kdef->op() == "IFFT3D") return false;
+  if (kdef->op() == "Imag") return false;
   if (kdef->op() == "MaxPoolGradGrad") return false;
+  if (kdef->op() == "Real") return false;
+
   return true;
 }
 
