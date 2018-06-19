@@ -83,7 +83,7 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
   MK_OPT("layout", new LayoutOptimizer());
-  MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
+  MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL, gpu_options_.per_process_gpu_memory_fraction()));
   MK_OPT("arithmetic", new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
   MK_OPT("autoparallel", new AutoParallel(cfg_.auto_parallel().num_replicas()));
   MK_OPT("loop", new LoopOptimizer(cfg_.loop_optimization()));
@@ -134,13 +134,14 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->emplace_back(new LayoutOptimizer());
   }
   if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
+    double mem_fraction = gpu_options_.per_process_gpu_memory_fraction();
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
       optimizers->emplace_back(
           // Use the default target node name prefix "gradients/"
-          new MemoryOptimizer(cfg_.memory_optimization()));
+          new MemoryOptimizer(cfg_.memory_optimization(), mem_fraction));
     } else {
       optimizers->emplace_back(
-          new MemoryOptimizer(cfg_.memory_optimization(),
+          new MemoryOptimizer(cfg_.memory_optimization(), mem_fraction,
                               cfg_.memory_optimizer_target_node_name_scope()));
     }
   }
@@ -412,8 +413,9 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
                         DeviceBase* cpu_device, Cluster* cluster,
-                        GraphDef* optimized_graph) {
-  MetaOptimizer optimizer(cpu_device, cfg);
+                        GraphDef* optimized_graph,
+                        const GPUOptions& gpu_options) {
+  MetaOptimizer optimizer(cpu_device, cfg, gpu_options);
   return optimizer.Optimize(cluster, item, optimized_graph);
 }
 
