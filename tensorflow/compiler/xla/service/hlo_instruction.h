@@ -954,12 +954,6 @@ class HloInstruction {
   HloInstruction* tracing() const;
   void set_tracing(HloInstruction* trace_instruction);
 
-  // Returns the channel name associated with the instruction. The name is
-  // used to identify host Send/Recv operations.
-  //
-  // Precondition: opcode() == HloOpcode::kHostCompute
-  string channel_name() const { return channel_name_; }
-
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
   bool IsFused() const;
@@ -1037,27 +1031,6 @@ class HloInstruction {
   void SetCopyElisionAllowed(bool value) {
     CHECK_EQ(HloOpcode::kCopy, opcode_);
     copy_elision_allowed_ = value;
-  }
-
-  // Returns the size of the slice in the given dimension for a dynamic
-  // slice node.
-  //
-  // Precondition: opcode() == HloOpcode::kDynamicSlice
-  int64 slice_sizes(int64 dimension) const {
-    CHECK_EQ(HloOpcode::kDynamicSlice, opcode_);
-    return dynamic_slice_sizes_[dimension];
-  }
-  const std::vector<int64>& dynamic_slice_sizes() const {
-    CHECK_EQ(HloOpcode::kDynamicSlice, opcode_);
-    return dynamic_slice_sizes_;
-  }
-
-  // Returns the padding configuration for a pad node.
-  //
-  // Precondition: opcode() == HloOpcode::kPad
-  const PaddingConfig& padding_config() const {
-    CHECK(padding_config_ != nullptr);
-    return *padding_config_;
   }
 
   // Returns data on the dimension numbers used for a dot operation.
@@ -1436,6 +1409,18 @@ class HloInstruction {
 
   // Delegates to HloCustomCallInstruction::custom_call_target.
   const string& custom_call_target() const;
+
+  // Delegates to HloHostComputeInstruction::channel_name.
+  const string& channel_name() const;
+
+  // Delegates to HloPadInstruction::padding_config.
+  const PaddingConfig& padding_config() const;
+
+  // Delegates to HloDynamicSliceInstruction::slice_sizes.
+  int64 slice_sizes(int64 dimension) const;
+
+  // Delegates to HloDynamicSliceInstruction::dynamic_slice_sizes.
+  const std::vector<int64>& dynamic_slice_sizes() const;
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1581,26 +1566,12 @@ class HloInstruction {
   // Used to tag kCopy instructions that are eligible for copy elision.
   bool copy_elision_allowed_ = true;
 
-  // Describes the [start, start + size) range size for a dynamic slice
-  // ('start' is specified dynamically in the second operand of the operation).
-  std::vector<int64> dynamic_slice_sizes_;
-
-  // The padding configuration that describes the edge padding and interior
-  // padding of this pad instruction. Only set for pad instructions.
-  std::unique_ptr<PaddingConfig> padding_config_;
-
   // The sharding, if one exists.
   std::unique_ptr<HloSharding> sharding_;
 
   // Fields used by the kDomain instruction.
   std::unique_ptr<DomainMetadata> operand_side_metadata_;
   std::unique_ptr<DomainMetadata> user_side_metadata_;
-
-  // Name to use for host send/recv channels, only present for kHostCompute.
-  string channel_name_;
-
-  // Estimate of the duration of a host computation in nanoseconds.
-  int64 cost_estimate_ns_ = 0;
 
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;

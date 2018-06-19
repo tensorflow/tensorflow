@@ -1004,6 +1004,96 @@ class HloCustomCallInstruction : public HloInstruction {
   std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
 };
 
+class HloHostComputeInstruction : public HloInstruction {
+ public:
+  explicit HloHostComputeInstruction(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      tensorflow::StringPiece channel_name, const int64 cost_estimate_ns);
+  // Returns the channel name associated with the instruction. The name is
+  // used to identify host Send/Recv operations.
+  const string& channel_name() const { return channel_name_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+  // Name to use for host send/recv channels.
+  string channel_name_;
+  // Estimate of the duration of a host computation in nanoseconds.
+  int64 cost_estimate_ns_ = 0;
+};
+
+class HloPadInstruction : public HloInstruction {
+ public:
+  explicit HloPadInstruction(const Shape& shape, HloInstruction* operand,
+                             HloInstruction* padding_value,
+                             const PaddingConfig& padding_config);
+  // Returns the padding configuration for a pad node.
+  const PaddingConfig& padding_config() const { return padding_config_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // The padding configuration that describes the edge padding and interior
+  // padding of this pad instruction.
+  PaddingConfig padding_config_;
+};
+
+class HloDynamicSliceInstruction : public HloInstruction {
+ public:
+  explicit HloDynamicSliceInstruction(
+      const Shape& shape, HloInstruction* operand,
+      HloInstruction* start_indices,
+      tensorflow::gtl::ArraySlice<int64> slice_sizes);
+  // Old methods kept for smooth subclassing transition END.
+  // Returns the size of the slice in the given dimension for a dynamic
+  // slice node.
+  int64 slice_sizes(int64 dimension) const {
+    return dynamic_slice_sizes_[dimension];
+  }
+  const std::vector<int64>& dynamic_slice_sizes() const {
+    return dynamic_slice_sizes_;
+  }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // Describes the [start, start + size) range size for a dynamic slice
+  // ('start' is specified dynamically in the second operand of the operation).
+  std::vector<int64> dynamic_slice_sizes_;
+};
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_

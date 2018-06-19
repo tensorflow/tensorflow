@@ -1690,4 +1690,117 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   }
   return std::move(cloned);
 }
+
+HloHostComputeInstruction::HloHostComputeInstruction(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    tensorflow::StringPiece channel_name, const int64 cost_estimate_ns)
+    : HloInstruction(HloOpcode::kHostCompute, shape),
+      channel_name_(channel_name.begin(), channel_name.end()),
+      cost_estimate_ns_(cost_estimate_ns) {
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+}
+
+HloInstructionProto HloHostComputeInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_channel_name(channel_name_);
+  proto.set_cost_estimate_ns(cost_estimate_ns_);
+  return proto;
+}
+
+bool HloHostComputeInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  // Not yet supported.
+  return false;
+}
+
+std::unique_ptr<HloInstruction>
+HloHostComputeInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  return MakeUnique<HloHostComputeInstruction>(
+      shape, new_operands, channel_name_, cost_estimate_ns_);
+}
+
+HloPadInstruction::HloPadInstruction(const Shape& shape,
+                                     HloInstruction* operand,
+                                     HloInstruction* padding_value,
+                                     const PaddingConfig& padding_config)
+    : HloInstruction(HloOpcode::kPad, shape), padding_config_(padding_config) {
+  AppendOperand(operand);
+  AppendOperand(padding_value);
+}
+
+HloInstructionProto HloPadInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_padding_config() = padding_config_;
+  return proto;
+}
+
+std::vector<string> HloPadInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("padding=", xla::PaddingConfigToString(padding_config_))};
+}
+
+bool HloPadInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloPadInstruction&>(other);
+  return protobuf_util::ProtobufEquals(padding_config(),
+                                       casted_other.padding_config());
+}
+
+std::unique_ptr<HloInstruction> HloPadInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return MakeUnique<HloPadInstruction>(shape, new_operands[0], new_operands[1],
+                                       padding_config_);
+}
+
+HloDynamicSliceInstruction::HloDynamicSliceInstruction(
+    const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
+    tensorflow::gtl::ArraySlice<int64> slice_sizes)
+    : HloInstruction(HloOpcode::kDynamicSlice, shape),
+      dynamic_slice_sizes_(slice_sizes.begin(), slice_sizes.end()) {
+  AppendOperand(operand);
+  AppendOperand(start_indices);
+}
+
+HloInstructionProto HloDynamicSliceInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  for (int64 slice_size : dynamic_slice_sizes_) {
+    proto.add_dynamic_slice_sizes(slice_size);
+  }
+  return proto;
+}
+
+std::vector<string> HloDynamicSliceInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {
+      StrCat("dynamic_slice_sizes={", Join(dynamic_slice_sizes(), ","), "}")};
+}
+
+bool HloDynamicSliceInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  return true;
+}
+
+std::unique_ptr<HloInstruction>
+HloDynamicSliceInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return MakeUnique<HloDynamicSliceInstruction>(
+      shape, new_operands[0], new_operands[1], dynamic_slice_sizes_);
+}
 }  // namespace xla
