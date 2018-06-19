@@ -629,7 +629,8 @@ bool HasOpDef(const NodeDef& node) {
 }
 
 bool IsIdempotent(const NodeDef& node) {
-  return IsValueAndOrderAndShapePreserving(node) && IsFreeOfSideEffect(node);
+  return IsValueAndOrderAndShapePreserving(node) && IsFreeOfSideEffect(node) &&
+         !ModifiesFrameInfo(node);
 }
 
 }  // namespace grappler

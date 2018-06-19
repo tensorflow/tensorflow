@@ -1722,19 +1722,15 @@ class RemoveIdempotentStage : public ArithmeticOptimizerStage {
   ~RemoveIdempotentStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsIdempotent(*node) && !IsInPreserveSet(*node);
+    return node->input_size() == 1 && IsIdempotent(*node) &&
+           !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     NodeDef* input;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
-    auto root_scope_and_name = ParseNodeScopeAndName(node->name());
-    const string new_name = OptimizedNodeName(root_scope_and_name);
-    if (input->op() == node->op() && input->device() == node->device() &&
-        IsIdempotent(*input) && !ctx().node_map->NodeExists(new_name)) {
-      NodeDef* new_input_node = AddCopyNode(new_name, input);
-      ForwardControlDependencies(new_input_node, {node});
-      *simplified_node_name = new_input_node->name();
+    if (input->op() == node->op() && input->device() == node->device()) {
+      *simplified_node_name = node->input(0);
     }
     return Status::OK();
   }
