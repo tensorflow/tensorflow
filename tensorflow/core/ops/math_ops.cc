@@ -489,6 +489,13 @@ REGISTER_OP("Igamma")
     .Attr("T: {float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
+REGISTER_OP("IgammaGradA")
+    .Input("a: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
 REGISTER_OP("Zeta")
     .Input("x: T")
     .Input("q: T")
