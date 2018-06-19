@@ -20,7 +20,7 @@ END
   summary: "Computes the matrix logarithm of one or more square matrices:"
   description: <<END
 
-\\\\(log(exp(A)) = A\\\\)
+\\(log(exp(A)) = A\\)
 
 This op is only defined for complex matrices. If A is positive-definite and
 real, then casting to a complex matrix, taking the logarithm and casting back
