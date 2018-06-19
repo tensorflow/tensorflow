@@ -236,6 +236,7 @@ def auto(multi_engine):
     orig_graph = get_simple_graph_def()  # use a frozen graph for inference
   dummy_input = np.random.random_sample(inp_dims)
   opt_config = rwpb2.RewriterConfig()
+  opt_config.meta_optimizer_iterations=opt_config.ONE
   opt_config.optimizers.extend(["constfold", "layout"])
   custom_op = opt_config.custom_optimizers.add()
   custom_op.name = "TensorRTOptimizer"

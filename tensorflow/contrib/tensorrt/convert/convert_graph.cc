@@ -479,7 +479,7 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     node_builder.Device(info.device);
   }
   if (VLOG_IS_ON(1)) {
-    string ins(info.engine_name);
+    string ins=StrCat(info.engine_name," inputs= ");
     for (const auto& ii : inputs) {
       StrAppend(&ins, ii.node, ":", ii.index, " ");
     }
@@ -623,6 +623,7 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     VLOG(7) << name << " Function_Def ";
     VLOG(7) << native_segment->DebugString();
   }
+  VLOG(1)<<"Adding funcdef to graphlib";
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdeflib));
   return tensorflow::Status::OK();
 }
@@ -813,6 +814,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   cudaSetDevice(old_cuda_device);
   graph.ToGraphDef(params.output_graph_def);
   for (auto tn : trt_nodes) delete tn;
+  VLOG(1)<<"Returning from conversion";
   return tensorflow::Status::OK();
 }
 
