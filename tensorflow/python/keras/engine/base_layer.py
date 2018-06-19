@@ -89,11 +89,19 @@ class Layer(checkpointable.CheckpointableBase):
     once. Should actually perform the logic of applying the layer to the
     input tensors (which should be passed in as the first argument).
 
-  By default, layers will cast all their inputs and arguments to the layer's
-  dtype, if set. This is useful for creating a model with multiple dtypes, as
-  the user does not need to explicitly cast tensors. If a `Layer` descendant
-  wants only a subset of inputs/arguments to be casted, or none of them,
-  `_cast_inputs_and_args()` should be overridden.
+  A note on a layer's `dtype` property:
+  A layer's dtype can be specified via the constructor `dtype` argument, and
+  defaults to the dtype of the first input when the layer is called. The dtype
+  cannot be changed once set.
+
+  All floating point tensor inputs and arguments are casted to the layer's
+  dtype, before the body of the layer computation happens. For models with
+  layers of different dtypes, this helps getting rid of the explicit casts
+  between layers.
+
+  The casting behavior can be customized in subclasses by overridding
+  `_cast_inputs_and_args()` function, which is useful if certain or all inputs
+  should not be casted.
 
   Arguments:
     trainable: Boolean, whether the layer's variables should be trainable.
@@ -675,10 +683,9 @@ class Layer(checkpointable.CheckpointableBase):
         kwargs['mask'] = previous_mask
 
     input_shapes = None
-    # We only cast inputs if self.dtype was previous set, which occurs when
-    # a dtype was passed to the constructor, or when this layer has previously
-    # been called. We cast floating point inputs to self.dtype to ensure the
-    # layer runs with the correct dtype.
+    # Inputs are only casted if a dtype is pased in the constructor, or if a
+    # layer's __call__() has been previously invoked. At present, only floating
+    # point tensor inputs are affected.
     # TODO(b/77478433): Perhaps we should only cast inputs if a dtype was passed
     # to the constructor, not when the layer has previously been called.
     inputs_should_be_cast = (self.dtype is not None)
@@ -810,10 +817,13 @@ class Layer(checkpointable.CheckpointableBase):
   def _cast_inputs_and_args(self, inputs, *args, **kwargs):
     """Casts the inputs, args, and kwargs of a layer to the layer's dtype.
 
-    This is intended to be potentially overridden by layer subclasses. By
-    default, inputs, args, and kwargs are automatically casted to the layer's
-    dtype. Overriding this method allows only some of the inputs, args, and
-    kwargs (or none of them) to be casted.
+    This is intended to be potentially overridden by subclasses. By default,
+    inputs, args, and kwargs are automatically casted to the layer's dtype.
+    Overriding this method allows only some of the parameters to be treated
+    differently.
+
+    Currently, this only casts floating point tensors to floating point dtypes,
+    but more types may be casted in the future.
 
     Does not modify inputs, args, or kwargs.
 
@@ -823,7 +833,7 @@ class Layer(checkpointable.CheckpointableBase):
       **kwargs: The kwargs to self.__call__.
 
     Returns:
-      The tuple (new_inputs, new_args, new_kwargs), where tensors in inputs,
+      A tuple (new_inputs, new_args, new_kwargs), where tensors in inputs,
       args, and kwargs have been casted to self.dtype.
     """
     new_inputs = nest.map_structure(self._cast_fn, inputs)

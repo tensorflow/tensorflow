@@ -1057,24 +1057,30 @@ class TopologyConstructionTest(test.TestCase):
       def compute_output_shape(self, input_shapes):
         return input_shapes[0]
 
-    x = keras.layers.Input((32,), dtype='float64')
-    layer1 = SingleInputLayer()
-    layer2 = SingleInputLayer(dtype='float32')
-    layer3 = MultiInputLayer(dtype='float16')
-    i1 = layer1(x)
-    i2 = layer2(i1)
-    y = layer3((i1, i2))
-    network = keras.engine.Network(x, y)
-    x2 = array_ops.ones((32,), dtype='float16')
-    y2 = network(x2)
-    self.assertEqual(layer1.dtype, dtypes.float64)
-    self.assertEqual(layer1.a.dtype, dtypes.float64)
-    self.assertEqual(layer2.dtype, dtypes.float32)
-    self.assertEqual(layer2.a.dtype, dtypes.float32)
-    self.assertEqual(layer3.dtype, dtypes.float16)
-    self.assertEqual(layer3.a.dtype, dtypes.float16)
-    self.assertEqual(layer3.b.dtype, dtypes.float16)
-    self.assertEqual(y2.dtype, dtypes.float16)
+    default_layer = SingleInputLayer()
+    fp32_layer = SingleInputLayer(dtype='float32')
+    fp16_layer = MultiInputLayer(dtype='float16')
+
+    input_t = keras.layers.Input((32,), dtype='float64')
+    o1 = default_layer(input_t)
+    o2 = fp32_layer(o1)
+    # fp16_layer has inputs of different dtypes.
+    output_t = fp16_layer((o1, o2))
+    network = keras.engine.Network(input_t, output_t)
+
+    x = array_ops.ones((32,), dtype='float16')
+    y = network(x)
+    self.assertEqual(default_layer.dtype, dtypes.float64)
+    self.assertEqual(default_layer.a.dtype, dtypes.float64)
+
+    self.assertEqual(fp32_layer.dtype, dtypes.float32)
+    self.assertEqual(fp32_layer.a.dtype, dtypes.float32)
+
+    self.assertEqual(fp16_layer.dtype, dtypes.float16)
+    self.assertEqual(fp16_layer.a.dtype, dtypes.float16)
+    self.assertEqual(fp16_layer.b.dtype, dtypes.float16)
+
+    self.assertEqual(y.dtype, dtypes.float16)
 
 
 class DeferredModeTest(test.TestCase):
