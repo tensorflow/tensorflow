@@ -109,6 +109,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     if tower_local is not None:
       kwargs["trainable"] = False
 
+    # Ignore user-specified caching device, not needed for mirrored variables.
+    kwargs.pop("caching_device", None)
+
     # TODO(josh11b,apassos): It would be better if variable initialization
     # was never recorded on the tape instead of having to do this manually
     # here.
