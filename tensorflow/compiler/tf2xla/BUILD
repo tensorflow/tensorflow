@@ -489,3 +489,13 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
     ],
 )
+
+tf_cc_test(
+    name = "xla_op_registry_test",
+    srcs = ["xla_op_registry_test.cc"],
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
