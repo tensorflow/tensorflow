@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -47,7 +47,7 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kTanh:
-      // Binary
+    // Binary
     case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
     case HloOpcode::kDivide:
@@ -68,7 +68,7 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
-      // Ternary
+    // Ternary
     case HloOpcode::kSelect:
       return !ShapeUtil::IsTuple(inst->shape());
     case HloOpcode::kClamp:
@@ -91,9 +91,9 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
 
 }  // namespace
 
-ExpressionOutliner::ExpressionOutliner(CompilerAnnotations& annotations)
-    : HloMatcher({}, annotations, true),
-      inplace_instructions(annotations.inplace_instructions) {}
+ExpressionOutliner::ExpressionOutliner(
+    const std::set<const HloInstruction*>& inplace_instructions)
+    : HloMatcher({}, true), inplace_instructions(inplace_instructions) {}
 
 ReplacedInstructions ExpressionOutliner::ReplaceNodes(
     int, const HloMatcherMatched&) {

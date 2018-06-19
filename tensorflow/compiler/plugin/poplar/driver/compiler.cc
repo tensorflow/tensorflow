@@ -29,7 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
-#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_early.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
@@ -356,6 +357,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<GatherExpander>();
     pipeline.AddPass<DotDecomposer>();
     pipeline.AddPass<HloCSE>(false);
+    pipeline.AddPass<FuseOpsEarly>();
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
         false, [](const Shape&, const Shape&) { return false; }, false, false);
     pipeline.AddPass<ReshapeMover>();
@@ -372,10 +374,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<WideConstFinder>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<FuseOps>(resources.annotations);
-    pipeline.AddPass<Outliner>(resources.annotations);
+    pipeline.AddPass<FuseOpsLate>();
+    pipeline.AddPass<Outliner>();
     pipeline.AddPass<InplaceFinder>(resources.annotations);
-    pipeline.AddPass<ExpressionOutliner>(resources.annotations);
+    pipeline.AddPass<ExpressionOutliner>(
+        resources.annotations.inplace_instructions);
     pipeline.AddPass<UpdateOpDependenctOrdering>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<HloDCE>();

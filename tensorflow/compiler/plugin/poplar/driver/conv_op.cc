@@ -1,7 +1,7 @@
 #include <algorithm>
 
+#include "tensorflow/compiler/plugin/poplar/driver/classification_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
-#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
@@ -250,9 +250,8 @@ poplar::Tensor AddGroupsDimensionToWeights(const popconv::ConvParams& p,
     chan_div[out_dim] = out.dim(out_dim) / p.getNumOutputChansPerConvGroup();
 
     // OI... ->(GO)(GI)...
-    out = out.reshapePartial(0, 2,
-                             {chan_div[0], out.dim(0) / chan_div[0],
-                              chan_div[1], out.dim(1) / chan_div[1]});
+    out = out.reshapePartial(0, 2, {chan_div[0], out.dim(0) / chan_div[0],
+                                    chan_div[1], out.dim(1) / chan_div[1]});
 
     // (GO)(GI)... -> (GG)OI...
     out = out.dimShufflePartial({2}, {1});

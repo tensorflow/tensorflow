@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -351,11 +350,10 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, IsScalarConstant, {}}},
 };
 
-FuseOps::FuseOps(const CompilerAnnotations& annotations)
-    : HloMatcher(patterns, annotations, false) {}
+FuseOpsLate::FuseOpsLate() : HloMatcher(patterns, false) {}
 
-ReplacedInstructions FuseOps::ReplaceNodes(int pattern,
-                                           const HloMatcherMatched& match) {
+ReplacedInstructions FuseOpsLate::ReplaceNodes(int pattern,
+                                               const HloMatcherMatched& match) {
   std::string name("_pop_op_");
   name += fuse_info[pattern].name;
 

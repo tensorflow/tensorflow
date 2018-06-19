@@ -26,20 +26,19 @@ class HloModule;
 
 namespace poplarplugin {
 
-struct CompilerAnnotations;
-
 // Extract elementwise ops into a called sub-graph
 // (must come after InplaceFinder)
 
 class ExpressionOutliner : public HloMatcher {
  public:
-  ExpressionOutliner(CompilerAnnotations& annotations);
+  ExpressionOutliner(
+      const std::set<const HloInstruction*>& inplace_instructions);
 
   ~ExpressionOutliner() override = default;
 
   tensorflow::StringPiece name() const override { return "expression-outline"; }
 
-  StatusOr<bool> Run(HloModule *module) override;
+  StatusOr<bool> Run(HloModule* module) override;
 
  private:
   ReplacedInstructions ReplaceNodes(int, const HloMatcherMatched&) override;

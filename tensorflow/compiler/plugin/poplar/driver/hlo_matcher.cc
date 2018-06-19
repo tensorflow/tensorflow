@@ -31,13 +31,13 @@ void CopyConvolutionData(HloInstruction* inst, const HloInstruction* old) {
   inst->set_convolution_dimension_numbers(old->convolution_dimension_numbers());
 }
 
-void CopyMetadataToInstruction(HloInstruction* inst, const HloInstruction* old,
-                               const CompilerAnnotations& annotations) {
+void CopyMetadataToInstruction(HloInstruction* inst,
+                               const HloInstruction* old) {
   // Copy instruction data
   // Note that some data is protected by opcode and can't be copied
   switch (old->opcode()) {
     case HloOpcode::kCall:
-      if (IsPopOpsConvolution(old, annotations)) {
+      if (IsPopOpsConvolution(old)) {
         CopyConvolutionData(inst, old);
       }
       break;
@@ -53,11 +53,9 @@ void CopyMetadataToInstruction(HloInstruction* inst, const HloInstruction* old,
 }  // namespace
 
 HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
-                       const CompilerAnnotations& annotations,
                        bool root_computation_only)
     : root_computation_only_(root_computation_only),
-      patterns_(std::move(patterns)),
-      annotations(annotations) {
+      patterns_(std::move(patterns)) {
   matches_.resize(patterns.size());
 }
 
@@ -84,7 +82,7 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
       }
     }
 
-    if (node.verification_fn && !node.verification_fn(inst, annotations)) {
+    if (node.verification_fn && !node.verification_fn(inst)) {
       return false;
     }
 
@@ -305,8 +303,7 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   HloInstruction* call = matched.computation->AddInstruction(
       HloInstruction::CreateCall(root->shape(), arguments, nested_computation));
 
-  CopyMetadataToInstruction(call, instructions_to_outline[metadata_index],
-                            annotations);
+  CopyMetadataToInstruction(call, instructions_to_outline[metadata_index]);
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 
   ReplacedInstructions replaced;

@@ -7,36 +7,31 @@ class HloInstruction;
 
 namespace poplarplugin {
 
-struct CompilerAnnotations;
-
-bool IsFloatType(const HloInstruction*, const CompilerAnnotations&);
-bool IsTruncatedNormalWhile(const HloInstruction*, const CompilerAnnotations&);
-bool IsRandomNormal(const HloInstruction*, const CompilerAnnotations&);
-bool IsRandomUniform(const HloInstruction*, const CompilerAnnotations&);
-bool IsConstantZero(const HloInstruction*, const CompilerAnnotations&);
-bool IsConstantHalf(const HloInstruction*, const CompilerAnnotations&);
-bool IsConstantOne(const HloInstruction*, const CompilerAnnotations&);
-bool IsPoplarConvolution(const HloInstruction*, const CompilerAnnotations&);
-bool IsExternalPadding(const HloInstruction*, const CompilerAnnotations&);
-bool IsAveragePool(const HloInstruction*, const CompilerAnnotations&);
-bool Is2DReductionWindow(const HloInstruction*, const CompilerAnnotations&);
-bool IsScalarConstant(const HloInstruction*, const CompilerAnnotations&);
-bool IsConvFilterTranspose(const HloInstruction*, const CompilerAnnotations&);
-bool IsBiasReduce(const HloInstruction*, const CompilerAnnotations&);
-bool IsOutputFeed(const HloInstruction*, const CompilerAnnotations&);
-bool IsForward(const HloInstruction*, const CompilerAnnotations&);
-bool IsBackpropInput(const HloInstruction*, const CompilerAnnotations&);
-bool IsBackpropFilter(const HloInstruction*, const CompilerAnnotations&);
-bool IsTfReluGradOp(const HloInstruction*, const CompilerAnnotations&);
-bool IsTrueParameter(const HloInstruction*, const CompilerAnnotations&);
-bool IsFusedReverseInputConv(const HloInstruction*, const CompilerAnnotations&);
-bool IsFusedDepthwiseConv(const HloInstruction*, const CompilerAnnotations&);
-bool Is1DVector(const HloInstruction*, const CompilerAnnotations&);
-bool IsF16(const HloInstruction*, const CompilerAnnotations&);
-bool IsF32(const HloInstruction*, const CompilerAnnotations&);
-bool IsF32ToF16Convert(const HloInstruction*, const CompilerAnnotations&);
-bool IsF16ToF32Convert(const HloInstruction*, const CompilerAnnotations&);
-bool IsPopOpsConvolution(const HloInstruction*, const CompilerAnnotations&);
+bool IsFloatType(const HloInstruction*);
+bool IsTruncatedNormalWhile(const HloInstruction*);
+bool IsRandomNormal(const HloInstruction*);
+bool IsRandomUniform(const HloInstruction*);
+bool IsConstantZero(const HloInstruction*);
+bool IsConstantHalf(const HloInstruction*);
+bool IsConstantOne(const HloInstruction*);
+bool IsPoplarConvolution(const HloInstruction*);
+bool IsExternalPadding(const HloInstruction*);
+bool IsAveragePool(const HloInstruction*);
+bool Is2DReductionWindow(const HloInstruction*);
+bool IsScalarConstant(const HloInstruction*);
+bool IsConvFilterTranspose(const HloInstruction*);
+bool IsBiasReduce(const HloInstruction*);
+bool IsOutputFeed(const HloInstruction*);
+bool IsTfReluGradOp(const HloInstruction*);
+bool IsTrueParameter(const HloInstruction*);
+bool IsFusedReverseInputConv(const HloInstruction*);
+bool IsFusedDepthwiseConv(const HloInstruction*);
+bool Is1DVector(const HloInstruction*);
+bool IsF16(const HloInstruction*);
+bool IsF32(const HloInstruction*);
+bool IsF32ToF16Convert(const HloInstruction*);
+bool IsF16ToF32Convert(const HloInstruction*);
+bool IsPopOpsConvolution(const HloInstruction*);
 
 }  // namespace poplarplugin
 }  // namespace xla
