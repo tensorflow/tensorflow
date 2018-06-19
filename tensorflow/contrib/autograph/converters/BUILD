@@ -120,6 +120,7 @@ py_test(
     name = "decorators_test",
     srcs = ["decorators_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":converters",
         "//tensorflow/contrib/autograph/core:test_lib",
