@@ -2519,14 +2519,14 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
                              bool* modified) {
     const auto& t =
         ctx().graph_properties->GetInputProperties(input->name())[i];
-    for (int k = 0; k < t.shape().dim_size(); ++k) {
-      // Skip if t shape is not fully determined.
-      if (t.shape().dim(k).size() < 0) {
+    const auto& c =
+        ctx().graph_properties->GetInputProperties(input->name())[j];
+    for (int k = 0; k < c.shape().dim_size(); ++k) {
+      // Skip if c shape is not fully determined.
+      if (c.shape().dim(k).size() < 0) {
         return Status::OK();
       }
     }
-    const auto& c =
-        ctx().graph_properties->GetInputProperties(input->name())[j];
     TensorShapeProto broadcast_shape;
     if (!ShapeAfterBroadcast(t.shape(), c.shape(), &broadcast_shape)) {
       return errors::InvalidArgument("Cannot get broadcast shape for: ",
@@ -2537,15 +2537,15 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
       // broadcast.
       return Status::OK();
     }
-    if (TensorShape::IsValid(t.shape()) && t.has_value()) {
-      Tensor tensor(t.dtype(), t.shape());
-      if (!tensor.FromProto(t.value())) {
+    if (TensorShape::IsValid(c.shape()) && c.has_value()) {
+      Tensor constant(c.dtype(), c.shape());
+      if (!constant.FromProto(c.value())) {
         return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                        t.value().DebugString());
       }
       complex128 element;
-      for (int k = 0; k < tensor.NumElements(); ++k) {
-        if (!GetElement(tensor, k, &element)) {
+      for (int k = 0; k < constant.NumElements(); ++k) {
+        if (!GetElement(constant, k, &element)) {
           // input data type is not supported by log1p. Skip.
           return Status::OK();
         }
@@ -2558,8 +2558,8 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
       TF_RETURN_IF_ERROR(GetInputNode(input->input(i), &x));
       TF_RETURN_IF_ERROR(GetInputNode(input->input(j), &y));
       node->set_op("Log1p");
-      node->set_input(0, y->name());
-      node->add_input(AsControlDependency(x->name()));
+      node->set_input(0, x->name());
+      node->add_input(AsControlDependency(y->name()));
       ForwardControlDependencies(node, {input});
 
       AddToOptimizationQueue(node);
