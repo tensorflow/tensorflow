@@ -943,7 +943,7 @@ struct MemInfo {
 
 static bool IdentifySwappingCandidates(
     Cluster* cluster, GrapplerItem* item, std::unordered_set<string>* skip_list,
-    std::unordered_map<NodeDef*, SwapInfo>* nodes_to_swap) {
+    std::unordered_map<NodeDef*, SwapInfo>* nodes_to_swap, double memory_fraction) {
   GraphMemory memory(*item);
   const std::unordered_map<string, DeviceProperties>& devices =
       cluster->GetDevices();
@@ -966,10 +966,10 @@ static bool IdentifySwappingCandidates(
     }
     const GraphMemory::MemoryUsage& mem_usage = memory.GetPeakMemoryUsage(name);
 
-    if (mem_usage.used_memory <= prop.memory_size()) {
+    if (mem_usage.used_memory <= memory_fraction * prop.memory_size()) {
       continue;
     }
-    int64 required_savings = mem_usage.used_memory - prop.memory_size();
+    int64 required_savings = mem_usage.used_memory - memory_fraction * prop.memory_size();
 
     std::unordered_map<string, Costs::NanoSeconds> op_completion_times;
     {
@@ -1105,13 +1105,14 @@ static bool IdentifySwappingCandidates(
 
 bool SwappingPass(RewriterConfig::MemOptType optimization_level,
                   Cluster* cluster, GrapplerItem* item,
-                  std::unordered_set<string>* skip_list) {
+                  std::unordered_set<string>* skip_list,
+                  double memory_fraction) {
   std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;
   if (optimization_level == RewriterConfig::DEFAULT_MEM_OPT ||
       optimization_level == RewriterConfig::SWAPPING_HEURISTICS ||
       optimization_level == RewriterConfig::HEURISTICS) {
     // Use heuristics to figure out what needs to be swapped;
-    IdentifySwappingCandidates(cluster, item, skip_list, &nodes_to_swap);
+    IdentifySwappingCandidates(cluster, item, skip_list, &nodes_to_swap, memory_fraction);
   }
   // Look for manual annotatations in the graph.
   for (auto& node : *item->graph.mutable_node()) {
@@ -1324,7 +1325,8 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
          optimization_level_ == RewriterConfig::MANUAL) &&
         cluster != nullptr) {
       updated_graph |= SwappingPass(optimization_level_, cluster,
-                                    &optimized_item, &skip_list);
+                                    &optimized_item, &skip_list,
+                                    per_process_gpu_memory_fraction_);
     }
   }
 

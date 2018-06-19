@@ -407,6 +407,8 @@ Status GraphExecutionState::OptimizeGraph(
 
   const RewriterConfig& rewrite_options =
       session_options_->config.graph_options().rewrite_options();
+  const GPUOptions& gpu_options = 
+      session_options_->config.gpu_options();
 
   if (grappler::MetaOptimizerEnabled(rewrite_options)) {
     // Adding this functionality in steps. The first step is to make sure
@@ -493,7 +495,7 @@ Status GraphExecutionState::OptimizeGraph(
     grappler::VirtualCluster cluster(device_map, device_set_);
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
-        item, rewrite_options, cpu_device, &cluster, &new_graph));
+        item, rewrite_options, cpu_device, &cluster, &new_graph, gpu_options));
 
     // Merge optimized graph function library with an original library.
     // Optimized graph might have new functions specialized for it's
