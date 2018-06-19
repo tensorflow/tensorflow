@@ -88,6 +88,7 @@ tf_kernel_library(
         "strided_slice_op.cc",
         "tensor_array_ops.cc",
         "tile_ops.cc",
+        "topk_op.cc",
         "training_ops.cc",
         "transpose_op.cc",
         "unary_ops.cc",
