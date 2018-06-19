@@ -88,15 +88,6 @@ class Layer(checkpointable.CheckpointableBase):
     once. Should actually perform the logic of applying the layer to the
     input tensors (which should be passed in as the first argument).
 
-  All floating point tensor inputs and arguments are casted to the layer's
-  dtype, before the body of the layer computation happens. For models with
-  layers of different dtypes, this helps getting rid of the explicit casts
-  between layers.
-
-  The casting behavior can be customized in subclasses by overridding
-  `_cast_inputs_and_args()` function, which is useful if certain or all inputs
-  should not be casted.
-
   Arguments:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
