@@ -914,9 +914,9 @@ void GlobalBatchNormalization(const float* input_data,
   }
 }
 
-inline void Relu(const float* input_data, const RuntimeShape& input_shape,
-                 float* output_data, const RuntimeShape& output_shape) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+inline void Relu(const float* input_data, const Dims<4>& input_dims,
+                 float* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(input_dims, output_dims);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
     const float lower = 0;
@@ -925,10 +925,9 @@ inline void Relu(const float* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Relu1(const float* input_data, const RuntimeShape& input_shape,
-                  float* output_data, const RuntimeShape& output_shape) {
-  gemmlowp::ScopedProfilingLabel label("Relu1 (not fused)");
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+inline void Relu1(const float* input_data, const Dims<4>& input_dims,
+                  float* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(input_dims, output_dims);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
     const float upper = 1;
@@ -938,10 +937,9 @@ inline void Relu1(const float* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Relu6(const float* input_data, const RuntimeShape& input_shape,
-                  float* output_data, const RuntimeShape& output_shape) {
-  gemmlowp::ScopedProfilingLabel label("Relu6 (not fused)");
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+inline void Relu6(const float* input_data, const Dims<4>& input_dims,
+                  float* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(input_dims, output_dims);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
     const float upper = 6;
@@ -2247,21 +2245,18 @@ inline int NodeOffset(int b, int h, int w, int height, int width) {
   return (b * height + h) * width + w;
 }
 
-inline void AveragePool(const float* input_data,
-                        const RuntimeShape& input_shape, int stride_width,
-                        int stride_height, int pad_width, int pad_height,
-                        int filter_width, int filter_height,
+inline void AveragePool(const float* input_data, const Dims<4>& input_dims,
+                        int stride_width, int stride_height, int pad_width,
+                        int pad_height, int filter_width, int filter_height,
                         float output_activation_min,
                         float output_activation_max, float* output_data,
-                        const RuntimeShape& output_shape) {
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
+                        const Dims<4>& output_dims) {
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
@@ -2285,12 +2280,12 @@ inline void AveragePool(const float* input_data,
               const int in_x = in_x_origin + filter_x;
               const int in_y = in_y_origin + filter_y;
               total +=
-                  input_data[Offset(input_shape, batch, in_y, in_x, channel)];
+                  input_data[Offset(input_dims, channel, in_x, in_y, batch)];
               filter_count++;
             }
           }
           const float average = total / filter_count;
-          output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
+          output_data[Offset(output_dims, channel, out_x, out_y, batch)] =
               ActivationFunctionWithMinMax(average, output_activation_min,
                                            output_activation_max);
         }
@@ -2299,22 +2294,42 @@ inline void AveragePool(const float* input_data,
   }
 }
 
-inline void AveragePool(const uint8* input_data,
-                        const RuntimeShape& input_shape, int stride_width,
-                        int stride_height, int pad_width, int pad_height,
-                        int filter_width, int filter_height,
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void AveragePool(const float* input_data, const Dims<4>& input_dims,
+                 int stride_width, int stride_height, int pad_width,
+                 int pad_height, int filter_width, int filter_height,
+                 float* output_data, const Dims<4>& output_dims) {
+  float output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+  AveragePool(input_data, input_dims, stride_width, stride_height, pad_width,
+              pad_height, filter_width, filter_height, output_activation_min,
+              output_activation_max, output_data, output_dims);
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void AveragePool(const float* input_data, const Dims<4>& input_dims, int stride,
+                 int pad_width, int pad_height, int filter_width,
+                 int filter_height, float* output_data,
+                 const Dims<4>& output_dims) {
+  AveragePool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
+                  filter_width, filter_height, output_data, output_dims);
+}
+
+inline void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
+                        int stride_width, int stride_height, int pad_width,
+                        int pad_height, int filter_width, int filter_height,
                         int32 output_activation_min,
                         int32 output_activation_max, uint8* output_data,
-                        const RuntimeShape& output_shape) {
+                        const Dims<4>& output_dims) {
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
@@ -2337,15 +2352,14 @@ inline void AveragePool(const uint8* input_data,
                  ++filter_x) {
               const int in_x = in_x_origin + filter_x;
               const int in_y = in_y_origin + filter_y;
-              acc +=
-                  input_data[Offset(input_shape, batch, in_y, in_x, channel)];
+              acc += input_data[Offset(input_dims, channel, in_x, in_y, batch)];
               filter_count++;
             }
           }
           acc = (acc + filter_count / 2) / filter_count;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
-          output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
+          output_data[Offset(output_dims, channel, out_x, out_y, batch)] =
               static_cast<uint8>(acc);
         }
       }
@@ -2353,19 +2367,50 @@ inline void AveragePool(const uint8* input_data,
   }
 }
 
-inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
+                 int stride_width, int stride_height, int pad_width,
+                 int pad_height, int filter_width, int filter_height,
+                 int32 output_activation_min, int32 output_activation_max,
+                 uint8* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, 0);
+    TFLITE_DCHECK_EQ(output_activation_max, 255);
+  }
+  AveragePool(input_data, input_dims, stride_width, stride_height, pad_width,
+              pad_height, filter_width, filter_height, output_activation_min,
+              output_activation_max, output_data, output_dims);
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void AveragePool(const uint8* input_data, const Dims<4>& input_dims, int stride,
+                 int pad_width, int pad_height, int filter_width,
+                 int filter_height, int32 output_activation_min,
+                 int32 output_activation_max, uint8* output_data,
+                 const Dims<4>& output_dims) {
+  AveragePool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
+                  filter_width, filter_height, output_activation_min,
+                  output_activation_max, output_data, output_dims);
+}
+
+inline void L2Pool(const float* input_data, const Dims<4>& input_dims,
                    int stride_width, int stride_height, int pad_width,
                    int pad_height, int filter_width, int filter_height,
                    float output_activation_min, float output_activation_max,
-                   float* output_data, const RuntimeShape& output_shape) {
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
+                   float* output_data, const Dims<4>& output_dims) {
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
@@ -2389,13 +2434,13 @@ inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
               const int in_x = in_x_origin + filter_x;
               const int in_y = in_y_origin + filter_y;
               const float val =
-                  input_data[Offset(input_shape, batch, in_y, in_x, channel)];
+                  input_data[Offset(input_dims, channel, in_x, in_y, batch)];
               sum_squares += val * val;
               filter_count++;
             }
           }
           const float l2pool_result = std::sqrt(sum_squares / filter_count);
-          output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
+          output_data[Offset(output_dims, channel, out_x, out_y, batch)] =
               ActivationFunctionWithMinMax(l2pool_result, output_activation_min,
                                            output_activation_max);
         }
@@ -2404,19 +2449,40 @@ inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void L2Pool(const float* input_data, const Dims<4>& input_dims,
+            int stride_width, int stride_height, int pad_width, int pad_height,
+            int filter_width, int filter_height, float* output_data,
+            const Dims<4>& output_dims) {
+  float output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+
+  L2Pool(input_data, input_dims, stride_width, stride_height, pad_width,
+         pad_height, filter_width, filter_height, output_activation_min,
+         output_activation_max, output_data, output_dims);
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void L2Pool(const float* input_data, const Dims<4>& input_dims, int stride,
+            int pad_width, int pad_height, int filter_width, int filter_height,
+            float* output_data, const Dims<4>& output_dims) {
+  L2Pool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
+             filter_width, filter_height, output_data, output_dims);
+}
+
+inline void MaxPool(const float* input_data, const Dims<4>& input_dims,
                     int stride_width, int stride_height, int pad_width,
                     int pad_height, int filter_width, int filter_height,
                     float output_activation_min, float output_activation_max,
-                    float* output_data, const RuntimeShape& output_shape) {
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
+                    float* output_data, const Dims<4>& output_dims) {
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
@@ -2440,10 +2506,10 @@ inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
               const int in_y = in_y_origin + filter_y;
               max = std::max(
                   max,
-                  input_data[Offset(input_shape, batch, in_y, in_x, channel)]);
+                  input_data[Offset(input_dims, channel, in_x, in_y, batch)]);
             }
           }
-          output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
+          output_data[Offset(output_dims, channel, out_x, out_y, batch)] =
               ActivationFunctionWithMinMax(max, output_activation_min,
                                            output_activation_max);
         }
@@ -2452,22 +2518,42 @@ inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void MaxPool(const float* input_data, const Dims<4>& input_dims,
+             int stride_width, int stride_height, int pad_width, int pad_height,
+             int filter_width, int filter_height, float* output_data,
+             const Dims<4>& output_dims) {
+  float output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+  MaxPool(input_data, input_dims, stride_width, stride_height, pad_width,
+          pad_height, filter_width, filter_height, output_activation_min,
+          output_activation_max, output_data, output_dims);
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void MaxPool(const float* input_data, const Dims<4>& input_dims, int stride,
+             int pad_width, int pad_height, int filter_width, int filter_height,
+             float* output_data, const Dims<4>& output_dims) {
+  MaxPool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
+              filter_width, filter_height, output_data, output_dims);
+}
+
+inline void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
                     int stride_width, int stride_height, int pad_width,
                     int pad_height, int filter_width, int filter_height,
                     int32 output_activation_min, int32 output_activation_max,
-                    uint8* output_data, const RuntimeShape& output_shape) {
+                    uint8* output_data, const Dims<4>& output_dims) {
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   TFLITE_DCHECK_GE(output_activation_min, 0);
   TFLITE_DCHECK_LE(output_activation_max, 255);
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
@@ -2491,17 +2577,49 @@ inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
               const int in_y = in_y_origin + filter_y;
               max = std::max(
                   max,
-                  input_data[Offset(input_shape, batch, in_y, in_x, channel)]);
+                  input_data[Offset(input_dims, channel, in_x, in_y, batch)]);
             }
           }
           max = std::max<uint8>(max, output_activation_min);
           max = std::min<uint8>(max, output_activation_max);
-          output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
+          output_data[Offset(output_dims, channel, out_x, out_y, batch)] =
               static_cast<uint8>(max);
         }
       }
     }
   }
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
+             int stride_width, int stride_height, int pad_width, int pad_height,
+             int filter_width, int filter_height, int32 output_activation_min,
+             int32 output_activation_max, uint8* output_data,
+             const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, 0);
+    TFLITE_DCHECK_EQ(output_activation_max, 255);
+  }
+  MaxPool(input_data, input_dims, stride_width, stride_height, pad_width,
+          pad_height, filter_width, filter_height, output_activation_min,
+          output_activation_max, output_data, output_dims);
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac>
+void MaxPool(const uint8* input_data, const Dims<4>& input_dims, int stride,
+             int pad_width, int pad_height, int filter_width, int filter_height,
+             int32 output_activation_min, int32 output_activation_max,
+             uint8* output_data, const Dims<4>& output_dims) {
+  MaxPool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
+              filter_width, filter_height, output_activation_min,
+              output_activation_max, output_data, output_dims);
 }
 
 inline void LocalResponseNormalization(const float* input_data,
@@ -2527,14 +2645,11 @@ inline void LocalResponseNormalization(const float* input_data,
   }
 }
 
-inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
+inline void Softmax(const float* input_data, const Dims<4>& input_dims,
                     float beta, float* output_data,
-                    const RuntimeShape& output_shape) {
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+                    const Dims<4>& output_dims) {
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
 
   for (int i = 0; i < outer_size; ++i) {
     // Find max element value which we'll use to ensure numerical stability
@@ -2559,10 +2674,10 @@ inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
+inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
                     int32 input_beta_multiplier, int32 input_beta_left_shift,
                     int diff_min, uint8* output_data,
-                    const RuntimeShape& output_shape) {
+                    const Dims<4>& output_dims) {
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
   // -32 before multiplying by input_beta_multiplier, and therefore as large as
@@ -2575,11 +2690,8 @@ inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
   using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
 
   for (int i = 0; i < outer_size; ++i) {
     uint8 max_in_row = 0;
@@ -2640,13 +2752,10 @@ inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void LogSoftmax(const float* input_data, const RuntimeShape& input_shape,
-                       float* output_data, const RuntimeShape& output_shape) {
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
+                       float* output_data, const Dims<4>& output_dims) {
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
 
   for (int i = 0; i < outer_size; ++i) {
     // Find max element value which we'll use to ensure numerical stability
@@ -2786,11 +2895,11 @@ log_x_for_x_greater_than_or_equal_to_1(
       input_val);
 }
 
-inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
+inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
                        int32 input_multiplier, int32 input_left_shift,
                        int32 reverse_scaling_divisor,
                        int32 reverse_scaling_right_shift, int diff_min,
-                       uint8* output_data, const RuntimeShape& output_shape) {
+                       uint8* output_data, const Dims<4>& output_dims) {
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
   // -32 before multiplying by input_beta_multiplier, and therefore as large as
@@ -2804,11 +2913,8 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
   using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
 
   for (int i = 0; i < outer_size; ++i) {
     uint8 max_in_row = 0;
@@ -2872,9 +2978,9 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const float* input_data, const RuntimeShape& input_shape,
-                     float* output_data, const RuntimeShape& output_shape) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+inline void Logistic(const float* input_data, const Dims<4>& input_dims,
+                     float* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(output_dims, input_dims);
 
   for (int i = 0; i < flat_size; i++) {
     float val = input_data[i];
@@ -2883,11 +2989,11 @@ inline void Logistic(const float* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
+inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
                      int32 input_zero_point, int32 input_range_radius,
                      int32 input_multiplier, int input_left_shift,
-                     uint8* output_data, const RuntimeShape& output_shape) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+                     uint8* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(output_dims, input_dims);
 
   for (int i = 0; i < flat_size; i++) {
     const uint8 input_val_u8 = input_data[i];
@@ -2921,9 +3027,9 @@ inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
-                     int16* output_data, const RuntimeShape& output_shape) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
+                     int16* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(output_dims, input_dims);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -2939,9 +3045,9 @@ inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Tanh(const float* input_data, const RuntimeShape& input_shape,
-                 float* output_data, const RuntimeShape& output_shape) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+inline void Tanh(const float* input_data, const Dims<4>& input_dims,
+                 float* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(output_dims, input_dims);
 
   for (int i = 0; i < flat_size; i++) {
     float val = input_data[i];
@@ -2950,12 +3056,12 @@ inline void Tanh(const float* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
+inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
                  int32 input_zero_point, int32 input_range_radius,
                  int32 input_multiplier, int input_left_shift,
-                 uint8* output_data, const RuntimeShape& output_shape) {
+                 uint8* output_data, const Dims<4>& output_dims) {
   const int32 output_zero_point = 128;
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  const int flat_size = MatchingFlatSize(output_dims, input_dims);
 
   for (int i = 0; i < flat_size; i++) {
     const uint8 input_val_u8 = input_data[i];
@@ -2990,15 +3096,15 @@ inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
+inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
                  int input_left_shift, int16* output_data,
-                 const RuntimeShape& output_shape) {
+                 const Dims<4>& output_dims) {
   // Support for shifts is limited until we have a parameterized version of
   // SaturatingRoundingMultiplyByPOT().
   TFLITE_DCHECK_GE(input_left_shift, 0);
   TFLITE_DCHECK_LE(input_left_shift, 1);
 
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  const int flat_size = MatchingFlatSize(output_dims, input_dims);
 
   // F0 uses 0 integer bits, range [-1, 1].
   // This is the return type of math functions such as tanh, logistic,

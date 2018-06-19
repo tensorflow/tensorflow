@@ -32,21 +32,19 @@ namespace tflite {
 namespace {
 
 void RunSoftmaxFloatReference(const uint8* input_data,
-                              const RuntimeShape& shape_common,
-                              int32 input_offset, const double input_scale,
-                              int stride, float beta,
+                              const Dims<4>& dims_common, int32 input_offset,
+                              const double input_scale, int stride, float beta,
                               uint8* reference_output_data) {
-  const int ref_buffer_size = shape_common.FlatSize();
+  const int ref_buffer_size = RequiredBufferSizeForDims(dims_common);
   std::vector<float> reference_dequant_data(ref_buffer_size);
   std::vector<float> reference_output_float_data(ref_buffer_size);
 
   // Reference data generated via Dequant of input into float, and then applying
   // float Softmax.
-  reference_ops::Dequantize(
-      input_data, ToRuntimeDims(shape_common), input_offset, input_scale,
-      reference_dequant_data.data(), ToRuntimeDims(shape_common));
-  optimized_ops::Softmax(reference_dequant_data.data(), shape_common, beta,
-                         reference_output_float_data.data(), shape_common);
+  reference_ops::Dequantize(input_data, dims_common, input_offset, input_scale,
+                            reference_dequant_data.data(), dims_common);
+  optimized_ops::Softmax(reference_dequant_data.data(), dims_common, beta,
+                         reference_output_float_data.data(), dims_common);
   // Work with quantized scaling for Softmax, under which 256 represents 1, but
   // we limit this to 255.
   for (int i = 0; i < ref_buffer_size; i++) {
@@ -57,9 +55,9 @@ void RunSoftmaxFloatReference(const uint8* input_data,
 }
 
 void CheckOutputData(const uint8* test_output, const uint8* reference_output,
-                     const RuntimeShape& shape_common,
-                     const string& check_label, bool be_exacting) {
-  const int buffer_size = shape_common.FlatSize();
+                     const Dims<4>& dims_common, const string& check_label,
+                     bool be_exacting) {
+  const int buffer_size = RequiredBufferSizeForDims(dims_common);
   // While calculating some metrics in floating point, we work with quantized
   // scaling.
   std::vector<int> diff(buffer_size);
@@ -93,15 +91,15 @@ void CheckOutputData(const uint8* test_output, const uint8* reference_output,
 
 // Runs the Softmax and compares against the float reference implementation and
 // the quantized reference implementation.
-void RunOneSoftmaxTest(const uint8* input_data,
-                       const RuntimeShape& shape_common, int32 input_offset,
-                       const double input_scale, int stride, float beta) {
-  const int buffer_size = shape_common.FlatSize();
+void RunOneSoftmaxTest(const uint8* input_data, const Dims<4>& dims_common,
+                       int32 input_offset, const double input_scale, int stride,
+                       float beta) {
+  const int buffer_size = RequiredBufferSizeForDims(dims_common);
   std::vector<uint8> optimized_softmax_output(buffer_size);
   std::vector<uint8> reference_float_softmax_output(buffer_size);
   std::vector<uint8> reference_quant_softmax_output(buffer_size);
 
-  RunSoftmaxFloatReference(input_data, shape_common, input_offset, input_scale,
+  RunSoftmaxFloatReference(input_data, dims_common, input_offset, input_scale,
                            stride, beta, reference_float_softmax_output.data());
 
   int32 input_beta_multiplier;
@@ -115,21 +113,21 @@ void RunOneSoftmaxTest(const uint8* input_data,
   const int diff_min = -tflite::CalculateInputRadius(kScaledDiffIntegerBits,
                                                      input_beta_left_shift);
 
-  optimized_ops::Softmax(input_data, shape_common, input_beta_multiplier,
+  optimized_ops::Softmax(input_data, dims_common, input_beta_multiplier,
                          input_beta_left_shift, diff_min,
-                         optimized_softmax_output.data(), shape_common);
-  reference_ops::Softmax(input_data, shape_common, input_beta_multiplier,
+                         optimized_softmax_output.data(), dims_common);
+  reference_ops::Softmax(input_data, dims_common, input_beta_multiplier,
                          input_beta_left_shift, diff_min,
-                         reference_quant_softmax_output.data(), shape_common);
+                         reference_quant_softmax_output.data(), dims_common);
 
   CheckOutputData(optimized_softmax_output.data(),
-                  reference_float_softmax_output.data(), shape_common,
+                  reference_float_softmax_output.data(), dims_common,
                   "Optimized vs float reference", false);
   CheckOutputData(optimized_softmax_output.data(),
-                  reference_quant_softmax_output.data(), shape_common,
+                  reference_quant_softmax_output.data(), dims_common,
                   "Optimized vs quant reference", true);
   CheckOutputData(reference_quant_softmax_output.data(),
-                  reference_float_softmax_output.data(), shape_common,
+                  reference_float_softmax_output.data(), dims_common,
                   "Quant reference vs float reference", false);
 }
 
@@ -152,13 +150,13 @@ bool TryOneUniformSoftmax() {
   const int32 input_offset = UniformRandomInt(-256, 0);
   const float beta = 1.0f + ExponentialRandomPositiveFloat(0.9f, 2, 10);
 
-  auto shape_common =
-      RuntimeShape({batch, input_height, input_width, input_depth});
-  const int buffer_size = shape_common.FlatSize();
+  Dims<4> dims_common =
+      MakeDimsForInference(input_depth, input_width, input_height, batch);
+  const int buffer_size = RequiredBufferSizeForDims(dims_common);
 
   std::vector<uint8> input_data(buffer_size);
   FillRandom(&input_data);
-  RunOneSoftmaxTest(input_data.data(), shape_common, input_offset, input_scale,
+  RunOneSoftmaxTest(input_data.data(), dims_common, input_offset, input_scale,
                     stride, beta);
   return true;
 }
@@ -190,14 +188,14 @@ bool TryOneSkyscraperSoftmax(bool small_depth) {
   const int middle_min = UniformRandomInt(0, 255);
   const int sides_max = UniformRandomInt(0, middle_min);
 
-  auto shape_common =
-      RuntimeShape({batch, input_height, input_width, input_depth});
-  const int buffer_size = shape_common.FlatSize();
+  Dims<4> dims_common =
+      MakeDimsForInference(input_depth, input_width, input_height, batch);
+  const int buffer_size = RequiredBufferSizeForDims(dims_common);
 
   std::vector<uint8> input_data(buffer_size);
   FillRandomSkyscraper(&input_data, input_depth, middle_proportion, middle_min,
                        sides_max);
-  RunOneSoftmaxTest(input_data.data(), shape_common, input_offset, input_scale,
+  RunOneSoftmaxTest(input_data.data(), dims_common, input_offset, input_scale,
                     stride, beta);
   return true;
 }
