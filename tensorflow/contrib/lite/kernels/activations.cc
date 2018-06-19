@@ -251,11 +251,11 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
-      optimized_ops::Tanh(GetTensorData<uint8_t>(input), GetTensorDims(input),
+      optimized_ops::Tanh(GetTensorData<uint8_t>(input), GetTensorShape(input),
                           input->params.zero_point, data->input_range_radius,
                           data->input_multiplier, data->input_left_shift,
                           GetTensorData<uint8_t>(output),
-                          GetTensorDims(output));
+                          GetTensorShape(output));
       return kTfLiteOk;
     } break;
     default:
@@ -282,10 +282,10 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteUInt8: {
       optimized_ops::Logistic(
-          GetTensorData<uint8_t>(input), GetTensorDims(input),
+          GetTensorData<uint8_t>(input), GetTensorShape(input),
           input->params.zero_point, data->input_range_radius,
           data->input_multiplier, data->input_left_shift,
-          GetTensorData<uint8_t>(output), GetTensorDims(output));
+          GetTensorData<uint8_t>(output), GetTensorShape(output));
       break;
     }
     default:
@@ -341,26 +341,26 @@ void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
   optimized_ops::Softmax(GetTensorData<uint8_t>(input),
-                         GetTensorDims({batch_size, 1, 1, input_size}),
+                         GetTensorShape({batch_size, 1, 1, input_size}),
                          data->input_multiplier, data->input_left_shift,
                          data->diff_min, GetTensorData<uint8_t>(output),
-                         GetTensorDims({batch_size, 1, 1, input_size}));
+                         GetTensorShape({batch_size, 1, 1, input_size}));
 }
 
 // Takes a 4D tensor and perform softmax along the forth dimension.
 void Softmax4DFloat(const TfLiteTensor* input, TfLiteTensor* output,
                     TfLiteSoftmaxParams* params) {
-  optimized_ops::Softmax(GetTensorData<float>(input), GetTensorDims(input),
+  optimized_ops::Softmax(GetTensorData<float>(input), GetTensorShape(input),
                          params->beta, GetTensorData<float>(output),
-                         GetTensorDims(output));
+                         GetTensorShape(output));
 }
 
 void Softmax4DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                         TfLiteSoftmaxParams* params, OpData* data) {
-  optimized_ops::Softmax(GetTensorData<uint8_t>(input), GetTensorDims(input),
+  optimized_ops::Softmax(GetTensorData<uint8_t>(input), GetTensorShape(input),
                          data->input_multiplier, data->input_left_shift,
                          data->diff_min, GetTensorData<uint8_t>(output),
-                         GetTensorDims(output));
+                         GetTensorShape(output));
 }
 
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
@@ -415,8 +415,8 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteFloat32:
       optimized_ops::LogSoftmax(
-          GetTensorData<float>(input), GetTensorDims(input),
-          GetTensorData<float>(output), GetTensorDims(output));
+          GetTensorData<float>(input), GetTensorShape(input),
+          GetTensorData<float>(output), GetTensorShape(output));
       return kTfLiteOk;
     default:
       context->ReportError(context, "Only float32 supported currently., got %d",
