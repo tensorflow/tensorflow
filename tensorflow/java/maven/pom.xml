@@ -32,6 +32,8 @@
     <module>libtensorflow_jni_gpu</module>
     <module>tensorflow</module>
     <module>proto</module>
+    <module>hadoop</module>
+    <module>spark-connector</module>
   </modules>
 
   <!-- Two profiles are used:

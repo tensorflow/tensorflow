@@ -60,6 +60,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/autograph/converters:test_lib",
     "//tensorflow/contrib/autograph/impl:impl",
     "//tensorflow/contrib/autograph/operators:operators",
+    "//tensorflow/contrib/autograph/lang:lang",
     "//tensorflow/contrib/autograph/pyct:pyct",
     "//tensorflow/contrib/autograph/pyct/static_analysis:static_analysis",
     "//tensorflow/contrib/boosted_trees:boosted_trees_pip",

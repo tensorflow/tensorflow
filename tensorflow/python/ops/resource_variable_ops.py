@@ -1067,6 +1067,10 @@ class _UnreadVariable(ResourceVariable):
       self._graph_element = self.read_value()
     self._handle_deleter = deleter
 
+  @property
+  def name(self):
+    return self._parent_op.name
+
   def value(self):
     return self._read_variable_op()
 

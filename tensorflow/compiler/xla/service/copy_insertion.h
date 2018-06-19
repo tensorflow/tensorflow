@@ -64,6 +64,13 @@ class CopyInsertion : public HloPassInterface {
   static StatusOr<bool> AddCopiesForBufferAssignment(HloModule* module);
 };
 
+// Try to remove as many copies from the module as possible without introducing
+// live range interference. Copy instructions (identified by their unique id) in
+// the set copies_to_exclude are not considered for removal.
+Status RemoveUnnecessaryCopies(
+    const HloOrdering& ordering,
+    const tensorflow::gtl::FlatSet<int>& copies_to_exclude, HloModule* module);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_COPY_INSERTION_H_

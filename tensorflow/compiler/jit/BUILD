@@ -317,7 +317,6 @@ cc_library(
         ":xla_cluster_util",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
-        "//tensorflow/compiler/jit/legacy_flags:encapsulate_subgraphs_pass_flags",
         "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/compiler/jit/ops:parallel_check_op",
         "//tensorflow/compiler/jit/ops:xla_ops",
