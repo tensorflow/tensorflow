@@ -74,6 +74,9 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
   options.config.mutable_graph_options()
       ->mutable_rewrite_options()
       ->set_constant_folding(RewriterConfig::OFF);
+  options.config.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_min_graph_nodes(-1);
   std::unique_ptr<Session> session(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
