@@ -896,10 +896,6 @@ class HloInstruction {
   HloComputation* to_apply() const;
   void set_to_apply(HloComputation* to_apply);
 
-  // Returns the custom_call_target for CustomCall.
-  // Precondition: opcode() == HloOpcode::kCustomCall
-  const string& custom_call_target() const;
-
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
   //
@@ -908,15 +904,6 @@ class HloInstruction {
   HloComputation* while_body() const;
   void set_while_condition(HloComputation* while_condition);
   void set_while_body(HloComputation* while_body);
-
-  // Gets/sets the select or scatter HloComputation for SelectAndScatter. The
-  // setters should only be called by HloModule or HloComputation methods.
-  //
-  // Precondition: opcode() == HloOpcode::kSelectAndScatter.
-  HloComputation* select() const;
-  HloComputation* scatter() const;
-  void set_select(HloComputation* select);
-  void set_scatter(HloComputation* scatter);
 
   // Gets/sets the true and false HloComputation for Conditional. The setters
   // should only be called by HloModule or HloComputation methods.
@@ -959,7 +946,7 @@ class HloInstruction {
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
-  string ToCategory() const;
+  virtual string ToCategory() const;
 
   // Returns a logging instruction, if the output of this instruction is logged.
   //
@@ -1065,41 +1052,12 @@ class HloInstruction {
     return dynamic_slice_sizes_;
   }
 
-  // Returns data on the window in a windowed operation such as
-  // convolution.
-  const Window& window() const {
-    CHECK(window_ != nullptr);
-    return *window_;
-  }
-
-  // Sets the window data in a windowed operation such as convolution.
-  void set_window(const Window& window) {
-    window_ = MakeUnique<Window>(window);
-  }
-
   // Returns the padding configuration for a pad node.
   //
   // Precondition: opcode() == HloOpcode::kPad
   const PaddingConfig& padding_config() const {
     CHECK(padding_config_ != nullptr);
     return *padding_config_;
-  }
-
-  // Returns data on the dimension numbers used for a convolution operation,
-  // which may be a kConvolution instruction or a kCustomCall that implements a
-  // convolution.
-  const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
-    CHECK(convolution_dimension_numbers_ != nullptr);
-    return *convolution_dimension_numbers_;
-  }
-
-  // Sets the convolution dimension numbers on this instruction.  In general you
-  // shouldn't need to call this; instead, specify the convolution dimension
-  // numbers when you create the instruction.
-  void set_convolution_dimension_numbers(
-      const ConvolutionDimensionNumbers& dnums) {
-    convolution_dimension_numbers_ =
-        MakeUnique<ConvolutionDimensionNumbers>(dnums);
   }
 
   // Returns data on the dimension numbers used for a dot operation.
@@ -1441,6 +1399,43 @@ class HloInstruction {
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   tensorflow::gtl::optional<int64> all_reduce_id() const;
+
+  // Returns data on the window in a windowed operation such as
+  // convolution.
+  virtual const Window& window() const {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Sets the window data in a windowed operation such as convolution.
+  virtual void set_window(const Window& window) {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Returns data on the dimension numbers used for a convolution operation,
+  // which may be a kConvolution instruction or a kCustomCall that implements a
+  // convolution.
+  const ConvolutionDimensionNumbers& convolution_dimension_numbers() const;
+
+  // Sets the convolution dimension numbers on this instruction.  In general you
+  // shouldn't need to call this; instead, specify the convolution dimension
+  // numbers when you create the instruction.
+  void set_convolution_dimension_numbers(
+      const ConvolutionDimensionNumbers& dnums);
+
+  // Delegates to HloSelectAndScatterInstruction::select.
+  HloComputation* select() const;
+
+  // Delegates to HloSelectAndScatterInstruction::scatter.
+  HloComputation* scatter() const;
+
+  // Delegates to HloSelectAndScatterInstruction::set_select.
+  void set_select(HloComputation* computation);
+
+  // Delegates to HloSelectAndScatterInstruction::set_scatter.
+  void set_scatter(HloComputation* computation);
+
+  // Delegates to HloCustomCallInstruction::custom_call_target.
+  const string& custom_call_target() const;
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1465,6 +1460,25 @@ class HloInstruction {
   }
 
   void DetachFrom(HloInstruction* usee) { usee->RemoveUser(this); }
+
+  void set_called_computation(int index, HloComputation* computation) {
+    called_computations_[index] = computation;
+  }
+  // Indices of computations in called_computations_ for instructions which call
+  // multiple computations.
+  enum {
+    // kWhile computations.
+    kBodyComputationIndex = 0,
+    kConditionComputationIndex = 1,
+
+    // kSelectAndScatter computations.
+    kSelectComputationIndex = 0,
+    kScatterComputationIndex = 1,
+
+    // kConditional computations.
+    kTrueComputationIndex = 0,
+    kFalseComputationIndex = 1,
+  };
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -1558,12 +1572,6 @@ class HloInstruction {
   // Result shape of this instruction.
   Shape shape_;
 
-  // Describes the window in a windowed operation such as convolution.
-  std::unique_ptr<Window> window_;
-
-  // Describes the dimension numbers used for a convolution.
-  std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
-
   // Describes the dimension numbers used for a dot.
   std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
 
@@ -1588,9 +1596,6 @@ class HloInstruction {
   std::unique_ptr<DomainMetadata> operand_side_metadata_;
   std::unique_ptr<DomainMetadata> user_side_metadata_;
 
-  // Name of a global symbol to call, only present for kCustomCall.
-  string custom_call_target_;
-
   // Name to use for host send/recv channels, only present for kHostCompute.
   string channel_name_;
 
@@ -1599,22 +1604,6 @@ class HloInstruction {
 
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;
-
-  // Indices of computations in called_computations_ for instructions which call
-  // multiple computations.
-  enum {
-    // kWhile computations.
-    kBodyComputationIndex = 0,
-    kConditionComputationIndex = 1,
-
-    // kSelectAndScatter computations.
-    kSelectComputationIndex = 0,
-    kScatterComputationIndex = 1,
-
-    // kConditional computations.
-    kTrueComputationIndex = 0,
-    kFalseComputationIndex = 1,
-  };
 
   // A trace instruction that consumes this instruction.
   //

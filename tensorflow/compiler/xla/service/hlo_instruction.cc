@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
@@ -274,6 +273,48 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           /*all_reduce_id=*/all_reduce_id);
       break;
     }
+    case HloOpcode::kConvolution:
+      CHECK_EQ(proto.operand_ids_size(), 2);
+      CHECK(proto.has_window());
+      CHECK(proto.has_convolution_dimension_numbers());
+      instruction =
+          CreateConvolve(proto.shape(), operands(0), operands(1),
+                         proto.window(), proto.convolution_dimension_numbers());
+      break;
+    case HloOpcode::kReduceWindow:
+      CHECK_EQ(proto.operand_ids_size(), 2);
+      CHECK_EQ(proto.called_computation_ids_size(), 1);
+      instruction = CreateReduceWindow(proto.shape(), operands(0), operands(1),
+                                       proto.window(), computations(0));
+      break;
+    case HloOpcode::kSelectAndScatter:
+      CHECK_EQ(proto.operand_ids_size(), 3);
+      CHECK_EQ(proto.called_computation_ids_size(), 2);
+      instruction = CreateSelectAndScatter(
+          proto.shape(), operands(0), computations(0), proto.window(),
+          operands(1), operands(2), computations(1));
+      break;
+    case HloOpcode::kCustomCall: {
+      std::vector<HloInstruction*> custom_call_operands(
+          proto.operand_ids_size());
+      std::transform(proto.operand_ids().begin(), proto.operand_ids().end(),
+                     custom_call_operands.begin(),
+                     [&instruction_map](int64 operand_id) {
+                       return instruction_map.at(operand_id);
+                     });
+      instruction = CreateCustomCall(proto.shape(), custom_call_operands,
+                                     proto.custom_call_target());
+      if (proto.has_window()) {
+        static_cast<HloCustomCallInstruction*>(instruction.get())
+            ->set_window(proto.window());
+      }
+      if (proto.has_convolution_dimension_numbers()) {
+        static_cast<HloCustomCallInstruction*>(instruction.get())
+            ->set_convolution_dimension_numbers(
+                proto.convolution_dimension_numbers());
+      }
+      break;
+    }
     default: {
       instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -304,14 +345,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
 
-  if (proto.has_window()) {
-    instruction->window_ = MakeUnique<Window>(proto.window());
-  }
-  if (proto.has_convolution_dimension_numbers()) {
-    instruction->convolution_dimension_numbers_ =
-        MakeUnique<ConvolutionDimensionNumbers>(
-            proto.convolution_dimension_numbers());
-  }
   if (proto.has_dot_dimension_numbers()) {
     instruction->dot_dimension_numbers_ =
         MakeUnique<DotDimensionNumbers>(proto.dot_dimension_numbers());
@@ -324,7 +357,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->padding_config_ =
         MakeUnique<PaddingConfig>(proto.padding_config());
   }
-  instruction->custom_call_target_ = proto.custom_call_target();
 
   if (proto.has_sharding()) {
     TF_ASSIGN_OR_RETURN(const auto& sharding,
@@ -493,20 +525,8 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kConvolution, shape));
-  if (window_util::HasBaseDilation(window)) {
-    instruction->name_ = instruction->name() + "-base-dilated";
-  }
-  if (window_util::HasWindowDilation(window)) {
-    instruction->name_ = instruction->name() + "-window-dilated";
-  }
-  instruction->AppendOperand(lhs);
-  instruction->AppendOperand(rhs);
-  instruction->window_ = MakeUnique<Window>(window);
-  instruction->convolution_dimension_numbers_ =
-      MakeUnique<ConvolutionDimensionNumbers>(dimension_numbers);
-  return instruction;
+  return MakeUnique<HloConvolutionInstruction>(shape, lhs, rhs, window,
+                                               dimension_numbers);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -710,13 +730,8 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduceWindow(
     const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
     const Window& window, HloComputation* reduce_computation) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kReduceWindow, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(init_value);
-  instruction->called_computations_.push_back(reduce_computation);
-  instruction->window_ = MakeUnique<Window>(window);
-  return instruction;
+  return MakeUnique<HloReduceWindowInstruction>(shape, operand, init_value,
+                                                window, reduce_computation);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -754,16 +769,8 @@ HloInstruction::CreateSelectAndScatter(
     const Shape& shape, HloInstruction* operand, HloComputation* select,
     const Window& window, HloInstruction* source, HloInstruction* init_value,
     HloComputation* scatter) {
-  auto instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kSelectAndScatter, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(source);
-  instruction->AppendOperand(init_value);
-  // Select comes before scatter in the vector.
-  instruction->called_computations_.push_back(select);
-  instruction->called_computations_.push_back(scatter);
-  instruction->window_ = MakeUnique<Window>(window);
-  return instruction;
+  return MakeUnique<HloSelectAndScatterInstruction>(
+      shape, operand, select, window, source, init_value, scatter);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateBroadcast(
@@ -929,13 +936,8 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
     tensorflow::StringPiece custom_call_target) {
-  std::unique_ptr<HloInstruction> instruction =
-      WrapUnique(new HloInstruction(HloOpcode::kCustomCall, shape));
-  for (auto operand : operands) {
-    instruction->AppendOperand(operand);
-  }
-  instruction->custom_call_target_ = std::string(custom_call_target);
-  return instruction;
+  return MakeUnique<HloCustomCallInstruction>(shape, operands,
+                                              custom_call_target);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateHostCompute(
@@ -1048,6 +1050,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1111,17 +1117,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCall:
       clone = CreateCall(shape, new_operands, to_apply());
       break;
-    case HloOpcode::kCustomCall:
-      clone = CreateCustomCall(shape, new_operands, custom_call_target_);
-      if (window_ != nullptr) {
-        clone->window_ = MakeUnique<Window>(*window_);
-      }
-      if (convolution_dimension_numbers_ != nullptr) {
-        clone->convolution_dimension_numbers_ =
-            MakeUnique<ConvolutionDimensionNumbers>(
-                *convolution_dimension_numbers_);
-      }
-      break;
     case HloOpcode::kHostCompute:
       clone = CreateHostCompute(shape, new_operands, channel_name_,
                                 cost_estimate_ns_);
@@ -1134,11 +1129,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBitcastConvert(shape, new_operands[0]);
       break;
-    case HloOpcode::kConvolution:
-      CHECK_EQ(new_operands.size(), 2);
-      clone = CreateConvolve(shape, new_operands[0], new_operands[1], *window_,
-                             *convolution_dimension_numbers_);
-      break;
     case HloOpcode::kDot:
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateDot(shape, new_operands[0], new_operands[1],
@@ -1148,17 +1138,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 2);
       clone =
           CreatePad(shape, new_operands[0], new_operands[1], *padding_config_);
-      break;
-    case HloOpcode::kReduceWindow:
-      CHECK_EQ(new_operands.size(), 2);
-      clone = CreateReduceWindow(shape, new_operands[0], new_operands[1],
-                                 *window_, to_apply());
-      break;
-    case HloOpcode::kSelectAndScatter:
-      CHECK_EQ(new_operands.size(), 3);
-      clone =
-          CreateSelectAndScatter(shape, new_operands[0], select(), *window_,
-                                 new_operands[1], new_operands[2], scatter());
       break;
     case HloOpcode::kReshape:
       CHECK_EQ(new_operands.size(), 1);
@@ -1466,12 +1445,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kGenerateToken:
       return false;
 
-    // Convolution has a window and dimensions.
-    case HloOpcode::kConvolution:
-      return protobuf_util::ProtobufEquals(window(), other.window()) &&
-             protobuf_util::ProtobufEquals(
-                 convolution_dimension_numbers(),
-                 other.convolution_dimension_numbers());
     // Check dot dimension numbers.
     case HloOpcode::kDot:
       return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
@@ -1482,37 +1455,11 @@ bool HloInstruction::IdenticalSlowPath(
                                            other.gather_dimension_numbers()) &&
              gather_window_bounds() == other.gather_window_bounds();
 
-    case HloOpcode::kReduceWindow:
-      return eq_computations(to_apply(), other.to_apply()) &&
-             protobuf_util::ProtobufEquals(window(), other.window());
-
-    // SelectAndScatter is determined by both select and scatter
-    // computation as well as the window configuration.
-    case HloOpcode::kSelectAndScatter:
-      return eq_computations(select(), other.select()) &&
-             eq_computations(scatter(), other.scatter()) &&
-             protobuf_util::ProtobufEquals(window(), other.window());
-
     // Remaining instructions with special values.
     case HloOpcode::kPad:
       return protobuf_util::ProtobufEquals(padding_config(),
                                            other.padding_config());
     case HloOpcode::kCall:
-    case HloOpcode::kCustomCall:
-      if ((window_ == nullptr) != (other.window_ == nullptr) ||
-          (window_ != nullptr &&
-           !protobuf_util::ProtobufEquals(window(), other.window()))) {
-        return false;
-      }
-      if ((convolution_dimension_numbers_ == nullptr) !=
-              (other.convolution_dimension_numbers_ == nullptr) ||
-          (convolution_dimension_numbers_ != nullptr &&
-           !protobuf_util::ProtobufEquals(
-               convolution_dimension_numbers(),
-               other.convolution_dimension_numbers()))) {
-        return false;
-      }
-      return custom_call_target_ == other.custom_call_target_;
     case HloOpcode::kConditional:
       return eq_computations(true_computation(), other.true_computation()) &&
              eq_computations(false_computation(), other.false_computation());
@@ -1549,6 +1496,10 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -1669,11 +1620,6 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
   }
 }
 
-const string& HloInstruction::custom_call_target() const {
-  CHECK_EQ(opcode_, HloOpcode::kCustomCall);
-  return custom_call_target_;
-}
-
 HloComputation* HloInstruction::while_condition() const {
   CHECK_EQ(HloOpcode::kWhile, opcode_);
   return called_computations_[kConditionComputationIndex];
@@ -1698,32 +1644,6 @@ void HloInstruction::set_while_body(HloComputation* computation) {
   CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kWhile, opcode_);
   called_computations_[kBodyComputationIndex] = computation;
-}
-
-HloComputation* HloInstruction::select() const {
-  CHECK_EQ(HloOpcode::kSelectAndScatter, opcode_);
-  return called_computations_[kSelectComputationIndex];
-}
-
-HloComputation* HloInstruction::scatter() const {
-  CHECK_EQ(HloOpcode::kSelectAndScatter, opcode_);
-  return called_computations_[kScatterComputationIndex];
-}
-
-void HloInstruction::set_select(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
-  CHECK_EQ(HloOpcode::kSelectAndScatter, opcode_);
-  called_computations_[kSelectComputationIndex] = computation;
-}
-
-void HloInstruction::set_scatter(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
-  CHECK_EQ(HloOpcode::kSelectAndScatter, opcode_);
-  called_computations_[kScatterComputationIndex] = computation;
 }
 
 HloComputation* HloInstruction::true_computation() const {
@@ -1926,9 +1846,6 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
 std::vector<string> HloInstruction::ExtraAttributesToString(
     const HloPrintOptions& options) const {
   std::vector<string> extra = ExtraAttributesToStringImpl(options);
-  if (window_ != nullptr && window_->dimensions_size() != 0) {
-    extra.push_back(StrCat("window={", window_util::ToString(*window_), "}"));
-  }
   if (padding_config_ != nullptr) {
     extra.push_back(
         StrCat("padding=", xla::PaddingConfigToString(*padding_config_)));
@@ -1939,11 +1856,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
         StrCat("dynamic_slice_sizes={", Join(dynamic_slice_sizes(), ","), "}"));
   }
 
-  if (convolution_dimension_numbers_ != nullptr) {
-    extra.push_back(StrCat(
-        "dim_labels=",
-        ConvolutionDimensionNumbersToString(*convolution_dimension_numbers_)));
-  }
   if (dot_dimension_numbers_ != nullptr) {
     extra.push_back(DotDimensionNumbersToString());
   }
@@ -2042,14 +1954,6 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                            ", exit=", user_side_metadata_->ToString(), "}"));
   }
 
-  // By contract, we print the custom call target even if
-  // options.print_subcomputation_mode() == kOff, because the call target is not
-  // an HloComputation.
-  if (opcode() == HloOpcode::kCustomCall) {
-    extra.push_back(
-        StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
-  }
-
   return extra;
 }
 
@@ -2086,13 +1990,6 @@ HloInstructionProto HloInstruction::ToProto() const {
     }
   }
 
-  if (window_ != nullptr) {
-    *proto.mutable_window() = *window_;
-  }
-  if (convolution_dimension_numbers_ != nullptr) {
-    *proto.mutable_convolution_dimension_numbers() =
-        *convolution_dimension_numbers_;
-  }
   if (dot_dimension_numbers_ != nullptr) {
     *proto.mutable_dot_dimension_numbers() = *dot_dimension_numbers_;
   }
@@ -2111,7 +2008,6 @@ HloInstructionProto HloInstruction::ToProto() const {
   if (padding_config_ != nullptr) {
     *proto.mutable_padding_config() = *padding_config_;
   }
-  proto.set_custom_call_target(custom_call_target_);
 
   if (has_sharding()) {
     *proto.mutable_sharding() = sharding().ToProto();
@@ -2127,35 +2023,6 @@ string HloInstruction::ToCategory() const {
   if (opcode() == HloOpcode::kTranspose || opcode() == HloOpcode::kCopy ||
       opcode() == HloOpcode::kReshape) {
     return "data formatting";
-  }
-
-  if (opcode() == HloOpcode::kConvolution) {
-    string category = "convolution";
-    if (window_util::HasBaseDilation(window())) {
-      category += " base-dilated";
-    }
-    if (window_util::HasWindowDilation(window())) {
-      category += " window-dilated";
-    }
-    return category;
-  }
-
-  // Give transpose-dot and backwards-conv fusions the categories "dot" and
-  // "convolution" so they match the categories of proper kDot and kConvolution
-  // ops.  These fusion categories are really just a way of expressing a
-  // particular kind of dot or conv, so they should have the same category as a
-  // vanilla dot/conv.
-  if (opcode() == HloOpcode::kFusion) {
-    switch (fusion_kind()) {
-      case FusionKind::kLoop:
-        return "loop fusion";
-      case FusionKind::kInput:
-        return "input fusion";
-      case FusionKind::kOutput:
-        return "output fusion";
-      case FusionKind::kCustom:
-        return "custom fusion";
-    }
   }
 
   if (IsElementwise()) {
@@ -3176,4 +3043,45 @@ tensorflow::gtl::optional<int64> HloInstruction::all_reduce_id() const {
   return Cast<HloAllReduceInstruction>(this)->all_reduce_id();
 }
 
+const ConvolutionDimensionNumbers&
+HloInstruction::convolution_dimension_numbers() const {
+  if (auto convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->convolution_dimension_numbers();
+  }
+  if (auto custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    return custom_call->convolution_dimension_numbers();
+  }
+  LOG(FATAL) << "Unimplemented method.";
+}
+
+void HloInstruction::set_convolution_dimension_numbers(
+    const ConvolutionDimensionNumbers& dnums) {
+  if (auto convolution = DynCast<HloConvolutionInstruction>(this)) {
+    convolution->set_convolution_dimension_numbers(dnums);
+  } else if (auto custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    custom_call->set_convolution_dimension_numbers(dnums);
+  } else {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+}
+
+HloComputation* HloInstruction::select() const {
+  return Cast<HloSelectAndScatterInstruction>(this)->select();
+}
+
+HloComputation* HloInstruction::scatter() const {
+  return Cast<HloSelectAndScatterInstruction>(this)->scatter();
+}
+
+void HloInstruction::set_select(HloComputation* computation) {
+  return Cast<HloSelectAndScatterInstruction>(this)->set_select(computation);
+}
+
+void HloInstruction::set_scatter(HloComputation* computation) {
+  return Cast<HloSelectAndScatterInstruction>(this)->set_scatter(computation);
+}
+
+const string& HloInstruction::custom_call_target() const {
+  return Cast<HloCustomCallInstruction>(this)->custom_call_target();
+}
 }  // namespace xla

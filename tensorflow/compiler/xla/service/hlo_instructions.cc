@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
 namespace {
@@ -806,6 +807,19 @@ HloFusionInstruction::HloFusionInstruction(
   fusion_computation->SetFusionInstruction(this);
 }
 
+string HloFusionInstruction::ToCategory() const {
+  switch (fusion_kind()) {
+    case FusionKind::kLoop:
+      return "loop fusion";
+    case FusionKind::kInput:
+      return "input fusion";
+    case FusionKind::kOutput:
+      return "output fusion";
+    case FusionKind::kCustom:
+      return "custom fusion";
+  }
+}
+
 HloInstructionProto HloFusionInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_fusion_kind(xla::ToString(fusion_kind()));
@@ -1433,4 +1447,247 @@ std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
                                            outfeed_config());
 }
 
+HloConvolutionInstruction::HloConvolutionInstruction(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers)
+    : HloInstruction(HloOpcode::kConvolution, shape),
+      window_(window),
+      convolution_dimension_numbers_(dimension_numbers) {
+  if (window_util::HasBaseDilation(window)) {
+    SetAndSanitizeName(StrCat(name(), "-base-dilated"));
+  }
+  if (window_util::HasWindowDilation(window)) {
+    SetAndSanitizeName(StrCat(name(), "-window-dilated"));
+  }
+  AppendOperand(lhs);
+  AppendOperand(rhs);
+}
+
+string HloConvolutionInstruction::ToCategory() const {
+  string category = "convolution";
+  if (window_util::HasBaseDilation(window())) {
+    category += " base-dilated";
+  }
+  if (window_util::HasWindowDilation(window())) {
+    category += " window-dilated";
+  }
+  return category;
+}
+
+HloInstructionProto HloConvolutionInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_window() = window_;
+  *proto.mutable_convolution_dimension_numbers() =
+      convolution_dimension_numbers_;
+  return proto;
+}
+
+std::vector<string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> extra;
+  if (window_.dimensions_size() != 0) {
+    extra.push_back(StrCat("window={", window_util::ToString(window()), "}"));
+  }
+  extra.push_back(StrCat("dim_labels=", ConvolutionDimensionNumbersToString(
+                                            convolution_dimension_numbers_)));
+  return extra;
+}
+
+bool HloConvolutionInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloConvolutionInstruction&>(other);
+  return protobuf_util::ProtobufEquals(window(), casted_other.window()) &&
+         protobuf_util::ProtobufEquals(
+             convolution_dimension_numbers(),
+             casted_other.convolution_dimension_numbers());
+}
+
+std::unique_ptr<HloInstruction>
+HloConvolutionInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return MakeUnique<HloConvolutionInstruction>(shape, new_operands[0],
+                                               new_operands[1], window(),
+                                               convolution_dimension_numbers_);
+}
+
+HloReduceWindowInstruction::HloReduceWindowInstruction(
+    const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
+    const Window& window, HloComputation* reduce_computation)
+    : HloInstruction(HloOpcode::kReduceWindow, shape), window_(window) {
+  AppendOperand(operand);
+  AppendOperand(init_value);
+  AppendComputation(reduce_computation);
+}
+
+HloInstructionProto HloReduceWindowInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_window() = window_;
+  return proto;
+}
+
+std::vector<string> HloReduceWindowInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> extra;
+  if (window_.dimensions_size() != 0) {
+    extra.push_back(StrCat("window={", window_util::ToString(window()), "}"));
+  }
+  return extra;
+}
+
+bool HloReduceWindowInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloReduceWindowInstruction&>(other);
+  return eq_computations(to_apply(), casted_other.to_apply()) &&
+         protobuf_util::ProtobufEquals(window(), casted_other.window());
+}
+
+std::unique_ptr<HloInstruction>
+HloReduceWindowInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return MakeUnique<HloReduceWindowInstruction>(
+      shape, new_operands[0], new_operands[1], window(), to_apply());
+}
+
+HloSelectAndScatterInstruction::HloSelectAndScatterInstruction(
+    const Shape& shape, HloInstruction* operand, HloComputation* select,
+    const Window& window, HloInstruction* source, HloInstruction* init_value,
+    HloComputation* scatter)
+    : HloInstruction(HloOpcode::kSelectAndScatter, shape), window_(window) {
+  AppendOperand(operand);
+  AppendOperand(source);
+  AppendOperand(init_value);
+  // Select comes before scatter in the vector.
+  AppendComputation(select);
+  AppendComputation(scatter);
+}
+
+HloInstructionProto HloSelectAndScatterInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_window() = window_;
+  return proto;
+}
+
+std::vector<string> HloSelectAndScatterInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> extra;
+  if (window_.dimensions_size() != 0) {
+    extra.push_back(StrCat("window={", window_util::ToString(window()), "}"));
+  }
+  return extra;
+}
+
+bool HloSelectAndScatterInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloSelectAndScatterInstruction&>(other);
+  return eq_computations(select(), casted_other.select()) &&
+         eq_computations(scatter(), casted_other.scatter()) &&
+         protobuf_util::ProtobufEquals(window(), casted_other.window());
+}
+
+std::unique_ptr<HloInstruction>
+HloSelectAndScatterInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 3);
+  return MakeUnique<HloSelectAndScatterInstruction>(
+      shape, new_operands[0], select(), window(), new_operands[1],
+      new_operands[2], scatter());
+}
+
+HloCustomCallInstruction::HloCustomCallInstruction(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    tensorflow::StringPiece custom_call_target)
+    : HloInstruction(HloOpcode::kCustomCall, shape),
+      custom_call_target_(custom_call_target.begin(),
+                          custom_call_target.end()) {
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+}
+
+HloInstructionProto HloCustomCallInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  if (window_ != nullptr) {
+    *proto.mutable_window() = *window_;
+  }
+  if (convolution_dimension_numbers_ != nullptr) {
+    *proto.mutable_convolution_dimension_numbers() =
+        *convolution_dimension_numbers_;
+  }
+  proto.set_custom_call_target(custom_call_target_);
+  return proto;
+}
+
+std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> extra;
+  if (window_ != nullptr && window_->dimensions_size() != 0) {
+    extra.push_back(StrCat("window={", window_util::ToString(*window_), "}"));
+  }
+  if (convolution_dimension_numbers_ != nullptr) {
+    extra.push_back(StrCat(
+        "dim_labels=",
+        ConvolutionDimensionNumbersToString(*convolution_dimension_numbers_)));
+  }
+  // By contract, we print the custom call target even if
+  // options.print_subcomputation_mode() == kOff, because the call target is not
+  // an HloComputation.
+  extra.push_back(
+      StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
+  return extra;
+}
+
+bool HloCustomCallInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloCustomCallInstruction&>(other);
+  if ((window_ == nullptr) != (casted_other.window_ == nullptr) ||
+      (window_ != nullptr &&
+       !protobuf_util::ProtobufEquals(*window_, *casted_other.window_))) {
+    return false;
+  }
+  if ((convolution_dimension_numbers_ == nullptr) !=
+          (casted_other.convolution_dimension_numbers_ == nullptr) ||
+      (convolution_dimension_numbers_ != nullptr &&
+       !protobuf_util::ProtobufEquals(
+           convolution_dimension_numbers(),
+           casted_other.convolution_dimension_numbers()))) {
+    return false;
+  }
+  return custom_call_target_ == casted_other.custom_call_target_;
+}
+
+std::unique_ptr<HloInstruction>
+HloCustomCallInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  auto cloned = MakeUnique<HloCustomCallInstruction>(shape, new_operands,
+                                                     custom_call_target());
+  if (window_ != nullptr) {
+    cloned->set_window(*window_);
+  }
+  if (convolution_dimension_numbers_ != nullptr) {
+    cloned->set_convolution_dimension_numbers(*convolution_dimension_numbers_);
+  }
+  return std::move(cloned);
+}
 }  // namespace xla
