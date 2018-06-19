@@ -1094,12 +1094,9 @@ def set_tf_nccl_install_path(environ_cp):
     if tf_nccl_version == '1':
       break  # No need to get install path, NCCL 1 is a GitHub repo.
 
-    # TODO(csigg): Look with ldconfig first if we can find the library in paths
+    # Look with ldconfig first if we can find the library in paths
     # like /usr/lib/x86_64-linux-gnu and the header file in the corresponding
     # include directory. This is where the NCCL .deb packages install them.
-    # Then ask the user if we should use that. Instead of a single
-    # NCCL_INSTALL_PATH, pass separate NCCL_LIB_PATH and NCCL_HDR_PATH to
-    # nccl_configure.bzl
 
     # First check to see if NCCL is in the ldconfig.
     # If its found, use that location.
@@ -1147,9 +1144,7 @@ def set_tf_nccl_install_path(environ_cp):
 
       # Result returned from "read" will be used unexpanded. That make "~"
       # unusable. Going through one more level of expansion to handle that.
-      print("nccl_install_path " + nccl_install_path)
       nccl_install_path = os.path.realpath(os.path.expanduser(nccl_install_path))
-      print("nccl_install_path " + nccl_install_path)
       if is_windows() or is_cygwin():
         nccl_install_path = cygpath(nccl_install_path)
 
@@ -1181,7 +1176,6 @@ def set_tf_nccl_install_path(environ_cp):
         nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
         nccl_lib_path = os.path.realpath(os.path.expanduser(nccl_lib_path))
         nccl_root_path = nccl_lib_path + "/../.."
-        print("nccl root" + nccl_root_path)
 
         # Look for header
         nccl_hdr_path = nccl_root_path + "/include/nccl.h"
