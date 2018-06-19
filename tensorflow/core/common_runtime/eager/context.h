@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -75,8 +75,8 @@ class EagerContext {
   // workers.
   //
   // Additional remote-specific args are:
-  //  - server: A GrpcServer that exports the tensorflow.WorkerService. Note
-  //  that this class expects the server to already have been started.
+  //  - server: A ServerInterface that exports the tensorflow.WorkerService.
+  //  Note that this class expects the server to already have been started.
   //  - remote_eager_workers: A cache from which we can get "EagerClient"s to
   //  communicate with remote eager services.
   //  - remote_device_mgr: A DeviceMgr* which contains all remote devices
@@ -85,7 +85,7 @@ class EagerContext {
   explicit EagerContext(
       const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
       bool async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
-      std::unique_ptr<GrpcServer> server,
+      std::unique_ptr<ServerInterface> server,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DeviceMgr> remote_device_manager,
       const gtl::FlatMap<string, uint64>& remote_contexts);
@@ -231,7 +231,7 @@ class EagerContext {
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should
   // be).
-  std::unique_ptr<GrpcServer> server_;
+  std::unique_ptr<ServerInterface> server_;
   const std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
   const std::unique_ptr<DeviceMgr> remote_device_manager_;
 

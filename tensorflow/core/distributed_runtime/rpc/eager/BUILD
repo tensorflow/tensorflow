@@ -42,26 +42,11 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/distributed_runtime/eager:eager_service_impl",
+        "//tensorflow/core/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/core/distributed_runtime/rpc:grpc_call",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
         "@grpc//:grpc++",
-    ],
-)
-
-cc_library(
-    name = "eager_grpc_server_lib",
-    hdrs = ["eager_grpc_server_lib.h"],
-    deps = [
-        ":grpc_eager_service_impl",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
-        "//tensorflow/core/distributed_runtime:worker_cache_wrapper",
-        "//tensorflow/core/distributed_runtime/eager:eager_service_impl",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
     ],
 )

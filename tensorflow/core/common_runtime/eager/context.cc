@@ -41,7 +41,7 @@ EagerContext::EagerContext(const SessionOptions& opts,
 EagerContext::EagerContext(
     const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
     bool async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
-    std::unique_ptr<GrpcServer> server,
+    std::unique_ptr<ServerInterface> server,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DeviceMgr> remote_device_manager,
     const gtl::FlatMap<string, uint64>& remote_contexts)
@@ -128,7 +128,7 @@ EagerContext::~EagerContext() {
   if (server_) {
     // TODO(nareshmodi): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
-                    "GrpcServer doesn't support clean shutdown.";
+                    "Servers don't support clean shutdown.";
     server_.release();
   }
 

@@ -5147,7 +5147,8 @@ def init_scope():
 
 
 @tf_export("enable_eager_execution")
-def enable_eager_execution(config=None, device_policy=None,
+def enable_eager_execution(config=None,
+                           device_policy=None,
                            execution_mode=None):
   """Enables eager execution for the lifetime of this program.
 
@@ -5207,6 +5208,31 @@ def enable_eager_execution(config=None, device_policy=None,
      TensorFlow graph, or if options provided conflict with a previous call
      to this function.
   """
+  return enable_eager_execution_internal(
+      config, device_policy, execution_mode, None)
+
+
+def enable_eager_execution_internal(config=None,
+                                    device_policy=None,
+                                    execution_mode=None,
+                                    server_def=None):
+  """Enables eager execution for the lifetime of this program.
+
+  Most of the doc string for enable_eager_execution is relevant here as well.
+  Args:
+    config: See enable_eager_execution doc string
+    device_policy: See enable_eager_execution doc string
+    execution_mode: See enable_eager_execution doc string
+    server_def: (Optional.) A tensorflow::ServerDef proto.
+      Enables execution on remote devices. GrpcServers need to be started by
+      creating an identical server_def to this, and setting the appropriate
+      task_indexes, so that the servers can communicate. It will then be
+      possible to execute operations on remote devices.
+
+  Raises:
+    ValueError
+
+  """
   if config is not None and not isinstance(config, config_pb2.ConfigProto):
     raise TypeError(
         "config must be a tf.ConfigProto, but got %s" % type(config))
@@ -5234,7 +5260,8 @@ def enable_eager_execution(config=None, device_policy=None,
     context._context = context.Context(
         config=config,
         device_policy=device_policy,
-        execution_mode=execution_mode)
+        execution_mode=execution_mode,
+        server_def=server_def)
   elif ((config is not None and config is not context._context._config) or
         (device_policy is not None and
          device_policy is not context._context._device_policy) or
