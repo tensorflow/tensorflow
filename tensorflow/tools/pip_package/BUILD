@@ -60,7 +60,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/autograph/core:core",
     "//tensorflow/contrib/autograph/core:test_lib",
     "//tensorflow/contrib/autograph/impl:impl",
-    "//tensorflow/contrib/autograph/operators:operators",
     "//tensorflow/contrib/autograph/lang:lang",
     "//tensorflow/contrib/autograph/operators:operators",
     "//tensorflow/contrib/autograph/pyct:pyct",
