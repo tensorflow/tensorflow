@@ -86,7 +86,7 @@ namespace tensorflow {
 
 typedef cudaStream_t gpuStream_t;
 typedef cudaDeviceProp gpuDeviceProp_t;
-#define EIGEN_GPU_SCRATCH_SIZE (Eigen::kCudaScratchSize)
+#define EIGEN_GPU_SCRATCH_SIZE (Eigen::kGpuScratchSize)
 using se::cuda::ScopedActivateExecutorContext;
 
 #elif TENSORFLOW_USE_ROCM
