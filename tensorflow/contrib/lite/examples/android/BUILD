@@ -26,28 +26,28 @@ cc_library(
 android_binary(
     name = "tflite_demo",
     srcs = glob([
-        "src/**/*.java",
+        "app/src/main/java/**/*.java",
     ]),
     # Package assets from assets dir as well as all model targets.
     # Remove undesired models (and corresponding Activities in source)
     # to reduce APK size.
     assets = [
-        "//tensorflow/contrib/lite/examples/android/assets:labels_mobilenet_quant_v1_224.txt",
+        "//tensorflow/contrib/lite/examples/android/app/src/main/assets:labels_mobilenet_quant_v1_224.txt",
         "@tflite_mobilenet//:mobilenet_quant_v1_224.tflite",
         "@tflite_conv_actions_frozen//:conv_actions_frozen.tflite",
-        "//tensorflow/contrib/lite/examples/android/assets:conv_actions_labels.txt",
+        "//tensorflow/contrib/lite/examples/android/app/src/main/assets:conv_actions_labels.txt",
         "@tflite_mobilenet_ssd//:mobilenet_ssd.tflite",
-        "//tensorflow/contrib/lite/examples/android/assets:box_priors.txt",
-        "//tensorflow/contrib/lite/examples/android/assets:coco_labels_list.txt",
+        "//tensorflow/contrib/lite/examples/android/app/src/main/assets:box_priors.txt",
+        "//tensorflow/contrib/lite/examples/android/app/src/main/assets:coco_labels_list.txt",
     ],
     assets_dir = "",
     custom_package = "org.tensorflow.lite.demo",
     inline_constants = 1,
-    manifest = "AndroidManifest.xml",
+    manifest = "app/src/main/AndroidManifest.xml",
     nocompress_extensions = [
         ".tflite",
     ],
-    resource_files = glob(["res/**"]),
+    resource_files = glob(["app/src/main/res/**"]),
     tags = [
         "manual",
         "notap",
@@ -57,31 +57,3 @@ android_binary(
         "//tensorflow/contrib/lite/java:tensorflowlite",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-            "gradleBuild/**",
-            "libs/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
-    name = "java_files",
-    srcs = glob(["src/**/*.java"]),
-)
-
-filegroup(
-    name = "resource_files",
-    srcs = glob(["res/**"]),
-)
-
-exports_files(["AndroidManifest.xml"])
