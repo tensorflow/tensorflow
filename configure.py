@@ -1523,7 +1523,7 @@ def main():
 
   set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
-  if not environ_cp.get("BAZEL_STRIP") == "0":
+  if environ_cp.get("BAZEL_STRIP") != "0":
     set_build_strip_flag()
   set_windows_build_flags()
 
