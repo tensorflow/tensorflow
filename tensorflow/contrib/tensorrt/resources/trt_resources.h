@@ -38,11 +38,6 @@ namespace tensorrt {
 
 class TRTCalibrationResource : public tensorflow::ResourceBase {
  public:
-  TRTCalibrationResource()
-      : calibrator_(nullptr),
-        logger_(nullptr),
-        thr_(nullptr) {}
-
   ~TRTCalibrationResource() {
     VLOG(0) << "Destroying Calibration Resource " << std::endl << DebugString();
     builder_.reset();
@@ -50,9 +45,6 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
     // We need to manually destroy the builder and engine before the allocator
     // is destroyed.
     allocator_.reset();
-    delete thr_;
-    delete logger_;
-    delete calibrator_;
   }
 
   string DebugString() override {
@@ -60,22 +52,22 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
     using std::hex;
     using std::dec;
     using std::endl;
-    oss << " Calibrator = " << hex << calibrator_      << dec << endl
-        << " Builder    = " << hex << builder_.get()   << dec << endl
-        << " Engine     = " << hex << engine_.get()    << dec << endl
-        << " Logger     = " << hex << logger_          << dec << endl
-        << " Allocator  = " << hex << allocator_.get() << dec << endl
-        << " Thread     = " << hex << thr_             << dec << endl;
+    oss << " Calibrator = " << hex << calibrator_.get() << dec << endl
+        << " Builder    = " << hex << builder_.get()    << dec << endl
+        << " Engine     = " << hex << engine_.get()     << dec << endl
+        << " Logger     = " << hex << &logger_          << dec << endl
+        << " Allocator  = " << hex << allocator_.get()  << dec << endl
+        << " Thread     = " << hex << thr_.get()        << dec << endl;
     return oss.str();
   }
 
-  TRTInt8Calibrator* calibrator_;
+  std::unique_ptr<TRTInt8Calibrator> calibrator_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   std::unique_ptr<nvinfer1::IGpuAllocator> allocator_;
-  tensorflow::tensorrt::Logger* logger_;
+  tensorflow::tensorrt::Logger logger_;
   // TODO(sami): Use threadpool threads!
-  std::thread* thr_;
+  std::unique_ptr<std::thread> thr_;
 };
 
 class TRTWeightStore {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
+#include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -46,25 +47,24 @@ class TRTEngineOp : public AsyncOpKernel {
   explicit TRTEngineOp(OpKernelConstruction* context);
 
   void ComputeAsync(OpKernelContext* context,
-                    tensorflow::AsyncOpKernel::DoneCallback done) override;
+                    AsyncOpKernel::DoneCallback done) override;
   ~TRTEngineOp();
 
  private:
   // Execute calibration
-  void ExecuteCalibration(tensorflow::OpKernelContext* ctx,
+  void ExecuteCalibration(OpKernelContext* ctx,
                           AsyncHelper* helper);
 
   // Construct a function handle for executing native funcdef graph
-  tensorflow::Status ConstructFunctionHandle(tensorflow::OpKernelContext* ctx);
+  Status ConstructFunctionHandle(OpKernelContext* ctx);
 
   // Execute replaced native segment as function Op.
-  void ExecuteNativeSegment(tensorflow::OpKernelContext* ctx,
+  void ExecuteNativeSegment(OpKernelContext* ctx,
                             AsyncHelper* helper);
 
   // Allocate necessary resources for calibration
-  tensorflow::Status AllocateCalibrationResources(
-      tensorflow::OpKernelContext* ctx,
-      tensorflow::tensorrt::TRTCalibrationResource** cr);
+  Status AllocateCalibrationResources(
+      OpKernelContext* ctx, TRTCalibrationResource** cr);
 
   // TODO(samikama): context should go to a resource manager!
   typedef std::pair<TrtUniquePtrType<nvinfer1::ICudaEngine>,
@@ -92,13 +92,13 @@ class TRTEngineOp : public AsyncOpKernel {
   string funcdef_name_;
 
   // GraphDef representation of the segment.
-  tensorflow::GraphDef segment_graph_;
+  GraphDef segment_graph_;
 
   // Lookup table for temporary staging areas of input tensors for calibration.
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
 
   // Temporary staging areas for calibration inputs.
-  std::vector<tensorflow::PersistentTensor> dev_tensors_;
+  std::vector<PersistentTensor> dev_tensors_;
 
   // Engine Precision mode.
   int precision_mode_;
@@ -120,9 +120,11 @@ class TRTEngineOp : public AsyncOpKernel {
   // Maximum number of cached engines
   int max_cached_engines_;
 
-  tensorflow::int64 workspace_size_;
-  tensorflow::mutex engine_mutex_;
-  tensorflow::FunctionLibraryRuntime::Handle native_func_;
+  int64 workspace_size_;
+  mutex engine_mutex_;
+  FunctionLibraryRuntime::Handle native_func_;
+
+  // The finalized calibrator for inference.
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
 };
 

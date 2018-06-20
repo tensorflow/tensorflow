@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -119,9 +120,14 @@ tensorflow::Status ConvertSegmentToGraphDef(
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
 tensorflow::Status ConvertGraphDefToEngine(
-    const tensorflow::GraphDef& gdef, int precision_mode,
+    const tensorflow::GraphDef& gdef,
+    int precision_mode,
+    int max_batch_size,
+    size_t max_workspace_size_bytes,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
-    nvinfer1::IBuilder* builder,
+    Logger* logger,
+    nvinfer1::IGpuAllocator* allocator,
+    TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
     bool* convert_successfully);
 

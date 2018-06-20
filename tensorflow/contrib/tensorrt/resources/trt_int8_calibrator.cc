@@ -51,8 +51,8 @@ TRTInt8Calibrator::TRTInt8Calibrator(const string& calib_data)
 bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
                                  const cudaStream_t stream) {
   tensorflow::mutex_lock lock(cond_mtx_);
-  while ((calib_running_ || batch_is_set_) &&
-         !done_) {  // wait while calibration is running
+  // wait while calibration is running.
+  while ((calib_running_ || batch_is_set_) && !done_) {
     cond_.wait(lock);
   }
   if (done_) return false;
@@ -66,8 +66,6 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
     }
     const auto& d = devptr->second;
 
-    // TODO(aaroey): we should not use sync copy on default stream. Make sure
-    // stream->ThenMemcpy() is used in future PRs.
     // TODO(sami,aaroey): Need to figure out a way to ensure synchronization
     // between stream, perhaps using a tensor?
     auto status = cudaMemcpyAsync(d.first, it.second, d.second,
@@ -91,12 +89,11 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
   tensorflow::mutex_lock lock(cond_mtx_);
   calib_running_ = false;
   cond_.notify_all();
-  while ((!batch_is_set_ && !done_)) {  // wait until new batch arrives
+  // wait until new batch arrives
+  while ((!batch_is_set_ && !done_)) {
     cond_.wait(lock);
   }
-  if (done_) {
-    return false;
-  }
+  if (done_) return false;
 
   for (int i = 0; i < num_bindings; i++) {
     auto it = dev_buffers_.find(names[i]);
