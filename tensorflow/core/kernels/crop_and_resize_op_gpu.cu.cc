@@ -407,7 +407,7 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
     total_count = batch * image_height * image_width * depth;
     if (total_count > 0) {
       config = GetGpuLaunchConfig(total_count, d);
-      GPU_LAUNCH_KERNEL(SetZero<T>,
+      GPU_LAUNCH_KERNEL(SetZero,
           dim3(config.block_count), dim3(config.thread_per_block), 0,
           d.stream(),
           config.virtual_thread_count, grads_image.data());
@@ -458,7 +458,7 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
     total_count = num_boxes * 4;
     if (total_count > 0) {
       config = GetGpuLaunchConfig(total_count, d);
-      GPU_LAUNCH_KERNEL(SetZero<T>,
+      GPU_LAUNCH_KERNEL(SetZero,
           dim3(config.block_count), dim3(config.thread_per_block), 0,
           d.stream(),
           config.virtual_thread_count, grads_boxes.data());

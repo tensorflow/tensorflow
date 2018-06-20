@@ -3750,7 +3750,8 @@ bool CudnnSupport::DoNormalizeBackwardWithDimensions(
     const dnn::BatchDescriptor& dimensions, const DeviceMemory<float>& raw_data,
     const DeviceMemory<float>& normalized_data,
     const DeviceMemory<float>& normalized_variable_gradient,
-    DeviceMemory<float>* raw_variable_gradient) {
+    DeviceMemory<float>* raw_variable_gradient,
+    ScratchAllocator* workspace_allocator) {
   // Check for unsupported modes.
   if (normalize_descriptor.wrap_around()) {
     LOG(ERROR) << "CUDA LRN does not support cudnn-around mode";

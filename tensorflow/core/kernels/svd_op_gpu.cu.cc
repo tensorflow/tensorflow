@@ -63,10 +63,10 @@ __global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
                                       int64 ldu, const Scalar* M,
                                       const Scalar* U, const Scalar* S,
                                       Scalar* V) {
-  CUDA_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count.x, X) {
-    CUDA_AXIS_KERNEL_LOOP(i, config.virtual_thread_count.y, Y) {
+  GPU_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count.x, X) {
+    GPU_AXIS_KERNEL_LOOP(i, config.virtual_thread_count.y, Y) {
       Scalar v = M[i + m * batch] * U[ldu * (i + m * batch)] * S[batch];
-      CudaAtomicAdd(V + batch, v);
+      GpuAtomicAdd(V + batch, v);
     }
   }
 }
@@ -75,7 +75,7 @@ __global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
 // V[i] = V[i]>=0 ? 1 : 0
 template <class Scalar>
 __global__ void ExtractSignOfVKernel(GpuLaunchConfig config, Scalar* V) {
-  CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
+  GPU_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
     V[i] = V[i] >= 0 ? Scalar(1) : Scalar(-1);
   }
 }
