@@ -379,7 +379,11 @@ def _SymGrad(op, out_grads):
   f.name = op.type
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
-  in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
+  # TODO(apassos) use a better dtype here
+  in_grads = functional_ops.symbolic_gradient(
+      input=f_in,
+      Tout=[x if x != dtypes.resource else dtypes.float32 for x in f_types],
+      f=f)
   return in_grads
 
 

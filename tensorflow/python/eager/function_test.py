@@ -34,6 +34,7 @@ from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -89,6 +90,19 @@ class FunctionTest(test.TestCase):
       return backprop.implicit_grad(inner)()[0][0]
 
     self.assertAllEqual(step(), 2.0)
+
+  def testGraphGradientVariable(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+
+      @function.defun
+      def f():
+        return 2.0 * v
+
+      node = f()
+      grads, = gradients_impl.gradients(node, v)
+      v.initializer.run()
+      self.assertAllEqual(grads.eval(), 2.0)
 
   def testBasicDefunOpGraphMode(self):
     matmul = function.defun(math_ops.matmul)

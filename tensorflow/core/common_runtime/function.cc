@@ -1585,6 +1585,12 @@ FunctionBody* SymbolicGradientHelper::Compute() {
     g->RemoveNode(n);
   }
   gbody_->ret_types = fbody_->arg_types;
+  // TODO(apassos): use the right dtype for gradients of  resource variables
+  for (int i = 0; i < gbody_->ret_types.size(); ++i) {
+    if (gbody_->ret_types[i] == DT_RESOURCE) {
+      gbody_->ret_types[i] = DT_FLOAT;
+    }
+  }
   gbody_->ret_nodes.clear();
   // Add new return nodes to the function gradient body for each node
   // in 'x_grad_nodes'.
