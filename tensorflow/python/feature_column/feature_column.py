@@ -452,13 +452,15 @@ def linear_model(features,
     ValueError: if an item in `feature_columns` is neither a `_DenseColumn`
       nor `_CategoricalColumn`.
   """
+  with variable_scope.variable_scope(None, 'linear_model') as vs:
+    model_name = _strip_leading_slashes(vs.name)
   linear_model_layer = _LinearModel(
       feature_columns=feature_columns,
       units=units,
       sparse_combiner=sparse_combiner,
       weight_collections=weight_collections,
       trainable=trainable,
-      name='linear_model')
+      name=model_name)
   retval = linear_model_layer(features)  # pylint: disable=not-callable
   if cols_to_vars is not None:
     cols_to_vars.update(linear_model_layer.cols_to_vars())
