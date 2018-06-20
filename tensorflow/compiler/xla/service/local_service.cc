@@ -190,10 +190,8 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(program_shape, argument_layouts, &execution_options));
 
-  VLOG(3) << "Host Computation Layout: "
-          << module_config->host_entry_computation_layout().ToString();
-  VLOG(3) << "Device Computation Layout: "
-          << module_config->device_entry_computation_layout().ToString();
+  VLOG(3) << "Computation Layout: "
+          << module_config->entry_computation_layout().ToString();
 
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,

@@ -193,9 +193,6 @@ class Service : public ServiceInterface {
       const ExecutionOptions& execution_options,
       tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments);
 
-  // Assert that host- and device-shapes are in a consistent state.
-  Status ValidateEntryComputationLayout(HloModule* module);
-
  protected:
   friend class LocalExecutable;
 

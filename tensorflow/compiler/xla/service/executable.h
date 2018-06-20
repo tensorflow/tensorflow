@@ -131,8 +131,8 @@ class Executable {
 
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
-  const Shape& host_result_shape() const {
-    return hlo_module_->config().host_entry_computation_layout().result_shape();
+  const Shape& result_shape() const {
+    return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
   // Returns the size of the executable in bytes. Returns -1 by default if the

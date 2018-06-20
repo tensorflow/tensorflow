@@ -58,7 +58,7 @@ HloComputation* HloModule::AddComputationInternal(
 
     // If the module configuration has no entry layout computation set, create a
     // default one based on the program shape.
-    if (!config_.has_host_entry_computation_layout()) {
+    if (!config_.has_entry_computation_layout()) {
       config_.SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
@@ -231,14 +231,11 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   TF_RET_CHECK(proto.has_program_shape())
       << "No program shape found in the proto";
   const auto& expected_program_shape = proto.program_shape();
-  TF_RET_CHECK(
-      expected_program_shape.parameters_size() ==
-      module_config.device_entry_computation_layout().parameter_count());
+  TF_RET_CHECK(expected_program_shape.parameters_size() ==
+               module_config.entry_computation_layout().parameter_count());
   for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
     const Shape& parameter_shape =
-        module_config.device_entry_computation_layout()
-            .parameter_layout(i)
-            .shape();
+        module_config.entry_computation_layout().parameter_layout(i).shape();
     TF_RET_CHECK(ShapeUtil::Compatible(expected_program_shape.parameters(i),
                                        parameter_shape))
         << "HloModuleConfig has different shape for parameter " << i
@@ -248,7 +245,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
         << ", actual: " << ShapeUtil::HumanStringWithLayout(parameter_shape);
   }
   const Shape& result_shape =
-      module_config.device_entry_computation_layout().result_layout().shape();
+      module_config.entry_computation_layout().result_layout().shape();
   TF_RET_CHECK(
       ShapeUtil::Compatible(expected_program_shape.result(), result_shape))
       << "HloModuleConfig has different result shape than the HLO module. "
@@ -327,7 +324,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   // The module config is constructed with default layouts regardless of what is
   // passed in via the ProgramShape. Set the layouts to the appropriate values.
   ComputationLayout* entry_layout =
-      module_config.mutable_host_entry_computation_layout();
+      module_config.mutable_entry_computation_layout();
   for (int64 i = 0; i < entry_layout->parameter_count(); ++i) {
     TF_RETURN_IF_ERROR(
         entry_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
@@ -335,9 +332,6 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   }
   TF_RETURN_IF_ERROR(entry_layout->mutable_result_layout()->CopyLayoutFromShape(
       program_shape.result()));
-  *module_config.mutable_device_entry_computation_layout() =
-      module_config.host_entry_computation_layout();
-
   return module_config;
 }
 

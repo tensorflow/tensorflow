@@ -205,7 +205,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
   {
     HloPassPipeline pipeline("layout_assignment");
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_device_entry_computation_layout(), stream_exec);
+        hlo_module->mutable_entry_computation_layout(), stream_exec);
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.

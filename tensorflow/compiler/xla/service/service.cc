@@ -244,10 +244,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
     const ExecutionOptions* execution_options) {
   auto config = MakeUnique<HloModuleConfig>(program_shape);
-  ComputationLayout* host_computation_layout =
-      config->mutable_host_entry_computation_layout();
-  ComputationLayout* device_computation_layout =
-      config->mutable_device_entry_computation_layout();
+  ComputationLayout* computation_layout =
+      config->mutable_entry_computation_layout();
   if (program_shape.parameters_size() != argument_shapes.size()) {
     return InvalidArgument("computation takes %d parameters, but %zu given",
                            program_shape.parameters_size(),
@@ -264,10 +262,9 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
           ShapeUtil::HumanString(*argument_shapes[i]).c_str());
     }
-    TF_RETURN_IF_ERROR(host_computation_layout->mutable_parameter_layout(i)
-                           ->CopyLayoutFromShape(*argument_shapes[i]));
-    TF_RETURN_IF_ERROR(device_computation_layout->mutable_parameter_layout(i)
-                           ->CopyLayoutFromShape(*argument_shapes[i]));
+    TF_RETURN_IF_ERROR(
+        computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
+            *argument_shapes[i]));
   }
   if (execution_options != nullptr &&
       execution_options->has_shape_with_output_layout()) {
@@ -276,20 +273,11 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     TF_RETURN_IF_ERROR(
         ValidateResultShape(shape_with_output_layout, program_shape.result()));
     TF_RETURN_IF_ERROR(
-        host_computation_layout->mutable_result_layout()->CopyLayoutFromShape(
-            shape_with_output_layout));
-    TF_RETURN_IF_ERROR(
-        device_computation_layout->mutable_result_layout()->CopyLayoutFromShape(
+        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
             shape_with_output_layout));
   } else {
     // If the result layout is not set, then choose the default.
-    // TODO(b/29118294): Allow the compiler to choose a better layout in this
-    // case.
-    // TODO(b/78356948): We are forcing the default layout here. We should fix
-    // clients which expect a default layout, to be explicit about it, by
-    // passing the proper ExecutionOptions with shape_with_output_layout set.
-    host_computation_layout->mutable_result_layout()->SetToDefaultLayout();
-    device_computation_layout->mutable_result_layout()->SetToDefaultLayout();
+    computation_layout->mutable_result_layout()->SetToDefaultLayout();
   }
 
   config->set_replica_count(options_.number_of_replicas());
@@ -375,24 +363,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   }
 
   return std::move(executables);
-}
-
-Status Service::ValidateEntryComputationLayout(HloModule* module) {
-  const ComputationLayout& on_host = module->host_entry_computation_layout();
-  const ComputationLayout& on_device =
-      module->device_entry_computation_layout();
-  for (int64 i = 0; i < on_device.parameter_count(); ++i) {
-    TF_RET_CHECK(ShapeUtil::Compatible(on_device.parameter_shape(i),
-                                       on_host.parameter_shape(i)))
-        << ShapeUtil::HumanStringWithLayout(on_device.parameter_shape(i))
-        << " vs "
-        << ShapeUtil::HumanStringWithLayout(on_host.parameter_shape(i));
-  }
-  TF_RET_CHECK(
-      ShapeUtil::Compatible(on_device.result_shape(), on_host.result_shape()))
-      << ShapeUtil::HumanStringWithLayout(on_device.result_shape()) << " vs "
-      << ShapeUtil::HumanStringWithLayout(on_host.result_shape());
-  return Status::OK();
 }
 
 StatusOr<std::vector<GlobalDataHandle>>
@@ -690,7 +660,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
                            request.execution_options()));
     VLOG(3)
         << "ExecuteGraphParallel created HloModuleConfig computation layout: "
-        << module_config->host_entry_computation_layout().ToString();
+        << module_config->entry_computation_layout().ToString();
 
     // Adds to the vectors to build and execute the computations after the loop.
     all_arguments.push_back(replicated_arguments);
@@ -851,8 +821,6 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   TF_ASSIGN_OR_RETURN(
       module, backend->compiler()->RunHloPasses(std::move(module), executor,
                                                 device_allocator));
-  // Check that on-host and on-device shapes are consistent.
-  TF_RETURN_IF_ERROR(ValidateEntryComputationLayout(module.get()));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       backend->compiler()->RunBackend(
