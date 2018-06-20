@@ -43,7 +43,7 @@ from tensorflow.python.util import nest
 
 
 # pylint: disable=line-too-long
-# TODO(josh11b): Should device values be strings or DeviceSpec objects
+# TODO(josh11b): Should device values be strings or DeviceSpec objects?
 # Not sure DeviceSpec objects are usable as a dict key.
 class DistributedValues(object):
   """Holds a map from device to values. Either PerDevice or Mirrored."""
@@ -163,9 +163,16 @@ class PerDevice(DistributedValues):
   pass
 
 
-class Mirrored(DistributedValues):
+# Note that unlike PerDevice, Mirrored values inherit from
+# DistributedDelegate and so can be used directly in cross-tower mode.
+class Mirrored(DistributedDelegate):
   """Holds a map from device to values which are kept in sync."""
-  pass
+
+  def _get_cross_tower(self):
+    device = device_util.canonicalize(device_util.current())
+    if device in self._index:
+      return self._index[device]
+    return list(self._index.values())[0]
 
 
 def _assign_on_device(device, variable, tensor):
@@ -353,7 +360,7 @@ class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():
-      return distribute_lib.get_distribution_strategy().fetch(
+      return distribute_lib.get_distribution_strategy().read_var(
           tower_local_variable)
     spec = saver.BaseSaverBuilder.SaveSpec(
         tensor=tensor,

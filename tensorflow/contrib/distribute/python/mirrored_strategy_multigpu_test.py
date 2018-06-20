@@ -385,14 +385,13 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
       # Without get(device), should return the value you get by
       # applying the reduction across all towers (whether you use
-      # fetch(), get(), or nothing).
-      self.assertEqual(expected_sum, self.evaluate(dist.fetch(ret_v_sum)))
-      self.assertEqual(expected_mean, self.evaluate(dist.fetch(ret_v_mean)))
+      # read_var(), get(), or nothing).
+      self.assertEqual(expected_sum, self.evaluate(dist.read_var(ret_v_sum)))
+      self.assertEqual(expected_mean, self.evaluate(dist.read_var(ret_v_mean)))
       self.assertEqual(expected_sum, self.evaluate(ret_v_sum.get()))
       self.assertEqual(expected_mean, self.evaluate(ret_v_mean.get()))
-      if not context.executing_eagerly():
-        self.assertEqual(expected_sum, self.evaluate(ret_v_sum))
-        self.assertEqual(expected_mean, self.evaluate(ret_v_mean))
+      self.assertEqual(expected_sum, self.evaluate(ret_v_sum))
+      self.assertEqual(expected_mean, self.evaluate(ret_v_mean))
 
   # NOTE(priyag): Names and name scopes are ignored in eager, hence we are not
   # testing this in eager mode.
@@ -557,14 +556,15 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         # the individual values before running the update ops.
         self.assertEquals(1.0, self.evaluate(
             ret_v_sum.get(dist._devices[0]).read_value()))
-        self.assertEquals(2.0, self.evaluate(dist.read_var(ret_v_sum)))
+        self.assertEquals(2.0, self.evaluate(ret_v_sum))
+
         # Apply updates.
         self.evaluate(update_ops)
         # Assert that the aggregated value of the tower local vars is the sum of
         # the individual values after running the update ops.
         self.assertEquals(5.0, self.evaluate(
             ret_v_sum.get(dist._devices[0]).read_value()))
-        self.assertEquals(10.0, self.evaluate(dist.read_var(ret_v_sum)))
+        self.assertEquals(10.0, self.evaluate(ret_v_sum))
 
 
 if __name__ == "__main__":

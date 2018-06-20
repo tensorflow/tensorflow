@@ -89,7 +89,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         run_step()
 
         weights.append(self.evaluate(layer.kernel))
-        biases.append(self.evaluate(distribution.fetch(layer.bias)))
+        biases.append(self.evaluate(layer.bias))
 
       if is_tpu:
         with self.test_session() as sess:
@@ -254,7 +254,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       for _ in range(10):
         run_step()
-        moving_means = self.evaluate(distribution.fetch(batchnorm.moving_mean))
+        moving_means = self.evaluate(batchnorm.moving_mean)
 
         # We make sure that the moving_mean is updated as if the sample mean is
         # calculated over all towers.
@@ -345,7 +345,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       v = all_vars[0]
       self.assertTrue(all([v is vi for vi in all_vars[1:]]))
-      weight = numpy.squeeze(self.evaluate(distribution.fetch(v)))
+      weight = numpy.squeeze(self.evaluate(v))
       # Our model is:
       #   predict = x * w
       #   loss = (predict - y)^2
