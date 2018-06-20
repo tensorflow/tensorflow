@@ -1,5 +1,9 @@
 # XLA Overview
 
+<div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:50%" src="/images/xlalogo.png">
+</div>
+
 > Note: XLA is experimental and considered alpha.  Most use cases will not
 > see improvements in performance (speed or decreased memory usage). We have
 > released XLA early so the Open Source Community can contribute to its

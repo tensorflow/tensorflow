@@ -26,14 +26,13 @@ limitations under the License.
 #endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
-#include "tensorflow/core/platform/windows/windows_file_system.h"
+#include "tensorflow/core/platform/windows/wide_char.h"
 #define PATH_MAX MAX_PATH
 #else
 #include <unistd.h>
 #endif
 
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -43,6 +42,9 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
+
+// 128KB copy buffer
+constexpr size_t kCopyFileBufferSize = 128 * 1024;
 
 class FileSystemRegistryImpl : public FileSystemRegistry {
  public:
@@ -90,7 +92,7 @@ Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   StringPiece scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
-  FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
+  FileSystem* file_system = file_system_registry_->Lookup(std::string(scheme));
   if (!file_system) {
     if (scheme.empty()) {
       scheme = "[local]";
@@ -164,7 +166,7 @@ bool Env::FilesExist(const std::vector<string>& files,
   for (const auto& file : files) {
     StringPiece scheme, host, path;
     io::ParseURI(file, &scheme, &host, &path);
-    files_per_fs[scheme.ToString()].push_back(file);
+    files_per_fs[std::string(scheme)].push_back(file);
   }
 
   std::unordered_map<string, Status> per_file_status;
@@ -278,6 +280,17 @@ Status Env::RenameFile(const string& src, const string& target) {
   return src_fs->RenameFile(src, target);
 }
 
+Status Env::CopyFile(const string& src, const string& target) {
+  FileSystem* src_fs;
+  FileSystem* target_fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &src_fs));
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(target, &target_fs));
+  if (src_fs == target_fs) {
+    return src_fs->CopyFile(src, target);
+  }
+  return FileSystemCopyFile(src_fs, src, target_fs, target);
+}
+
 string Env::GetExecutablePath() {
   char exe_path[PATH_MAX] = {0};
 #ifdef __APPLE__
@@ -298,7 +311,7 @@ string Env::GetExecutablePath() {
   HMODULE hModule = GetModuleHandleW(NULL);
   WCHAR wc_file_path[MAX_PATH] = {0};
   GetModuleFileNameW(hModule, wc_file_path, MAX_PATH);
-  string file_path = WindowsFileSystem::WideCharToUtf8(wc_file_path);
+  string file_path = WideCharToUtf8(wc_file_path);
   std::copy(file_path.begin(), file_path.end(), exe_path);
 #else
   CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
@@ -404,6 +417,29 @@ Status WriteStringToFile(Env* env, const string& fname,
     s = file->Close();
   }
   return s;
+}
+
+Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
+                          FileSystem* target_fs, const string& target) {
+  std::unique_ptr<RandomAccessFile> src_file;
+  TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
+
+  std::unique_ptr<WritableFile> target_file;
+  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target, &target_file));
+
+  uint64 offset = 0;
+  std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);
+  Status s = Status::OK();
+  while (s.ok()) {
+    StringPiece result;
+    s = src_file->Read(offset, kCopyFileBufferSize, &result, scratch.get());
+    if (!(s.ok() || s.code() == error::OUT_OF_RANGE)) {
+      return s;
+    }
+    TF_RETURN_IF_ERROR(target_file->Append(result));
+    offset += result.size();
+  }
+  return target_file->Close();
 }
 
 // A ZeroCopyInputStream on a RandomAccessFile.

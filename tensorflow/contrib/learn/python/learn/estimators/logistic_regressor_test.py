@@ -57,7 +57,10 @@ def _logistic_regression_model_fn(features, labels, mode):
   predictions = math_ops.sigmoid(logits)
   loss = losses.sigmoid_cross_entropy(labels, logits)
   train_op = optimizers.optimize_loss(
-      loss, training_util.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss,
+      training_util.get_global_step(),
+      optimizer='Adagrad',
+      learning_rate=0.1)
   return predictions, loss, train_op
 
 

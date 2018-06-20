@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
-#define TENSORFLOW_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
 
 #include <unordered_map>
 #include <vector>
@@ -24,16 +24,21 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 
 namespace tensorflow {
+
 namespace grappler {
 
 class SymbolicShapeRefiner;
 class TopoQueue;
 
-// A TensorFlow model to optimize.
-// Models are represented by the combination of a graph, one of more fetch
-// nodes, and potentially a set of nodes to feed.
+// Infer OpInfo::TensorProperties for graph nodes inputs/outputs.
+//
+// Typical use case, is to infer tensor properties from a graph, before doing
+// optimization pass. Nodes modified during optimization pass have to be
+// invalidated, to prevent further incorrect optimizations based on wrong shape
+// and data type properties.
 class GraphProperties {
  public:
+  // The item must outlive the properties
   explicit GraphProperties(const GrapplerItem& item) : item_(item) {}
 
   // Infer the shapes through abstract interpretation. Feed information can be
@@ -64,64 +69,51 @@ class GraphProperties {
       const string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetOutputProperties(
       const string& node_name) const;
-
-  static void FillTensorPropertiesFromContext(
-      const shape_inference::ShapeHandle&, const DataType&,
-      shape_inference::InferenceContext*,
-      std::unordered_map<const shape_inference::Dimension*, int>* dim_ids,
-      OpInfo::TensorProperties*);
+  // Invalidate input/output properties for nodes modified during graph
+  // optimization pass, to prevent potential optimizations, based on incorrect
+  // shape information.
+  void ClearInputProperties(const string& node_name);
+  void ClearOutputProperties(const string& node_name);
 
  private:
-  // Merges shapes <shapes_and_types>, determined from an EnqueueV2 node, into
-  // <*queue_shapes_and_types>.
-  static Status MergeEnqueueShapesAndTypes(
-      SymbolicShapeRefiner* shape_refiner, const Node* qnode,
-      const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
-      std::vector<shape_inference::ShapeAndType>* queue_shapes_and_types);
   // Relaxes shapes <shapes_and_types>, determined from an EnqueueV2 node, into
   // <*queue_shapes_and_types>.
   static Status RelaxEnqueueShapesAndMergeTypes(
-      SymbolicShapeRefiner* shape_refiner, const Node* qnode,
+      SymbolicShapeRefiner* shape_refiner, const NodeDef* qnode,
       const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
       std::vector<shape_inference::ShapeAndType>* queue_shapes_and_types);
 
-  // Update the shapes for qnode. If output shapes of qnode have changed,
-  // enqueue its fanout in 'new_shapes'.
-  static Status UpdateResource(
-      const Node* qnode, const std::unordered_set<const Node*>& queue_inputs,
-      SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes);
+  // Update the shapes of the enqueue node, port them over to the corresponding
+  // queue, and schedule the reprocessing of the queue if needed.
+  static Status UpdateEnqueue(
+      const NodeDef* enqueue_node,
+      const std::unordered_map<const NodeDef*, const NodeDef*>&
+          resource_handles,
+      SymbolicShapeRefiner* shape_refiner, bool* new_shapes);
 
   // Update the output shapes of a Merge node, and enqueue its fanout in
   // new_shapes if needed.
-  static Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
-                                const Node* node, bool relax,
-                                TopoQueue* new_shapes);
+  Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
+                         const NodeDef* node, bool* new_shapes) const;
   // Process the Enter node, and enqueue its fanout in new_shapes if needed.
   static Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
-                            const Node* node, bool relax,
-                            TopoQueue* new_shapes);
-  // Process a node that is used to feed the model.
-  Status OverwriteFedPorts(
-      SymbolicShapeRefiner* shape_refiner,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
-      const Node* node, TopoQueue* new_shapes) const;
+                            const NodeDef* node, bool* new_shapes);
   // Update the shapes for node 'n'. If output shapes for n have changed,
   // enqueue its fanout in 'new_shapes'.
-  Status UpdateShapes(
-      SymbolicShapeRefiner* shape_refiner, bool relax,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
-      const Node* n, TopoQueue* new_shapes) const;
+  Status UpdateShapes(SymbolicShapeRefiner* shape_refiner,
+                      const std::unordered_map<const NodeDef*, const NodeDef*>&
+                          resource_handles,
+                      const NodeDef* n, bool* new_shapes) const;
   // Propagate the shapes for the nodes enqueued in new_shapes and their
   // transitive fanout until a fixed point is reached.
   Status PropagateShapes(
-      SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
-      const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
-          resources,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
+      SymbolicShapeRefiner* shape_refiner, TopoQueue* new_shapes,
+      const std::unordered_map<const NodeDef*, const NodeDef*>&
+          resource_handles,
       int num_loops) const;
 
   // Data members
-  GrapplerItem item_;
+  const GrapplerItem& item_;
   std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
   std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
   const std::vector<OpInfo::TensorProperties> missing_properties_;
@@ -130,4 +122,4 @@ class GraphProperties {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_

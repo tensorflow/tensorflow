@@ -24,8 +24,10 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradient_checker
@@ -70,6 +72,7 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
   return sparse_tensor.SparseTensor(
       indices=x_indices, values=x_values, dense_shape=x_shape), x_values
 
+
 def _default_tolerance(dtype):
   """Returns a sensible default tolerance for comparing results of a given
   type"""
@@ -80,7 +83,7 @@ def _default_tolerance(dtype):
   elif dtype in (np.float64, np.complex128):
     return 1e-5
   else:
-    return None # Fail fast for unexpected types
+    return None  # Fail fast for unexpected types
 
 
 class UnaryOpTest(test.TestCase):
@@ -150,7 +153,7 @@ class UnaryOpTest(test.TestCase):
 
   def _compareGpu(self, x, np_func, tf_func):
     np_ans = np_func(x)
-    with self.test_session(use_gpu=True):
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       result = tf_func(ops.convert_to_tensor(x))
       tf_gpu = result.eval()
     if x.dtype == np.float16:
@@ -162,7 +165,7 @@ class UnaryOpTest(test.TestCase):
   def _compareSparseGpu(self, x, np_func, tf_func, tol):
     x_sp, x_sp_vals = _sparsify(x)
     res_np = np_func(x_sp_vals)
-    with self.test_session(use_gpu=True):
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       self._check(tf_func(x_sp), res_np, x_sp, tol)
 
   def _compareBoth(self, x, np_func, tf_func):
@@ -232,12 +235,18 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(k, np.arccos, math_ops.acos)
     self._compareBoth(x, np.arctan, math_ops.atan)
     self._compareBoth(x, np.tan, math_ops.tan)
-    self._compareBoth(
-        y,
-        np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
-        math_ops.lgamma)
+    self._compareBoth(y,
+                      np.vectorize(
+                          self._replace_domain_error_with_inf(math.lgamma)),
+                      math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -283,6 +292,12 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.arcsin, math_ops.asin)
     self._compareBoth(x, np.arccos, math_ops.acos)
     self._compareBoth(x, np.arctan, math_ops.atan)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -297,8 +312,8 @@ class UnaryOpTest(test.TestCase):
     w = x - x.min() + 1.02  # all greater than 1
     y = (x + .5).astype(np.float64)  # no zero
     z = (x + 15.5).astype(np.float64)  # all positive
-    k = np.arange(-0.90, 0.90, 0.35).reshape(1, 3, 2).astype(
-        np.float64)  # between -1 and 1
+    k = np.arange(-0.90, 0.90,
+                  0.35).reshape(1, 3, 2).astype(np.float64)  # between -1 and 1
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
@@ -321,16 +336,22 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(y, np.sign, math_ops.sign)
     self._compareBoth(x, np.sin, math_ops.sin)
     self._compareBoth(x, np.cos, math_ops.cos)
-    self._compareBoth(
-        y,
-        np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
-        math_ops.lgamma)
+    self._compareBoth(y,
+                      np.vectorize(
+                          self._replace_domain_error_with_inf(math.lgamma)),
+                      math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
     self._compareBoth(x, np.arctan, math_ops.atan)
     self._compareBoth(k, np.arcsin, math_ops.asin)
     self._compareBoth(k, np.arccos, math_ops.acos)
     self._compareBoth(k, np.tan, math_ops.tan)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -361,12 +382,18 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(y, np.sign, math_ops.sign)
     self._compareBoth(x, np.sin, math_ops.sin)
     self._compareBoth(x, np.cos, math_ops.cos)
-    self._compareBoth(
-        y,
-        np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
-        math_ops.lgamma)
+    self._compareBoth(y,
+                      np.vectorize(
+                          self._replace_domain_error_with_inf(math.lgamma)),
+                      math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -396,17 +423,20 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, math_ops.negative)
     self._compareCpu(x, np.negative, _NEG)
-    self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(x, np.sign, math_ops.sign)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
-    self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sign, math_ops.sign)
 
+  def testInt64Square(self):
+    x = np.arange(-6 << 20, 6 << 20, 2 << 20).reshape(1, 3, 2).astype(np.int64)
+    self._compareCpu(x, np.square, math_ops.square)
+    self._compareBothSparse(x, np.square, math_ops.square)
+
   def testComplex64Basic(self):
-    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3,
-                                                    2).astype(np.complex64)
+    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
+        np.complex64)
     y = x + np.complex(0.5, 0.5)  # no zeros
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
@@ -449,8 +479,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, complex_sign, math_ops.sign)
 
   def testComplex128Basic(self):
-    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3,
-                                                    2).astype(np.complex128)
+    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
+        np.complex128)
     y = x + np.complex(0.5, 0.5)  # no zeros
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
@@ -493,11 +523,11 @@ class UnaryOpTest(test.TestCase):
     dtype_tols = [(np.float32, 5e-4), (np.float64, 1e-6), (np.complex64, 5e-4),
                   (np.complex128, 1e-6)]
     op_range = [
-        (gen_math_ops._reciprocal_grad, [-2, 2]),
-        (gen_math_ops._rsqrt_grad, [0.1, 3]),
-        (gen_math_ops._sigmoid_grad, [-2, 2]),
-        (gen_math_ops._sqrt_grad, [0.1, 3]),
-        (gen_math_ops._tanh_grad, [-2, 2]),
+        (gen_math_ops.reciprocal_grad, [-2, 2]),
+        (gen_math_ops.rsqrt_grad, [0.1, 3]),
+        (gen_math_ops.sigmoid_grad, [-2, 2]),
+        (gen_math_ops.sqrt_grad, [0.1, 3]),
+        (gen_math_ops.tanh_grad, [-2, 2]),
     ]
 
     def rand(dtype):
@@ -625,7 +655,7 @@ class BinaryOpTest(test.TestCase):
 
   def _compareGpu(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
-    with self.test_session(use_gpu=True):
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
@@ -804,10 +834,10 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y, np.mod, _MOD)
 
   def testComplex64Basic(self):
-    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(
-        1, 3, 2).astype(np.complex64)
-    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(
-        1, 3, 2).astype(np.complex64)
+    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(
+        np.complex64)
+    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(
+        np.complex64)
     self._compareBoth(x, y, np.add, math_ops.add)
     self._compareBoth(x, y, np.subtract, math_ops.subtract)
     self._compareBoth(x, y, np.multiply, math_ops.multiply)
@@ -818,10 +848,10 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
 
   def testComplex128Basic(self):
-    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(
-        1, 3, 2).astype(np.complex128)
-    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(
-        1, 3, 2).astype(np.complex128)
+    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(
+        np.complex128)
+    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(
+        np.complex128)
     self._compareBoth(x, y, np.add, math_ops.add)
     self._compareBoth(x, y, np.subtract, math_ops.subtract)
     self._compareBoth(x, y, np.multiply, math_ops.multiply)
@@ -1126,8 +1156,8 @@ class BinaryOpTest(test.TestCase):
 
   def testMismatchedDimensions(self):
     for func in [
-        math_ops.add, math_ops.subtract, math_ops.multiply, math_ops.div,
-        _ADD, _SUB, _MUL, _TRUEDIV, _FLOORDIV
+        math_ops.add, math_ops.subtract, math_ops.multiply, math_ops.div, _ADD,
+        _SUB, _MUL, _TRUEDIV, _FLOORDIV
     ]:
       with self.assertRaisesWithPredicateMatch(
           ValueError, lambda e: "Dimensions must" in str(e)):
@@ -1160,19 +1190,45 @@ class BinaryOpTest(test.TestCase):
                    (1.2345, float("inf")), (1.2345, -float("inf")),
                    (-4.321, float("inf")), (-4.125, -float("inf")),
                    (float("inf"), float("inf")), (float("inf"), -float("inf")),
-                   (-float("inf"), float("inf")), (-float("inf"),
-                                                   -float("inf")))
+                   (-float("inf"), float("inf")),
+                   (-float("inf"), -float("inf")))
     for dtype in np.float32, np.float64:
       x1 = np.array(x1l).astype(dtype)
       x2 = np.array(x2l).astype(dtype)
       self._compareCpu(x1, x2, np.arctan2, math_ops.atan2)
       self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
 
+  def testPowNegativeExponent(self):
+    for dtype in [np.int32, np.int64]:
+      with self.test_session(use_gpu=False) as sess:
+        with self.assertRaisesRegexp(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          x = np.array([5, 2]).astype(dtype)
+          y = np.array([-2, 3]).astype(dtype)
+          sess.run(math_ops.pow(x, y))
+
+      with self.test_session(use_gpu=False) as sess:
+        with self.assertRaisesRegexp(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          x = np.array([5, 2]).astype(dtype)
+          y = np.array([2, -3]).astype(dtype)
+          sess.run(math_ops.pow(x, y))
+
+      with self.test_session(use_gpu=False) as sess:
+        with self.assertRaisesRegexp(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          x = np.array([5, 2]).astype(dtype)
+          y = -3
+          sess.run(math_ops.pow(x, y))
+
 
 class ComparisonOpTest(test.TestCase):
 
   def _compareScalar(self, func, x, y, dtype):
-    with self.test_session(use_gpu=True):
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       out = func(
           ops.convert_to_tensor(np.array([x]).astype(dtype)),
           ops.convert_to_tensor(np.array([y]).astype(dtype)))
@@ -1186,26 +1242,26 @@ class ComparisonOpTest(test.TestCase):
       for x in data:
         for y in data:
           self.assertEqual(self._compareScalar(math_ops.less, x, y, t), x < y)
-          self.assertEqual(self._compareScalar(math_ops.less_equal, x, y, t),
-                           x <= y)
-          self.assertEqual(self._compareScalar(math_ops.greater, x, y, t),
-                           x > y)
+          self.assertEqual(
+              self._compareScalar(math_ops.less_equal, x, y, t), x <= y)
+          self.assertEqual(
+              self._compareScalar(math_ops.greater, x, y, t), x > y)
           self.assertEqual(
               self._compareScalar(math_ops.greater_equal, x, y, t), x >= y)
           self.assertEqual(self._compareScalar(math_ops.equal, x, y, t), x == y)
-          self.assertEqual(self._compareScalar(math_ops.not_equal, x, y, t),
-                           x != y)
+          self.assertEqual(
+              self._compareScalar(math_ops.not_equal, x, y, t), x != y)
     data = [-1, 0, 1, -1j, 1j, 1 + 1j, 1 - 1j]
     for t in [np.complex64, np.complex128]:
       for x in data:
         for y in data:
           self.assertEqual(self._compareScalar(math_ops.equal, x, y, t), x == y)
-          self.assertEqual(self._compareScalar(math_ops.not_equal, x, y, t),
-                           x != y)
+          self.assertEqual(
+              self._compareScalar(math_ops.not_equal, x, y, t), x != y)
 
   def _compare(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
-    with self.test_session(use_gpu=True):
+    with self.test_session(force_gpu=test_util.is_gpu_available()):
       out = tf_func(ops.convert_to_tensor(x), ops.convert_to_tensor(y))
       tf_ans = out.eval()
     self.assertAllEqual(np_ans, tf_ans)
@@ -1284,8 +1340,8 @@ class ComparisonOpTest(test.TestCase):
     self._testBCastByFunc(np.equal, math_ops.equal, include_complex=True)
 
   def testBCastNotEqual(self):
-    self._testBCastByFunc(np.not_equal, math_ops.not_equal,
-                          include_complex=True)
+    self._testBCastByFunc(
+        np.not_equal, math_ops.not_equal, include_complex=True)
 
   def testShapeMismatch(self):
     dtypes = [np.float16, np.float32, np.float64, np.int32, np.int64]
@@ -1306,7 +1362,8 @@ class LogicalOpTest(test.TestCase):
 
   def _compareBinary(self, x, y, np_func, tf_func, use_gpu=False):
     np_ans = np_func(x, y)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=use_gpu,
+                           force_gpu=use_gpu and test_util.is_gpu_available()):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
@@ -1317,7 +1374,8 @@ class LogicalOpTest(test.TestCase):
 
   def _not(self, x, use_gpu=False):
     np_ans = np.logical_not(x)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=use_gpu,
+                           force_gpu=use_gpu and test_util.is_gpu_available()):
       out = math_ops.logical_not(ops.convert_to_tensor(x))
       tf_val = out.eval()
     self.assertEqual(out.dtype, dtypes_lib.bool)
@@ -1402,7 +1460,8 @@ class SelectOpTest(test.TestCase):
 
   def _compare(self, c, x, y, use_gpu):
     np_ans = np.where(c, x, y)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=use_gpu,
+                           force_gpu=use_gpu and test_util.is_gpu_available()):
       out = array_ops.where(c, x, y)
       tf_ans = out.eval()
     self.assertAllEqual(np_ans, tf_ans)
@@ -1545,7 +1604,8 @@ class BatchSelectOpTest(test.TestCase):
     np_ans = np.dstack(
         [x_i if c_i else y_i for c_i, x_i, y_i in zip(c, x, y)]).transpose(
             [2, 0, 1])
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=use_gpu,
+                           force_gpu=use_gpu and test_util.is_gpu_available()):
       out = array_ops.where(c, x, y)
       tf_ans = out.eval()
     self.assertAllEqual(np_ans, tf_ans)
@@ -1650,7 +1710,9 @@ class MinMaxOpTest(test.TestCase):
 
   def _compare(self, x, y, use_gpu):
     np_min, np_max = np.minimum(x, y), np.maximum(x, y)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(
+        use_gpu=use_gpu,
+        force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       omin, omax = math_ops.minimum(inx, iny), math_ops.maximum(inx, iny)
@@ -1744,9 +1806,8 @@ class MathOpsOverloadTest(test.TestCase):
   def _compareUnary(self, x, dtype, np_func, tf_func):
     np_ans = np_func(x).astype(dtype.as_numpy_dtype)
     with self.test_session(use_gpu=False):
-      self.assertAllClose(
-          np_ans, tf_func(ops.convert_to_tensor(
-              x, dtype=dtype)).eval())
+      self.assertAllClose(np_ans,
+                          tf_func(ops.convert_to_tensor(x, dtype=dtype)).eval())
 
   def testOverload(self):
     dtypes = [
@@ -1768,8 +1829,8 @@ class MathOpsOverloadTest(test.TestCase):
     ]
     for dtype in dtypes:
       for np_func, tf_func in funcs:
-        if dtype in (dtypes_lib.complex64, dtypes_lib.complex128
-                    ) and tf_func == _FLOORDIV:
+        if dtype in (dtypes_lib.complex64,
+                     dtypes_lib.complex128) and tf_func == _FLOORDIV:
           continue  # floordiv makes no sense for complex
         self._compareBinary(10, 5, dtype, np_func, tf_func)
     # Mod only works for int32 and int64.
@@ -1813,7 +1874,9 @@ class IsFiniteInfNanTest(test.TestCase):
 
   def _compare(self, x, use_gpu):
     np_finite, np_inf, np_nan = np.isfinite(x), np.isinf(x), np.isnan(x)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(
+        use_gpu=use_gpu,
+        force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
       inx = ops.convert_to_tensor(x)
       ofinite, oinf, onan = math_ops.is_finite(inx), math_ops.is_inf(
           inx), math_ops.is_nan(inx)
@@ -1854,7 +1917,7 @@ class IsFiniteInfNanTest(test.TestCase):
           x = np.full((size,), value, dtype=dtype)
           np_y = np.sqrt(x)
           np_nan = np.isnan(np_y)
-          with self.test_session(use_gpu=True):
+          with self.test_session(force_gpu=test_util.is_gpu_available()):
             tf_y = math_ops.sqrt(x)
             tf_nan = math_ops.is_nan(tf_y)
             if value < 0:
@@ -1909,7 +1972,8 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def _compareMake(self, real, imag, use_gpu):
     np_ans = real + (1j) * imag
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=use_gpu,
+                           force_gpu=use_gpu and test_util.is_gpu_available()):
       real = ops.convert_to_tensor(real)
       imag = ops.convert_to_tensor(imag)
       tf_ans = math_ops.complex(real, imag)
@@ -1928,7 +1992,8 @@ class ComplexMakeRealImagTest(test.TestCase):
   def _compareRealImag(self, cplx, use_gpu):
     np_real, np_imag = np.real(cplx), np.imag(cplx)
     np_zeros = np_real * 0
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=use_gpu,
+                           force_gpu=use_gpu and test_util.is_gpu_available()):
       inx = ops.convert_to_tensor(cplx)
       tf_real = math_ops.real(inx)
       tf_imag = math_ops.imag(inx)
@@ -1955,7 +2020,9 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def _compareAngle(self, cplx, use_gpu):
     np_angle = np.angle(cplx)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(
+        use_gpu=use_gpu,
+        force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
       inx = ops.convert_to_tensor(cplx)
       tf_angle = math_ops.angle(inx)
       tf_angle_val = sess.run(tf_angle)
@@ -1981,14 +2048,16 @@ class ComplexMakeRealImagTest(test.TestCase):
     # self._compareAngle(cplx, use_gpu=True)
 
   def testRealReal(self):
-    for dtype in dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float32, dtypes_lib.float64:
+    for dtype in (dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float32,
+                  dtypes_lib.float64):
       x = array_ops.placeholder(dtype)
       y = math_ops.real(x)
       self.assertEqual(x, y)
 
   def _compareConj(self, cplx, use_gpu):
     np_ans = np.conj(cplx)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=use_gpu,
+                           force_gpu=use_gpu and test_util.is_gpu_available()):
       inx = ops.convert_to_tensor(cplx)
       tf_conj = math_ops.conj(inx)
       tf_ans = tf_conj.eval()
@@ -2010,15 +2079,16 @@ class ComplexMakeRealImagTest(test.TestCase):
     self._compareConj(cplx, use_gpu=True)
 
   def testConjReal(self):
-    for dtype in dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float16, dtypes_lib.float32, dtypes_lib.float64:
+    for dtype in (dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float16,
+                  dtypes_lib.float32, dtypes_lib.float64):
       x = array_ops.placeholder(dtype)
       y = math_ops.conj(x)
       self.assertEqual(x, y)
 
   def testConjString(self):
     x = array_ops.placeholder(dtypes_lib.string)
-    with self.assertRaisesRegexp(
-        TypeError, r"Expected numeric or variant tensor"):
+    with self.assertRaisesRegexp(TypeError,
+                                 r"Expected numeric or variant tensor"):
       math_ops.conj(x)
 
   def _compareGradient(self, x):
@@ -2033,8 +2103,9 @@ class ComplexMakeRealImagTest(test.TestCase):
       real, imag = array_ops.reshape(real, [-1]), array_ops.reshape(imag, [-1])
       cplx = math_ops.complex(real, imag)
       cplx = math_ops.conj(cplx)
-      loss = math_ops.reduce_sum(math_ops.square(math_ops.real(
-          cplx))) + math_ops.reduce_sum(math_ops.square(math_ops.imag(cplx)))
+      loss = math_ops.reduce_sum(math_ops.square(
+          math_ops.real(cplx))) + math_ops.reduce_sum(
+              math_ops.square(math_ops.imag(cplx)))
       epsilon = 1e-3
       jacob_t, jacob_n = gradient_checker.compute_gradient(
           inx, list(x.shape), loss, [1], x_init_value=x, delta=epsilon)
@@ -2098,8 +2169,8 @@ class AccumulateTest(test.TestCase):
           np.random.rand(16, 16, 16, 16).astype(np.float32) for _ in range(20)
       ]
       random_tensors = [
-          ops.convert_to_tensor(
-              x, dtype=dtypes_lib.float32) for x in random_arrays
+          ops.convert_to_tensor(x, dtype=dtypes_lib.float32)
+          for x in random_arrays
       ]
       tf_val = math_ops.accumulate_n(random_tensors)
       np_val = random_arrays[0]
@@ -2133,6 +2204,48 @@ class AccumulateTest(test.TestCase):
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
         math_ops.accumulate_n([a], tensor_dtype=np.int32)
+
+
+class PolyvalTest(test.TestCase):
+
+  def _runtest(self, dtype, degree):
+    x = np.random.rand(2, 2).astype(dtype)
+    coeffs = [np.random.rand(2, 2).astype(dtype) for _ in range(degree + 1)]
+    np_val = np.polyval(coeffs, x)
+    with self.test_session():
+      tf_val = math_ops.polyval(coeffs, x)
+      self.assertAllClose(np_val, tf_val.eval())
+
+  def testSimple(self):
+    for dtype in [
+        np.int32, np.float32, np.float64, np.complex64, np.complex128
+    ]:
+      for degree in range(5):
+        self._runtest(dtype, degree)
+
+  def testBroadcast(self):
+    dtype = np.float32
+    degree = 3
+    shapes = [(1,), (2, 1), (1, 2), (2, 2)]
+    for x_shape in shapes:
+      for coeff_shape in shapes:
+        x = np.random.rand(*x_shape).astype(dtype)
+        coeffs = [
+            np.random.rand(*coeff_shape).astype(dtype)
+            for _ in range(degree + 1)
+        ]
+        np_val = np.polyval(coeffs, x)
+        with self.test_session():
+          tf_val = math_ops.polyval(coeffs, x)
+          self.assertAllClose(np_val, tf_val.eval())
+
+  def testEmpty(self):
+    x = np.random.rand(2, 2).astype(np.float32)
+    coeffs = []
+    np_val = np.polyval(coeffs, x)
+    with self.test_session():
+      tf_val = math_ops.polyval(coeffs, x)
+      self.assertAllClose(np_val, tf_val.eval())
 
 
 if __name__ == "__main__":

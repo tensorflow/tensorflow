@@ -3,7 +3,7 @@ FROM tensorflow/tensorflow:latest-devel
 LABEL maintainer="Clayne Robison<clayne.b.robison@intel.com>"
 
 # These arguments are parameterized. Use --build-args to override.
-ARG TF_BRANCH=r1.5
+ARG TF_BRANCH=r1.9
 ARG WHL_DIR=/whl
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -35,10 +35,10 @@ ENV CI_BUILD_PYTHON=python \
     PYTHON_LIB_PATH=/usr/local/lib/python2.7/dist-packages \
     CC_OPT_FLAGS='-march=native' \
     TF_NEED_JEMALLOC=0 \
-    TF_NEED_GCP=0 \
+    TF_NEED_GCP=1 \
     TF_NEED_CUDA=0 \
     TF_NEED_HDFS=0 \
-    TF_NEED_S3=0 \
+    TF_NEED_S3=1 \
     TF_NEED_OPENCL=0 \
     TF_NEED_GDR=0 \
     TF_ENABLE_XLA=0 \

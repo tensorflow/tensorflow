@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 
 namespace tensorflow {
-
 namespace {
 
 constexpr size_t kBufferSize = 1024 * 1024;  // In bytes.
@@ -38,33 +37,6 @@ Status ParseJson(StringPiece json, Json::Value* result) {
     return errors::Internal("Couldn't parse JSON response from BigQuery.");
   }
   return Status::OK();
-}
-
-string ColumnTypeToString(BigQueryTableAccessor::ColumnType enum_type) {
-  switch (enum_type) {
-    case BigQueryTableAccessor::ColumnType::kRecord:
-      return "RECORD";
-    case BigQueryTableAccessor::ColumnType::kString:
-      return "STRING";
-    case BigQueryTableAccessor::ColumnType::kBytes:
-      return "BYTES";
-    case BigQueryTableAccessor::ColumnType::kInteger:
-      return "INTEGER";
-    case BigQueryTableAccessor::ColumnType::kFloat:
-      return "FLOAT";
-    case BigQueryTableAccessor::ColumnType::kBoolean:
-      return "BOOLEAN";
-    case BigQueryTableAccessor::ColumnType::kTimestamp:
-      return "TIMESTAMP";
-    case BigQueryTableAccessor::ColumnType::kDate:
-      return "DATE";
-    case BigQueryTableAccessor::ColumnType::kTime:
-      return "TIME";
-    case BigQueryTableAccessor::ColumnType::kDatetime:
-      return "DATETIME";
-    case BigQueryTableAccessor::ColumnType::kNone:
-      return "NONE";
-  }
 }
 
 Status ParseColumnType(const string& type,

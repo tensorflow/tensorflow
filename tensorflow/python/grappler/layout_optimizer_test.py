@@ -150,13 +150,18 @@ def _loop_with_vec_and_4d():
 def _get_config(layout_optimizer=True):
   if layout_optimizer:
     rewrite_options = rewriter_config_pb2.RewriterConfig(
-        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON)
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.ON,
+        # do not remove duplicated nodes
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF)
   else:
     rewrite_options = rewriter_config_pb2.RewriterConfig(
-        layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF)
+        layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
+        # do not remove duplicated nodes
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF)
   graph_options = config_pb2.GraphOptions(
       rewrite_options=rewrite_options, build_cost_model=1)
   config = config_pb2.ConfigProto(graph_options=graph_options)
+  config.graph_options.optimizer_options.opt_level = -1
   return config
 
 
@@ -179,6 +184,8 @@ def _get_cluster():
   named_device = device_properties_pb2.NamedDevice()
   named_device.name = '/GPU:0'
   named_device.properties.type = 'GPU'
+  named_device.properties.num_cores = 24
+  named_device.properties.frequency = 1000
   named_device.properties.environment['architecture'] = '4'
   cluster = gcluster.Cluster(devices=[named_device])
   return cluster
@@ -253,7 +260,7 @@ class LayoutOptimizerTest(test.TestCase):
       x = random_ops.truncated_normal([1, 784], seed=0)
       output = _two_layer_model(x)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -290,7 +297,7 @@ class LayoutOptimizerTest(test.TestCase):
       add = bn0[0] + bn1[0]
       output = array_ops.identity(add)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={dim: 3})
 
       with session.Session(config=_get_config()) as sess:
@@ -318,11 +325,11 @@ class LayoutOptimizerTest(test.TestCase):
       conv = _two_layer_model(x)
       dim = array_ops.placeholder(dtype='int32')
       sizes = constant_op.constant([50, 10, 4], shape=[3])
-      split = gen_array_ops._split_v(
+      split = gen_array_ops.split_v(
           value=conv, size_splits=sizes, axis=dim, num_split=3)
       output = math_ops.reduce_sum(split[0])
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={dim: 3})
 
       with session.Session(config=_get_config()) as sess:
@@ -356,7 +363,7 @@ class LayoutOptimizerTest(test.TestCase):
       pad = array_ops.pad(conv, paddings)
       output = array_ops.identity(pad)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -376,7 +383,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self._assert_trans_nchw_to_nhwc('Pad-0-0', nodes)
-      self.assertIn('Pad-PaddingsConst-LayoutOptimizer', nodes)
+      self.assertIn('Pad-1-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testReduceSum(self):
@@ -387,7 +394,7 @@ class LayoutOptimizerTest(test.TestCase):
       reduce_sum = math_ops.reduce_sum(conv)
       output = array_ops.identity(reduce_sum)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -416,7 +423,7 @@ class LayoutOptimizerTest(test.TestCase):
       cast = math_ops.cast(conv, dtype='bool')
       output = array_ops.identity(cast)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -447,7 +454,67 @@ class LayoutOptimizerTest(test.TestCase):
       squeeze = array_ops.squeeze(reduce_sum)
       output = array_ops.identity(squeeze)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Three transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 1
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testSqueezeAlongHW(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      reduce_sum = math_ops.reduce_sum(conv, axis=[1, 2], keepdims=True)
+      squeeze = array_ops.squeeze(reduce_sum, axis=[1, 2])
+      output = array_ops.identity(squeeze)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Three transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 1
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testSqueezeAlongNHW(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      reduce_sum = math_ops.reduce_sum(conv, axis=[0, 1, 2], keepdims=True)
+      squeeze = array_ops.squeeze(reduce_sum, axis=[0, 1, 2])
+      output = array_ops.identity(squeeze)
+
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -476,7 +543,7 @@ class LayoutOptimizerTest(test.TestCase):
       reduce_sum = math_ops.reduce_sum(conv, axis=[1, 2, 3])
       output = array_ops.identity(reduce_sum)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -505,7 +572,7 @@ class LayoutOptimizerTest(test.TestCase):
       reduce_sum = math_ops.reduce_sum(conv, axis=[0, 1, 2])
       output = array_ops.identity(reduce_sum)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -534,7 +601,7 @@ class LayoutOptimizerTest(test.TestCase):
       reduce_sum = math_ops.reduce_sum(conv, axis=[3])
       output = array_ops.identity(reduce_sum)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -555,6 +622,94 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  def testReduceSumAlongCKeepDims(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      reduce_sum = math_ops.reduce_sum(conv, axis=[3], keepdims=True)
+      output = array_ops.identity(reduce_sum)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('Sum-0-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testReduceSumAlongHKeepDims(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      reduce_sum = math_ops.reduce_sum(conv, axis=[2], keepdims=True)
+      output = array_ops.identity(reduce_sum)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testReduceSumAlongWCKeepDims(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      reduce_sum = math_ops.reduce_sum(conv, axis=[2, 3], keepdims=True)
+      output = array_ops.identity(reduce_sum)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
   def testConcatWithControlDependency(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -567,7 +722,7 @@ class LayoutOptimizerTest(test.TestCase):
         concat = array_ops.concat([conv, conv], axis)
       output = array_ops.identity(concat)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -587,7 +742,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self._assert_trans_nchw_to_nhwc('concat-0-0', nodes)
-      self.assertIn('concat-Const_2-LayoutOptimizer', nodes)
+      self.assertIn('concat-2-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testFill(self):
@@ -601,7 +756,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(fill)
 
       x_val = [3.4] * 784
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={x: x_val})
 
       with session.Session(config=_get_config()) as sess:
@@ -643,7 +798,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(tile)
 
       multiple_val = [2, 3, 4, 1]
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={multiple: multiple_val})
 
       with session.Session(config=_get_config()) as sess:
@@ -678,7 +833,7 @@ class LayoutOptimizerTest(test.TestCase):
       reverse = array_ops.reverse(conv, dims)
       output = array_ops.identity(reverse)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -698,7 +853,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self._assert_trans_nchw_to_nhwc('ReverseV2-0-0', nodes)
-      self.assertIn('ReverseV2-DimsConst-LayoutOptimizer', nodes)
+      self.assertIn('ReverseV2-1-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testReverseWithNonConstDims(self):
@@ -711,7 +866,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(reverse)
 
       dims_val = [2, 3]
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={dims: dims_val})
 
       with session.Session(config=_get_config()) as sess:
@@ -745,10 +900,10 @@ class LayoutOptimizerTest(test.TestCase):
       add = math_ops.add(conv, conv)
       mean = math_ops.reduce_mean(conv)
       condition = math_ops.less(conv, mean)
-      select = gen_math_ops._select(condition, conv, add)
+      select = gen_math_ops.select(condition, conv, add)
       output = array_ops.identity(select)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -768,6 +923,37 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nchw_to_nhwc('Select-0-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  def testSelectOpConditionUnknownShape(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      add = math_ops.add(conv, conv)
+      condition = array_ops.placeholder(dtype='bool')
+      select = gen_math_ops.select(condition, conv, add)
+      output = array_ops.identity(select)
+
+      condition_val = np.zeros((1, 7, 7, 64))
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output, feed_dict={condition: condition_val})
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(
+            output, run_metadata=metadata, feed_dict={condition: condition_val})
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 3
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
   def testSelectOpScalarCondition(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -775,10 +961,10 @@ class LayoutOptimizerTest(test.TestCase):
       conv = _two_layer_model(x)
       add = math_ops.add(conv, conv)
       condition = constant_op.constant(True)
-      select = gen_math_ops._select(condition, conv, add)
+      select = gen_math_ops.select(condition, conv, add)
       output = array_ops.identity(select)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -808,7 +994,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(pad)
 
       paddings_val = [[1, 2], [3, 4], [5, 6], [7, 8]]
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={paddings: paddings_val})
 
       with session.Session(config=_get_config()) as sess:
@@ -841,11 +1027,11 @@ class LayoutOptimizerTest(test.TestCase):
       conv = _two_layer_model(x)
       ksize = constant_op.constant([1, 2, 3, 1], shape=[4])
       strides = array_ops.placeholder(dtype='int32', shape=[4])
-      max_pool = gen_nn_ops._max_pool_v2(conv, ksize, strides, 'VALID')
+      max_pool = gen_nn_ops.max_pool_v2(conv, ksize, strides, 'VALID')
       output = array_ops.identity(max_pool)
 
       strides_val = [1, 3, 2, 1]
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={strides: strides_val})
 
       with session.Session(config=_get_config()) as sess:
@@ -867,7 +1053,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self._assert_trans_nchw_to_nhwc('MaxPoolV2-0-0', nodes)
       self._assert_vec_nhwc_to_nchw('MaxPoolV2-2', nodes)
-      self.assertIn('MaxPoolV2-Const_2-LayoutOptimizer', nodes)
+      self.assertIn('MaxPoolV2-1-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testMaxPoolGradV2(self):
@@ -882,7 +1068,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(max_pool_grad)
 
       strides_val = [1, 3, 2, 1]
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={strides: strides_val})
 
       with session.Session(config=_get_config()) as sess:
@@ -904,7 +1090,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self._assert_trans_nchw_to_nhwc('MaxPoolGradV2-0-0', nodes)
       self._assert_vec_nhwc_to_nchw('MaxPoolGradV2-4', nodes)
-      self.assertIn('MaxPoolGradV2-Const_2-LayoutOptimizer', nodes)
+      self.assertIn('MaxPoolGradV2-3-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testSliceWithNonConstAxis(self):
@@ -917,7 +1103,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(s)
 
       size_val = [1, 2, 3, 4]
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={size: size_val})
 
       with session.Session(config=_get_config()) as sess:
@@ -953,7 +1139,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = array_ops.identity(s)
 
       end_val = [1, 2, 3, 4]
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={end: end_val})
 
       with session.Session(config=_get_config()) as sess:
@@ -977,20 +1163,21 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self._assert_trans_nchw_to_nhwc('StridedSlice-0-0', nodes)
       self._assert_vec_nhwc_to_nchw('StridedSlice-2', nodes)
-      self.assertIn('StridedSlice-StridedSlice/begin-LayoutOptimizer', nodes)
-      self.assertIn('StridedSlice-StridedSlice/strides-LayoutOptimizer', nodes)
+      self.assertIn('StridedSlice-1-LayoutOptimizer', nodes)
+      self.assertIn('StridedSlice-3-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
-  def testStridedSliceWithMask(self):
+  def testStridedSliceWithMask1011(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = random_ops.truncated_normal([1, 784], seed=0)
       conv = _two_layer_model(x)
-      # This will generate a StridedSlice op with begin mask and end mask.
+      # This will generate a StridedSlice op with begin mask and
+      # end mask 11(1011).
       s = conv[:, :, 1:-1, :]
       output = array_ops.identity(s)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -1010,11 +1197,44 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self._assert_trans_nchw_to_nhwc('strided_slice-0-0', nodes)
-      self.assertIn('strided_slice-strided_slice/stack-LayoutOptimizer', nodes)
-      self.assertIn('strided_slice-strided_slice/stack_1-LayoutOptimizer',
-                    nodes)
-      self.assertIn('strided_slice-strided_slice/stack_2-LayoutOptimizer',
-                    nodes)
+      self.assertIn('strided_slice-1-LayoutOptimizer', nodes)
+      self.assertIn('strided_slice-2-LayoutOptimizer', nodes)
+      self.assertIn('strided_slice-3-LayoutOptimizer', nodes)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
+
+  def testStridedSliceWithMask0111(self):
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = random_ops.truncated_normal([1, 784], seed=0)
+      conv = _two_layer_model(x)
+      # This will generate a StridedSlice op with begin mask and
+      # end mask 7(0111).
+      s = conv[:, :, :, 1:-1]
+      output = array_ops.identity(s)
+
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output)
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(output, run_metadata=metadata)
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      # Four transposes were initially added in the Expand phase of
+      # LayoutOptimizer; two of them are cancelled out in the Collapse phase.
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self._assert_trans_nchw_to_nhwc('strided_slice-0-0', nodes)
+      self.assertIn('strided_slice-1-LayoutOptimizer', nodes)
+      self.assertIn('strided_slice-2-LayoutOptimizer', nodes)
+      self.assertIn('strided_slice-3-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testStridedSliceGradWithNonConstAxis(self):
@@ -1031,7 +1251,7 @@ class LayoutOptimizerTest(test.TestCase):
                                             [1, 2, 3, 1], s)
       output = array_ops.identity(s_grad)
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={end: end_val})
 
       with session.Session(config=_get_config()) as sess:
@@ -1055,10 +1275,8 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self._assert_trans_nchw_to_nhwc('StridedSliceGrad-0-0', nodes)
       self._assert_vec_nhwc_to_nchw('StridedSliceGrad-2', nodes)
-      self.assertIn('StridedSlice-StridedSliceGrad/begin-LayoutOptimizer',
-                    nodes)
-      self.assertIn('StridedSlice-StridedSliceGrad/strides-LayoutOptimizer',
-                    nodes)
+      self.assertIn('StridedSlice-1-LayoutOptimizer', nodes)
+      self.assertIn('StridedSlice-2-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testShapeN(self):
@@ -1069,7 +1287,7 @@ class LayoutOptimizerTest(test.TestCase):
       output = math_ops.add(shapen[0], shapen[1])
 
       x_val = [1.7] * 784
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output, feed_dict={x: x_val})
 
       with session.Session(config=_get_config()) as sess:
@@ -1092,11 +1310,42 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_vec_nchw_to_nhwc('ShapeN-0-0', nodes)
       self.assertAllEqual(output_val_ref, output_val)
 
+  def testShapeNFollowedByNotConvertibleNodeReshape(self):
+    if test.is_gpu_available(cuda_only=True):
+      x = array_ops.placeholder(dtype='float32')
+      conv = _two_layer_model(x)
+      conv_reshape = array_ops.reshape(conv, [1, 1, 1, -1])
+      shapen = array_ops.shape_n([conv, conv_reshape])
+      shape = array_ops.identity(shapen[1])
+      ones = array_ops.ones(shape)
+      output = math_ops.add_n([conv_reshape, ones])
+
+      x_val = [1.7] * 784
+      with session.Session(config=_get_config(False)) as sess:
+        output_val_ref = sess.run(output, feed_dict={x: x_val})
+
+      with session.Session(config=_get_config()) as sess:
+        metadata = config_pb2.RunMetadata()
+        output_val = sess.run(
+            output, run_metadata=metadata, feed_dict={x: x_val})
+
+      nodes = []
+      num_transposes = 0
+      for node in metadata.cost_graph.node:
+        if _is_transpose(node.name):
+          num_transposes += 1
+        nodes.append(node.name)
+
+      expected_num_transposes = 2
+      self.assertEqual(expected_num_transposes, num_transposes)
+      self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
+      self.assertAllEqual(output_val_ref, output_val)
+
   def testLoop(self):
     if test.is_gpu_available(cuda_only=True):
       output = _loop()
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -1123,7 +1372,7 @@ class LayoutOptimizerTest(test.TestCase):
     if test.is_gpu_available(cuda_only=True):
       output = _loop_with_branch()
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -1137,17 +1386,17 @@ class LayoutOptimizerTest(test.TestCase):
           num_transposes += 1
         nodes.append(node.name)
 
-      expected_num_transposes = 2
+      expected_num_transposes = 3
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('map/while/Conv2D-0', nodes)
-      self._assert_trans_nchw_to_nhwc('map/while/Add-0-2', nodes)
+      self._assert_trans_nchw_to_nhwc('map/while/Add_1-0-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testLoopWithVecAnd4D(self):
     if test.is_gpu_available(cuda_only=True):
       output = _loop_with_vec_and_4d()
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:
@@ -1164,14 +1413,14 @@ class LayoutOptimizerTest(test.TestCase):
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('map/while/Conv2D-0', nodes)
-      self._assert_trans_nchw_to_nhwc('map/while/Add-0-2', nodes)
+      self._assert_trans_nchw_to_nhwc('map/while/Add_1-0-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testBinaryOpSecondPort(self):
     if test.is_gpu_available(cuda_only=True):
       output = _model_with_second_port()
 
-      with session.Session() as sess:
+      with session.Session(config=_get_config(False)) as sess:
         output_val_ref = sess.run(output)
 
       with session.Session(config=_get_config()) as sess:

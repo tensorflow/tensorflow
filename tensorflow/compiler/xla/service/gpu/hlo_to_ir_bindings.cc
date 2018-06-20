@@ -22,11 +22,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
+
+using tensorflow::strings::StrAppend;
+using tensorflow::strings::StrCat;
 
 void HloToIrBindings::EmitBasePointersForHlos(
     tensorflow::gtl::ArraySlice<const HloInstruction*> io_hlos,
@@ -191,9 +196,13 @@ static bool BuffersInvariantWithinConsumer(
 llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
                                              const HloInstruction& consumer,
                                              const ShapeIndex& shape_index) {
-  llvm_ir::IrArray ir_array(GetBasePointer(hlo, shape_index),
+  llvm::Value* base_ptr = GetBasePointer(hlo, shape_index);
+  CHECK_NE(base_ptr, nullptr)
+      << "Buffer not assigned for shape_index " << shape_index.ToString()
+      << " of " << hlo.ToString();
+  llvm_ir::IrArray ir_array(base_ptr,
                             ShapeUtil::GetSubshape(hlo.shape(), shape_index));
-  alias_analysis_.AddAliasingInformationToIrArray(hlo, &ir_array);
+  alias_analysis_.AddAliasingInformationToIrArray(hlo, &ir_array, shape_index);
 
   // The GPU backend emits one kernel per top-level HLO, and LLVM views
   // execution of one kernel as the "whole program" executed on the GPU.
@@ -221,6 +230,55 @@ void HloToIrBindings::UnbindAllLocalIrValues() {
     VLOG(2) << "Unbinding " << hlo_to_unbind->ToString();
     base_ptrs_.erase(hlo_to_unbind);
   }
+}
+
+string HloToIrBindings::ToString() const {
+  string s = StrCat("** HloToIrBindings **\n");
+  StrAppend(&s, "  is_nested_=", is_nested_, "\n");
+  StrAppend(&s,
+            "  temp_buffer_base_=", llvm_ir::DumpToString(*temp_buffer_base_),
+            "\n");
+
+  if (base_ptrs_.empty()) {
+    return s;
+  }
+
+  // Iterate over all computations in the module in topological order, and print
+  // out the base pointers we have in each computation in topological order.
+  for (const HloComputation* computation :
+       base_ptrs_.begin()->first->GetModule()->MakeComputationPostOrder()) {
+    bool is_first = true;
+    for (const HloInstruction* instr :
+         computation->MakeInstructionPostOrder()) {
+      auto it = base_ptrs_.find(instr);
+      if (it == base_ptrs_.end()) {
+        continue;
+      }
+      if (is_first) {
+        StrAppend(&s, "  Base pointers for computation ", computation->name(),
+                  ":\n");
+        is_first = false;
+      }
+      StrAppend(&s, "    ", instr->ToString());
+
+      const ShapeTree<llvm::Value*>& shape_tree = it->second;
+      if (!ShapeUtil::IsTuple(instr->shape())) {
+        const llvm::Value* val = shape_tree.begin()->second;
+        StrAppend(&s, " -> ", llvm_ir::DumpToString(*val), "\n");
+        continue;
+      }
+
+      StrAppend(&s, "\n");
+      for (auto shape_it = shape_tree.begin(); shape_it != shape_tree.end();
+           ++shape_it) {
+        llvm::Value* val = shape_it->second;
+        StrAppend(&s, "      ", shape_it->first.ToString(), " -> ",
+                  (val != nullptr ? llvm_ir::DumpToString(*val) : "null"),
+                  "\n");
+      }
+    }
+  }
+  return s;
 }
 
 }  // namespace gpu

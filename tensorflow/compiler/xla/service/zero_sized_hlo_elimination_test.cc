@@ -19,7 +19,6 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -46,9 +45,9 @@ class ZeroSizedHloEliminationTest : public HloTestBase {
                 0, ShapeUtil::MakeShape(F32, {3, 0}), "zero sized param"))) {}
 
   StatusOr<bool> RunZeroSizedElimination() {
-    HloModule module("zero_sized_elimination_test_module");
-    module.AddEntryComputation(builder_.Build());
-    return ZeroSizedHloElimination{}.Run(&module);
+    auto module = CreateNewModule("zero_sized_elimination_test_module");
+    module->AddEntryComputation(builder_.Build());
+    return ZeroSizedHloElimination{}.Run(module.get());
   }
 
   HloComputation::Builder builder_;

@@ -87,6 +87,14 @@ REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
 
+Status TensorListShape(const TensorList& t, TensorShape* s) {
+  *s = TensorShape({});
+  return Status::OK();
+}
+
+REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(TensorList, TensorList::kTypeName,
+                                      TensorListShape);
+
 bool TensorList::Decode(const VariantTensorData& data) {
   tensors = data.tensors();
   string metadata;
@@ -104,6 +112,7 @@ bool TensorList::Decode(const VariantTensorData& data) {
       dims.push_back(scratch);
     }
   }
+  element_shape = PartialTensorShape(dims);
   return true;
 }
 
@@ -251,6 +260,45 @@ REGISTER_KERNEL_BUILDER(
 
 #endif  // GOOGLE_CUDA
 
+class TensorListElementShape : public OpKernel {
+ public:
+  explicit TensorListElementShape(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* c) override {
+    OP_REQUIRES(
+        c, c->input(0).shape().num_elements() == 1,
+        errors::InvalidArgument("List tensors are supposed to be scalars."));
+    const TensorList* l = c->input(0).scalar<Variant>()().get<TensorList>();
+    OP_REQUIRES(c, l != nullptr,
+                errors::InvalidArgument(
+                    "TensorListElementShape received a variant which is not a "
+                    "list. Saw: '",
+                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    Tensor* result;
+    OP_REQUIRES_OK(c, c->allocate_output(
+                          0, TensorShape{l->element_shape.dims()}, &result));
+    for (int i = 0; i < l->element_shape.dims(); ++i) {
+      if (result->dtype() == DT_INT32) {
+        result->flat<int32>()(i) = l->element_shape.dim_size(i);
+      } else {
+        result->flat<int64>()(i) = l->element_shape.dim_size(i);
+      }
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("TensorListElementShape").Device(DEVICE_CPU),
+                        TensorListElementShape);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(Name("TensorListElementShape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("element_shape"),
+                        TensorListElementShape);
+
+#endif  // GOOGLE_CUDA
+
 class TensorListPopBack : public OpKernel {
  public:
   explicit TensorListPopBack(OpKernelConstruction* c) : OpKernel(c) {
@@ -298,6 +346,243 @@ REGISTER_KERNEL_BUILDER(Name("TensorListPopBack").Device(DEVICE_GPU),
                         TensorListPopBack);
 
 #endif  // GOOGLE_CUDA
+
+class TensorListReserve : public OpKernel {
+ public:
+  explicit TensorListReserve(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+  }
+
+  void Compute(OpKernelContext* c) override {
+    PartialTensorShape element_shape;
+    OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(0), &element_shape));
+    int32 num_elements = c->input(1).scalar<int32>()();
+    TensorList output;
+    output.element_shape = element_shape;
+    output.element_dtype = element_dtype_;
+    output.tensors.resize(num_elements, Tensor(DT_INVALID));
+    Tensor* result;
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
+    result->scalar<Variant>()() = std::move(output);
+  }
+
+ private:
+  DataType element_dtype_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("TensorListReserve").Device(DEVICE_CPU),
+                        TensorListReserve);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(Name("TensorListReserve")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("element_shape")
+                            .HostMemory("num_elements"),
+                        TensorListReserve);
+
+#endif  // GOOGLE_CUDA
+
+class TensorListGetItem : public OpKernel {
+ public:
+  explicit TensorListGetItem(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+  }
+
+  void Compute(OpKernelContext* c) override {
+    OP_REQUIRES(
+        c, c->input(0).shape().num_elements() == 1,
+        errors::InvalidArgument("List tensors are supposed to be scalars."));
+    const TensorList* l = c->input(0).scalar<Variant>()().get<TensorList>();
+    OP_REQUIRES(c, l != nullptr,
+                errors::InvalidArgument(
+                    "Input handle is not a list. Saw: '",
+                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    OP_REQUIRES(c, element_dtype_ == l->element_dtype,
+                errors::InvalidArgument("Invalid data types; op elements ",
+                                        DataTypeString(element_dtype_),
+                                        " but list elements ",
+                                        DataTypeString(l->element_dtype)));
+    int32 index = c->input(1).scalar<int32>()();
+    OP_REQUIRES(c, index < l->tensors.size(),
+                errors::InvalidArgument("Trying to access element ", index,
+                                        " in a list with ", l->tensors.size(),
+                                        " elements."));
+    c->set_output(0, l->tensors[index]);
+  }
+
+ private:
+  DataType element_dtype_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("TensorListGetItem").Device(DEVICE_CPU),
+                        TensorListGetItem);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(
+    Name("TensorListGetItem").Device(DEVICE_GPU).HostMemory("index"),
+    TensorListGetItem);
+
+#endif  // GOOGLE_CUDA
+
+class TensorListSetItem : public OpKernel {
+ public:
+  explicit TensorListSetItem(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+  }
+
+  void Compute(OpKernelContext* c) override {
+    const TensorList* l = c->input(0).scalar<Variant>()().get<TensorList>();
+    OP_REQUIRES(c, l != nullptr,
+                errors::InvalidArgument(
+                    "Input handle is not a list. Saw: '",
+                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    OP_REQUIRES(c, element_dtype_ == l->element_dtype,
+                errors::InvalidArgument("Invalid data types; op elements ",
+                                        DataTypeString(element_dtype_),
+                                        " but list elements ",
+                                        DataTypeString(l->element_dtype)));
+    int32 index = c->input(1).scalar<int32>()();
+    OP_REQUIRES(c, index < l->tensors.size(),
+                errors::InvalidArgument("Trying to modify element ", index,
+                                        " in a list with ", l->tensors.size(),
+                                        " elements."));
+    TensorList output;
+    output = *l;
+    output.tensors[index] = c->input(2);
+    Tensor* result;
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
+    result->scalar<Variant>()() = std::move(output);
+  }
+
+ private:
+  DataType element_dtype_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
+                        TensorListSetItem);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(
+    Name("TensorListSetItem").Device(DEVICE_GPU).HostMemory("index"),
+    TensorListSetItem);
+
+#endif  // GOOGLE_CUDA
+
+class TensorListConcatLists : public OpKernel {
+ public:
+  explicit TensorListConcatLists(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+  }
+
+  void Compute(OpKernelContext* c) override {
+    const TensorShape& tl_a_shape = c->input(0).shape();
+    const TensorShape& tl_b_shape = c->input(1).shape();
+    OP_REQUIRES(
+        c, tl_a_shape == tl_b_shape,
+        errors::InvalidArgument("Incompatible input TensorList tensor shapes: ",
+                                tl_a_shape.DebugString(), " vs. ",
+                                tl_b_shape.DebugString()));
+    AllocatorAttributes attr;
+    std::unique_ptr<Tensor> tl_alias = c->forward_input(
+        0 /*input_index*/, 0 /*output_index*/, DT_VARIANT, tl_a_shape,
+        DEVICE_MEMORY /* input is always on DEVICE_MEMORY */, attr);
+
+    // tl_a may be aliased by tl_alias.
+    const Tensor& tl_a = c->input(0);
+    const Tensor& tl_b = c->input(1);
+
+    Tensor* output;
+    if (tl_alias) {
+      c->set_output(0, *tl_alias);
+      output = tl_alias.get();
+    } else {
+      attr.set_on_host(true);
+      OP_REQUIRES_OK(c, c->allocate_output(0, tl_a_shape, &output, attr));
+    }
+
+    auto output_t = output->flat<Variant>();
+    auto tl_a_t = tl_a.flat<Variant>();
+    auto tl_b_t = tl_b.flat<Variant>();
+
+    for (int64 b = 0; b < tl_a.NumElements(); ++b) {
+      const TensorList* l_a = tl_a_t(b).get<TensorList>();
+      const TensorList* l_b = tl_b_t(b).get<TensorList>();
+      OP_REQUIRES(
+          c, l_a != nullptr,
+          errors::InvalidArgument("input_a is not a TensorList at index ", b,
+                                  ".  Saw: '", tl_a_t(b).DebugString(), "'"));
+      OP_REQUIRES(
+          c, l_b != nullptr,
+          errors::InvalidArgument("input_b is not a TensorList at index ", b,
+                                  ".  Saw: '", tl_b_t(b).DebugString(), "'"));
+      OP_REQUIRES(c, l_a->element_dtype == element_dtype_,
+                  errors::InvalidArgument(
+                      "input_a[", b, "].dtype != element_dtype.  Saw: ",
+                      DataTypeString(l_a->element_dtype), " vs. ",
+                      DataTypeString(element_dtype_)));
+      OP_REQUIRES(c, l_b->element_dtype == element_dtype_,
+                  errors::InvalidArgument(
+                      "input_b[", b, "].dtype != element_dtype.  Saw: ",
+                      DataTypeString(l_b->element_dtype), " vs. ",
+                      DataTypeString(element_dtype_)));
+      OP_REQUIRES(c, l_a->element_shape.IsIdenticalTo(l_b->element_shape),
+                  errors::InvalidArgument(
+                      "input_a and input_b TensorList element shapes are not "
+                      "identical at index ",
+                      b, ".  Saw ", l_a->element_shape.DebugString(), " vs. ",
+                      l_b->element_shape.DebugString()));
+      if (tl_alias) {
+        TensorList* out = output_t(b).get<TensorList>();
+        DCHECK(out != nullptr) << "Expected output to alias input_a, but it "
+                                  "doesn't contain a TensorList at index "
+                               << b;
+        std::copy(l_b->tensors.begin(), l_b->tensors.end(),
+                  std::back_inserter(out->tensors));
+      } else {
+        TensorList out = *l_a;
+        std::copy(l_b->tensors.begin(), l_b->tensors.end(),
+                  std::back_inserter(out.tensors));
+        output_t(b) = std::move(out);
+      }
+    }
+  }
+
+ private:
+  DataType element_dtype_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_CPU),
+                        TensorListConcatLists);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
+                        TensorListConcatLists);
+
+#endif  // GOOGLE_CUDA
+
+#define REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(T)               \
+  REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")         \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListPushBackBatch<CPUDevice, T>)
+
+TF_CALL_ALL_TYPES(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(quint8);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(qint8);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(quint16);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(qint16);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(qint32);
+REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(bfloat16);
+
+#undef REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU
 
 #define REGISTER_TENSOR_LIST_STACK_CPU(T)                         \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                 \

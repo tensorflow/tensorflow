@@ -82,7 +82,8 @@ HloComputation* CallForwardingComputation(HloComputation* computation,
 // instructions. Sets the computation as the entry to an HLO module and returns
 // the module.
 std::unique_ptr<HloModule> MakeBigGraph() {
-  auto module = MakeUnique<HloModule>("BigGraph");
+  HloModuleConfig config;
+  auto module = MakeUnique<HloModule>("BigGraph", config);
 
   auto builder = HloComputation::Builder("TestBigGraphvizGraph");
 

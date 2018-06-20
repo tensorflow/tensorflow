@@ -120,6 +120,49 @@ TEST(GrpcSessionTest, BasicNonProtoAPI) {
   }
 }
 
+TEST(GrpcSessionTest, BasicCallable) {
+  GraphDef graph;
+  string node_names[3];
+  // c = a * b
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  for (int iters = 0; iters < 25; ++iters) {
+    TF_CHECK_OK(session->Create(graph));
+    {
+      // Just run to target node
+      CallableOptions opts;
+      opts.add_target(node_names[2]);
+      Session::CallableHandle handle;
+      TF_CHECK_OK(session->MakeCallable(opts, &handle));
+      TF_CHECK_OK(session->RunCallable(handle, {}, nullptr, nullptr));
+      TF_CHECK_OK(session->ReleaseCallable(handle));
+    }
+    {
+      // Run to a target node and a real tensor
+      CallableOptions opts;
+      opts.add_target(node_names[1]);
+      opts.add_fetch(node_names[2] + ":0");
+      Session::CallableHandle handle;
+      TF_CHECK_OK(session->MakeCallable(opts, &handle));
+      std::vector<Tensor> outputs;
+      TF_CHECK_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+      ASSERT_EQ(1, outputs.size());
+      ASSERT_TRUE(outputs[0].IsInitialized());
+      ASSERT_EQ(4.0, outputs[0].flat<float>()(0));
+      TF_CHECK_OK(session->ReleaseCallable(handle));
+    }
+
+    TF_CHECK_OK(session->Close());
+  }
+}
+
 TEST(GrpcSessionTest, BasicNonProtoAPIConsistentOrder) {
   GraphDef graph;
   string node_names[3];

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_ERROR_REPORTER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_ERROR_REPORTER_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_ERROR_REPORTER_H_
+#define TENSORFLOW_CONTRIB_LITE_ERROR_REPORTER_H_
 
 #include <cstdarg>
 #include "tensorflow/contrib/lite/context.h"
@@ -30,7 +30,7 @@ namespace tflite {
 //  va_list args;
 //  foo.Report("test %d", args); // where args is va_list
 //
-// Sublclass ErrorReporter to provide another reporting destination.
+// Subclass ErrorReporter to provide another reporting destination.
 // For example, if you have a GUI program, you might redirect to a buffer
 // that drives a GUI error log box.
 class ErrorReporter {
@@ -51,4 +51,4 @@ ErrorReporter* DefaultErrorReporter();
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_ERROR_REPORTER_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_ERROR_REPORTER_H_

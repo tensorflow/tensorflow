@@ -26,7 +26,7 @@ If you haven't already, do the following two things:
 - Install [Android Studio](https://developer.android.com/studio/index.html),
   following the instructions on their website.
 
-- Clone the TensorFlow repository from Github:
+- Clone the TensorFlow repository from GitHub:
 
         git clone https://github.com/tensorflow/tensorflow
 
@@ -37,7 +37,7 @@ If you haven't already, do the following two things:
 
 2. From the **Open File or Project** window that appears, navigate to and select
     the `tensorflow/examples/android` directory from wherever you cloned the
-    TensorFlow Github repo.  Click OK.
+    TensorFlow GitHub repo.  Click OK.
 
     If it asks you to do a Gradle Sync, click OK.
 
@@ -51,7 +51,8 @@ If you haven't already, do the following two things:
         // set to 'bazel', 'cmake', 'makefile', 'none'
         def nativeBuildSystem = 'none'
 
-4. Click the Run button (the green arrow) or use **Run -> Run 'android'** from the top menu.
+4. Click the *Run* button (the green arrow) or select *Run > Run 'android'* from the
+    top menu. You may need to rebuild the project using *Build > Rebuild Project*.
 
     If it asks you to use Instant Run, click **Proceed Without Instant Run**.
 
@@ -90,8 +91,8 @@ using [ADB](https://developer.android.com/studio/command-line/adb.html). This
 requires some knowledge of build systems and Android developer tools, but we'll
 guide you through the basics here.
 
-- First, follow our instructions for @{$install/install_sources$installing from
-  sources}. This will also guide you through installing Bazel and cloning the
+- First, follow our instructions for @{$install/install_sources$installing from sources}.
+  This will also guide you through installing Bazel and cloning the
   TensorFlow code.
 
 - Download the Android [SDK](https://developer.android.com/studio/index.html)

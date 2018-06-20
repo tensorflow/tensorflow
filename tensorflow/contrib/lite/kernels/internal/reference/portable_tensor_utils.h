@@ -12,10 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_H_
 
-// TDOD(ghodrat): Remove this header file and the dependency to internal data
+// TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 
@@ -25,6 +25,12 @@ namespace tensor_utils {
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
 
+bool PortableIsZeroVector(const float* vector, int v_size);
+
+void PortableSymmetricQuantizeFloats(const float* values, const int size,
+                                     int8_t* quantized_values, float* min,
+                                     float* max, float* scaling_factor);
+
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector.
 void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
@@ -32,6 +38,11 @@ void PortableMatrixBatchVectorMultiplyAccumulate(const float* matrix,
                                                  const float* vector,
                                                  int n_batch, float* result,
                                                  int result_stride);
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride);
 
 // Cwise product of two vectors.
 void PortableVectorVectorCwiseProduct(const float* vector1,
@@ -103,12 +114,32 @@ void PortableReductionSumVector(const float* input_vector, float* output_vector,
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
 
+bool IsZeroVector(const float* vector, int v_size) {
+  return PortableIsZeroVector(vector, v_size);
+}
+
+void SymmetricQuantizeFloats(const float* values, const int size,
+                             int8_t* quantized_values, float* min, float* max,
+                             float* scaling_factor) {
+  return PortableSymmetricQuantizeFloats(values, size, quantized_values, min,
+                                         max, scaling_factor);
+}
+
 void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int m_cols, const float* vector,
                                          int n_batch, float* result,
                                          int result_stride) {
   PortableMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vector,
                                               n_batch, result, result_stride);
+}
+
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vector, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride) {
+  PortableMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vector,
+                                              scaling_factors, n_batch, result,
+                                              result_stride);
 }
 
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
@@ -186,4 +217,4 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
 }  // namespace tensor_utils
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_PORTABLE_TENSOR_UTILS_H_

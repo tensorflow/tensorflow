@@ -134,9 +134,15 @@ class FtrlOptimizerTest(XLATestCase):
 
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-2.60260963, -4.29698515]), var0.eval(), float_rtol=1e-5)
+            np.array([-2.60260963, -4.29698515]),
+            var0.eval(),
+            float_rtol=1e-5,
+            half_rtol=1e-2)
         self.assertAllCloseAccordingToType(
-            np.array([-0.28432083, -0.56694895]), var1.eval(), float_rtol=1e-5)
+            np.array([-0.28432083, -0.56694895]),
+            var1.eval(),
+            float_rtol=1e-5,
+            half_rtol=1e-2)
 
   def testFtrlwithoutRegularization2(self):
     for dtype in self.float_types:
@@ -272,8 +278,8 @@ class FtrlOptimizerTest(XLATestCase):
       with self.test_session(), self.test_scope():
         val2, val3 = self.equivAdagradTest_AdagradPart(steps, dtype)
 
-    self.assertAllCloseAccordingToType(val0, val2, rtol=1e-4)
-    self.assertAllCloseAccordingToType(val1, val3, rtol=1e-4)
+    self.assertAllCloseAccordingToType(val0, val2, rtol=1e-4, half_rtol=1e-2)
+    self.assertAllCloseAccordingToType(val1, val3, rtol=1e-4, half_rtol=1e-2)
 
   def testEquivGradientDescentwithoutRegularization(self):
     steps = 5

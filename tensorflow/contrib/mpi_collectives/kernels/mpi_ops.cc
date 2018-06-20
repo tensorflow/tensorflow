@@ -35,8 +35,8 @@ limitations under the License.
 
 #define OMPI_SKIP_MPICXX
 #include "third_party/mpi/mpi.h"
-#include "tensorflow/contrib/mpi_collectives/mpi_message.pb.h"
 #include "tensorflow/contrib/mpi_collectives/kernels/ring.h"
+#include "tensorflow/contrib/mpi_collectives/mpi_message.pb.h"
 
 /*
  * MPI Allreduce and Allgather Ops for TensorFlow.
@@ -73,7 +73,7 @@ limitations under the License.
  */
 
 template <class T>
-using StatusOr = perftools::gputools::port::StatusOr<T>;
+using StatusOr = se::port::StatusOr<T>;
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;

@@ -31,7 +31,7 @@ namespace {
 inline void* aligned_malloc(size_t size, int minimum_alignment) {
 #if defined(__ANDROID__) || defined(OS_ANDROID) || defined(OS_CYGWIN)
   return memalign(minimum_alignment, size);
-#elif defined(COMPILER_MSVC)
+#elif defined(_WIN32)
   return _aligned_malloc(size, minimum_alignment);
 #else  // !__ANDROID__ && !OS_ANDROID && !OS_CYGWIN
   void* ptr = nullptr;
@@ -48,7 +48,7 @@ inline void* aligned_malloc(size_t size, int minimum_alignment) {
 }
 
 inline void aligned_free(void* aligned_memory) {
-#if defined(COMPILER_MSVC)
+#if defined(_WIN32)
   _aligned_free(aligned_memory);
 #else
   free(aligned_memory);

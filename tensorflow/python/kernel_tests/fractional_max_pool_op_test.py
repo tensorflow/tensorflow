@@ -318,7 +318,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
 
   Two types of tests for FractionalMaxPoolGrad.
   1) Test fractional_max_pool_grad() directly.
-    This type of test relies on gen_nn_ops._max_pool_grad() returns the correct
+    This type of test relies on gen_nn_ops.max_pool_grad() returns the correct
   result. For example:
     * input_tensor_shape = (1, 10, 10, 1)
     * window_size = (1, 2, 2, 1)
@@ -384,16 +384,13 @@ class FractionalMaxPoolGradTest(test.TestCase):
                                               stride_size, padding)
               output_data = output_tensor.eval()
               output_backprop = self._PRNG.randint(100, size=output_data.shape)
-              input_backprop_tensor = gen_nn_ops._max_pool_grad(input_tensor,
-                                                                output_tensor,
-                                                                output_backprop,
-                                                                window_size,
-                                                                stride_size,
-                                                                padding)
+              input_backprop_tensor = gen_nn_ops.max_pool_grad(
+                  input_tensor, output_tensor, output_backprop, window_size,
+                  stride_size, padding)
               input_backprop = input_backprop_tensor.eval()
               row_seq = list(range(0, num_rows + 1, row_window_size))
               col_seq = list(range(0, num_cols + 1, col_window_size))
-              fmp_input_backprop_tensor = gen_nn_ops._fractional_max_pool_grad(
+              fmp_input_backprop_tensor = gen_nn_ops.fractional_max_pool_grad(
                   input_tensor,
                   output_tensor,
                   output_backprop,
@@ -422,18 +419,15 @@ class FractionalMaxPoolGradTest(test.TestCase):
                                               stride_size, padding)
               output_data = output_tensor.eval()
               output_backprop = self._PRNG.randint(100, size=output_data.shape)
-              input_backprop_tensor = gen_nn_ops._max_pool_grad(input_tensor,
-                                                                output_tensor,
-                                                                output_backprop,
-                                                                window_size,
-                                                                stride_size,
-                                                                padding)
+              input_backprop_tensor = gen_nn_ops.max_pool_grad(
+                  input_tensor, output_tensor, output_backprop, window_size,
+                  stride_size, padding)
               input_backprop = input_backprop_tensor.eval()
               row_seq = list(range(0, num_rows, row_window_size - 1))
               col_seq = list(range(0, num_cols, col_window_size - 1))
               row_seq[-1] += 1
               col_seq[-1] += 1
-              fmp_input_backprop_tensor = gen_nn_ops._fractional_max_pool_grad(
+              fmp_input_backprop_tensor = gen_nn_ops.fractional_max_pool_grad(
                   input_tensor,
                   output_tensor,
                   output_backprop,
@@ -591,7 +585,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
       output_tensor = constant_op.constant(
           output_data_not_overlapping, shape=output_size)
       grad = constant_op.constant(output_backprop, shape=output_size)
-      r = gen_nn_ops._fractional_max_pool_grad(
+      r = gen_nn_ops.fractional_max_pool_grad(
           input_tensor,
           output_tensor,
           grad,
@@ -606,7 +600,7 @@ class FractionalMaxPoolGradTest(test.TestCase):
       # Test when overlapping is True
       output_tensor = constant_op.constant(
           output_data_overlapping, shape=output_size)
-      r = gen_nn_ops._fractional_max_pool_grad(
+      r = gen_nn_ops.fractional_max_pool_grad(
           input_tensor, output_tensor, grad, row_seq, col_seq, overlapping=True)
       input_backprop_overlapping = r.eval()
       self.assertShapeEqual(

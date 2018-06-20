@@ -54,3 +54,6 @@ for i in `seq 0 $((TF_GPU_COUNT-1))`; do
   fi
 done
 
+echo "Cannot find a free GPU to run the test $* on, exiting with failure..."
+exit 1
+

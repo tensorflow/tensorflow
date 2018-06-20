@@ -75,7 +75,7 @@ cc_library(
         "aws-cpp-sdk-s3/include/",
     ],
     deps = [
-        "@curl//:curl",
+        "@curl",
     ],
 )
 

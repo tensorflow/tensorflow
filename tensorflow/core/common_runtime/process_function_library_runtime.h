@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include <unordered_map>
 
@@ -29,29 +29,21 @@ class ProcessFunctionLibraryRuntime {
   // Creates FunctionLibraryRuntime objects for each device in the provided
   // DeviceMgr. Caller needs to make sure that device_mgr, lib_def and parent
   // (if provided) outlive this object.
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options,
-                                DistributedFunctionLibraryRuntime* parent);
+  ProcessFunctionLibraryRuntime(
+      const DeviceMgr* device_mgr, Env* env, int graph_def_version,
+      const FunctionLibraryDefinition* lib_def,
+      const OptimizerOptions& optimizer_options,
+      thread::ThreadPool* thread_pool = nullptr,
+      DistributedFunctionLibraryRuntime* parent = nullptr);
 
+  // With `custom_kernel_creator`.
   ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
                                 int graph_def_version,
                                 const FunctionLibraryDefinition* lib_def,
                                 const OptimizerOptions& optimizer_options,
                                 CustomKernelCreator custom_kernel_creator,
+                                thread::ThreadPool* thread_pool,
                                 DistributedFunctionLibraryRuntime* parent);
-
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options);
-
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options,
-                                CustomKernelCreator custom_kernel_creator);
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
   // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
@@ -85,7 +77,7 @@ class ProcessFunctionLibraryRuntime {
 
   static const char kDefaultFLRDevice[];
   // Returns the FunctionLibraryRuntime for the corresponding device_name.
-  FunctionLibraryRuntime* GetFLR(const string& device_name);
+  FunctionLibraryRuntime* GetFLR(const string& device_name) const;
 
   // Returns the device incarnation for the given device_name.
   Status GetDeviceIncarnation(const string& device_name, int64* incarnation);
@@ -145,26 +137,59 @@ class ProcessFunctionLibraryRuntime {
   // Removes handle from the state owned by this object.
   Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
 
+  Status Clone(Env* env, int graph_def_version,
+               const OptimizerOptions& optimizer_options,
+               CustomKernelCreator custom_kernel_creator,
+               std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr);
+
   friend class FunctionLibraryRuntimeImpl;
 
   mutable mutex mu_;
 
-  struct FunctionData {
-    const string target_device;
-    const FunctionLibraryRuntime::LocalHandle local_handle;
-
+  class FunctionData {
+   public:
     FunctionData(const string& target_device,
-                 FunctionLibraryRuntime::LocalHandle local_handle)
-        : target_device(target_device), local_handle(local_handle) {}
-    FunctionData() : FunctionData("", -1) {}
+                 FunctionLibraryRuntime::LocalHandle local_handle,
+                 const string& function_key)
+        : target_device_(target_device),
+          local_handle_(local_handle),
+          function_key_(function_key) {}
+
+    string target_device() { return target_device_; }
+    const string& function_key() { return function_key_; }
+
+    FunctionLibraryRuntime::LocalHandle local_handle() {
+      mutex_lock l(mu_);
+      return local_handle_;
+    }
+
+    // Initializes the FunctionData object by potentially making an Initialize
+    // call to the DistributedFunctionLibraryRuntime.
+    Status DistributedInit(
+        DistributedFunctionLibraryRuntime* parent, const string& function_name,
+        const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
+        const FunctionLibraryRuntime::InstantiateOptions& options);
+
+   private:
+    mutex mu_;
+
+    const string target_device_;
+    FunctionLibraryRuntime::LocalHandle local_handle_ GUARDED_BY(mu_);
+    const string function_key_;
+    bool init_started_ GUARDED_BY(mu_) = false;
+    Status init_result_ GUARDED_BY(mu_);
+    Notification init_done_;
   };
 
   const DeviceMgr* const device_mgr_;
   const FunctionLibraryDefinition* lib_def_;
+  thread::ThreadPool* default_thread_pool_;
   // Holds all the function invocations here.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
       GUARDED_BY(mu_);
-  std::unordered_map<FunctionLibraryRuntime::Handle, FunctionData>
+  std::unordered_map<FunctionLibraryRuntime::Handle,
+                     std::unique_ptr<FunctionData>>
       function_data_ GUARDED_BY(mu_);
   std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
   int next_handle_ GUARDED_BY(mu_);
@@ -173,4 +198,4 @@ class ProcessFunctionLibraryRuntime {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_

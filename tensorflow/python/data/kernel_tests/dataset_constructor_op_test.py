@@ -263,7 +263,7 @@ class DatasetConstructorTest(test.TestCase):
       for i in range(3):
         results = sess.run(get_next)
         for component, result_component in zip(
-            (zip(*components[:3])[i] + expected[i]), results):
+            (list(zip(*components[:3]))[i] + expected[i]), results):
           if sparse_tensor.is_sparse(component):
             self.assertSparseValuesEqual(component, result_component)
           else:

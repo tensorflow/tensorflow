@@ -210,6 +210,38 @@ def create_callable_acgan_model():
       one_hot_labels=array_ops.one_hot([0, 1, 2], 10))
 
 
+def get_cyclegan_model():
+  return namedtuples.CycleGANModel(
+      model_x2y=get_gan_model(),
+      model_y2x=get_gan_model(),
+      reconstructed_x=array_ops.ones([1, 2, 3]),
+      reconstructed_y=array_ops.zeros([1, 2, 3]))
+
+
+def get_callable_cyclegan_model():
+  return namedtuples.CycleGANModel(
+      model_x2y=get_callable_gan_model(),
+      model_y2x=get_callable_gan_model(),
+      reconstructed_x=array_ops.ones([1, 2, 3]),
+      reconstructed_y=array_ops.zeros([1, 2, 3]))
+
+
+def create_cyclegan_model():
+  return train.cyclegan_model(
+      generator_model,
+      discriminator_model,
+      data_x=array_ops.zeros([1, 2]),
+      data_y=array_ops.ones([1, 2]))
+
+
+def create_callable_cyclegan_model():
+  return train.cyclegan_model(
+      Generator(),
+      Discriminator(),
+      data_x=array_ops.zeros([1, 2]),
+      data_y=array_ops.ones([1, 2]))
+
+
 def get_sync_optimizer():
   return sync_replicas_optimizer.SyncReplicasOptimizer(
       gradient_descent.GradientDescentOptimizer(learning_rate=1.0),
@@ -261,6 +293,13 @@ class GANModelTest(test.TestCase):
     self._test_output_type_helper(
         get_callable_acgan_model, namedtuples.ACGANModel)
 
+  def test_output_type_cyclegan(self):
+    self._test_output_type_helper(get_cyclegan_model, namedtuples.CycleGANModel)
+
+  def test_output_type_callable_cyclegan(self):
+    self._test_output_type_helper(get_callable_cyclegan_model,
+                                  namedtuples.CycleGANModel)
+
   def test_no_shape_check(self):
     def dummy_generator_model(_):
       return (None, None)
@@ -308,11 +347,24 @@ class GANLossTest(test.TestCase):
   def test_output_type_callable_acgan(self):
     self._test_output_type_helper(get_callable_acgan_model)
 
+  def test_output_type_cyclegan(self):
+    loss = train.cyclegan_loss(create_cyclegan_model(), add_summaries=True)
+    self.assertIsInstance(loss, namedtuples.CycleGANLoss)
+    self.assertGreater(len(ops.get_collection(ops.GraphKeys.SUMMARIES)), 0)
+
+  def test_output_type_callable_cyclegan(self):
+    loss = train.cyclegan_loss(
+        create_callable_cyclegan_model(), add_summaries=True)
+    self.assertIsInstance(loss, namedtuples.CycleGANLoss)
+    self.assertGreater(len(ops.get_collection(ops.GraphKeys.SUMMARIES)), 0)
+
   # Test gradient penalty option.
-  def _test_grad_penalty_helper(self, create_gan_model_fn):
+  def _test_grad_penalty_helper(self, create_gan_model_fn, one_sided=False):
     model = create_gan_model_fn()
     loss = train.gan_loss(model)
-    loss_gp = train.gan_loss(model, gradient_penalty_weight=1.0)
+    loss_gp = train.gan_loss(model,
+                             gradient_penalty_weight=1.0,
+                             gradient_penalty_one_sided=one_sided)
     self.assertTrue(isinstance(loss_gp, namedtuples.GANLoss))
 
     # Check values.
@@ -343,6 +395,25 @@ class GANLossTest(test.TestCase):
 
   def test_grad_penalty_callable_acgan(self):
     self._test_grad_penalty_helper(create_callable_acgan_model)
+
+  def test_grad_penalty_one_sided_gan(self):
+    self._test_grad_penalty_helper(create_gan_model, one_sided=True)
+
+  def test_grad_penalty_one_sided_callable_gan(self):
+    self._test_grad_penalty_helper(create_callable_gan_model, one_sided=True)
+
+  def test_grad_penalty_one_sided_infogan(self):
+    self._test_grad_penalty_helper(create_infogan_model, one_sided=True)
+
+  def test_grad_penalty_one_sided_callable_infogan(self):
+    self._test_grad_penalty_helper(
+        create_callable_infogan_model, one_sided=True)
+
+  def test_grad_penalty_one_sided_acgan(self):
+    self._test_grad_penalty_helper(create_acgan_model, one_sided=True)
+
+  def test_grad_penalty_one_sided_callable_acgan(self):
+    self._test_grad_penalty_helper(create_callable_acgan_model, one_sided=True)
 
   # Test mutual information penalty option.
   def _test_mutual_info_penalty_helper(self, create_gan_model_fn):
@@ -430,6 +501,34 @@ class GANLossTest(test.TestCase):
 
   def test_callable_acgan(self):
     self._test_acgan_helper(create_callable_acgan_model)
+
+  # Test that CycleGan models work.
+  def _test_cyclegan_helper(self, create_gan_model_fn):
+    model = create_gan_model_fn()
+    loss = train.cyclegan_loss(model)
+    self.assertIsInstance(loss, namedtuples.CycleGANLoss)
+
+    # Check values.
+    with self.test_session(use_gpu=True) as sess:
+      variables.global_variables_initializer().run()
+      (loss_x2y_gen_np, loss_x2y_dis_np, loss_y2x_gen_np,
+       loss_y2x_dis_np) = sess.run([
+           loss.loss_x2y.generator_loss, loss.loss_x2y.discriminator_loss,
+           loss.loss_y2x.generator_loss, loss.loss_y2x.discriminator_loss
+       ])
+
+    self.assertGreater(loss_x2y_gen_np, loss_x2y_dis_np)
+    self.assertGreater(loss_y2x_gen_np, loss_y2x_dis_np)
+    self.assertTrue(np.isscalar(loss_x2y_gen_np))
+    self.assertTrue(np.isscalar(loss_x2y_dis_np))
+    self.assertTrue(np.isscalar(loss_y2x_gen_np))
+    self.assertTrue(np.isscalar(loss_y2x_dis_np))
+
+  def test_cyclegan(self):
+    self._test_cyclegan_helper(create_cyclegan_model)
+
+  def test_callable_cyclegan(self):
+    self._test_cyclegan_helper(create_callable_cyclegan_model)
 
   def _check_tensor_pool_adjusted_model_outputs(self, tensor1, tensor2,
                                                 pool_size):

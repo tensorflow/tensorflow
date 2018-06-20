@@ -203,7 +203,8 @@ class RandomUniformTest(test.TestCase):
     return func
 
   def testRange(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64:
+    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+               dtypes.int64):
       sampler = self._Sampler(1000, minv=-2, maxv=8, dtype=dt, use_gpu=True)
       x = sampler()
       self.assertTrue(-2 <= np.min(x))
@@ -213,7 +214,8 @@ class RandomUniformTest(test.TestCase):
   # to see the same sequence of values. Will catch buggy
   # implementations which uses the same random number seed.
   def testDistinct(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64:
+    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+               dtypes.int64):
       maxv = 1.0 if dt.is_floating else 1 << 30
       sampler = self._Sampler(1000, minv=0, maxv=maxv, dtype=dt, use_gpu=True)
       x = sampler()
@@ -225,6 +227,17 @@ class RandomUniformTest(test.TestCase):
         print("y = ", y)
         print("count = ", count)
       self.assertTrue(count < count_limit)
+
+  def testUniformIntsWithInvalidShape(self):
+    for dtype in dtypes.int32, dtypes.int64:
+      with self.assertRaisesRegexp(
+          ValueError, "Shape must be rank 0 but is rank 1"):
+        random_ops.random_uniform(
+            [1000], minval=[1, 2], maxval=3, dtype=dtype)
+      with self.assertRaisesRegexp(
+          ValueError, "Shape must be rank 0 but is rank 1"):
+        random_ops.random_uniform(
+            [1000], minval=1, maxval=[2, 3], dtype=dtype)
 
   # Check that uniform ints actually follow a uniform distribution.
   def testUniformInts(self):
@@ -251,7 +264,8 @@ class RandomUniformTest(test.TestCase):
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
   def testCPUGPUMatch(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64:
+    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+               dtypes.int64):
       maxv = 1.0 if dt.is_floating else 17
       results = {}
       for use_gpu in False, True:
@@ -261,7 +275,8 @@ class RandomUniformTest(test.TestCase):
       self.assertAllEqual(results[False], results[True])
 
   def testSeed(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64:
+    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+               dtypes.int64):
       for seed in [345, 2**100, -2**100]:
         sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=True, seed=seed)
         sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=True, seed=seed)
@@ -285,8 +300,7 @@ class RandomShapeTest(test.TestCase):
     self.assertEqual([1, 2, 3], rnd1.get_shape())
     # Partially known shape.
     rnd2 = random_ops.truncated_normal(
-        array_ops.placeholder(
-            dtypes.int32, shape=(3,)))
+        array_ops.placeholder(dtypes.int32, shape=(3,)))
     self.assertEqual([None, None, None], rnd2.get_shape().as_list())
     # Unknown shape.
     rnd3 = random_ops.truncated_normal(array_ops.placeholder(dtypes.int32))
@@ -298,8 +312,7 @@ class RandomShapeTest(test.TestCase):
     self.assertEqual([1, 2, 3], rnd1.get_shape())
     # Partially known shape.
     rnd2 = random_ops.random_normal(
-        array_ops.placeholder(
-            dtypes.int32, shape=(3,)))
+        array_ops.placeholder(dtypes.int32, shape=(3,)))
     self.assertEqual([None, None, None], rnd2.get_shape().as_list())
     # Unknown shape.
     rnd3 = random_ops.random_normal(array_ops.placeholder(dtypes.int32))
@@ -311,8 +324,7 @@ class RandomShapeTest(test.TestCase):
     self.assertEqual([1, 2, 3], rnd1.get_shape())
     # Partially known shape.
     rnd2 = random_ops.random_uniform(
-        array_ops.placeholder(
-            dtypes.int32, shape=(3,)))
+        array_ops.placeholder(dtypes.int32, shape=(3,)))
     self.assertEqual([None, None, None], rnd2.get_shape().as_list())
     # Unknown shape.
     rnd3 = random_ops.random_uniform(array_ops.placeholder(dtypes.int32))

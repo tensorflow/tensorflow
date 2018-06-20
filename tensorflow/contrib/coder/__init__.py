@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Entropy code operations."""
+"""Data compression tools."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import
+from tensorflow.contrib.coder.python.layers.entropybottleneck import *
 from tensorflow.contrib.coder.python.ops.coder_ops import *
 # pylint: enable=wildcard-import
 

@@ -85,7 +85,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::ParallelMap")}));
@@ -99,7 +99,9 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "ParallelMapDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "ParallelMapDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -109,10 +111,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
 
       // Input: other_arguments
-      DataTypeVector other_arguments_types(
-          captured_func_->captured_inputs().size());
-      std::vector<Node*> other_arguments(
-          captured_func_->captured_inputs().size());
+      DataTypeVector other_arguments_types;
+      other_arguments_types.reserve(captured_func_->captured_inputs().size());
+      std::vector<Node*> other_arguments;
+      other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
         TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
@@ -150,7 +152,6 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             invocation_results_(params.dataset->num_parallel_calls_) {}
 
       ~Iterator() override {
@@ -167,6 +168,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
             }
           }
         }
+      }
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -199,7 +204,14 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           }
         }
         ++num_outputs_consumed_;
-        return result->status;
+        if (errors::IsOutOfRange(result->status)) {
+          // `f` may deliberately raise `errors::OutOfRange` to indicate
+          // that we should terminate the iteration early.
+          *end_of_sequence = true;
+          return Status::OK();
+        } else {
+          return result->status;
+        }
       }
 
      protected:
@@ -311,7 +323,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
         // Get the next input element.
         std::vector<Tensor> input_element;
-        bool end_of_input;
+        bool end_of_input = false;
         result->status =
             input_impl_->GetNext(ctx, &input_element, &end_of_input);
         if (end_of_input) {

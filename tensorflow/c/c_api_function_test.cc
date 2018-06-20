@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -329,6 +330,11 @@ class CApiFunctionTest : public ::testing::Test {
     for (const EdgeSpec& e : e_edges) {
       ASSERT_TRUE(a_edges.find(e) != a_edges.end())
           << "Failed to find expected edge " << e.ToString()
+          << " in fdef: " << fdef.DebugString();
+    }
+    for (const EdgeSpec& e : c_edges) {
+      ASSERT_TRUE(a_edges.find(e) != a_edges.end())
+          << "Failed to find expected control edge " << e.ToString()
           << " in fdef: " << fdef.DebugString();
     }
 
@@ -980,7 +986,7 @@ TEST_F(CApiFunctionTest, ControlDependency) {
   VerifyFDef(
       {"add_0", "scalar"}, M({{"feed1"}, {"feed2"}}), M({{"add"}}),
       {{"feed1", "add_0:0"}, {"feed2", "add_0:1"}, {"add_0:sum:0", "add"}},
-      {{"scalar", "add_0"}});
+      {{"^scalar", "add_0:2"}});
 }
 
 TEST_F(CApiFunctionTest, ControlDependencyOutsideOfBody) {
@@ -1023,12 +1029,17 @@ TEST_F(CApiFunctionTest, ControlDependencyOutsideOfBody_FromInputNode) {
   TF_Operation* add =
       AddWithCtrlDependency(feed1, feed2, func_graph_, feed1, s_);
   EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-  Define(-1, {}, {feed1, feed2}, {add}, {}, true);
-  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
-  EXPECT_EQ(string("The source of control edge [id=3 feed1:-1 -> add:-1] "
-                   "is not in the body. Encountered while creating "
-                   "function 'MyFunc'"),
-            string(TF_Message(s_)));
+  Define(-1, {}, {feed1, feed2}, {add}, {});
+
+  // Use, run, and verify
+  TF_Operation* two = ScalarConst(2, host_graph_, s_);
+  TF_Operation* func_feed = Placeholder(host_graph_, s_);
+  TF_Operation* func_op = Use({two, func_feed});
+  Run({{func_feed, Int32Tensor(3)}}, func_op, 2 + 3);
+  VerifyFDef(
+      {"add_0"}, M({{"feed1"}, {"feed2"}}), M({{"add"}}),
+      {{"feed1", "add_0:0"}, {"feed2", "add_0:1"}, {"add_0:sum:0", "add"}},
+      {{"^feed1", "add_0:2"}});
 }
 
 TEST_F(CApiFunctionTest, DuplicateInputsAreNotAllowed) {

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
+#define TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
 
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/context.h"
@@ -59,8 +59,16 @@ class NNAPIDelegate {
   ANeuralNetworksModel* nn_model_ = nullptr;
   // The NN API compilation handle
   ANeuralNetworksCompilation* nn_compiled_model_ = nullptr;
+
+  // List of state tensors for LSTM, RNN, SVDF.
+  // NN API does not allow ops to maintain states across multiple
+  // invocations. We need to manually create state input tensors from
+  // corresponding state output tensors of TFLite operations, and map them
+  // correctly.
+  std::vector<int> model_states_inputs_;
+  std::vector<int> model_states_outputs_;
 };
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_

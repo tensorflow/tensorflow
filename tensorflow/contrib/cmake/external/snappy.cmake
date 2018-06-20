@@ -20,7 +20,11 @@ set(snappy_BUILD ${CMAKE_CURRENT_BINARY_DIR}/snappy/src/snappy)
 set(snappy_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/snappy/src/snappy)
 
 if(WIN32)
-    set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/$(Configuration)/snappy.lib)
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+        set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/$(Configuration)/snappy.lib)
+    else()
+        set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/snappy.lib)
+    endif()
 else()
     set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/libsnappy.a)
 endif()
@@ -35,6 +39,7 @@ ExternalProject_Add(snappy
     GIT_TAG ${snappy_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS ${snappy_STATIC_LIBRARIES}
     INSTALL_COMMAND ""
     LOG_DOWNLOAD ON
     LOG_CONFIGURE ON

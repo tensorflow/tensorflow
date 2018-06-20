@@ -1,9 +1,9 @@
 path: "tensorflow.keras.layers.TimeDistributed"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.wrappers.TimeDistributed\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.wrappers.Wrapper\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Layer\'>"
-  is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.wrappers.TimeDistributed\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.wrappers.Wrapper\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -11,10 +11,6 @@ tf_class {
   }
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "graph"
     mtype: "<type \'property\'>"
   }
   member {
@@ -66,7 +62,7 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "scope_name"
+    name: "trainable"
     mtype: "<type \'property\'>"
   }
   member {
@@ -103,11 +99,11 @@ tf_class {
   }
   member_method {
     name: "add_variable"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'getter\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"
@@ -155,7 +151,7 @@ tf_class {
   }
   member_method {
     name: "get_losses_for"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_output_at"
@@ -171,7 +167,7 @@ tf_class {
   }
   member_method {
     name: "get_updates_for"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_weights"

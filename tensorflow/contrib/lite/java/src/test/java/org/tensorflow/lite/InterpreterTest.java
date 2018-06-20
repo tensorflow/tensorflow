@@ -19,6 +19,8 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.fail;
 
 import java.io.File;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -66,6 +68,49 @@ public final class InterpreterTest {
     float[] expected = {3.69f, 19.62f, 23.43f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
     interpreter.close();
+    fileChannel.close();
+  }
+
+  @Test
+  public void testRunWithDirectByteBufferModel() throws Exception {
+    Path path = MODEL_FILE.toPath();
+    FileChannel fileChannel =
+        (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
+    ByteBuffer byteBuffer = ByteBuffer.allocateDirect((int) fileChannel.size());
+    byteBuffer.order(ByteOrder.nativeOrder());
+    fileChannel.read(byteBuffer);
+    Interpreter interpreter = new Interpreter(byteBuffer);
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    interpreter.run(fourD, parsedOutputs);
+    float[] outputOneD = parsedOutputs[0][0][0];
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    interpreter.close();
+    fileChannel.close();
+  }
+
+  @Test
+  public void testRunWithInvalidByteBufferModel() throws Exception {
+    Path path = MODEL_FILE.toPath();
+    FileChannel fileChannel =
+        (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
+    ByteBuffer byteBuffer = ByteBuffer.allocate((int) fileChannel.size());
+    byteBuffer.order(ByteOrder.nativeOrder());
+    fileChannel.read(byteBuffer);
+    try {
+      Interpreter interpreter = new Interpreter(byteBuffer);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Model ByteBuffer should be either a MappedByteBuffer"
+                  + " of the model file, or a direct ByteBuffer using ByteOrder.nativeOrder()");
+    }
     fileChannel.close();
   }
 
@@ -195,8 +240,8 @@ public final class InterpreterTest {
       assertThat(e)
           .hasMessageThat()
           .contains(
-              "WrongInputName is not a valid name for any input. The indexes of the inputs"
-                  + " are {input=0}");
+              "'WrongInputName' is not a valid name for any input. Names of inputs and their "
+                  + "indexes are {input=0}");
     }
     int index = interpreter.getInputIndex("input");
     assertThat(index).isEqualTo(0);
@@ -212,10 +257,58 @@ public final class InterpreterTest {
       assertThat(e)
           .hasMessageThat()
           .contains(
-              "WrongOutputName is not a valid name for any output. The indexes of the outputs"
-                  + " are {MobilenetV1/Predictions/Softmax=0}");
+              "'WrongOutputName' is not a valid name for any output. Names of outputs and their"
+                  + " indexes are {MobilenetV1/Predictions/Softmax=0}");
     }
     int index = interpreter.getOutputIndex("MobilenetV1/Predictions/Softmax");
     assertThat(index).isEqualTo(0);
+  }
+
+  @Test
+  public void testTurnOffNNAPI() throws Exception {
+    Path path = MODEL_FILE.toPath();
+    FileChannel fileChannel =
+        (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
+    MappedByteBuffer mappedByteBuffer =
+        fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
+    Interpreter interpreter = new Interpreter(mappedByteBuffer);
+    interpreter.setUseNNAPI(true);
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    interpreter.run(fourD, parsedOutputs);
+    float[] outputOneD = parsedOutputs[0][0][0];
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    interpreter.setUseNNAPI(false);
+    interpreter.run(fourD, parsedOutputs);
+    outputOneD = parsedOutputs[0][0][0];
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    interpreter.close();
+    fileChannel.close();
+  }
+
+  @Test
+  public void testTurnOnNNAPI() throws Exception {
+    Path path = MODEL_FILE.toPath();
+    FileChannel fileChannel =
+        (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
+    MappedByteBuffer mappedByteBuffer =
+        fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
+    Interpreter interpreter = new Interpreter(mappedByteBuffer);
+    interpreter.setUseNNAPI(true);
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    interpreter.run(fourD, parsedOutputs);
+    float[] outputOneD = parsedOutputs[0][0][0];
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    interpreter.close();
+    fileChannel.close();
   }
 }

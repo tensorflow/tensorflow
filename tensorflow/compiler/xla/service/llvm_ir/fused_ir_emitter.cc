@@ -80,8 +80,10 @@ Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
       *ir_builder_->GetInsertBlock()->getModule(), initializer->getType(),
       /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
       /*Name=*/"");
+  llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
+      global, llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
   generators_[constant] = [=](const IrArray::Index& index) {
-    return IrArray(global, constant->shape())
+    return IrArray(shape_constant, constant->shape())
         .EmitReadArrayElement(index, ir_builder_);
   };
 
@@ -151,7 +153,7 @@ Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
 
 Status FusedIrEmitter::FinishVisit(HloInstruction* root) {
   fused_root_ = root;
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 FusedIrEmitter::Generator FusedIrEmitter::GetRootGenerator() const {

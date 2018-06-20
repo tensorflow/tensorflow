@@ -22,23 +22,6 @@ namespace tflite {
 using ::testing::FloatNear;
 using ::testing::Matcher;
 
-namespace {
-template <typename T>
-std::pair<float, int32_t> QuantizationParams(float f_min, float f_max) {
-  // These are required by many quantized operations.
-  CHECK_LE(f_min, 0);
-  CHECK_GE(f_max, 0);
-  T q_min = std::numeric_limits<T>::min();
-  T q_max = std::numeric_limits<T>::max();
-  float range = q_max - q_min;
-  float scale = (f_max - f_min) / range;
-  int32_t zero_point = std::min(
-      q_max,
-      std::max(q_min, static_cast<T>(std::round(q_min - f_min / scale))));
-  return {scale, zero_point};
-}
-}  // namespace
-
 std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
                                            float max_abs_error) {
   std::vector<Matcher<float>> matchers;
@@ -49,46 +32,8 @@ std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
   return matchers;
 }
 
-int SingleOpModel::AddTensor(TensorData t) {
-  int id = tensors_.size();
-
-  // This is slightly different depending on whether we are adding a
-  // quantized or a regular tensor.
-  bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0);
-
-  flatbuffers::Offset<QuantizationParameters> q_params = 0;
-
-  if (is_quantized) {
-    if (t.min != 0 || t.max != 0) {
-      if (t.type == TensorType_UINT8) {
-        std::tie(t.scale, t.zero_point) =
-            QuantizationParams<uint8_t>(t.min, t.max);
-      } else if (t.type == TensorType_INT32) {
-        std::tie(t.scale, t.zero_point) =
-            QuantizationParams<int32_t>(t.min, t.max);
-      } else {
-        LOG(FATAL) << "No support for the requested quantized type";
-      }
-      t.min = 0;
-      t.max = 0;
-    }
-
-    q_params = CreateQuantizationParameters(
-        builder_, /*min=*/0, /*max=*/0, builder_.CreateVector<float>({t.scale}),
-        builder_.CreateVector<int64_t>({t.zero_point}));
-  }
-
-  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>({}),
-                                  t.type, /*buffer=*/0,
-                                  /*name=*/0, q_params));
-
-  tensor_data_[id] = t;
-
-  return id;
-}
-
 int SingleOpModel::AddInput(const TensorData& t) {
-  int id = AddTensor(t);
+  int id = AddTensor<float>(t, {});
   inputs_.push_back(id);
   return id;
 }
@@ -100,7 +45,7 @@ int SingleOpModel::AddNullInput() {
 }
 
 int SingleOpModel::AddOutput(const TensorData& t) {
-  int id = AddTensor(t);
+  int id = AddTensor<float>(t, {});
   outputs_.push_back(id);
   return id;
 }
@@ -118,8 +63,8 @@ void SingleOpModel::SetBuiltinOp(BuiltinOperator type,
 
 void SingleOpModel::SetCustomOp(
     const string& name, const std::vector<uint8_t>& custom_option,
-    const std::function<TfLiteRegistration*()>& registeration) {
-  custom_registrations_[name] = registeration;
+    const std::function<TfLiteRegistration*()>& registration) {
+  custom_registrations_[name] = registration;
   opcodes_.push_back(
       CreateOperatorCodeDirect(builder_, BuiltinOperator_CUSTOM, name.data()));
   operators_.push_back(CreateOperator(
@@ -142,19 +87,21 @@ void SingleOpModel::BuildInterpreter(
   subgraphs.push_back(subgraph);
   auto subgraphs_flatbuffer = builder_.CreateVector(subgraphs);
 
-  std::vector<flatbuffers::Offset<Buffer>> buffers_vec;
-  auto buffers = builder_.CreateVector(buffers_vec);
+  auto buffers = builder_.CreateVector(buffers_);
   auto description = builder_.CreateString("programmatic model");
   builder_.Finish(CreateModel(builder_, TFLITE_SCHEMA_VERSION, opcodes,
                               subgraphs_flatbuffer, description, buffers));
 
   auto* model = GetModel(builder_.GetBufferPointer());
 
-  ops::builtin::BuiltinOpResolver builtins;
-  for (const auto& reg : custom_registrations_) {
-    builtins.AddCustom(reg.first.data(), reg.second());
+  if (!resolver_) {
+    auto resolver = new ops::builtin::BuiltinOpResolver();
+    for (const auto& reg : custom_registrations_) {
+      resolver->AddCustom(reg.first.data(), reg.second());
+    }
+    resolver_ = std::unique_ptr<OpResolver>(resolver);
   }
-  InterpreterBuilder(model, builtins)(&interpreter_);
+  CHECK(InterpreterBuilder(model, *resolver_)(&interpreter_) == kTfLiteOk);
 
   CHECK(interpreter_ != nullptr);
 
@@ -162,8 +109,15 @@ void SingleOpModel::BuildInterpreter(
   for (const auto& shape : input_shapes) {
     int input_idx = interpreter_->inputs()[i++];
     if (input_idx == kOptionalTensor) continue;
+    if (shape.empty()) continue;
     CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);
   }
+
+  // Modify delegate with function.
+  if (apply_delegate_fn_) {
+    apply_delegate_fn_(interpreter_.get());
+  }
+
   CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
       << "Cannot allocate tensors";
 }

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace {
@@ -26,112 +27,140 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 
 class WhileLoopSimplifierTest : public HloVerifiedTestBase {
- public:
-  // Makes a computation that contains a loop that runs num_iters times.
-  HloComputation* MakeSimpleLoop(int num_iters, HloModule* module);
+ protected:
+  // Makes an HloModule that contains a loop with `num_iters` iteration.
+  void MakeModuleWithSimpleLoop(int num_iters);
 
-  // Makes a computation which has one parameter, of the given shape, and always
-  // returns PRED[]{true}.  This is useful as a dummy loop condition.
-  HloComputation* MakeAlwaysTrueComputation(const Shape& param_shape,
-                                            HloModule* module);
+  // Similar to MakeModuleWithSimpleLoop except that the loop bound is passed to
+  // the loop-condition through an element of a tuple which is the
+  // loop-condition parameter.
+  void MakeModuleWithSimpleLoopTupleElementLoopBound(int num_iters);
 };
 
-HloComputation* WhileLoopSimplifierTest::MakeSimpleLoop(int num_iters,
-                                                        HloModule* module) {
-  HloComputation::Builder builder(TestName());
-
-  auto loop_iter_init = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(42)));
-  auto loop_data_init = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<int32>({0, 1, 2})));
-  auto loop_init = builder.AddInstruction(
-      HloInstruction::CreateTuple({loop_iter_init, loop_data_init}));
-
-  HloComputation* condition;
-  {
-    HloComputation::Builder cond_builder(TestName() + ".condition");
-    auto loop_var = cond_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_init->shape(), "loop_var"));
-    auto loop_induction_var =
-        cond_builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-            ShapeUtil::MakeShape(S32, {}), loop_var, 0));
-    auto limit = cond_builder.AddInstruction(HloInstruction::CreateConstant(
-        Literal::CreateR0<int32>(42 + num_iters)));
-    cond_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, loop_induction_var,
-        limit));
-    condition = module->AddEmbeddedComputation(cond_builder.Build());
+void WhileLoopSimplifierTest::MakeModuleWithSimpleLoop(int num_iters) {
+  string hlo_string_template = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[3]{0}) tuple(add, multiply)
   }
-
-  HloComputation* body;
-  {
-    HloComputation::Builder body_builder(TestName() + ".body");
-    auto loop_var = body_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_init->shape(), "loop_var"));
-    auto loop_induction_var =
-        body_builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-            ShapeUtil::MakeShape(S32, {}), loop_var, 0));
-    auto new_loop_induction_var =
-        body_builder.AddInstruction(HloInstruction::CreateBinary(
-            loop_induction_var->shape(), HloOpcode::kAdd, loop_induction_var,
-            body_builder.AddInstruction(
-                HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)))));
-    auto loop_data =
-        body_builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-            loop_data_init->shape(), loop_var, 1));
-    auto new_loop_data =
-        body_builder.AddInstruction(HloInstruction::CreateBinary(
-            loop_data_init->shape(), HloOpcode::kMultiply, loop_data,
-            loop_data));
-    body_builder.AddInstruction(
-        HloInstruction::CreateTuple({new_loop_induction_var, new_loop_data}));
-    body = module->AddEmbeddedComputation(body_builder.Build());
+  SimpleLoop.condition {
+    loop_var.2 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] constant({{LOOP_BOUND}})
+    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
   }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
 
-  builder.AddInstruction(HloInstruction::CreateWhile(
-      loop_init->shape(), condition, body, loop_init));
-
-  return module->AddEntryComputation(builder.Build());
+  string hlo_string = tensorflow::str_util::StringReplace(
+      hlo_string_template, "{{LOOP_BOUND}}",
+      tensorflow::strings::StrCat(42 + num_iters),
+      /*replace_all=*/true);
+  ParseAndVerifyModule(hlo_string);
 }
 
-HloComputation* WhileLoopSimplifierTest::MakeAlwaysTrueComputation(
-    const Shape& param_shape, HloModule* module) {
-  HloComputation::Builder builder(TestName() + ".always_true");
-  builder.AddInstruction(
-      HloInstruction::CreateParameter(0, param_shape, "param"));
-  builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
-  return module->AddEmbeddedComputation(builder.Build());
+void WhileLoopSimplifierTest::MakeModuleWithSimpleLoopTupleElementLoopBound(
+    int num_iters) {
+  string hlo_string_template = R"(
+  HloModule SimpleLoopWithIndirectLoopBound
+  SimpleLoopWithIndirectLoopBound.body {
+    loop_var.1 = (s32[], s32[3]{0}, s32[]) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    limit = s32[] get-tuple-element(loop_var.1), index=2
+    ROOT tuple = (s32[], s32[3]{0}, s32[]) tuple(add, multiply, limit)
+  }
+  SimpleLoopWithIndirectLoopBound.condition {
+    loop_var.2 = (s32[], s32[3]{0}, s32[]) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=2
+    ROOT less-than = pred[] less-than(get-tuple-element.3, get-tuple-element.4)
+  }
+  ENTRY SimpleLoopWithIndirectLoopBound {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    constant.2 = s32[] constant({{LOOP_BOUND}})
+    tuple.1 = (s32[], s32[3]{0}, s32[]) tuple(constant.3, constant.4,
+      constant.2)
+    ROOT while = (s32[], s32[3]{0}, s32[]) while(tuple.1),
+      condition=SimpleLoopWithIndirectLoopBound.condition,
+      body=SimpleLoopWithIndirectLoopBound.body
+  }
+  )";
+
+  string hlo_string = tensorflow::str_util::StringReplace(
+      hlo_string_template, "{{LOOP_BOUND}}",
+      tensorflow::strings::StrCat(42 + num_iters),
+      /*replace_all=*/true);
+  ParseAndVerifyModule(hlo_string);
 }
 
-TEST_F(WhileLoopSimplifierTest, WhileLoopWithZeroIterations) {
-  HloComputation* computation = MakeSimpleLoop(/*num_iters=*/0, &module());
-  ASSERT_TRUE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
-  EXPECT_THAT(computation->root_instruction(),
+TEST_F(WhileLoopSimplifierTest, LoopWithZeroIterationSimiplified) {
+  MakeModuleWithSimpleLoop(/*num_iters=*/0);
+  HloModule* the_module = &module();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
+  EXPECT_THAT(the_module->entry_computation()->root_instruction(),
               op::Tuple(op::Constant(), op::Constant()));
 }
 
-TEST_F(WhileLoopSimplifierTest, WhileLoopWithOneIteration) {
-  HloComputation* computation = MakeSimpleLoop(/*num_iters=*/1, &module());
-  ASSERT_TRUE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
-  EXPECT_THAT(computation->root_instruction(),
+TEST_F(WhileLoopSimplifierTest,
+       LoopWithZeroIterationTupleElementLoopBoundSimplified) {
+  MakeModuleWithSimpleLoopTupleElementLoopBound(/*num_iters=*/0);
+  HloModule* the_module = &module();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
+  EXPECT_THAT(the_module->entry_computation()->root_instruction(),
+              op::Tuple(op::Constant(), op::Constant(), op::Constant()));
+}
+
+TEST_F(WhileLoopSimplifierTest, LoopWithOneIterationSimplified) {
+  MakeModuleWithSimpleLoop(/*num_iters=*/1);
+  HloModule* the_module = &module();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
+  EXPECT_THAT(the_module->entry_computation()->root_instruction(),
               op::Tuple(op::Add(), op::Multiply()));
 }
 
-TEST_F(WhileLoopSimplifierTest, WhileLoopWithTwoIterations) {
-  MakeSimpleLoop(/*num_iters=*/2, &module());
+TEST_F(WhileLoopSimplifierTest,
+       LoopWithOneIterationTupleELementLoopBoundSimplified) {
+  MakeModuleWithSimpleLoopTupleElementLoopBound(/*num_iters=*/1);
+  HloModule* the_module = &module();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
+  EXPECT_THAT(the_module->entry_computation()->root_instruction(),
+              op::Tuple(op::Add(), op::Multiply(), op::Constant()));
+}
+
+TEST_F(WhileLoopSimplifierTest, LoopWithTwoIterationsNotSimplified) {
+  MakeModuleWithSimpleLoop(/*num_iters=*/2);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
-TEST_F(WhileLoopSimplifierTest, WhileLoopWithControlDependency) {
-  HloComputation* computation = MakeSimpleLoop(/*num_iters=*/1, &module());
+TEST_F(WhileLoopSimplifierTest,
+       LoopWithControlDependencySimplifiedDependencyPreserved) {
+  MakeModuleWithSimpleLoop(/*num_iters=*/1);
+  HloModule* the_module = &module();
+  HloComputation* computation = the_module->entry_computation();
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* true_op = while_op->while_body()->AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
   TF_ASSERT_OK(true_op->AddControlDependencyTo(
       while_op->while_body()->root_instruction()));
-  ASSERT_TRUE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
+  ASSERT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
   EXPECT_THAT(computation->root_instruction()->control_predecessors(),
               ElementsAre(op::Constant()))
       << computation->ToString();
@@ -139,8 +168,10 @@ TEST_F(WhileLoopSimplifierTest, WhileLoopWithControlDependency) {
 
 // Loops that contain send/recv nodes can't be simplified; the loop structure
 // around send/recv nodes must be preserved.
-TEST_F(WhileLoopSimplifierTest, NotRemovedIfContainsSend) {
-  HloComputation* computation = MakeSimpleLoop(/*num_iters=*/1, &module());
+TEST_F(WhileLoopSimplifierTest, LoopWithSendNotSimplified) {
+  MakeModuleWithSimpleLoop(/*num_iters=*/1);
+  HloModule* the_module = &module();
+  HloComputation* computation = the_module->entry_computation();
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
@@ -149,11 +180,13 @@ TEST_F(WhileLoopSimplifierTest, NotRemovedIfContainsSend) {
           HloInstruction::CreateConstant(Literal::CreateR0<bool>(true))),
       /*channel_id=*/0));
   while_body->AddInstruction(HloInstruction::CreateSendDone(send));
-  EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
+  EXPECT_FALSE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
 }
 
-TEST_F(WhileLoopSimplifierTest, NotRemovedIfContainsRecv) {
-  HloComputation* computation = MakeSimpleLoop(/*num_iters=*/1, &module());
+TEST_F(WhileLoopSimplifierTest, LoopWithRecvNotSimplified) {
+  MakeModuleWithSimpleLoop(/*num_iters=*/1);
+  HloModule* the_module = &module();
+  HloComputation* computation = the_module->entry_computation();
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
@@ -161,247 +194,217 @@ TEST_F(WhileLoopSimplifierTest, NotRemovedIfContainsRecv) {
       HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1}),
                                  /*channel_id=*/0));
   while_body->AddInstruction(HloInstruction::CreateRecvDone(recv));
-  EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
+  EXPECT_FALSE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
 }
 
 // The limitation on not being able to simplify loops that contain infeeds (and
 // other non-removable instructions) isn't fundamental -- it just stems from the
 // fact that our infrastructure sees simplifying such a loop as tantamount to
 // removing the non-removable instruction.
-TEST_F(WhileLoopSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
-  HloComputation* computation = MakeSimpleLoop(/*num_iters=*/1, &module());
+TEST_F(WhileLoopSimplifierTest, LoopWithInfeedNotSimplified) {
+  MakeModuleWithSimpleLoop(/*num_iters=*/1);
+  HloModule* the_module = &module();
+  HloComputation* computation = the_module->entry_computation();
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
   while_body->AddInstruction(
       HloInstruction::CreateInfeed(ShapeUtil::MakeShape(F32, {1}), "config"));
+  EXPECT_FALSE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
+}
+
+// A non-tuple shaped loop shouldn't be simplified or crash the compiler.
+TEST_F(WhileLoopSimplifierTest, NonTupleShapedLoopNotSimplified) {
+  const string hlo_string = R"(
+ HloModule NonTupleShapedLoop
+ NonTupleShapedLoop.body {
+   loop_var.1 = s32[] parameter(0)
+   constant.1 = s32[] constant(-1)
+   ROOT add = s32[] add(s32[] loop_var.1, s32[] constant.1)
+ }
+ NonTupleShapedLoop.condition {
+   loop_var = s32[] parameter(0)
+   constant = s32[] constant(100)
+   ROOT less-than = pred[] less-than(s32[] loop_var, s32[] constant)
+ }
+ ENTRY INonTupleShapedLoop {
+   constant.2 = s32[] constant(42)
+   ROOT while = s32[] while(s32[] constant.2),
+     condition=NonTupleShapedLoop.condition,
+     body=NonTupleShapedLoop.body
+  }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
-// Check that we don't crash when given a loop whose shape is not a tuple.
-TEST_F(WhileLoopSimplifierTest, IgnoreNonTupleShapedLoop) {
-  HloComputation::Builder builder(TestName());
-  auto loop_init = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(42)));
-
-  HloComputation* condition;
-  {
-    HloComputation::Builder cond_builder(TestName() + ".condition");
-    auto param = cond_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_init->shape(), "loop_var"));
-    cond_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param,
-        cond_builder.AddInstruction(
-            HloInstruction::CreateConstant(Literal::CreateR0<int32>(100)))));
-    condition = module().AddEmbeddedComputation(cond_builder.Build());
+// A while loop that does nothing else besides swapping tuple elements
+// can't be simplified as the result of the swapping is visible to users of the
+// loop.
+TEST_F(WhileLoopSimplifierTest, LoopSwappingTupleElementsNotSimplified) {
+  const string hlo_string = R"(
+  HloModule SwappingTupleElements
+  SwappingTupleElements.body {
+    loop_var = (s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((s32[], s32[]) loop_var),index=1
+    get-tuple-element.1 = s32[] get-tuple-element((s32[], s32[]) loop_var),
+      index=0
+    ROOT tuple = (s32[], s32[]) tuple(s32[] get-tuple-element,
+      s32[] get-tuple-element.1)
   }
-
-  HloComputation* body;
-  {
-    HloComputation::Builder body_builder(TestName() + ".body");
-    auto param = body_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_init->shape(), "loop_var"));
-    body_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(S32, {}), HloOpcode::kAdd, param,
-        body_builder.AddInstruction(
-            HloInstruction::CreateConstant(Literal::CreateR0<int32>(-1)))));
-    body = module().AddEmbeddedComputation(body_builder.Build());
+  SwappingTupleElements.always_true {
+   param = (s32[], s32[]) parameter(0)
+   ROOT constant = pred[] constant(true)
   }
-
-  builder.AddInstruction(HloInstruction::CreateWhile(
-      loop_init->shape(), condition, body, loop_init));
-
-  module().AddEntryComputation(builder.Build());
-  EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
-}
-
-// Construct a loop where we swap the tuple elements in each iteration.
-// Although the tuple elements aren't used in the loop, we don't eliminate them,
-// because the swapping side-effect is visible to users of the loop.
-TEST_F(WhileLoopSimplifierTest, SwapTupleIndices) {
-  HloComputation::Builder builder(TestName());
-  auto loop_init = builder.AddInstruction(HloInstruction::CreateTuple({
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<int32>(0))),
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<int32>(1))),
-  }));
-
-  HloComputation* condition =
-      MakeAlwaysTrueComputation(loop_init->shape(), &module());
-  HloComputation* body;
-  {
-    HloComputation::Builder body_builder(TestName() + ".body");
-    auto param = body_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_init->shape(), "loop_var"));
-    auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-    body_builder.AddInstruction(HloInstruction::CreateTuple({
-        body_builder.AddInstruction(
-            HloInstruction::CreateGetTupleElement(scalar_s32, param, 1)),
-        body_builder.AddInstruction(
-            HloInstruction::CreateGetTupleElement(scalar_s32, param, 0)),
-    }));
-    body = module().AddEmbeddedComputation(body_builder.Build());
+  ENTRY SwappingTupleElements {
+   x = s32[] parameter(0)
+   y = s32[] parameter(1)
+   tuple.1 = (s32[], s32[]) tuple(s32[] x, s32[] y)
+   ROOT while = (s32[], s32[]) while((s32[], s32[]) tuple.1),
+     condition=SwappingTupleElements.always_true,
+     body=SwappingTupleElements.body
   }
+  )";
 
-  builder.AddInstruction(HloInstruction::CreateWhile(
-      loop_init->shape(), condition, body, loop_init));
-
-  module().AddEntryComputation(builder.Build());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
 // Construct a loop where we assign a constant to tuple element 0 in each
 // iteration.  We can't eliminate tuple element 0, even though we never use its
 // value.
-TEST_F(WhileLoopSimplifierTest, UnusedButModifiedTupleElement) {
-  HloComputation::Builder builder(TestName());
-  auto loop_init = builder.AddInstruction(
-      HloInstruction::CreateTuple({builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<int32>(0)))}));
-
-  HloComputation* condition =
-      MakeAlwaysTrueComputation(loop_init->shape(), &module());
-  HloComputation* body;
-  {
-    HloComputation::Builder body_builder(TestName() + ".body");
-    body_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_init->shape(), "loop_var"));
-    body_builder.AddInstruction(HloInstruction::CreateTuple({
-        body_builder.AddInstruction(
-            HloInstruction::CreateConstant(Literal::CreateR0<int32>(1))),
-    }));
-    body = module().AddEmbeddedComputation(body_builder.Build());
+TEST_F(WhileLoopSimplifierTest,
+       LoopWithUnusedButModifiedTupleElementNotSimplified) {
+  const string hlo_string = R"(
+  HloModule UnusedButModifiedTupleElement
+  UnusedButModifiedTupleElement.body {
+    loop_var = (s32[]) parameter(0)
+    constant.1 = s32[] constant(1)
+    ROOT tuple = (s32[]) tuple(s32[] constant.1)
   }
+  UnusedButModifiedTupleElement.always_true {
+    param = (s32[]) parameter(0)
+   ROOT  constant = pred[] constant(true)
+  }
+  ENTRY  UnusedButModifiedTupleElement {
+    constant.2 = s32[] constant(0)
+    tuple.1 = (s32[]) tuple(s32[]  constant.2)
+    ROOT while = (s32[]) while((s32[]) tuple.1),
+      condition=UnusedButModifiedTupleElement.always_true,
+      body=UnusedButModifiedTupleElement.body
+  }
+  )";
 
-  builder.AddInstruction(HloInstruction::CreateWhile(
-      loop_init->shape(), condition, body, loop_init));
-
-  module().AddEntryComputation(builder.Build());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
 // Nothing to simplify in a while loop whose tuple has 0 elements.
-TEST_F(WhileLoopSimplifierTest, EmptyTuple) {
-  HloComputation::Builder builder(TestName());
-  auto loop_init = builder.AddInstruction(HloInstruction::CreateTuple({}));
-
-  HloComputation* condition =
-      MakeAlwaysTrueComputation(loop_init->shape(), &module());
-  HloComputation* body;
-  {
-    HloComputation::Builder body_builder(TestName() + ".body");
-    body_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_init->shape(), "loop_var"));
-    body_builder.AddInstruction(HloInstruction::CreateTuple({}));
-    body = module().AddEmbeddedComputation(body_builder.Build());
+TEST_F(WhileLoopSimplifierTest, LoopWithEmptyTupleNotSimplified) {
+  const string hlo_string = R"(
+  HloModule EmptyTuple
+  EmptyTuple.body {
+    loop_var = () parameter(0)
+    ROOT  tuple = () tuple()
   }
+  EmptyTuple.always_true {
+   param = () parameter(0)
+   ROOT constant = pred[] constant(true)
+  }
+  ENTRY EmptyTuple {
+   tuple.1 = () tuple()
+   ROOT while = () while(() tuple.1), condition=EmptyTuple.always_true,
+     body=EmptyTuple.body
+  }
+  )";
 
-  builder.AddInstruction(HloInstruction::CreateWhile(
-      loop_init->shape(), condition, body, loop_init));
-  module().AddEntryComputation(builder.Build());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
 // While loop where one tuple element is used twice in the body, and thus can't
 // be simplified away.
-TEST_F(WhileLoopSimplifierTest, ElemUsedTwice) {
-  HloComputation::Builder builder(TestName());
-  auto loop_init = builder.AddInstruction(HloInstruction::CreateTuple({
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<int32>(0))),
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<int32>(1))),
-  }));
-
-  HloComputation* condition =
-      MakeAlwaysTrueComputation(loop_init->shape(), &module());
-
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  HloComputation* body;
-  {
-    HloComputation::Builder body_builder(TestName() + ".body");
-    auto* param = body_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_init->shape(), "param0"));
-    auto* gte0 = body_builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_s32, param, /*index=*/0));
-    // get0 is used twice in the loop body's tuple.
-    body_builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte0}));
-    body = module().AddEmbeddedComputation(body_builder.Build());
+TEST_F(WhileLoopSimplifierTest, LoopWithElemUsedTwiceNotSimplified) {
+  const string hlo_string = R"(
+  HloModule ElemUsedTwice
+  ElemUsedTwice.body {
+    param0 = (s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((s32[], s32[]) param0), index=0
+    ROOT tuple = (s32[], s32[]) tuple(s32[] get-tuple-element,
+      s32[] get-tuple-element)
   }
+  ElemUsedTwice.always_true {
+    param = (s32[], s32[]) parameter(0)
+    ROOT constant = pred[] constant(true)
+  }
+  ENTRY ElemUsedTwice {
+   x = s32[] parameter(0)
+   y = s32[] parameter(1)
+   tuple.1 = (s32[], s32[]) tuple(s32[] x, s32[] y)
+   ROOT while = (s32[], s32[]) while((s32[], s32[]) tuple.1),
+     condition=ElemUsedTwice.always_true, body=ElemUsedTwice.body
+  }
+  )";
 
-  builder.AddInstruction(HloInstruction::CreateWhile(
-      loop_init->shape(), condition, body, loop_init));
-  module().AddEntryComputation(builder.Build());
+  ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
 // This while loop has three tuple elements.  Element 0 is unused and should be
 // removed. Element 1 is used by the loop body, and element 2 is used by the
 // loop condition; these two should stay.
-TEST_F(WhileLoopSimplifierTest, RemoveUnusedOperand) {
-  HloComputation::Builder builder(TestName());
-  auto loop_init = builder.AddInstruction(HloInstruction::CreateTuple({
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<int32>(0))),
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<int32>(0))),
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<int32>(0))),
-  }));
-  auto loop_shape = loop_init->shape();
+TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
+  const string hlo_string = R"(
+  HloModule RemoveUnusedOperands
+  RemoveUnusedOperands.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element((s32[], s32[],
+      s32[]) loop_var), index=0
+    get-tuple-element.2 = s32[] get-tuple-element((s32[], s32[],
+      s32[]) loop_var), index=1
+    constant.1 = s32[] constant(1)
+    add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
+    get-tuple-element.3 = s32[] get-tuple-element((s32[], s32[], s32[])
+      loop_var), index=2
+    ROOT tuple = (s32[], s32[], s32[]) tuple(s32[] get-tuple-element.1,
+      s32[] add, s32[] get-tuple-element.3)
+  }
+  RemoveUnusedOperands.loop_condition {
+    constant.2 = s32[] constant(0)
+    param0 = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((s32[], s32[], s32[]) param0),
+      index=2
+    ROOT equal-to = pred[] equal-to(s32[] constant.2, s32[] get-tuple-element)
+  }
+  ENTRY RemoveUnusedOperands {
+    x = s32[] parameter(0)
+    constant.3 = s32[] constant(0)
+    y = s32[] parameter(1)
+    tuple.1 = (s32[], s32[], s32[]) tuple(s32[] x, s32[] constant.3,
+      s32[] y)
+    ROOT while = (s32[], s32[], s32[]) while((s32[], s32[], s32[]) tuple.1),
+      condition=RemoveUnusedOperands.loop_condition,
+      body=RemoveUnusedOperands.body
+  }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  HloModule* the_module = &module();
+  EXPECT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
+
+  // The original while instruction is still left in the module as a dead
+  // instruction, find a while instruction with a different name as the new
+  // while instruction.
+  HloInstruction* new_while_op =
+      *std::find_if(the_module->entry_computation()->instructions().begin(),
+                    the_module->entry_computation()->instructions().end(),
+                    [&](const HloInstruction* instr) {
+                      return (instr->opcode() == HloOpcode::kWhile &&
+                              instr->name() != "while");
+                    });
+
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-
-  HloComputation* condition;
-  {
-    HloComputation::Builder cond_builder(TestName() + ".loop_condition");
-    auto param = cond_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_shape, "param0"));
-    cond_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kEq,
-        cond_builder.AddInstruction(
-            HloInstruction::CreateConstant(Literal::CreateR0<int32>(0))),
-        cond_builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-            scalar_s32, param, /*index=*/2))));
-    condition = module().AddEmbeddedComputation(cond_builder.Build());
-  }
-
-  HloComputation* body;
-  {
-    HloComputation::Builder body_builder(TestName() + ".body");
-    auto* param = body_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, loop_shape, "loop_var"));
-
-    auto* tuple0 = body_builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_s32, param, /*index=*/0));
-    auto* tuple1 = body_builder.AddInstruction(HloInstruction::CreateBinary(
-        scalar_s32, HloOpcode::kAdd,
-        body_builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-            scalar_s32, param, /*index=*/1)),
-        body_builder.AddInstruction(
-            HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)))));
-    auto* tuple2 = body_builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_s32, param, /*index=*/2));
-    body_builder.AddInstruction(
-        HloInstruction::CreateTuple({tuple0, tuple1, tuple2}));
-
-    body = module().AddEmbeddedComputation(body_builder.Build());
-  }
-
-  auto* while_op = builder.AddInstruction(HloInstruction::CreateWhile(
-      loop_init->shape(), condition, body, loop_init));
-
-  module().AddEntryComputation(builder.Build());
-  EXPECT_TRUE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
-
-  // We leave most of the checking to HloVerifiedTestBase, which runs the
-  // verifier on module() at the end of this test.
-  HloInstruction* new_while_op = *std::find_if(
-      module().entry_computation()->instructions().begin(),
-      module().entry_computation()->instructions().end(),
-      [&](const HloInstruction* instr) {
-        return instr != while_op && instr->opcode() == HloOpcode::kWhile;
-      });
   EXPECT_TRUE(
       ShapeUtil::Equal(new_while_op->shape(),
                        ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32})))
@@ -418,31 +421,91 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedOperand) {
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
 }
 
-TEST_F(WhileLoopSimplifierTest, BodyHasNonTupleRoot) {
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
+TEST_F(WhileLoopSimplifierTest, LoopWithNonTupleBodyShapeNotSimplified) {
+  const string hlo_string = R"(
+  HloModule BodyHasNonTupleRoot
+  BodyHasNonTupleRoot.passthrough {
+    ROOT param = (s32[], s32[]) parameter(0)
+  }
+  BodyHasNonTupleRoot.always_true {
+    param.1 = (s32[], s32[]) parameter(0)
+    ROOT constant = pred[] constant(true)
+  }
+  ENTRY BodyHasNonTupleRoot {
+    init_value = (s32[], s32[]) parameter(0)
+    ROOT while = (s32[], s32[]) while((s32[], s32[]) init_value),
+      condition=BodyHasNonTupleRoot.always_true,
+      body=BodyHasNonTupleRoot.passthrough
+  }
+  )";
 
-  HloComputation* while_body = [&]() {
-    HloComputation::Builder builder(TestName() + ".passthrough");
-    HloInstruction* param = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, while_shape, "param"));
-    HloComputation* result = module().AddEmbeddedComputation(builder.Build());
+  ParseAndVerifyModule(hlo_string);
+  EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
+}
 
-    result->AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
-    return result;
-  }();
+TEST_F(WhileLoopSimplifierTest,
+       LoopWithNonTupleBodyRootInstructionNotSimplified) {
+  const string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    ROOT custom-call = (s32[], s32[3]{0}) custom-call(add, multiply),
+      custom_call_target="x"
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] constant(44)
+    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
 
-  HloComputation::Builder builder(TestName());
-  auto* init_value = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, while_shape, "init_value"));
-  builder.AddInstruction(HloInstruction::CreateWhile(
-      while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
-      while_body, init_value));
-  module().AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopSimplifier{}.Run(&module()));
-  EXPECT_FALSE(simplified_loop);
+  ParseAndVerifyModule(hlo_string);
+  EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
+}
+
+TEST_F(WhileLoopSimplifierTest, LoopWithArrayConstantNotSimplified) {
+  const string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[], s32[3]{0}, s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    get-tuple-element.3 = s32[3]{0} get-tuple-element(loop_var.1), index=2
+    add.2 = s32[3]{0} add(get-tuple-element.2, get-tuple-element.3)
+    ROOT tuple = (s32[], s32[3]{0}) tuple(add, add.2, get-tuple-element.3)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[], s32[3]{0}, s32[3]{0}) parameter(0)
+    get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] constant(47)
+    ROOT less-than = pred[] less-than(get-tuple-element.4, constant.2)
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4, constant.4)
+    ROOT while = (s32[], s32[3]{0}, s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+
+  ParseAndVerifyModule(hlo_string);
+  EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
 }
 
 }  // namespace

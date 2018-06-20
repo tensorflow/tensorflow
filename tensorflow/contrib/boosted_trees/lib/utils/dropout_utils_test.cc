@@ -26,9 +26,9 @@
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 
+using std::unordered_set;
 using tensorflow::boosted_trees::learner::LearningRateDropoutDrivenConfig;
 using tensorflow::boosted_trees::trees::DecisionTreeEnsembleConfig;
-using std::unordered_set;
 
 namespace tensorflow {
 namespace boosted_trees {

@@ -59,7 +59,7 @@ bool RemoveTrivialConcatenationInput::Run(Model* model, std::size_t op_index) {
   for (const string& input : trivial_inputs) {
     if (IsDiscardableArray(*model, input) &&
         CountOpsWithInput(*model, input) == 1) {
-      model->arrays.erase(input);
+      model->EraseArray(input);
     }
   }
   concat_op->inputs = nontrivial_inputs;

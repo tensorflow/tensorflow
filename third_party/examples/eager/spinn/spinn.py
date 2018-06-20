@@ -51,6 +51,9 @@ import tensorflow.contrib.eager as tfe
 from tensorflow.contrib.eager.python.examples.spinn import data
 
 
+layers = tf.keras.layers
+
+
 def _bundle(lstm_iter):
   """Concatenate a list of Tensors along 1st axis and split result into two.
 
@@ -78,17 +81,16 @@ def _unbundle(state):
   return tf.split(tf.concat(state, 1), state[0].shape[0], axis=0)
 
 
-class Reducer(tfe.Network):
+# pylint: disable=not-callable
+class Reducer(tf.keras.Model):
   """A module that applies reduce operation on left and right vectors."""
 
   def __init__(self, size, tracker_size=None):
     super(Reducer, self).__init__()
-    self.left = self.track_layer(tf.layers.Dense(5 * size, activation=None))
-    self.right = self.track_layer(
-        tf.layers.Dense(5 * size, activation=None, use_bias=False))
+    self.left = layers.Dense(5 * size, activation=None)
+    self.right = layers.Dense(5 * size, activation=None, use_bias=False)
     if tracker_size is not None:
-      self.track = self.track_layer(
-          tf.layers.Dense(5 * size, activation=None, use_bias=False))
+      self.track = layers.Dense(5 * size, activation=None, use_bias=False)
     else:
       self.track = None
 
@@ -123,7 +125,7 @@ class Reducer(tfe.Network):
     return h, c
 
 
-class Tracker(tfe.Network):
+class Tracker(tf.keras.Model):
   """A module that tracks the history of the sentence with an LSTM."""
 
   def __init__(self, tracker_size, predict):
@@ -134,10 +136,10 @@ class Tracker(tfe.Network):
       predict: (`bool`) Whether prediction mode is enabled.
     """
     super(Tracker, self).__init__()
-    self._rnn = self.track_layer(tf.nn.rnn_cell.LSTMCell(tracker_size))
+    self._rnn = tf.nn.rnn_cell.LSTMCell(tracker_size)
     self._state_size = tracker_size
     if predict:
-      self._transition = self.track_layer(tf.layers.Dense(4))
+      self._transition = layers.Dense(4)
     else:
       self._transition = None
 
@@ -182,7 +184,7 @@ class Tracker(tfe.Network):
       return unbundled, None
 
 
-class SPINN(tfe.Network):
+class SPINN(tf.keras.Model):
   """Stack-augmented Parser-Interpreter Neural Network.
 
   See https://arxiv.org/abs/1603.06021 for more details.
@@ -204,9 +206,9 @@ class SPINN(tfe.Network):
     """
     super(SPINN, self).__init__()
     self.config = config
-    self.reducer = self.track_layer(Reducer(config.d_hidden, config.d_tracker))
+    self.reducer = Reducer(config.d_hidden, config.d_tracker)
     if config.d_tracker is not None:
-      self.tracker = self.track_layer(Tracker(config.d_tracker, config.predict))
+      self.tracker = Tracker(config.d_tracker, config.predict)
     else:
       self.tracker = None
 
@@ -248,7 +250,7 @@ class SPINN(tfe.Network):
       trans = transitions[i]
       if self.tracker:
         # Invoke tracker to obtain the current tracker states for the sentences.
-        tracker_states, trans_hypothesis = self.tracker(buffers, stacks)
+        tracker_states, trans_hypothesis = self.tracker(buffers, stacks=stacks)
         if trans_hypothesis:
           trans = tf.argmax(trans_hypothesis, axis=-1)
       else:
@@ -273,7 +275,27 @@ class SPINN(tfe.Network):
     return _bundle([stack.pop() for stack in stacks])[0]
 
 
-class SNLIClassifier(tfe.Network):
+class Perceptron(tf.keras.Model):
+  """One layer of the SNLIClassifier multi-layer perceptron."""
+
+  def __init__(self, dimension, dropout_rate, previous_layer):
+    """Configure the Perceptron."""
+    super(Perceptron, self).__init__()
+    self.dense = tf.keras.layers.Dense(dimension, activation=tf.nn.elu)
+    self.batchnorm = layers.BatchNormalization()
+    self.dropout = layers.Dropout(rate=dropout_rate)
+    self.previous_layer = previous_layer
+
+  def call(self, x, training):
+    """Run previous Perceptron layers, then this one."""
+    x = self.previous_layer(x, training=training)
+    x = self.dense(x)
+    x = self.batchnorm(x, training=training)
+    x = self.dropout(x, training=training)
+    return x
+
+
+class SNLIClassifier(tf.keras.Model):
   """SNLI Classifier Model.
 
   A model aimed at solving the SNLI (Standford Natural Language Inference)
@@ -304,29 +326,24 @@ class SNLIClassifier(tfe.Network):
     self.config = config
     self.embed = tf.constant(embed)
 
-    self.projection = self.track_layer(tf.layers.Dense(config.d_proj))
-    self.embed_bn = self.track_layer(tf.layers.BatchNormalization())
-    self.embed_dropout = self.track_layer(
-        tf.layers.Dropout(rate=config.embed_dropout))
-    self.encoder = self.track_layer(SPINN(config))
+    self.projection = layers.Dense(config.d_proj)
+    self.embed_bn = layers.BatchNormalization()
+    self.embed_dropout = layers.Dropout(rate=config.embed_dropout)
+    self.encoder = SPINN(config)
 
-    self.feature_bn = self.track_layer(tf.layers.BatchNormalization())
-    self.feature_dropout = self.track_layer(
-        tf.layers.Dropout(rate=config.mlp_dropout))
+    self.feature_bn = layers.BatchNormalization()
+    self.feature_dropout = layers.Dropout(rate=config.mlp_dropout)
 
-    self.mlp_dense = []
-    self.mlp_bn = []
-    self.mlp_dropout = []
-    for _ in xrange(config.n_mlp_layers):
-      self.mlp_dense.append(self.track_layer(tf.layers.Dense(config.d_mlp)))
-      self.mlp_bn.append(
-          self.track_layer(tf.layers.BatchNormalization()))
-      self.mlp_dropout.append(
-          self.track_layer(tf.layers.Dropout(rate=config.mlp_dropout)))
-    self.mlp_output = self.track_layer(tf.layers.Dense(
+    current_mlp = lambda result, training: result
+    for _ in range(config.n_mlp_layers):
+      current_mlp = Perceptron(dimension=config.d_mlp,
+                               dropout_rate=config.mlp_dropout,
+                               previous_layer=current_mlp)
+    self.mlp = current_mlp
+    self.mlp_output = layers.Dense(
         config.d_out,
         kernel_initializer=tf.random_uniform_initializer(minval=-5e-3,
-                                                         maxval=5e-3)))
+                                                         maxval=5e-3))
 
   def call(self,
            premise,
@@ -383,15 +400,12 @@ class SNLIClassifier(tfe.Network):
         self.feature_bn(logits, training=training), training=training)
 
     # Apply the multi-layer perceptron on the logits.
-    for dense, bn, dropout in zip(
-        self.mlp_dense, self.mlp_bn, self.mlp_dropout):
-      logits = tf.nn.elu(dense(logits))
-      logits = dropout(bn(logits, training=training), training=training)
+    logits = self.mlp(logits, training=training)
     logits = self.mlp_output(logits)
     return logits
 
 
-class SNLIClassifierTrainer(object):
+class SNLIClassifierTrainer(tfe.Checkpointable):
   """A class that coordinates the training of an SNLIClassifier."""
 
   def __init__(self, snli_classifier, lr):
@@ -448,7 +462,7 @@ class SNLIClassifierTrainer(object):
       2. logits as a dense `Tensor` of shape (batch_size, d_out), where d_out is
         the output dimension size of the SNLIClassifier.
     """
-    with tfe.GradientTape() as tape:
+    with tf.GradientTape() as tape:
       tape.watch(self._model.variables)
       logits = self._model(premise,
                            premise_transition,
@@ -471,6 +485,15 @@ class SNLIClassifierTrainer(object):
   def learning_rate(self):
     return self._learning_rate
 
+  @property
+  def model(self):
+    return self._model
+
+  @property
+  def variables(self):
+    return (self._model.variables + [self.learning_rate] +
+            self._optimizer.variables())
+
 
 def _batch_n_correct(logits, label):
   """Calculate number of correct predictions in a batch.
@@ -488,13 +511,12 @@ def _batch_n_correct(logits, label):
           tf.argmax(logits, axis=1), label)), tf.float32)).numpy()
 
 
-def _evaluate_on_dataset(snli_data, batch_size, model, trainer, use_gpu):
+def _evaluate_on_dataset(snli_data, batch_size, trainer, use_gpu):
   """Run evaluation on a dataset.
 
   Args:
     snli_data: The `data.SnliData` to use in this evaluation.
     batch_size: The batch size to use during this evaluation.
-    model: An instance of `SNLIClassifier` to evaluate.
     trainer: An instance of `SNLIClassifierTrainer to use for this
       evaluation.
     use_gpu: Whether GPU is being used.
@@ -509,7 +531,7 @@ def _evaluate_on_dataset(snli_data, batch_size, model, trainer, use_gpu):
       snli_data, batch_size):
     if use_gpu:
       label, prem, hypo = label.gpu(), prem.gpu(), hypo.gpu()
-    logits = model(prem, prem_trans, hypo, hypo_trans, training=False)
+    logits = trainer.model(prem, prem_trans, hypo, hypo_trans, training=False)
     loss_val = trainer.loss(label, logits)
     batch_size = tf.shape(label)[0]
     mean_loss(loss_val, weights=batch_size.gpu() if use_gpu else batch_size)
@@ -536,13 +558,19 @@ def _get_dataset_iterator(snli_data, batch_size):
     return tfe.Iterator(dataset)
 
 
-def train_spinn(embed, train_data, dev_data, test_data, config):
-  """Train a SPINN model.
+def train_or_infer_spinn(embed,
+                         word2index,
+                         train_data,
+                         dev_data,
+                         test_data,
+                         config):
+  """Perform Training or Inference on a SPINN model.
 
   Args:
     embed: The embedding matrix as a float32 numpy array with shape
       [vocabulary_size, word_vector_len]. word_vector_len is the length of a
       word embedding vector.
+    word2index: A `dict` mapping word to word index.
     train_data: An instance of `data.SnliData`, for the train split.
     dev_data: Same as above, for the dev split.
     test_data: Same as above, for the test split.
@@ -550,12 +578,34 @@ def train_spinn(embed, train_data, dev_data, test_data, config):
       details.
 
   Returns:
-    1. Final loss value on the test split.
-    2. Final fraction of correct classifications on the test split.
+    If `config.inference_premise ` and `config.inference_hypothesis` are not
+      `None`, i.e., inference mode: the logits for the possible labels of the
+      SNLI data set, as a `Tensor` of three floats.
+    else:
+      The trainer object.
+  Raises:
+    ValueError: if only one of config.inference_premise and
+      config.inference_hypothesis is specified.
   """
+  # TODO(cais): Refactor this function into separate one for training and
+  #   inference.
   use_gpu = tfe.num_gpus() > 0 and not config.force_cpu
   device = "gpu:0" if use_gpu else "cpu:0"
   print("Using device: %s" % device)
+
+  if ((config.inference_premise and not config.inference_hypothesis) or
+      (not config.inference_premise and config.inference_hypothesis)):
+    raise ValueError(
+        "--inference_premise and --inference_hypothesis must be both "
+        "specified or both unspecified, but only one is specified.")
+
+  if config.inference_premise:
+    # Inference mode.
+    inference_sentence_pair = [
+        data.encode_sentence(config.inference_premise, word2index),
+        data.encode_sentence(config.inference_hypothesis, word2index)]
+  else:
+    inference_sentence_pair = None
 
   log_header = (
       "  Time Epoch Iteration Progress    (%Epoch)   Loss   Dev/Loss"
@@ -569,16 +619,34 @@ def train_spinn(embed, train_data, dev_data, test_data, config):
 
   summary_writer = tf.contrib.summary.create_file_writer(
       config.logdir, flush_millis=10000)
-  train_len = train_data.num_batches(config.batch_size)
+
   with tf.device(device), \
-       tfe.restore_variables_on_create(
-           tf.train.latest_checkpoint(config.logdir)), \
        summary_writer.as_default(), \
        tf.contrib.summary.always_record_summaries():
     model = SNLIClassifier(config, embed)
     global_step = tf.train.get_or_create_global_step()
     trainer = SNLIClassifierTrainer(model, config.lr)
+    checkpoint = tfe.Checkpoint(trainer=trainer, global_step=global_step)
+    checkpoint.restore(tf.train.latest_checkpoint(config.logdir))
 
+    if inference_sentence_pair:
+      # Inference mode.
+      prem, prem_trans = inference_sentence_pair[0]
+      hypo, hypo_trans = inference_sentence_pair[1]
+      hypo_trans = inference_sentence_pair[1][1]
+      inference_logits = model(
+          tf.constant(prem), tf.constant(prem_trans),
+          tf.constant(hypo), tf.constant(hypo_trans), training=False)
+      inference_logits = inference_logits[0][1:]
+      max_index = tf.argmax(inference_logits)
+      print("\nInference logits:")
+      for i, (label, logit) in enumerate(
+          zip(data.POSSIBLE_LABELS, inference_logits)):
+        winner_tag = " (winner)" if max_index == i else ""
+        print("  {0:<16}{1:.6f}{2}".format(label + ":", logit, winner_tag))
+      return inference_logits
+
+    train_len = train_data.num_batches(config.batch_size)
     start = time.time()
     iterations = 0
     mean_loss = tfe.metrics.Mean()
@@ -602,15 +670,11 @@ def train_spinn(embed, train_data, dev_data, test_data, config):
         accuracy(tf.argmax(batch_train_logits, axis=1), label)
 
         if iterations % config.save_every == 0:
-          all_variables = (
-              model.variables + [trainer.learning_rate] + [global_step])
-          saver = tfe.Saver(all_variables)
-          saver.save(os.path.join(config.logdir, "ckpt"),
-                     global_step=global_step)
+          checkpoint.save(os.path.join(config.logdir, "ckpt"))
 
         if iterations % config.dev_every == 0:
           dev_loss, dev_frac_correct = _evaluate_on_dataset(
-              dev_data, config.batch_size, model, trainer, use_gpu)
+              dev_data, config.batch_size, trainer, use_gpu)
           print(dev_log_template.format(
               time.time() - start,
               epoch, iterations, 1 + batch_idx, train_len,
@@ -638,9 +702,11 @@ def train_spinn(embed, train_data, dev_data, test_data, config):
         trainer.decay_learning_rate(config.lr_decay_by)
 
     test_loss, test_frac_correct = _evaluate_on_dataset(
-        test_data, config.batch_size, model, trainer, use_gpu)
+        test_data, config.batch_size, trainer, use_gpu)
     print("Final test loss: %g; accuracy: %g%%" %
           (test_loss, test_frac_correct * 100.0))
+
+  return trainer
 
 
 def main(_):
@@ -650,18 +716,24 @@ def main(_):
   vocab = data.load_vocabulary(FLAGS.data_root)
   word2index, embed = data.load_word_vectors(FLAGS.data_root, vocab)
 
-  print("Loading train, dev and test data...")
-  train_data = data.SnliData(
-      os.path.join(FLAGS.data_root, "snli/snli_1.0/snli_1.0_train.txt"),
-      word2index, sentence_len_limit=FLAGS.sentence_len_limit)
-  dev_data = data.SnliData(
-      os.path.join(FLAGS.data_root, "snli/snli_1.0/snli_1.0_dev.txt"),
-      word2index, sentence_len_limit=FLAGS.sentence_len_limit)
-  test_data = data.SnliData(
-      os.path.join(FLAGS.data_root, "snli/snli_1.0/snli_1.0_test.txt"),
-      word2index, sentence_len_limit=FLAGS.sentence_len_limit)
+  if not (config.inference_premise or config.inference_hypothesis):
+    print("Loading train, dev and test data...")
+    train_data = data.SnliData(
+        os.path.join(FLAGS.data_root, "snli/snli_1.0/snli_1.0_train.txt"),
+        word2index, sentence_len_limit=FLAGS.sentence_len_limit)
+    dev_data = data.SnliData(
+        os.path.join(FLAGS.data_root, "snli/snli_1.0/snli_1.0_dev.txt"),
+        word2index, sentence_len_limit=FLAGS.sentence_len_limit)
+    test_data = data.SnliData(
+        os.path.join(FLAGS.data_root, "snli/snli_1.0/snli_1.0_test.txt"),
+        word2index, sentence_len_limit=FLAGS.sentence_len_limit)
+  else:
+    train_data = None
+    dev_data = None
+    test_data = None
 
-  train_spinn(embed, train_data, dev_data, test_data, config)
+  train_or_infer_spinn(
+      embed, word2index, train_data, dev_data, test_data, config)
 
 
 if __name__ == "__main__":
@@ -678,6 +750,15 @@ if __name__ == "__main__":
   parser.add_argument("--logdir", type=str, default="/tmp/spinn-logs",
                       help="Directory in which summaries will be written for "
                       "TensorBoard.")
+  parser.add_argument("--inference_premise", type=str, default=None,
+                      help="Premise sentence for inference. Must be "
+                      "accompanied by --inference_hypothesis. If specified, "
+                      "will override all training parameters and perform "
+                      "inference.")
+  parser.add_argument("--inference_hypothesis", type=str, default=None,
+                      help="Hypothesis sentence for inference. Must be "
+                      "accompanied by --inference_premise. If specified, will "
+                      "override all training parameters and perform inference.")
   parser.add_argument("--epochs", type=int, default=50,
                       help="Number of epochs to train.")
   parser.add_argument("--batch_size", type=int, default=128,

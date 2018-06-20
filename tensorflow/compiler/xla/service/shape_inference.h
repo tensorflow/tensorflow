@@ -37,19 +37,24 @@ namespace xla {
 // the expected result type for computations that are built up via the API --
 // the shape that results from an operation is inferred. Some methods have
 // overloads for inferring shape at the HLO level.
+//
+// TODO(b/73352135): Shape inference does not issue very good error messages, in
+// part because HloInstruction::ToString() is not available since shape
+// inference runs before the HloInstruction object is created. We need a
+// solution for this.
 class ShapeInference {
  public:
   // Infers the shape produced by applying the given unary operation to the
   // given input shape.
-  static StatusOr<Shape> InferUnaryOpShape(UnaryOperation operation,
-                                           const Shape& arg);
+  static StatusOr<Shape> InferUnaryOpShape(HloOpcode opcode,
+                                           const Shape& shape);
   static StatusOr<Shape> InferUnaryOpShape(HloOpcode opcode,
                                            const HloInstruction* operand);
 
   // Infers the shape produced by applying the given binary operation to the
   // given input shapes.
   static StatusOr<Shape> InferBinaryOpShape(
-      BinaryOperation operation, const Shape& lhs, const Shape& rhs,
+      HloOpcode opcode, const Shape& lhs, const Shape& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
   static StatusOr<Shape> InferBinaryOpShape(HloOpcode opcode,
                                             const HloInstruction* lhs,
@@ -57,8 +62,8 @@ class ShapeInference {
 
   // Infers the shape produced by applying the given ternary operation to the
   // given input shapes.
-  static StatusOr<Shape> InferTernaryOpShape(TernaryOperation operation,
-                                             const Shape& lhs, const Shape& rhs,
+  static StatusOr<Shape> InferTernaryOpShape(HloOpcode opcode, const Shape& lhs,
+                                             const Shape& rhs,
                                              const Shape& ehs);
   static StatusOr<Shape> InferTernaryOpShape(HloOpcode opcode,
                                              const HloInstruction* lhs,
@@ -68,7 +73,7 @@ class ShapeInference {
   // Infers the shape produced by applying the given variadic operation to the
   // given input operand shapes.
   static StatusOr<Shape> InferVariadicOpShape(
-      VariadicOperation operation,
+      HloOpcode opcode,
       tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
   static StatusOr<Shape> InferVariadicOpShape(
       HloOpcode opcode,
@@ -211,6 +216,13 @@ class ShapeInference {
   static StatusOr<Shape> InferConcatOpShape(
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes, int64 dimension);
 
+  // Infers the shape produced by a kGenerateToken operation. Trivially this
+  // shape is always a TOKEN shape. However, ShapeInference serves two purposes:
+  // inferring shapes and checking operand shapes. This method verifies that the
+  // operand shapes are all TOKENs.
+  static StatusOr<Shape> InferGenerateTokenShape(
+      tensorflow::gtl::ArraySlice<const Shape*> arg_shapes);
+
   // Helper that validates the given operand shape can be converted to the
   // target output_shape via a convert instruction -- the requirement is that
   // the shape is identical except for the element type.
@@ -248,6 +260,14 @@ class ShapeInference {
       const Shape& lhs, const Shape& rhs,
       const DotDimensionNumbers& dimension_numbers);
 
+  // Helper that infers the shape of the tensor produced by a gather operation
+  // with the given input shape, gather indices shape and gather dimension
+  // numbers.
+  static StatusOr<Shape> InferGatherShape(
+      const Shape& input_shape, const Shape& gather_indices_shape,
+      const GatherDimensionNumbers& gather_dim_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
+
  private:
   // Helper that infers the shape produced by performing an element-wise binary
   // operation with the given LHS and RHS shapes.
@@ -255,7 +275,7 @@ class ShapeInference {
   // the LHS and a single element in the RHS to produce a single output element,
   // even in the presence of broadcasting of one of the operands over the other.
   static StatusOr<Shape> InferElementwiseBinaryOpShape(
-      BinaryOperation operation, const Shape& lhs, const Shape& rhs,
+      HloOpcode operation, const Shape& lhs, const Shape& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
   // Helper for inferring the shape of Clamp ops.
@@ -271,7 +291,7 @@ class ShapeInference {
   // dimension broadcasting (a dimension of size 1 in one operand is broadcast
   // up to match the size of the dimension in the other operand).
   static StatusOr<Shape> InferDegenerateDimensionBroadcastShape(
-      BinaryOperation operation, const Shape& lhs, const Shape& rhs);
+      HloOpcode operation, const Shape& lhs, const Shape& rhs);
 
   // Helper for inferring shapes of binary operations using "InDim"
   // broadcasting. This is the broadcasting used in the *InDim binary operations
@@ -279,8 +299,7 @@ class ShapeInference {
   // lower-rank shape than larger_shape. Returns the shape that the
   // smaller_shape is broadcast to.
   static StatusOr<Shape> InferInDimBroadcastShape(
-      BinaryOperation operation, const Shape& smaller_shape,
-      const Shape& larger_shape,
+      const Shape& smaller_shape, const Shape& larger_shape,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeInference);

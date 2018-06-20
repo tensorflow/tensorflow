@@ -17,14 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -131,8 +132,12 @@ class OpsTest(test_util.TensorFlowTestCase):
                                    dtype=dtypes.int64)
     values = constant_op.constant([2, 3, 5, 7, 11])
     shape = constant_op.constant([2, 7], dtype=dtypes.int64)
-    result = sparse_ops.gen_sparse_ops._sparse_split(  # pylint: disable=protected-access
-        split_dim, indices, values, shape, num_split=2)
+    result = sparse_ops.gen_sparse_ops.sparse_split(
+        split_dim,
+        indices,
+        values,
+        shape,
+        num_split=2)
     output_indices, output_values, output_shape = result
     self.assertEqual(2, len(output_indices))
     self.assertEqual(2, len(output_values))
@@ -246,15 +251,6 @@ class OpsTest(test_util.TensorFlowTestCase):
     reshaped = array_ops.reshape(value, shape)
     self.assertAllEqual([[1], [2]], reshaped.cpu())
 
-    # And if the shape is in device memory, it should complain
-    # TODO(ashankar): Revisit this - perhaps instead of complaining,
-    # it should implicitly copy the tensor to host memory?
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        'cannot compute Reshape as input #1 was expected to be on.*'
-        'using.*DEVICE_PLACEMENT_SILENT'):
-      reshaped = array_ops.reshape(value, shape.gpu())
-
   def testInt64(self):
     # Fill requires the first input to be an int32 tensor.
     self.assertAllEqual(
@@ -282,6 +278,25 @@ class OpsTest(test_util.TensorFlowTestCase):
       cpu_tensor = constant_op.constant(1.0)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
+    finally:
+      del context._context
+      context._context = context.Context()
+    # pylint: enable=protected-access
+
+  def testSoftPlacement(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    # Temporarily replace the context
+    # pylint: disable=protected-access
+    del context._context
+    try:
+      context._context = context.Context(
+          device_policy=context.DEVICE_PLACEMENT_SILENT,
+          config=config_pb2.ConfigProto(allow_soft_placement=True))
+      cpu_tensor = constant_op.constant(1.0)
+      result = cpu_tensor + cpu_tensor
+      self.assertEqual(result.device,
+                       '/job:localhost/replica:0/task:0/device:GPU:0')
     finally:
       del context._context
       context._context = context.Context()
@@ -361,6 +376,22 @@ class OpsTest(test_util.TensorFlowTestCase):
 
   def testNoOpIsNone(self):
     self.assertTrue(control_flow_ops.no_op() is None)
+
+  def testEagerContextPreservedAcrossThreads(self):
+    def init_fn():
+      self.assertTrue(context.executing_eagerly())
+      with ops.init_scope():
+        self.assertTrue(context.executing_eagerly())
+        context_switches = context.context().context_switches
+        self.assertEqual(len(context_switches.stack), 1)
+        self.assertFalse(context_switches.stack[0].is_building_function)
+        self.assertEqual(context_switches.stack[0].enter_context_fn,
+                         context.eager_mode)
+
+    self.assertTrue(context.executing_eagerly())
+    t1 = threading.Thread(target=init_fn)
+    t1.start()
+    t1.join()
 
 
 if __name__ == '__main__':

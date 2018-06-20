@@ -18,9 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
@@ -35,8 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
-
-namespace se = ::perftools::gputools;
 
 namespace xla {
 namespace {
@@ -56,9 +53,9 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   }
 
   template <typename IndexT, typename DataT>
-  void TestR1Wrap() {
-    // Slice at dimension boundaries, but with sizes that cause indices to wrap.
-    RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {6}, {4}, {6, 7, 0, 1});
+  void TestR1OOB() {
+    // Slice at dimension boundaries, but with out of bounds indices.
+    RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {6}, {4}, {4, 5, 6, 7});
   }
 
   template <typename IndexT, typename DataT>
@@ -81,10 +78,10 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   }
 
   template <typename IndexT, typename DataT>
-  void TestR2Wrap() {
-    // Slice at dimension boundaries, but with sizes that cause indices to wrap.
+  void TestR2OOB() {
+    // Slice at dimension boundaries, but with out of bounds indices.
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {1, 1}, {3, 3},
-                         {{5, 6, 4}, {8, 9, 7}, {2, 3, 1}});
+                         {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   }
 
   template <typename IndexT, typename DataT>
@@ -109,13 +106,11 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   }
 
   template <typename IndexT, typename DataT>
-  void TestR3Wrap() {
-    // Slice at dimension boundaries, but with sizes that cause indices to wrap.
+  void TestR3OOB() {
+    // Slice at dimension boundaries, but with out of bounds indices.
     RunR3<IndexT, DataT>(
-      {{{1, 2}, {3, 4}, {5, 6}},
-       {{7, 8}, {9, 10}, {11, 12}}},
-      {0, 2, 1}, {2, 1, 2},
-      {{{6, 5}}, {{12, 11}}});
+        {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {0, 2, 1},
+        {2, 1, 2}, {{{5, 6}}, {{11, 12}}});
   }
 
   template <typename IndexT, typename DataT>
@@ -137,9 +132,9 @@ class DynamicSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -163,9 +158,9 @@ class DynamicSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -189,9 +184,9 @@ class DynamicSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -204,21 +199,21 @@ class DynamicSliceTest : public ClientLibraryTestBase {
 
 XLA_TEST_F(DynamicSliceTest, Int32R1BF16) { TestR1<int32, bfloat16>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R1) { TestR1<int32, int32>(); }
-XLA_TEST_F(DynamicSliceTest, Int32R1Wrap) { TestR1Wrap<int32, int32>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R1OOB) { TestR1OOB<int32, int32>(); }
 XLA_TEST_F(DynamicSliceTest, Int64R1) { TestR1<int64, float>(); }
-XLA_TEST_F(DynamicSliceTest, UInt64R1) { TestR1<uint64, double>(); }
+XLA_TEST_F(DynamicSliceTest, UInt64R1) { TestR1<uint64, float>(); }
 
 XLA_TEST_F(DynamicSliceTest, Int32R2BF16) { TestR2<int32, bfloat16>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R2) { TestR2<int32, int32>(); }
-XLA_TEST_F(DynamicSliceTest, Int32R2Wrap) { TestR2Wrap<int32, int32>(); }
-XLA_TEST_F(DynamicSliceTest, Int64R2) { TestR2<int64, double>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R2OOB) { TestR2OOB<int32, int32>(); }
+XLA_TEST_F(DynamicSliceTest, Int64R2) { TestR2<int64, float>(); }
 XLA_TEST_F(DynamicSliceTest, UInt64R2) { TestR2<uint64, int32>(); }
 
 XLA_TEST_F(DynamicSliceTest, Int32R3BF16) { TestR3<int32, bfloat16>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R3) { TestR3<int32, float>(); }
-XLA_TEST_F(DynamicSliceTest, Int32R3Wrap) { TestR3Wrap<int32, float>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R3OOB) { TestR3OOB<int32, float>(); }
 XLA_TEST_F(DynamicSliceTest, Int64R3) { TestR3<int64, float>(); }
-XLA_TEST_F(DynamicSliceTest, UInt64R3) { TestR3<uint64, double>(); }
+XLA_TEST_F(DynamicSliceTest, UInt64R3) { TestR3<uint64, float>(); }
 
 XLA_TEST_F(DynamicSliceTest, Int32R1Pred) {
   // Slice at dimension start.
@@ -282,6 +277,15 @@ XLA_TEST_F(DynamicSliceTest, Int32R3Pred) {
 class DynamicUpdateSliceTest : public ClientLibraryTestBase {
  protected:
   template <typename IndexT, typename DataT>
+  void TestR0() {
+    // Disable algebraic simplifier, otherwise the op will be replaced by a
+    // constant.
+    execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+        "algsimp");
+    RunR0<IndexT, DataT>(0, 123, {}, 123);
+  }
+
+  template <typename IndexT, typename DataT>
   void TestR1() {
     // Slice at dimension start.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {0},
@@ -328,17 +332,46 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   }
 
   template <typename IndexT, typename DataT>
-  void TestWrap() {
-    // Slice at dimension boundaries, but with sizes that cause indices to wrap.
+  void TestOOB() {
+    // // Slice at dimension boundaries, but with out of bounds indices.
     RunR1<IndexT, DataT>({0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10}, {6},
-                         {10, 1, 2, 3, 4, 5, 8, 9});
+                         {0, 1, 2, 3, 4, 8, 9, 10});
     // R2 Shape: [3, 3]
     RunR2<IndexT, DataT>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, {{10, 11}}, {2, 2},
-                         {{1, 2, 3}, {4, 5, 6}, {11, 8, 10}});
+                         {{1, 2, 3}, {4, 5, 6}, {7, 10, 11}});
     // R3 Shape: [2, 3, 2]
     RunR3<IndexT, DataT>(
         {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}}, {{{13}, {15}}},
-        {1, 2, 1}, {{{1, 2}, {3, 4}, {5, 6}}, {{7, 15}, {9, 10}, {11, 13}}});
+        {1, 2, 1}, {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 13}, {11, 15}}});
+  }
+
+  template <typename IndexT, typename DataT>
+  void RunR0(int input_value_int, int update_value_int,
+             const std::vector<IndexT> slice_starts, int expected_value_int) {
+    Literal input_value =
+        std::move(*Literal::CreateR0(input_value_int)
+                       ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
+                       .ValueOrDie());
+    Literal update_value =
+        std::move(*Literal::CreateR0(update_value_int)
+                       ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
+                       .ValueOrDie());
+    Literal expected_value =
+        std::move(*Literal::CreateR0(expected_value_int)
+                       ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
+                       .ValueOrDie());
+
+    XlaBuilder builder(TestName());
+    // Initialize and transfer dynamic slice start indices parameter.
+    XlaOp starts;
+    std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
+        slice_starts, 0, "slice_starts", &builder, &starts);
+    // Build dynamic slice computation.
+    auto input = builder.ConstantLiteral(input_value);
+    auto update = builder.ConstantLiteral(update_value);
+    builder.DynamicUpdateSlice(input, update, starts);
+    // Run computation and compare against expected values.
+    ComputeAndCompareLiteral(&builder, expected_value, {start_data.get()});
   }
 
   template <typename IndexT, typename DataT>
@@ -359,9 +392,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -390,9 +423,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -421,9 +454,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
                        ->Convert(primitive_util::NativeToPrimitiveType<DataT>())
                        .ValueOrDie());
 
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer dynamic slice start indices parameter.
-    ComputationDataHandle starts;
+    XlaOp starts;
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
@@ -437,33 +470,25 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   template <class T>
   void RunR3Contiguous(std::vector<int32> operand_shape, int32 index,
                        int32 size) {
-#ifdef XLA_TEST_BACKEND_CPU_PARALLEL
-    // TODO(b/71820067): The CPU parallel backend failed for this on 2018-01-10.
-    if (std::is_same<bfloat16, T>::value) {
-      return;
-    }
-#endif
-
     const int32 kSeq = operand_shape[0];
     const int32 kBatch = operand_shape[1];
     const int32 kDim = operand_shape[2];
     Array3D<T> input_values(kSeq, kBatch, kDim);
     Array3D<T> update_values(size, kBatch, kDim);
     Array3D<T> expected_values(kSeq, kBatch, kDim);
+    index = std::min(std::max(0, index), kSeq - size);
 
     input_values.FillIota(static_cast<T>(0));
     T value = static_cast<T>(10);
     update_values.FillIota(static_cast<T>(value));
 
     // TODO(b/34128753) Expected values may vary depending on backend when
-    // the update wraps. According to documentation, the results are technically
-    // implementation specific where the update is out of bounds, and hence
-    // we don't really know what to pass into ComputeAndCompareR3.
+    // the indices are out of bounds.
     expected_values.FillIota(static_cast<T>(0));
     for (int i = 0; i < size; i++) {
       for (int j = 0; j < kBatch; j++) {
         for (int k = 0; k < kDim; k++) {
-          expected_values((index + i) % kSeq, j, k) = value++;
+          expected_values(index + i, j, k) = value++;
         }
       }
     }
@@ -474,13 +499,13 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     }
 
     // Build dynamic slice computation.
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     // Initialize and transfer input parameter.
-    ComputationDataHandle input;
+    XlaOp input;
     std::unique_ptr<GlobalData> input_data =
         CreateR3Parameter<T>(input_values, 0, "input_values", &builder, &input);
     // Initialize and transfer update parameter.
-    ComputationDataHandle update;
+    XlaOp update;
     std::unique_ptr<GlobalData> update_data = CreateR3Parameter<T>(
         update_values, 1, "update_values", &builder, &update);
     auto starts = builder.ConstantR1<int32>({index, 0, 0});
@@ -500,36 +525,31 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   }
 };
 
-// TODO(b/71820067): The CPU parallel backend failed for this on 2018-01-10.
-XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_CPU_PARALLEL(Int32R1BF16)) {
-  TestR1<int32, bfloat16>();
-}
-XLA_TEST_F(DynamicUpdateSliceTest, Int32R1) { TestR1<int32, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int64R1) { TestR1<int64, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, UInt64R1) { TestR1<uint64, double>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R0BF16) { TestR0<int32, bfloat16>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R0) { TestR0<int32, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int64R0) { TestR0<int64, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64R0) { TestR0<uint64, float>(); }
 
 // TODO(b/71820067): The CPU parallel backend failed for this on 2018-01-10.
-XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_CPU_PARALLEL(Int32R2BF16)) {
-  TestR2<int32, bfloat16>();
-}
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R1BF16) { TestR1<int32, bfloat16>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R1) { TestR1<int32, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int64R1) { TestR1<int64, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64R1) { TestR1<uint64, float>(); }
+
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R2BF16) { TestR2<int32, bfloat16>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R2) { TestR2<int32, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int64R2) { TestR2<int64, int64>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt64R2) { TestR2<uint64, int32>(); }
 
-// TODO(b/71820067): The CPU parallel backend failed for this on 2018-01-10.
-XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_CPU_PARALLEL(Int32R3BF16)) {
-  TestR3<int32, bfloat16>();
-}
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R3BF16) { TestR3<int32, bfloat16>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R3) { TestR3<int32, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int64R3) { TestR3<int64, int64>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt64R3) { TestR3<uint64, uint64>(); }
 
-XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_CPU_PARALLEL(Int32WrapBF16)) {
-  TestWrap<int32, bfloat16>();
-}
-XLA_TEST_F(DynamicUpdateSliceTest, Int32Wrap) { TestWrap<int32, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int64Wrap) { TestWrap<int64, int64>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, UInt64Wrap) { TestWrap<uint64, uint64>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32OOBBF16) { TestOOB<int32, bfloat16>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32OOB) { TestOOB<int32, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int64OOB) { TestOOB<int64, int64>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64OOB) { TestOOB<uint64, uint64>(); }
 
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R1Pred) {
   // Slice at dimension start.
@@ -592,23 +612,38 @@ XLA_TEST_F(DynamicUpdateSliceTest, Int32R3Pred) {
 // Tests for simple R3 case where the update is contiguous (i.e. the minor
 // two dimensions are not sliced).
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousSingleElement) {
-  // Single element, no wrap.
+  // Single element, index in-bounds
   std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/1, /*size=*/1);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousSingleElementBF16) {
+  // Single element, index in-bounds
+  std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/1);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleElements) {
-  // Multiple element, no wrap.
+  // Multiples element, index in-bounds.
   std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/1, /*size=*/2);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleElementsBF16) {
+  // Multiples element, index in-bounds.
+  std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/2);
 }
 
-XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleWrapping) {
-  // Multiple element, wrapping.
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleOOB) {
+  // Multiple element, index out of bounds.
   std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/3, /*size=*/2);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleOOBBF16) {
+  // Multiple element, index out of bounds.
+  std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/3, /*size=*/2);
 }
 
@@ -616,12 +651,21 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousTooLarge) {
   // Multiple element, update size larger than operand.
   std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/5, /*size=*/2);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousTooLargeBF16) {
+  // Multiple element, update size larger than operand.
+  std::vector<int32> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/5, /*size=*/2);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousUnaligned) {
   std::vector<int32> operand_shape({3, 123, 247});
   RunR3Contiguous<float>(operand_shape, /*index=*/1, /*size=*/1);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousUnalignedBF16) {
+  std::vector<int32> operand_shape({3, 123, 247});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/1);
 }
 
@@ -629,6 +673,10 @@ XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousUnaligned) {
 XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_GPU(R3ContiguousLarger)) {
   std::vector<int32> operand_shape({32, 128, 1024});
   RunR3Contiguous<float>(operand_shape, /*index=*/7, /*size=*/1);
+}
+
+XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_GPU(R3ContiguousLargerBF16)) {
+  std::vector<int32> operand_shape({32, 128, 1024});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/7, /*size=*/1);
 }
 
@@ -644,7 +692,7 @@ void BM_DynamicSlice(int num_iters) {
       TransferManager::GetForPlatform(platform).ValueOrDie();
   int device_ordinal = client->default_device_ordinal();
 
-  ComputationBuilder builder(client, "DynamicSlice");
+  XlaBuilder builder("DynamicSlice");
 
   // Create input as a constant: shape [1, 2, 3, 4]
   auto input_literal = Literal::CreateR4(
@@ -669,11 +717,11 @@ void BM_DynamicSlice(int num_iters) {
 
   auto start_indices_literal = Literal::CreateR1<int32>({0, 1, 2, 3});
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *start_indices_literal, *buffer));
+      executors[device_ordinal], *start_indices_literal, buffer));
 
   std::unique_ptr<LocalExecutable> executable =
       client
-          ->Compile(computation, {&buffer->on_host_shape()},
+          ->Compile(computation, {&buffer.on_host_shape()},
                     ExecutableBuildOptions())
           .ConsumeValueOrDie();
 
@@ -682,14 +730,14 @@ void BM_DynamicSlice(int num_iters) {
   options.set_allocator(&allocator);
   const int kWarmups = 2;
   for (int i = 0; i < kWarmups; ++i) {
-    auto result = executable->Run({buffer.get()}, options);
+    auto result = executable->Run({&buffer}, options);
     ASSERT_TRUE(result.ok());
   }
 
   // Run benchmark.
   tensorflow::testing::StartTiming();
   for (int i = 0; i < num_iters; ++i) {
-    auto result = executable->Run({buffer.get()}, options);
+    auto result = executable->Run({&buffer}, options);
     ASSERT_TRUE(result.ok());
   }
 }

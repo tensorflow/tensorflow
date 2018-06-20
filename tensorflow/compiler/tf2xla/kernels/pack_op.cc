@@ -43,7 +43,7 @@ class PackOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    std::vector<xla::ComputationDataHandle> values;
+    std::vector<xla::XlaOp> values;
     std::vector<TensorShape> shapes;
     OP_REQUIRES_OK(ctx, ctx->InputList("values", &values, &shapes));
     const int num = values.size();
@@ -69,7 +69,7 @@ class PackOp : public XlaOpKernel {
                                         -expanded_num_dims, ", ",
                                         expanded_num_dims, ")"));
 
-    std::vector<xla::ComputationDataHandle> reshaped_inputs(num);
+    std::vector<xla::XlaOp> reshaped_inputs(num);
 
     TensorShape child_shape(shapes[0]);
     child_shape.InsertDim(axis, 1);

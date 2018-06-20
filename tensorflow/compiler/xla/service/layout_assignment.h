@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -46,7 +48,8 @@ namespace xla {
 // gathered together in LayoutConstraints object.
 class LayoutConstraint {
  public:
-  LayoutConstraint(bool mandatory) : mandatory_(mandatory) {}
+  LayoutConstraint(bool mandatory, bool dfs)
+      : mandatory_(mandatory), dfs_(dfs) {}
   virtual ~LayoutConstraint() = default;
 
   virtual string ToString() const = 0;
@@ -54,8 +57,12 @@ class LayoutConstraint {
   // True if this constraint cannot be overwritten by a different constraint.
   bool mandatory() const { return mandatory_; }
 
+  // When true, propagate in DFS. When false, constraint will propagate in BFS.
+  bool dfs() const { return dfs_; }
+
  private:
   bool mandatory_;
+  bool dfs_;
 };
 
 std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
@@ -65,7 +72,7 @@ std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
 class BufferLayoutConstraint : public LayoutConstraint {
  public:
   BufferLayoutConstraint(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory);
+                         bool mandatory, bool dfs);
 
   const LogicalBuffer& buffer() const { return *buffer_; }
   const Layout& layout() const { return layout_; }
@@ -86,7 +93,7 @@ class OperandLayoutConstraint : public LayoutConstraint {
  public:
   OperandLayoutConstraint(const ShapeLayout& shape_layout,
                           const HloInstruction* instruction, int64 operand_no,
-                          bool mandatory);
+                          bool mandatory, bool dfs);
 
   const ShapeLayout& shape_layout() const { return shape_layout_; }
   const HloInstruction* instruction() const { return instruction_; }
@@ -106,8 +113,10 @@ class OperandLayoutConstraint : public LayoutConstraint {
 // Constraint on the layout of the result of the entry computation.
 class ResultLayoutConstraint : public LayoutConstraint {
  public:
-  explicit ResultLayoutConstraint(const ShapeLayout& shape_layout)
-      : LayoutConstraint(/*mandatory=*/true), shape_layout_(shape_layout) {}
+  explicit ResultLayoutConstraint(const ShapeLayout& shape_layout,
+                                  bool dfs = false)
+      : LayoutConstraint(/*mandatory=*/true, dfs),
+        shape_layout_(shape_layout) {}
 
   const ShapeLayout& shape_layout() const { return shape_layout_; }
   string ToString() const override;
@@ -157,23 +166,25 @@ class LayoutConstraints {
   // operand of the instruction, or the layout of the result of the computation,
   // respectively.
   Status SetBufferLayout(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory = true);
+                         bool mandatory = true, bool dfs = true);
   Status SetOperandLayout(const Shape& shape_with_layout,
                           const HloInstruction* instruction, int64 operand_no,
-                          bool mandatory = true);
-  Status SetResultLayout(const Shape& shape_with_layout);
+                          bool mandatory = true, bool dfs = true);
+  Status SetResultLayout(const Shape& shape_with_layout, bool dfs = true);
 
   // Convenience wrapper around SetOperandLayout for setting the layout of a
   // operand using a Layout object. The operand must be array-shaped.
   Status SetArrayOperandLayout(const Layout& layout,
                                const HloInstruction* instruction,
-                               int64 operand_no, bool mandatory = true);
+                               int64 operand_no, bool mandatory = true,
+                               bool dfs = true);
 
   // Convenience wrapper around SetBufferLayout. Sets the layouts of all buffers
   // created by the instruction to the layouts in the given shape. The
   // instruction must define every logical buffer in its output.
   Status SetInstructionLayout(const Shape& shape_with_layout,
-                              const HloInstruction* instruction);
+                              const HloInstruction* instruction,
+                              bool mandatory = true, bool dfs = true);
 
   // Returns true if any buffer in the given operand is forwarded to the output
   // of the given instruction. For example, the Tuple instruction forwards the
@@ -190,6 +201,11 @@ class LayoutConstraints {
   string ToString() const;
 
  private:
+  // Find a bufferset in the bufferset cache. This is useful since we can
+  // currently create the flattened buffer set for the same instruction many
+  // times, which is often slow.
+  PointsToSet::BufferSet* GetBufferSet(const HloInstruction* instruction) const;
+
   // The set of BufferLayoutConstraints applied to the computation.
   std::unordered_map<const LogicalBuffer*, BufferLayoutConstraint>
       buffer_constraints_;
@@ -212,6 +228,10 @@ class LayoutConstraints {
   // Array-shaped buffers which have not yet been constrained.
   std::set<LogicalBuffer::Id> unconstrained_buffer_ids_;
 
+  mutable tensorflow::gtl::FlatMap<const HloInstruction*,
+                                   std::unique_ptr<PointsToSet::BufferSet>>
+      buffer_sets_cache_;
+
   HloComputation* computation_;
 };
 
@@ -229,25 +249,30 @@ class ChannelLayoutConstraints {
   // Given `shape`, apply the layout for `channel_id`. `channel_id` must already
   // be constrained.
   Shape LayoutShapeForChannel(Shape shape, int64 channel_id) const {
-    CHECK(IsChannelConstrained(channel_id));
-    *shape.mutable_layout() = constraints_.at(channel_id);
+    auto it = constraints_.find(channel_id);
+    CHECK(it != constraints_.end()) << "Channel " << channel_id;
+    *shape.mutable_layout() = it->second;
     return shape;
   }
 
   // Returns the layout constraint for `channel_id`, which must already be
   // constrained.
-  Layout LayoutForChannel(int64 channel_id) const {
-    CHECK(IsChannelConstrained(channel_id));
-    return constraints_.at(channel_id);
+  const Layout& LayoutForChannel(int64 channel_id) const {
+    auto it = constraints_.find(channel_id);
+    CHECK(it != constraints_.end()) << "Channel " << channel_id;
+    return it->second;
   }
 
   // Adds a new layout constraint for `channel_id`. If a constraint for
-  // `channel_id` already exists, this operation requires that the new layout is
-  // the same as the previously constrained layout.
-  void ConstrainChannel(int64 channel_id, const Layout& layout) {
-    CHECK(!IsChannelConstrained(channel_id) ||
-          LayoutUtil::Equal(layout, constraints_[channel_id]));
-    constraints_[channel_id] = layout;
+  // `channel_id` has been added, this API returns nullptr, otherwise returns
+  // the layout which has already been set for the channel.
+  const Layout* ConstrainChannel(int64 channel_id, const Layout& layout) {
+    auto it = constraints_.emplace(std::make_pair(channel_id, layout));
+    if (it.second) {
+      return nullptr;
+    }
+    return LayoutUtil::Equal(layout, it.first->second) ? nullptr
+                                                       : &it.first->second;
   }
 
  private:
@@ -262,8 +287,8 @@ class LayoutAssignment : public HloPassInterface {
   // the case that no particular layout is requested.
   //
   // channel_constraints is both an input and output. Any sends or recvs that
-  // are present in channel_constraints will be layed out as constrained. Any
-  // unconstrained sends or recvs will be layed out as locally optimal and their
+  // are present in channel_constraints will be laid out as constrained. Any
+  // unconstrained sends or recvs will be laid out as locally optimal and their
   // layout will be added as a constraint to channel_constraints.
   //
   // If channel_constraints is nullptr, no kSend or kRecvs must be contained
@@ -343,12 +368,15 @@ class LayoutAssignment : public HloPassInterface {
       int64 operand_no);
 
  private:
+  // Initializes the layout assignment object for a new Run() call.
+  Status Init();
+
   // Adds constraints which must be satisfied for correctness on all
   // backends. Called once prior to propagating constraints.
-  Status AddMandatoryConstraints(
-      const ComputationLayout& computation_layout,
-      const ChannelLayoutConstraints* channel_constraints,
-      HloComputation* computation, LayoutConstraints* constraints);
+  Status AddMandatoryConstraints(const ComputationLayout* computation_layout,
+                                 ChannelLayoutConstraints* channel_constraints,
+                                 HloComputation* computation,
+                                 LayoutConstraints* constraints);
 
   // This method can be overridden to add backend-specific constraints to the
   // layout of the instructions of a computation. This method is called after
@@ -359,10 +387,12 @@ class LayoutAssignment : public HloPassInterface {
   }
 
   // Construct contraints and assign layouts to all instructions in the
-  // computation satisfying the given ComputationLayout. Layouts constraints are
-  // added, then propagated until all LogicalBuffers in the computation are
-  // constrained.
-  Status RunOnComputation(const ComputationLayout& computation_layout,
+  // computation satisfying the given ComputationLayout, if not nullptr.
+  // Otherwise the ComputationLayout will be calculated by propagating the
+  // computation instruction contraints.
+  // Layouts constraints are added, then propagated until all LogicalBuffers in
+  // the computation are constrained.
+  Status RunOnComputation(ComputationLayout* computation_layout,
                           const TuplePointsToAnalysis& points_to_analysis,
                           HloComputation* computation,
                           ChannelLayoutConstraints* channel_constraints);
@@ -383,15 +413,94 @@ class LayoutAssignment : public HloPassInterface {
   // necessary conditions.
   Status CheckLayouts(HloModule* module);
 
+  // Computes the ComputationLayout of the given computation based of the
+  // layouts assigned to parameters and root instruction, and inserts it to the
+  // computation_layouts_ map.
+  Status CalculateComputationLayout(HloComputation* computation);
+
+  // Clears all the layouts which can be cleared within a computation.
+  Status ClearComputationLayouts(HloComputation* computation);
+
+  // Clears the side effects of a previous pass, like added copy instructions.
+  Status ClearPreviousPassSideEffects(HloModule* module);
+
+  // Propagates the layouts computed by the layout assignment pass on the given
+  // computation, to the computation layout passed in to this API.
+  // This API propagates missing layout, and also checks that the caller
+  // specified have been respected, by comparing those with the parameters and
+  // root computation instruction.
+  Status PropagateComputationLayouts(HloComputation* computation,
+                                     ComputationLayout* computation_layout);
+
   ComputationLayout* entry_computation_layout_;
-  ChannelLayoutConstraints* channel_layout_constraints_;
 
  protected:
+  // Sets up the copy instruction according to the characteristic (sharding,
+  // metadata, ...) of the reference instruction. The index argument is used
+  // when the instruction is a tuple, and in such case the index represents
+  // the location from where the copy instruction was created from.
+  // If the index is empty, the whole sharding will be propagated, even in case
+  // the intruction has a tuple sharding.
+  static void SetupCopiedInstruction(const HloInstruction& instruction,
+                                     HloInstruction* copy,
+                                     const ShapeIndex& index);
+
+  // Creates and returns a copy of the given instruction with a different
+  // layout. Tuple-shaped instructions will be deep-copied, and the last Tuple
+  // instruction producing the copy is returned.
+  StatusOr<HloInstruction*> CreateCopyWithNewLayout(
+      const Shape& shape_with_layout, HloInstruction* instruction);
+
+  // Creates a copy of the given operand if the operand's layout does not match
+  // the given layout. This copy replaces the use in the given instruction.
+  // Tuple operands will be deep-copied.
+  Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
+                                    HloInstruction* instruction,
+                                    int64 operand_no);
+
+  // Registers a copy instruction added by the layout assignment pass.
+  void RegisterAddedCopy(HloInstruction* copy) {
+    CHECK_EQ(copy->opcode(), HloOpcode::kCopy);
+    added_copies_.insert(copy);
+  }
+
+  // Adds a copy for the operand of an instruction, unless such operand is
+  // already a copy, and has a single user (which is forcibly the instruction
+  // itself).
+  Status AddCopyForOperand(HloInstruction* instruction, int64 operand_number);
+
+  // Apply the channel layout constraints by populating the channel_constraints
+  // data structure passed in at constructor time. Eventually adds copies in
+  // case two ends of a channel ended up with a different leyout.
+  Status ConstrainChannelLayouts(HloComputation* computation,
+                                 ChannelLayoutConstraints* channel_constraints);
+
+  // Resets the input ChannelLayoutConstraints to the original copy received
+  // from the constructor input.
+  void ResetChannelConstraints() {
+    if (channel_layout_constraints_ != nullptr) {
+      *channel_layout_constraints_ = channel_constraints_;
+    }
+  }
+
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller
   // instructions can be set to match the computation.
   std::map<HloComputation*, ComputationLayout> computation_layouts_;
+
+  // Every copy added to the module by the layout assignment pass is registered
+  // here.
+  tensorflow::gtl::FlatSet<HloInstruction*> added_copies_;
+
+  // The pointer to the channel layout constraints passed in with the
+  // constructor. If not nullptr, this is an input/output argument.
+  ChannelLayoutConstraints* channel_layout_constraints_ = nullptr;
+
+  // A copy of the input layout constraints used to reset the above pointer in
+  // case we have to undo operations due to the multiple passes over the
+  // computations/instructions.
+  ChannelLayoutConstraints channel_constraints_;
 };
 
 }  // namespace xla

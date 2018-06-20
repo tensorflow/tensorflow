@@ -38,22 +38,26 @@ import tensorflow as tf
 from tensorflow.contrib.cudnn_rnn.python.layers import cudnn_rnn
 from tensorflow.contrib.eager.python import tfe
 
+layers = tf.keras.layers
 
-class RNN(tfe.Network):
+
+class RNN(tf.keras.Model):
   """A static RNN.
 
-  Similar to tf.nn.static_rnn, implemented as a tf.layer.Layer.
+  Similar to tf.nn.static_rnn, implemented as a class.
   """
 
   def __init__(self, hidden_dim, num_layers, keep_ratio):
     super(RNN, self).__init__()
     self.keep_ratio = keep_ratio
-    for _ in range(num_layers):
-      self.track_layer(tf.nn.rnn_cell.BasicLSTMCell(num_units=hidden_dim))
+    self.cells = tf.contrib.checkpoint.List([
+        tf.nn.rnn_cell.BasicLSTMCell(num_units=hidden_dim)
+        for _ in range(num_layers)
+    ])
 
   def call(self, input_seq, training):
     batch_size = int(input_seq.shape[1])
-    for c in self.layers:
+    for c in self.cells:
       state = c.zero_state(batch_size, tf.float32)
       outputs = []
       input_seq = tf.unstack(input_seq, num=int(input_seq.shape[0]), axis=0)
@@ -64,10 +68,14 @@ class RNN(tfe.Network):
       input_seq = tf.stack(outputs, axis=0)
       if training:
         input_seq = tf.nn.dropout(input_seq, self.keep_ratio)
-    return input_seq, None
+    # Returning a list instead of a single tensor so that the line:
+    # y = self.rnn(y, ...)[0]
+    # in PTBModel.call works for both this RNN and CudnnLSTM (which returns a
+    # tuple (output, output_states).
+    return [input_seq]
 
 
-class Embedding(tf.layers.Layer):
+class Embedding(layers.Layer):
   """An Embedding layer."""
 
   def __init__(self, vocab_size, embedding_dim, **kwargs):
@@ -87,8 +95,9 @@ class Embedding(tf.layers.Layer):
     return tf.nn.embedding_lookup(self.embedding, x)
 
 
-class PTBModel(tfe.Network):
-  """LSTM for word language modelling.
+# pylint: disable=not-callable
+class PTBModel(tf.keras.Model):
+  """LSTM for word language modeling.
 
   Model described in:
   (Zaremba, et. al.) Recurrent Neural Network Regularization
@@ -109,19 +118,16 @@ class PTBModel(tfe.Network):
 
     self.keep_ratio = 1 - dropout_ratio
     self.use_cudnn_rnn = use_cudnn_rnn
-    self.embedding = self.track_layer(Embedding(vocab_size, embedding_dim))
+    self.embedding = Embedding(vocab_size, embedding_dim)
 
     if self.use_cudnn_rnn:
       self.rnn = cudnn_rnn.CudnnLSTM(
           num_layers, hidden_dim, dropout=dropout_ratio)
     else:
       self.rnn = RNN(hidden_dim, num_layers, self.keep_ratio)
-    self.track_layer(self.rnn)
 
-    self.linear = self.track_layer(
-        tf.layers.Dense(
-            vocab_size,
-            kernel_initializer=tf.random_uniform_initializer(-0.1, 0.1)))
+    self.linear = layers.Dense(
+        vocab_size, kernel_initializer=tf.random_uniform_initializer(-0.1, 0.1))
     self._output_shape = [-1, embedding_dim]
 
   def call(self, input_seq, training):
@@ -136,7 +142,7 @@ class PTBModel(tfe.Network):
     y = self.embedding(input_seq)
     if training:
       y = tf.nn.dropout(y, self.keep_ratio)
-    y, _ = self.rnn(y, training=training)
+    y = self.rnn(y, training=training)[0]
     return self.linear(tf.reshape(y, self._output_shape))
 
 
@@ -148,7 +154,7 @@ def clip_gradients(grads_and_vars, clip_ratio):
 
 def loss_fn(model, inputs, targets, training):
   labels = tf.reshape(targets, [-1])
-  outputs = model(inputs, training)
+  outputs = model(inputs, training=training)
   return tf.reduce_mean(
       tf.nn.sparse_softmax_cross_entropy_with_logits(
           labels=labels, logits=outputs))
@@ -290,7 +296,7 @@ def test_model(use_cudnn_rnn):
 
 
 def main(_):
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
 
   if not FLAGS.data_path:
     raise ValueError("Must specify --data-path")
@@ -301,32 +307,37 @@ def main(_):
   have_gpu = tfe.num_gpus() > 0
   use_cudnn_rnn = not FLAGS.no_use_cudnn_rnn and have_gpu
 
-  with tfe.restore_variables_on_create(
-      tf.train.latest_checkpoint(FLAGS.logdir)):
-    with tf.device("/device:GPU:0" if have_gpu else None):
-      # Make learning_rate a Variable so it can be included in the checkpoint
-      # and we can resume training with the last saved learning_rate.
-      learning_rate = tfe.Variable(20.0, name="learning_rate")
-      sys.stderr.write("learning_rate=%f\n" % learning_rate.numpy())
-      model = PTBModel(corpus.vocab_size(), FLAGS.embedding_dim,
-                       FLAGS.hidden_dim, FLAGS.num_layers, FLAGS.dropout,
-                       use_cudnn_rnn)
-      optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+  with tf.device("/device:GPU:0" if have_gpu else None):
+    # Make learning_rate a Variable so it can be included in the checkpoint
+    # and we can resume training with the last saved learning_rate.
+    learning_rate = tfe.Variable(20.0, name="learning_rate")
+    model = PTBModel(corpus.vocab_size(), FLAGS.embedding_dim,
+                     FLAGS.hidden_dim, FLAGS.num_layers, FLAGS.dropout,
+                     use_cudnn_rnn)
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+    checkpoint = tfe.Checkpoint(
+        learning_rate=learning_rate, model=model,
+        # GradientDescentOptimizer has no state to checkpoint, but noting it
+        # here lets us swap in an optimizer that does.
+        optimizer=optimizer)
+    # Restore existing variables now (learning_rate), and restore new variables
+    # on creation if a checkpoint exists.
+    checkpoint.restore(tf.train.latest_checkpoint(FLAGS.logdir))
+    sys.stderr.write("learning_rate=%f\n" % learning_rate.numpy())
 
-      best_loss = None
-      for _ in range(FLAGS.epoch):
-        train(model, optimizer, train_data, FLAGS.seq_len, FLAGS.clip)
-        eval_loss = evaluate(model, eval_data)
-        if not best_loss or eval_loss < best_loss:
-          if FLAGS.logdir:
-            tfe.Saver(model.trainable_weights + [learning_rate]).save(
-                os.path.join(FLAGS.logdir, "ckpt"))
-          best_loss = eval_loss
-        else:
-          learning_rate.assign(learning_rate / 4.0)
-          sys.stderr.write("eval_loss did not reduce in this epoch, "
-                           "changing learning rate to %f for the next epoch\n" %
-                           learning_rate.numpy())
+    best_loss = None
+    for _ in range(FLAGS.epoch):
+      train(model, optimizer, train_data, FLAGS.seq_len, FLAGS.clip)
+      eval_loss = evaluate(model, eval_data)
+      if not best_loss or eval_loss < best_loss:
+        if FLAGS.logdir:
+          checkpoint.save(os.path.join(FLAGS.logdir, "ckpt"))
+        best_loss = eval_loss
+      else:
+        learning_rate.assign(learning_rate / 4.0)
+        sys.stderr.write("eval_loss did not reduce in this epoch, "
+                         "changing learning rate to %f for the next epoch\n" %
+                         learning_rate.numpy())
 
 
 if __name__ == "__main__":
@@ -339,8 +350,7 @@ if __name__ == "__main__":
       "http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz")
   parser.add_argument(
       "--logdir", type=str, default="", help="Directory for checkpoint.")
-  parser.add_argument(
-      "--epoch", type=int, default=20, help="Number of epoches.")
+  parser.add_argument("--epoch", type=int, default=20, help="Number of epochs.")
   parser.add_argument("--batch-size", type=int, default=20, help="Batch size.")
   parser.add_argument(
       "--seq-len", type=int, default=35, help="Sequence length.")

@@ -44,7 +44,7 @@ source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
 
 run_configure_for_cpu_build
 
-# Compliling the following test is extremely slow with -c opt
+# Compiling the following test is extremely slow with -c opt
 slow_compiling_test="//tensorflow/core/kernels:eigen_backward_spatial_convolutions_test"
 
 # Find all the passing cc_tests on Windows and store them in a variable

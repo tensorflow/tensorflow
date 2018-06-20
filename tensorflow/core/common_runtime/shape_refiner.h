@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
 
 #include <vector>
 
@@ -215,22 +215,17 @@ class ShapeRefiner {
                                 bool keep_nested_shapes,
                                 ExtendedInferenceContext* outer_context);
 
-  // Tries to infer tensor output based on the input shapes of the node. In some
-  // cases, the shapes of the inputs are sufficient for inferring the contents
-  // of the output tensor. For example, a Shape op with fully defined input
-  // shapes can have its output tensor inferred.
-  Status TryToInferTensorOutputFromInputShapes(const Edge* edge, Tensor* output,
-                                               bool* success);
-
-  // Extracts the subgraph ending at 'node' that is statically
-  // computable and inserts into 'out_graph'. If statically computable,
-  // 'is_constant_graph' will be true.
-  Status ExtractConstantSubgraph(
-      Node* node, Graph* out_graph, bool* is_constant_graph,
-      std::vector<std::pair<string, Tensor>>* const_inputs) TF_MUST_USE_RESULT;
-
+  // Attempts to evaluate the 'dst_idx'-th input to 'node'. If the input edge
+  // value can be evaluated, 'evaluated' is set to true and the value returned
+  // in 'result'. Otherwise 'evaluated' is set to false.
   Status EvaluateConstantTensorForEdge(const Node* node, int dst_idx,
                                        bool* evaluated, Tensor* result);
+
+  // Wrapper around EvaluateConstantTensorForEdge for scalar int32/int64 input
+  // tensors. The caller is responsible for checking that the specified edge is
+  // scalar and int32 or int64.
+  Status EvaluateConstantIntScalarEdge(const Node* node, int dst_idx,
+                                       bool* evaluated, int64* result);
 
   // This function tries to materialize as much information about the 'node''s
   // dst_idx input as a statically computable shape, and the result may be
@@ -256,6 +251,11 @@ class ShapeRefiner {
   Status ConstantPartialShape(shape_inference::InferenceContext* target_context,
                               const Node* node, int dst_idx,
                               shape_inference::ShapeHandle* result);
+
+  // Implementation of ConstantPartialShape for StridedSlice nodes.
+  Status PartialStridedSliceShape(Node* slice_node,
+                                  shape_inference::InferenceContext* ctx,
+                                  shape_inference::ShapeHandle* result);
 
   Status RunShapeFn(const Node* node, const OpRegistrationData* op_reg_data,
                     ExtendedInferenceContext* ec);
@@ -303,4 +303,4 @@ class ShapeRefiner {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_

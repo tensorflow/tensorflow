@@ -34,8 +34,8 @@ limitations under the License.
 // between output O of layer A and input I of layer B using
 // "input index" and "output index" labels per edge.
 
-#ifndef TENSORFLOW_GRAPH_GRAPH_H_
-#define TENSORFLOW_GRAPH_GRAPH_H_
+#ifndef TENSORFLOW_CORE_GRAPH_GRAPH_H_
+#define TENSORFLOW_CORE_GRAPH_GRAPH_H_
 
 #include <functional>
 #include <string>
@@ -62,8 +62,8 @@ class Node;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;  // Declared below
-class NodeIter;      // Declared below
+class NeighborIter;    // Declared below
+class NodeIter;        // Declared below
 class NodeProperties;  // Defined in .cc
 
 class Node {
@@ -124,7 +124,8 @@ class Node {
   // Inputs requested by the NodeDef.  For the actual inputs, use in_edges.
   const protobuf::RepeatedPtrField<string>& requested_inputs() const;
 
-  // Get the neighboring nodes via edges either in or out of this node.
+  // Get the neighboring nodes via edges either in or out of this node.  This
+  // includes control edges.
   gtl::iterator_range<NeighborIter> in_nodes() const;
   gtl::iterator_range<NeighborIter> out_nodes() const;
   const EdgeSet& in_edges() const { return in_edges_; }
@@ -161,6 +162,8 @@ class Node {
   }
   bool IsHostSend() const { return class_ == NC_HOST_SEND; }
   bool IsHostRecv() const { return class_ == NC_HOST_RECV; }
+  bool IsScopedAllocator() const { return class_ == NC_SCOPED_ALLOCATOR; }
+  bool IsCollective() const { return class_ == NC_COLLECTIVE; }
 
   bool IsMetadata() const { return class_ == NC_METADATA; }
 
@@ -232,6 +235,8 @@ class Node {
     NC_GET_SESSION_TENSOR,
     NC_DELETE_SESSION_TENSOR,
     NC_METADATA,
+    NC_SCOPED_ALLOCATOR,
+    NC_COLLECTIVE,
     NC_OTHER  // Not a special kind of node
   };
 
@@ -279,6 +284,16 @@ struct InputTensor {
 
   InputTensor(const Node* n, int i) : node(n), index(i) {}
   InputTensor() : node(nullptr), index(0) {}
+
+  // Returns true if this InputTensor is identical to 'other'. Nodes are
+  // compared using pointer equality.
+  bool operator==(const InputTensor& other) const;
+
+  // A hash function for InputTensors. Nodes are hashed based on their pointer
+  // value.
+  struct Hash {
+    uint64 operator()(InputTensor const& s) const;
+  };
 };
 
 // Represents an output of a node, i.e., the `index`-th output of `node`. Note
@@ -290,6 +305,16 @@ struct OutputTensor {
 
   OutputTensor(const Node* n, int i) : node(n), index(i) {}
   OutputTensor() : node(nullptr), index(0) {}
+
+  // Returns true if this OutputTensor is identical to 'other'. Nodes are
+  // compared using pointer equality.
+  bool operator==(const OutputTensor& other) const;
+
+  // A hash function for OutputTensors. Nodes are hashed based on their pointer
+  // value.
+  struct Hash {
+    uint64 operator()(OutputTensor const& s) const;
+  };
 };
 
 class Edge {
@@ -422,7 +447,7 @@ class Graph {
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
   // returned instance.
-  Node* CopyNode(Node* node);
+  Node* CopyNode(const Node* node);
 
   // Removes a node from this graph, including all edges from or to it.
   // *node should not be accessed after calling this function.
@@ -493,6 +518,13 @@ class Graph {
 
   // Serialize to a GraphDef.
   void ToGraphDef(GraphDef* graph_def) const;
+
+  // This version can be called from debugger to inspect the graph content.
+  // Use the previous version outside debug context for efficiency reasons.
+  //
+  // Note: We do not expose a DebugString() API, since GraphDef.DebugString() is
+  // not defined in some TensorFlow builds.
+  GraphDef ToGraphDefDebug() const;
 
   // Generate new node name with the specified prefix that is unique
   // across this graph.
@@ -688,6 +720,8 @@ inline bool IsControlFlow(const Node* n) { return n->IsControlFlow(); }
 // (shape).  Specifically, returns true for "Size", "Shape" and "Rank" ops.
 inline bool IsMetadata(const Node* n) { return n->IsMetadata(); }
 
+inline bool IsScopedAllocator(const Node* n) { return n->IsScopedAllocator(); }
+
 inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
 }
@@ -819,4 +853,4 @@ inline const string& Node::assigned_device_name() const {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_GRAPH_H_
+#endif  // TENSORFLOW_CORE_GRAPH_GRAPH_H_

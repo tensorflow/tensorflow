@@ -86,7 +86,7 @@ BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) {
   return &(chunks_[h]);
 }
 
-bool BFCAllocator::Extend(size_t rounded_bytes) {
+bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   size_t available_bytes = memory_limit_ - total_region_allocated_bytes_;
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
@@ -108,7 +108,7 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
 
   // Try allocating.
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
-  void* mem_addr = suballocator_->Alloc(32, bytes);
+  void* mem_addr = suballocator_->Alloc(alignment, bytes);
   if (mem_addr == nullptr && !started_backpedal_) {
     // Only backpedal once.
     started_backpedal_ = true;
@@ -119,7 +119,7 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(bytes * kBackpedalFactor);
       if (bytes < rounded_bytes) break;
-      mem_addr = suballocator_->Alloc(32, bytes);
+      mem_addr = suballocator_->Alloc(alignment, bytes);
     }
   }
 
@@ -261,7 +261,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   }
 
   // Try to extend
-  if (Extend(rounded_bytes)) {
+  if (Extend(unused_alignment, rounded_bytes)) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
     if (ptr != nullptr) {
       return ptr;
@@ -521,7 +521,7 @@ void BFCAllocator::AddAllocVisitor(Visitor visitor) {
 
 bool BFCAllocator::TracksAllocationSizes() { return true; }
 
-size_t BFCAllocator::RequestedSize(void* ptr) {
+size_t BFCAllocator::RequestedSize(const void* ptr) {
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
@@ -530,7 +530,7 @@ size_t BFCAllocator::RequestedSize(void* ptr) {
   return c->requested_size;
 }
 
-size_t BFCAllocator::AllocatedSize(void* ptr) {
+size_t BFCAllocator::AllocatedSize(const void* ptr) {
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
@@ -539,7 +539,7 @@ size_t BFCAllocator::AllocatedSize(void* ptr) {
   return c->size;
 }
 
-int64 BFCAllocator::AllocationId(void* ptr) {
+int64 BFCAllocator::AllocationId(const void* ptr) {
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
@@ -616,7 +616,7 @@ string BFCAllocator::RenderOccupancy() {
     region_offset += region.memory_size();
   }
 
-  return StringPiece(rendered, resolution).ToString();
+  return std::string(rendered, resolution);
 }
 
 void BFCAllocator::DumpMemoryLog(size_t num_bytes) {

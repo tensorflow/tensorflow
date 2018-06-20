@@ -22,8 +22,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.AdadeltaOptimizer")
 class AdadeltaOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adadelta algorithm.
 
@@ -44,6 +46,13 @@ class AdadeltaOptimizer(optimizer.Optimizer):
       use_locking: If `True` use locks for update operations.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adadelta".
+
+    @compatibility(eager)
+    When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
+    each be a callable that takes no arguments and returns the actual value to
+    use. This can be useful for changing these values across different
+    invocations of optimizer functions.
+    @end_compatibility
     """
     super(AdadeltaOptimizer, self).__init__(use_locking, name)
     self._lr = learning_rate
@@ -61,9 +70,13 @@ class AdadeltaOptimizer(optimizer.Optimizer):
       self._zeros_slot(v, "accum_update", self._name)
 
   def _prepare(self):
-    self._lr_t = ops.convert_to_tensor(self._lr, name="lr")
-    self._rho_t = ops.convert_to_tensor(self._rho, name="rho")
-    self._epsilon_t = ops.convert_to_tensor(self._epsilon, name="epsilon")
+    lr = self._call_if_callable(self._lr)
+    rho = self._call_if_callable(self._rho)
+    epsilon = self._call_if_callable(self._epsilon)
+
+    self._lr_t = ops.convert_to_tensor(lr, name="lr")
+    self._rho_t = ops.convert_to_tensor(rho, name="rho")
+    self._epsilon_t = ops.convert_to_tensor(epsilon, name="epsilon")
 
   def _apply_dense(self, grad, var):
     accum = self.get_slot(var, "accum")

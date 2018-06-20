@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
 
 #include <limits>
 
@@ -45,13 +45,10 @@ const int32 LEAF_NODE = -1;
 const int32 FREE_NODE = -2;
 
 // Used to indicate column types, e.g. categorical vs. float
-enum DataColumnTypes {
-  kDataFloat = 0,
-  kDataCategorical = 1
-};
+enum DataColumnTypes { kDataFloat = 0, kDataCategorical = 1 };
 
 // Calculates the sum of a tensor.
-template<typename T>
+template <typename T>
 T Sum(Tensor counts) {
   Eigen::Tensor<T, 0, Eigen::RowMajor> count_sum =
       counts.unaligned_flat<T>().sum();
@@ -97,7 +94,7 @@ float WeightedGiniImpurity(const T& counts) {
   return RawWeightedGiniImpurity(smoothed);
 }
 
-template<typename T1, typename T2>
+template <typename T1, typename T2>
 float WeightedVariance(const T1& sums, const T2& squares, float count) {
   const auto e_x = sums / count;
   const auto e_x2 = squares / count;
@@ -120,12 +117,13 @@ int32 BestFeatureRegression(const Tensor& total_sums,
 
 // Returns true if the best split's variance is sufficiently smaller than
 // that of the next best split.
-bool BestSplitDominatesRegression(
-    const Tensor& total_sums, const Tensor& total_squares,
-    const Tensor& split_sums, const Tensor& split_squares,
-    int32 accumulator);
+bool BestSplitDominatesRegression(const Tensor& total_sums,
+                                  const Tensor& total_squares,
+                                  const Tensor& split_sums,
+                                  const Tensor& split_squares,
+                                  int32 accumulator);
 
-// Performs booststrap_samples bootstrap samples of the best split's class
+// Performs bootstrap_samples bootstrap samples of the best split's class
 // counts and the second best splits's class counts, and returns true if at
 // least dominate_fraction of the time, the former has a better (lower)
 // Gini impurity.  Does not take over ownership of *rand.
@@ -178,10 +176,8 @@ bool DecideNode(const GetFeatureFnType& get_dense,
 // isn't present in sparse_input_indices.  sparse_input_indices is assumed
 // to be sorted.
 template <typename T1, typename T2>
-float FindSparseValue(
-    const T1& sparse_input_indices,
-    const T2& sparse_input_values,
-    int32 i, int32 j) {
+float FindSparseValue(const T1& sparse_input_indices,
+                      const T2& sparse_input_values, int32 i, int32 j) {
   int32 low = 0;
   int32 high = sparse_input_values.dimension(0);
   while (low < high) {
@@ -273,7 +269,6 @@ int32 GetNumSparseFeatures(const T1& indices, int32 input_index,
 // categorical data, it is value != bias.
 bool Decide(float value, float bias, DataColumnTypes type = kDataFloat);
 
-
 // Returns true if all the splits are initialized. Since they get initialized
 // in order, we can simply infer this from the last split.
 // This should only be called for a single allocator's candidate features
@@ -307,4 +302,4 @@ void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_

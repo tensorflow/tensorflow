@@ -18,17 +18,11 @@
 
 namespace tensorflow {
 
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
-using shape_inference::DimensionHandle;
 
 REGISTER_OP("BuildDenseInequalitySplits")
-    .Attr("feature_column_group_id: int")
-    .Attr("l1_regularization: float")
-    .Attr("l2_regularization: float")
-    .Attr("tree_complexity_regularization: float")
-    .Attr("min_node_weight: float")
-    .Attr("multiclass_strategy: int")
     .Input("num_minibatches: int64")
     .Input("partition_ids: int32")
     .Input("bucket_ids: int64")
@@ -36,6 +30,12 @@ REGISTER_OP("BuildDenseInequalitySplits")
     .Input("hessians: float32")
     .Input("bucket_boundaries: float32")
     .Input("class_id: int32")
+    .Input("feature_column_group_id: int32")
+    .Input("l1_regularization: float")
+    .Input("l2_regularization: float")
+    .Input("tree_complexity_regularization: float")
+    .Input("min_node_weight: float")
+    .Input("multiclass_strategy: int32")
     .Output("output_partition_ids: int32")
     .Output("gains: float32")
     .Output("split_infos: string")
@@ -73,6 +73,17 @@ bucket_ids: A rank 2 tensor of buckets IDs and dimensions.
 gradients: A rank 1 tensor of gradients.
 hessians: A rank 1 tensor of hessians.
 bucket_boundaries: A rank 1 tensor, thresholds that were used for bucketization.
+class_id: A scalar, the class id for which we're building the splits.
+feature_column_group_id: A scalar, the index of the feature we are spiltting on.
+l1_regularization: A scalar, which specifies the l1 regularization term.
+l2_regularization: A scalar, which specifies the l2 regularization term.
+tree_complexity_regularization: A scalar, which specifies the tree complexity
+    regularization term.
+min_node_weight: A scalar, minimum sum of example hessian needed in a child.
+    If a split results in a leaf node with a smaller value, the split will not
+    be considered.
+multiclass_strategy: A scalar, specifying the multiclass handling strategy.
+    See LearnerConfig.MultiClassStrategy for valid values.
 output_partition_ids: A rank 1 tensor, the partition IDs that we created splits
     for.
 gains: A rank 1 tensor, for the computed gain for the created splits.
@@ -81,13 +92,6 @@ split_infos: A rank 1 tensor of serialized protos which contains the
 )doc");
 
 REGISTER_OP("BuildSparseInequalitySplits")
-    .Attr("feature_column_group_id: int")
-    .Attr("bias_feature_id: int")
-    .Attr("l1_regularization: float")
-    .Attr("l2_regularization: float")
-    .Attr("tree_complexity_regularization: float")
-    .Attr("min_node_weight: float")
-    .Attr("multiclass_strategy: int")
     .Input("num_minibatches: int64")
     .Input("partition_ids: int32")
     .Input("bucket_ids: int64")
@@ -95,6 +99,13 @@ REGISTER_OP("BuildSparseInequalitySplits")
     .Input("hessians: float32")
     .Input("bucket_boundaries: float32")
     .Input("class_id: int32")
+    .Input("feature_column_group_id: int32")
+    .Input("bias_feature_id: int64")
+    .Input("l1_regularization: float")
+    .Input("l2_regularization: float")
+    .Input("tree_complexity_regularization: float")
+    .Input("min_node_weight: float")
+    .Input("multiclass_strategy: int32")
     .Output("output_partition_ids: int32")
     .Output("gains: float32")
     .Output("split_infos: string")
@@ -133,6 +144,17 @@ bucket_ids: A rank 2 tensor of buckets IDs and dimensions.
 gradients: A rank 1 tensor of gradients.
 hessians: A rank 1 tensor of hessians.
 bucket_boundaries: A rank 1 tensor, thresholds that were used for bucketization.
+class_id: A scalar, the class id for which we're building the splits.
+feature_column_group_id: A scalar, the index of the feature we are spiltting on.
+l1_regularization: A scalar, which specifies the l1 regularization term.
+l2_regularization: A scalar, which specifies the l2 regularization term.
+tree_complexity_regularization: A scalar, which specifies the tree complexity
+    regularization term.
+min_node_weight: A scalar, minimum sum of example hessian needed in a child.
+    If a split results in a leaf node with a smaller value, the split will not
+    be considered.
+multiclass_strategy: A scalar, specifying the multiclass handling strategy.
+    See LearnerConfig.MultiClassStrategy for valid values.
 output_partition_ids: A rank 1 tensor, the partition IDs that we created splits
     for.
 gains: A rank 1 tensor, for the computed gain for the created splits.
@@ -141,19 +163,19 @@ split_infos: A rank 1 tensor of serialized protos which contains the
 )doc");
 
 REGISTER_OP("BuildCategoricalEqualitySplits")
-    .Attr("feature_column_group_id: int")
-    .Attr("bias_feature_id: int")
-    .Attr("l1_regularization: float")
-    .Attr("l2_regularization: float")
-    .Attr("tree_complexity_regularization: float")
-    .Attr("min_node_weight: float")
-    .Attr("multiclass_strategy: int")
     .Input("num_minibatches: int64")
     .Input("partition_ids: int32")
     .Input("feature_ids: int64")
     .Input("gradients: float32")
     .Input("hessians: float32")
     .Input("class_id: int32")
+    .Input("feature_column_group_id: int32")
+    .Input("bias_feature_id: int64")
+    .Input("l1_regularization: float")
+    .Input("l2_regularization: float")
+    .Input("tree_complexity_regularization: float")
+    .Input("min_node_weight: float")
+    .Input("multiclass_strategy: int32")
     .Output("output_partition_ids: int32")
     .Output("gains: float32")
     .Output("split_infos: string")
@@ -188,6 +210,17 @@ partition_ids: A rank 1 tensor of partition IDs.
 feature_ids: A rank 2 tensor of feature IDs and dimensions.
 gradients: A rank 1 tensor of gradients.
 hessians: A rank 1 tensor of hessians.
+class_id: A scalar, the class id for which we're building the splits.
+feature_column_group_id: A scalar, the index of the feature we are spiltting on.
+l1_regularization: A scalar, which specifies the l1 regularization term.
+l2_regularization: A scalar, which specifies the l2 regularization term.
+tree_complexity_regularization: A scalar, which specifies the tree complexity
+    regularization term.
+min_node_weight: A scalar, minimum sum of example hessian needed in a child.
+    If a split results in a leaf node with a smaller value, the split will not
+    be considered.
+multiclass_strategy: A scalar, specifying the multiclass handling strategy.
+    See LearnerConfig.MultiClassStrategy for valid values.
 output_partition_ids: A rank 1 tensor, the partition IDs that we created splits
     for.
 gains: A rank 1 tensor, for the computed gain for the created splits.
@@ -196,4 +229,3 @@ split_infos: A rank 1 tensor of serialized protos which contains the
 )doc");
 
 }  // namespace tensorflow
-   // namespace tensorflow

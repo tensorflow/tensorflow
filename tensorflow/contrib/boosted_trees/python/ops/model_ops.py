@@ -25,6 +25,7 @@ from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensem
 from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensemble_serialize
 # pylint: disable=unused-import
 from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensemble_stamp_token
+from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensemble_used_handlers
 # pylint: enable=unused-import
 
 from tensorflow.python.framework import ops

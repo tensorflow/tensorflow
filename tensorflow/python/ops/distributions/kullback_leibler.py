@@ -23,6 +23,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 _DIVERGENCES = {}
@@ -50,6 +51,7 @@ def _registered_kl(type_a, type_b):
   return kl_fn
 
 
+@tf_export("distributions.kl_divergence")
 def kl_divergence(distribution_a, distribution_b,
                   allow_nan_stats=True, name=None):
   """Get the KL-divergence KL(distribution_a || distribution_b).
@@ -142,6 +144,7 @@ def cross_entropy(ref, other,
         ref, other, allow_nan_stats=allow_nan_stats)
 
 
+@tf_export("distributions.RegisterKL")
 class RegisterKL(object):
   """Decorator to register a KL divergence implementation function.
 

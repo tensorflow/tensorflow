@@ -20,8 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace subgraph {
@@ -38,6 +40,37 @@ struct RewriteGraphMetadata {
   DataTypeVector fetch_types;
 };
 
+// Describes the action to take on a particular tensor endpoint (described by
+// a "<node_name>:<output_index>" pair) when pruning the graph.
+//
+// The `AddNode()` method must be overridden to describe this action. The method
+// will be invoked once during `RewriteGraphForExecution()` with tensor endpoint
+// named by `endpoint_name`, and it may either create a single new node, or fail
+// with an error if the resulting graph would be invalid.
+class PruneRewrite {
+ public:
+  // `endpoint_name` and `device_info` must outlive this object.
+  PruneRewrite(const string* endpoint_name, const DeviceAttributes* device_info)
+      : endpoint_name_(endpoint_name), device_info_(device_info) {}
+  virtual ~PruneRewrite() {}
+
+  // Creates a new node whose output replaces the given `tensor` in graph `g`.
+  // The node will be assigned to the device named in `device_info`.
+  virtual Status AddNode(Graph* g, NodeBuilder::NodeOut tensor,
+                         Node** out_node) = 0;
+
+  // Returns the name of the tensor to which this rewrite applies.
+  const string& endpoint_name() { return *endpoint_name_; }
+
+ protected:
+  // The device on which the new node will be created.
+  const DeviceAttributes& device_info() { return *device_info_; }
+
+ private:
+  const string* const endpoint_name_;          // Not owned.
+  const DeviceAttributes* const device_info_;  // Not owned.
+};
+
 // Rewrite the graph structure of "*g" to deal with feeding node
 // outputs, fetching node outputs, and only running a subset of the
 // graph.  "fed_outputs" and "fetch_outputs" are both lists of
@@ -48,7 +81,7 @@ struct RewriteGraphMetadata {
 // In the resulting graph "*g", output edges in "fed_outputs" have
 // been redirected to special "_recv" nodes introduced into the graph.
 // If these fed nodes are not needed in order to compute the effects
-// of the nodes in "targets_nodes" and "fetch_outputs", then these may
+// of the nodes in "target_node_names" and "fetch_outputs", then these may
 // be omitted from the graph.
 //
 // In the resulting graph "*g", additional "_send" nodes are connected
@@ -71,19 +104,60 @@ Status RewriteGraphForExecution(
     const DeviceAttributes& device_info, bool use_function_convention,
     RewriteGraphMetadata* out_metadata);
 
-typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameIndex;
+// A more general version of the above function that supports
+// customizable rewriting actions for each fed and fetched tensor.
+Status RewriteGraphForExecution(
+    Graph* g, const std::vector<std::unique_ptr<PruneRewrite>>& feed_rewrites,
+    const std::vector<std::unique_ptr<PruneRewrite>>& fetch_rewrites,
+    const gtl::ArraySlice<string>& target_node_names,
+    RewriteGraphMetadata* out_metadata);
 
-// Augment "*g" by adding special "fetch" nodes that connect to the
-// tensor outputs specified in "fetch_outputs" to retrieve the output
-// of the tensors.  The new nodes added are set up to execute on
-// "client_device_name", and are returned in "*fetch_nodes".
-//
-// Return OK on success.  On error, return false and sets *error to
-// an appropriate error message (and *g is left in an indeterminate
-// state).
-Status FetchOutputs(Graph* g, const DeviceAttributes& device_info,
-                    const gtl::ArraySlice<string>& fetch_outputs,
-                    NameIndex* name_index, std::vector<Node*>* fetch_nodes);
+/////////////////////////////////////////////////////////
+// Custom rewrite actions for fed and fetched tensors. //
+/////////////////////////////////////////////////////////
+
+// A rewrite action that adds an _Arg node for a fed tensor.
+class ArgFeedRewrite : public PruneRewrite {
+ public:
+  ArgFeedRewrite(const string* endpoint_name,
+                 const DeviceAttributes* device_info, int32 arg_index)
+      : PruneRewrite(endpoint_name, device_info), arg_index_(arg_index) {}
+  Status AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
+                 Node** out_node) override;
+
+ private:
+  const int32 arg_index_;
+};
+
+// A rewrite action that adds a client-terminated _Recv node for a fed tensor.
+class RecvFeedRewrite : public PruneRewrite {
+ public:
+  using PruneRewrite::PruneRewrite;
+  Status AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
+                 Node** out_node) override;
+};
+
+// A rewrite action that adds a _Retval node for a fetched tensor.
+class RetvalFetchRewrite : public PruneRewrite {
+ public:
+  RetvalFetchRewrite(const string* endpoint_name,
+                     const DeviceAttributes* device_info, int32 retval_index)
+      : PruneRewrite(endpoint_name, device_info), retval_index_(retval_index) {}
+  Status AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
+                 Node** out_node) override;
+
+ private:
+  const int32 retval_index_;
+};
+
+// A rewrite action that adds a client-terminated _Send node for a
+// fetched tensor.
+class SendFetchRewrite : public PruneRewrite {
+ public:
+  using PruneRewrite::PruneRewrite;
+  Status AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
+                 Node** out_node) override;
+};
 
 }  // namespace subgraph
 }  // namespace tensorflow

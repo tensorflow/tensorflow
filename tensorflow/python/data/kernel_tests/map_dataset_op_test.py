@@ -20,6 +20,7 @@ from __future__ import print_function
 from collections import namedtuple
 import threading
 import time
+import warnings
 
 import numpy as np
 
@@ -601,6 +602,62 @@ class MapDatasetTest(test.TestCase):
         self.assertSparseValuesEqual(actual, _check(_sparse(i)).eval())
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testParallelMapOutOfRangeError(self):
+    def raising_py_func(i):
+      if i == 100:
+        raise StopIteration()
+      else:
+        return i
+
+    iterator = (
+        dataset_ops.Dataset.range(105)
+        .map(lambda x: script_ops.py_func(raising_py_func, [x], dtypes.int64),
+             num_parallel_calls=2)
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(100):
+        self.assertEqual(i, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testConstantOutput(self):
+    iterator = (
+        dataset_ops.Dataset.range(10).map(lambda x: [x, "hello", 10])
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual((i, b"hello", 10), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testWarnOnLookupTable(self):
+    def collecting_function(x):
+      _ = lookup_ops.HashTable(
+          lookup_ops.KeyValueTensorInitializer([], []), 0.0, name="t1")
+      return x
+
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+      _ = dataset_ops.Dataset.range(10).map(collecting_function)
+    # NOTE(mrry): Python 3 prints other warnings in addition to the one we are
+    # testing, so we search for the expected warning.
+    self.assertGreaterEqual(len(w), 1)
+    found_warning = False
+    for warning in w:
+      if ("Creating lookup tables inside a function passed to Dataset.map() is "
+          "not supported." in str(warning)):
+        found_warning = True
+        break
+    self.assertTrue(found_warning)
 
 
 class MapDatasetBenchmark(test.Benchmark):

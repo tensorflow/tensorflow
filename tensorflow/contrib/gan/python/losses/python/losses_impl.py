@@ -67,6 +67,7 @@ __all__ = [
     'wasserstein_gradient_penalty',
     'mutual_information_penalty',
     'combine_adversarial_loss',
+    'cycle_consistency_loss',
 ]
 
 
@@ -304,6 +305,8 @@ def wasserstein_gradient_penalty(
     discriminator_fn,
     discriminator_scope,
     epsilon=1e-10,
+    target=1.0,
+    one_sided=False,
     weights=1.0,
     scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -323,6 +326,10 @@ def wasserstein_gradient_penalty(
     discriminator_scope: If not `None`, reuse discriminators from this scope.
     epsilon: A small positive number added for numerical stability when
       computing the gradient norm.
+    target: Optional Python number or `Tensor` indicating the target value of
+      gradient norm. Defaults to 1.0.
+    one_sided: If `True`, penalty proposed in https://arxiv.org/abs/1709.08894
+      is used. Defaults to `False`.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `real_data` and `generated_data`, and must be broadcastable to
       them (i.e., all dimensions must be either `1`, or the same as the
@@ -373,10 +380,13 @@ def wasserstein_gradient_penalty(
     # For numerical stability, add epsilon to the sum before taking the square
     # root. Note tf.norm does not add epsilon.
     slopes = math_ops.sqrt(gradient_squares + epsilon)
-    penalties = math_ops.square(slopes - 1.0)
+    penalties = slopes / target - 1.0
+    if one_sided:
+      penalties = math_ops.maximum(0., penalties)
+    penalties_squared = math_ops.square(penalties)
     penalty = losses.compute_weighted_loss(
-        penalties, weights, scope=scope, loss_collection=loss_collection,
-        reduction=reduction)
+        penalties_squared, weights, scope=scope,
+        loss_collection=loss_collection, reduction=reduction)
 
     if add_summaries:
       summary.scalar('gradient_penalty_loss', penalty)
@@ -661,7 +671,7 @@ def least_squares_discriminator_loss(
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
     add_summaries=False):
-  """Least squares generator loss.
+  """Least squares discriminator loss.
 
   This loss comes from `Least Squares Generative Adversarial Networks`
   (https://arxiv.org/abs/1611.04076).
@@ -915,3 +925,63 @@ def combine_adversarial_loss(main_loss,
                     array_ops.stop_gradient(adv_coeff) * adversarial_loss)
 
   return final_loss
+
+
+def cycle_consistency_loss(data_x,
+                           reconstructed_data_x,
+                           data_y,
+                           reconstructed_data_y,
+                           scope=None,
+                           add_summaries=False):
+  """Defines the cycle consistency loss.
+
+  The cyclegan model has two partial models where `model_x2y` generator F maps
+  data set X to Y, `model_y2x` generator G maps data set Y to X. For a `data_x`
+  in data set X, we could reconstruct it by
+  * reconstructed_data_x = G(F(data_x))
+  Similarly
+  * reconstructed_data_y = F(G(data_y))
+
+  The cycle consistency loss is about the difference between data and
+  reconstructed data, namely
+  * loss_x2x = |data_x - G(F(data_x))| (L1-norm)
+  * loss_y2y = |data_y - F(G(data_y))| (L1-norm)
+  * loss = (loss_x2x + loss_y2y) / 2
+  where `loss` is the final result.
+
+  See https://arxiv.org/abs/1703.10593 for more details.
+
+  Args:
+    data_x: A `Tensor` of data X.
+    reconstructed_data_x: A `Tensor` of reconstructed data X.
+    data_y: A `Tensor` of data Y.
+    reconstructed_data_y: A `Tensor` of reconstructed data Y.
+    scope: The scope for the operations performed in computing the loss.
+      Defaults to None.
+    add_summaries: Whether or not to add detailed summaries for the loss.
+      Defaults to False.
+
+  Returns:
+    A scalar `Tensor` of cycle consistency loss.
+  """
+
+  def _partial_cycle_consistency_loss(data, reconstructed_data):
+    # Following the original implementation
+    # https://github.com/junyanz/CycleGAN/blob/master/models/cycle_gan_model.lua
+    # use L1-norm of pixel-wise error normalized by data size so that
+    # `cycle_loss_weight` can be specified independent of image size.
+    return math_ops.reduce_mean(math_ops.abs(data - reconstructed_data))
+
+  with ops.name_scope(
+      scope,
+      'cycle_consistency_loss',
+      values=[data_x, reconstructed_data_x, data_y, reconstructed_data_y]):
+    loss_x2x = _partial_cycle_consistency_loss(data_x, reconstructed_data_x)
+    loss_y2y = _partial_cycle_consistency_loss(data_y, reconstructed_data_y)
+    loss = (loss_x2x + loss_y2y) / 2.0
+    if add_summaries:
+      summary.scalar('cycle_consistency_loss_x2x', loss_x2x)
+      summary.scalar('cycle_consistency_loss_y2y', loss_y2y)
+      summary.scalar('cycle_consistency_loss', loss)
+
+  return loss

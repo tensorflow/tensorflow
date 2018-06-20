@@ -17,8 +17,8 @@
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/test.h"
 
-using tensorflow::test::AsTensor;
 using std::vector;
+using tensorflow::test::AsTensor;
 
 namespace tensorflow {
 namespace boosted_trees {

@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/notification.h"
 
-
 namespace tensorflow {
 
 /* static */
@@ -33,7 +32,25 @@ Status CapturedFunction::Create(
   return Status::OK();
 }
 
-CapturedFunction::~CapturedFunction() {}
+/* static */
+Status CapturedFunction::Create(
+    const NameAttrList& func, OpKernelContext* ctx, const string& argument,
+    std::unique_ptr<CapturedFunction>* out_function) {
+  OpInputList argument_inputs;
+  TF_RETURN_IF_ERROR(ctx->input_list(argument, &argument_inputs));
+  std::vector<Tensor> arguments_t;
+  arguments_t.reserve(argument_inputs.size());
+  for (const Tensor& t : argument_inputs) {
+    arguments_t.push_back(t);
+  }
+  return CapturedFunction::Create(func, std::move(arguments_t), out_function);
+}
+
+CapturedFunction::~CapturedFunction() {
+  if (lib_ != nullptr && f_handle_ != kInvalidHandle) {
+    lib_->ReleaseHandle(f_handle_).IgnoreError();
+  }
+}
 
 namespace {
 class CallFrameBase : public CallFrameInterface {
@@ -185,8 +202,7 @@ Status CapturedFunction::MaybeInstantiate(
   return Status::OK();
 }
 
-Status CapturedFunction::Run(IteratorContext* ctx,
-                             std::vector<Tensor>&& args,
+Status CapturedFunction::Run(IteratorContext* ctx, std::vector<Tensor>&& args,
                              std::vector<Tensor>* rets) {
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(MaybeInstantiate(ctx, &handle));
@@ -246,6 +262,62 @@ Status CapturedFunction::RunWithBorrowedArgs(IteratorContext* ctx,
   Status s;
 
   ctx->lib()->Run(f_opts, handle, &frame, [&n, &s](Status func_status) {
+    s.Update(func_status);
+    n.Notify();
+  });
+  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(s);
+  return frame.ConsumeRetvals(rets);
+}
+
+Status CapturedFunction::Instantiate(IteratorContext* ctx) {
+  FunctionLibraryRuntime::Handle unused_handle;
+  TF_RETURN_IF_ERROR(MaybeInstantiate(ctx, &unused_handle));
+  mutex_lock l(mu_);
+  if (captured_runner_ == nullptr) {
+    captured_runner_ = *ctx->runner();
+  }
+  return Status::OK();
+}
+
+Status CapturedFunction::RunInstantiated(const std::vector<Tensor>& args,
+                                         std::vector<Tensor>* rets) {
+  FunctionLibraryRuntime* lib;
+  FunctionLibraryRuntime::Handle handle;
+  std::function<void(std::function<void()>)>* runner;
+  {
+    tf_shared_lock l(mu_);
+    if (lib_ == nullptr) {
+      return errors::FailedPrecondition(
+          "`CapturedFunction::Instantiate()` must be called before a call to "
+          "`CapturedFunction::RunInstantiated()`.");
+    }
+    lib = lib_;
+    handle = f_handle_;
+    runner = &captured_runner_;
+  }
+
+  FunctionLibraryRuntime::Options f_opts;
+  f_opts.step_id = CapturedFunction::generate_step_id();
+  ScopedStepContainer step_container(f_opts.step_id, [lib](const string& name) {
+    lib->device()->resource_manager()->Cleanup(name).IgnoreError();
+  });
+  f_opts.step_container = &step_container;
+  f_opts.runner = runner;
+  // TODO(mrry): Add cancellation manager support to IteratorContext
+  // so that we can cancel running map functions. The local
+  // cancellation manager here is created so that we can run kernels
+  // (such as queue kernels) that depend on the non-nullness of
+  // `OpKernelContext::cancellation_manager()`, but additional effort
+  // will be required to plumb it through the `IteratorContext`.
+  CancellationManager c_mgr;
+  f_opts.cancellation_manager = &c_mgr;
+
+  BorrowedArgsCallFrame frame(args, &captured_inputs_, ret_types_);
+  Notification n;
+  Status s;
+
+  lib->Run(f_opts, handle, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
   });

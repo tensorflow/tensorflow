@@ -17,7 +17,7 @@ You must choose one of the following types of TensorFlow to install:
     NVIDIA® GPU, you must install this version. Note that this version of
     TensorFlow is typically much easier to install (typically,
     in 5 or 10 minutes), so even if you have an NVIDIA GPU, we recommend
-    installing this version first.
+    installing this version first. Prebuilt binaries will use AVX instructions.
   * **TensorFlow with GPU support**. TensorFlow programs typically run
     significantly faster on a GPU than on a CPU. Therefore, if your
     system has a NVIDIA® GPU meeting the prerequisites shown below
@@ -30,24 +30,25 @@ If you are installing TensorFlow with GPU support using one of the mechanisms
 described in this guide, then the following NVIDIA software must be
 installed on your system:
 
-  * CUDA® Toolkit 8.0. For details, see
+  * CUDA® Toolkit 9.0. For details, see
     [NVIDIA's
     documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/)
     Ensure that you append the relevant Cuda pathnames to the `%PATH%`
     environment variable as described in the NVIDIA documentation.
-  * The NVIDIA drivers associated with CUDA Toolkit 8.0.
-  * cuDNN v6.0. For details, see
+  * The NVIDIA drivers associated with CUDA Toolkit 9.0.
+  * cuDNN v7.0. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
     Note that cuDNN is typically installed in a different location from the
     other CUDA DLLs. Ensure that you add the directory where you installed
     the cuDNN DLL to your `%PATH%` environment variable.
-  * GPU card with CUDA Compute Capability 3.0 or higher.  See
+  * GPU card with CUDA Compute Capability 3.0 or higher for building
+    from source and 3.5 or higher for our binaries. See
     [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for a
     list of supported GPU cards.
 
 If you have a different version of one of the preceding packages, please
 change to the specified versions.  In particular, the cuDNN version
-must match exactly: TensorFlow will not load if it cannot find `cuDNN64_6.dll`.
+must match exactly: TensorFlow will not load if it cannot find `cuDNN64_7.dll`.
 To use a different version of cuDNN, you must build from source.
 
 ## Determine how to install TensorFlow
@@ -153,14 +154,15 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/get_started$Getting Started with
-TensorFlow}.
-
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-There is also a helpful [script](https://gist.github.com/mrry/ee5dbcfdd045fa48a27d56664411d41c)
-for Windows TensorFlow installation issues.
+If you are new to machine learning, we recommend the
+[Machine Learning Crash Course](https://developers.google.com/machine-learning/crash-course).
+
+If you are experienced with machine learning but new to TensorFlow, see
+@{$get_started/eager}.
+
 
 ## Common installation problems
 

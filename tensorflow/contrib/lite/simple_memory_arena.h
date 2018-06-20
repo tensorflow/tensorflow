@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
+#define TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
 
 #include <list>
 #include <memory>
@@ -22,7 +22,7 @@ limitations under the License.
 namespace tflite {
 
 // This little structure holds the offset and the size for a dynamic memory
-// allocation in the memory arena. When the arena is commited and the
+// allocation in the memory arena. When the arena is committed and the
 // underlying buffer is set, the alloc can be resolved into an actual memory
 // pointer.
 struct ArenaAlloc {
@@ -36,14 +36,15 @@ struct ArenaAlloc {
   }
 };
 
-// This small class is responsible for allocating, dealocating and reusing
+// This small class is responsible for allocating, deallocating and reusing
 // dynamic memory from a common underlying buffer. The arena can be used in
-// scenarios when the pattern of memory allocations and dealocations is
-// repetitive, e.g. running NN inference in multiple iterations.
+// scenarios when the pattern of memory allocations and deallocations is
+// repetitive, e.g. running NN inference in multiple iterations. Note that
+// zero-sized allocations are explicitly allowed, and will resolve to null.
 class SimpleMemoryArena {
  public:
   explicit SimpleMemoryArena(size_t arena_alignment)
-      : commited_(false),
+      : committed_(false),
         arena_alignment_(arena_alignment),
         high_water_mark_(0),
         underlying_buffer_size_(0),
@@ -73,7 +74,7 @@ class SimpleMemoryArena {
   }
 
  private:
-  bool commited_;
+  bool committed_;
   size_t arena_alignment_;
   size_t high_water_mark_;
   std::unique_ptr<char[]> underlying_buffer_;
@@ -85,4 +86,4 @@ class SimpleMemoryArena {
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_

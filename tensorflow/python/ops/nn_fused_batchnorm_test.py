@@ -278,7 +278,8 @@ class BatchNormalizationTest(test.TestCase):
         epsilon = y.op.get_attr('epsilon')
         data_format = y.op.get_attr('data_format')
         grad_vals = sess.run([grad_x, grad_scale, grad_offset])
-        grad_internal = nn_grad._BatchNormGrad(grad_y, x, scale, pop_mean, pop_var, epsilon, data_format)
+        grad_internal = nn_grad._BatchNormGrad(grad_y, x, scale, pop_mean,
+                                               pop_var, epsilon, data_format)
         grad_internal_vals = sess.run(list(grad_internal))
         for grad_val, grad_internal_val in zip(grad_vals, grad_internal_vals):
           self.assertAllClose(grad_val, grad_internal_val, atol=err_tolerance)

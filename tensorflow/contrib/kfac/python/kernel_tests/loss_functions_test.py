@@ -24,7 +24,6 @@ from tensorflow.contrib.kfac.python.ops import loss_functions
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
@@ -97,21 +96,41 @@ class CategoricalLogitsNegativeLogProbLossTest(test.TestCase):
       # difficult to say if the output is correct or not...
       neg_log_prob = sess.run(neg_log_prob)
 
-  def testMultiMinibatchRegistration(self):
-    """Ensure this loss function supports registering multiple minibatches."""
-    with ops.Graph().as_default():
-      tower_logits = []
-      loss = None
-      num_towers = 5
-      for _ in range(num_towers):
-        logits = random_ops.random_uniform(shape=[2, 3])
-        tower_logits.append(logits)
-        if loss is None:
-          loss = loss_functions.CategoricalLogitsNegativeLogProbLoss(logits)
-        else:
-          loss.register_additional_minibatch(logits)
-      self.assertListEqual(loss.input_minibatches, tower_logits)
-      self.assertEqual(loss.num_registered_minibatches, num_towers)
+  def testMultiplyFisherSingleVector(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      logits = np.array([1., 2., 3.])
+      loss = loss_functions.CategoricalLogitsNegativeLogProbLoss(logits)
+
+      # the LossFunction.multiply_fisher docstring only says it supports the
+      # case where the vector is the same shape as the input natural parameters
+      # (i.e. the logits here), but here we also test leading dimensions
+      vector = np.array([1., 2., 3.])
+      vectors = [vector, vector.reshape(1, -1), np.stack([vector] * 4)]
+
+      probs = np.exp(logits - np.logaddexp.reduce(logits))
+      fisher = np.diag(probs) - np.outer(probs, probs)
+
+      for vector in vectors:
+        result = loss.multiply_fisher(vector)
+        expected_result = np.dot(vector, fisher)
+        self.assertAllClose(expected_result, sess.run(result))
+
+  def testMultiplyFisherBatch(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      logits = np.array([[1., 2., 3.], [4., 6., 8.]])
+      loss = loss_functions.CategoricalLogitsNegativeLogProbLoss(logits)
+
+      vector = np.array([[1., 2., 3.], [5., 3., 1.]])
+
+      na = np.newaxis
+      probs = np.exp(logits - np.logaddexp.reduce(logits, axis=-1,
+                                                  keepdims=True))
+      fishers = probs[..., na] * np.eye(3) - probs[..., na] * probs[..., na, :]
+
+      result = loss.multiply_fisher(vector)
+      expected_result = np.matmul(vector[..., na, :], fishers)[..., 0, :]
+      self.assertEqual(sess.run(result).shape, logits.shape)
+      self.assertAllClose(expected_result, sess.run(result))
 
 
 class OnehotCategoricalLogitsNegativeLogProbLossTest(test.TestCase):
@@ -166,24 +185,6 @@ class OnehotCategoricalLogitsNegativeLogProbLossTest(test.TestCase):
       # Simply ensure this doesn't crash. As the output is random, it's
       # difficult to say if the output is correct or not...
       neg_log_prob = sess.run(neg_log_prob)
-
-  def testMultiMinibatchRegistration(self):
-    """Ensure this loss function supports registering multiple minibatches."""
-    with ops.Graph().as_default():
-      tower_logits = []
-      loss = None
-      num_towers = 5
-      for _ in range(num_towers):
-        logits = random_ops.random_uniform(shape=[2, 3])
-        tower_logits.append(logits)
-        if loss is None:
-          loss = loss_functions.OnehotCategoricalLogitsNegativeLogProbLoss(
-              logits)
-        else:
-          loss.register_additional_minibatch(logits)
-      self.assertListEqual(loss.input_minibatches, tower_logits)
-      self.assertEqual(loss.num_registered_minibatches, num_towers)
-
 
 if __name__ == "__main__":
   test.main()

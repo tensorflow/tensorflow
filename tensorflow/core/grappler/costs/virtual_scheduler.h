@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
 
 #include <list>
 #include <memory>
@@ -139,8 +139,8 @@ class FIFOManager : public ReadyNodeManager {
  public:
   FIFOManager() : ReadyNodeManager() {}
   ~FIFOManager() override {}
-  virtual void Init(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state) {}
+  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
+      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override {
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
@@ -199,7 +199,7 @@ class FirstReadyManager : public ReadyNodeManager {
   // current node.
   std::vector<const NodeDef*> nodes_;
   // Newly added nodes are added to waiting_queue_. That way, GetCurrNode(),
-  // wihch returns the front of the nodes_, always returns the same node,
+  // which returns the front of the nodes_, always returns the same node,
   // even if any of new nodes has time_ready smaller than the current node's.
   std::vector<const NodeDef*> waiting_queue_;
   // Comparator functor for heap; stl heap is max heap, so we use "greater than"
@@ -212,7 +212,7 @@ class FirstReadyManager : public ReadyNodeManager {
 };
 
 // CompositeNodeManager has a few other NodeManagers: per-device LIFO for normal
-// ops (neither _Send nor _Recv) and FirstyReadyManagers for _Send ops and _Recv
+// ops (neither _Send nor _Recv) and FirstReadyManagers for _Send ops and _Recv
 // ops, and then it chooses FirstReady among the ops chosen from each
 // internal NodeManagers. The objective is to maximize producer-consumer
 // locality within device, while processing nodes across devices, including
@@ -325,10 +325,10 @@ class VirtualScheduler {
   // Boolean field for whether the cost is accurate.
   std::map<string, std::pair<int, bool>> op_costs_;
 
-  Costs graph_costs_;                // Graph cost.
+  Costs graph_costs_;                   // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 
-  // Auxilliary data structures for constructing NodeState and DeviceState.
+  // Auxiliary data structures for constructing NodeState and DeviceState.
   GraphProperties graph_properties_;
   Cluster* cluster_;  // Not owned.
 
@@ -342,4 +342,4 @@ class VirtualScheduler {
 }  // namespace grappler
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_ARENA_PLANNER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_ARENA_PLANNER_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_ARENA_PLANNER_H_
+#define TENSORFLOW_CONTRIB_LITE_ARENA_PLANNER_H_
 
 #include <memory>
 #include <vector>
@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace tflite {
 
-class AllocationInfo;
+struct AllocationInfo;
 
 // A memory planner that makes all the allocations using arenas.
 //
@@ -33,7 +33,7 @@ class AllocationInfo;
 // each tensor needs to be allocated and deallocated, and preallocates all the
 // necessary memory (the PlanAllocations phase). It then assigns portions of
 // this memory buffer to each tensor (the ExecuteAllocations phase). Tensors may
-// share some of the bufer if a tensor B is to be allocated after another tensor
+// share some of the buffer if a tensor B is to be allocated after another tensor
 // A has been deallocated.
 //
 // If dynamic tensors are used the planning steps can be repeated during model
@@ -104,4 +104,4 @@ class ArenaPlanner : public MemoryPlanner {
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_ARENA_PLANNER_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_ARENA_PLANNER_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_DEVICE_BASE_H_
-#define TENSORFLOW_FRAMEWORK_DEVICE_BASE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_DEVICE_BASE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_DEVICE_BASE_H_
 
 #include <memory>
 #include <string>
@@ -34,11 +34,9 @@ struct SyclDevice;
 #endif
 }  // end namespace Eigen
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 class Stream;
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 namespace tensorflow {
 
@@ -48,6 +46,7 @@ class Env;
 class EventMgr;
 class OpKernelContext;
 class ResourceMgr;
+class ScopedAllocatorMgr;
 class TensorProto;
 
 namespace thread {
@@ -68,9 +67,10 @@ class PerOpGpuDevice {
 class DeviceContext : public core::RefCounted {
  public:
   ~DeviceContext() override {}
-  virtual perftools::gputools::Stream* stream() const { return nullptr; }
-  virtual void MaintainLifetimeOnStream(
-      const Tensor* t, perftools::gputools::Stream* stream) const {}
+  virtual stream_executor::Stream* stream() const { return nullptr; }
+  virtual void MaintainLifetimeOnStream(const Tensor* t,
+                                        stream_executor::Stream* stream) const {
+  }
 
   // "cpu_tensor" is a tensor on a CPU. Copies "cpu_tensor" into
   // "device_tensor" which is on a GPU device "device". "device_tensor"
@@ -128,9 +128,11 @@ class DeviceBase {
   // using a single stream.)
   // "event_mgr" is used to delay deallocation of temporary GPU buffers.
   // TODO(pbar) Work out how to move this out of DeviceBase.
+  // GpuDeviceInfo name is an unfortunate legacy, it is used not only by GPUs
+  // but also by TPU devices (to provide default device context).
   struct GpuDeviceInfo {
     // Make sure all the defaults are NULL, so we can spot missing assignments.
-    perftools::gputools::Stream* stream = nullptr;
+    stream_executor::Stream* stream = nullptr;
     DeviceContext* default_context = nullptr;
     EventMgr* event_mgr = nullptr;
     int gpu_id = -1;
@@ -167,15 +169,22 @@ class DeviceBase {
     return nullptr;
   }
 
-  // Return the Allocator implementation to use based on the allocator
-  // attributes requested and the supplied resource manager. By
-  // default this ignores the resource manager and calls the base
-  // implementation but devices can override if they want to consult
-  // the resource manager when choosing the allocator.
-  virtual Allocator* GetStepAllocator(AllocatorAttributes attr,
-                                      ResourceMgr* /*step_resource_manager*/) {
+  // DEPRECATED: Use `this->GetAllocator()` or `this->GetScopedAllocator()`.
+  // This method is provided for backwards compatibility, and will be removed
+  // in a future release.
+  Allocator* GetStepAllocator(AllocatorAttributes attr, ResourceMgr*) {
     return GetAllocator(attr);
   }
+
+  // Return an Allocator prepared for use in particular places by graph
+  // optimization
+  virtual Allocator* GetScopedAllocator(AllocatorAttributes attr,
+                                        int64 step_id) {
+    LOG(FATAL) << "Device does not implement GetScopedAllocator()";
+    return nullptr;
+  }
+
+  virtual ScopedAllocatorMgr* GetScopedAllocatorMgr() const { return nullptr; }
 
   virtual const Eigen::ThreadPoolDevice* eigen_cpu_device() {
     CHECK(eigen_cpu_device_ != nullptr);
@@ -230,6 +239,7 @@ class DeviceBase {
  private:
   Env* const env_;
   CpuWorkerThreads* cpu_worker_threads_ = nullptr;
+  // Set by GPUs as well as by TPU devices.
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   thread::ThreadPool* device_thread_pool_ = nullptr;
   Eigen::ThreadPoolDevice* eigen_cpu_device_ = nullptr;
@@ -240,4 +250,4 @@ class DeviceBase {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_DEVICE_BASE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_DEVICE_BASE_H_

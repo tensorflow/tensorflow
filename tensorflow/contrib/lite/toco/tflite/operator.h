@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
 
 #include "flatbuffers/flatbuffers.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
@@ -25,10 +25,10 @@ namespace tflite {
 
 class BaseOperator;
 
-// Return a map contained all knwo TF Lite Operators, keyed by their names.
+// Return a map contained all know TF Lite Operators, keyed by their names.
 std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap();
 
-// Return a map contained all knwo TF Lite Operators, keyed by the type of
+// Return a map contained all know TF Lite Operators, keyed by the type of
 // their tf.mini counterparts.
 std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap();
 
@@ -77,6 +77,27 @@ class BaseOperator {
       const BuiltinOptions* builtin_options,
       const CustomOptions* custom_options) const = 0;
 
+  // Get the op version by op parameters.
+  // The function need to be overridden to return the op version based on the
+  // parameters. Note:
+  // * The first version for each op should be 1 (to be consistent with the
+  //   default value in Flatbuffer. `return 1;` is okay for newly implemented
+  //   ops.
+  // * When multiple versions are defined for an op, this function need to be
+  //   overridden. (See example in `operator_test.cc`)
+  virtual int GetVersion(const Operator& op) const = 0;
+
+  // Given a Toco `Operator`, return a list of booleans indicating the op
+  // mutates which input variables.
+  // * If the op mutates any input variables, it should return a list of bool
+  //   with the same length as inputs.
+  // * Otherwise, it will return an empty list.
+  virtual std::vector<bool> GetMutatingInputVariables(
+      const Operator& op) const {
+    // Most ops don't have variable tensors. This function can be overridden.
+    return std::vector<bool>();
+  }
+
  private:
   string name_;
   OperatorType type_;
@@ -86,4 +107,4 @@ class BaseOperator {
 
 }  // namespace toco
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_

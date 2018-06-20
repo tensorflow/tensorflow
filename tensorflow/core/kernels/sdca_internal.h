@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SDCA_INTERNAL_H_
-#define TENSORFLOW_KERNELS_SDCA_INTERNAL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SDCA_INTERNAL_H_
+#define TENSORFLOW_CORE_KERNELS_SDCA_INTERNAL_H_
 
 #define EIGEN_USE_THREADS
 
@@ -75,7 +75,7 @@ struct ExampleStatistics {
 
 class Regularizations {
  public:
-  Regularizations(){};
+  Regularizations() {}
 
   // Initialize() must be called immediately after construction.
   Status Initialize(OpKernelConstruction* const context) {
@@ -149,7 +149,8 @@ class Example {
   // 1.0f.
   struct SparseFeatures {
     std::unique_ptr<TTypes<const int64>::UnalignedConstVec> indices;
-    std::unique_ptr<TTypes<const float>::UnalignedConstVec> values;  // nullptr encodes optional.
+    std::unique_ptr<TTypes<const float>::UnalignedConstVec>
+        values;  // nullptr encodes optional.
   };
 
   // A dense vector which is a row-slice of the underlying matrix.
@@ -198,7 +199,7 @@ class FeatureWeightsDenseStorage {
   FeatureWeightsDenseStorage(const TTypes<const float>::Matrix nominals,
                              TTypes<float>::Matrix deltas)
       : nominals_(nominals), deltas_(deltas) {
-    CHECK(deltas.rank() > 1);
+    CHECK_GT(deltas.rank(), 1);
   }
 
   // Check if a feature index is with-in the bounds.
@@ -321,20 +322,19 @@ class Examples {
     return examples_.at(example_index);
   }
 
-  int sampled_index(const int id, const bool adaptative) const {
-    if (adaptative) return sampled_index_[id];
-    return id;
-  }
+  int sampled_index(const int id) const { return sampled_index_[id]; }
 
   // Adaptive SDCA in the current implementation only works for
   // binary classification, where the input argument for num_weight_vectors
   // is 1.
-  Status SampleAdaptativeProbabilities(
+  Status SampleAdaptiveProbabilities(
       const int num_loss_partitions, const Regularizations& regularization,
       const ModelWeights& model_weights,
       const TTypes<float>::Matrix example_state_data,
       const std::unique_ptr<DualLossUpdater>& loss_updater,
       const int num_weight_vectors);
+
+  void RandomShuffle();
 
   int num_examples() const { return examples_.size(); }
 
@@ -369,7 +369,7 @@ class Examples {
 
   // Computes squared example norm per example i.e |x|^2. This function modifies
   // the |examples| passed in and adds the squared norm per example.
-  static void ComputeSquaredNormPerExample(
+  static Status ComputeSquaredNormPerExample(
       const DeviceBase::CpuWorkerThreads& worker_threads, int num_examples,
       int num_sparse_features, int num_dense_features,
       std::vector<Example>* const examples);
@@ -377,7 +377,7 @@ class Examples {
   // All examples in the batch.
   std::vector<Example> examples_;
 
-  // Adaptative sampling variables
+  // Adaptive sampling variables.
   std::vector<float> probabilities_;
   std::vector<int> sampled_index_;
   std::vector<int> sampled_count_;
@@ -390,4 +390,4 @@ class Examples {
 }  // namespace sdca
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SDCA_INTERNAL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SDCA_INTERNAL_H_

@@ -28,7 +28,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace se = ::perftools::gputools;
 namespace dnn = se::dnn;
 
 static std::pair<dnn::BatchDescriptor /*input_desc*/,

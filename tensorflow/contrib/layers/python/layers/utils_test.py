@@ -294,7 +294,6 @@ class NPositiveIntegersTest(test.TestCase):
     self.assertEqual(utils.n_positive_integers(2, 2), (2, 2))
     self.assertEqual(utils.n_positive_integers(2, (2, 3)), (2, 3))
     self.assertEqual(utils.n_positive_integers(3, (2, 3, 1)), (2, 3, 1))
-    self.assertEqual(utils.n_positive_integers(3, (2, 3, 1)), (2, 3, 1))
     self.assertEqual(
         utils.n_positive_integers(3, tensor_shape.TensorShape([2, 3, 1])),
         (2, 3, 1))

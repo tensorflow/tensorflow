@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef LEARNING_BRAIN_KERNELS_FUZZING_FUZZ_SESSION_H_
-#define LEARNING_BRAIN_KERNELS_FUZZING_FUZZ_SESSION_H_
+#ifndef TENSORFLOW_CORE_KERNELS_FUZZING_FUZZ_SESSION_H_
+#define TENSORFLOW_CORE_KERNELS_FUZZING_FUZZ_SESSION_H_
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/graph/graph.h"
@@ -153,4 +153,4 @@ class FuzzStringInputOp : public FuzzSession {
 }  // end namespace fuzzing
 }  // end namespace tensorflow
 
-#endif  // LEARNING_BRAIN_KERNELS_FUZZING_FUZZ_SESSION_H_
+#endif  // TENSORFLOW_CORE_KERNELS_FUZZING_FUZZ_SESSION_H_

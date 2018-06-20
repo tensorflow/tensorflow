@@ -17,21 +17,21 @@ limitations under the License.
 #define TENSORFLOW_JAVA_SRC_GEN_CC_JAVA_DEFS_H_
 
 #include <string>
-#include <vector>
-#include <deque>
-
-#include "tensorflow/core/platform/env.h"
+#include <list>
+#include <map>
+#include <utility>
 
 namespace tensorflow {
 namespace java {
 
 // An enumeration of different modifiers commonly used in Java
 enum Modifier {
-  PUBLIC    = (1 << 0),
+  PACKAGE = 0,
+  PUBLIC = (1 << 0),
   PROTECTED = (1 << 1),
-  PRIVATE   = (1 << 2),
-  STATIC    = (1 << 3),
-  FINAL     = (1 << 4),
+  PRIVATE = (1 << 2),
+  STATIC = (1 << 3),
+  FINAL = (1 << 4),
 };
 
 class Annotation;
@@ -75,6 +75,8 @@ class Type {
     // Reflection API does
     return Type(Type::PRIMITIVE, "void");
   }
+  static Type Generic(const string& name) { return Type(Type::GENERIC, name); }
+  static Type Wildcard() { return Type(Type::GENERIC, ""); }
   static Type Class(const string& name, const string& package = "") {
     return Type(Type::CLASS, name, package);
   }
@@ -83,9 +85,6 @@ class Type {
   }
   static Type Enum(const string& name, const string& package = "") {
     return Type(Type::ENUM, name, package);
-  }
-  static Type Generic(const string& name = "") {
-    return Type(Type::GENERIC, name);
   }
   static Type ClassOf(const Type& type) {
     return Class("Class").add_parameter(type);
@@ -99,22 +98,21 @@ class Type {
   const Kind& kind() const { return kind_; }
   const string& name() const { return name_; }
   const string& package() const { return package_; }
-  const string& description() const { return description_; }
-  Type& description(const string& description) {
-    description_ = description;
-    return *this;
+  const string canonical_name() const {
+    return package_.empty() ? name_ : package_ + "." + name_;
   }
-  const std::vector<Type>& parameters() const { return parameters_; }
+  bool wildcard() const { return name_.empty(); }  // only wildcards has no name
+  const std::list<Type>& parameters() const { return parameters_; }
   Type& add_parameter(const Type& parameter) {
     parameters_.push_back(parameter);
     return *this;
   }
-  const std::vector<Annotation>& annotations() const { return annotations_; }
+  const std::list<Annotation>& annotations() const { return annotations_; }
   Type& add_annotation(const Annotation& annotation) {
     annotations_.push_back(annotation);
     return *this;
   }
-  const std::deque<Type>& supertypes() const { return supertypes_; }
+  const std::list<Type>& supertypes() const { return supertypes_; }
   Type& add_supertype(const Type& type) {
     if (type.kind_ == CLASS) {
       supertypes_.push_front(type);  // keep superclass at the front of the list
@@ -122,14 +120,6 @@ class Type {
       supertypes_.push_back(type);
     }
     return *this;
-  }
-  // Returns true if "type" is of a known collection type (only a few for now)
-  bool IsCollection() const {
-    return name_ == "List" || name_ == "Iterable";
-  }
-  // Returns true if this instance is a wildcard (<?>)
-  bool IsWildcard() const {
-    return kind_ == GENERIC && name_.empty();
   }
 
  protected:
@@ -140,10 +130,9 @@ class Type {
   Kind kind_;
   string name_;
   string package_;
-  string description_;
-  std::vector<Type> parameters_;
-  std::vector<Annotation> annotations_;
-  std::deque<Type> supertypes_;
+  std::list<Type> parameters_;
+  std::list<Annotation> annotations_;
+  std::list<Type> supertypes_;
 };
 
 // Definition of a Java annotation
@@ -183,16 +172,11 @@ class Variable {
   const string& name() const { return name_; }
   const Type& type() const { return type_; }
   bool variadic() const { return variadic_; }
-  const string& description() const { return description_; }
-  Variable& description(const string& description) {
-    description_ = description;
-    return *this;
-  }
+
  private:
   string name_;
   Type type_;
   bool variadic_;
-  string description_;
 
   Variable(const string& name, const Type& type, bool variadic)
     : name_(name), type_(type), variadic_(variadic) {}
@@ -213,26 +197,12 @@ class Method {
   bool constructor() const { return constructor_; }
   const string& name() const { return name_; }
   const Type& return_type() const { return return_type_; }
-  const string& description() const { return description_; }
-  Method& description(const string& description) {
-    description_ = description;
-    return *this;
-  }
-  const string& return_description() const { return return_description_; }
-  Method& return_description(const string& description) {
-    return_description_ = description;
-    return *this;
-  }
-  const std::vector<Variable>& arguments() const { return arguments_; }
-  Method& add_arguments(const std::vector<Variable>& args) {
-    arguments_.insert(arguments_.cend(), args.cbegin(), args.cend());
-    return *this;
-  }
+  const std::list<Variable>& arguments() const { return arguments_; }
   Method& add_argument(const Variable& var) {
     arguments_.push_back(var);
     return *this;
   }
-  const std::vector<Annotation>& annotations() const { return annotations_; }
+  const std::list<Annotation>& annotations() const { return annotations_; }
   Method& add_annotation(const Annotation& annotation) {
     annotations_.push_back(annotation);
     return *this;
@@ -242,29 +212,38 @@ class Method {
   string name_;
   Type return_type_;
   bool constructor_;
-  string description_;
-  string return_description_;
-  std::vector<Variable> arguments_;
-  std::vector<Annotation> annotations_;
+  std::list<Variable> arguments_;
+  std::list<Annotation> annotations_;
 
   Method(const string& name, const Type& return_type, bool constructor)
     : name_(name), return_type_(return_type), constructor_(constructor) {}
 };
 
-// A piece of code to read from a file.
-class Snippet {
+// A definition of a documentation bloc for a Java element (JavaDoc)
+class Javadoc {
  public:
-  static Snippet Create(const string& fname, Env* env = Env::Default()) {
-    return Snippet(fname, env);
+  static Javadoc Create(const string& brief = "") { return Javadoc(brief); }
+  const string& brief() const { return brief_; }
+  const string& details() const { return details_; }
+  Javadoc& details(const string& details) {
+    details_ = details;
+    return *this;
   }
-  const string& data() const { return data_; }
+  const std::list<std::pair<string, string>>& tags() const { return tags_; }
+  Javadoc& add_tag(const string& tag, const string& text) {
+    tags_.push_back(std::make_pair(tag, text));
+    return *this;
+  }
+  Javadoc& add_param_tag(const string& name, const string& text) {
+    return add_tag("param", name + " " + text);
+  }
 
  private:
-  string data_;
+  string brief_;
+  string details_;
+  std::list<std::pair<string, string>> tags_;
 
-  Snippet(const string& fname, Env* env) {
-    TF_CHECK_OK(ReadFileToString(env, fname, &data_));
-  }
+  explicit Javadoc(const string& brief) : brief_(brief) {}
 };
 
 }  // namespace java

@@ -16,9 +16,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -37,7 +38,7 @@ namespace {
 class ClientTest : public ClientLibraryTestBase {};
 
 XLA_TEST_F(ClientTest, ExecuteWithLayout) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   std::vector<std::vector<int64>> layouts = {{0, 1}, {1, 0}};
   for (const std::vector<int64>& execute_layout : layouts) {
@@ -61,15 +62,15 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
       TF_ASSERT_OK_AND_ASSIGN(
           auto computed, client_->Transfer(*data, &expected_literal->shape()));
 
-      LiteralTestUtil::AssertEqualShapesAndLayouts(expected_literal->shape(),
-                                                   computed->shape());
-      LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
+      ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
+          expected_literal->shape(), computed->shape()));
+      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
     }
   }
 }
 
 XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   b.Tuple({b.ConstantR2<int32>({{1, 2}, {3, 4}}),
            b.ConstantR2<int32>({{10, 20}, {30, 40}})});
@@ -90,9 +91,9 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
       auto result,
       client_->ExecuteAndTransfer(computation, {}, &execution_options));
   LiteralTestUtil::ExpectR2Equal<int32>({{1, 2}, {3, 4}},
-                                        LiteralView::Create(*result, {0}));
+                                        LiteralSlice(*result, {0}));
   LiteralTestUtil::ExpectR2Equal<int32>({{10, 20}, {30, 40}},
-                                        LiteralView::Create(*result, {1}));
+                                        LiteralSlice(*result, {1}));
 
   EXPECT_TRUE(ShapeUtil::IsTuple(result->shape()));
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result->shape()));
@@ -107,16 +108,15 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
                                      /*minor_to_major=*/{1, 0})));
 }
 
-XLA_TEST_F(ClientTest,
-        DISABLED_ON_CPU_PARALLEL(DISABLED_ON_GPU(ExecuteParallel))) {
-  Computation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
+XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
+  XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> const_arg,
       client_->TransferToServer(*Literal::CreateR2<int32>({{5, 6}, {7, 8}})));
 
-  ComputationBuilder b(client_, TestName() + ".add");
+  XlaBuilder b(TestName() + ".add");
   b.Add(b.Parameter(0, shape, "param_0"),
         b.ConstantR2<int32>({{1, 2}, {3, 4}}));
   TF_ASSERT_OK_AND_ASSIGN(add_with_one_arg, b.Build());
@@ -124,14 +124,14 @@ XLA_TEST_F(ClientTest,
   // We can't really test parallel execution on CPU since all of the cores in a
   // CPU are presented as a single device.  So for now we test "parallel"
   // execution on a single device.
-  std::vector<Client::ComputationInstance> computation_instances;
+  std::vector<Client::XlaComputationInstance> computation_instances;
   TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
                           client_->GetDeviceHandles(1));
   ASSERT_EQ(devices.size(), 1);
 
   ExecutionOptions options = execution_options_;
   *options.add_device_handles() = devices[0];
-  computation_instances.push_back(Client::ComputationInstance(
+  computation_instances.push_back(Client::XlaComputationInstance(
       add_with_one_arg, {const_arg.get()}, options, nullptr));
 
   TF_ASSERT_OK_AND_ASSIGN(auto results,
@@ -142,7 +142,7 @@ XLA_TEST_F(ClientTest,
       auto result_literal,
       client_->Transfer(*results[0], &expected_result->shape()));
 
-  LiteralTestUtil::ExpectEqual(*expected_result, *result_literal);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*expected_result, *result_literal));
 }
 
 }  // namespace

@@ -48,7 +48,7 @@ bool ParseModelFlagsFromCommandLineFlags(
            "that information from the input file."),
       Flag("input_arrays", parsed_flags.input_arrays.bind(),
            parsed_flags.input_arrays.default_value(),
-           "Names of the output arrays, comma-separated. If not specified, "
+           "Names of the input arrays, comma-separated. If not specified, "
            "will try to read that information from the input file."),
       Flag("output_array", parsed_flags.output_array.bind(),
            parsed_flags.output_array.default_value(),
@@ -72,12 +72,18 @@ bool ParseModelFlagsFromCommandLineFlags(
            "Shapes corresponding to --input_arrays, colon-separated. For "
            "many models each shape takes the form batch size, input array "
            "height, input array width, input array depth."),
+      Flag("batch_size", parsed_flags.batch_size.bind(),
+           parsed_flags.batch_size.default_value(),
+           "Batch size for the model. Replaces the first dimension of an "
+           "input size array if undefined. Use only with SavedModels when "
+           "--input_shapes flag is not specified. Always use --input_shapes "
+           "flag with frozen graphs."),
       Flag("input_data_type", parsed_flags.input_data_type.bind(),
            parsed_flags.input_data_type.default_value(),
            "Deprecated: use --input_data_types instead. Input array type, if "
            "not already provided in the graph. "
            "Typically needs to be specified when passing arbitrary arrays "
-           "to --input_array."),
+           "to --input_arrays."),
       Flag("input_data_types", parsed_flags.input_data_types.bind(),
            parsed_flags.input_data_types.default_value(),
            "Input arrays types, comma-separated, if not already provided in "
@@ -118,14 +124,6 @@ bool ParseModelFlagsFromCommandLineFlags(
            parsed_flags.model_checks.default_value(),
            "A list of model checks to be applied to verify the form of the "
            "model.  Applied after the graph transformations after import."),
-      Flag("graphviz_first_array", parsed_flags.graphviz_first_array.bind(),
-           parsed_flags.graphviz_first_array.default_value(),
-           "If set, defines the start of the sub-graph to be dumped to "
-           "GraphViz."),
-      Flag(
-          "graphviz_last_array", parsed_flags.graphviz_last_array.bind(),
-          parsed_flags.graphviz_last_array.default_value(),
-          "If set, defines the end of the sub-graph to be dumped to GraphViz."),
       Flag("dump_graphviz", parsed_flags.dump_graphviz.bind(),
            parsed_flags.dump_graphviz.default_value(),
            "Dump graphviz during LogDump call. If string is non-empty then "
@@ -148,6 +146,22 @@ bool ParseModelFlagsFromCommandLineFlags(
            "ranging from 32 to 127. This is disallowed by default so as to "
            "catch common copy-and-paste issues where invisible unicode "
            "characters are unwittingly added to these strings."),
+      Flag(
+          "arrays_extra_info_file", parsed_flags.arrays_extra_info_file.bind(),
+          parsed_flags.arrays_extra_info_file.default_value(),
+          "Path to an optional file containing a serialized ArraysExtraInfo "
+          "proto allowing to pass extra information about arrays not specified "
+          "in the input model file, such as extra MinMax information."),
+      Flag("model_flags_file", parsed_flags.model_flags_file.bind(),
+           parsed_flags.model_flags_file.default_value(),
+           "Path to an optional file containing a serialized ModelFlags proto. "
+           "Options specified on the command line will override the values in "
+           "the proto."),
+      Flag("change_concat_input_ranges",
+           parsed_flags.change_concat_input_ranges.bind(),
+           parsed_flags.change_concat_input_ranges.default_value(),
+           "Boolean to change the behavior of min/max ranges for inputs and"
+           " output of the concat operators."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
@@ -158,8 +172,6 @@ bool ParseModelFlagsFromCommandLineFlags(
     if (!tensorflow::Flags::Parse(argc, argv, flags)) return false;
   }
   auto& dump_options = *GraphVizDumpOptions::singleton();
-  dump_options.graphviz_first_array = parsed_flags.graphviz_first_array.value();
-  dump_options.graphviz_last_array = parsed_flags.graphviz_last_array.value();
   dump_options.dump_graphviz_video = parsed_flags.dump_graphviz_video.value();
   dump_options.dump_graphviz = parsed_flags.dump_graphviz.value();
 
@@ -170,7 +182,24 @@ void ReadModelFlagsFromCommandLineFlags(
     const ParsedModelFlags& parsed_model_flags, ModelFlags* model_flags) {
   toco::port::CheckInitGoogleIsDone("InitGoogle is not done yet");
 
-// "batch" flag only exists internally
+  // Load proto containing the initial model flags.
+  // Additional flags specified on the command line will overwrite the values.
+  if (parsed_model_flags.model_flags_file.specified()) {
+    string model_flags_file_contents;
+    QCHECK(port::file::GetContents(parsed_model_flags.model_flags_file.value(),
+                                   &model_flags_file_contents,
+                                   port::file::Defaults())
+               .ok())
+        << "Specified --model_flags_file="
+        << parsed_model_flags.model_flags_file.value()
+        << " was not found or could not be read";
+    QCHECK(ParseFromStringEitherTextOrBinary(model_flags_file_contents,
+                                             model_flags))
+        << "Specified --model_flags_file="
+        << parsed_model_flags.model_flags_file.value()
+        << " could not be parsed";
+  }
+
 #ifdef PLATFORM_GOOGLE
   CHECK(!((base::SpecifiedOnCommandLine("batch") &&
            parsed_model_flags.variable_batch.specified())))
@@ -327,9 +356,6 @@ void ReadModelFlagsFromCommandLineFlags(
         CHECK(absl::SimpleAtoi(value, &size));
         CHECK_GT(size, 0);
         rnn_state_proto->set_size(size);
-      } else if (key == "manually_create") {
-        CHECK_EQ(absl::AsciiStrToLower(value), "true");
-        rnn_state_proto->set_manually_create(true);
       } else {
         LOG(FATAL) << "Unknown key '" << key << "' in --rnn_states";
       }
@@ -368,6 +394,18 @@ void ReadModelFlagsFromCommandLineFlags(
       parsed_model_flags.allow_nonascii_arrays.value());
   model_flags->set_allow_nonexistent_arrays(
       parsed_model_flags.allow_nonexistent_arrays.value());
+  model_flags->set_change_concat_input_ranges(
+      parsed_model_flags.change_concat_input_ranges.value());
+
+  if (parsed_model_flags.arrays_extra_info_file.specified()) {
+    string arrays_extra_info_file_contents;
+    CHECK(port::file::GetContents(
+              parsed_model_flags.arrays_extra_info_file.value(),
+              &arrays_extra_info_file_contents, port::file::Defaults())
+              .ok());
+    ParseFromStringEitherTextOrBinary(arrays_extra_info_file_contents,
+                                      model_flags->mutable_arrays_extra_info());
+  }
 }
 
 ParsedModelFlags* UncheckedGlobalParsedModelFlags(bool must_already_exist) {

@@ -22,7 +22,6 @@ cc_library(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
-        "//tensorflow/contrib/lite/tools:mutable_op_resolver",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
@@ -39,7 +38,6 @@ cc_library(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
-        "//tensorflow/contrib/lite/tools:mutable_op_resolver",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
@@ -85,16 +83,4 @@ cc_test(
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

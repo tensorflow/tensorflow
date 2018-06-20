@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_NNAPI_PARSE_TESTDATA_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_NNAPI_PARSE_TESTDATA_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_NNAPI_PARSE_TESTDATA_H_
+#define TENSORFLOW_CONTRIB_LITE_NNAPI_PARSE_TESTDATA_H_
 
 #include <vector>
 #include "tensorflow/contrib/lite/interpreter.h"
@@ -66,9 +66,10 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter, const Example&);
 //     output: "12,3,4,545,3"
 //     output: "0.01,0.02"
 //   }
-bool ParseAndRunTests(std::istream* input, TestRunner* test_runner);
+bool ParseAndRunTests(std::istream* input, TestRunner* test_runner,
+                      int max_invocations = -1);
 
 }  // namespace testing
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_NNAPI_PARSE_TESTDATA_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_NNAPI_PARSE_TESTDATA_H_

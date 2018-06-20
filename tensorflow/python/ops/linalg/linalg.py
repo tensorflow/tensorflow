@@ -22,10 +22,13 @@ from __future__ import print_function
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.python.ops.linalg.linalg_impl import *
 from tensorflow.python.ops.linalg.linear_operator import *
+from tensorflow.python.ops.linalg.linear_operator_block_diag import *
+from tensorflow.python.ops.linalg.linear_operator_circulant import *
 from tensorflow.python.ops.linalg.linear_operator_composition import *
 from tensorflow.python.ops.linalg.linear_operator_diag import *
 from tensorflow.python.ops.linalg.linear_operator_full_matrix import *
 from tensorflow.python.ops.linalg.linear_operator_identity import *
+from tensorflow.python.ops.linalg.linear_operator_kronecker import *
 from tensorflow.python.ops.linalg.linear_operator_low_rank_update import *
 from tensorflow.python.ops.linalg.linear_operator_lower_triangular import *
 # pylint: enable=wildcard-import
@@ -41,4 +44,5 @@ del gen_linalg_ops
 del linalg_ops
 del math_ops
 del special_math_ops
+del tf_export
 # pylint: enable=undefined-variable

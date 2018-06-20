@@ -24,6 +24,8 @@ import warnings
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -31,10 +33,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
+from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
@@ -43,19 +47,20 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
 
-def _OpsBetween(graph, to_ops, from_ops):
+def _OpsBetween(to_ops, from_ops):
   """Build the list of operations between two lists of Operations.
 
   Args:
-    graph: a Graph.
     to_ops: list of Operations.
     from_ops: list of Operations.
 
@@ -66,20 +71,18 @@ def _OpsBetween(graph, to_ops, from_ops):
     TODO(touts): Think about returning an empty list if from_ops are not
     reachable from to_ops.  Presently it returns to_ops in that case.
   """
-  # List of booleans, indexed by operation id, indicating if
-  # an op is reached from the output of "input_ops".
-  reached_ops = [False] * (graph._last_id + 1)
+  # Ops that are reachable from the output of "input_ops".
+  reached_ops = set()
   # We only care to reach up to "output_ops" so we mark the
   # output ops as reached to avoid recursing past them.
   for op in to_ops:
-    reached_ops[op._id] = True
+    reached_ops.add(op)
   gradients_impl._MarkReachedOps(from_ops, reached_ops)
   between_ops = gradients_impl._GatherInputs(to_ops, reached_ops)
   between_ops.sort(key=lambda x: -x._id)
   return between_ops
 
 
-@test_util.with_c_api
 class GradientsTest(test_util.TensorFlowTestCase):
 
   def _OpNames(self, op_list):
@@ -89,18 +92,18 @@ class GradientsTest(test_util.TensorFlowTestCase):
     self.assertEquals(self._OpNames(ops1), self._OpNames(ops2))
 
   def testOpsBetweenSimple(self):
-    with ops.Graph().as_default() as g:
+    with ops.Graph().as_default():
       t1 = constant(1.0)
       t2 = constant(2.0)
       t3 = array_ops.stack([t1, t2])
     # Full graph
     self._assertOpListEqual([t3.op, t2.op, t1.op],
-                            _OpsBetween(g, [t3.op], [t1.op, t2.op]))
+                            _OpsBetween([t3.op], [t1.op, t2.op]))
     # Only t1, t3.
-    self._assertOpListEqual([t3.op, t1.op], _OpsBetween(g, [t3.op], [t1.op]))
+    self._assertOpListEqual([t3.op, t1.op], _OpsBetween([t3.op], [t1.op]))
 
   def testOpsBetweenUnreachable(self):
-    with ops.Graph().as_default() as g:
+    with ops.Graph().as_default():
       t1 = constant(1.0)
       t2 = constant(2.0)
       _ = array_ops.stack([t1, t2])
@@ -108,10 +111,10 @@ class GradientsTest(test_util.TensorFlowTestCase):
       t5 = constant(2.0)
       t6 = array_ops.stack([t4, t5])
     # Elements of to_ops are always listed.
-    self._assertOpListEqual([t6.op], _OpsBetween(g, [t6.op], [t1.op]))
+    self._assertOpListEqual([t6.op], _OpsBetween([t6.op], [t1.op]))
 
   def testOpsBetweenCut(self):
-    with ops.Graph().as_default() as g:
+    with ops.Graph().as_default():
       t1 = constant(1.0)
       t2 = constant(2.0)
       t3 = array_ops.stack([t1, t2])
@@ -120,10 +123,10 @@ class GradientsTest(test_util.TensorFlowTestCase):
       t6 = constant([2.0])
       t7 = array_ops.concat([t5, t6], 0)
     self._assertOpListEqual([t7.op, t5.op, t4.op],
-                            _OpsBetween(g, [t7.op], [t4.op]))
+                            _OpsBetween([t7.op], [t4.op]))
 
   def testOpsBetweenCycle(self):
-    with ops.Graph().as_default() as g:
+    with ops.Graph().as_default():
       t1 = constant(1.0)
       t2 = constant(2.0)
       t3 = array_ops.stack([t1, t2])
@@ -132,11 +135,11 @@ class GradientsTest(test_util.TensorFlowTestCase):
       t6 = array_ops.concat([t4, t5], 0)
       t7 = array_ops.concat([t6, t3], 0)
     self._assertOpListEqual([t6.op, t4.op, t3.op],
-                            _OpsBetween(g, [t6.op], [t3.op]))
+                            _OpsBetween([t6.op], [t3.op]))
     self._assertOpListEqual([t7.op, t6.op, t5.op, t4.op, t3.op, t1.op],
-                            _OpsBetween(g, [t7.op], [t1.op, t5.op]))
+                            _OpsBetween([t7.op], [t1.op, t5.op]))
     self._assertOpListEqual([t6.op, t5.op, t4.op, t3.op, t2.op],
-                            _OpsBetween(g, [t6.op], [t2.op, t5.op]))
+                            _OpsBetween([t6.op], [t2.op, t5.op]))
 
   def testGradients(self):
     with ops.Graph().as_default():
@@ -283,10 +286,6 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertEqual(10.0, grads[1].eval())
 
   def testNoGradientForStringOutputs(self):
-    # This test can't be run twice because the TestStringOutput gradient can
-    # only be registered once. Just run with the C API enabled.
-    if not ops._USE_C_API: return
-
     with ops.Graph().as_default():
 
       def _TestOpGrad(_, float_grad, string_grad):
@@ -432,7 +431,6 @@ class GradientsTest(test_util.TensorFlowTestCase):
         np.testing.assert_allclose(a, b)
 
 
-@test_util.with_c_api
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
   @classmethod
@@ -522,7 +520,6 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
         f.add_to_graph(ops.Graph())
 
 
-@test_util.with_c_api
 class StopGradientTest(test_util.TensorFlowTestCase):
 
   def testStopGradient(self):
@@ -533,7 +530,6 @@ class StopGradientTest(test_util.TensorFlowTestCase):
     assert igrad is None
 
 
-@test_util.with_c_api
 class PreventGradientTest(test_util.TensorFlowTestCase):
 
   def testPreventGradient(self):
@@ -544,7 +540,6 @@ class PreventGradientTest(test_util.TensorFlowTestCase):
         _ = gradients.gradients(out, inp)
 
 
-@test_util.with_c_api
 class HessianVectorProductTest(test_util.TensorFlowTestCase):
 
   def testHessianVectorProduct(self):
@@ -573,7 +568,6 @@ class HessianVectorProductTest(test_util.TensorFlowTestCase):
       self.assertAllClose(hess_v_value, hess_v_actual)
 
 
-@test_util.with_c_api
 class HessianTest(test_util.TensorFlowTestCase):
 
   def testHessian1D(self):
@@ -661,7 +655,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     self.assertAllEqual((m, n, m, n), hess_actual.shape)
     self.assertAllClose(hess_value, hess_actual.reshape((m * n, m * n)))
 
-@test_util.with_c_api
+
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesToTensor(self):
@@ -742,7 +736,6 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         str(w[0].message))
 
 
-@test_util.with_c_api
 class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
 
   def testRealOnly(self):
@@ -753,6 +746,251 @@ class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
         r"Gradients of complex tensors must set grad_ys "
         r"\(y\.dtype = tf\.complex64\)"):
       gradients.gradients(y, x)
+
+
+class ResourceCondTest(test_util.TensorFlowTestCase):
+
+  def testBasic(self):
+    gamma = resource_variable_ops.ResourceVariable(
+        np.random.random((3,)),
+        dtype="float32", name="gamma")
+
+    inputs = array_ops.ones(shape=(3,), dtype="float32")
+
+    def TestFn():
+      output = inputs + gamma
+      return output
+
+    training = array_ops.placeholder_with_default(True, shape=())
+    output = control_flow_ops.cond(
+        training, TestFn, lambda: inputs)
+
+    loss = output
+
+    grads = gradients.gradients(
+        loss, [gamma])
+    self.assertTrue(None not in grads)
+
+
+class CustomGradientTest(test_util.TensorFlowTestCase):
+
+  def testCustomGradientTrivial(self):
+
+    @custom_gradient.custom_gradient
+    def MyIdentity(x):
+
+      def Grad(dy):
+        return [3 * dy]
+
+      return x, Grad
+
+    with ops.Graph().as_default():
+      x = constant(3.)
+      y = MyIdentity(MyIdentity(x))
+      dy = gradients.gradients(y, x)[0]
+      with session.Session():
+        self.assertEqual(9., dy.eval())
+
+  def testCustomGradient(self):
+
+    @custom_gradient.custom_gradient
+    def MyMultiply(x1, x2):
+      result = x1 * x2
+
+      def Grad(dy):
+        # Switched the ordering here.
+        return [dy * x1, dy * x2]
+
+      return result, Grad
+
+    with ops.Graph().as_default():
+      x1 = constant(3.)
+      x2 = constant(5.)
+      y = MyMultiply(x1, x2)
+      dy = gradients.gradients(y, [x1, x2])
+      with session.Session() as sess:
+        self.assertAllEqual([3., 5.], sess.run(dy))
+
+  def testCustomGradientErrors(self):
+
+    @custom_gradient.custom_gradient
+    def F(x):
+
+      def Grad(_):
+        raise RuntimeError("x")
+
+      return x, Grad
+
+    with ops.Graph().as_default():
+      x = constant(1.0)
+      y = F(x)
+      with self.assertRaises(RuntimeError):
+        gradients.gradients(y, x)
+
+  def testCustomGradientWithVariables(self):
+
+    @custom_gradient.custom_gradient
+    def F(x):
+      out = core_layers.dense(x, 3, use_bias=False)
+
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        self.assertEqual(1, len(variables))
+        grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
+        return grads[0], [array_ops.ones((4, 3))]
+
+      return out, Grad
+
+    with ops.Graph().as_default():
+      x = array_ops.ones((2, 4))
+      with variable_scope.variable_scope("f", use_resource=True) as vs:
+        y = F(x)
+        all_vars = vs.global_variables()
+        assert len(all_vars) == 1
+      grads = gradients.gradients(y, [x, all_vars[0]])
+      for g in grads:
+        self.assertTrue(g is not None)
+      with session.Session() as sess:
+        sess.run(variables.global_variables_initializer())
+        dw = sess.run(math_ops.reduce_sum(grads[1]))
+        self.assertEqual(12., dw)
+
+  def testCustomGradientWithVariablesEager(self):
+    with context.eager_mode():
+      layer = core_layers.Dense(4, use_bias=False)
+
+      @custom_gradient.custom_gradient
+      def F(x):
+        out = layer(x)
+
+        def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+          del out_grad
+          self.assertEqual(1, len(variables))
+          return (array_ops.ones((3, 2)),
+                  [array_ops.ones((2, 4))])
+
+        return out, Grad
+
+      x = array_ops.ones((3, 2)) + 2.
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = F(x)
+      w, = layer.variables
+      dx, dw = tape.gradient(y, [x, w])
+      self.assertEqual(6., math_ops.reduce_sum(dx).numpy())
+      self.assertEqual(8., math_ops.reduce_sum(dw).numpy())
+
+  def testCustomGradientErrorsWithNonResourceVariables(self):
+
+    def F(x, use_resource=False):
+      with variable_scope.variable_scope("f", use_resource=use_resource):
+        out = core_layers.dense(x, 4, use_bias=False)
+
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        del out_grad
+        self.assertEqual(1, len(variables))
+        return (array_ops.ones((3, 2)), [array_ops.ones((2, 4))])
+
+      return out, Grad
+
+    @custom_gradient.custom_gradient
+    def FResource(x):
+      return F(x, use_resource=True)
+
+    @custom_gradient.custom_gradient
+    def FNonResource(x):
+      return F(x, use_resource=False)
+
+    x = array_ops.ones((3, 2)) + 2.
+
+    # Wrapping scope has use_resource=True but inner scope sets to False. Fails.
+    with variable_scope.variable_scope("vs1", use_resource=True):
+      with self.assertRaisesWithPredicateMatch(TypeError,
+                                               "must be `ResourceVariable`s"):
+        FNonResource(x)
+
+    # Wrapping scope has use_resource=False but inner scope sets to True.
+    # Passes.
+    with variable_scope.variable_scope("vs2", use_resource=False):
+      FResource(x)
+
+  def testWithNumpyInputs(self):
+    with context.eager_mode():
+
+      @custom_gradient.custom_gradient
+      def F(x):
+        out = x
+
+        def Grad(_):
+          return (None, None)
+
+        return out, Grad
+
+      x = np.ones((3, 2), dtype=np.float32)
+      # Smoke test to ensure numpy inputs are accepted
+      F(x)
+
+  def testRVGradientsDynamicCond(self):
+    with self.test_session():
+      alpha = resource_variable_ops.ResourceVariable(
+          np.random.random((1,)),
+          dtype="float32")
+
+      conditional = array_ops.placeholder_with_default(True, shape=())
+      output = control_flow_ops.cond(
+          conditional, lambda: alpha * 2, lambda: alpha * 3)
+
+      g, = gradients_impl.gradients(output, alpha)
+      variables.global_variables_initializer().run()
+      self.assertAllEqual(g.eval(), [2.0])
+      self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
+
+
+class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
+
+  def _assert_indexed_slices_equal(self, left, right):
+    self.assertAllEqual(
+        self.evaluate(ops.convert_to_tensor(left)),
+        self.evaluate(ops.convert_to_tensor(right)))
+
+  def testNoGradients(self):
+    self.assertIsNone(gradients_impl._AggregateIndexedSlicesGradients([]))
+
+  def testOneGradient(self):
+    t = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    result = gradients_impl._AggregateIndexedSlicesGradients([t])
+    self._assert_indexed_slices_equal(t, result)
+
+  def testMultipleGradients(self):
+    t0 = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(constant_op.constant(
+        [[0., 0.], [5, 6], [7., 8.]]))
+    total = constant_op.constant(
+        [[1., 2.], [5, 6], [10., 12.]])
+    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMultipleGradientsWithNones(self):
+    t0 = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(constant_op.constant(
+        [[0., 0.], [5, 6], [7., 8.]]))
+    t3 = None
+    total = constant_op.constant(
+        [[1., 2.], [5, 6], [10., 12.]])
+    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1, t3])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMixedTensorAndIndexedSlices(self):
+    t0 = math_ops._as_indexed_slices(constant_op.constant(
+        [[1., 2.], [0, 0], [3., 4.]]))
+    t1 = constant_op.constant(
+        [[0., 0.], [5, 6], [7., 8.]])
+    total = constant_op.constant(
+        [[1., 2.], [5, 6], [10., 12.]])
+    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
 
 
 if __name__ == "__main__":

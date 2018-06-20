@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -64,6 +65,16 @@ void SetDefaultLayoutToContainer(
   return layout;
 }
 
+/* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(
+    tensorflow::gtl::ArraySlice<int64> major_to_minor) {
+  Layout layout;
+  layout.set_format(DENSE);
+  for (int i = major_to_minor.size() - 1; i >= 0; i--) {
+    layout.add_minor_to_major(major_to_minor[i]);
+  }
+  return layout;
+}
+
 /* static */ Layout LayoutUtil::MakeSparseLayout(int64 max_sparse_elements) {
   Layout layout;
   layout.set_format(SPARSE);
@@ -87,8 +98,13 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }  // namespace
 
 /* static */ Layout LayoutUtil::GetDefaultLayoutForShape(const Shape& shape) {
+  if (ShapeUtil::IsOpaque(shape) || ShapeUtil::IsToken(shape)) {
+    // Opaque and token types have empty layouts.
+    return Layout();
+  }
+
   // A Layout proto corresponds to a single array, not a tuple.
-  DCHECK(!ShapeUtil::IsTuple(shape));
+  CHECK(ShapeUtil::IsArray(shape));
   return CreateDefaultLayoutForRank(shape.dimensions_size());
 }
 
@@ -115,14 +131,15 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
       SetToDefaultLayout(&element_shape);
     }
     shape->clear_layout();
-  } else if (ShapeUtil::IsOpaque(*shape)) {
-    shape->clear_layout();
-  } else {
+  } else if (ShapeUtil::IsArray(*shape)) {
     shape->mutable_layout()->set_format(DENSE);
     tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
         minor_to_major = shape->mutable_layout()->mutable_minor_to_major();
     minor_to_major->Resize(shape->dimensions_size(), 0);
     SetDefaultLayoutToContainer(minor_to_major);
+  } else {
+    // Opaque, token types etc. have no layout.
+    shape->clear_layout();
   }
 }
 
@@ -139,8 +156,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   LayoutUtil::SetToDefaultLayout(program_shape->mutable_result());
 }
 
-/* static */ tensorflow::Status LayoutUtil::ValidateLayoutInShape(
-    const Shape& shape) {
+/* static */ Status LayoutUtil::ValidateLayoutInShape(const Shape& shape) {
   if (ShapeUtil::IsTuple(shape)) {
     // Tuple shape.
     if (shape.has_layout()) {
@@ -149,30 +165,38 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     for (auto& element_shape : shape.tuple_shapes()) {
       TF_RETURN_IF_ERROR(ValidateLayoutInShape(element_shape));
     }
-    return tensorflow::Status::OK();
-  } else if (ShapeUtil::IsOpaque(shape)) {
-    if (shape.has_layout()) {
-      return InvalidArgument("opaque should not have a layout field");
-    }
-    return tensorflow::Status::OK();
-  } else {
-    // Array shape.
+    return Status::OK();
+  } else if (ShapeUtil::IsArray(shape)) {
     if (!shape.has_layout()) {
       return InvalidArgument("shape %s does not have a layout",
                              ShapeUtil::HumanString(shape).c_str());
     }
     return ValidateLayoutForShape(shape.layout(), shape);
+  } else {
+    // Token, opaque, etc. shape.
+    if (shape.has_layout()) {
+      return InvalidArgument(
+          "shape of primitive type %s should not have a layout",
+          PrimitiveType_Name(shape.element_type()).c_str());
+    }
+    return Status::OK();
   }
 }
 
-/* static */ tensorflow::Status LayoutUtil::ValidateLayoutForShape(
-    const Layout& layout, const Shape& shape) {
+/* static */ Status LayoutUtil::ValidateLayoutForShape(const Layout& layout,
+                                                       const Shape& shape) {
   if (ShapeUtil::IsTuple(shape)) {
     return InvalidArgument("a single Layout is not valid for tuple shapes");
   }
 
-  if (ShapeUtil::IsOpaque(shape)) {
-    return tensorflow::Status::OK();
+  if (!ShapeUtil::IsArray(shape)) {
+    if (layout.minor_to_major_size() != 0 ||
+        layout.padded_dimensions_size() != 0) {
+      return InvalidArgument(
+          "shape of primitive type %s should not have a non-trivial layout",
+          PrimitiveType_Name(shape.element_type()).c_str());
+    }
+    return Status::OK();
   }
 
   if (layout.format() == INVALID_FORMAT) {
@@ -224,7 +248,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     }
   }
 
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 /* static */ void LayoutUtil::ClearLayout(Shape* shape) {
@@ -263,7 +287,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ bool LayoutUtil::IsPadded(const Shape& shape) {
-  if (ShapeUtil::IsTuple(shape) || !HasLayout(shape) ||
+  if (!ShapeUtil::IsArray(shape) || !HasLayout(shape) ||
       shape.layout().padded_dimensions_size() == 0) {
     return false;
   }
@@ -313,7 +337,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     // Tuple shape: all subshapes must have a layout.
     return std::all_of(shape.tuple_shapes().begin(), shape.tuple_shapes().end(),
                        [](const Shape& s) { return HasLayout(s); });
-  } else if (ShapeUtil::IsOpaque(shape)) {
+  } else if (!ShapeUtil::IsArray(shape)) {
+    // Opaque, token types etc. ignore layout.
     return true;
   }
   return shape.has_layout() && shape.layout().format() != INVALID_FORMAT;
@@ -383,7 +408,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 namespace {
 
 // Internal helper for recursively copying layouts.
-tensorflow::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
+Status CopyLayoutInternal(const Shape& src, Shape* dst) {
   if (ShapeUtil::IsTuple(src) != ShapeUtil::IsTuple(*dst)) {
     return InvalidArgument(
         "cannot copy layout from shape: shape structure differs");
@@ -410,25 +435,21 @@ tensorflow::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
       dst->clear_layout();
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace
 
 /* static */
-tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
-                                                       Shape* dst) {
+Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return CopyLayoutInternal(src, dst);
 }
 
 /* static */ bool LayoutUtil::LayoutsInShapesEqual(const Shape& lhs,
                                                    const Shape& rhs) {
-  if (ShapeUtil::IsTuple(lhs) != ShapeUtil::IsTuple(rhs)) {
-    return false;
-  }
   if (ShapeUtil::IsTuple(lhs)) {
-    if (ShapeUtil::TupleElementCount(lhs) !=
-        ShapeUtil::TupleElementCount(rhs)) {
+    if (!ShapeUtil::IsTuple(rhs) || ShapeUtil::TupleElementCount(lhs) !=
+                                        ShapeUtil::TupleElementCount(rhs)) {
       return false;
     }
     for (int i = 0; i < ShapeUtil::TupleElementCount(lhs); ++i) {
@@ -437,9 +458,12 @@ tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
       }
     }
     return true;
-  } else {
+  } else if (ShapeUtil::IsArray(lhs)) {
     return ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs) &&
            LayoutUtil::Equal(lhs.layout(), rhs.layout());
+  } else {
+    // Layouts of non-array and non-tuple shapes is ignored.
+    return true;
   }
 }
 
@@ -463,6 +487,27 @@ tensorflow::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src,
 std::ostream& operator<<(std::ostream& out, const Layout& layout) {
   out << LayoutUtil::HumanString(layout);
   return out;
+}
+
+/*static*/ size_t LayoutUtil::Hash(const Layout& layout) {
+  using tensorflow::hash;
+  using tensorflow::Hash64Combine;
+
+  size_t hash_value = hash<Format>()(layout.format());
+
+  for (int64 minor_to_major : layout.minor_to_major()) {
+    hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
+  }
+
+  for (int64 padded_dim : layout.padded_dimensions()) {
+    hash_value = Hash64Combine(hash_value, hash<int64>()(padded_dim));
+  }
+
+  hash_value =
+      Hash64Combine(hash_value, hash<PaddingValue>()(layout.padding_value()));
+  hash_value = Hash64Combine(hash_value, layout.max_sparse_elements());
+
+  return hash_value;
 }
 
 }  // namespace xla

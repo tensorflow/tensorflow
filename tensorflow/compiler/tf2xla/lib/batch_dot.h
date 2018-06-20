@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_BATCH_DOT_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_BATCH_DOT_H_
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 
 namespace tensorflow {
 
@@ -27,7 +27,10 @@ namespace tensorflow {
 // viewed as an element of a batch), and arranges the individual results
 // in a single output tensor of the same batch size. Each of the
 // individual slices can optionally be transposed before multiplication by
-// setting the `transpose_x` or `transpose_y` flag to `true`.
+// setting the `transpose_x` or `transpose_y` flag to `true`. Similarly, each
+// can be elementwise-complex-conjugated by setting the `conjugate_x` or
+// `conjugate_y` flag to `true`. To apply a Hermitian adjoint to `x`, set both
+// `transpose_x` and `conjugate_x` to `true`, and analogously for `y`.
 //
 // The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
 // and `[..., r_y, c_y]`.
@@ -40,11 +43,10 @@ namespace tensorflow {
 // It is computed as:
 //
 //     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
-// TODO(phawkins): add an option to take the complex conjugate of the LHS or
-// RHS.
-xla::StatusOr<xla::ComputationDataHandle> BatchDot(
-    xla::ComputationBuilder* builder, xla::ComputationDataHandle x,
-    xla::ComputationDataHandle y, bool transpose_x, bool transpose_y);
+xla::StatusOr<xla::XlaOp> BatchDot(xla::XlaBuilder* builder, xla::XlaOp x,
+                                   xla::XlaOp y, bool transpose_x,
+                                   bool transpose_y, bool conjugate_x = false,
+                                   bool conjugate_y = false);
 
 }  // namespace tensorflow
 

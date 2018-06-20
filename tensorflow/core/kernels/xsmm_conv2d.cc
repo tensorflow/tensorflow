@@ -16,7 +16,7 @@ limitations under the License.
 // Make this file empty (or nearly empty) so that it can be compiled even when
 // libxsmm is not available.
 
-#ifndef TENSORFLOW_USE_LIBXSMM
+#ifndef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 void dummy_xsmm_conv2d_ensure_file_is_not_empty();
 #else
 
@@ -27,17 +27,14 @@ void dummy_xsmm_conv2d_ensure_file_is_not_empty();
 
 #include <stdlib.h>
 #include <cstring>
-#if 0
-#include <omp.h>
-#endif
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
-#include "libxsmm_main.h"  // TODO(bsteiner): API to avoid incl. header from src/
 #include "include/libxsmm_cpuid.h"
 #include "include/libxsmm_malloc.h"
+#include "third_party/libxsmm/src/libxsmm_main.h"  // TODO(bsteiner): API to avoid incl. header from src/
 
 namespace tensorflow {
 
@@ -176,8 +173,16 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
                                    InputPtr input, FilterPtr filter,
                                    OutputPtr output) {
 #if defined(LIBXSMM_DETAILED_TIMING)
-  unsigned long long l_tick1, l_tick2, l_tick3, l_tick4, l_tick5, l_tick6,
-      l_tick7, l_tick8, l_tick9, l_tick10;
+  uint64 l_tick1;
+  uint64 l_tick2;
+  uint64 l_tick3;
+  uint64 l_tick4;
+  uint64 l_tick5;
+  uint64 l_tick6;
+  uint64 l_tick7;
+  uint64 l_tick8;
+  uint64 l_tick9;
+  uint64 l_tick10;
   l_tick1 = libxsmm_timer_tick();
 #endif
   // setup scoped allocator, which adopts the allocator from the context
@@ -360,7 +365,6 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   l_tick6 = libxsmm_timer_tick();
 #endif
 
-#if 1
   BlockingCounter counter(num_threads);
 
   for (int i = 0; i < num_threads; ++i) {
@@ -371,14 +375,6 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     });
   }
   counter.Wait();
-#else
-#pragma omp parallel
-  {
-    chk_libxsmm_err(
-        libxsmm_dnn_execute_st(libxsmm_handle, kind, 0, omp_get_thread_num()),
-        "Worker");
-  }
-#endif
 
 #if defined(LIBXSMM_DETAILED_TIMING)
   l_tick7 = libxsmm_timer_tick();
@@ -465,6 +461,7 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   return true;  // Succeeded
 }
 
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 template <typename T>
 struct XsmmFwdConv2D<CPUDevice, T> {
   bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
@@ -473,7 +470,9 @@ struct XsmmFwdConv2D<CPUDevice, T> {
                                   input, filter, output);
   }
 };
+#endif
 
+#ifdef TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS
 template <typename T>
 struct XsmmBkwInputConv2D<CPUDevice, T> {
   bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
@@ -491,6 +490,7 @@ struct XsmmBkwFilterConv2D<CPUDevice, T> {
                                   input, filter, output);
   }
 };
+#endif
 
 }  // namespace functor
 
@@ -500,4 +500,4 @@ template struct functor::XsmmBkwFilterConv2D<CPUDevice, float>;
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_USE_LIBXSMM
+#endif  // TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS

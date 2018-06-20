@@ -83,8 +83,8 @@ string LocalDeviceToFullDeviceName(const string& device) {
   return strings::StrCat("/job:localhost/replica:0/task:0/device:", device);
 }
 
-constexpr std::array<DataType, 4> kAllXlaTypes = {
-    {DT_INT32, DT_FLOAT, DT_BOOL, DT_COMPLEX64}};
+constexpr std::array<DataType, 5> kAllXlaTypes = {
+    {DT_INT32, DT_FLOAT, DT_BOOL, DT_COMPLEX64, DT_INT64}};
 
 // An OpTestBuilder is a graph builder class that takes as input an operator to
 // test, its inputs and attributes, and builds a graph that executes the
@@ -619,8 +619,8 @@ std::vector<int64> OpTest::ImageDims(TensorFormat format, int batch,
         dims.push_back(dim);
       }
       break;
-    case FORMAT_NCHW_VECT_C:
-      LOG(FATAL) << "FORMAT_NCHW_VECT_C not supported.";
+    default:
+      LOG(FATAL) << "Tensor format " << ToString(format) << " not supported.";
   }
   return dims;
 }

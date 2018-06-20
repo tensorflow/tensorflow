@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
@@ -48,7 +48,7 @@ void SendOp::Compile(XlaOpKernelContext* ctx) {
   ctx->builder()->Send(ctx->Input(0), channel);
 }
 
-REGISTER_XLA_OP(Name("_XLASend"), SendOp);
+REGISTER_XLA_OP(Name("XlaSend"), SendOp);
 
 class RecvOp : public XlaOpKernel {
  public:
@@ -68,7 +68,7 @@ RecvOp::RecvOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
   TensorShape tensor_shape;
   DataType dtype;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &tensor_shape));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype));
   OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, tensor_shape, &shape_));
 }
 
@@ -79,7 +79,7 @@ void RecvOp::Compile(XlaOpKernelContext* ctx) {
   ctx->SetOutput(0, ctx->builder()->Recv(shape_, channel));
 }
 
-REGISTER_XLA_OP(Name("_XLARecv"), RecvOp);
+REGISTER_XLA_OP(Name("XlaRecv"), RecvOp);
 
 }  // namespace
 }  // namespace tensorflow

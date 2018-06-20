@@ -123,6 +123,10 @@ done
 
 BAZEL_FLAGS=$(str_strip "${BAZEL_FLAGS}")
 
+if [[ -z "$GIT_TAG_OVERRIDE" ]]; then
+  BAZEL_FLAGS+=" --action_env=GIT_TAG_OVERRIDE"
+fi
+
 echo "Using Bazel flags: ${BAZEL_FLAGS}"
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
@@ -318,6 +322,10 @@ create_activate_virtualenv_and_install_tensorflow() {
   pip install -v ${PIP_FLAGS} ${WHL_PATH} || \
     die "pip install (forcing to reinstall tensorflow) FAILED"
   echo "Successfully installed pip package ${TF_WHEEL_PATH}"
+
+  # Force downgrade setuptools.
+  pip install --upgrade setuptools==39.1.0
+
 }
 
 ################################################################################

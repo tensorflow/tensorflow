@@ -13,18 +13,6 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//visibility:public"])
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_cc_binary(
     name = "clock_cycle_profiling",
     testonly = 1,

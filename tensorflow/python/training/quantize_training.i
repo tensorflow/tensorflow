@@ -56,6 +56,11 @@ PyObject* DoQuantizeTrainingOnGraphDefHelper(
 
 %insert("python") %{
 def do_quantize_training_on_graphdef(input_graph, num_bits):
+  """A general quantization scheme is being developed in @{tf.contrib.quantize}.
+
+  Consider using that instead, though since it is in the tf.contrib namespace,
+  it is not subject to backward compatibility guarantees.
+  """
   from tensorflow.core.framework.graph_pb2 import GraphDef
   from tensorflow.python.framework import errors
   with errors.raise_exception_on_not_ok_status() as status:

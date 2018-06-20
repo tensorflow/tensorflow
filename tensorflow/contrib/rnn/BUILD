@@ -193,6 +193,10 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 cuda_py_tests(
@@ -319,19 +323,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "tools/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tf_gen_op_libs(

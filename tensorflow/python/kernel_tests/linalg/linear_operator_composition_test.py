@@ -44,9 +44,9 @@ class SquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
+  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
     sess = ops.get_default_session()
-    shape = list(shape)
+    shape = list(build_info.shape)
 
     # Either 1 or 2 matrices, depending.
     num_operators = rng.randint(low=1, high=3)
@@ -148,9 +148,9 @@ class NonSquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
+  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
     sess = ops.get_default_session()
-    shape = list(shape)
+    shape = list(build_info.shape)
 
     # Test only the case of 2 matrices.
     # The Square test uses either 1 or 2, so we have tested the case of 1 matrix

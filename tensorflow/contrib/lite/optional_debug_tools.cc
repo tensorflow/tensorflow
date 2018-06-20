@@ -48,6 +48,10 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteInt64";
     case kTfLiteString:
       return "kTfLiteString";
+    case kTfLiteBool:
+      return "kTfLiteBool";
+    case kTfLiteInt16:
+      return "kTfLiteInt16";
   }
   return "(invalid)";
 }
@@ -70,7 +74,7 @@ const char* AllocTypeName(TfLiteAllocationType type) {
 
 // Prints a dump of what tensors and what nodes are in the interpreter.
 void PrintInterpreterState(Interpreter* interpreter) {
-  printf("Interpreter has %d tensors and %d nodes\n",
+  printf("Interpreter has %zu tensors and %zu nodes\n",
          interpreter->tensors_size(), interpreter->nodes_size());
   printf("Inputs:");
   PrintIntVector(interpreter->inputs());

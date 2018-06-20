@@ -54,7 +54,7 @@ class GpuExecutable : public Executable {
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
                 std::unique_ptr<const HloModule> hlo_module,
                 std::unique_ptr<const BufferAssignment> assignment,
-                std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
 
   // This should be called after set_ir_module_string.
@@ -74,19 +74,14 @@ class GpuExecutable : public Executable {
 
   // ExecuteOnStream will fail if the compute capability of the stream doesn't
   // match the compute capability passed to this object's constructor.
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
-
-  const Status EqualOrFail(const Executable& executable) {
-    // TODO(b/62952745) Implement equality test on GPU executable.
-    return Unimplemented("Equality test on GPU executable is not implemented.");
-  }
 
  private:
   // If `block_host_until_done` is false, execution will not block the host

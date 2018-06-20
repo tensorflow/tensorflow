@@ -88,9 +88,9 @@ class Placer {
   void AssignAndLog(int assigned_device, Node* node) const;
   void LogDeviceAssignment(const Node* node) const;
 
-  Graph* const graph_;                           // Not owned.
-  const DeviceSet* const devices_;               // Not owned.
-  const SessionOptions* options_;                // Not owned.
+  Graph* const graph_;              // Not owned.
+  const DeviceSet* const devices_;  // Not owned.
+  const SessionOptions* options_;   // Not owned.
   const bool log_device_placement_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Placer);

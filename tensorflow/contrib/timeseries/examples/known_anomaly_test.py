@@ -23,12 +23,24 @@ from tensorflow.contrib.timeseries.examples import known_anomaly
 from tensorflow.python.platform import test
 
 
-class KnownAnaomalyExampleTest(test.TestCase):
+class KnownAnomalyExampleTest(test.TestCase):
 
-  def test_shapes_and_variance_structural(self):
+  def test_shapes_and_variance_structural_ar(self):
     (times, observed, all_times, mean, upper_limit, lower_limit,
      anomaly_locations) = known_anomaly.train_and_evaluate_exogenous(
-         train_steps=50)
+         train_steps=1, estimator_fn=known_anomaly.autoregressive_esitmator)
+    self.assertAllEqual(
+        anomaly_locations,
+        [25, 50, 75, 100, 125, 150, 175, 249])
+    self.assertAllEqual(all_times.shape, mean.shape)
+    self.assertAllEqual(all_times.shape, upper_limit.shape)
+    self.assertAllEqual(all_times.shape, lower_limit.shape)
+    self.assertAllEqual(times.shape, observed.shape)
+
+  def test_shapes_and_variance_structural_ssm(self):
+    (times, observed, all_times, mean, upper_limit, lower_limit,
+     anomaly_locations) = known_anomaly.train_and_evaluate_exogenous(
+         train_steps=50, estimator_fn=known_anomaly.state_space_esitmator)
     self.assertAllEqual(
         anomaly_locations,
         [25, 50, 75, 100, 125, 150, 175, 249])

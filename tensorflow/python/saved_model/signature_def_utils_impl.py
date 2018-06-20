@@ -26,8 +26,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import utils
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('saved_model.signature_def_utils.build_signature_def')
 def build_signature_def(inputs=None, outputs=None, method_name=None):
   """Utility function to build a SignatureDef protocol buffer.
 
@@ -53,6 +55,7 @@ def build_signature_def(inputs=None, outputs=None, method_name=None):
   return signature_def
 
 
+@tf_export('saved_model.signature_def_utils.regression_signature_def')
 def regression_signature_def(examples, predictions):
   """Creates regression signature from given examples and predictions.
 
@@ -94,6 +97,7 @@ def regression_signature_def(examples, predictions):
   return signature_def
 
 
+@tf_export('saved_model.signature_def_utils.classification_signature_def')
 def classification_signature_def(examples, classes, scores):
   """Creates classification signature from given examples and predictions.
 
@@ -146,6 +150,7 @@ def classification_signature_def(examples, classes, scores):
   return signature_def
 
 
+@tf_export('saved_model.signature_def_utils.predict_signature_def')
 def predict_signature_def(inputs, outputs):
   """Creates prediction signature from given inputs and outputs.
 
@@ -180,6 +185,63 @@ def predict_signature_def(inputs, outputs):
   return signature_def
 
 
+def supervised_train_signature_def(
+    inputs, loss, predictions=None, metrics=None):
+  return _supervised_signature_def(
+      signature_constants.SUPERVISED_TRAIN_METHOD_NAME, inputs, loss=loss,
+      predictions=predictions, metrics=metrics)
+
+
+def supervised_eval_signature_def(
+    inputs, loss, predictions=None, metrics=None):
+  return _supervised_signature_def(
+      signature_constants.SUPERVISED_EVAL_METHOD_NAME, inputs, loss=loss,
+      predictions=predictions, metrics=metrics)
+
+
+def _supervised_signature_def(
+    method_name, inputs, loss=None, predictions=None,
+    metrics=None):
+  """Creates a signature for training and eval data.
+
+  This function produces signatures that describe the inputs and outputs
+  of a supervised process, such as training or evaluation, that
+  results in loss, metrics, and the like. Note that this function only requires
+  inputs to be not None.
+
+  Args:
+    method_name: Method name of the SignatureDef as a string.
+    inputs: dict of string to `Tensor`.
+    loss: dict of string to `Tensor` representing computed loss.
+    predictions: dict of string to `Tensor` representing the output predictions.
+    metrics: dict of string to `Tensor` representing metric ops.
+
+  Returns:
+    A train- or eval-flavored signature_def.
+
+  Raises:
+    ValueError: If inputs or outputs is `None`.
+  """
+  if inputs is None or not inputs:
+    raise ValueError('{} inputs cannot be None or empty.'.format(method_name))
+
+  signature_inputs = {key: utils.build_tensor_info(tensor)
+                      for key, tensor in inputs.items()}
+
+  signature_outputs = {}
+  for output_set in (loss, predictions, metrics):
+    if output_set is not None:
+      sig_out = {key: utils.build_tensor_info(tensor)
+                 for key, tensor in output_set.items()}
+      signature_outputs.update(sig_out)
+
+  signature_def = build_signature_def(
+      signature_inputs, signature_outputs, method_name)
+
+  return signature_def
+
+
+@tf_export('saved_model.signature_def_utils.is_valid_signature')
 def is_valid_signature(signature_def):
   """Determine whether a SignatureDef can be served by TensorFlow Serving."""
   if signature_def is None:

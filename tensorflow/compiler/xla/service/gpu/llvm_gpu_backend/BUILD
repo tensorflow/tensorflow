@@ -47,7 +47,6 @@ cc_library(
         "@llvm//:scalar",
         "@llvm//:support",
         "@llvm//:target",
-        "@llvm//:transform_utils",
     ],
 )
 
@@ -67,18 +66,4 @@ tf_cc_test(
         "@llvm//:core",
         "@llvm//:support",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

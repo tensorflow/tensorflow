@@ -28,7 +28,7 @@ namespace xla {
 class ServiceExecutableRunOptions {
  public:
   using StreamBorrower =
-      std::function<StatusOr<Pool<perftools::gputools::Stream>::SmartPtr>(int)>;
+      std::function<StatusOr<Pool<se::Stream>::SmartPtr>(int)>;
 
   ServiceExecutableRunOptions()
       : ServiceExecutableRunOptions(ExecutableRunOptions()) {}
@@ -45,14 +45,13 @@ class ServiceExecutableRunOptions {
   ExecutableRunOptions* mutable_run_options() { return &run_options_; }
 
   // Delegate to `ExecutableRunOptions` member.
-  perftools::gputools::Stream* stream() const { return run_options_.stream(); }
+  se::Stream* stream() const { return run_options_.stream(); }
   DeviceMemoryAllocator* allocator() const { return run_options_.allocator(); }
   int device_ordinal() const { return run_options_.device_ordinal(); }
 
   // Borrows a stream and returns a smart pointer which returns the stream on
   // destruction.
-  StatusOr<Pool<perftools::gputools::Stream>::SmartPtr> BorrowStream(
-      int device_ordinal) const {
+  StatusOr<Pool<se::Stream>::SmartPtr> BorrowStream(int device_ordinal) const {
     return borrow_stream_
                ? borrow_stream_(device_ordinal)
                : Status(tensorflow::error::UNIMPLEMENTED, "No stream cache");

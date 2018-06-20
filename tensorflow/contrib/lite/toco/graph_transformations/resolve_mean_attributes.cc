@@ -36,7 +36,7 @@ bool ResolveMeanAttributes::Run(Model* model, std::size_t op_index) {
   if (op->inputs.size() != 2) return false;
   if (!IsConstantParameterArray(*model, op->inputs[1])) return false;
 
-  const auto& indices_array = *model->arrays[op->inputs[1]];
+  const auto& indices_array = model->GetArray(op->inputs[1]);
   if (!indices_array.has_shape()) return false;
   op->axis = indices_array.GetBuffer<ArrayDataType::kInt32>().data;
   return true;

@@ -26,9 +26,10 @@ namespace grappler {
 
 ModelAnalyzer::ModelAnalyzer(const GrapplerItem& item) : item_(item) {}
 
-Status ModelAnalyzer::GenerateReport(bool debug, std::ostream& os) {
+Status ModelAnalyzer::GenerateReport(bool debug, bool assume_valid_feeds,
+                                     std::ostream& os) {
   GraphProperties properties(item_);
-  TF_RETURN_IF_ERROR(properties.InferStatically(false));
+  TF_RETURN_IF_ERROR(properties.InferStatically(assume_valid_feeds));
 
   for (const auto& node : item_.MainOpsFanin()) {
     PrintNodeInfo(node, properties, debug, os);

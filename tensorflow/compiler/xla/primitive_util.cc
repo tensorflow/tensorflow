@@ -20,79 +20,6 @@ limitations under the License.
 namespace xla {
 namespace primitive_util {
 
-template <>
-PrimitiveType NativeToPrimitiveType<bool>() {
-  return PRED;
-}
-
-// Unsigned integer
-template <>
-PrimitiveType NativeToPrimitiveType<uint8>() {
-  return U8;
-}
-
-template <>
-PrimitiveType NativeToPrimitiveType<uint16>() {
-  return U16;
-}
-
-template <>
-PrimitiveType NativeToPrimitiveType<uint32>() {
-  return U32;
-}
-
-template <>
-PrimitiveType NativeToPrimitiveType<uint64>() {
-  return U64;
-}
-
-// Signed integer
-template <>
-PrimitiveType NativeToPrimitiveType<int8>() {
-  return S8;
-}
-
-template <>
-PrimitiveType NativeToPrimitiveType<int16>() {
-  return S16;
-}
-
-template <>
-PrimitiveType NativeToPrimitiveType<int32>() {
-  return S32;
-}
-
-template <>
-PrimitiveType NativeToPrimitiveType<int64>() {
-  return S64;
-}
-
-// Floating point
-template <>
-PrimitiveType NativeToPrimitiveType<float>() {
-  return F32;
-}
-
-template <>
-PrimitiveType NativeToPrimitiveType<double>() {
-  return F64;
-}
-
-template <>
-PrimitiveType NativeToPrimitiveType<bfloat16>() {
-  return BF16;
-}
-
-template <>
-PrimitiveType NativeToPrimitiveType<half>() {
-  return F16;
-}
-
-template <>
-PrimitiveType NativeToPrimitiveType<complex64>() {
-  return C64;
-}
-
 bool IsFloatingPointType(PrimitiveType type) {
   return type == F16 || type == F32 || type == F64 || type == BF16;
 }
@@ -156,6 +83,11 @@ PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
       LOG(FATAL) << "Primitive type is not complex: "
                  << PrimitiveType_Name(complex_type);
   }
+}
+
+bool IsArrayType(PrimitiveType primitive_type) {
+  return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
+         primitive_type != OPAQUE && primitive_type != TOKEN;
 }
 
 }  // namespace primitive_util

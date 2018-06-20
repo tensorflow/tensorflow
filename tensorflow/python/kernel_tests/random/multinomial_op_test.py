@@ -46,7 +46,7 @@ def composed_sampler(logits, num_samples):
   logits = array_ops.expand_dims(logits, -1)
 
   # [batch size, num samples]
-  return math_ops.argmax(logits + noise, dimension=1)
+  return math_ops.argmax(logits + noise, axis=1)
 
 
 native_sampler = random_ops.multinomial

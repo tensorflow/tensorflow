@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         curl \
         libfreetype6-dev \
+        libhdf5-serial-dev \
         libpng12-dev \
         libzmq3-dev \
         pkg-config \
@@ -47,7 +48,7 @@ RUN pip --no-cache-dir install \
     http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.0.0-cp27-none-linux_x86_64.whl
 # --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
 
-# RUN ln -s /usr/bin/python3 /usr/bin/python#
+# RUN ln -s -f /usr/bin/python3 /usr/bin/python#
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/

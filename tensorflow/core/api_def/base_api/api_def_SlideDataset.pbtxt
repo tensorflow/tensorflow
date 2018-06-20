@@ -1,0 +1,18 @@
+op {
+  graph_op_name: "SlideDataset"
+  in_arg {
+    name: "window_size"
+    description: <<END
+A scalar representing the number of elements in the
+sliding window.
+END
+  }
+  in_arg {
+    name: "stride"
+    description: <<END
+A scalar representing the steps moving the sliding window
+forward in one iteration. It must be in `[1, window_size)`.
+END
+  }
+  summary: "Creates a dataset that passes a sliding window over `input_dataset`."
+}

@@ -60,7 +60,7 @@ and serialized as protocol buffers:
   the `NodeDef`, so if all the `Variable` weights are converted to `Const` nodes,
   then we only need a single `GraphDef` file to hold the model architecture and
   the weights. Freezing the graph handles the process of loading the
-  checkpoints, and then converts all Consts to Variables. You can then load the
+  checkpoints, and then converts all Variables to Consts. You can then load the
   resulting file in a single call, without having to restore variable values
   from checkpoints. One thing to watch out for with `GraphDef` files is that
   sometimes they’re stored in text format for easy inspection. These versions
@@ -105,8 +105,8 @@ inline constants so everything’s in one file.  To handle the conversion, you�
 need the `freeze_graph.py` script, that’s held in
 [`tensorflow/python/tools/freeze_graph.py`](https://www.tensorflow.org/code/tensorflow/python/tools/freeze_graph.py). You’ll run it like this:
 
-    bazel build tensorflow/tools:freeze_graph
-    bazel-bin/tensorflow/tools/freeze_graph \
+    bazel build tensorflow/python/tools:freeze_graph
+    bazel-bin/tensorflow/python/tools/freeze_graph \
     --input_graph=/tmp/model/my_graph.pb \
     --input_checkpoint=/tmp/model/model.ckpt-1000 \
     --output_graph=/tmp/frozen_graph.pb \

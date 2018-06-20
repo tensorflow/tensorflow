@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_DEPTHWISECONV_UINT8_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_DEPTHWISECONV_UINT8_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_DEPTHWISECONV_UINT8_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_DEPTHWISECONV_UINT8_H_
 
 #include <algorithm>
 
@@ -76,8 +76,8 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
             if (bias_data) {
               acc += bias_data[Offset(bias_dims, oc, 0, 0, 0)];
             }
-            acc = MultiplyByQuantizedMultiplierSmallerThanOne(
-                acc, output_multiplier, output_shift);
+            acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                                -output_shift);
             acc += output_offset;
             acc = std::max(acc, output_activation_min);
             acc = std::min(acc, output_activation_max);
@@ -135,4 +135,4 @@ void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
 }  // end namespace reference_ops
 }  // end namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_DEPTHWISECONV_UINT8_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_DEPTHWISECONV_UINT8_H_

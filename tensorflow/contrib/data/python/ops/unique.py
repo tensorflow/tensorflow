@@ -17,11 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
+from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import gen_dataset_ops
 
 
 def unique():
@@ -64,10 +63,7 @@ class UniqueDataset(dataset_ops.Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.unique_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):

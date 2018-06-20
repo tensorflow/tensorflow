@@ -50,8 +50,8 @@ class DepthToSpaceOp : public XlaOpKernel {
     const gtl::InlinedVector<int64, 4> input_shape =
         input_tensor_shape.dim_sizes();
 
-    xla::ComputationBuilder* b = ctx->builder();
-    xla::ComputationDataHandle input = ctx->Input(0);
+    xla::XlaBuilder* b = ctx->builder();
+    xla::XlaOp input = ctx->Input(0);
 
     int feature_dim = GetTensorFeatureDimIndex(input_rank, data_format_);
     int num_spatial_dims = GetTensorSpatialDims(input_rank, data_format_);
@@ -130,7 +130,7 @@ class DepthToSpaceOp : public XlaOpKernel {
                     ") is not divisible by square of the block size (",
                     block_size_, ")"));
 
-    xla::ComputationDataHandle reshaped = b->Reshape(input, reshaped_shape);
+    xla::XlaOp reshaped = b->Reshape(input, reshaped_shape);
 
     // 2. Permute dimensions of `reshaped` to produce
     //    `permuted_reshaped` of shape:
@@ -141,8 +141,7 @@ class DepthToSpaceOp : public XlaOpKernel {
     //       input_shape[2],
     //       block_size_,
     //       depth / (block_size_ * block_size_)]
-    xla::ComputationDataHandle permuted_reshaped =
-        b->Transpose(reshaped, transpose_order);
+    xla::XlaOp permuted_reshaped = b->Transpose(reshaped, transpose_order);
 
     // 3. Reshape `permuted_reshaped` to flatten `block_shape` into the
     //    batch dimension, producing an output tensor of shape:
@@ -152,8 +151,7 @@ class DepthToSpaceOp : public XlaOpKernel {
     //       input_shape[2] * block_size_,
     //       depth / (block_size_ * block_size_)]
     //
-    xla::ComputationDataHandle output =
-        b->Reshape(permuted_reshaped, output_shape);
+    xla::XlaOp output = b->Reshape(permuted_reshaped, output_shape);
 
     ctx->SetOutput(0, output);
   }

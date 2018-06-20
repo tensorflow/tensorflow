@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
 
 #include <map>
 #include <memory>
@@ -72,7 +72,7 @@ class MetricCollector {
         registration_time_millis_(registration_time_millis),
         collector_(collector),
         point_set_(point_set) {
-    point_set_->metric_name = metric_def->name().ToString();
+    point_set_->metric_name = std::string(metric_def->name());
   }
 
   const MetricDef<metric_kind, Value, NumLabels>* const metric_def_;
@@ -261,7 +261,7 @@ class Collector {
     auto* const point_set = [&]() {
       mutex_lock l(mu_);
       return collected_metrics_->point_set_map
-          .insert(std::make_pair(metric_def->name().ToString(),
+          .insert(std::make_pair(std::string(metric_def->name()),
                                  std::unique_ptr<PointSet>(new PointSet())))
           .first->second.get();
     }();
@@ -356,4 +356,4 @@ MetricCollector<metric_kind, Value, NumLabels> MetricCollectorGetter::Get(
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_

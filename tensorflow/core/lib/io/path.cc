@@ -27,9 +27,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 namespace io {
@@ -42,7 +42,7 @@ string JoinPathImpl(std::initializer_list<StringPiece> paths) {
     if (path.empty()) continue;
 
     if (result.empty()) {
-      result = path.ToString();
+      result = std::string(path);
       continue;
     }
 
@@ -124,7 +124,7 @@ StringPiece Extension(StringPiece path) {
 }
 
 string CleanPath(StringPiece unclean_path) {
-  string path = unclean_path.ToString();
+  string path = std::string(unclean_path);
   const char* src = path.c_str();
   string::iterator dst = path.begin();
 
@@ -237,7 +237,7 @@ void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
 
 string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
   if (scheme.empty()) {
-    return path.ToString();
+    return std::string(path);
   }
   return strings::StrCat(scheme, "://", host, path);
 }

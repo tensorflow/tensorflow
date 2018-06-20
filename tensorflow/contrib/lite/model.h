@@ -31,40 +31,68 @@ limitations under the License.
 // OpResolver must be defined to provide your kernel implementations to the
 // interpreter. This is environment specific and may consist of just the builtin
 // ops, or some custom operators you defined to extend tflite.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MODEL_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MODEL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_MODEL_H_
+#define TENSORFLOW_CONTRIB_LITE_MODEL_H_
 
 #include <memory>
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/op_resolver.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 
 namespace tflite {
+
+// Abstract interface that verifies whether a given model is legit.
+// It facilitates the use-case to verify and build a model without loading it
+// twice.
+class TfLiteVerifier {
+ public:
+  // Returns true if the model is legit.
+  virtual bool Verify(const char* data, int length,
+                      ErrorReporter* reporter) = 0;
+  virtual ~TfLiteVerifier() {}
+};
 
 // An RAII object that represents a read-only tflite model, copied from disk,
 // or mmapped. This uses flatbuffers as the serialization format.
 class FlatBufferModel {
  public:
-  // Builds a model based on a file. Returns a nullptr in case of failure.
+  // Builds a model based on a file.
+  // Caller retains ownership of `error_reporter` and must ensure its lifetime
+  // is longer than the FlatBufferModel instance.
+  // Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> BuildFromFile(
       const char* filename,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
+  // Verifies whether the content of the file is legit, then builds a model
+  // based on the file.
+  // Caller retains ownership of `error_reporter` and must ensure its lifetime
+  // is longer than the FlatBufferModel instance.
+  // Returns a nullptr in case of failure.
+  static std::unique_ptr<FlatBufferModel> VerifyAndBuildFromFile(
+      const char* filename, TfLiteVerifier* verifier = nullptr,
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+
   // Builds a model based on a pre-loaded flatbuffer. The caller retains
   // ownership of the buffer and should keep it alive until the returned object
-  // is destroyed. Returns a nullptr in case of failure.
+  // is destroyed. Caller retains ownership of `error_reporter` and must ensure
+  // its lifetime is longer than the FlatBufferModel instance.
+  // Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> BuildFromBuffer(
       const char* buffer, size_t buffer_size,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Builds a model directly from a flatbuffer pointer. The caller retains
   // ownership of the buffer and should keep it alive until the returned object
-  // is destroyed. Returns a nullptr in case of failure.
+  // is destroyed. Caller retains ownership of `error_reporter` and must ensure
+  // its lifetime is longer than the FlatBufferModel instance.
+  // Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> BuildFromModel(
       const tflite::Model* model_spec,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
-  // Releases memory or unmaps mmaped meory.
+  // Releases memory or unmaps mmaped memory.
   ~FlatBufferModel();
 
   // Copying or assignment is disallowed to simplify ownership semantics.
@@ -82,23 +110,12 @@ class FlatBufferModel {
   bool CheckModelIdentifier() const;
 
  private:
-  // Loads a model from `filename`. If `mmap_file` is true then use mmap,
-  // otherwise make a copy of the model in a buffer.
-  //
-  // Note, if `error_reporter` is null, then a DefaultErrorReporter() will be
-  // used.
-  explicit FlatBufferModel(
-      const char* filename, bool mmap_file = true,
-      ErrorReporter* error_reporter = DefaultErrorReporter(),
-      bool use_nnapi = false);
-
-  // Loads a model from `ptr` and `num_bytes` of the model file. The `ptr` has
-  // to remain alive and unchanged until the end of this flatbuffermodel's
-  // lifetime.
-  //
-  // Note, if `error_reporter` is null, then a DefaultErrorReporter() will be
-  // used.
-  FlatBufferModel(const char* ptr, size_t num_bytes,
+  // Loads a model from a given allocation. FlatBufferModel will take over the
+  // ownership of `allocation`, and delete it in destructor. The ownership of
+  // `error_reporter`remains with the caller and must have lifetime at least
+  // as much as FlatBufferModel. This is to allow multiple models to use the
+  // same ErrorReporter instance.
+  FlatBufferModel(Allocation* allocation,
                   ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Loads a model from Model flatbuffer. The `model` has to remain alive and
@@ -108,20 +125,11 @@ class FlatBufferModel {
   // Flatbuffer traverser pointer. (Model* is a pointer that is within the
   // allocated memory of the data allocated by allocation's internals.
   const tflite::Model* model_ = nullptr;
+  // The error reporter to use for model errors and subsequent errors when
+  // the interpreter is created
   ErrorReporter* error_reporter_;
+  // The allocator used for holding memory of the model.
   Allocation* allocation_ = nullptr;
-};
-
-// Abstract interface that returns TfLiteRegistrations given op codes or custom
-// op names. This is the mechanism that ops being referenced in the flatbuffer
-// model are mapped to executable function pointers (TfLiteRegistrations).
-class OpResolver {
- public:
-  // Finds the op registration for a builtin operator by enum code.
-  virtual TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const = 0;
-  // Finds the op registration of a custom operator by op name.
-  virtual TfLiteRegistration* FindOp(const char* op) const = 0;
-  virtual ~OpResolver() {}
 };
 
 // Build an interpreter capable of interpreting `model`.
@@ -151,6 +159,8 @@ class InterpreterBuilder {
   InterpreterBuilder(const InterpreterBuilder&) = delete;
   InterpreterBuilder& operator=(const InterpreterBuilder&) = delete;
   TfLiteStatus operator()(std::unique_ptr<Interpreter>* interpreter);
+  TfLiteStatus operator()(std::unique_ptr<Interpreter>* interpreter,
+                          int num_threads);
 
  private:
   TfLiteStatus BuildLocalIndexToRegistrationMapping();
@@ -166,11 +176,11 @@ class InterpreterBuilder {
   const OpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
 
-  std::vector<TfLiteRegistration*> flatbuffer_op_index_to_registration_;
+  std::vector<const TfLiteRegistration*> flatbuffer_op_index_to_registration_;
   std::vector<BuiltinOperator> flatbuffer_op_index_to_registration_types_;
   const Allocation* allocation_ = nullptr;
 };
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MODEL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_MODEL_H_

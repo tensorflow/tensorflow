@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.gan.python.eval.python import eval_utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -30,6 +31,7 @@ __all__ = [
     'add_image_comparison_summaries',
     'add_gan_model_summaries',
     'add_regularization_loss_summaries',
+    'add_cyclegan_image_summaries',
 ]
 
 
@@ -38,16 +40,21 @@ def _assert_is_image(data):
   data.shape[1:].assert_is_fully_defined()
 
 
-def add_gan_model_image_summaries(gan_model, grid_size=4):
+def add_gan_model_image_summaries(gan_model, grid_size=4, model_summaries=True):
   """Adds image summaries for real and fake images.
 
   Args:
     gan_model: A GANModel tuple.
     grid_size: The size of an image grid.
+    model_summaries: Also add summaries of the model.
 
   Raises:
     ValueError: If real and generated data aren't images.
   """
+  if isinstance(gan_model, namedtuples.CycleGANModel):
+    raise ValueError(
+        '`add_gan_model_image_summaries` does not take CycleGANModels. Please '
+        'use `add_cyclegan_image_summaries` instead.')
   _assert_is_image(gan_model.real_data)
   _assert_is_image(gan_model.generated_data)
 
@@ -73,7 +80,52 @@ def add_gan_model_image_summaries(gan_model, grid_size=4):
           image_shape=generated_image_shape,
           num_channels=generated_channels),
       max_outputs=1)
-  add_gan_model_summaries(gan_model)
+
+  if model_summaries:
+    add_gan_model_summaries(gan_model)
+
+
+def add_cyclegan_image_summaries(cyclegan_model):
+  """Adds image summaries for CycleGAN.
+
+  There are two summaries, one for each generator. The first image is the
+  generator input, the second is the generator output, and the third is G(F(x)).
+
+  Args:
+    cyclegan_model: A CycleGANModel tuple.
+
+  Raises:
+    ValueError: If `cyclegan_model` isn't a CycleGANModel.
+    ValueError: If generated data, generator inputs, and reconstructions aren't
+      images.
+    ValueError: If the generator input, generated data, and reconstructions
+      aren't all the same size.
+  """
+  if not isinstance(cyclegan_model, namedtuples.CycleGANModel):
+    raise ValueError('`cyclegan_model` was not a CycleGANModel. Instead, was '
+                     '%s' % type(cyclegan_model))
+
+  _assert_is_image(cyclegan_model.model_x2y.generator_inputs)
+  _assert_is_image(cyclegan_model.model_x2y.generated_data)
+  _assert_is_image(cyclegan_model.reconstructed_x)
+  _assert_is_image(cyclegan_model.model_y2x.generator_inputs)
+  _assert_is_image(cyclegan_model.model_y2x.generated_data)
+  _assert_is_image(cyclegan_model.reconstructed_y)
+
+  def _add_comparison_summary(gan_model, reconstructions):
+    image_list = (array_ops.unstack(gan_model.generator_inputs[:1]) +
+                  array_ops.unstack(gan_model.generated_data[:1]) +
+                  array_ops.unstack(reconstructions[:1]))
+    summary.image(
+        'image_comparison', eval_utils.image_reshaper(
+            image_list, num_cols=len(image_list)), max_outputs=1)
+
+  with ops.name_scope('x2y_image_comparison_summaries'):
+    _add_comparison_summary(
+        cyclegan_model.model_x2y, cyclegan_model.reconstructed_x)
+  with ops.name_scope('y2x_image_comparison_summaries'):
+    _add_comparison_summary(
+        cyclegan_model.model_y2x, cyclegan_model.reconstructed_y)
 
 
 def add_image_comparison_summaries(gan_model, num_comparisons=2,
@@ -133,6 +185,13 @@ def add_gan_model_summaries(gan_model):
   Args:
     gan_model: A GANModel tuple.
   """
+  if isinstance(gan_model, namedtuples.CycleGANModel):
+    with ops.name_scope('cyclegan_x2y_summaries'):
+      add_gan_model_summaries(gan_model.model_x2y)
+    with ops.name_scope('cyclegan_y2x_summaries'):
+      add_gan_model_summaries(gan_model.model_y2x)
+    return
+
   with ops.name_scope('generator_variables'):
     for var in gan_model.generator_variables:
       summary.histogram(var.name, var)
@@ -147,6 +206,13 @@ def add_regularization_loss_summaries(gan_model):
   Args:
     gan_model: A GANModel tuple.
   """
+  if isinstance(gan_model, namedtuples.CycleGANModel):
+    with ops.name_scope('cyclegan_x2y_regularization_loss_summaries'):
+      add_regularization_loss_summaries(gan_model.model_x2y)
+    with ops.name_scope('cyclegan_y2x_regularization_loss_summaries'):
+      add_regularization_loss_summaries(gan_model.model_y2x)
+    return
+
   if gan_model.generator_scope:
     summary.scalar(
         'generator_regularization_loss',

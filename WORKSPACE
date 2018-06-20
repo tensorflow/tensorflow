@@ -2,11 +2,11 @@ workspace(name = "org_tensorflow")
 
 http_archive(
     name = "io_bazel_rules_closure",
-    sha256 = "6691c58a2cd30a86776dd9bb34898b041e37136f2dc7e24cadaeaf599c95c657",
-    strip_prefix = "rules_closure-08039ba8ca59f64248bb3b6ae016460fe9c9914f",
+    sha256 = "a38539c5b5c358548e75b44141b4ab637bba7c4dc02b46b1f62a96d6433f56ae",
+    strip_prefix = "rules_closure-dbb96841cc0a5fb2664c37822803b06dab20c7d1",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/08039ba8ca59f64248bb3b6ae016460fe9c9914f.tar.gz",
-        "https://github.com/bazelbuild/rules_closure/archive/08039ba8ca59f64248bb3b6ae016460fe9c9914f.tar.gz",  # 2018-01-16
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/dbb96841cc0a5fb2664c37822803b06dab20c7d1.tar.gz",
+        "https://github.com/bazelbuild/rules_closure/archive/dbb96841cc0a5fb2664c37822803b06dab20c7d1.tar.gz",  # 2018-04-13
     ],
 )
 
@@ -14,39 +14,29 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 
 closure_repositories()
 
+# We must check the bazel version before trying to parse any other BUILD
+# files, in case the parsing of those build files depends on the bazel
+# version we require here.
+load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
+check_bazel_version_at_least("0.10.0")
+
 load("//tensorflow:workspace.bzl", "tf_workspace")
 
-# Uncomment and update the paths in these entries to build the Android demo.
-#android_sdk_repository(
-#    name = "androidsdk",
-#    api_level = 23,
-#    # Ensure that you have the build_tools_version below installed in the
-#    # SDK manager as it updates periodically.
-#    build_tools_version = "26.0.1",
-#    # Replace with path to Android SDK on your system
-#    path = "<PATH_TO_SDK>",
-#)
-#
-#android_ndk_repository(
-#    name="androidndk",
-#    path="<PATH_TO_NDK>",
-#    # This needs to be 14 or higher to compile TensorFlow.
-#    # Please specify API level to >= 21 to build for 64-bit
-#    # archtectures or the Android NDK will automatically select biggest
-#    # API level that it supports without notice.
-#    # Note that the NDK version is not the API level.
-#    api_level=14)
+load("//third_party/android:android_configure.bzl", "android_configure")
+android_configure(name="local_config_android")
+load("@local_config_android//:android.bzl", "android_workspace")
+android_workspace()
 
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_workspace()
 
 new_http_archive(
-    name = "inception5h",
+    name = "inception_v1",
     build_file = "models.BUILD",
-    sha256 = "d13569f6a98159de37e92e9c8ec4dae8f674fbf475f69fe6199b514f756d4364",
+    sha256 = "7efe12a8363f09bc24d7b7a450304a15655a57a7751929b2c1593a71183bb105",
     urls = [
-        "http://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip",
-        "http://download.tensorflow.org/models/inception5h.zip",
+        "http://storage.googleapis.com/download.tensorflow.org/models/inception_v1.zip",
+        "http://download.tensorflow.org/models/inception_v1.zip",
     ],
 )
 

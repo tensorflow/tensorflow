@@ -39,8 +39,7 @@ namespace {
 bool FLAGS_check_device_leaks = false;
 }  // namespace
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace {
 
 string StackTraceIfVLOG10() {
@@ -233,7 +232,7 @@ void StreamExecutor::Deallocate(DeviceMemoryBase *mem) {
 }
 
 void StreamExecutor::GetMemAllocs(std::map<void *, AllocRecord> *records_out) {
-  tf_shared_lock lock{mu_};
+  tf_shared_lock lock(mu_);
   *records_out = mem_allocs_;
 }
 
@@ -257,13 +256,13 @@ port::Status StreamExecutor::SetDeviceSharedMemoryConfig(
     string error_msg = port::Printf(
         "Invalid shared memory config specified: %d", static_cast<int>(config));
     LOG(ERROR) << error_msg;
-    return port::Status{port::error::INVALID_ARGUMENT, error_msg};
+    return port::Status(port::error::INVALID_ARGUMENT, error_msg);
   }
   return implementation_->SetDeviceSharedMemoryConfig(config);
 }
 
 const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   if (device_description_ != nullptr) {
     return *device_description_;
   }
@@ -305,6 +304,15 @@ bool StreamExecutor::GetConvolveAlgorithms(
                                             cc_minor, out_algorithms);
 }
 
+bool StreamExecutor::GetRnnAlgorithms(
+    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return false;
+  }
+  return dnn_support->GetRnnAlgorithms(out_algorithms);
+}
+
 bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
     bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmDesc> *out_algorithms) {
@@ -342,9 +350,10 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 StreamExecutor::createRnnDescriptor(
-    int num_layers, int hidden_size, int input_size,
+    int num_layers, int hidden_size, int input_size, int batch_size,
     dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
-    dnn::RnnMode rnn_mode, dnn::DataType data_type, float dropout, uint64 seed,
+    dnn::RnnMode rnn_mode, dnn::DataType data_type,
+    const dnn::AlgorithmConfig &algorithm_config, float dropout, uint64 seed,
     ScratchAllocator *state_allocator) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
@@ -352,8 +361,9 @@ StreamExecutor::createRnnDescriptor(
                         "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnDescriptor(
-      num_layers, hidden_size, input_size, input_mode, direction_mode, rnn_mode,
-      data_type, dropout, seed, state_allocator);
+      num_layers, hidden_size, input_size, batch_size, input_mode,
+      direction_mode, rnn_mode, data_type, algorithm_config, dropout, seed,
+      state_allocator);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
@@ -383,7 +393,7 @@ StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
 }
 
 dnn::DnnSupport *StreamExecutor::AsDnn() {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   if (dnn_ != nullptr) {
     return dnn_.get();
   }
@@ -393,7 +403,7 @@ dnn::DnnSupport *StreamExecutor::AsDnn() {
 }
 
 blas::BlasSupport *StreamExecutor::AsBlas() {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   if (blas_ != nullptr) {
     return blas_.get();
   }
@@ -403,7 +413,7 @@ blas::BlasSupport *StreamExecutor::AsBlas() {
 }
 
 fft::FftSupport *StreamExecutor::AsFft() {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   if (fft_ != nullptr) {
     return fft_.get();
   }
@@ -413,7 +423,7 @@ fft::FftSupport *StreamExecutor::AsFft() {
 }
 
 rng::RngSupport *StreamExecutor::AsRng() {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   if (rng_ != nullptr) {
     return rng_.get();
   }
@@ -452,6 +462,20 @@ void *StreamExecutor::Allocate(uint64 size) {
 bool StreamExecutor::GetSymbol(const string &symbol_name, void **mem,
                                size_t *bytes) {
   return implementation_->GetSymbol(symbol_name, mem, bytes);
+}
+
+void *StreamExecutor::UnifiedMemoryAllocate(uint64 bytes) {
+  void *buffer = implementation_->UnifiedMemoryAllocate(bytes);
+  VLOG(1) << "Called StreamExecutor::UnifiedMemoryAllocate(size=" << bytes
+          << ") returns " << buffer << StackTraceIfVLOG10();
+  return buffer;
+}
+
+void StreamExecutor::UnifiedMemoryDeallocate(void *location) {
+  VLOG(1) << "Called StreamExecutor::UnifiedMemoryDeallocate(location="
+          << location << ")" << StackTraceIfVLOG10();
+
+  return implementation_->UnifiedMemoryDeallocate(location);
 }
 
 void *StreamExecutor::HostMemoryAllocate(uint64 size) {
@@ -572,12 +596,12 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
 
   result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
   if (!result.ok()) {
-    result = port::Status{port::error::INTERNAL,
+    result = port::Status(port::error::INTERNAL,
                           port::Printf("failed to synchronously memcpy "
                                        "device-to-host: device %p to host %p "
                                        "size %lld: %s",
                                        device_src.opaque(), host_dst, size,
-                                       result.ToString().c_str())};
+                                       result.ToString().c_str()));
   }
 
   return result;
@@ -586,7 +610,7 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
 port::Status StreamExecutor::SynchronousMemcpyH2D(
     const void *host_src, int64 size, DeviceMemoryBase *device_dst) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpyH2D(host_src=" << host_src
-          << ", size=" << size << ", device_dst" << device_dst->opaque() << ")"
+          << ", size=" << size << ", device_dst=" << device_dst->opaque() << ")"
           << StackTraceIfVLOG10();
 
   port::Status result;
@@ -595,12 +619,12 @@ port::Status StreamExecutor::SynchronousMemcpyH2D(
 
   result = implementation_->SynchronousMemcpy(device_dst, host_src, size);
   if (!result.ok()) {
-    result = port::Status{
+    result = port::Status(
         port::error::INTERNAL,
         port::Printf("failed to synchronously memcpy host-to-device: host "
                      "%p to device %p size %lld: %s",
                      host_src, device_dst->opaque(), size,
-                     result.ToString().c_str())};
+                     result.ToString().c_str()));
   }
 
   return result;
@@ -713,7 +737,7 @@ void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
 
 void StreamExecutor::CreateAllocRecord(void *opaque, uint64 bytes) {
   if (FLAGS_check_device_leaks && opaque != nullptr && bytes != 0) {
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     mem_allocs_[opaque] = AllocRecord{
         bytes, ""};
   }
@@ -721,7 +745,7 @@ void StreamExecutor::CreateAllocRecord(void *opaque, uint64 bytes) {
 
 void StreamExecutor::EraseAllocRecord(void *opaque) {
   if (FLAGS_check_device_leaks && opaque != nullptr) {
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     if (mem_allocs_.find(opaque) == mem_allocs_.end()) {
       LOG(ERROR) << "Deallocating unknown pointer: "
                  << port::Printf("0x%p", opaque);
@@ -735,7 +759,7 @@ void StreamExecutor::EnableTracing(bool enabled) { tracing_enabled_ = enabled; }
 
 void StreamExecutor::RegisterTraceListener(TraceListener *listener) {
   {
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     if (listeners_.find(listener) != listeners_.end()) {
       LOG(INFO) << "Attempt to register already-registered listener, "
                 << listener;
@@ -749,7 +773,7 @@ void StreamExecutor::RegisterTraceListener(TraceListener *listener) {
 
 bool StreamExecutor::UnregisterTraceListener(TraceListener *listener) {
   {
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     if (listeners_.find(listener) == listeners_.end()) {
       LOG(INFO) << "Attempt to unregister unknown listener, " << listener;
       return false;
@@ -766,7 +790,7 @@ void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT &&... args) {
   if (tracing_enabled_) {
     {
       // instance tracers held in a block to limit the lock lifetime.
-      tf_shared_lock lock{mu_};
+      tf_shared_lock lock(mu_);
       for (TraceListener *listener : listeners_) {
         (listener->*trace_call)(std::forward<ArgsT>(args)...);
       }
@@ -778,5 +802,4 @@ internal::StreamExecutorInterface *StreamExecutor::implementation() {
   return implementation_->GetUnderlyingExecutor();
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

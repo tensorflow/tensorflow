@@ -89,6 +89,10 @@ bool CancellationManager::DeregisterCallback(CancellationToken token) {
   }
 }
 
-CancellationManager::~CancellationManager() { StartCancel(); }
+CancellationManager::~CancellationManager() {
+  if (!callbacks_.empty()) {
+    StartCancel();
+  }
+}
 
 }  // end namespace tensorflow

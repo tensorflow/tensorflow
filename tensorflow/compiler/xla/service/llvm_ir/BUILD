@@ -54,6 +54,7 @@ cc_library(
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",
+        "@llvm//:transform_utils",
     ],
 )
 
@@ -167,18 +168,4 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

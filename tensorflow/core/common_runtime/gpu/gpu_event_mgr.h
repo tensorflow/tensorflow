@@ -29,13 +29,11 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 class Event;
 class Stream;
 class StreamExecutor;
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 namespace tensorflow {
 
@@ -46,14 +44,13 @@ class GPUOptions;
 // Events are recorded.
 class EventMgr {
  public:
-  EventMgr(perftools::gputools::StreamExecutor* se,
-           const GPUOptions& gpu_options);
+  EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options);
 
   ~EventMgr();
 
   // Releases the references on the elements of "tensors" as soon as
   // all events currently enqueued on "stream" have completed.
-  void ThenDeleteTensors(perftools::gputools::Stream* stream,
+  void ThenDeleteTensors(se::Stream* stream,
                          const TensorReferenceVector& tensors);
 
   struct BufRec {
@@ -67,8 +64,7 @@ class EventMgr {
 
   // Takes ownership of *bufrec.buf and calls bufrec.alloc->DeallocateRaw()
   // on it as soon as all events currently enqueued on *stream have completed.
-  inline void ThenDeleteBuffer(perftools::gputools::Stream* stream,
-                               BufRec bufrec) {
+  inline void ThenDeleteBuffer(se::Stream* stream, BufRec bufrec) {
     ToFreeVector to_free;
     {
       mutex_lock l(mu_);
@@ -78,8 +74,7 @@ class EventMgr {
     FreeMemory(to_free);
   }
 
-  inline void ThenExecute(perftools::gputools::Stream* stream,
-                          std::function<void()> func) {
+  inline void ThenExecute(se::Stream* stream, std::function<void()> func) {
     ToFreeVector to_free;
     {
       mutex_lock l(mu_);
@@ -91,17 +86,16 @@ class EventMgr {
 
  private:
   friend class TEST_EventMgrHelper;
-  perftools::gputools::StreamExecutor* const exec_;
+  se::StreamExecutor* const exec_;
   const int64 deferred_bytes_threshold_;
   const int32 polling_active_delay_usecs_;
-  const int32 polling_inactive_delay_msecs_;
   mutex mu_;
   condition_variable events_pending_ GUARDED_BY(mu_);
 
   void FlushAccumulatedTensors() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   struct InUse {
-    perftools::gputools::Event* event;
+    se::Event* event;
     TensorReferenceVector* mem;
     BufRec bufrec;
     std::function<void()> func;
@@ -133,22 +127,21 @@ class EventMgr {
   // Stream-enqueue an unused Event and save with it a collection of
   // Tensors and/or a BufRec to be deleted only after the Event
   // records.
-  void QueueInUse(perftools::gputools::Stream* stream, InUse in_use)
+  void QueueInUse(se::Stream* stream, InUse in_use)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  void QueueTensors(perftools::gputools::Stream* stream,
-                    TensorReferenceVector* tensors)
+  void QueueTensors(se::Stream* stream, TensorReferenceVector* tensors)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     QueueInUse(stream, {nullptr, tensors, BufRec(), nullptr});
   }
 
-  void QueueBuffer(perftools::gputools::Stream* stream, BufRec bufrec)
+  void QueueBuffer(se::Stream* stream, BufRec bufrec)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     QueueInUse(stream, {nullptr, nullptr, bufrec, nullptr});
   }
 
-  void QueueFunc(perftools::gputools::Stream* stream,
-                 std::function<void()> func) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void QueueFunc(se::Stream* stream, std::function<void()> func)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     QueueInUse(stream, {nullptr, nullptr, BufRec(), std::move(func)});
   }
 
@@ -169,10 +162,10 @@ class EventMgr {
   void StopPollingLoop();
 
   // A stack of unused events
-  std::vector<perftools::gputools::Event*> free_events_ GUARDED_BY(mu_);
+  std::vector<se::Event*> free_events_ GUARDED_BY(mu_);
 
   // Buffered list of tensors waiting to have an event queued for deletion
-  perftools::gputools::Stream* accumulated_stream_ GUARDED_BY(mu_);
+  se::Stream* accumulated_stream_ GUARDED_BY(mu_);
   TensorReferenceVector* accumulated_tensors_ GUARDED_BY(mu_);
   // Sum of the TotalBytes() of the tensors in "accumulated_tensors_"
   int64 accumulated_tensor_bytes_ GUARDED_BY(mu_);
@@ -180,7 +173,7 @@ class EventMgr {
   // A FIFO queue of InUse events and associated tensors.
   std::deque<InUse> used_events_ GUARDED_BY(mu_);
 
-  std::unique_ptr<Notification> stop_polling_;
+  bool stop_polling_ GUARDED_BY(mu_);
   std::unique_ptr<Notification> polling_stopped_;
 
   // The main PollLoop for the event manager runs in this threadpool.

@@ -355,9 +355,6 @@ static const char* const kOpTypes =
 static const char* const kScope =
     "scope: The nodes in the model graph are organized by their names, which "
     "is hierarchical like filesystem.";
-static const char* const kGraph =
-    "graph: The nodes in the model graph are organized by their operation "
-    "input and output.";
 static const char* const kCode =
     "code: When python trace is available, the nodes are python lines and "
     "their are organized by the python call stack.";

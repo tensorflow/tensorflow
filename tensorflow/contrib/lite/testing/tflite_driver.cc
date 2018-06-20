@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <iostream>
 
+#include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/testing/split.h"
 
 namespace tflite {
@@ -42,6 +43,10 @@ template <>
 uint8_t Value(const TfLitePtrUnion& data, int index) {
   return data.uint8[index];
 }
+template <>
+bool Value(const TfLitePtrUnion& data, int index) {
+  return data.b[index];
+}
 
 template <typename T>
 void SetTensorData(const std::vector<T>& values, TfLitePtrUnion* data) {
@@ -56,12 +61,16 @@ void SetTensorData(const std::vector<T>& values, TfLitePtrUnion* data) {
 
 class TfLiteDriver::Expectation {
  public:
-  Expectation() { data_.raw = nullptr; }
+  Expectation() {
+    data_.raw = nullptr;
+    num_elements_ = 0;
+  }
   ~Expectation() { delete[] data_.raw; }
   template <typename T>
   void SetData(const string& csv_values) {
     const auto& values = testing::Split<T>(csv_values, ",");
-    data_.raw = new char[values.size() * sizeof(T)];
+    num_elements_ = values.size();
+    data_.raw = new char[num_elements_ * sizeof(T)];
     SetTensorData(values, &data_);
   }
 
@@ -75,6 +84,8 @@ class TfLiteDriver::Expectation {
         return TypedCheck<int64_t>(verbose, tensor);
       case kTfLiteUInt8:
         return TypedCheck<uint8_t>(verbose, tensor);
+      case kTfLiteBool:
+        return TypedCheck<bool>(verbose, tensor);
       default:
         fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
         return false;
@@ -88,7 +99,13 @@ class TfLiteDriver::Expectation {
     constexpr double kRelativeThreshold = 1e-2f;
     constexpr double kAbsoluteThreshold = 1e-4f;
 
-    int tensor_size = tensor.bytes / sizeof(T);
+    size_t tensor_size = tensor.bytes / sizeof(T);
+
+    if (tensor_size != num_elements_) {
+      std::cerr << "Expected a tensor with " << num_elements_
+                << " elements, got " << tensor_size << std::endl;
+      return false;
+    }
 
     bool good_output = true;
     for (int i = 0; i < tensor_size; ++i) {
@@ -106,8 +123,8 @@ class TfLiteDriver::Expectation {
       if (error_is_large) {
         good_output = false;
         if (verbose) {
-          std::cerr << "  index " << i << ": " << reference
-                    << " != " << computed << std::endl;
+          std::cerr << "  index " << i << ": got " << computed
+                    << ", but expected " << reference << std::endl;
         }
       }
     }
@@ -115,6 +132,7 @@ class TfLiteDriver::Expectation {
   }
 
   TfLitePtrUnion data_;
+  size_t num_elements_;
 };
 
 TfLiteDriver::TfLiteDriver(bool use_nnapi) : use_nnapi_(use_nnapi) {}
@@ -126,13 +144,13 @@ void TfLiteDriver::AllocateTensors() {
       Invalidate("Failed to allocate tensors");
       return;
     }
+    ResetLSTMStateTensors();
     must_allocate_tensors_ = false;
   }
 }
 
 void TfLiteDriver::LoadModel(const string& bin_file_path) {
   if (!IsValid()) return;
-  std::cout << std::endl << "Loading model: " << bin_file_path << std::endl;
 
   model_ = FlatBufferModel::BuildFromFile(GetFullPath(bin_file_path).c_str());
   if (!model_) {
@@ -145,6 +163,7 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
     Invalidate("Failed build interpreter");
     return;
   }
+  interpreter_->UseNNAPI(use_nnapi_);
 
   must_allocate_tensors_ = true;
 }
@@ -193,6 +212,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       SetTensorData(values, &tensor->data);
       break;
     }
+    case kTfLiteBool: {
+      const auto& values = testing::Split<bool>(csv_values, ",");
+      if (!CheckSizes<bool>(tensor->bytes, values.size())) return;
+      SetTensorData(values, &tensor->data);
+      break;
+    }
     default:
       fprintf(stderr, "Unsupported type %d in SetInput\n", tensor->type);
       Invalidate("Unsupported tensor data type");
@@ -203,6 +228,10 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
 void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);
+  if (expected_output_.count(id) != 0) {
+    fprintf(stderr, "Overridden expectation for tensor %d\n", id);
+    Invalidate("Overridden expectation");
+  }
   expected_output_[id].reset(new Expectation);
   switch (tensor->type) {
     case kTfLiteFloat32:
@@ -216,6 +245,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteUInt8:
       expected_output_[id]->SetData<uint8_t>(csv_values);
+      break;
+    case kTfLiteBool:
+      expected_output_[id]->SetData<bool>(csv_values);
       break;
     default:
       fprintf(stderr, "Unsupported type %d in SetExpectation\n", tensor->type);
@@ -250,6 +282,32 @@ bool TfLiteDriver::CheckResults() {
   }
   expected_output_.clear();
   return success;
+}
+
+void TfLiteDriver::ResetLSTMStateTensors() {
+  interpreter_->ResetVariableTensorsToZero();
+
+  // Below is a workaround for initializing state tensors for LSTM.
+  // TODO(ycling): Refactoring and find a better way to initialize state
+  // tensors. Maybe write the reset instructions into the test data.
+  for (auto node_index : interpreter_->execution_plan()) {
+    const auto& node_and_reg = interpreter_->node_and_registration(node_index);
+    const auto& node = node_and_reg->first;
+    const auto& registration = node_and_reg->second;
+
+    if (registration.builtin_code == tflite::BuiltinOperator_LSTM) {
+      const auto* params =
+          reinterpret_cast<const TfLiteLSTMParams*>(node.builtin_data);
+      if (params->kernel_type == kTfLiteLSTMFullKernel &&
+          node.outputs->size >= 2) {
+        // The first 2 outputs of LSTM are state tensors.
+        for (int i = 0; i < 2; ++i) {
+          int node_index = node.outputs->data[i];
+          ResetTensor(node_index);
+        }
+      }
+    }
+  }
 }
 
 }  // namespace testing

@@ -170,91 +170,106 @@ static string PyObjectCppStr(PyObject* o) {
   return ExtractStringAndDecref(s);
 }
 
-// Safely returns a repr of the given Python object o as a C++ string.
-static string PyObjectCppRepr(PyObject* o) {
+string PyObjectCppRepr(PyObject* o) {
   PyObject* r = PyObject_Repr(o);
   return ExtractStringAndDecref(r);
 }
 
-Status CheckPyShapeInfo(PyObject* o) {
+StatusOr<Shape> XlaShapeFromPyShape(PyObject* o) {
   auto error = [o](const string& prefix) {
     return InvalidArgument("%s; got %s", prefix.c_str(),
                            PyObjectCppRepr(o).c_str());
   };
-  // The object is a tuple (a pair)
-  if (!PyTuple_Check(o)) {
-    return error("Shape record must be a tuple");
-  }
-  if (PyTuple_Size(o) != 2) {
-    return error("Shape record tuple must be of length 2");
-  }
 
-  // It has a first element, which is a numpy dtype object
-  PyObject* first = PyTuple_GetItem(o, 0);
-  if (first == nullptr) {
-    return error("Tuple has no item 0 (shape dtype)");
-  }
-  if (first->ob_type != &PyArrayDescr_Type) {
-    return error(
-        "Shape record does not have a numpy dtype as its first element");
-  }
-  const int np_type = NumpyTypenum(first);
-  if (!NumpyTypeIsValid(np_type)) {
-    return error("Shape record has an invalid integer dtype");
-  }
-
-  // It has a second element, which is a tuple, either of shape
-  // records or of Python ints
-  PyObject* second = PyTuple_GetItem(o, 1);
-  if (!second) {
-    return error("Tuple has no item 0 (shape dimensions)");
-  }
-  if (!PyTuple_Check(second)) {
-    return error("Shape record does not have a tuple as its second element");
-  }
-  const int length = PyTuple_Size(second);
-  const PrimitiveType element_type = NumpyTypeToPrimitiveType(np_type);
-  for (int i = 0; i < length; i++) {
-    PyObject* dimension = PyTuple_GetItem(second, i);
-    if (element_type == TUPLE) {
-      VLOG(3) << "element_type is tuple, checking member: " << i;
-      Status result = CheckPyShapeInfo(dimension);
-      if (!result.ok()) {
-        return AddStatus(
-            result, tensorflow::strings::StrCat("Validating tuple member ", i,
-                                                " of ", PyObjectCppRepr(o)));
-      }
-    } else if (!CheckPyIntOrLong(dimension)) {
-      return error("Non-tuple shape record has a non-integer dimension");
+  auto call_method = [o, &error](const string& method) -> StatusOr<PyObject*> {
+    PyObject* result =
+        PyObject_CallMethod(o, const_cast<char*>(method.c_str()), nullptr);
+    if (result == nullptr) {
+      return error(tensorflow::strings::StrCat(
+          "Failed to call method of shape object:", method));
     }
+    return result;
+  };
+
+  PyObject* np_type;
+  TF_ASSIGN_OR_RETURN(np_type, call_method("numpy_dtype"));
+  if (np_type->ob_type != &PyArrayDescr_Type) {
+    return error(
+        "Return value of shape method numpy_dtype "
+        "is not an integer numpy dtype");
   }
+  if (!NumpyTypeIsValid(NumpyTypenum(np_type))) {
+    return error(
+        "Return value of shape method numpy_dtype "
+        "is not a valid integer numpy dtype");
+  }
+  const PrimitiveType element_type =
+      NumpyTypeToPrimitiveType(NumpyTypenum(np_type));
+  Py_DECREF(np_type);
 
-  return Status::OK();
-}
-
-// Precondition: CheckPyShapeInfo(o)
-Shape XlaShapeFromPyShapeInfo(PyObject* o) {
-  const int np_type = NumpyTypenum(PyTuple_GetItem(o, 0));
-  const PrimitiveType element_type = NumpyTypeToPrimitiveType(np_type);
-  PyObject* py_dimensions = PyTuple_GetItem(o, 1);
-  const int length = PyTuple_Size(py_dimensions);
   if (element_type == TUPLE) {
+    PyObject* py_subshapes;
+    TF_ASSIGN_OR_RETURN(py_subshapes, call_method("tuple_shapes"));
+    if (!PyTuple_Check(py_subshapes)) {
+      return error(
+          "Return value of Shape method tuple_shapes() is not a tuple");
+    }
+    const int length = PyTuple_Size(py_subshapes);
     std::vector<Shape> subshapes;
     subshapes.reserve(length);
     for (int i = 0; i < length; i++) {
-      subshapes.push_back(
-          XlaShapeFromPyShapeInfo(PyTuple_GetItem(py_dimensions, i)));
+      TF_ASSIGN_OR_RETURN(
+          const Shape& subshape,
+          XlaShapeFromPyShape(PyTuple_GetItem(py_subshapes, i)));
+      subshapes.push_back(subshape);
     }
+    Py_DECREF(py_subshapes);
     return ShapeUtil::MakeTupleShape(subshapes);
   } else {
+    PyObject* py_dimensions;
+    PyObject* py_minor_to_major;
+    TF_ASSIGN_OR_RETURN(py_dimensions, call_method("dimensions"));
+    TF_ASSIGN_OR_RETURN(py_minor_to_major, call_method("minor_to_major"));
+    if (!PyTuple_Check(py_dimensions)) {
+      return error("Return value of Shape method dimensions() is not a tuple");
+    }
+    if (py_minor_to_major != Py_None && !PyTuple_Check(py_minor_to_major)) {
+      return error(
+          "Return value of Shape method minor_to_major() is neither a tuple "
+          "nor None");
+    }
+    const int length = PyTuple_Size(py_dimensions);
+    if (py_minor_to_major != Py_None &&
+        length != PyTuple_Size(py_minor_to_major)) {
+      return error(
+          "Shape methods dimensions() and minor_to_major() return "
+          "different-length tuples");
+    }
     std::vector<int64> dimensions(length);
+    std::vector<int64> minor_to_major(length);
     for (int i = 0; i < length; i++) {
       dimensions[i] = PyIntOrPyLongToLong(PyTuple_GetItem(py_dimensions, i));
-      if (dimensions[i] == -1) {
-        CHECK(!PyErr_Occurred());
+      if (dimensions[i] == -1 && PyErr_Occurred()) {
+        return error("Dimension is not an int");
+      }
+
+      if (py_minor_to_major != Py_None) {
+        minor_to_major[i] =
+            PyIntOrPyLongToLong(PyTuple_GetItem(py_minor_to_major, i));
+        if (minor_to_major[i] == -1 && PyErr_Occurred()) {
+          return error("Minor-to-major value is not an int");
+        }
       }
     }
-    return ShapeUtil::MakeShape(element_type, dimensions);
+    bool with_layout = py_minor_to_major != Py_None;
+    Py_DECREF(py_dimensions);
+    Py_DECREF(py_minor_to_major);
+    if (with_layout) {
+      return ShapeUtil::MakeShapeWithLayout(element_type, dimensions,
+                                            minor_to_major);
+    } else {
+      return ShapeUtil::MakeShape(element_type, dimensions);
+    }
   }
 }
 
@@ -325,13 +340,13 @@ StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o) {
   return result;
 }
 
-PyObject* PyObjectFromXlaLiteral(const Literal& literal) {
+PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
   if (ShapeUtil::IsTuple(literal.shape())) {
     int num_elements = ShapeUtil::TupleElementCount(literal.shape());
     PyObject* tuple = PyTuple_New(num_elements);
     for (int i = 0; i < num_elements; i++) {
-      PyTuple_SET_ITEM(
-          tuple, i, PyObjectFromXlaLiteral(LiteralView::Create(literal, {i})));
+      PyTuple_SET_ITEM(tuple, i,
+                       PyObjectFromXlaLiteral(LiteralSlice(literal, {i})));
     }
     return tuple;
   } else {
@@ -416,7 +431,7 @@ Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
   return Status::OK();
 }
 
-void CopyLiteralToNumpyArray(int np_type, const Literal& literal,
+void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
                              PyArrayObject* py_array) {
   switch (np_type) {
     case NPY_BOOL:

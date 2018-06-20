@@ -38,7 +38,7 @@ GPUcudaMallocAllocator::~GPUcudaMallocAllocator() { delete base_allocator_; }
 void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 #ifdef GOOGLE_CUDA
   // allocate with cudaMalloc
-  gpu::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+  se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
   CUdeviceptr rv = 0;
   CUresult res = cuMemAlloc(&rv, num_bytes);
   if (res != CUDA_SUCCESS) {

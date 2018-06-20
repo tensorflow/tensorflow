@@ -20,9 +20,16 @@ from __future__ import print_function
 
 # pylint: disable=line-too-long,wildcard-import
 from tensorflow.contrib.cloud.python.ops.bigquery_reader_ops import *
+from tensorflow.contrib.cloud.python.ops.gcs_config_ops import *
 # pylint: enable=line-too-long,wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['BigQueryReader']
+_allowed_symbols = [
+    'BigQueryReader',
+    'BlockCacheParams',
+    'configure_colab_session',
+    'configure_gcs',
+    'ConfigureGcsHook',
+]
 remove_undocumented(__name__, _allowed_symbols)

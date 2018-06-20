@@ -15,9 +15,12 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/tflite/import.h"
 
 #include "flatbuffers/flexbuffers.h"
+#include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
+#include "tensorflow/contrib/lite/toco/tooling_util.h"
+#include "tensorflow/contrib/lite/tools/verifier.h"
 
 namespace toco {
 
@@ -63,6 +66,9 @@ void ImportTensors(const ::tflite::Model& input_model, Model* model) {
 
     auto shape = input_tensor->shape();
     if (shape) {
+      // If the shape is 0-dimensional, make sure to record it as such,
+      // as oppose to leaving the array without a shape.
+      array.mutable_shape()->mutable_dims()->clear();
       for (int i = 0; i < shape->Length(); ++i) {
         auto d = shape->Get(i);
         array.mutable_shape()->mutable_dims()->push_back(d);
@@ -107,20 +113,48 @@ void ImportOperators(
                  << operators_table.size();
     }
     string opname = operators_table.at(index);
-    if (ops_by_name.count(opname) == 0) {
-      LOG(FATAL) << "Op '" << opname << "' not supported";
-    }
 
-    auto new_op = ops_by_name.at(opname)->Deserialize(
-        input_op->builtin_options(), input_op->custom_options());
+    // Find and use the appropriate operator deserialization factory.
+    std::unique_ptr<Operator> new_op = nullptr;
+    if (ops_by_name.count(opname) == 0) {
+      string effective_opname = "TENSORFLOW_UNSUPPORTED";
+      if (ops_by_name.count(effective_opname) == 0) {
+        LOG(FATAL) << "Internal logic error: TENSORFLOW_UNSUPPORTED not found.";
+      }
+      new_op = ops_by_name.at(effective_opname)
+                   ->Deserialize(input_op->builtin_options(),
+                                 input_op->custom_options());
+      if (new_op->type == OperatorType::kTensorFlowUnsupported) {
+        auto* unsupported_op =
+            static_cast<TensorFlowUnsupportedOperator*>(new_op.get());
+        unsupported_op->tensorflow_op = opname;
+        // TODO(b/109932940): Remove this when quantized is removed.
+        // For now, we assume all ops are quantized.
+        unsupported_op->quantized = true;
+      } else {
+        LOG(FATAL) << "Expected a TensorFlowUnsupportedOperator";
+      }
+    } else {
+      new_op = ops_by_name.at(opname)->Deserialize(input_op->builtin_options(),
+                                                   input_op->custom_options());
+    }
     model->operators.emplace_back(new_op.release());
     auto* op = model->operators.back().get();
 
+    // Make sure all the inputs and outputs are hooked up.
     auto inputs = input_op->inputs();
     for (int i = 0; i < inputs->Length(); i++) {
       auto input_index = inputs->Get(i);
-      const string& input_name = tensors_table.at(input_index);
-      op->inputs.push_back(input_name);
+      // input_index == -1 indicates optional tensor.
+      if (input_index != -1) {
+        const string& input_name = tensors_table.at(input_index);
+        op->inputs.push_back(input_name);
+      } else {
+        const string& tensor_name =
+            toco::AvailableArrayName(*model, "OptionalTensor");
+        model->CreateOptionalArray(tensor_name);
+        op->inputs.push_back(tensor_name);
+      }
     }
     auto outputs = input_op->outputs();
     for (int i = 0; i < outputs->Length(); i++) {
@@ -150,16 +184,28 @@ void ImportIOTensors(const ::tflite::Model& input_model,
   }
 }
 
+namespace {
+bool Verify(const void* buf, size_t len) {
+  ::flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
+  return ::tflite::VerifyModelBuffer(verifier);
+}
+}  // namespace
+
 std::unique_ptr<Model> Import(const ModelFlags& model_flags,
                               const string& input_file_contents) {
+  ::tflite::AlwaysTrueResolver r;
+  if (!::tflite::Verify(input_file_contents.data(), input_file_contents.size(),
+                        r, ::tflite::DefaultErrorReporter())) {
+    LOG(FATAL) << "Invalid flatbuffer.";
+  }
   const ::tflite::Model* input_model =
       ::tflite::GetModel(input_file_contents.data());
 
   // Full list of all known operators.
   const auto ops_by_name = BuildOperatorByNameMap();
 
-  if (input_model->subgraphs()->size() != 1) {
-    LOG(FATAL) << "# of subgraphs in tflite should be exactly 1 for now.";
+  if (!input_model->subgraphs() || input_model->subgraphs()->size() != 1) {
+    LOG(FATAL) << "Number of subgraphs in tflite should be exactly 1.";
   }
   std::unique_ptr<Model> model;
   model.reset(new Model);

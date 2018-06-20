@@ -35,16 +35,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const auto* params =
       reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* positions = GetInput(context, node, kInputPositions);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* positions = GetInput(context, node, kInputPositions);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   // Only INT32 positions are supported.
   TF_LITE_ENSURE_EQ(context, positions->type, kTfLiteInt32);
   // Check that input and output types match.
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
-  // TODO(mgubin): only 1D positions are currently supported.
-  TF_LITE_ENSURE_EQ(context, NumDimensions(positions), 1);
+  // TODO(mgubin): only 0D or 1D positions are currently supported.
+  TF_LITE_ENSURE(context, NumDimensions(positions) <= 1);
   // TODO(mgubin): Only default axis == 0 is supported.
+  TF_LITE_ENSURE_EQ(context, params->axis, 0);
   // Check conditions for different types.
   switch (input->type) {
     case kTfLiteFloat32:
@@ -58,13 +59,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_EQ(context, NumDimensions(input), 1);
     } break;
     default:
-      context->ReportError(context,
-                           "Only float32 and string types are supported");
+      context->ReportError(
+          context, "Only float32 and string types are supported, got %d",
+          input->type);
       return kTfLiteError;
   }
   const int num_dimensions =
       NumDimensions(input) + NumDimensions(positions) - 1;
-  TF_LITE_ENSURE(context, params->axis < num_dimensions);
+  TF_LITE_ENSURE(context, params->axis <= num_dimensions);
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(num_dimensions);
   int output_index = 0;
   for (int i = 0; i < params->axis; ++i) {
@@ -80,8 +82,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* positions = GetInput(context, node, kInputPositions);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* positions = GetInput(context, node, kInputPositions);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const int input_rank = NumDimensions(input);
 #define TF_LITE_GATHER(data_type, index_type)                            \

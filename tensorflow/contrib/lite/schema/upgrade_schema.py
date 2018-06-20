@@ -39,8 +39,8 @@ import tensorflow as tf
 from tensorflow.python.platform import resource_loader
 
 parser = argparse.ArgumentParser(
-    description="Script to move TFLite models from pre-release schema to"
-    " new schema.")
+    description="Script to move TFLite models from pre-release schema to "
+    "new schema.")
 parser.add_argument(
     "input",
     type=str,
@@ -48,7 +48,7 @@ parser.add_argument(
 parser.add_argument(
     "output",
     type=str,
-    help="Output json or bin TensorFlow lite model compliant with"
+    help="Output json or bin TensorFlow lite model compliant with "
     "the new schema. Extension must be `.json`, `.bin` or `.tflite`.")
 
 
@@ -258,7 +258,7 @@ class Converter(object):
       # Check if builtin_code is the appropriate string type
       # use type("") instead of str or unicode. for py2and3
       if not isinstance(operator_code["builtin_code"], type(u"")):
-        raise ValueError("builtin_code %r is non-string. this usually means"
+        raise ValueError("builtin_code %r is non-string. this usually means "
                          "your model has consistency problems." %
                          (operator_code["builtin_code"]))
       operator_code["builtin_code"] = (RemapOperator(

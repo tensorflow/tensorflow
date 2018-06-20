@@ -53,13 +53,13 @@ class RangeOp : public OpKernel {
     if (delta > 0) {
       OP_REQUIRES(
           context, start <= limit,
-          errors::InvalidArgument("Requires start <= limit when delta > 0: ",
-                                  start, "/", limit));
+          errors::InvalidArgument(
+              "Requires start <= limit when delta > 0: ", start, "/", limit));
     } else {
       OP_REQUIRES(
           context, start >= limit,
-          errors::InvalidArgument("Requires start >= limit when delta < 0: ",
-                                  start, "/", limit));
+          errors::InvalidArgument(
+              "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
     int64 size = (std::is_integral<T>::value
                       ? ((std::abs(limit - start) + std::abs(delta) - 1) /

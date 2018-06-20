@@ -28,21 +28,46 @@ limitations under the License.
 
 namespace toco {
 
+bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
+  auto& output_array = model->GetArray(op.outputs[0]);
+  if (output_array.minmax) {
+    return false;
+  }
+  const auto& input_array = model->GetArray(op.inputs[0]);
+  if (!input_array.minmax) {
+    return false;
+  }
+  const auto& input_minmax = input_array.GetMinMax();
+  CHECK(!output_array.minmax);
+  auto& output_minmax = output_array.GetOrCreateMinMax();
+  output_minmax.min = input_minmax.min;
+  output_minmax.max = input_minmax.max;
+  return true;
+}
+
 bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   const auto unary_it = model->operators.begin() + op_index;
   const auto* unary_op = unary_it->get();
-  // Test for unary ops of types that we know how to resolve
-  if (unary_op->type != OperatorType::kCast &&
-      unary_op->type != OperatorType::kNeg &&
-      unary_op->type != OperatorType::kTensorFlowRsqrt &&
-      unary_op->type != OperatorType::kTensorFlowSqrt &&
-      unary_op->type != OperatorType::kTensorFlowSquare &&
-      unary_op->type != OperatorType::kTensorFlowSum &&
-      unary_op->type != OperatorType::kTensorFlowMin &&
-      unary_op->type != OperatorType::kTensorFlowMax &&
-      unary_op->type != OperatorType::kTensorFlowReshape) {
-    return false;
+  // Test for unary ops of types that we know how to resolve.
+  switch (unary_op->type) {
+    case OperatorType::kCast:
+    case OperatorType::kLog:
+    case OperatorType::kNeg:
+    case OperatorType::kTensorFlowRsqrt:
+    case OperatorType::kTensorFlowSqrt:
+    case OperatorType::kTensorFlowSquare:
+    case OperatorType::kTensorFlowSum:
+    case OperatorType::kTensorFlowMin:
+    case OperatorType::kTensorFlowMax:
+    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kRelu6:
+    case OperatorType::kRelu1:
+    case OperatorType::kRelu:
+      break;
+    default:
+      return false;
   }
+
   // Check if the input is a constant parameter.
   if (!IsConstantParameterArray(*model, unary_op->inputs[0])) {
     return false;
@@ -74,6 +99,12 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
         " because it has a fused activation function",
         LogName(*unary_op));
     return false;
+  }
+
+  // The min-max is only copied for ops that copy data without arithmetic.
+  // In future trivial transpose, etc, can be handled here.
+  if (unary_op->type == OperatorType::kTensorFlowReshape) {
+    CopyMinMaxFromFirstInput(*unary_op, model);
   }
 
   const auto& input_array = model->GetArray(unary_op->inputs[0]);
@@ -135,18 +166,36 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     }
   } else if (unary_op->type == OperatorType::kTensorFlowReshape) {
     CHECK(input_buffer_size == output_buffer_size);
-    memcpy(output_float_data.data(), (*input_float_data).data(),
-           output_buffer_size * sizeof(output_float_data[0]));
+    output_float_data = *input_float_data;
   } else if (unary_op->type == OperatorType::kTensorFlowSum) {
-    // At the moment only full reduction across all dimensions is supported.
-    for (int i = 0; i < output_dims_count; i++) {
-      CHECK_EQ(output_shape.dims(i), 1);
+    CHECK_EQ(unary_op->inputs.size(), 2) << "Sum needs 2 inputs";
+    if (!IsConstantParameterArray(*model, unary_op->inputs[1])) {
+      AddMessageF("Axis input is non-constant");
+      return false;
     }
-    float sum = 0.f;
-    for (int i = 0; i < input_buffer_size; i++) {
-      sum += (*input_float_data)[i];
+    auto& axis_array = model->GetArray(unary_op->inputs[1]);
+    CHECK(axis_array.data_type == ArrayDataType::kInt32);
+    int axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
+    CHECK_LT(axis, input_shape.dimensions_count()) << "Axis out of bounds";
+
+    // We currently only handle reduction on axis 0.
+    CHECK_EQ(axis, 0) << "Only reduction along axis 0 is supported";
+    // We currently only handle 1-D and 2-D input tensors.
+    CHECK_LE(input_shape.dimensions_count(), 2) << "Rank >2 not yet supported";
+    // We only support keep_dims=true; shape prop will need to change otherwise.
+    auto sum_op = static_cast<const TensorFlowSumOperator*>(unary_op);
+    CHECK(sum_op->keep_dims) << "Only keep_dims=true is supported";
+
+    std::vector<int> indices(input_shape.dimensions_count());
+    for (int i = 0; i < input_shape.dims(1); ++i) {
+      indices[1] = i;
+      float sum = 0.f;
+      for (int j = 0; j < input_shape.dims(0); ++j) {
+        indices[0] = j;
+        sum += (*input_float_data)[Offset(input_shape, indices)];
+      }
+      output_float_data[i] = sum;
     }
-    output_float_data[0] = sum;
   } else if (unary_op->type == OperatorType::kTensorFlowMin) {
     // At the moment only full reduction across all dimensions is supported.
     // TODO(starka): Output should not be padded.
@@ -170,6 +219,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     }
     output_float_data[0] = max;
   } else if (unary_op->type == OperatorType::kNeg ||
+             unary_op->type == OperatorType::kLog ||
              unary_op->type == OperatorType::kTensorFlowRsqrt ||
              unary_op->type == OperatorType::kTensorFlowSqrt ||
              unary_op->type == OperatorType::kTensorFlowSquare) {
@@ -183,6 +233,8 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       float outval = 0.f;
       if (unary_op->type == OperatorType::kNeg) {
         outval = -val;
+      } else if (unary_op->type == OperatorType::kLog) {
+        outval = std::log(val);
       } else if (unary_op->type == OperatorType::kTensorFlowRsqrt) {
         outval = 1.0f / std::sqrt(val);
       } else if (unary_op->type == OperatorType::kTensorFlowSqrt) {
@@ -194,12 +246,43 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       }
       output_float_data[i] = outval;
     }
+  } else if (unary_op->type == OperatorType::kRelu6 &&
+             unary_op->type == OperatorType::kRelu1 &&
+             unary_op->type == OperatorType::kRelu) {
+    for (size_t i = 0; i < output_buffer_size; ++i) {
+      const float value = (*input_float_data)[i];
+      float new_value = 0.0f;
+      switch (unary_op->type) {
+        case OperatorType::kRelu: {
+          static constexpr float kLower = 0;
+          new_value = value < kLower ? kLower : value;
+          break;
+        }
+        case OperatorType::kRelu1: {
+          static constexpr float kUpper = 1;
+          static constexpr float kLower = -1;
+          new_value = value > kUpper ? kUpper : value < kLower ? kLower : value;
+          break;
+        }
+        case OperatorType::kRelu6: {
+          static constexpr float kUpper = 6;
+          static constexpr float kLower = 0;
+          new_value = value > kUpper ? kUpper : value < kLower ? kLower : value;
+          break;
+        }
+        default:
+          LOG(FATAL) << "Unsupported activation function "
+                     << LogName(*unary_op);
+          return false;
+      }
+      output_float_data[i] = new_value;
+    }
   } else {
     LOG(FATAL) << "should not get here.";
   }
   for (const auto& input : unary_op->inputs) {
     if (CountOpsWithInput(*model, input) == 1) {
-      model->arrays.erase(input);
+      model->EraseArray(input);
     }
   }
   AddMessageF("Resolved constant %s to the equivalent constant array",

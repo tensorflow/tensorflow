@@ -237,7 +237,7 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         const AllocatorAttributes dst_alloc_attr,
                         const Tensor* input, Tensor* output,
                         StatusCallback done) {
-  port::Tracing::ScopedAnnotation annotation(edge_name);
+  tracing::ScopedAnnotation annotation(edge_name);
   VLOG(1) << "Copy " << edge_name;
 
   const DeviceType src_device_type(

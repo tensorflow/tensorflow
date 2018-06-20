@@ -27,15 +27,18 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/tensor_format.h"
 
+#ifdef INTEL_MKL_ML
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
+#endif
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 using mkldnn::stream;
 #endif
 
@@ -61,7 +64,7 @@ class MklToTfOp : public OpKernel {
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
                              string data_format_str, DataType op_data_type,
                              bool has_avx512f, uint input_number) {
@@ -128,7 +131,7 @@ class MklToTfOp : public OpKernel {
 #else
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
                              string data_format_str, DataType op_data_type,
-                             bool has_avx512f, uint input_number) {
+                             bool has_avx512f, uint32 input_number) {
     // Check that input tensor is in MKL format.
     const Tensor& input_tensor = MklGetInput(context, input_number);
     MklShape input_shape;

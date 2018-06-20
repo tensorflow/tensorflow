@@ -33,9 +33,10 @@ from tensorflow.python.lib.io.file_io import rename as Rename
 from tensorflow.python.lib.io.file_io import stat as Stat
 from tensorflow.python.lib.io.file_io import walk as Walk
 # pylint: enable=unused-import
-from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('gfile.GFile', 'gfile.Open')
 class GFile(_FileIO):
   """File I/O wrappers without thread locking."""
 
@@ -43,6 +44,7 @@ class GFile(_FileIO):
     super(GFile, self).__init__(name=name, mode=mode)
 
 
+@tf_export('gfile.FastGFile')
 class FastGFile(_FileIO):
   """File I/O wrappers without thread locking."""
 
@@ -53,24 +55,3 @@ class FastGFile(_FileIO):
 # Does not alias to Open so that we use our version of GFile to strip
 # 'b' mode.
 Open = GFile
-
-# TODO(drpng): Find the right place to document these.
-_allowed_symbols = [
-    'Copy',
-    'DeleteRecursively',
-    'Exists',
-    'FastGFile',
-    'GFile',
-    'Glob',
-    'IsDirectory',
-    'ListDirectory',
-    'Open',
-    'MakeDirs',
-    'MkDir',
-    'Remove',
-    'Rename',
-    'Stat',
-    'Walk',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

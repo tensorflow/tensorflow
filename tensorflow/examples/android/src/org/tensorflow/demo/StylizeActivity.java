@@ -16,8 +16,10 @@
 
 package org.tensorflow.demo;
 
+import android.app.UiModeManager;
 import android.content.Context;
 import android.content.res.AssetManager;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.BitmapFactory;
@@ -31,9 +33,11 @@ import android.graphics.Typeface;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.util.DisplayMetrics;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -43,6 +47,7 @@ import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.GridView;
 import android.widget.ImageView;
+import android.widget.RelativeLayout;
 import android.widget.Toast;
 import java.io.IOException;
 import java.io.InputStream;
@@ -381,6 +386,27 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     grid = (GridView) findViewById(R.id.grid_layout);
     grid.setAdapter(adapter);
     grid.setOnTouchListener(gridTouchAdapter);
+
+    // Change UI on Android TV
+    UiModeManager uiModeManager = (UiModeManager) getSystemService(UI_MODE_SERVICE);
+    if (uiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION) {
+      DisplayMetrics displayMetrics = new DisplayMetrics();
+      getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+      int styleSelectorHeight = displayMetrics.heightPixels;
+      int styleSelectorWidth = displayMetrics.widthPixels - styleSelectorHeight;
+      RelativeLayout.LayoutParams layoutParams = new RelativeLayout.LayoutParams(styleSelectorWidth, ViewGroup.LayoutParams.MATCH_PARENT);
+
+      // Calculate number of style in a row, so all the style can show up without scrolling
+      int numOfStylePerRow = 3;
+      while (styleSelectorWidth / numOfStylePerRow * Math.ceil((float) (adapter.getCount() - 2) / numOfStylePerRow) > styleSelectorHeight) {
+        numOfStylePerRow++;
+      }
+      grid.setNumColumns(numOfStylePerRow);
+      layoutParams.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+      grid.setLayoutParams(layoutParams);
+      adapter.buttons.clear();
+    }
+
     setStyle(adapter.items[0], 1.0f);
   }
 
@@ -601,5 +627,39 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     lines.add("Initialized size: " + initializedSize);
 
     borderedText.drawLines(canvas, 10, canvas.getHeight() - 10, lines);
+  }
+
+  @Override
+  public boolean onKeyDown(int keyCode, KeyEvent event) {
+    int moveOffset = 0;
+    switch (keyCode) {
+      case KeyEvent.KEYCODE_DPAD_LEFT:
+        moveOffset = -1;
+        break;
+      case KeyEvent.KEYCODE_DPAD_RIGHT:
+        moveOffset = 1;
+        break;
+      case KeyEvent.KEYCODE_DPAD_UP:
+        moveOffset = -1 * grid.getNumColumns();
+        break;
+      case KeyEvent.KEYCODE_DPAD_DOWN:
+        moveOffset = grid.getNumColumns();
+        break;
+      default:
+        return super.onKeyDown(keyCode, event);
+    }
+
+    // get the highest selected style
+    int currentSelect = 0;
+    float highestValue = 0;
+    for (int i = 0; i < adapter.getCount(); i++) {
+      if (adapter.items[i].value > highestValue) {
+        currentSelect = i;
+        highestValue = adapter.items[i].value;
+      }
+    }
+    setStyle(adapter.items[(currentSelect + moveOffset + adapter.getCount()) % adapter.getCount()], 1);
+
+    return true;
   }
 }

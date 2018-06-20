@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_
 
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -33,8 +33,8 @@ namespace cpu {
 // emitters for function and function argument access.
 // The llvm::Function is created with the standard function signature
 // used in the XLA CPU backend (see ir_function.cc for argument details).
-// In addtion IrFunction saves the callers IR insert point during contruction,
-// and restores it after desctruction.
+// In addition IrFunction saves the callers IR insert point during construction,
+// and restores it after destruction.
 //
 // Example usage:
 //
@@ -131,4 +131,4 @@ Status EmitCallToParallelForkJoin(
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_FUNCTION_H_

@@ -44,6 +44,7 @@ class TensorProto;
 class VariantTensorData;
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
+Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -482,6 +483,10 @@ class Tensor {
   friend class AutoReloadVariableOp;  // For access to set_shape
   friend class TensorTestHelper;      // For access to set_shape
   friend class OpKernelContext;       // For access to RefCountIsOne().
+  friend class ScopedAllocator;       // For access to buf_.
+  friend class XlaTensor;             // For access to RefCountIsOne().
+  friend class XlaTensorBuffer;  // For access to the private constructor taking
+                                 // the buffer
   template <typename Device, typename T>
   friend class AssignVariableOp;  // For access to RefCountIsOne().
   template <typename Device, typename T>
@@ -490,6 +495,10 @@ class Tensor {
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
       int64 index);                // For access to RefCountIsOne().
+  friend Status batch_util::MaybeMoveSliceToElement(
+      Tensor* parent, Tensor* element,
+      int64 index);  // For access to RefCountIsOne().
+
   friend class NumpyTensorBuffer;  // For access to the private constructor
                                    // taking the buffer.
 
@@ -687,7 +696,8 @@ typename TTypes<T, NDIMS>::UnalignedTensor Tensor::unaligned_shaped(
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) const {
-  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
+  CheckType(DataTypeToEnum<T>::v());
+  CHECK(IsAligned());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(new_sizes, &dims);
   return typename TTypes<T, NDIMS>::ConstTensor(base<T>(), dims);

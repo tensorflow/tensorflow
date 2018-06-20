@@ -61,6 +61,15 @@ message OpMetricsResult {
 message OpMetricsDbResult {
   // A bunch of OpMetricsResults.
   repeated OpMetricsResult metrics_db = 1;
+  // The total host infeed-enqueue duration in picoseconds.
+  optional uint64 total_host_infeed_enq_duration_ps = 2;
+  // The total of the difference between the start times of two
+  // consecutive infeed-enqueues (per host) in picoseconds.
+  optional uint64 total_host_infeed_enq_start_timestamp_ps_diff = 3;
+  // The total device time in microseconds.
+  optional double total_device_time_in_us = 4;
+  // The total host time in microseconds.
+  optional double total_host_time_in_us = 5;
 }
 
 // Result proto for StepInfo.
@@ -72,6 +81,14 @@ message StepInfoResult {
   // The infeed duration in picoseconds.
   // Can turn into a map if we want a variable number of ops.
   optional uint64 infeed_duration_ps = 3;
+  // The start time of this step in picoseconds.
+  optional uint64 begin_ps = 4;
+  // The waiting time within this step in picoseconds.
+  optional uint64 wait_duration_ps = 5;
+  // The time spent on cross-replica-sum in picoseconds.
+  optional uint64 crs_duration_ps = 6;
+  // Percentage of unit b time spent on infeed.
+  optional double unit_b_infeed_percent = 7;
 }
 
 // Result proto for a sequence of steps.
@@ -150,6 +167,66 @@ message RunEnvironmentResult {
   repeated HostDependentJobInfoResult host_dependent_job_info = 6;
 }
 
+// The types of host operations that are tracked.
+enum HostOp {
+  // Invalid host op.
+  kINVALIDHostOp = 0;
+  // Each of host op type has two parts:
+  // (1) the stage where the op happens and (2) the op name.
+  // stage = Input Data Producer, op = Get Next Batch.
+  kInputDataProducerGetNextBatch = 1;
+  // stage = Input Data Producer, op = Session Run.
+  kInputDataProducerSessionRun = 2;
+  // stage = Input Data Producer, op = Forward Batch.
+  kInputDataProducerForwardBatch = 3;
+  // stage = Infeed Thread, op = Get Next Batch.
+  kInfeedThreadGetNextBatch = 4;
+  // stage = Infeed Thread, op = Session Run.
+  kInfeedThreadSessionRun = 5;
+  // stage = Infeed Thread, op = Forward Batch.
+  kInfeedThreadForwardBatch = 6;
+  // stage = Outfeed Thread, op = Get Next Batch.
+  kOutfeedThreadGetNextBatch = 7;
+  // stage = Outfeed Thread, op = Session Run.
+  kOutfeedThreadSessionRun = 8;
+  // stage = Outfeed Thread, op = Forward Batch.
+  kOutfeedThreadForwardBatch = 9;
+}
+
+// Result proto for the host ops per TPU step.
+message HostOpsPerTpuStep {
+  // Whether the data in this message is valid.
+  optional bool valid = 1 [default = false];
+  // The current TPU step number.
+  optional uint32 tpu_step_num = 2;
+  // The beginning time of the current TPU step on the device in picoseconds.
+  optional uint64 tpu_step_begin_ps = 3;
+  // The ending time of the current TPU step on the device in picoseconds.
+  optional uint64 tpu_step_end_ps = 4;
+  // For each possible host operation, maps to the difference between the TPU
+  // step number that the host op targets and the current TPU step number.
+  // The key is HostOp, value is the step difference.
+  map<int32, int32> step_diffs = 5;
+}
+
+message HostOpsDetailsPerCore {
+  // Map from core id to HostOpsPerTpuStep.
+  map<int32, HostOpsPerTpuStep> core_map = 1;
+}
+
+message HostOpsDetailsPerHost {
+  // Map from hostname to a map from core id to HostOpsPerTpuStep.
+  map<string, HostOpsDetailsPerCore> host_map = 1;
+}
+
+// Result proto for the host ops for all TPU steps.
+message HostOpsResult {
+  reserved 1;  // (was repeated HostOpsPerTpuStep host_op_sequence)
+  // A sequence of records with one for each TPU step. Each record
+  // is a map from hostname to a map from core id to HostOpsPerTpuStep.
+  repeated HostOpsDetailsPerHost hostops_details = 2;
+}
+
 // Result proto for TfStatsHelper.
 message TfOpStats {
   // The result for the TF-metric database.
@@ -166,4 +243,10 @@ message TfOpStats {
   optional double matrix_unit_utilization_percent = 6;
   // The run environment of this profiling session.
   optional RunEnvironmentResult run_environment = 7;
+  // The result for the host operations.
+  optional HostOpsResult host_ops = 8;
+  // A map from core ID to name.
+  map<uint32, string> core_id_to_name_map = 9;
+  // The result for hw unit b stats.
+  optional bytes unit_b_stats = 10;
 }

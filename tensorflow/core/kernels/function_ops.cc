@@ -28,11 +28,14 @@ limitations under the License.
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
-static const char* const kGradientOp = "SymbolicGradient";
+static const char* const kArgOp = FunctionLibraryDefinition::kArgOp;
+static const char* const kRetOp = FunctionLibraryDefinition::kRetOp;
+static const char* const kGradientOp = FunctionLibraryDefinition::kGradientOp;
 
 class ArgOp : public OpKernel {
  public:
@@ -89,26 +92,25 @@ class RetvalOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
-REGISTER_SYSTEM_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
-REGISTER_SYSTEM_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name(kArgOp).Device(DEVICE_CPU), ArgOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_CPU), RetvalOp);
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
-      Name("_Arg").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ArgOp);
+      Name(kArgOp).Device(DEVICE_SYCL).TypeConstraint<type>("T"), ArgOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
+TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kArgOp)
                                                    .Device(DEVICE_SYCL)
                                                    .HostMemory("output")
                                                    .TypeConstraint<int32>("T"),
                                                ArgOp);
 #undef REGISTER
-#define REGISTER(type)                                               \
-  REGISTER_KERNEL_BUILDER(                                           \
-      Name("_Retval").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      RetvalOp);
+#define REGISTER(type)     \
+  REGISTER_KERNEL_BUILDER( \
+      Name(kRetOp).Device(DEVICE_SYCL).TypeConstraint<type>("T"), RetvalOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Retval")
+TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                    .Device(DEVICE_SYCL)
                                                    .HostMemory("input")
                                                    .TypeConstraint<int32>("T"),
@@ -118,16 +120,16 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Retval")
 
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
-      Name("_Arg").Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp);
+      Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
+TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kArgOp)
                                                    .Device(DEVICE_GPU)
                                                    .HostMemory("output")
                                                    .TypeConstraint<int32>("T"),
                                                ArgOp);
 #undef REGISTER
 
-REGISTER_KERNEL_BUILDER(Name("_Arg")
+REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .Device(DEVICE_GPU)
                             .HostMemory("output")
                             .TypeConstraint<ResourceHandle>("T"),
@@ -135,13 +137,18 @@ REGISTER_KERNEL_BUILDER(Name("_Arg")
 
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
-      Name("_Retval").Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
+      Name(kRetOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Retval")
+TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                    .Device(DEVICE_GPU)
                                                    .HostMemory("input")
                                                    .TypeConstraint<int32>("T"),
                                                RetvalOp);
+REGISTER_KERNEL_BUILDER(Name(kRetOp)
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<ResourceHandle>("T")
+                            .HostMemory("input"),
+                        RetvalOp);
 #undef REGISTER
 
 class PassOn : public OpKernel {
@@ -247,28 +254,28 @@ class SymbolicGradientOp : public AsyncOpKernel {
     opts.runner = ctx->runner();
     opts.stats_collector = ctx->stats_collector();
     opts.step_container = ctx->step_container();
+    opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    lib->Run(
-        opts, handle, args, rets, [ctx, done, rets](const Status& status) {
-          if (!status.ok()) {
-            ctx->SetStatus(status);
-          } else if (rets->size() != ctx->num_outputs()) {
-            ctx->SetStatus(errors::InvalidArgument(
-                "SymGrad expects to return ", ctx->num_outputs(),
-                " tensor(s), but get ", rets->size(), " tensor(s) instead."));
-          } else {
-            for (size_t i = 0; i < rets->size(); ++i) {
-              ctx->set_output(i, (*rets)[i]);
-            }
-          }
-          delete rets;
-          done();
-        });
+    lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
+      if (!status.ok()) {
+        ctx->SetStatus(status);
+      } else if (rets->size() != ctx->num_outputs()) {
+        ctx->SetStatus(errors::InvalidArgument(
+            "SymGrad expects to return ", ctx->num_outputs(),
+            " tensor(s), but get ", rets->size(), " tensor(s) instead."));
+      } else {
+        for (size_t i = 0; i < rets->size(); ++i) {
+          ctx->set_output(i, (*rets)[i]);
+        }
+      }
+      delete rets;
+      done();
+    });
   }
 
  private:
@@ -288,7 +295,8 @@ REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_SYCL),
 class RemoteCallOp : public AsyncOpKernel {
  public:
   explicit RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, &func_));
   }
 
   ~RemoteCallOp() override {}
@@ -306,11 +314,30 @@ class RemoteCallOp : public AsyncOpKernel {
     AttrValueMap attr_values = func_.attr();
     FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
     instantiate_opts.target = target_device;
+
+    FunctionTarget function_target = {target_device, lib};
+
     FunctionLibraryRuntime::Handle handle;
-    OP_REQUIRES_OK_ASYNC(ctx,
-                         lib->Instantiate(func_.name(), AttrSlice(&attr_values),
-                                          instantiate_opts, &handle),
-                         done);
+    {
+      mutex_lock l(mu_);
+      auto cached_entry = handle_cache_.find(function_target);
+      if (cached_entry != handle_cache_.end()) {
+        handle = cached_entry->second;
+      } else {
+        VLOG(1) << "Instantiating " << func_.name() << " on " << target_device;
+        tracing::ScopedActivity activity(strings::StrCat(
+            "RemoteCall: Instantiate: ", func_.name(), " on ", target_device));
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            lib->Instantiate(func_.name(), AttrSlice(&attr_values),
+                             instantiate_opts, &handle),
+            done);
+        auto insert_result = handle_cache_.insert({function_target, handle});
+        CHECK(insert_result.second) << "Insert unsuccessful.";
+        VLOG(1) << "Instantiated " << func_.name() << " on " << target_device
+                << ", resulting in handle: " << handle << " flr: " << lib;
+      }
+    }
 
     OpInputList arguments;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
@@ -329,22 +356,33 @@ class RemoteCallOp : public AsyncOpKernel {
       args.push_back(argument);
     }
     auto* rets = new std::vector<Tensor>;
-    lib->Run(opts, handle, args, rets, [rets, done, ctx](const Status& status) {
-      if (!status.ok()) {
-        ctx->SetStatus(status);
-      } else {
-        for (size_t i = 0; i < rets->size(); ++i) {
-          ctx->set_output(i, (*rets)[i]);
-        }
-      }
-      delete rets;
-      done();
-    });
+    auto* activity = new tracing::ScopedActivity(strings::StrCat(
+        "RemoteCall: Run: ", func_.name(), " on ", target_device));
+    VLOG(1) << "Running " << func_.name() << " on " << target_device
+            << " with handle: " << handle;
+    lib->Run(opts, handle, args, rets,
+             [rets, activity, done, ctx](const Status& status) {
+               if (!status.ok()) {
+                 ctx->SetStatus(status);
+               } else {
+                 for (size_t i = 0; i < rets->size(); ++i) {
+                   ctx->set_output(i, (*rets)[i]);
+                 }
+               }
+               delete rets;
+               delete activity;
+               done();
+             });
   }
 
  private:
-  string target_;
   NameAttrList func_;
+
+  mutex mu_;
+  typedef std::pair<string, FunctionLibraryRuntime*> FunctionTarget;
+  std::map<FunctionTarget, FunctionLibraryRuntime::Handle> handle_cache_
+      GUARDED_BY(mu_);
+
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteCallOp);
 };
 

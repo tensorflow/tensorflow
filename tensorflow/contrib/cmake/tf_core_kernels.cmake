@@ -63,14 +63,18 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/split_handler_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/stats_accumulator_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/training_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/coder/kernels/pmf_to_cdf_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/coder/kernels/range_coder.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/coder/kernels/range_coder_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/coder/kernels/range_coder_ops_util.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/coder/ops/coder_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/kernels/cudnn_rnn_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/ops/cudnn_rnn_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/csv_dataset_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/directed_interleave_dataset_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/ignore_errors_dataset_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/prefetching_kernels.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/ops/prefetching_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/threadpool_dataset_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/unique_dataset_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/ops/dataset_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/clustering_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/masked_matmul_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/wals_solver_ops.cc"
@@ -175,6 +179,16 @@ if(WIN32)
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc"
   )
   list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_windows_exclude_srcs})
+else(WIN32)
+  if(tensorflow_ENABLE_GPU)
+    file(GLOB_RECURSE tf_core_kernels_gpu_exclude_srcs
+        # temporarily disable nccl as it needs to be ported with gpu
+        "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_manager.cc"
+        "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_ops.cc"
+        "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc"
+    )
+    list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_gpu_exclude_srcs})
+  endif(tensorflow_ENABLE_GPU)
 endif(WIN32)
 
 file(GLOB_RECURSE tf_core_gpu_kernels_srcs

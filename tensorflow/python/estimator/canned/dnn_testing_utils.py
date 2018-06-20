@@ -27,8 +27,8 @@ import six
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
+from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn
-from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
@@ -44,16 +44,16 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import optimizer
+from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
@@ -134,7 +134,8 @@ def mock_head(testcase, hidden_units, logits_dimension, expected_logits):
       hidden_weights_names + hidden_biases_names +
       [LOGITS_WEIGHTS_NAME + '/part_0:0', LOGITS_BIASES_NAME + '/part_0:0'])
 
-  def _create_estimator_spec(features, mode, logits, labels, train_op_fn):
+  def _create_tpu_estimator_spec(
+      features, mode, logits, labels, train_op_fn=None, optimizer=None):
     del features, labels  # Not used.
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     testcase.assertItemsEqual(expected_var_names,
@@ -144,19 +145,33 @@ def mock_head(testcase, hidden_units, logits_dimension, expected_logits):
         expected_logits, logits, message='Failed for mode={}. '.format(mode))
     with ops.control_dependencies([assert_logits]):
       if mode == model_fn.ModeKeys.TRAIN:
-        return model_fn.EstimatorSpec(
-            mode=mode, loss=loss, train_op=train_op_fn(loss))
+        if train_op_fn is not None:
+          train_op = train_op_fn(loss)
+        elif optimizer is not None:
+          train_op = optimizer.minimize(loss, global_step=None)
+        return model_fn._TPUEstimatorSpec(
+            mode=mode, loss=loss, train_op=train_op)
       elif mode == model_fn.ModeKeys.EVAL:
-        return model_fn.EstimatorSpec(mode=mode, loss=array_ops.identity(loss))
+        return model_fn._TPUEstimatorSpec(
+            mode=mode, loss=array_ops.identity(loss))
       elif mode == model_fn.ModeKeys.PREDICT:
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(
             mode=mode, predictions={'logits': array_ops.identity(logits)})
       else:
         testcase.fail('Invalid mode: {}'.format(mode))
 
+  def _create_estimator_spec(
+      features, mode, logits, labels, train_op_fn=None, optimizer=None):
+    tpu_spec = _create_tpu_estimator_spec(
+        features, mode, logits, labels, train_op_fn, optimizer)
+    return tpu_spec.as_estimator_spec()
+
   head = test.mock.NonCallableMagicMock(spec=head_lib._Head)
   head.logits_dimension = logits_dimension
-  head.create_estimator_spec = test.mock.MagicMock(wraps=_create_estimator_spec)
+  head._create_tpu_estimator_spec = test.mock.MagicMock(
+      wraps=_create_tpu_estimator_spec)
+  head.create_estimator_spec = test.mock.MagicMock(
+      wraps=_create_estimator_spec)
 
   return head
 
@@ -191,7 +206,7 @@ def mock_optimizer(testcase, hidden_units, expected_loss=None):
     testcase.assertEquals(0, loss.shape.ndims)
     if expected_loss is None:
       if global_step is not None:
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
       return control_flow_ops.no_op()
     assert_loss = assert_close(
         math_ops.to_float(expected_loss, name='expected'),
@@ -199,12 +214,12 @@ def mock_optimizer(testcase, hidden_units, expected_loss=None):
         name='assert_loss')
     with ops.control_dependencies((assert_loss,)):
       if global_step is not None:
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
       return control_flow_ops.no_op()
 
   optimizer_mock = test.mock.NonCallableMagicMock(
-      spec=optimizer.Optimizer,
-      wraps=optimizer.Optimizer(use_locking=False, name='my_optimizer'))
+      spec=optimizer_lib.Optimizer,
+      wraps=optimizer_lib.Optimizer(use_locking=False, name='my_optimizer'))
   optimizer_mock.minimize = test.mock.MagicMock(wraps=_minimize)
 
   return optimizer_mock
@@ -828,7 +843,7 @@ class BaseDNNWarmStartingTest(object):
         optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
         # The provided regular expression will only warm-start the city
         # embedding, not the kernels and biases of the hidden weights.
-        warm_start_from=warm_starting_util.WarmStartSettings(
+        warm_start_from=estimator.WarmStartSettings(
             ckpt_to_initialize_from=dnn_classifier.model_dir,
             vars_to_warm_start='.*(city).*'))
 
@@ -877,7 +892,7 @@ class BaseDNNWarmStartingTest(object):
 
     # Create a second DNNClassifier, warm-started from the first.  Use a
     # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
-    # accumulator values that change).  Use a a new FeatureColumn with a
+    # accumulator values that change).  Use a new FeatureColumn with a
     # different vocabulary for occupation.
     new_vocab_list = ['doctor', 'consultant', 'engineer']
     new_vocab_file = os.path.join(self._ckpt_and_vocab_dir,
@@ -892,7 +907,7 @@ class BaseDNNWarmStartingTest(object):
         dimension=2)
     # We can create our VocabInfo object from the new and old occupation
     # FeatureColumn's.
-    occupation_vocab_info = warm_starting_util.VocabInfo(
+    occupation_vocab_info = estimator.VocabInfo(
         new_vocab=new_occupation.categorical_column.vocabulary_file,
         new_vocab_size=new_occupation.categorical_column.vocabulary_size,
         num_oov_buckets=new_occupation.categorical_column.num_oov_buckets,
@@ -907,7 +922,7 @@ class BaseDNNWarmStartingTest(object):
         feature_columns=[occupation],
         n_classes=4,
         optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
-        warm_start_from=warm_starting_util.WarmStartSettings(
+        warm_start_from=estimator.WarmStartSettings(
             ckpt_to_initialize_from=dnn_classifier.model_dir,
             var_name_to_vocab_info={
                 OCCUPATION_EMBEDDING_NAME: occupation_vocab_info
@@ -978,7 +993,7 @@ class BaseDNNWarmStartingTest(object):
         optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
         # The 'city' variable correspond to the 'locality' variable in the
         # previous model.
-        warm_start_from=warm_starting_util.WarmStartSettings(
+        warm_start_from=estimator.WarmStartSettings(
             ckpt_to_initialize_from=dnn_classifier.model_dir,
             var_name_to_prev_var_name={
                 CITY_EMBEDDING_NAME:
@@ -1035,6 +1050,8 @@ class BaseDNNClassifierEvaluateTest(object):
         metric_keys.MetricKeys.LOSS: expected_loss,
         metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2.,
         metric_keys.MetricKeys.ACCURACY: 0.5,
+        metric_keys.MetricKeys.PRECISION: 0.0,
+        metric_keys.MetricKeys.RECALL: 0.0,
         metric_keys.MetricKeys.PREDICTION_MEAN: 0.11105597,
         metric_keys.MetricKeys.LABEL_MEAN: 0.5,
         metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
@@ -1042,6 +1059,7 @@ class BaseDNNClassifierEvaluateTest(object):
         # that is what the algorithm returns.
         metric_keys.MetricKeys.AUC: 0.5,
         metric_keys.MetricKeys.AUC_PR: 0.75,
+
         ops.GraphKeys.GLOBAL_STEP: global_step
     }, dnn_classifier.evaluate(input_fn=_input_fn, steps=1))
 

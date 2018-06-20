@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.layers import conv2d
 from tensorflow.contrib.learn.python.learn import ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

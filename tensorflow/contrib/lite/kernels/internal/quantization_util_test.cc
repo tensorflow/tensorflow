@@ -22,21 +22,195 @@ namespace {
 
 using ::testing::Pair;
 
-TEST(QuantizationUtilTest, QuantizeMultiplierSmallerThanOne) {
+template <class FloatIn, class IntOut>
+void RunSafeCastTests() {
+  const IntOut imax = std::numeric_limits<IntOut>::max();
+  EXPECT_GT(imax, 0);
+  const IntOut imin = std::numeric_limits<IntOut>::min();
+  const bool s = std::numeric_limits<IntOut>::is_signed;
+  if (s) {
+    EXPECT_LT(imin, 0);
+  } else {
+    EXPECT_EQ(0, imin);
+  }
+
+  // Some basic tests.
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(0.0)), 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-0.0)), 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(0.99)), 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(1.0)), 1);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(1.01)), 1);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(1.99)), 1);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(2.0)), 2);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(2.01)), 2);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-0.99)), 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-1.0)), s ? -1 : 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-1.01)), s ? -1 : 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-1.99)), s ? -1 : 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-2.0)), s ? -2 : 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-2.01)), s ? -2 : 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(117.9)), 117);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(118.0)), 118);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(118.1)), 118);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-117.9)), s ? -117 : 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-118.0)), s ? -118 : 0);
+  EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(-118.1)), s ? -118 : 0);
+
+  // Some edge cases.
+  EXPECT_EQ(SafeCast<IntOut>(std::numeric_limits<FloatIn>::max()), imax);
+  EXPECT_EQ(SafeCast<IntOut>(std::numeric_limits<FloatIn>::lowest()), imin);
+  EXPECT_EQ(SafeCast<IntOut>(std::numeric_limits<FloatIn>::infinity()), imax);
+  EXPECT_EQ(SafeCast<IntOut>(-std::numeric_limits<FloatIn>::infinity()), imin);
+  EXPECT_EQ(SafeCast<IntOut>(std::numeric_limits<FloatIn>::quiet_NaN()), 0);
+
+  // Some larger numbers.
+  if (sizeof(IntOut) >= 4 && sizeof(FloatIn) > 4) {
+    EXPECT_EQ(SafeCast<IntOut>(static_cast<FloatIn>(0x76543210)), 0x76543210);
+  }
+
+  if (sizeof(FloatIn) > sizeof(IntOut)) {
+    // Check values near imax.
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) + 0.1)),
+              imax);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) + 0.99)),
+              imax);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) + 1.0)),
+              imax);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) + 1.99)),
+              imax);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) + 2.0)),
+              imax);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) - 0.1)),
+              imax - 1);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) - 0.99)),
+              imax - 1);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) - 1.0)),
+              imax - 1);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) - 1.01)),
+              imax - 2);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) - 1.99)),
+              imax - 2);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) - 2.0)),
+              imax - 2);
+    EXPECT_EQ(SafeCast<IntOut>(
+                  static_cast<FloatIn>(static_cast<FloatIn>(imax) - 2.01)),
+              imax - 3);
+  }
+
+  // Check values considerably larger in magnitude than imin and imax
+  EXPECT_EQ(
+      SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) * 2)),
+      imax);
+  EXPECT_EQ(
+      SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) * 20)),
+      imax);
+  EXPECT_EQ(
+      SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imax) * 100)),
+      imax);
+  EXPECT_EQ(
+      SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imin) * 2)),
+      imin);
+  EXPECT_EQ(
+      SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imin) * 20)),
+      imin);
+  EXPECT_EQ(
+      SafeCast<IntOut>(static_cast<FloatIn>(static_cast<FloatIn>(imin) * 100)),
+      imin);
+}
+
+TEST(QuantizationUtilTest, SafeCast) {
+  RunSafeCastTests<float, int8>();
+  RunSafeCastTests<double, int8>();
+  RunSafeCastTests<float, int16>();
+  RunSafeCastTests<double, int16>();
+  RunSafeCastTests<float, int32>();
+  RunSafeCastTests<double, int32>();
+  RunSafeCastTests<float, int64>();
+  RunSafeCastTests<double, int64>();
+  RunSafeCastTests<float, uint8>();
+  RunSafeCastTests<double, uint8>();
+  RunSafeCastTests<float, uint16>();
+  RunSafeCastTests<double, uint16>();
+  RunSafeCastTests<float, uint32>();
+  RunSafeCastTests<double, uint32>();
+  RunSafeCastTests<float, uint64>();
+  RunSafeCastTests<double, uint64>();
+}
+
+// Example taken from http://www.tensorflow.org/performance/quantization
+//
+//  Quantized | Float
+//  --------- | -----
+//  0         | -10.0
+//  255       | 30.0
+//  128       | 10.0
+TEST(QuantizationUtilTest, ChooseQuantizationParams) {
+  QuantizationParams qp = ChooseQuantizationParams<uint8>(-10.0, 30.0);
+  EXPECT_NEAR(qp.scale, 0.156863, 1e-5);
+  EXPECT_EQ(qp.zero_point, 64);
+}
+
+TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMinBoundary) {
+  QuantizationParams qp = ChooseQuantizationParams<uint8>(0.0, 30.0);
+  EXPECT_NEAR(qp.scale, 0.117647, 1e-5);
+  EXPECT_EQ(qp.zero_point, 0);
+}
+
+#ifdef GTEST_HAS_DEATH_TEST
+TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroNotInRange) {
+  // Assumption is that zero is within the range.
+  EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, 30.0), "");
+}
+
+TEST(QuantizationUtilTest, ChooseQuantizationParamsEmptyRangePositive) {
+  // Assumption is that zero is within the range.
+  EXPECT_DEATH(ChooseQuantizationParams<uint8>(30.0, 30.0), "");
+}
+#endif  // GTEST_HAS_DEATH_TEST
+
+TEST(QuantizationUtilTest, ChooseQuantizationParamsEmptyRangeZero) {
+  QuantizationParams qp = ChooseQuantizationParams<uint8>(0.0, 0.0);
+  EXPECT_NEAR(qp.scale, 0.0, 1e-5);
+  EXPECT_EQ(qp.zero_point, 0);
+}
+
+TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMaxBoundary) {
+  QuantizationParams qp = ChooseQuantizationParams<uint8>(-10.0, 0.0);
+  EXPECT_NEAR(qp.scale, 0.039216, 1e-5);
+  EXPECT_EQ(qp.zero_point, 255);
+}
+
+#ifdef GTEST_HAS_DEATH_TEST
+TEST(QuantizationUtilTest, ChooseQuantizationParamsInvalidRange) {
+  EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, -30.0), "");
+}
+
+TEST(QuantizationUtilTest, QuantizeMultiplierSmallerThanOneExp) {
   auto quantize = [](double d) {
     int32_t q;
     int s;
-    QuantizeMultiplierSmallerThanOne(d, &q, &s);
+    QuantizeMultiplierSmallerThanOneExp(d, &q, &s);
     return std::pair<int32_t, int>{q, s};
   };
 
   EXPECT_DEATH(quantize(-0.1), "");
-  EXPECT_THAT(quantize(0.0), Pair(0, 0));
-  EXPECT_THAT(quantize(0.25), Pair(1073741824, 1));
+  EXPECT_DEATH(quantize(0.0), "");
+  EXPECT_THAT(quantize(0.25), Pair(1073741824, -1));
 
   // Around 0.5 we can see the change in exponent and how we try hard to
   // void hitting max int32.
-  EXPECT_THAT(quantize(0.50 - 5e-9), Pair(2147483627, 1));
+  EXPECT_THAT(quantize(0.50 - 5e-9), Pair(2147483627, -1));
   EXPECT_THAT(quantize(0.50 - 1e-10), Pair(1073741824, 0));
   EXPECT_THAT(quantize(0.50), Pair(1073741824, 0));
 
@@ -90,6 +264,7 @@ TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
   EXPECT_THAT(quantize(2.0, 16.0, 5), Pair(2147483647, 31));
   EXPECT_THAT(quantize(2.0, 8.0, 5), Pair(1073741824, 31));
 }
+#endif  // GTEST_HAS_DEATH_TEST
 
 TEST(QuantizationUtilTest, CalculateInputRadius) {
   EXPECT_EQ(CalculateInputRadius(4, 27), 15);

@@ -42,7 +42,7 @@ load(
 # Check that tensorflow/core:tensorflow does not depend on grpc.
 check_deps(
     name = "core_tensorflow_check_deps",
-    disallowed_deps = ["@grpc//:grpc++_unsecure"],
+    disallowed_deps = ["@grpc//:grpc++"],
     deps = ["//tensorflow/core:tensorflow"],
 )
 
@@ -90,7 +90,6 @@ tf_cuda_library(
     deps = [
         ":debug",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:device_tracer",
         "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -144,6 +143,7 @@ tf_cuda_library(
         ":debug_node_key",
         ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
+        "//tensorflow:grpc++",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -151,7 +151,6 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
-        "@grpc//:grpc++_unsecure",
     ],
     alwayslink = 1,
 )
@@ -167,11 +166,11 @@ tf_cuda_library(
         ":debug_io_utils",
         ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
+        "//tensorflow:grpc++",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@grpc//:grpc++_unsecure",
     ],
     alwayslink = 1,
 )
@@ -196,7 +195,10 @@ tf_cc_test(
     srcs = ["debug_gateway_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_gpu"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_gpu",
+    ],
     deps = [
         ":debug",
         ":debug_gateway_internal",
@@ -295,6 +297,9 @@ tf_cc_test(
     size = "small",
     srcs = ["debug_grpc_io_utils_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "no_oss",  # b/73962011
+    ],
     deps = [
         ":debug_graph_utils",
         ":debug_grpc_testlib",
@@ -333,18 +338,3 @@ cc_library(
 #     ],
 #     visibility = ["//visibility:public"],
 # )
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

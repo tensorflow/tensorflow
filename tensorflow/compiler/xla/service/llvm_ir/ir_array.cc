@@ -29,18 +29,13 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
-IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
-                      llvm::IRBuilder<>* ir_builder)
-    : multidim_(ShapeUtil::Rank(shape)),
-      linear_(linear),
-      layout_(shape.layout()),
-      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
-  CHECK(LayoutUtil::HasLayout(shape))
-      << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
-      << " should have a layout.";
+static void Delinearize(std::vector<llvm::Value*>* multidim,
+                        llvm::Value* linear, const Shape& shape,
+                        llvm::IRBuilder<>* ir_builder) {
   int64 divisor = 1;
-  for (int64 i = 0; i < layout_.minor_to_major_size(); ++i) {
-    int64 dimension = layout_.minor_to_major(i);
+  const Layout& layout = shape.layout();
+  for (int64 i = 0; i < layout.minor_to_major_size(); ++i) {
+    int64 dimension = layout.minor_to_major(i);
     int64 size_of_current_dimension = shape.dimensions(dimension);
 
     // If i is not the last dimension, compute
@@ -54,14 +49,26 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
     // memory lives in one big allocation, so cuda-memcheck can't detect
     // out-of-bounds accesses.
     auto* quot = ir_builder->CreateUDiv(linear, ir_builder->getInt64(divisor));
-    if (i < layout_.minor_to_major_size() - 1) {
-      multidim_[dimension] = ir_builder->CreateURem(
+    if (i < layout.minor_to_major_size() - 1) {
+      (*multidim)[dimension] = ir_builder->CreateURem(
           quot, ir_builder->getInt64(size_of_current_dimension));
     } else {
-      multidim_[dimension] = quot;
+      (*multidim)[dimension] = quot;
     }
     divisor *= size_of_current_dimension;
   }
+}
+
+IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
+                      llvm::IRBuilder<>* ir_builder)
+    : multidim_(ShapeUtil::Rank(shape)),
+      linear_(linear),
+      layout_(shape.layout()),
+      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
+  CHECK(LayoutUtil::HasLayout(shape))
+      << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
+      << " should have a layout.";
+  Delinearize(&multidim_, linear, shape, ir_builder);
 }
 
 IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
@@ -83,7 +90,6 @@ IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
       dims_(shape.dimensions().begin(), shape.dimensions().end()) {
   CHECK_EQ(shape.dimensions_size(), multidim.size());
   CHECK(LayoutUtil::HasLayout(shape));
-  linear_ = Linearize(AsInt64Slice(shape.dimensions()), ir_builder);
 }
 
 IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
@@ -106,16 +112,13 @@ IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
   }
 }
 
-// Returns whether given linear index valid on given shape.
+// Returns whether the given linear index is valid on the given shape.
 bool IrArray::Index::LinearValidOnShape(const Shape& a) const {
-  auto b = ShapeUtil::MakeShape(PRED /* irrelevant */, dims_);
+  auto b = ShapeUtil::MakeShape(a.element_type(), dims_);
   *b.mutable_layout() = layout_;
   return linear_ != nullptr &&
-         ContainersEqual(
-             ShapeUtil::StripDegenerateDimensions(a).dimensions(),
-             ShapeUtil::StripDegenerateDimensions(b).dimensions()) &&
-         LayoutUtil::Equal(ShapeUtil::StripDegenerateDimensions(a).layout(),
-                           ShapeUtil::StripDegenerateDimensions(b).layout());
+         ShapeUtil::ElementsIn(a) == ShapeUtil::ElementsIn(b) &&
+         ShapeUtil::ReshapeIsBitcast(a, b);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfReshape(
@@ -160,7 +163,8 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     }
   }
 
-  if (linear() != nullptr &&
+  if (linear() != nullptr && LayoutUtil::HasLayout(input_shape) &&
+      LayoutUtil::HasLayout(output_shape) &&
       ShapeUtil::ReshapeIsBitcast(input_shape, output_shape)) {
     return Index(source_multidim_index, linear(), input_shape);
   }
@@ -195,11 +199,109 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     llvm::IRBuilder<>* builder) const {
   std::vector<llvm::Value*> operand_multidim_index =
       Permute(dimension_mapping, multidim());
-  if (linear() != nullptr &&
+
+  if (linear() != nullptr && LayoutUtil::HasLayout(operand_shape) &&
+      LayoutUtil::HasLayout(shape) &&
       ShapeUtil::TransposeIsBitcast(operand_shape, shape, dimension_mapping)) {
     return Index(operand_multidim_index, linear(), operand_shape);
   }
+
   return Index(operand_multidim_index);
+}
+
+IrArray::Index IrArray::Index::SourceIndexOfBitcast(
+    const Shape& shape, const Shape& operand_shape,
+    llvm::IRBuilder<>* builder) const {
+  CHECK(LayoutUtil::HasLayout(shape) && LayoutUtil::HasLayout(operand_shape));
+  // In case the bitcast is just a reshape, we can use SourceIndexOfReshape()
+  // instead. This will reuse linear() if possible, so we don't have to build a
+  // new 'linear_index'.
+  if (ShapeUtil::ReshapeIsBitcast(operand_shape, shape)) {
+    return SourceIndexOfReshape(shape, operand_shape, builder);
+  }
+
+  // First linearize the index coming from the output of the bitcast. We want
+  // the physical index of the element in the buffer. This is like Linearize,
+  // but takes the layout into account.
+  int64 scale = 1;
+  llvm::Value* linear_index = builder->getInt64(0);
+  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
+    linear_index = builder->CreateAdd(
+        linear_index,
+        builder->CreateMul(multidim_[dimension], builder->getInt64(scale), "",
+                           /*HasNUW=*/true, /*HasNSW=*/true),
+        "", /*HasNUW=*/true, /*HasNSW=*/true);
+    scale *= shape.dimensions(dimension);
+  }
+
+  // Now delinearize it for the input of the bitcast.
+  std::vector<llvm::Value*> multi_index(operand_shape.dimensions_size());
+  Delinearize(&multi_index, linear_index, operand_shape, builder);
+
+  return Index(multi_index, linear_index, operand_shape);
+}
+
+IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
+    const Shape& shape, const Shape& operand_shape,
+    tensorflow::gtl::ArraySlice<int64> dimension_mapping,
+    llvm::IRBuilder<>* builder) const {
+  int64 rank = ShapeUtil::Rank(operand_shape);
+  std::vector<llvm::Value*> source_index(rank);
+  for (int64 i = 0; i < rank; ++i) {
+    source_index[i] = multidim_[dimension_mapping[i]];
+  }
+  if (linear_ == nullptr || !LayoutUtil::HasLayout(operand_shape) ||
+      !LayoutUtil::HasLayout(shape)) {
+    return Index(source_index);
+  }
+  // High-level idea: we can reuse the linear index if the broadcasted
+  // dimensions are contiguous, and this part of the operation is a bitcast.
+  // The other dimensions can be masked out with a div and a mod operation.
+  std::vector<int64> logical_to_physical =
+      LayoutUtil::MakeLogicalToPhysical(shape.layout());
+  int64 output_rank = ShapeUtil::Rank(shape);
+  // The minimum physical dimension that is broadcasted.
+  int64 min_broadcasted_dimension = output_rank;
+  // The maximum physical dimension that is broadcasted.
+  int64 max_broadcasted_dimension = -1;
+  for (int64 i = 0; i < rank; ++i) {
+    int64 physical_dim = logical_to_physical[dimension_mapping[i]];
+    min_broadcasted_dimension =
+        std::min(min_broadcasted_dimension, physical_dim);
+    max_broadcasted_dimension =
+        std::max(max_broadcasted_dimension, physical_dim);
+  }
+  bool contiguous_broadcast_dimensions =
+      max_broadcasted_dimension - min_broadcasted_dimension == rank - 1;
+  if (!contiguous_broadcast_dimensions) {
+    return Index(source_index);
+  }
+  // Check if the mapped dimensions are a bitcast.
+  std::vector<int64> operand_logical_to_physical =
+      LayoutUtil::MakeLogicalToPhysical(operand_shape.layout());
+  for (int64 i = 0; i < rank; ++i) {
+    if (operand_logical_to_physical[i] !=
+        logical_to_physical[dimension_mapping[i]] - min_broadcasted_dimension) {
+      return Index(source_index);
+    }
+  }
+  llvm::Value* linear = linear_;
+  int64 divisor = 1;
+  for (int64 i = max_broadcasted_dimension + 1; i < output_rank; ++i) {
+    divisor *= shape.dimensions(LayoutUtil::Major(shape.layout(), i));
+  }
+  if (divisor > 1) {
+    linear = builder->CreateUDiv(linear, builder->getInt64(divisor));
+  }
+  if (min_broadcasted_dimension > 0) {
+    int64 mod = 1;
+    for (int64 i = min_broadcasted_dimension; i <= max_broadcasted_dimension;
+         ++i) {
+      mod *= shape.dimensions(LayoutUtil::Major(shape.layout(), i));
+    }
+    linear = builder->CreateURem(linear, builder->getInt64(mod));
+  }
+  return Index(source_index, linear, operand_shape);
 }
 
 llvm::Value* IrArray::Index::Linearize(
@@ -231,18 +333,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(
   }
   CHECK_EQ(index.size(), ShapeUtil::Rank(*shape_));
 
-  std::vector<llvm::Value*> actual_index;
-  bool is_implicit_broadcast = false;
-  // We perform broadcasting when the operand shape has dimension(s) of size
-  // 1. In this case we fix the index value for that dimension to zero. This
-  // effectively broadcasts along this dimension.
-  for (int64 i = 0; i < index.size(); ++i) {
-    auto dim = shape_->dimensions(i);
-    actual_index.push_back(dim == 1 ? ir_builder->getInt64(0) : index[i]);
-    is_implicit_broadcast |= dim == 1;
-  }
-
-  if (!is_implicit_broadcast && index.LinearValidOnShape(*shape_)) {
+  if (index.LinearValidOnShape(*shape_)) {
     llvm::Module* module =
         ir_builder->GetInsertBlock()->getParent()->getParent();
     return ir_builder->CreateInBoundsGEP(
@@ -250,6 +341,15 @@ llvm::Value* IrArray::EmitArrayElementAddress(
             base_ptr_, PrimitiveTypeToIrType(shape_->element_type(), module)
                            ->getPointerTo()),
         {index.linear()}, llvm_ir::AsStringRef(name));
+  }
+
+  std::vector<llvm::Value*> actual_index;
+  for (int64 i = 0; i < index.size(); ++i) {
+    // When dimension i is of size 1, LLVM optimization is able to replace
+    // index[i] with 0. However, setting index[i] to 0 here still allows LLVM to
+    // produce better code in some cases.
+    auto dim = shape_->dimensions(i);
+    actual_index.push_back(dim == 1 ? ir_builder->getInt64(0) : index[i]);
   }
 
   // "base_ptr_" has the type of "<ir_type_for_its_shape>*"

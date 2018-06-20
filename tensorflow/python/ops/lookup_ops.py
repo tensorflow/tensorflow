@@ -40,8 +40,10 @@ from tensorflow.python.ops.gen_lookup_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("initialize_all_tables")
 @deprecated(None, "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
@@ -56,6 +58,7 @@ def initialize_all_tables(name="init_all_tables"):
   return tables_initializer(name)
 
 
+@tf_export("tables_initializer")
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
@@ -154,10 +157,10 @@ class InitializableLookupTableBase(LookupInterface):
       default_value: The value to use if a key is missing in the table.
       initializer: The table initializer to use.
     """
-    if context.in_graph_mode():
-      name = table_ref.op.name.split("/")[-1]
-    else:
+    if context.executing_eagerly():
       name = context.context().scope_name
+    else:
+      name = table_ref.op.name.split("/")[-1]
     super(InitializableLookupTableBase,
           self).__init__(initializer.key_dtype, initializer.value_dtype,
                          name)
@@ -193,9 +196,7 @@ class InitializableLookupTableBase(LookupInterface):
     """
     with ops.name_scope(name, "%s_Size" % self._name,
                         [self._table_ref]) as scope:
-      # pylint: disable=protected-access
-      return gen_lookup_ops._lookup_table_size_v2(self._table_ref, name=scope)
-      # pylint: enable=protected-access
+      return gen_lookup_ops.lookup_table_size_v2(self._table_ref, name=scope)
 
   def lookup(self, keys, name=None):
     """Looks up `keys` in a table, outputs the corresponding values.
@@ -224,10 +225,8 @@ class InitializableLookupTableBase(LookupInterface):
     with ops.name_scope(name, "%s_Lookup" % self._name,
                         (self._table_ref, key_tensor,
                          self._default_value)) as scope:
-      # pylint: disable=protected-access
-      values = gen_lookup_ops._lookup_table_find_v2(
+      values = gen_lookup_ops.lookup_table_find_v2(
           self._table_ref, key_tensor, self._default_value, name=scope)
-      # pylint: enable=protected-access
 
     values.set_shape(key_tensor.get_shape())
     if isinstance(keys, sparse_tensor.SparseTensor):
@@ -271,16 +270,34 @@ class HashTable(InitializableLookupTableBase):
     """
     with ops.name_scope(name, "hash_table", (initializer,
                                              default_value)) as scope:
-      # pylint: disable=protected-access
-      table_ref = gen_lookup_ops._hash_table_v2(
+      table_ref = gen_lookup_ops.hash_table_v2(
           shared_name=shared_name,
           key_dtype=initializer.key_dtype,
           value_dtype=initializer.value_dtype,
           name=scope)
-      # pylint: enable=protected-access
 
       super(HashTable, self).__init__(table_ref, default_value, initializer)
+      self._value_shape = self._default_value.get_shape()
 
+  def export(self, name=None):
+    """Returns tensors of all keys and values in the table.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A pair of tensors with the first tensor containing all keys and the
+        second tensors containing all values in the table.
+    """
+    with ops.name_scope(name, "%s_Export" % self._name,
+                        [self._table_ref]) as name:
+      with ops.colocate_with(self._table_ref):
+        exported_keys, exported_values = gen_lookup_ops.lookup_table_export_v2(
+            self._table_ref, self._key_dtype, self._value_dtype, name=name)
+
+    exported_values.set_shape(exported_keys.get_shape().concatenate(
+        self._value_shape))
+    return exported_keys, exported_values
 
 class TableInitializerBase(object):
   """Base class for lookup table initializers."""
@@ -349,10 +366,12 @@ class KeyValueTensorInitializer(TableInitializerBase):
     with ops.name_scope(
         self._name, values=(table.table_ref, self._keys,
                             self._values)) as scope:
-      # pylint: disable=protected-access
-      init_op = gen_lookup_ops._initialize_table_v2(
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        scope += str(ops.uid())
+      init_op = gen_lookup_ops.initialize_table_v2(
           table.table_ref, self._keys, self._values, name=scope)
-      # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
@@ -515,8 +534,7 @@ class TextFileInitializer(TableInitializerBase):
                         (table.table_ref,)) as scope:
       filename = ops.convert_to_tensor(
           self._filename, dtypes.string, name="asset_filepath")
-      # pylint: disable=protected-access
-      init_op = gen_lookup_ops._initialize_table_from_text_file_v2(
+      init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
           table.table_ref,
           filename,
           self._key_index,
@@ -524,11 +542,10 @@ class TextFileInitializer(TableInitializerBase):
           -1 if self._vocab_size is None else self._vocab_size,
           self._delimiter,
           name=scope)
-      # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g., if
     # it is a placeholder) then it does not make sense to track it as an asset.
-    if context.in_graph_mode() and constant_op.is_constant(filename):
+    if not context.executing_eagerly() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
 
@@ -1095,6 +1112,10 @@ def index_table_from_tensor(vocabulary_list,
 
     shared_name = ""
     with ops.name_scope(None, "hash_table") as hash_table_scope:
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        shared_name += str(ops.uid())
       table_keys = math_ops.to_int64(keys) if keys.dtype.is_integer else keys
       init = KeyValueTensorInitializer(
           table_keys,

@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 #include "tensorflow/core/example/example.pb.h"
@@ -57,6 +58,7 @@ void TestCorrectness(const string& serialized) {
   Example example;
   Example fast_example;
   EXPECT_TRUE(example.ParseFromString(serialized));
+  example.DiscardUnknownFields();
   EXPECT_TRUE(TestFastParse(serialized, &fast_example));
   EXPECT_EQ(example.DebugString(), fast_example.DebugString());
   if (example.DebugString() != fast_example.DebugString()) {
@@ -335,34 +337,6 @@ TEST(FastParse, FuzzTest) {
   }
 }
 
-string MakeSerializedExample() {
-  Example example;
-  const int kFeatureNameLength = 10;
-  const int kFeatureValueLength = 20;
-  const int kBytesFeatureCount = 200;
-  const int kFloatFeatureCount = 200;
-  const int kInt64FeatureCount = 200;
-  auto& fmap = *example.mutable_features()->mutable_feature();
-  for (int i = 0; i < kBytesFeatureCount; ++i) {
-    fmap[strings::StrCat(string('b', kFeatureNameLength), i)]
-        .mutable_bytes_list()
-        ->add_value(string('v', kFeatureValueLength));
-  }
-  for (int i = 0; i < kFloatFeatureCount; ++i) {
-    fmap[strings::StrCat(string('f', kFeatureNameLength), i)]
-        .mutable_float_list()
-        ->add_value(123123123.123);
-  }
-  for (int i = 0; i < kInt64FeatureCount; ++i) {
-    fmap[strings::StrCat(string('i', kFeatureNameLength), i)]
-        .mutable_int64_list()
-        ->add_value(10 * i);
-  }
-  string serialized;
-  example.SerializeToString(&serialized);
-  return serialized;
-}
-
 TEST(TestFastParseExample, Empty) {
   Result result;
   FastParseExampleConfig config;
@@ -373,6 +347,5 @@ TEST(TestFastParseExample, Empty) {
 }
 
 }  // namespace
-
 }  // namespace example
 }  // namespace tensorflow

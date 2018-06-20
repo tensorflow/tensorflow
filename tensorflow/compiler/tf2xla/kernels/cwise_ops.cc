@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/bcast.h"
@@ -75,7 +75,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   // Call virtual method to emit the computation.
-  xla::ComputationDataHandle output =
+  xla::XlaOp output =
       Computation(ctx, lhs_handle, lhs_shape.dim_sizes(), rhs_handle,
                   rhs_shape.dim_sizes(), bcast, extend_dimension);
 
@@ -85,11 +85,9 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   ctx->SetOutput(0, output);
 }
 
-/* static */ std::pair<xla::ComputationDataHandle, xla::ComputationDataHandle>
-XlaBinaryOp::Broadcast(xla::ComputationBuilder* builder,
-                       const xla::ComputationDataHandle& lhs,
-                       const xla::ComputationDataHandle& rhs,
-                       const BCast& broadcast_helper) {
+/* static */ std::pair<xla::XlaOp, xla::XlaOp> XlaBinaryOp::Broadcast(
+    xla::XlaBuilder* builder, const xla::XlaOp& lhs, const xla::XlaOp& rhs,
+    const BCast& broadcast_helper) {
   // Manually construct the broadcasting since MapN does not do
   // automatic broadcasting. The bcast helper ensures that
   // lhs.reshape(bcast.x_reshape()).broadcast(bcast.x_bcast()) and

@@ -35,7 +35,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumInputs(node) == 1 || NumInputs(node) == 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Tensorflow's Reshape allows one of the shape components to have the
@@ -49,20 +49,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(params->num_dimensions);
   int num_output_elements = 1;
-  int strech_dim = -1;
+  int stretch_dim = -1;
   for (int i = 0; i < params->num_dimensions; ++i) {
     int value = params->shape[i];
     if (value == -1) {
-      TF_LITE_ENSURE_EQ(context, strech_dim, -1);
-      strech_dim = i;
+      TF_LITE_ENSURE_EQ(context, stretch_dim, -1);
+      stretch_dim = i;
     } else {
       num_output_elements *= value;
       output_size->data[i] = value;
     }
   }
-  if (strech_dim != -1) {
-    output_size->data[strech_dim] = num_input_elements / num_output_elements;
-    num_output_elements *= output_size->data[strech_dim];
+  if (stretch_dim != -1) {
+    output_size->data[stretch_dim] = num_input_elements / num_output_elements;
+    num_output_elements *= output_size->data[stretch_dim];
   }
 
   TF_LITE_ENSURE_EQ(context, num_input_elements, num_output_elements);
@@ -70,7 +70,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   memcpy(output->data.raw, input->data.raw, input->bytes);

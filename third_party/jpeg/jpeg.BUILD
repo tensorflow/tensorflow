@@ -34,6 +34,10 @@ libjpegturbo_copts = select({
         "-mfloat-abi=softfp",
         "-fprefetch-loop-arrays",
     ],
+    ":linux_ppc64le": [
+        "-mcpu=power8",
+        "-mtune=power8",
+    ],
     "//conditions:default": [],
 })
 
@@ -123,8 +127,48 @@ cc_library(
         ":k8": [":simd_x86_64"],
         ":armeabi-v7a": [":simd_armv7a"],
         ":arm64-v8a": [":simd_armv8a"],
+        ":linux_ppc64le": [":simd_altivec"],
         "//conditions:default": [":simd_none"],
     }),
+)
+
+cc_library(
+    name = "simd_altivec",
+    srcs = [
+        "jchuff.h",
+        "jconfig.h",
+        "jdct.h",
+        "jerror.h",
+        "jinclude.h",
+        "jmorecfg.h",
+        "jpegint.h",
+        "jpeglib.h",
+        "jsimd.h",
+        "jsimddct.h",
+        "simd/jccolor-altivec.c",
+        "simd/jcgray-altivec.c",
+        "simd/jcsample.h",
+        "simd/jcsample-altivec.c",
+        "simd/jdcolor-altivec.c",
+        "simd/jdmerge-altivec.c",
+        "simd/jdsample-altivec.c",
+        "simd/jfdctfst-altivec.c",
+        "simd/jfdctint-altivec.c",
+        "simd/jidctfst-altivec.c",
+        "simd/jidctint-altivec.c",
+        "simd/jquanti-altivec.c",
+        "simd/jsimd.h",
+        "simd/jsimd_altivec.h",
+        "simd/jsimd_powerpc.c",
+    ],
+    hdrs = [
+        "simd/jccolext-altivec.c",  # should have been named .inc
+        "simd/jcgryext-altivec.c",  # should have been named .inc
+        "simd/jdcolext-altivec.c",  # should have been named .inc
+        "simd/jdmrgext-altivec.c",  # should have been named .inc
+    ],
+    copts = libjpegturbo_copts,
+    nocopts = libjpegturbo_nocopts,
 )
 
 cc_library(
@@ -219,7 +263,7 @@ genrule(
           "    -o $$out" +
           "    $$(dirname $(location simd/jdct.inc))/$$(basename $${out%.o}.asm)\n" +
           "done",
-    tools = ["@nasm//:nasm"],
+    tools = ["@nasm"],
 )
 
 cc_library(
@@ -247,8 +291,10 @@ cc_library(
         "jchuff.h",
         "jconfig.h",
         "jdct.h",
+        "jerror.h",
         "jinclude.h",
         "jmorecfg.h",
+        "jpegint.h",
         "jpeglib.h",
         "jsimd.h",
         "jsimddct.h",
@@ -381,6 +427,7 @@ genrule(
         ":k8": "cp $(location jconfig_nowin_simd.h) $@",
         ":armeabi-v7a": "cp $(location jconfig_nowin_simd.h) $@",
         ":arm64-v8a": "cp $(location jconfig_nowin_simd.h) $@",
+        ":linux_ppc64le": "cp $(location jconfig_nowin_simd.h) $@",
         "//conditions:default": "cp $(location jconfig_nowin_nosimd.h) $@",
     }),
 )
@@ -481,12 +528,12 @@ config_setting(
 
 config_setting(
     name = "armeabi-v7a",
-    values = {"android_cpu": "armeabi-v7a"},
+    values = {"cpu": "armeabi-v7a"},
 )
 
 config_setting(
     name = "arm64-v8a",
-    values = {"android_cpu": "arm64-v8a"},
+    values = {"cpu": "arm64-v8a"},
 )
 
 config_setting(
@@ -497,4 +544,9 @@ config_setting(
 config_setting(
     name = "windows_msvc",
     values = {"cpu": "x64_windows_msvc"},
+)
+
+config_setting(
+    name = "linux_ppc64le",
+    values = {"cpu": "ppc"},
 )

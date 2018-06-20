@@ -25,16 +25,17 @@ import re
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
 from tensorflow.contrib.framework.python.ops import gen_variable_ops
 from tensorflow.contrib.util import loader
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import gen_state_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util.deprecation import deprecated
@@ -82,7 +83,12 @@ def zero_initializer(ref, use_locking=True, name="zero_initializer"):
   """
   loader.load_op_library(
       resource_loader.get_path_to_datafile("_variable_ops.so"))
-  return gen_variable_ops.zero_initializer(ref, name=name)
+  if resource_variable_ops.is_resource_variable(ref):
+    return gen_variable_ops.zero_var_initializer(
+        ref.handle, shape=ref.shape, dtype=ref.dtype, name=name)
+  else:
+    return gen_variable_ops.zero_initializer(ref, name=name)
+
 
 @deprecated(None, "Please switch to tf.train.assert_global_step")
 def assert_global_step(global_step_tensor):
@@ -685,7 +691,8 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
             'Variable %s missing in checkpoint %s', var, model_path)
     var_list = available_vars
   if var_list:
-    saver = tf_saver.Saver(var_list, reshape=reshape_variables)
+    saver = tf_saver.Saver(var_list, reshape=reshape_variables,
+                           write_version=saver_pb2.SaverDef.V1)
     def callback(session):
       saver.restore(session, model_path)
     return callback
@@ -705,7 +712,8 @@ class VariableDeviceChooser(object):
                num_tasks=0,
                job_name='ps',
                device_type='CPU',
-               device_index=0):
+               device_index=0,
+               replica=None):
     """Initialize VariableDeviceChooser.
 
     Usage:
@@ -726,12 +734,15 @@ class VariableDeviceChooser(object):
     self._job_name = job_name
     self._device_type = device_type
     self._device_index = device_index
+    self._replica = replica
     self._num_tasks = num_tasks
     self._next_task_id = 0
 
   def __call__(self, op):
-    device_spec = tf_device.DeviceSpec(device_type=self._device_type,
-                                       device_index=self._device_index)
+    device_spec = tf_device.DeviceSpec(
+        replica=self._replica,
+        device_type=self._device_type,
+        device_index=self._device_index)
     if self._num_tasks > 0:
       task_id = self._next_task_id
       self._next_task_id = (self._next_task_id + 1) % self._num_tasks

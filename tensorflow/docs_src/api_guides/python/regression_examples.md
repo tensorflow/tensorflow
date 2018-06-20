@@ -38,7 +38,7 @@ The preceding examples rely on the following data set utility:
   <tr> <th>Utility</th> <th>Description</th></tr>
 
   <tr>
-    <td><a href="../../examples/get_started/regression/imports85.py">imports85.py</a></td>
+    <td><a href="https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/imports85.py">imports85.py</a></td>
     <td>This program provides utility functions that load the
         <tt>imports85</tt> data set into formats that other TensorFlow
         programs (for example, <tt>linear_regression.py</tt> and
@@ -229,4 +229,4 @@ passed through to the `model_fn` when the `model_fn` is called.
 The `model_fn` returns an
 @{tf.estimator.EstimatorSpec$`EstimatorSpec`} which is a simple structure
 indicating to the `Estimator` which operations should be run to accomplish
-varions tasks.
+various tasks.

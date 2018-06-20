@@ -47,6 +47,18 @@ Status TestReporter::Benchmark(int64 iters, double cpu_time, double wall_time,
   return Status::OK();
 }
 
+Status TestReporter::SetProperty(const string& name, const string& value) {
+  if (closed_) return Status::OK();
+  (*benchmark_entry_.mutable_extras())[name].set_string_value(value);
+  return Status::OK();
+}
+
+Status TestReporter::SetProperty(const string& name, double value) {
+  if (closed_) return Status::OK();
+  (*benchmark_entry_.mutable_extras())[name].set_double_value(value);
+  return Status::OK();
+}
+
 Status TestReporter::Initialize() {
   if (fname_.empty()) {
     return Status::OK();

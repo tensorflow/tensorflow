@@ -29,83 +29,84 @@ namespace {
 class UtilsTest : public ::testing::Test {
  protected:
   NodeDef CreateConcatOffsetNode() const {
-    const string gdef_ascii = R"EOF(
-name: "gradients/InceptionV3/Mixed_7c/Branch_1/concat_v2_grad/ConcatOffset"
-op: "ConcatOffset"
-input: "InceptionV3/Mixed_7c/Branch_1/concat_v2/axis"
-input: "gradients/InceptionV3/Mixed_7c/Branch_1/concat_v2_grad/Shape"
-input: "gradients/InceptionV3/Mixed_7c/Branch_1/concat_v2_grad/Shape_1"
-attr {
-  key: "N"
-  value {
-    i: 2
-  }
-}
-    )EOF";
+    const string gdef_ascii =
+        " name: 'gradients/InceptionV3/Mixed_7c/Branch_1/concat_v2_grad/"
+        "ConcatOffset'"
+        " op: 'ConcatOffset'"
+        " input: 'InceptionV3/Mixed_7c/Branch_1/concat_v2/axis'"
+        " input: 'gradients/InceptionV3/Mixed_7c/Branch_1/concat_v2_grad/Shape'"
+        " input: "
+        " 'gradients/InceptionV3/Mixed_7c/Branch_1/concat_v2_grad/Shape_1'"
+        " attr {"
+        "  key: 'N'"
+        "  value {"
+        "    i: 2"
+        "  }"
+        " }";
     NodeDef node;
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &node));
     return node;
   }
 
   NodeDef CreateDequeueNode() const {
-    const string gdef_ascii = R"EOF(
-name: "Train/TrainInput/input_producer_Dequeue"
-op: "QueueDequeueV2"
-input: "Train/TrainInput/input_producer"
-attr {
-  key: "component_types"
-  value {
-    list {
-      type: DT_INT32
-    }
-  }
-}
-attr {
-  key: "timeout_ms"
-  value {
-    i: -1
-  }
-}
-    )EOF";
+    const string gdef_ascii =
+        " name: 'Train/TrainInput/input_producer_Dequeue'"
+        " op: 'QueueDequeueV2'"
+        " input: 'Train/TrainInput/input_producer'"
+        " attr {"
+        "  key: 'component_types'"
+        "   value {"
+        "     list {"
+        "       type: DT_INT32"
+        "     }"
+        "   }"
+        " }"
+        " attr {"
+        "   key: 'timeout_ms'"
+        "   value {"
+        "     i: -1"
+        "   }"
+        " }";
+
     NodeDef node;
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &node));
     return node;
   }
 
   NodeDef CreateFusedBatchNormNode() const {
-    const string gdef_ascii = R"EOF(
-name: "InceptionV3/Conv2d_1a_3x3/BatchNorm/FusedBatchNorm"
-op: "FusedBatchNorm"
-input: "InceptionV3/Conv2d_1a_3x3/BatchNorm/FusedBatchNorm"
-input: "InceptionV3/Conv2d_1a_3x3/BatchNorm/gamma/read"
-input: "InceptionV3/Conv2d_1a_3x3/BatchNorm/beta/read"
-input: "InceptionV3/Conv2d_1a_3x3/BatchNorm/Const"
-input: "InceptionV3/Conv2d_1a_3x3/BatchNorm/Const_1"
-attr {
-  key: "T"
-  value {
-    type: DT_FLOAT
-  }
-}
-attr {
-  key: "data_format"
-  value {
-    s: "NHWC"
-  }
-}
-attr {
-  key: "epsilon"
-  value {
-    f: 0.001
-  }
-}
-attr {
-  key: "is_training"
-  value {
-    b: true
-  }
-}
-    )EOF";
+    const string gdef_ascii =
+        " name: 'InceptionV3/Conv2d_1a_3x3/BatchNorm/FusedBatchNorm'"
+        " op: 'FusedBatchNorm'"
+        " input: 'InceptionV3/Conv2d_1a_3x3/BatchNorm/FusedBatchNorm'"
+        " input: 'InceptionV3/Conv2d_1a_3x3/BatchNorm/gamma/read'"
+        " input: 'InceptionV3/Conv2d_1a_3x3/BatchNorm/beta/read'"
+        " input: 'InceptionV3/Conv2d_1a_3x3/BatchNorm/Const'"
+        " input: 'InceptionV3/Conv2d_1a_3x3/BatchNorm/Const_1'"
+        " attr {"
+        "   key: 'T'"
+        "   value {"
+        "     type: DT_FLOAT"
+        "   }"
+        " }"
+        " attr {"
+        "   key: 'data_format'"
+        "   value {"
+        "     s: 'NHWC'"
+        "   }"
+        " }"
+        " attr {"
+        "   key: 'epsilon'"
+        "   value {"
+        "     f: 0.001"
+        "   }"
+        " }"
+        " attr {"
+        "   key: 'is_training'"
+        "   value {"
+        "     b: true"
+        "   }"
+        " }";
+
     NodeDef node;
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &node));
     return node;
@@ -177,9 +178,10 @@ TEST_F(UtilsTest, ExecuteWithTimeout) {
 }
 
 TEST_F(UtilsTest, NumOutputs) {
-  EXPECT_EQ(2, NumOutputs(CreateConcatOffsetNode()));
-  EXPECT_EQ(5, NumOutputs(CreateFusedBatchNormNode()));
-  EXPECT_EQ(1, NumOutputs(CreateDequeueNode()));
+  GraphDef graph;
+  EXPECT_EQ(2, NumOutputs(CreateConcatOffsetNode(), &graph));
+  EXPECT_EQ(5, NumOutputs(CreateFusedBatchNormNode(), &graph));
+  EXPECT_EQ(1, NumOutputs(CreateDequeueNode(), &graph));
 }
 
 TEST_F(UtilsTest, AsControlDependency) {
@@ -248,6 +250,90 @@ TEST_F(UtilsTest, GetTailOfChain) {
   EXPECT_NE(tail, nullptr);
   EXPECT_EQ("noop", tail->name());
 }
+
+TEST_F(UtilsTest, DedupControlInputs) {
+  NodeDef foo;
+  foo.set_name("foo");
+  foo.add_input("bar");
+  DedupControlInputs(&foo);
+  EXPECT_EQ(1, foo.input_size());
+  EXPECT_EQ("bar", foo.input(0));
+
+  foo.set_input(0, "^bar");
+  DedupControlInputs(&foo);
+  EXPECT_EQ(1, foo.input_size());
+  EXPECT_EQ("^bar", foo.input(0));
+
+  foo.set_input(0, "bar");
+  foo.add_input("bar");
+  DedupControlInputs(&foo);
+  EXPECT_EQ(2, foo.input_size());
+  EXPECT_EQ("bar", foo.input(0));
+  EXPECT_EQ("bar", foo.input(1));
+
+  foo.set_input(1, "^bar");
+  DedupControlInputs(&foo);
+  EXPECT_EQ(1, foo.input_size());
+  EXPECT_EQ("bar", foo.input(0));
+
+  foo.set_input(0, "^bar");
+  foo.add_input("^bar");
+  DedupControlInputs(&foo);
+  EXPECT_EQ(1, foo.input_size());
+  EXPECT_EQ("^bar", foo.input(0));
+
+  foo.set_input(0, "bar");
+  foo.add_input("gnu");
+  foo.add_input("^bar");
+  foo.add_input("^gnu");
+  DedupControlInputs(&foo);
+  EXPECT_EQ(2, foo.input_size());
+  EXPECT_EQ("bar", foo.input(0));
+  EXPECT_EQ("gnu", foo.input(1));
+}
+
+TEST_F(UtilsTest, NumNonControlOutputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  //  *) Round node has control dependency edge from Add, which
+  //     is not on this scheme (ASCII graphics limitation).
+  //
+  //   *Round    [Sqrt, Shape]
+  //      |           |
+  //      |   ctrl    |
+  //     Mul ------> Add
+  //     / \         / \
+  //    x   y       a   b
+  auto x = ops::Variable(s.WithOpName("x"), {1, 2}, DT_FLOAT);
+  auto y = ops::Variable(s.WithOpName("y"), {1, 2}, DT_FLOAT);
+  auto a = ops::Variable(s.WithOpName("a"), {1, 2}, DT_FLOAT);
+  auto b = ops::Variable(s.WithOpName("b"), {1, 2}, DT_FLOAT);
+
+  auto mul = ops::Multiply(s.WithOpName("mul"), x, y);
+  auto add = ops::Add(s.WithOpName("add").WithControlDependencies(mul), a, b);
+
+  auto shape = ops::Shape(s.WithOpName("shape"), add);
+  auto sqrt = ops::Sqrt(s.WithOpName("sqrt"), add);
+
+  auto round =
+      ops::Round(s.WithOpName("round").WithControlDependencies(add), mul);
+
+  GraphDef graph;
+  TF_CHECK_OK(s.ToGraphDef(&graph));
+  NodeMap node_map(&graph);
+
+  const NodeDef* add_node = node_map.GetNode("add");
+  ASSERT_TRUE(add_node != nullptr);
+
+  // [a, b] are only non-control inputs
+  EXPECT_EQ(2, NumNonControlInputs(*add_node));
+  // [sqrt, shape] are non control outputs
+  EXPECT_EQ(2, NumNonControlOutputs(*add_node, node_map));
+  // sqrt is the only data output
+  EXPECT_EQ(1, NumNonControlDataOutputs(*add_node, node_map));
+}
+
+TEST_F(UtilsTest, DeleteNodes) {}
 
 }  // namespace
 }  // namespace grappler

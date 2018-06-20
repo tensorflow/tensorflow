@@ -5,6 +5,22 @@ tf_module {
     mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
+    name: "LinearOperatorBlockDiag"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorCirculant"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorCirculant2D"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorCirculant3D"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
     name: "LinearOperatorComposition"
     mtype: "<class \'abc.ABCMeta\'>"
   }
@@ -18,6 +34,10 @@ tf_module {
   }
   member {
     name: "LinearOperatorIdentity"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorKronecker"
     mtype: "<class \'abc.ABCMeta\'>"
   }
   member {

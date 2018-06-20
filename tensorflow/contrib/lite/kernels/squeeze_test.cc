@@ -22,6 +22,7 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
 
 class BaseSqueezeOpModel : public SingleOpModel {
  public:
@@ -101,6 +102,16 @@ TEST(FloatSqueezeOpTest, SqueezeNegativeAxis) {
       ElementsAreArray({1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                         9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
                         17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0}));
+}
+
+TEST(FloatSqueezeOpTest, SqueezeAllDims) {
+  std::initializer_list<float> data = {3.85};
+  FloatSqueezeOpModel m({TensorType_FLOAT32, {1, 1, 1, 1, 1, 1, 1}},
+                        {TensorType_FLOAT32, {1}}, {});
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3.85}));
 }
 
 }  // namespace

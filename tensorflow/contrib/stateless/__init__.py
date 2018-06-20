@@ -22,6 +22,7 @@ WARNING: These ops are in contrib, and are not stable.  They should be
 consistent across multiple runs on the same hardware, but only for the same
 version of the code.
 
+@@stateless_multinomial
 @@stateless_random_uniform
 @@stateless_random_normal
 @@stateless_truncated_normal
@@ -37,6 +38,7 @@ from tensorflow.contrib.stateless.gen_stateless_random_ops import *
 from tensorflow.python.framework import ops
 from tensorflow.python.util.all_util import remove_undocumented
 
+ops.NotDifferentiable("StatelessMultinomial")
 ops.NotDifferentiable("StatelessRandomNormal")
 ops.NotDifferentiable("StatelessRandomUniform")
 ops.NotDifferentiable("StatelessTruncatedNormal")

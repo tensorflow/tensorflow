@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -40,23 +41,41 @@ void HloVerifiedTestBase::TearDown() {
       << "TearDown called more than once; it should be called exactly once.";
   tear_down_called_ = true;
   if (module_) {
-    HloVerifier verifier;
-    xla::StatusOr<bool> mutated = verifier.Run(module_.get());
-    if (!mutated.ok()) {
-      ADD_FAILURE() << "HloVerifier failed: " << mutated.status();
-    } else {
-      EXPECT_FALSE(mutated.ValueOrDie())
-          << "HloVerifier should never mutate the HloModule";
-    }
+    VerifyModule(module_.get());
+  }
+  for (int i = 0; i < modules_.size(); ++i) {
+    VerifyModule(modules_.at(i).get());
   }
   HloTestBase::TearDown();
 }
 
+void HloVerifiedTestBase::VerifyModule(HloModule* module) {
+  HloVerifier verifier(/*allow_mixed_precision=*/true);
+  xla::StatusOr<bool> mutated = verifier.Run(module);
+  if (!mutated.ok()) {
+    ADD_FAILURE() << "HloVerifier failed: " << mutated.status();
+  } else {
+    EXPECT_FALSE(mutated.ValueOrDie())
+        << "HloVerifier should never mutate the HloModule";
+  }
+}
+
 HloModule& HloVerifiedTestBase::module() {
   if (!module_) {
-    module_ = CreateNewModule();
+    module_ = HloTestBase::CreateNewModule();
   }
   return *module_;
 }
 
+HloModule* HloVerifiedTestBase::CreateNewModule(const string& name) {
+  modules_.emplace_back(HloTestBase::CreateNewModule());
+  return modules_.back().get();
+}
+
+void HloVerifiedTestBase::ParseAndVerifyModule(
+    tensorflow::StringPiece hlo_text) {
+  CHECK(!module_) << "Called ParseModule when test already has a module.";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  VerifyModule(module_.get());
+}
 }  // namespace xla

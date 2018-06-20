@@ -101,8 +101,8 @@ struct ImageConnectedComponentsFunctor<CPUDevice, T> {
       int cost = (union_find.block_height() + union_find.block_width()) * 20;
       Shard(worker_threads->num_threads, worker_threads->workers,
             num_images * num_blocks_vertically * num_blocks_horizontally, cost,
-            [&union_find, num_images, num_blocks_vertically,
-             num_blocks_horizontally](int64 start_block, int64 limit_block) {
+            [&union_find, num_blocks_vertically, num_blocks_horizontally](
+                int64 start_block, int64 limit_block) {
               for (int64 i = start_block; i < limit_block; i++) {
                 int64 block_x = i % num_blocks_horizontally;
                 int64 block_y =

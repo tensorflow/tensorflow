@@ -45,7 +45,7 @@
 # /tensorflow/contrib/session_bundle/ @nfiedel @sukritiramesh
 # /tensorflow/contrib/slim/ @sguada @thenbasilmanran
 # /tensorflow/contrib/stateless/ @girving
-# /tensorflow/contrib/tensor_forest/ @gilberthendry @thomascolthurst
+# /tensorflow/contrib/tensor_forest/ @gilberthendry @thomascolthurst @yupbank
 # /tensorflow/contrib/testing/ @dandelionmane
 # /tensorflow/contrib/timeseries/ @allenlavoie
 # /tensorflow/contrib/tpu/ @frankchn @saeta @jhseu

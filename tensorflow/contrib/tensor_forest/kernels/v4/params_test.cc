@@ -71,5 +71,3 @@ TEST(ParamsTest, TestThreshold) {
 }
 
 }  // namespace
-
-

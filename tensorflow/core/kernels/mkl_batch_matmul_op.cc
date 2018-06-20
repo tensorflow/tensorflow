@@ -25,11 +25,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if defined(INTEL_MKL)
+#if defined(INTEL_MKL) && !defined(DO_NOT_USE_ML)
 #include <vector>
 #include "mkl_cblas.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -40,10 +39,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
-#define MKL_Complex8 tensorflow::complex64
-#define MKL_Complex16 tensorflow::complex128
 
 namespace tensorflow {
 
@@ -181,16 +176,16 @@ class BatchMatMulMkl : public OpKernel {
   void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
                          const bool TransB, const MKL_INT *M_Array,
                          const MKL_INT *N_Array, const MKL_INT *K_Array,
-                         const MKL_Complex8 **A_Array, const MKL_INT *lda_Array,
-                         const MKL_Complex8 **B_Array, const MKL_INT *ldb_Array,
-                         MKL_Complex8 **C_Array, const MKL_INT *ldc_Array,
+                         const complex64 **A_Array, const MKL_INT *lda_Array,
+                         const complex64 **B_Array, const MKL_INT *ldb_Array,
+                         complex64 **C_Array, const MKL_INT *ldc_Array,
                          const MKL_INT group_count, const MKL_INT *group_size) {
     std::vector<CBLAS_TRANSPOSE> TransA_array(
         group_size[0], TransA ? CblasConjTrans : CblasNoTrans);
     std::vector<CBLAS_TRANSPOSE> TransB_array(
         group_size[0], TransB ? CblasConjTrans : CblasNoTrans);
-    std::vector<MKL_Complex8> alpha_Array(group_size[0], {1.0f, 0.0f});
-    std::vector<MKL_Complex8> beta_Array(group_size[0], {0.0f, 0.0f});
+    std::vector<complex64> alpha_Array(group_size[0], {1.0f, 0.0f});
+    std::vector<complex64> beta_Array(group_size[0], {0.0f, 0.0f});
     cblas_cgemm_batch(
         Layout, &TransA_array[0], &TransB_array[0], M_Array, N_Array, K_Array,
         static_cast<const void *>(&alpha_Array[0]),
@@ -203,18 +198,16 @@ class BatchMatMulMkl : public OpKernel {
   void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
                          const bool TransB, const MKL_INT *M_Array,
                          const MKL_INT *N_Array, const MKL_INT *K_Array,
-                         const MKL_Complex16 **A_Array,
-                         const MKL_INT *lda_Array,
-                         const MKL_Complex16 **B_Array,
-                         const MKL_INT *ldb_Array, MKL_Complex16 **C_Array,
-                         const MKL_INT *ldc_Array, const MKL_INT group_count,
-                         const MKL_INT *group_size) {
+                         const complex128 **A_Array, const MKL_INT *lda_Array,
+                         const complex128 **B_Array, const MKL_INT *ldb_Array,
+                         complex128 **C_Array, const MKL_INT *ldc_Array,
+                         const MKL_INT group_count, const MKL_INT *group_size) {
     std::vector<CBLAS_TRANSPOSE> TransA_array(
         group_size[0], TransA ? CblasConjTrans : CblasNoTrans);
     std::vector<CBLAS_TRANSPOSE> TransB_array(
         group_size[0], TransB ? CblasConjTrans : CblasNoTrans);
-    std::vector<MKL_Complex16> alpha_Array(group_size[0], {1.0f, 0.0f});
-    std::vector<MKL_Complex16> beta_Array(group_size[0], {0.0f, 0.0f});
+    std::vector<complex128> alpha_Array(group_size[0], {1.0f, 0.0f});
+    std::vector<complex128> beta_Array(group_size[0], {0.0f, 0.0f});
     cblas_zgemm_batch(
         Layout, &TransA_array[0], &TransB_array[0], M_Array, N_Array, K_Array,
         static_cast<const void *>(&alpha_Array[0]),

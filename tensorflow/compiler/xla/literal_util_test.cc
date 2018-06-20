@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -30,6 +32,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using tensorflow::gtl::ArraySlice;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
@@ -214,11 +217,9 @@ TEST_F(LiteralUtilTest, CreateSparse) {
   std::vector<int64> expected_values = {8, 9, 7, 10};
 
   EXPECT_EQ(literal->sparse_indices()->data(),
-            tensorflow::gtl::ArraySlice<int64>(
-                expected_indices.data(), expected_indices.num_elements()));
-  EXPECT_EQ(tensorflow::gtl::ArraySlice<int64>(literal->data<int64>().data(),
-                                               expected_values.size()),
-            tensorflow::gtl::ArraySlice<int64>(expected_values));
+            ArraySlice<int64>(expected_indices.data(),
+                              expected_indices.num_elements()));
+  EXPECT_EQ(literal->data<int64>(), ArraySlice<int64>(expected_values));
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
@@ -290,7 +291,7 @@ TEST_F(LiteralUtilTest, EachCellR2F32) {
   // clang-format on
   std::vector<std::tuple<int64, int64, string>> seen;
   literal->EachCellAsString(
-      [&seen](tensorflow::gtl::ArraySlice<int64> indices, const string& value) {
+      [&seen](ArraySlice<int64> indices, const string& value) {
         seen.emplace_back(indices[0], indices[1], value);
       });
 
@@ -331,6 +332,22 @@ TEST_F(LiteralUtilTest, NonScalarEquality) {
   EXPECT_NE(*matrix, *scalar);
   EXPECT_NE(*matrix, nil);
   EXPECT_EQ(nil, nil);
+}
+
+TEST_F(LiteralUtilTest, TokenEquality) {
+  auto token0 = Literal::CreateToken();
+  auto token1 = Literal::CreateToken();
+  auto scalar = Literal::CreateR0<float>(1.0);
+
+  EXPECT_EQ(*token0, *token1);
+  EXPECT_NE(*token0, *scalar);
+
+  EXPECT_EQ(*Literal::MakeTuple({token0.get()}),
+            *Literal::MakeTuple({token0.get()}));
+  EXPECT_EQ(*Literal::MakeTuple({token0.get(), scalar.get()}),
+            *Literal::MakeTuple({token1.get(), scalar.get()}));
+  EXPECT_NE(*Literal::MakeTuple({token0.get(), scalar.get()}),
+            *Literal::MakeTuple({scalar.get(), token1.get()}));
 }
 
 TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
@@ -501,6 +518,24 @@ TEST_F(LiteralUtilTest, IsAllComplex) {
                    ->IsAllComplex({8.0f, 9.0f}));
 }
 
+TEST_F(LiteralUtilTest, IsAllFirst) {
+  // IsAllComplex always returns false when the literal is not complex.
+  EXPECT_FALSE(Literal::CreateR1<bool>({false, true})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<bool>({false, false})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<int8>({1, 1, 2})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<int8>({5, 5, 5, 5})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<uint8>({1, 1, 2})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<int32>({5, 5, 5, 5})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<int32>({1, 1, 2})->IsAllFirst());
+  EXPECT_TRUE(Literal::CreateR1<uint32>({5, 5, 5, 5})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR1<uint32>({1, 1, 2})->IsAllFirst());
+
+  complex64 c8_9 = {8, 9};
+  complex64 c7_9 = {7, 9};
+  EXPECT_TRUE(Literal::CreateR2<complex64>({{c8_9}, {c8_9}})->IsAllFirst());
+  EXPECT_FALSE(Literal::CreateR2<complex64>({{c7_9}, {c8_9}})->IsAllFirst());
+}
+
 TEST_F(LiteralUtilTest, IsZero) {
   auto scalar_zero = Literal::CreateR0<float>(0.0f);
   auto scalar_one = Literal::CreateR0<float>(1.0f);
@@ -604,11 +639,10 @@ TEST_F(LiteralUtilTest, TransposeR4) {
   // clang-format on
   auto reshape = original->Transpose(/*permutation=*/{2, 3, 0, 1});
 
-  reshape->EachCell<float>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, float value) {
-        EXPECT_EQ(value, original->Get<float>(
-                             {indices[2], indices[3], indices[0], indices[1]}));
-      });
+  reshape->EachCell<float>([&](ArraySlice<int64> indices, float value) {
+    EXPECT_EQ(value, original->Get<float>(
+                         {indices[2], indices[3], indices[0], indices[1]}));
+  });
 }
 
 TEST_F(LiteralUtilTest, TestR4RelayoutEquivalence) {
@@ -845,7 +879,7 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
     const int64 zero_base[] = {0, 0, 0, 0};
     const int64 step[] = {1, 1, 1, 1};
     uint32 seqnr = 0;
-    auto init_proc = [&](const std::vector<int64>& indexes) {
+    auto init_proc = [&](ArraySlice<int64> indexes) {
       source->Set(indexes, ++seqnr);
       return true;
     };
@@ -861,7 +895,7 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
     std::vector<int64> source_indexes(TF_ARRAYSIZE(dimensions), 0);
     std::vector<int64> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
     bool matched = true;
-    auto check_proc = [&](const std::vector<int64>& indexes) {
+    auto check_proc = [&](ArraySlice<int64> indexes) {
       std::copy(indexes.begin(), indexes.end(), source_indexes.begin());
       std::transform(source_indexes.begin(), source_indexes.end(), src_base,
                      source_indexes.begin(), std::plus<int64>());
@@ -957,7 +991,7 @@ TEST_F(LiteralUtilTest, CopyFromTuples) {
                                    Literal::CreateR1<double>({2.0, 4.0}).get(),
                                    &nil_literal});
 
-  EXPECT_EQ(*matrix, LiteralView::Create(*nested_tuple, {0}));
+  EXPECT_EQ(*matrix, LiteralSlice(*nested_tuple, {0}));
   EXPECT_EQ(nested_tuple->Get<int32>({}, {1, 0}), 42);
   EXPECT_EQ(nested_tuple->Get<double>({0}, {1, 1}), 23.0);
   EXPECT_EQ(nested_tuple->Get<double>({1}, {1, 1}), 44.0);
@@ -968,7 +1002,7 @@ TEST_F(LiteralUtilTest, CopyFromTuples) {
                                       /*src_shape_index=*/{}));
 
   // The matrix element should be unchanged.
-  EXPECT_EQ(*matrix, LiteralView::Create(*nested_tuple, {0}));
+  EXPECT_EQ(*matrix, LiteralSlice(*nested_tuple, {0}));
 
   // The tuple element should have been copied from 'tuple'.
   EXPECT_EQ(nested_tuple->Get<int32>({}, {1, 0}), -5);
@@ -1048,8 +1082,8 @@ TEST_F(LiteralUtilTest, Populate) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
-    auto literal = Literal::CreateFromShape(shape);
-    auto generator = [&](tensorflow::gtl::ArraySlice<int64> indexes) -> uint32 {
+    auto literal = MakeUnique<Literal>(shape);
+    auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
       return IndexUtil::MultidimensionalIndexToLinearIndex(literal->shape(),
@@ -1061,7 +1095,49 @@ TEST_F(LiteralUtilTest, Populate) {
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
     bool matched = true;
-    auto check_function = [&](const std::vector<int64>& indexes) {
+    auto check_function = [&](ArraySlice<int64> indexes) {
+      auto value = literal->Get<uint32>(indexes);
+      matched = matched && (value == generator(indexes));
+      return matched;
+    };
+    ShapeUtil::ForEachIndex(literal->shape(), zero_base, data.dimensions, step,
+                            check_function);
+    EXPECT_TRUE(matched);
+  }
+}
+
+TEST_F(LiteralUtilTest, PopulateParallel) {
+  struct PopulateData {
+    std::vector<int64> dimensions;
+    std::vector<int64> layout;
+  } populate_data[] = {
+      {{}, {}},
+      {{0}, {0}},
+      {{16}, {0}},
+      {{2, 0}, {1, 0}},
+      {{4, 16}, {1, 0}},
+      {{21, 12}, {0, 1}},
+      {{6, 11, 17}, {2, 0, 1}},
+      {{6, 11, 5, 17}, {3, 2, 0, 1}},
+  };
+  for (const auto& data : populate_data) {
+    Shape shape = ShapeUtil::MakeShapeWithLayout(
+        primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
+        data.layout);
+    auto literal = MakeUnique<Literal>(shape);
+    auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
+      // Offsets from linear index just to avoid R0 literals to be initialized
+      // with zero.
+      return IndexUtil::MultidimensionalIndexToLinearIndex(literal->shape(),
+                                                           indexes) +
+             17;
+    };
+    TF_EXPECT_OK(literal->PopulateParallel<uint32>(generator));
+
+    std::vector<int64> zero_base(data.dimensions.size(), 0);
+    std::vector<int64> step(data.dimensions.size(), 1);
+    bool matched = true;
+    auto check_function = [&](ArraySlice<int64> indexes) {
       auto value = literal->Get<uint32>(indexes);
       matched = matched && (value == generator(indexes));
       return matched;
@@ -1214,15 +1290,34 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   EXPECT_EQ(*conv, *c64);
 
   EXPECT_EQ(s32->Convert(TUPLE).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(s32->Convert(S16).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(s32->Convert(U16).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64->Convert(F32).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64->Convert(S32).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            tensorflow::error::UNIMPLEMENTED);
+}
+
+TEST_F(LiteralUtilTest, BitcastConvert) {
+  auto original =
+      Literal::CreateR1<uint32>({tensorflow::bit_cast<uint32>(2.5f),
+                                 tensorflow::bit_cast<uint32>(-42.25f),
+                                 tensorflow::bit_cast<uint32>(100.f), 0xbeef});
+  auto expected = Literal::CreateR1<float>(
+      {2.5f, -42.25f, 100.0f, tensorflow::bit_cast<float>(0xbeef)});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> converted,
+                          original->BitcastConvert(F32));
+}
+
+TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
+  auto literal = Literal::CreateR0<uint32>(1234);
+  Status status = literal->BitcastConvert(F64).status();
+  EXPECT_NE(Status::OK(), status);
+  EXPECT_TRUE(tensorflow::str_util::StrContains(status.error_message(),
+                                                "bit widths are different"));
 }
 
 TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
@@ -1295,36 +1390,36 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   ASSERT_EQ(h1, r[3]);
 }
 
-TEST_F(LiteralUtilTest, LiteralViewTest) {
+TEST_F(LiteralUtilTest, LiteralSliceTest) {
   auto scalar = Literal::CreateR0<float>(1.0);
   auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
   auto nested_tuple = Literal::MakeTuple({tuple.get(), scalar.get()});
   Literal nil(ShapeUtil::MakeNil());
 
-  EXPECT_EQ(LiteralView::Create(*scalar, {}), *scalar);
-  EXPECT_EQ(LiteralView::Create(*matrix, {}), *matrix);
-  EXPECT_EQ(LiteralView::Create(*tuple, {}), *tuple);
-  EXPECT_EQ(LiteralView::Create(*nested_tuple, {}), *nested_tuple);
-  EXPECT_EQ(LiteralView::Create(nil, {}), nil);
+  EXPECT_EQ(LiteralSlice(*scalar, {}), *scalar);
+  EXPECT_EQ(LiteralSlice(*matrix, {}), *matrix);
+  EXPECT_EQ(LiteralSlice(*tuple, {}), *tuple);
+  EXPECT_EQ(LiteralSlice(*nested_tuple, {}), *nested_tuple);
+  EXPECT_EQ(LiteralSlice(nil, {}), nil);
 
-  EXPECT_EQ(LiteralView::Create(*tuple, {0}), *scalar);
-  EXPECT_EQ(LiteralView::Create(*tuple, {1}), *matrix);
+  EXPECT_EQ(LiteralSlice(*tuple, {0}), *scalar);
+  EXPECT_EQ(LiteralSlice(*tuple, {1}), *matrix);
 
-  EXPECT_EQ(LiteralView::Create(*nested_tuple, {0}), *tuple);
-  EXPECT_EQ(LiteralView::Create(*nested_tuple, {0, 0}), *scalar);
-  EXPECT_EQ(LiteralView::Create(*nested_tuple, {0, 1}), *matrix);
-  EXPECT_EQ(LiteralView::Create(*nested_tuple, {1}), *scalar);
+  EXPECT_EQ(LiteralSlice(*nested_tuple, {0}), *tuple);
+  EXPECT_EQ(LiteralSlice(*nested_tuple, {0, 0}), *scalar);
+  EXPECT_EQ(LiteralSlice(*nested_tuple, {0, 1}), *matrix);
+  EXPECT_EQ(LiteralSlice(*nested_tuple, {1}), *scalar);
 }
 
-TEST_F(LiteralUtilTest, MutatingLiteralView) {
+TEST_F(LiteralUtilTest, MutatingLiteralSlice) {
   auto scalar = Literal::CreateR0<float>(1.0);
   auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
   auto nested_tuple = Literal::MakeTuple({tuple.get(), scalar.get()});
   // Verify that changing the underlying data beneath the view changes the
   // data of the view itself.
-  const auto nested_tuple_view = LiteralView::Create(*nested_tuple);
+  const auto nested_tuple_view = LiteralSlice(*nested_tuple);
   EXPECT_EQ(
       nested_tuple->Get<float>(/*multi_index=*/{}, /*shape_index=*/{0, 0}),
       1.0f);
@@ -1340,17 +1435,55 @@ TEST_F(LiteralUtilTest, MutatingLiteralView) {
             555.0f);
 }
 
-TEST_F(LiteralUtilTest, LiteralViewOfALiteralView) {
+TEST_F(LiteralUtilTest, LiteralSliceOfALiteralSlice) {
   auto scalar = Literal::CreateR0<float>(1.0);
   auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
   auto nested_tuple = Literal::MakeTuple({tuple.get(), scalar.get()});
 
-  const auto nested_tuple_view = LiteralView::Create(*nested_tuple);
-  const auto tuple_view =
-      LiteralView::Create(nested_tuple_view, /*view_root=*/{0});
-  const auto matrix_view = LiteralView::Create(tuple_view, /*view_root=*/{1});
+  const auto nested_tuple_view = LiteralSlice(*nested_tuple);
+  const auto tuple_view = LiteralSlice(nested_tuple_view, /*view_root=*/{0});
+  const auto matrix_view = LiteralSlice(tuple_view, /*view_root=*/{1});
   EXPECT_EQ(matrix_view, *Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}));
+}
+
+TEST_F(LiteralUtilTest, BorrowingLiteralFromOneBufferPtr) {
+  std::vector<int64> int64_values = {1, 2, 3};
+  const Shape literal_shape = ShapeUtil::MakeShape(S64, {3});
+
+  BorrowingLiteral literal(reinterpret_cast<const char*>(int64_values.data()),
+                           literal_shape);
+
+  EXPECT_EQ(literal.Get<int64>({0}), 1);
+  EXPECT_EQ(literal.Get<int64>({1}), 2);
+  EXPECT_EQ(literal.Get<int64>({2}), 3);
+}
+
+TEST_F(LiteralUtilTest, BorrowingLiteralFromMultipleBufferPtrs) {
+  std::vector<int64> one_two_three = {1, 2, 3};
+  const Shape one_two_three_shape = ShapeUtil::MakeShape(S64, {3});
+
+  std::vector<int64> hundred = {100};
+  const Shape hundred_shape = ShapeUtil::MakeShape(S64, {1});
+
+  std::vector<const char*> src_buf_ptrs;
+  src_buf_ptrs.emplace_back(
+      reinterpret_cast<const char*>(one_two_three.data()));
+  src_buf_ptrs.emplace_back(reinterpret_cast<const char*>(hundred.data()));
+  auto literal_tuple = BorrowingLiteral(
+      src_buf_ptrs,
+      ShapeUtil::MakeTupleShape({one_two_three_shape, hundred_shape}));
+
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{0}, /*shape_index=*/{0}),
+            1);
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{0}, /*shape_index=*/{1}),
+            100);
+
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{1}, /*shape_index=*/{0}),
+            2);
+
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{2}, /*shape_index=*/{0}),
+            3);
 }
 
 TEST_F(LiteralUtilTest, LiteralMove) {
@@ -1455,11 +1588,11 @@ TEST_F(LiteralUtilTest, LiteralMoveAssignment) {
   EXPECT_EQ(literal.Get<float>({1, 1}), 4.0);
 }
 
-TEST_F(LiteralUtilTest, LiteralViewCopy) {
+TEST_F(LiteralUtilTest, LiteralSliceCopy) {
   std::unique_ptr<Literal> matrix =
       Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
-  const auto matrix_view = LiteralView::Create(*matrix);
-  LiteralView matrix_view_copy(matrix_view);
+  const auto matrix_view = LiteralSlice(*matrix);
+  LiteralSlice matrix_view_copy(matrix_view);
 
   EXPECT_EQ(matrix_view_copy.Get<float>({0, 0}), 1.0);
   EXPECT_EQ(matrix_view_copy.Get<float>({0, 1}), 2.0);
@@ -1684,13 +1817,43 @@ TEST_F(LiteralUtilTest, GetSparseElementAsString) {
   ASSERT_EQ(Literal::CreateSparse<half>(dimensions, indices,
                                         {half{1.0}, half{2.0}, half{3.0}})
                 ->GetSparseElementAsString(1),
-            tensorflow::strings::StrCat(half{2.0}));
+            tensorflow::strings::StrCat(static_cast<float>(half{2.0})));
   ASSERT_EQ(
       Literal::CreateSparse<complex64>(
           dimensions, indices,
           std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
           ->GetSparseElementAsString(1),
       tensorflow::strings::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
+}
+
+TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {
+  std::unique_ptr<Literal> literal = Literal::CreateR1<int64>({1, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> broadcasted_literal,
+      literal->Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
+          /*dimensions=*/{0}));
+  EXPECT_EQ(*broadcasted_literal, *Literal::CreateR2<int64>({{1, 1}, {2, 2}}));
+}
+
+TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
+  std::unique_ptr<Literal> literal = Literal::CreateR1<int64>({1, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> broadcasted_literal,
+      literal->Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
+          /*dimensions=*/{1}));
+  EXPECT_EQ(*broadcasted_literal, *Literal::CreateR2<int64>({{1, 2}, {1, 2}}));
+}
+
+TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
+  std::unique_ptr<Literal> literal = Literal::CreateR0<int32>(9);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> broadcasted_literal,
+      literal->Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S32, {2, 2}),
+          /*dimensions=*/{}));
+  EXPECT_EQ(*broadcasted_literal, *Literal::CreateR2<int32>({{9, 9}, {9, 9}}));
 }
 
 }  // namespace

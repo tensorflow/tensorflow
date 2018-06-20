@@ -25,8 +25,9 @@ ZlibInputStream::ZlibInputStream(
     InputStreamInterface* input_stream,
     size_t input_buffer_bytes,   // size of z_stream.next_in buffer
     size_t output_buffer_bytes,  // size of z_stream.next_out buffer
-    const ZlibCompressionOptions& zlib_options)
-    : input_stream_(input_stream),
+    const ZlibCompressionOptions& zlib_options, bool owns_input_stream)
+    : owns_input_stream_(owns_input_stream),
+      input_stream_(input_stream),
       input_buffer_capacity_(input_buffer_bytes),
       output_buffer_capacity_(output_buffer_bytes),
       z_stream_input_(new Bytef[input_buffer_capacity_]),
@@ -37,14 +38,25 @@ ZlibInputStream::ZlibInputStream(
   InitZlibBuffer();
 }
 
+ZlibInputStream::ZlibInputStream(InputStreamInterface* input_stream,
+                                 size_t input_buffer_bytes,
+                                 size_t output_buffer_bytes,
+                                 const ZlibCompressionOptions& zlib_options)
+    : ZlibInputStream(input_stream, input_buffer_bytes, output_buffer_bytes,
+                      zlib_options, false) {}
+
 ZlibInputStream::~ZlibInputStream() {
   if (z_stream_) {
     inflateEnd(z_stream_.get());
+  }
+  if (owns_input_stream_) {
+    delete input_stream_;
   }
 }
 
 Status ZlibInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());
+  inflateEnd(z_stream_.get());
   InitZlibBuffer();
   bytes_read_ = 0;
   return Status::OK();

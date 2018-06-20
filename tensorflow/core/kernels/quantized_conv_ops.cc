@@ -278,10 +278,9 @@ class Im2ColConvFunctor {
           *resource = new Im2ColBufferResource<T1, chunk_value_count>();
           return Status::OK();
         };
-    OP_REQUIRES_OK(
-        context,
-        context->resource_manager()->LookupOrCreate(
-            "Conv2d", "im2col_buffer", &im2col_buffer_resource, creator));
+    OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
+                                "Conv2d", "im2col_buffer",
+                                &im2col_buffer_resource, creator));
     // This means that multiple ops can't be run simultaneously on different
     // threads, because we have a single shared resource. The platforms this is
     // aimed at have intra-op parallelism as their focus though, so it shouldn't

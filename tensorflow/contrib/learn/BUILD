@@ -5,6 +5,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(default_visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//tensorflow:internal",
@@ -115,6 +117,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/data_feeder_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
@@ -170,6 +173,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
     ],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )
 
 py_test(
@@ -188,6 +192,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/graph_actions_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/contrib/framework:framework_py",
@@ -224,6 +229,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/monitors_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip_gpu"],  # b/74437598
     deps = [
         ":learn",
         "//tensorflow/contrib/framework:framework_py",
@@ -275,7 +281,11 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/estimator_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "noasan",  # times out
+        "optonly",  # test is flaky without optimization.
+    ],
     deps = [
         ":learn",
         "//tensorflow/contrib/framework:framework_py",
@@ -388,6 +398,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
@@ -424,7 +435,12 @@ py_test(
     name = "kmeans_test",
     size = "medium",
     srcs = ["python/learn/estimators/kmeans_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = [
+        "noasan",  # b/73741358
+        "nomac",
+    ],
     deps = [
         ":learn",
         "//tensorflow/python:array_ops",
@@ -471,6 +487,7 @@ py_test(
     name = "state_saving_rnn_estimator_test",
     size = "medium",
     srcs = ["python/learn/estimators/state_saving_rnn_estimator_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["noasan"],
     deps = [
@@ -494,7 +511,7 @@ py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
-    shard_count = 4,
+    shard_count = 20,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -583,6 +600,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/io_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/contrib/learn/python/learn/datasets",
@@ -729,7 +747,7 @@ py_test(
 
 tf_py_test(
     name = "graph_io_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/learn_io/graph_io_test.py"],
     additional_deps = [
         ":learn",
@@ -812,6 +830,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/utils/saved_model_export_utils_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
@@ -865,16 +884,4 @@ py_binary(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:platform",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

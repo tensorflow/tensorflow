@@ -17,8 +17,8 @@ limitations under the License.
 #error This file must only be included when building with Cuda support
 #endif
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 
 #include <memory>
 #include <string>
@@ -29,9 +29,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -67,7 +69,7 @@ class BaseGPUDevice : public LocalDevice {
       const TensorReferenceVector& tensor_refs) override;
 
   Status FillContextMap(const Graph* graph,
-                        DeviceContextMap* device_context_map);
+                        DeviceContextMap* device_context_map) override;
 
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
 
@@ -88,24 +90,36 @@ class BaseGPUDevice : public LocalDevice {
 
   // Returns the CUDA GPU id of this device within the native driver system;
   // e.g., for CUDA this is the ordinal of the GPU within the system.
-  int gpu_id() const { return GpuIdUtil::TfToCudaGpuId(tf_gpu_id_).value(); }
+  int gpu_id() const {
+    CudaGpuId cuda_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToCudaGpuId(tf_gpu_id_, &cuda_gpu_id));
+    return cuda_gpu_id.value();
+  }
 
   // The executor that provides control for the device; e.g., for CUDA this
   // corresponds to the cuda context.
-  gpu::StreamExecutor* executor() const { return executor_; }
+  se::StreamExecutor* executor() const { return executor_; }
+
+  Allocator* GetScopedAllocator(AllocatorAttributes attr,
+                                int64 step_id) override;
+
+  ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
+    return scoped_allocator_mgr_.get();
+  }
 
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
 
-  gpu::StreamExecutor* executor_;  // not owned
+  se::StreamExecutor* executor_;  // not owned
+  std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
 
  private:
   struct StreamGroup {
-    gpu::Stream* compute = nullptr;
-    gpu::Stream* host_to_device = nullptr;
-    gpu::Stream* device_to_host = nullptr;
-    gpu::Stream* device_to_device = nullptr;
+    se::Stream* compute = nullptr;
+    se::Stream* host_to_device = nullptr;
+    se::Stream* device_to_host = nullptr;
+    se::Stream* device_to_device = nullptr;
   };
   class StreamGroupFactory;
 
@@ -125,6 +139,9 @@ class BaseGPUDevice : public LocalDevice {
 
   void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
 
+  string ComputeOpKernelDebugString(const OpKernel& op_kernel,
+                                    const int& stream_id);
+
   // This method returns an initialization status, in addition to
   // calling the "done" StatusCallback, if there is a failure to
   // allocate memory or if the tensor "from" is not DMA-copyable.
@@ -140,17 +157,50 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<Device*>* devices) override;
 
+  struct InterconnectMap {
+    // Name of interconnect technology, if known.
+    string name;
+    // If possible, strength should approximate Gb/sec bandwidth rate.
+    // Where architecture-specific subclassing is not done that won't
+    // always be possible.  The minimum expectation is that
+    // faster links should have a higher value than slower links.
+    int32 strength;
+    static const int kSameDeviceStrength;
+    static const int kStreamExecutorStrength;
+    std::set<std::pair<CudaGpuId, CudaGpuId>> directed_links;
+  };
+
+ protected:
+  // Populates *maps with interconnect maps for all local direct access
+  // pathways between GPUs.
+  virtual Status GetInterconnectMaps(
+      const std::vector<CudaGpuId>& visible_gpu_order,
+      se::Platform* gpu_manager, std::vector<InterconnectMap>* maps);
+
+  struct TfGpuIdHash {
+    std::size_t operator()(const TfGpuId& id) const noexcept {
+      return std::hash<int>{}(id.value());
+    }
+  };
+  typedef std::unordered_map<TfGpuId, DeviceLocality, TfGpuIdHash> LocalityMap;
+  // Populates *localities with the DeviceLocality descriptor for
+  // every TfGpuId.
+  virtual Status GetDeviceLocalities(
+      int num_tf_gpus, const std::vector<InterconnectMap>& interconnects,
+      LocalityMap* localities);
+
  private:
   // Creates a BaseGPUDevice associated with 'tf_gpu_id', allocates (strictly)
   // 'memory_limit' bytes of GPU memory to it, and adds it to the 'devices'
   // vector.
   Status CreateGPUDevice(const SessionOptions& options,
                          const string& name_prefix, TfGpuId tf_gpu_id,
-                         int64 memory_limit, std::vector<Device*>* devices);
+                         int64 memory_limit, const DeviceLocality& dev_locality,
+                         std::vector<Device*>* devices);
 
   virtual BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
                                          const string& name, Bytes memory_limit,
-                                         const DeviceLocality& locality,
+                                         const DeviceLocality& dev_locality,
                                          TfGpuId tf_gpu_id,
                                          const string& physical_device_desc,
                                          Allocator* gpu_allocator,
@@ -171,4 +221,4 @@ class BaseGPUDeviceFactory : public DeviceFactory {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_

@@ -27,19 +27,14 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
-from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
-from tensorflow.python.layers import utils
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import standard_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
-class Dense(base.Layer):
+@tf_export('layers.Dense')
+class Dense(keras_layers.Dense, base.Layer):
   """Densely-connected layer class.
 
   This layer implements the operation:
@@ -48,9 +43,6 @@ class Dense(base.Layer):
   argument (if not `None`), `kernel` is a weights matrix created by the layer,
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
-
-  Note: if the input to the layer has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `kernel`.
 
   Arguments:
     units: Integer or Long, dimensionality of the output space.
@@ -107,75 +99,22 @@ class Dense(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(Dense, self).__init__(trainable=trainable, name=name,
+    super(Dense, self).__init__(units=units,
+                                activation=activation,
+                                use_bias=use_bias,
+                                kernel_initializer=kernel_initializer,
+                                bias_initializer=bias_initializer,
+                                kernel_regularizer=kernel_regularizer,
+                                bias_regularizer=bias_regularizer,
                                 activity_regularizer=activity_regularizer,
+                                kernel_constraint=kernel_constraint,
+                                bias_constraint=bias_constraint,
+                                trainable=trainable,
+                                name=name,
                                 **kwargs)
-    self.units = units
-    self.activation = activation
-    self.use_bias = use_bias
-    self.kernel_initializer = kernel_initializer
-    self.bias_initializer = bias_initializer
-    self.kernel_regularizer = kernel_regularizer
-    self.bias_regularizer = bias_regularizer
-    self.kernel_constraint = kernel_constraint
-    self.bias_constraint = bias_constraint
-    self.input_spec = base.InputSpec(min_ndim=2)
-
-  def build(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape)
-    if input_shape[-1].value is None:
-      raise ValueError('The last dimension of the inputs to `Dense` '
-                       'should be defined. Found `None`.')
-    self.input_spec = base.InputSpec(min_ndim=2,
-                                     axes={-1: input_shape[-1].value})
-    self.kernel = self.add_variable('kernel',
-                                    shape=[input_shape[-1].value, self.units],
-                                    initializer=self.kernel_initializer,
-                                    regularizer=self.kernel_regularizer,
-                                    constraint=self.kernel_constraint,
-                                    dtype=self.dtype,
-                                    trainable=True)
-    if self.use_bias:
-      self.bias = self.add_variable('bias',
-                                    shape=[self.units,],
-                                    initializer=self.bias_initializer,
-                                    regularizer=self.bias_regularizer,
-                                    constraint=self.bias_constraint,
-                                    dtype=self.dtype,
-                                    trainable=True)
-    else:
-      self.bias = None
-    self.built = True
-
-  def call(self, inputs):
-    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
-    shape = inputs.get_shape().as_list()
-    if len(shape) > 2:
-      # Broadcasting is required for the inputs.
-      outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
-                                                             [0]])
-      # Reshape the output back to the original ndim of the input.
-      if context.in_graph_mode():
-        output_shape = shape[:-1] + [self.units]
-        outputs.set_shape(output_shape)
-    else:
-      outputs = standard_ops.matmul(inputs, self.kernel)
-    if self.use_bias:
-      outputs = nn.bias_add(outputs, self.bias)
-    if self.activation is not None:
-      return self.activation(outputs)  # pylint: disable=not-callable
-    return outputs
-
-  def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape)
-    input_shape = input_shape.with_rank_at_least(2)
-    if input_shape[-1].value is None:
-      raise ValueError(
-          'The innermost dimension of input_shape must be defined, but saw: %s'
-          % input_shape)
-    return input_shape[:-1].concatenate(self.units)
 
 
+@tf_export('layers.dense')
 def dense(
     inputs, units,
     activation=None,
@@ -198,9 +137,6 @@ def dense(
   argument (if not `None`), `kernel` is a weights matrix created by the layer,
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
-
-  Note: if the `inputs` tensor has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `kernel`.
 
   Arguments:
     inputs: Tensor input.
@@ -230,7 +166,8 @@ def dense(
       by the same name.
 
   Returns:
-    Output tensor.
+    Output tensor the same shape as `inputs` except the last dimension is of
+    size `units`.
 
   Raises:
     ValueError: if eager execution is enabled.
@@ -247,13 +184,13 @@ def dense(
                 bias_constraint=bias_constraint,
                 trainable=trainable,
                 name=name,
-                dtype=inputs.dtype.base_dtype,
                 _scope=name,
                 _reuse=reuse)
   return layer.apply(inputs)
 
 
-class Dropout(base.Layer):
+@tf_export('layers.Dropout')
+class Dropout(keras_layers.Dropout, base.Layer):
   """Applies Dropout to the input.
 
   Dropout consists in randomly setting a fraction `rate` of input units to 0
@@ -281,39 +218,17 @@ class Dropout(base.Layer):
                seed=None,
                name=None,
                **kwargs):
-    super(Dropout, self).__init__(name=name, **kwargs)
-    self.rate = rate
-    self.noise_shape = noise_shape
-    self.seed = seed
-
-  def _get_noise_shape(self, inputs):
-    # Subclasses of `Dropout` may implement `_get_noise_shape(self, inputs)`,
-    # which will override `self.noise_shape`, and allows for custom noise
-    # shapes with dynamically sized inputs.
-    if self.noise_shape is None:
-      return self.noise_shape
-
-    symbolic_shape = array_ops.shape(inputs)
-    noise_shape = [
-        symbolic_shape[axis] if shape is None else shape
-        for axis, shape in enumerate(self.noise_shape)
-    ]
-    return noise_shape
+    super(Dropout, self).__init__(rate=rate,
+                                  noise_shape=noise_shape,
+                                  seed=seed,
+                                  name=name,
+                                  **kwargs)
 
   def call(self, inputs, training=False):
-
-    def dropped_inputs():
-      return nn.dropout(inputs, 1  - self.rate,
-                        noise_shape=self._get_noise_shape(inputs),
-                        seed=self.seed)
-    return utils.smart_cond(training,
-                            dropped_inputs,
-                            lambda: array_ops.identity(inputs))
-
-  def compute_output_shape(self, input_shape):
-    return input_shape
+    return super(Dropout, self).call(inputs, training=training)
 
 
+@tf_export('layers.dropout')
 def dropout(inputs,
             rate=0.5,
             noise_shape=None,
@@ -355,7 +270,8 @@ def dropout(inputs,
   return layer.apply(inputs, training=training)
 
 
-class Flatten(base.Layer):
+@tf_export('layers.Flatten')
+class Flatten(keras_layers.Flatten, base.Layer):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
   Examples:
@@ -370,27 +286,10 @@ class Flatten(base.Layer):
     # now `y` has shape `(None, None)`
   ```
   """
-
-  def __init__(self, **kwargs):
-    super(Flatten, self).__init__(**kwargs)
-    self.input_spec = base.InputSpec(min_ndim=2)
-
-  def call(self, inputs):
-    outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
-    if context.in_graph_mode():
-      outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
-    return outputs
-
-  def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    output_shape = [input_shape[0]]
-    if all(input_shape[1:]):
-      output_shape += [np.prod(input_shape[1:])]
-    else:
-      output_shape += [None]
-    return tensor_shape.TensorShape(output_shape)
+  pass
 
 
+@tf_export('layers.flatten')
 def flatten(inputs, name=None):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 

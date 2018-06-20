@@ -21,7 +21,7 @@ END
   }
   summary: "Computes the mean along sparse segments of a tensor."
   description: <<END
-Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
 segments.
 
 Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first

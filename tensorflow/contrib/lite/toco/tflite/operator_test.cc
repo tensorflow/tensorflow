@@ -74,8 +74,10 @@ class OperatorTest : public ::testing::Test {
     auto new_toco_op = op.Deserialize(output_options->builtin_options(),
                                       output_options->custom_options());
 
-    CHECK(dynamic_cast<T*>(new_toco_op.get()))
-        << "Cannot cast " << HelpfulOperatorTypeName(*new_toco_op) << " to "
+    CHECK(new_toco_op->type == toco_op.type)
+        << "The type of the serialized and deserialized"
+        << HelpfulOperatorTypeName(*new_toco_op)
+        << " does not match the type of the original "
         << HelpfulOperatorTypeName(toco_op);
 
     return std::unique_ptr<T>(dynamic_cast<T*>(new_toco_op.release()));
@@ -104,10 +106,26 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
   CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
-  CheckSimpleOperator<ResizeBilinearOperator>("RESIZE_BILINEAR",
-                                              OperatorType::kResizeBilinear);
   CheckSimpleOperator<LogisticOperator>("LOGISTIC", OperatorType::kLogistic);
   CheckSimpleOperator<TanhOperator>("TANH", OperatorType::kTanh);
+  CheckSimpleOperator<ExpOperator>("EXP", OperatorType::kExp);
+  CheckSimpleOperator<LogSoftmaxOperator>("LOG_SOFTMAX",
+                                          OperatorType::kLogSoftmax);
+  CheckSimpleOperator<TensorFlowMaximumOperator>(
+      "MAXIMUM", OperatorType::kTensorFlowMaximum);
+  CheckSimpleOperator<TensorFlowMinimumOperator>(
+      "MINIMUM", OperatorType::kTensorFlowMinimum);
+  CheckSimpleOperator<TensorFlowLessOperator>("LESS",
+                                              OperatorType::kTensorFlowLess);
+  CheckSimpleOperator<NegOperator>("NEG", OperatorType::kNeg);
+  CheckSimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect);
+  CheckSimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice);
+  CheckSimpleOperator<SinOperator>("SIN", OperatorType::kSin);
+  CheckSimpleOperator<TensorFlowEqualOperator>("EQUAL",
+                                               OperatorType::kTensorFlowEqual);
+  CheckSimpleOperator<TensorFlowNotEqualOperator>(
+      "NOT_EQUAL", OperatorType::kTensorFlowNotEqual);
+  CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -119,44 +137,16 @@ TEST_F(OperatorTest, BuiltinAdd) {
             output_toco_op->fused_activation_function);
 }
 
-TEST_F(OperatorTest, BuiltinSpaceToBatchND) {
-  SpaceToBatchNDOperator op;
-  op.block_shape = {2, 2};
-  op.before_paddings = {1, 2};
-  op.after_paddings = {3, 4};
-
-  auto output_toco_op = SerializeAndDeserialize(
-      GetOperator("SPACE_TO_BATCH_ND", OperatorType::kSpaceToBatchND), op);
-  EXPECT_EQ(op.block_shape, output_toco_op->block_shape);
-  EXPECT_EQ(op.before_paddings, output_toco_op->before_paddings);
-  EXPECT_EQ(op.after_paddings, output_toco_op->after_paddings);
-}
-
-TEST_F(OperatorTest, BuiltinBatchToSpaceND) {
-  BatchToSpaceNDOperator op;
-  op.block_shape = {2, 2};
-  op.before_crops = {1, 2};
-  op.after_crops = {3, 4};
-
-  auto output_toco_op = SerializeAndDeserialize(
-      GetOperator("BATCH_TO_SPACE_ND", OperatorType::kBatchToSpaceND), op);
-  EXPECT_EQ(op.block_shape, output_toco_op->block_shape);
-  EXPECT_EQ(op.before_crops, output_toco_op->before_crops);
-  EXPECT_EQ(op.after_crops, output_toco_op->after_crops);
-}
-
 TEST_F(OperatorTest, BuiltinMean) {
   MeanOperator op;
-  op.axis = {1, 2};
   op.keep_dims = false;
 
   auto output_toco_op =
       SerializeAndDeserialize(GetOperator("MEAN", OperatorType::kMean), op);
-  EXPECT_EQ(op.axis, output_toco_op->axis);
   EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
 }
 
-TEST_F(OperatorTest, CustomCast) {
+TEST_F(OperatorTest, BuiltinCast) {
   CastOperator op;
   op.src_data_type = ArrayDataType::kFloat;
   op.dst_data_type = ArrayDataType::kUint8;
@@ -188,10 +178,12 @@ TEST_F(OperatorTest, CustomFakeQuant) {
   minmax->min = -10;
   minmax->max = 200;
   op.minmax.reset(minmax);
+  op.num_bits = 16;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("FAKE_QUANT", OperatorType::kFakeQuant), op);
   EXPECT_EQ(op.minmax->min, output_toco_op->minmax->min);
   EXPECT_EQ(op.minmax->max, output_toco_op->minmax->max);
+  EXPECT_EQ(op.num_bits, output_toco_op->num_bits);
 }
 
 TEST_F(OperatorTest, CustomFullyConnected) {
@@ -256,16 +248,6 @@ TEST_F(OperatorTest, BuiltinMaxPool) {
   EXPECT_EQ(op.padding.type, output_toco_op->padding.type);
   EXPECT_EQ(op.kwidth, output_toco_op->kwidth);
   EXPECT_EQ(op.kheight, output_toco_op->kheight);
-}
-
-TEST_F(OperatorTest, BuiltinPad) {
-  PadOperator op;
-  op.left_padding = {1, 2, 3};
-  op.right_padding = {1, 2, 3};
-  auto output_toco_op =
-      SerializeAndDeserialize(GetOperator("PAD", OperatorType::kPad), op);
-  EXPECT_EQ(op.left_padding, output_toco_op->left_padding);
-  EXPECT_EQ(op.right_padding, output_toco_op->right_padding);
 }
 
 TEST_F(OperatorTest, BuiltinReshape) {
@@ -369,6 +351,14 @@ TEST_F(OperatorTest, BuiltinMul) {
             output_toco_op->fused_activation_function);
 }
 
+TEST_F(OperatorTest, ResizeBilinear) {
+  ResizeBilinearOperator op;
+  op.align_corners = true;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("RESIZE_BILINEAR", OperatorType::kResizeBilinear), op);
+  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+}
+
 TEST_F(OperatorTest, Svdf) {
   SvdfOperator op;
   op.fused_activation_function = FusedActivationFunctionType::kRelu;
@@ -380,15 +370,6 @@ TEST_F(OperatorTest, Svdf) {
   EXPECT_EQ(op.rank, output_toco_op->rank);
 }
 
-TEST_F(OperatorTest, Transpose) {
-  TransposeOperator op;
-  op.perm = {0, 1, 2, 3};
-
-  auto output_toco_op = SerializeAndDeserialize(
-      GetOperator("TRANSPOSE", OperatorType::kTranspose), op);
-  EXPECT_EQ(op.perm, output_toco_op->perm);
-}
-
 TEST_F(OperatorTest, Squeeze) {
   SqueezeOperator op;
   op.squeeze_dims = {-2, -3, 4, 1, 4};
@@ -396,6 +377,63 @@ TEST_F(OperatorTest, Squeeze) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("SQUEEZE", OperatorType::kSqueeze), op);
   EXPECT_EQ(op.squeeze_dims, output_toco_op->squeeze_dims);
+}
+
+TEST_F(OperatorTest, StridedSlice) {
+  StridedSliceOperator op;
+
+  op.begin_mask = 1;
+  op.end_mask = 2;
+  op.ellipsis_mask = 1;
+  op.new_axis_mask = 1;
+  op.shrink_axis_mask = 2;
+
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("STRIDED_SLICE", OperatorType::kStridedSlice), op);
+  EXPECT_EQ(op.start_indices, output_toco_op->start_indices);
+  EXPECT_EQ(op.stop_indices, output_toco_op->stop_indices);
+  EXPECT_EQ(op.strides, output_toco_op->strides);
+  EXPECT_EQ(op.begin_mask, output_toco_op->begin_mask);
+  EXPECT_EQ(op.end_mask, output_toco_op->end_mask);
+  EXPECT_EQ(op.end_mask, output_toco_op->end_mask);
+  EXPECT_EQ(op.ellipsis_mask, output_toco_op->ellipsis_mask);
+  EXPECT_EQ(op.new_axis_mask, output_toco_op->new_axis_mask);
+  EXPECT_EQ(op.shrink_axis_mask, output_toco_op->shrink_axis_mask);
+}
+
+TEST_F(OperatorTest, BuiltinTopKV2) {
+  TopKV2Operator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("TOPK_V2", OperatorType::kTopK_V2), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
+TEST_F(OperatorTest, BuiltinArgMax) {
+  ArgMaxOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("ARG_MAX", OperatorType::kArgMax), op);
+  EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
+}
+
+TEST_F(OperatorTest, BuiltinTransposeConv) {
+  TransposeConvOperator op;
+  op.stride_width = 123;
+  op.stride_height = 124;
+  op.padding.type = PaddingType::kValid;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("TRANSPOSE_CONV", OperatorType::kTransposeConv), op);
+  EXPECT_EQ(op.stride_width, output_toco_op->stride_width);
+  EXPECT_EQ(op.stride_height, output_toco_op->stride_height);
+  EXPECT_EQ(op.padding.type, output_toco_op->padding.type);
+}
+
+TEST_F(OperatorTest, BuiltinSparseToDense) {
+  SparseToDenseOperator op;
+  op.validate_indices = false;
+  std::unique_ptr<toco::SparseToDenseOperator> output_toco_op =
+      SerializeAndDeserialize(
+          GetOperator("SPARSE_TO_DENSE", OperatorType::kSparseToDense), op);
+  EXPECT_EQ(op.validate_indices, output_toco_op->validate_indices);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

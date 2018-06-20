@@ -120,8 +120,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
     """Sets up the prediction tests.
 
     Create a batch of two examples having one dense float, two sparse float
-    single valued, one sparse float multidimensionl and one sparse int features.
-    The data looks like the following:
+    single valued, one sparse float multidimensional and one sparse int
+    features.  The data looks like the following:
     | Instance | Dense0 | SparseF0 | SparseF1 | SparseI0 | SparseM
     | 0        |  7     |    -3    |          |    9,1   | __, 5.0
     | 1        | -2     |          | 4        |          |  3, ___
@@ -810,7 +810,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
     # building. This tree should never be dropped.
     num_trees = 10
     with self.test_session():
-      # Empty tree ensenble.
+      # Empty tree ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Add 10 trees with some weights.
       for i in range(0, num_trees):
@@ -951,7 +951,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testDropOutZeroProb(self):
     with self.test_session():
-      # Empty tree ensenble.
+      # Empty tree ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Add 1000 trees with some weights.
       for i in range(0, 999):
@@ -994,7 +994,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testAveragingAllTrees(self):
     with self.test_session():
-      # Empty tree ensenble.
+      # Empty tree ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       adjusted_tree_ensemble_config = (
           tree_config_pb2.DecisionTreeEnsembleConfig())

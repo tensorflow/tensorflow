@@ -60,8 +60,8 @@ const string RegisteredFactoriesErrorMessageLocked() {
                          str_util::Join(factory_types, ", "), "}.");
 }
 string SessionOptionsToString(const SessionOptions& options) {
-  return strings::StrCat("target: \"", options.target, "\" config: ",
-                         ProtoShortDebugString(options.config));
+  return strings::StrCat("target: \"", options.target,
+                         "\" config: ", ProtoShortDebugString(options.config));
 }
 }  // namespace
 

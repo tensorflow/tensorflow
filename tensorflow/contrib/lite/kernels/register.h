@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_
 
 #include <unordered_map>
 #include "tensorflow/contrib/lite/context.h"
@@ -23,28 +23,13 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 
-class BuiltinOpResolver : public OpResolver {
+class BuiltinOpResolver : public MutableOpResolver {
  public:
   BuiltinOpResolver();
-  TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override;
-  TfLiteRegistration* FindOp(const char* op) const override;
-  void AddBuiltin(tflite::BuiltinOperator op, TfLiteRegistration* registration);
-  void AddCustom(const char* name, TfLiteRegistration* registration);
-
- private:
-  struct BuiltinOperatorHasher {
-    size_t operator()(const tflite::BuiltinOperator& x) const {
-      return std::hash<size_t>()(static_cast<size_t>(x));
-    }
-  };
-  std::unordered_map<tflite::BuiltinOperator, TfLiteRegistration*,
-                     BuiltinOperatorHasher>
-      builtins_;
-  std::unordered_map<std::string, TfLiteRegistration*> custom_ops_;
 };
 
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_BUILTIN_KERNELS_H
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_

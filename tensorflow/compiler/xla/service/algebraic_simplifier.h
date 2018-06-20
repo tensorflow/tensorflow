@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace xla {
 
-// A pass which performs AlgebraicSimplications.
+// A pass which performs algebraic simplifications.
 class AlgebraicSimplifier : public HloPassInterface {
  public:
   // Given shapes 'from_shape' and 'to_shape', determines if it is valid to
@@ -57,10 +57,10 @@ class AlgebraicSimplifier : public HloPassInterface {
   bool is_layout_sensitive_;
   ValidBitcastCallback valid_bitcast_callback_;
 
-  // Enable dot simplication on platforms where it is profitable.
+  // Enable dot simplification on platforms where it is profitable.
   bool enable_dot_strength_reduction_;
 
-  // Enable convolution simplication on platforms where it is profitable.
+  // Enable convolution simplification on platforms where it is profitable.
   bool enable_conv_simplification_;
 };
 

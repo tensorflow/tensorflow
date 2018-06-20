@@ -62,9 +62,10 @@ them. For this reason TensorFlow provides **collections**, which are named lists
 of tensors or other objects, such as `tf.Variable` instances.
 
 By default every `tf.Variable` gets placed in the following two collections:
+
  * `tf.GraphKeys.GLOBAL_VARIABLES` --- variables that can be shared across
-multiple devices,
- * `tf.GraphKeys.TRAINABLE_VARIABLES`--- variables for which TensorFlow will
+   multiple devices,
+ * `tf.GraphKeys.TRAINABLE_VARIABLES` --- variables for which TensorFlow will
    calculate gradients.
 
 If you don't want a variable to be trainable, add it to the
@@ -236,7 +237,7 @@ TensorFlow supports two ways of sharing variables:
 While code which explicitly passes variables around is very clear, it is
 sometimes convenient to write TensorFlow functions that implicitly use
 variables in their implementations. Most of the functional layers from
-`tf.layer` use this approach, as well as all `tf.metrics`, and a few other
+`tf.layers` use this approach, as well as all `tf.metrics`, and a few other
 library utilities.
 
 Variable scopes allow you to control variable reuse when calling functions which

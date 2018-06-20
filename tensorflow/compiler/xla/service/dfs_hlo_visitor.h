@@ -138,6 +138,9 @@ class DfsHloVisitorBase {
   virtual Status HandleExp(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleExpm1(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleFloor(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
@@ -145,6 +148,12 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
   virtual Status HandleLog(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual Status HandleClz(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual Status HandleLog1p(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
   virtual Status HandleCos(HloInstructionPtr hlo) {
@@ -188,8 +197,13 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
 
+  virtual Status HandleDomain(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
+  virtual Status HandleHostCompute(HloInstructionPtr hlo) = 0;
   virtual Status HandleRng(HloInstructionPtr hlo) = 0;
   virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleSort(HloInstructionPtr hlo) = 0;
@@ -213,6 +227,7 @@ class DfsHloVisitorBase {
   virtual Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
   virtual Status HandleWhile(HloInstructionPtr hlo) = 0;
   virtual Status HandleConditional(HloInstructionPtr hlo) = 0;
+  virtual Status HandleGather(HloInstructionPtr hlo) = 0;
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 
@@ -227,6 +242,8 @@ class DfsHloVisitorBase {
   virtual Status HandleBatchNormInference(HloInstructionPtr hlo) = 0;
 
   virtual Status HandleBatchNormGrad(HloInstructionPtr hlo) = 0;
+
+  virtual Status HandleGenerateToken(HloInstructionPtr token) = 0;
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".

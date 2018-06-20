@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -102,6 +103,22 @@ def assert_is_batch_matrix(tensor):
         "%s" % tensor)
 
 
+def shape_tensor(shape, name=None):
+  """Convert Tensor using default type, unless empty list or tuple."""
+  # Works just like random_ops._ShapeTensor.
+  if isinstance(shape, (tuple, list)) and not shape:
+    dtype = dtypes.int32
+  else:
+    dtype = None
+  return ops.convert_to_tensor(shape, dtype=dtype, name=name)
+
+
+################################################################################
+# Broadcasting versions of common linear algebra functions.
+# TODO(b/77519145) Do this more efficiently in some special cases.
+################################################################################
+
+
 def broadcast_matrix_batch_dims(batch_matrices, name=None):
   """Broadcast leading dimensions of zero or more [batch] matrices.
 
@@ -170,7 +187,8 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
     bcast_batch_shape = batch_matrices[0].get_shape()[:-2]
     for mat in batch_matrices[1:]:
       bcast_batch_shape = array_ops.broadcast_static_shape(
-          bcast_batch_shape, mat.get_shape()[:-2])
+          bcast_batch_shape,
+          mat.get_shape()[:-2])
     if bcast_batch_shape.is_fully_defined():
       # The [1, 1] at the end will broadcast with anything.
       bcast_shape = bcast_batch_shape.concatenate([1, 1])
@@ -183,7 +201,8 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
     bcast_batch_shape = array_ops.shape(batch_matrices[0])[:-2]
     for mat in batch_matrices[1:]:
       bcast_batch_shape = array_ops.broadcast_dynamic_shape(
-          bcast_batch_shape, array_ops.shape(mat)[:-2])
+          bcast_batch_shape,
+          array_ops.shape(mat)[:-2])
     bcast_shape = array_ops.concat([bcast_batch_shape, [1, 1]], axis=0)
     for i, mat in enumerate(batch_matrices):
       batch_matrices[i] = _broadcast_to_shape(mat, bcast_shape)
@@ -193,6 +212,13 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
 
 def _broadcast_to_shape(x, shape):
   return x + array_ops.zeros(shape=shape, dtype=x.dtype)
+
+
+def cholesky_solve_with_broadcast(chol, rhs, name=None):
+  """Solve systems of linear equations."""
+  with ops.name_scope(name, "CholeskySolveWithBroadcast", [chol, rhs]):
+    chol, rhs = broadcast_matrix_batch_dims([chol, rhs])
+    return linalg_ops.cholesky_solve(chol, rhs)
 
 
 def matmul_with_broadcast(a,
@@ -205,6 +231,11 @@ def matmul_with_broadcast(a,
                           b_is_sparse=False,
                           name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a @ b`.
+
+  Works identically to `tf.matmul`, but broadcasts batch dims
+  of `a` and `b` (by replicating) if they are determined statically to be
+  different, or if static shapes are not fully defined.  Thus, this may result
+  in an inefficient replication of data.
 
   The inputs must be matrices (or tensors of rank > 2, representing batches of
   matrices).
@@ -276,7 +307,7 @@ def matmul_with_broadcast(a,
     ValueError: If transpose_a and adjoint_a, or transpose_b and adjoint_b
       are both set to True.
   """
-  with ops.name_scope(name, "MatMulWithBroadcast", [a, b]) as name:
+  with ops.name_scope(name, "MatMulWithBroadcast", [a, b]):
     a, b = broadcast_matrix_batch_dims([a, b])
     return math_ops.matmul(
         a,
@@ -289,11 +320,43 @@ def matmul_with_broadcast(a,
         b_is_sparse=b_is_sparse)
 
 
-def shape_tensor(shape, name=None):
-  """Convert Tensor using default type, unless empty list or tuple."""
-  # Works just like random_ops._ShapeTensor.
-  if isinstance(shape, (tuple, list)) and not shape:
-    dtype = dtypes.int32
-  else:
-    dtype = None
-  return ops.convert_to_tensor(shape, dtype=dtype, name=name)
+def matrix_solve_with_broadcast(matrix, rhs, adjoint=False, name=None):
+  """Solve systems of linear equations."""
+  with ops.name_scope(name, "MatrixSolveWithBroadcast", [matrix, rhs]):
+    matrix, rhs = broadcast_matrix_batch_dims([matrix, rhs])
+    return linalg_ops.matrix_solve(matrix, rhs, adjoint=adjoint)
+
+
+def matrix_triangular_solve_with_broadcast(matrix,
+                                           rhs,
+                                           lower=True,
+                                           adjoint=False,
+                                           name=None):
+  """Solves triangular systems of linear equations with by backsubstitution.
+
+  Works identically to `tf.matrix_triangular_solve`, but broadcasts batch dims
+  of `matrix` and `rhs` (by replicating) if they are determined statically to be
+  different, or if static shapes are not fully defined.  Thus, this may result
+  in an inefficient replication of data.
+
+  Args:
+    matrix: A Tensor. Must be one of the following types:
+      `float64`, `float32`, `complex64`, `complex128`. Shape is `[..., M, M]`.
+    rhs: A `Tensor`. Must have the same `dtype` as `matrix`.
+      Shape is `[..., M, K]`.
+    lower: An optional `bool`. Defaults to `True`. Indicates whether the
+      innermost matrices in `matrix` are lower or upper triangular.
+    adjoint: An optional `bool`. Defaults to `False`. Indicates whether to solve
+      with matrix or its (block-wise) adjoint.
+    name: A name for the operation (optional).
+
+  Returns:
+    `Tensor` with same `dtype` as `matrix` and shape `[..., M, K]`.
+  """
+  with ops.name_scope(name, "MatrixTriangularSolve", [matrix, rhs]):
+    matrix, rhs = broadcast_matrix_batch_dims([matrix, rhs])
+    return linalg_ops.matrix_triangular_solve(
+        matrix,
+        rhs,
+        lower=lower,
+        adjoint=adjoint)

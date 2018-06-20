@@ -403,8 +403,6 @@ GPUs | InceptionV3 (batch size 32) | ResNet-50 (batch size 32)
 This
 [script](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks)
 was run on the various platforms to generate the above results.
-@{$performance_models$High-Performance Models} details techniques in the script
-along with examples of how to execute the script.
 
 In order to create results that are as repeatable as possible, each test was run
 5 times and then the times were averaged together. GPUs are run in their default

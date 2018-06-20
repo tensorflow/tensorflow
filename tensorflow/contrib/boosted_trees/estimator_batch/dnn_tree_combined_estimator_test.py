@@ -19,15 +19,17 @@ from __future__ import division
 from __future__ import print_function
 
 import tempfile
-
 from tensorflow.contrib.boosted_trees.estimator_batch import dnn_tree_combined_estimator as estimator
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
 from tensorflow.contrib.learn.python.learn.estimators import run_config
+from tensorflow.python.estimator.canned import head as head_lib
+from tensorflow.python.feature_column import feature_column_lib as core_feature_column
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import googletest
 
 
@@ -96,6 +98,35 @@ class DNNBoostedTreeCombinedTest(test_util.TensorFlowTestCase):
         dnn_steps_to_train=10,
         dnn_input_layer_to_tree=False,
         tree_feature_columns=[feature_column.real_valued_column("x")])
+
+    classifier.fit(input_fn=_train_input_fn, steps=15)
+    classifier.evaluate(input_fn=_eval_input_fn, steps=1)
+
+  def testFitAndEvaluateDontThrowExceptionWithCore(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 1
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    # Use core head
+    head_fn = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
+
+    classifier = estimator.DNNBoostedTreeCombinedEstimator(
+        head=head_fn,
+        dnn_hidden_units=[1],
+        # Use core feature columns
+        dnn_feature_columns=[core_feature_column.numeric_column("x")],
+        tree_learner_config=learner_config,
+        num_trees=1,
+        tree_examples_per_layer=3,
+        model_dir=model_dir,
+        config=config,
+        dnn_steps_to_train=10,
+        dnn_input_layer_to_tree=True,
+        tree_feature_columns=[],
+        use_core_versions=True)
 
     classifier.fit(input_fn=_train_input_fn, steps=15)
     classifier.evaluate(input_fn=_eval_input_fn, steps=1)

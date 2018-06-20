@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_TENSOR_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_TENSOR_UTILS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_TENSOR_UTILS_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_TENSOR_UTILS_H_
 
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
@@ -30,6 +30,14 @@ void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int result_stride) {
   NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
                    vector, n_batch, result, result_stride);
+}
+
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride) {
+  NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
+                   vectors, scaling_factors, n_batch, result, result_stride);
 }
 
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
@@ -92,9 +100,21 @@ void ZeroVector(float* vector, int v_size) {
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
 
+// Check if all entries of a vector are zero.
+bool IsZeroVector(const float* vector, int v_size) {
+  return NEON_OR_PORTABLE(IsZeroVector, vector, v_size);
+}
+
 void ClipVector(const float* vector, int v_size, float abs_limit,
                 float* result) {
   NEON_OR_PORTABLE(ClipVector, vector, v_size, abs_limit, result);
+}
+
+void SymmetricQuantizeFloats(const float* values, const int size,
+                             int8_t* quantized_values, float* min, float* max,
+                             float* scaling_factor) {
+  NEON_OR_PORTABLE(SymmetricQuantizeFloats, values, size, quantized_values, min,
+                   max, scaling_factor);
 }
 
 void VectorShiftLeft(float* vector, int v_size, float shift_value) {
@@ -110,4 +130,4 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
 }  // namespace tensor_utils
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_TENSOR_UTILS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_TENSOR_UTILS_H_

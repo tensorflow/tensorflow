@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
-
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
@@ -34,72 +34,83 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class BatchDatasetTest(test.TestCase):
+class BatchDatasetTest(test.TestCase, parameterized.TestCase):
 
-  def testBatchDataset(self):
-    """Test an dataset that maps a TF function across its input elements."""
+  @parameterized.named_parameters(
+      ('even', 28, 14, False),
+      ('uneven_with_remainder', 28, 15, False),
+      ('uneven_without_remainder', 28, 15, True),
+      ('empty', 0, 14, False),
+  )
+  def testBatchDataset(self, count, batch_size, drop_remainder):
+    """Tests the batch dataset logic for various input configurations.
+
+    Args:
+      count: the number of input elements
+      batch_size: the batch size
+      drop_remainder: whether a smaller batch size should be produced if batch
+        size does not divide number of inputs evenly
+    """
+
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(count) -> BatchDataset(batch_size).
     components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
                   np.array(37.0) * np.arange(7))
 
-    count = array_ops.placeholder(dtypes.int64, shape=[])
-    batch_size = array_ops.placeholder(dtypes.int64, shape=[])
+    count_t = array_ops.placeholder(dtypes.int64, shape=[])
+    batch_size_t = array_ops.placeholder(dtypes.int64, shape=[])
+    drop_remainder_t = array_ops.placeholder(dtypes.bool, shape=[])
 
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
-                .repeat(count).batch(batch_size).make_initializable_iterator())
+    iterator = (
+        dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
+        .repeat(count).batch(batch_size,
+                             drop_remainder).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    self.assertEqual([[None] + list(c.shape[1:]) for c in components],
+    if drop_remainder:
+      dim0 = batch_size
+    else:
+      dim0 = None
+    self.assertEqual([[dim0] + list(c.shape[1:]) for c in components],
                      [t.shape.as_list() for t in get_next])
 
     with self.test_session() as sess:
-      # Batch of a finite input, where the batch_size divides the
-      # total number of elements.
-      sess.run(init_op, feed_dict={count: 28, batch_size: 14})
-      num_batches = (28 * 7) // 14
-      for i in range(num_batches):
+      sess.run(
+          init_op,
+          feed_dict={
+              count_t: count,
+              batch_size_t: batch_size,
+              drop_remainder_t: drop_remainder
+          })
+      num_full_batches = (count * 7) // batch_size
+      for i in range(num_full_batches):
         result = sess.run(get_next)
         for component, result_component in zip(components, result):
-          for j in range(14):
-            self.assertAllEqual(component[(i*14 + j) % 7]**2,
+          for j in range(batch_size):
+            self.assertAllEqual(component[(i * batch_size + j) % 7]**2,
                                 result_component[j])
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      # Batch of a finite input, where the batch_size does not
-      # divide the total number of elements.
-      sess.run(init_op, feed_dict={count: 14, batch_size: 8})
-
-      # We expect (num_batches - 1) full-sized batches.
-      num_batches = int(math.ceil((14 * 7) / 8))
-      for i in range(num_batches - 1):
+      if not drop_remainder and (count * 7) % batch_size > 0:
         result = sess.run(get_next)
         for component, result_component in zip(components, result):
-          for j in range(8):
-            self.assertAllEqual(component[(i*8 + j) % 7]**2,
-                                result_component[j])
-      result = sess.run(get_next)
-      for component, result_component in zip(components, result):
-        for j in range((14 * 7) % 8):
-          self.assertAllEqual(component[((num_batches - 1)*8 + j) % 7]**2,
-                              result_component[j])
+          for j in range((count * 7) % batch_size):
+            self.assertAllEqual(
+                component[(num_full_batches * batch_size + j) % 7]**2,
+                result_component[j])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-      # Batch of an empty input should fail straight away.
-      sess.run(init_op, feed_dict={count: 0, batch_size: 8})
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+  def testBatchDatasetInvalidBatchSize(self):
+    iterator = (dataset_ops.Dataset.range(10).batch(0).make_one_shot_iterator())
+    get_next = iterator.get_next()
 
-      # Empty batch should be an initialization time error.
+    with self.test_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(init_op, feed_dict={count: 14, batch_size: 0})
+        sess.run(get_next)
 
   def assertSparseValuesEqual(self, a, b):
     self.assertAllEqual(a.indices, b.indices)
@@ -188,80 +199,127 @@ class BatchDatasetTest(test.TestCase):
         sess.run(get_next)
 
   def testBatchShapeError(self):
+
     def generator():
       yield [1.0, 2.0, 3.0]
       yield [4.0, 5.0, 6.0]
       yield [7.0, 8.0, 9.0, 10.0]
 
-    iterator = (dataset_ops.Dataset.from_generator(generator, dtypes.float32,
-                                                   output_shapes=[None])
-                .batch(3)
-                .make_initializable_iterator())
+    iterator = (
+        dataset_ops.Dataset.from_generator(
+            generator, dtypes.float32, output_shapes=[None]).batch(3)
+        .make_initializable_iterator())
     next_element = iterator.get_next()
 
     with self.test_session() as sess:
       sess.run(iterator.initializer)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
-          r"Cannot batch tensors with different shapes in component 0. "
-          r"First element had shape \[3\] and element 2 had shape \[4\]."):
+          r'Cannot batch tensors with different shapes in component 0. '
+          r'First element had shape \[3\] and element 2 had shape \[4\].'):
         sess.run(next_element)
 
-  def testPaddedBatchDataset(self):
-    seq_lens = array_ops.placeholder(dtypes.int32, shape=[None])
-    padded_shape = array_ops.placeholder(dtypes.int64, shape=[1])
 
-    iterator = (dataset_ops.Dataset.from_tensor_slices(seq_lens)
-                .map(lambda x: array_ops.fill([x], x)).padded_batch(
-                    4,
-                    padded_shapes=padded_shape).make_initializable_iterator())
+def _random_seq_lens(count):
+  return np.random.randint(20, size=(count,)).astype(np.int32)
+
+
+class PaddedBatchDatasetTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('default_padding', _random_seq_lens(32), 4, [-1], False),
+      ('constant_padding', _random_seq_lens(32), 4, [25], False),
+      ('uneven_with_remainder', _random_seq_lens(34), 4, [-1], False),
+      ('uneven_without_remainder', _random_seq_lens(34), 4, [-1], True),
+  )
+  def testPaddedBatchDataset(self, seq_lens, batch_size, padded_shapes,
+                             drop_remainder):
+    """Tests the padded batch dataset logic for various input configurations.
+
+    Args:
+      seq_lens: the input sequence lengths
+      batch_size: the batch size
+      padded_shapes: the padded shapes to use
+      drop_remainder: whether a smaller batch size should be produced if batch
+        size does not divide number of inputs evenly
+    """
+
+    seq_lens_t = array_ops.placeholder(dtypes.int32, shape=[None])
+    batch_size_t = array_ops.placeholder(dtypes.int64, shape=[])
+    padded_shapes_t = array_ops.placeholder(dtypes.int64, shape=[1])
+    drop_remainder_t = array_ops.placeholder(dtypes.bool, shape=[])
+
+    iterator = (
+        dataset_ops.Dataset.from_tensor_slices(seq_lens_t)
+        .map(lambda x: array_ops.fill([x], x)).padded_batch(
+            batch_size=batch_size_t,
+            drop_remainder=drop_remainder_t,
+            padded_shapes=padded_shapes_t).make_initializable_iterator())
 
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
     with self.test_session() as sess:
-      # Test with random sequence lengths, and max padding.
-      random_seq_lens = np.random.randint(20, size=(32,)).astype(np.int32)
-      sess.run(init_op, feed_dict={padded_shape: [-1],
-                                   seq_lens: random_seq_lens})
-      for i in range(8):
+      sess.run(
+          init_op,
+          feed_dict={
+              seq_lens_t: seq_lens,
+              batch_size_t: batch_size,
+              padded_shapes_t: padded_shapes,
+              drop_remainder_t: drop_remainder,
+          })
+
+      num_full_batches = len(seq_lens) // batch_size
+
+      for i in range(num_full_batches):
+        result = sess.run(get_next)
+        padded_len = padded_shapes[0]
+        if padded_len is None or padded_len == -1:
+          padded_len = np.max(result)
+        self.assertEqual((batch_size, padded_len), result.shape)
+        for j in range(batch_size):
+          seq_len = seq_lens[(i * batch_size) + j]
+          self.assertAllEqual(result[j, :seq_len], [seq_len] * seq_len)
+          self.assertAllEqual(result[j, seq_len:],
+                              [0] * (padded_len - seq_len))
+
+      if not drop_remainder and len(seq_lens) % batch_size > 0:
         result = sess.run(get_next)
         padded_len = np.max(result)
-        self.assertEqual((4, padded_len), result.shape)
-        for j in range(4):
-          seq_len = random_seq_lens[(i*4)+j]
+        self.assertEqual((len(seq_lens) % batch_size, padded_len),
+                         result.shape)
+        for j in range(len(seq_lens) % batch_size):
+          seq_len = seq_lens[num_full_batches * batch_size + j]
           self.assertAllEqual(result[j, :seq_len], [seq_len] * seq_len)
-          self.assertAllEqual(result[j, seq_len:], [0] * (padded_len - seq_len))
+          self.assertAllEqual(result[j, seq_len:],
+                              [0] * (padded_len - seq_len))
+
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-      # Test with random sequence lengths, and constant padding.
-      sess.run(init_op, feed_dict={padded_shape: [25],
-                                   seq_lens: random_seq_lens})
-      for i in range(8):
-        result = sess.run(get_next)
-        self.assertEqual((4, 25), result.shape)
-        for j in range(4):
-          seq_len = random_seq_lens[(i*4)+j]
-          self.assertAllEqual(result[j, :seq_len], [seq_len] * seq_len)
-          self.assertAllEqual(result[j, seq_len:], [0] * (25 - seq_len))
-      with self.assertRaises(errors.OutOfRangeError):
+  def testPaddedBatchShortPadding(self):
+    iterator = (
+        dataset_ops.Dataset.from_tensor_slices([6, 5, 5, 5, 5])
+        .map(lambda x: array_ops.fill([x], x)).padded_batch(
+            batch_size=4, padded_shapes=[5]).make_one_shot_iterator())
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      with self.assertRaises(errors.DataLossError):
         sess.run(get_next)
 
-      # Test correct handling of empty tensors.
-      sess.run(init_op, feed_dict={padded_shape: [-1],
-                                   seq_lens: [0, 0, 0, 0]})
+  def testPaddedBatchEmptyTensors(self):
+    iterator = (
+        dataset_ops.Dataset.from_tensor_slices([0, 0, 0, 0])
+        .map(lambda x: array_ops.fill([x], x)).padded_batch(
+            batch_size=4, padded_shapes=[-1]).make_one_shot_iterator())
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
       result = sess.run(get_next)
       self.assertAllEqual([[], [], [], []], result)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
-
-      # Test error handling with constant sequence lengths, and
-      # too-short padding.
-      sess.run(init_op, feed_dict={padded_shape: [5],
-                                   seq_lens: [6, 5, 5, 5]})
-      with self.assertRaises(errors.DataLossError):
-        result = sess.run(get_next)
 
   def testPaddedBatchDatasetNonDefaultPadding(self):
     seq_lens = array_ops.placeholder(dtypes.int32, shape=[None])
@@ -270,11 +328,13 @@ class BatchDatasetTest(test.TestCase):
     def fill_tuple(x):
       filled = array_ops.fill([x], x)
       return (filled, string_ops.as_string(filled))
-    iterator = (dataset_ops.Dataset.from_tensor_slices(seq_lens).map(fill_tuple)
-                .padded_batch(
-                    4,
-                    padded_shapes=(padded_shape, padded_shape),
-                    padding_values=(-1, "<end>")).make_initializable_iterator())
+
+    iterator = (
+        dataset_ops.Dataset.from_tensor_slices(seq_lens).map(fill_tuple)
+        .padded_batch(
+            4,
+            padded_shapes=(padded_shape, padded_shape),
+            padding_values=(-1, '<end>')).make_initializable_iterator())
 
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -282,24 +342,45 @@ class BatchDatasetTest(test.TestCase):
     with self.test_session() as sess:
       # Test with random sequence lengths, and max padding.
       random_seq_lens = np.random.randint(20, size=(32,)).astype(np.int32)
-      sess.run(init_op, feed_dict={padded_shape: [-1],
-                                   seq_lens: random_seq_lens})
+      sess.run(
+          init_op, feed_dict={
+              padded_shape: [-1],
+              seq_lens: random_seq_lens
+          })
       for i in range(8):
         result = sess.run(get_next)
         padded_len = np.max(result[0])
         self.assertEqual((4, padded_len), result[0].shape)
         self.assertEqual((4, padded_len), result[1].shape)
         for j in range(4):
-          seq_len = random_seq_lens[(i*4)+j]
+          seq_len = random_seq_lens[(i * 4) + j]
           self.assertAllEqual(result[0][j, :seq_len], [seq_len] * seq_len)
           self.assertAllEqual(result[0][j, seq_len:],
                               [-1] * (padded_len - seq_len))
           self.assertAllEqual(result[1][j, :seq_len],
                               [compat.as_bytes(str(seq_len))] * seq_len)
           self.assertAllEqual(result[1][j, seq_len:],
-                              [b"<end>"] * (padded_len - seq_len))
+                              [b'<end>'] * (padded_len - seq_len))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testPaddedBatchDatasetUnicode(self):
+    # See GitHub issue 16149
+    def generator():
+      data = [[u'Простой', u'тест', u'юникода'],
+              [u'никогда', u'не', u'бывает', u'простым']]
+
+      for seq in data:
+        yield seq, [0, 1, 2, 3]
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator, (dtypes.string, dtypes.int32),
+        (tensor_shape.TensorShape([None]), tensor_shape.TensorShape([None])))
+    padded_dataset = dataset.padded_batch(
+        2, padded_shapes=([None], [None]), padding_values=('', 0))
+    with self.test_session() as sess:
+      next_element = padded_dataset.make_one_shot_iterator().get_next()
+      sess.run(next_element)
 
   def testPaddedBatchDatasetShapeSpecifications(self):
     int_placeholder = array_ops.placeholder(dtypes.int32)
@@ -324,15 +405,16 @@ class BatchDatasetTest(test.TestCase):
                        constant_op.constant([-1, -1], dtype=dtypes.int64),
                        constant_op.constant([37], dtype=dtypes.int64)))
 
-    for dataset in [dynamic_padding_from_tensor_shapes,
-                    dynamic_padding_from_lists,
-                    dynamic_padding_from_lists_with_minus_one,
-                    dynamic_padding_from_tensors]:
+    for dataset in [
+        dynamic_padding_from_tensor_shapes, dynamic_padding_from_lists,
+        dynamic_padding_from_lists_with_minus_one, dynamic_padding_from_tensors
+    ]:
       self.assertEqual([None, None], dataset.output_shapes[0].as_list())
       self.assertEqual([None, None, None], dataset.output_shapes[1].as_list())
       self.assertEqual([None, 37], dataset.output_shapes[2].as_list())
 
   def testPaddedBatchSparseError(self):
+
     def _map_fn(i):
       return sparse_tensor.SparseTensorValue(
           indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
@@ -340,6 +422,44 @@ class BatchDatasetTest(test.TestCase):
     with self.assertRaises(TypeError):
       _ = dataset_ops.Dataset.range(10).map(_map_fn).padded_batch(10)
 
+  def testPaddedBatchShapeError(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'The padded shape \(1,\) is not compatible with the '
+        r'corresponding input component shape \(\).'):
+      _ = dataset_ops.Dataset.range(10).padded_batch(5, padded_shapes=[1])
 
-if __name__ == "__main__":
+    with self.assertRaisesRegexp(
+        ValueError, r'The padded shape \(1,\) is not compatible with the '
+        r'corresponding input component shape \(3,\).'):
+      _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
+          5, padded_shapes=[1])
+
+    with self.assertRaisesRegexp(
+        ValueError, r'Padded shape .* must be a 1-D tensor '
+        r'of tf.int64 values, but its shape was \(2, 2\).'):
+      _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
+          5, padded_shapes=[[1, 1], [1, 1]])
+
+    with self.assertRaisesRegexp(
+        TypeError, r'Padded shape .* must be a 1-D tensor '
+        r'of tf.int64 values, but its element type was float32.'):
+      _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
+          5, padded_shapes=constant_op.constant([1., 2., 3.]))
+
+    with self.assertRaisesRegexp(
+        ValueError, r'The padded shape \(1,\) is not compatible with the '
+        r'corresponding input component shape \(\).'):
+      shape_as_tensor = constant_op.constant([1], dtype=dtypes.int64)
+      _ = dataset_ops.Dataset.range(10).padded_batch(
+          5, padded_shapes=shape_as_tensor)
+
+    with self.assertRaisesRegexp(
+        ValueError, r'The padded shape \(\?, \?\) is not compatible with the '
+        r'corresponding input component shape \(\).'):
+      shape_as_tensor = array_ops.placeholder(dtypes.int64, shape=[2])
+      _ = dataset_ops.Dataset.range(10).padded_batch(
+          5, padded_shapes=shape_as_tensor)
+
+
+if __name__ == '__main__':
   test.main()

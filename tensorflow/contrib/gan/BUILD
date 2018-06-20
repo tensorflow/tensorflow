@@ -55,6 +55,7 @@ py_test(
     name = "train_test",
     srcs = ["python/train_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":features",
         ":namedtuples",
@@ -177,6 +178,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":losses_impl",
+        ":namedtuples",
         "//tensorflow/python:util",
     ],
 )
@@ -188,6 +190,9 @@ py_test(
     deps = [
         ":tuple_losses",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
@@ -349,6 +354,7 @@ py_test(
     name = "classifier_metrics_test",
     srcs = ["python/eval/python/classifier_metrics_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":classifier_metrics",
         "//tensorflow/core:protos_all_py",
@@ -358,6 +364,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -395,6 +402,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":eval_utils",
+        ":namedtuples",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -537,16 +545,4 @@ py_test(
         "//tensorflow/python:random_ops",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

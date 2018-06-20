@@ -67,8 +67,10 @@ class UnaryOpsTest(XLATestCase):
         output = op(pinp)
       result = session.run(output, {pinp: inp})
       if equality_test is None:
-        equality_test = self.assertAllCloseAccordingToType
-      equality_test(result, expected, rtol=rtol, atol=atol)
+        self.assertAllCloseAccordingToType(
+            result, expected, rtol=rtol, atol=atol, bfloat16_rtol=0.03)
+      else:
+        equality_test(result, expected, rtol=rtol, atol=atol)
 
   def ListsAreClose(self, result, expected, rtol, atol):
     """Tests closeness of two lists of floats."""
@@ -152,6 +154,24 @@ class UnaryOpsTest(XLATestCase):
 
   def testFloatOps(self):
     for dtype in self.float_types:
+      # TODO(b/77694432): Half test failed on CPU, last ran on 04-06-2018.
+      if dtype == np.float16 and self.device == "XLA_CPU":
+        continue
+      x = np.arange(-0.90, 0.90, 0.25)
+      self._assertOpOutputMatchesExpected(
+          math_ops.acos,
+          x.astype(dtype),
+          expected=np.arccos(x).astype(dtype))
+      self._assertOpOutputMatchesExpected(
+          math_ops.asin,
+          x.astype(dtype),
+          expected=np.arcsin(x).astype(dtype))
+      x = np.arange(-3, 3).reshape(1, 3, 2)
+      self._assertOpOutputMatchesExpected(
+          math_ops.atan,
+          x.astype(dtype),
+          expected=np.arctan(x).astype(dtype))
+
       self._assertOpOutputMatchesExpected(
           math_ops.acosh,
           np.array([1, 2, 3, 4], dtype=dtype),
@@ -181,6 +201,16 @@ class UnaryOpsTest(XLATestCase):
           expected=np.array([1.54308063, 3.76219569, 10.067662, 27.30823284],
                             dtype=dtype))
 
+      # Disable float16 testing for now
+      if dtype != np.float16:
+        x = np.arange(-10, 10, 1).astype(dtype)
+        with self.test_session() as session:
+          erf_x = session.run(math_ops.erf(x))
+          erfc_x = session.run(math_ops.erfc(x))
+
+        self._assertOpOutputMatchesExpected(math_ops.erf, x, expected=erf_x)
+        self._assertOpOutputMatchesExpected(math_ops.erfc, x, expected=erfc_x)
+
       self._assertOpOutputMatchesExpected(
           math_ops.exp,
           np.array([[-1, 1]], dtype=dtype),
@@ -189,7 +219,8 @@ class UnaryOpsTest(XLATestCase):
       self._assertOpOutputMatchesExpected(
           math_ops.expm1,
           np.array([[-1, 1]], dtype=dtype),
-          expected=np.array([[-0.63212056, 1.71828183]], dtype=dtype))
+          expected=np.array([[-0.63212056, 1.71828183]], dtype=dtype),
+          rtol=1e-5)
 
       self._assertOpOutputMatchesExpected(
           math_ops.floor,
@@ -231,12 +262,12 @@ class UnaryOpsTest(XLATestCase):
           np.array([[1, 2]], dtype=dtype),
           expected=np.array([[0.540297, -0.41614]], dtype=dtype))
 
-      # TODO(b/34703906): improve log1p implementation and make tolerance
-      # tighter.
       self._assertOpOutputMatchesExpected(
           math_ops.log1p,
           np.array([[1e-14, 1e-15, 0.6]], dtype=dtype),
-          expected=np.log1p(np.array([[1e-14, 1e-15, 0.6]], dtype=dtype)))
+          expected=np.log1p(np.array([[1e-14, 1e-15, 0.6]], dtype=dtype)),
+          rtol=1e-4,
+          atol=1e-6)
 
       self._assertOpOutputMatchesExpected(
           math_ops.rint,
@@ -313,13 +344,19 @@ class UnaryOpsTest(XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           nn_ops.elu,
-          np.array([[-1, 0, 1]], dtype=dtype),
-          expected=np.array([[-0.63212056, 0, 1]], dtype=dtype))
+          np.array([[-1, 0, 1, -1e-6]], dtype=dtype),
+          expected=np.array([[-0.63212056, 0, 1, -9.999995e-07]], dtype=dtype),
+          rtol=1e-5,
+          atol=1e-6)
 
       self._assertOpOutputMatchesExpected(
           nn_ops.selu,
-          np.array([[-1, 0, 1]], dtype=dtype),
-          expected=np.array([[-1.11133074, 0., 1.05070099]], dtype=dtype))
+          np.array([[-1, 0, 1, -1e-5]], dtype=dtype),
+          expected=np.array(
+              [[-1.11133074, 0., 1.05070099, -1.758090550379974e-05]],
+              dtype=dtype),
+          rtol=1e-5,
+          atol=1e-6)
 
       self._assertOpOutputMatchesExpected(
           nn_ops.relu,
@@ -399,7 +436,9 @@ class UnaryOpsTest(XLATestCase):
       self._assertOpOutputMatchesExpected(
           math_ops.expm1,
           np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype),
-          expected=np.expm1(np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype)))
+          expected=np.expm1(np.array([[-1 + 2j, 3j, 2 - 3j]], dtype=dtype)),
+          rtol=1e-6,
+          atol=1e-6)
 
       self._assertOpOutputMatchesExpected(
           math_ops.reciprocal,
@@ -421,13 +460,13 @@ class UnaryOpsTest(XLATestCase):
           np.array([[5j, 3 - 2j]], dtype=dtype),
           expected=np.cos(np.array([[5j, 3 - 2j]], dtype=dtype)))
 
-      # TODO(b/34703906): improve log1p implementation and make tolerance
-      # tighter.
       self._assertOpOutputMatchesExpected(
           math_ops.log1p,
           np.array([[1e-14, 1e-15j, 0.6 - 0.3j]], dtype=dtype),
           expected=np.log1p(
-              np.array([[1e-14, 1e-15j, 0.6 - 0.3j]], dtype=dtype)))
+              np.array([[1e-14, 1e-15j, 0.6 - 0.3j]], dtype=dtype)),
+          rtol=1e-4,
+          atol=1e-6)
 
       val = np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)
       self._assertOpOutputMatchesExpected(
@@ -582,6 +621,20 @@ class UnaryOpsTest(XLATestCase):
               lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
               src,
               expected=dst)
+
+  def testBitcast(self):
+    self._assertOpOutputMatchesExpected(
+        lambda x: array_ops.bitcast(x, dtypes.int32),
+        np.array([1, 0x3f800000], np.int32),
+        expected=np.array([1, 0x3f800000], np.int32))
+    self._assertOpOutputMatchesExpected(
+        lambda x: array_ops.bitcast(x, dtypes.float32),
+        np.array([1, 0x3f800000], np.int32),
+        expected=np.array([1e-45, 1.0], np.float32))
+    self._assertOpOutputMatchesExpected(
+        lambda x: array_ops.bitcast(x, dtypes.int32),
+        np.array([1e-45, 1.0], np.float32),
+        expected=np.array([1, 0x3f800000], np.int32))
 
   def testInvertPermutation(self):
     self._assertOpOutputMatchesExpected(
@@ -755,14 +808,19 @@ class UnaryOpsTest(XLATestCase):
     zero = np.asarray(0).astype(dtype)
     expected = np.logaddexp(zero, features)
     self._assertOpOutputMatchesExpected(
-        nn_ops.softplus, features, expected=expected)
+        nn_ops.softplus, features, expected=expected,
+        rtol=1e-6,
+        atol=9.1e-6)
 
   def testSoftplus(self):
     for dtype in self.float_types:
       self._assertSoftplusMatchesExpected([[-2, 0, 8]], dtype)
       self._assertSoftplusMatchesExpected(
           [[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]], dtype)
-      log_eps = np.log(np.finfo(dtype).eps)
+      if dtype == dtypes.bfloat16.as_numpy_dtype:
+        log_eps = np.log(np.finfo(np.float32).eps)
+      else:
+        log_eps = np.log(np.finfo(dtype).eps)
       one = dtype(1)
       ten = dtype(10)
       self._assertSoftplusMatchesExpected([

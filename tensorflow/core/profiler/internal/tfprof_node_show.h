@@ -21,8 +21,8 @@ limitations under the License.
 // ScopeNode and GraphNode each maps to one TFGraphNode.
 // CodeNode and OpNode each maps to one TFMultiGraphNode.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
 
 #include <algorithm>
 #include <string>
@@ -156,4 +156,4 @@ class OpNode : public ShowMultiNode {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_

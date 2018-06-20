@@ -361,27 +361,10 @@ class GrowTreeEnsembleOp : public OpKernel {
     // Increment attempt stats.
     ensemble_resource->IncrementAttempts();
 
-    // In case we want to do feature selection and we have reached the limit,
-    // build a list of handlers used so far to avoid adding new features.
-    std::vector<int64> allowed_handlers;
-    if (learner_config_.constraints().max_number_of_unique_feature_columns() >
-        0) {
-      allowed_handlers = ensemble_resource->GetUsedHandlers();
-      // TODO(soroush): We can disable handlers that are not going to be used to
-      // avoid unnecessary computations.
-      if (allowed_handlers.size() <
-          learner_config_.constraints()
-              .max_number_of_unique_feature_columns()) {
-        // We have not reached the limit yet. Empty the list of allow features
-        // which means we can keep adding new features.
-        allowed_handlers.clear();
-      }
-    }
-
     // Find best splits for each active partition.
     std::map<int32, SplitCandidate> best_splits;
-    FindBestSplitsPerPartition(context, allowed_handlers, partition_ids_list,
-                               gains_list, splits_list, &best_splits);
+    FindBestSplitsPerPartition(context, partition_ids_list, gains_list,
+                               splits_list, &best_splits);
 
     // No-op if no new splits can be considered.
     if (best_splits.empty()) {
@@ -422,19 +405,12 @@ class GrowTreeEnsembleOp : public OpKernel {
   // and finds the best split for each partition.
   void FindBestSplitsPerPartition(
       OpKernelContext* const context,
-      const std::vector<int64>& allowed_handlers,  // Empty means all handlers.
       const OpInputList& partition_ids_list, const OpInputList& gains_list,
       const OpInputList& splits_list,
       std::map<int32, SplitCandidate>* best_splits) {
     // Find best split per partition going through every feature candidate.
     // TODO(salehay): Is this worth parallelizing?
     for (int64 handler_id = 0; handler_id < num_handlers_; ++handler_id) {
-      if (!allowed_handlers.empty()) {
-        if (!std::binary_search(allowed_handlers.begin(),
-                                allowed_handlers.end(), handler_id)) {
-          continue;
-        }
-      }
       const auto& partition_ids = partition_ids_list[handler_id].vec<int32>();
       const auto& gains = gains_list[handler_id].vec<float>();
       const auto& splits = splits_list[handler_id].vec<string>();

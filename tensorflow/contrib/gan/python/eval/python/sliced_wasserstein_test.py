@@ -84,11 +84,11 @@ class ClassifierMetricsTest(test.TestCase):
     self.assertAllClose(
         np.array([0.014, 0.014], 'f'),
         np.array([x[0] for x in wscores], 'f'),
-        rtol=0.1)
+        rtol=0.15)
     self.assertAllClose(
         np.array([0.014, 0.020], 'f'),
         np.array([x[1] for x in wscores], 'f'),
-        rtol=0.1)
+        rtol=0.15)
 
   def test_sliced_wasserstein_distance_svd(self):
     """Test the distance."""

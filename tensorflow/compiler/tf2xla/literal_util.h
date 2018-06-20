@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
@@ -29,14 +30,32 @@ namespace tensorflow {
 // unsupported type.
 Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal);
 
-// Copies 'literal' to 'host_tensor', which is allocated of type <target_type>.
+// Returns a BorrowingLiteral that utilizes the same underlying buffer owned by
+// 'host_tensor'.
+Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
+                                    xla::BorrowingLiteral* literal);
+
+// Returns a BorrowingLiteral tuple that utilizes the same underlying buffers
+// owned by 'host_tensors'.
+Status HostTensorsToBorrowingLiteralTuple(
+    tensorflow::gtl::ArraySlice<Tensor> host_tensors,
+    xla::BorrowingLiteral* literal);
+
+// Copies 'literal' to freshly allocated 'host_tensor', which is allocated of
+// type <target_type>.
 // Fails if the literal's primitive type !=
 // DataTypeToPrimitiveType(target_type). Note that <target_type> is not
 // derivable from the type of <literal>, because multiple tensorflow types map
 // to the same XLA type (e.g. INT32 and QINT32 both map to INT32 in
 // XLA).
-Status LiteralToHostTensor(const xla::Literal& literal, DataType target_type,
-                           Tensor* host_tensor);
+Status LiteralToHostTensor(const xla::LiteralSlice& literal,
+                           DataType target_type, Tensor* host_tensor);
+
+// Copies the contents of 'literal' to a previously allocated tensor
+// 'host_tensor'. The tensor and the literal must have the same number of
+// elements and the same type.
+Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
+                               Tensor* host_tensor);
 
 }  // namespace tensorflow
 

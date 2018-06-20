@@ -20,37 +20,13 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-// Resource stored by variables in the resource manager
-// (new, resource-style version).
-class Var : public ResourceBase {
- public:
-  explicit Var(DataType dtype) : tensor_(dtype) {}
-  // Not copyable or movable.
-  Var(const Var&) = delete;
-  Var& operator=(const Var&) = delete;
-
-  // TODO(ebrevdo): Use LockSet instead of exposing mu.
-  mutex* mu() { return &mu_; }
-  Tensor* tensor() { return &tensor_; }
-
-  string DebugString() override {
-    return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
-                           tensor_.shape().DebugString());
-  }
-
- private:
-  mutex mu_;
-  Tensor tensor_;
-
-  ~Var() override {}
-};
 
 class VariableOp : public OpKernel {
  public:

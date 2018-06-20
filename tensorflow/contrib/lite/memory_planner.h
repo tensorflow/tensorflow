@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MEMORY_PLANNER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MEMORY_PLANNER_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_MEMORY_PLANNER_H_
+#define TENSORFLOW_CONTRIB_LITE_MEMORY_PLANNER_H_
 
 #include "tensorflow/contrib/lite/context.h"
 
@@ -34,12 +34,12 @@ class MemoryPlanner {
   // [first_node, last_node].
   virtual TfLiteStatus ExecuteAllocations(int first_node, int last_node) = 0;
 
-  // Invalidates allocations made earliers. This is called when tensors sizes
-  // have change. All planned allocations remain, but can't be used until
+  // Invalidates allocations made earlier. This is called when tensors sizes
+  // have changed. All planned allocations remain, but can't be used until
   // ExecuteAllocations() is called.
   virtual TfLiteStatus ResetAllocations() = 0;
 };
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MEMORY_PLANNER_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_MEMORY_PLANNER_H_

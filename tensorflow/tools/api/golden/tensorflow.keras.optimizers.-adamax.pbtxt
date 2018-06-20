@@ -1,11 +1,11 @@
 path: "tensorflow.keras.optimizers.Adamax"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.optimizers.Adamax\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.optimizers.Optimizer\'>"
+  is_instance: "<class \'tensorflow.python.keras.optimizers.Adamax\'>"
+  is_instance: "<class \'tensorflow.python.keras.optimizers.Optimizer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'lr\', \'beta_1\', \'beta_2\', \'epsilon\', \'decay\'], varargs=None, keywords=kwargs, defaults=[\'0.002\', \'0.9\', \'0.999\', \'1e-08\', \'0.0\'], "
+    argspec: "args=[\'self\', \'lr\', \'beta_1\', \'beta_2\', \'epsilon\', \'decay\'], varargs=None, keywords=kwargs, defaults=[\'0.002\', \'0.9\', \'0.999\', \'None\', \'0.0\'], "
   }
   member_method {
     name: "from_config"

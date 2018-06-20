@@ -19,7 +19,6 @@ limitations under the License.
 #include <new>
 #include <utility>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -106,7 +107,7 @@ class MultiOutputFusionTest : public HloTestBase {
     expect.PopulateWithValue<float>(size * 1.5f * 3.5f);
     auto actual = ExecuteAndTransfer(
         std::move(hlo_module), {Literal::CreateR0<float>(-9.0f).get(), &arg1});
-    LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
+    EXPECT_TRUE(LiteralTestUtil::Near(expect, *actual, error_spec_));
   }
 
   void RunTest1D(bool manual_fusion, int size) {
@@ -166,7 +167,7 @@ class MultiOutputFusionTest : public HloTestBase {
 
     Literal expect = std::move(*Literal::CreateR1<float>({size * 1.5f * 3.5f}));
     auto actual = ExecuteAndTransfer(std::move(hlo_module), {&input0, &input1});
-    LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
+    EXPECT_TRUE(LiteralTestUtil::Near(expect, *actual, error_spec_));
   }
 };
 
@@ -175,6 +176,343 @@ XLA_TEST_F(MultiOutputFusionTest, 2DFusion) { RunTest2D(true, 5); }
 XLA_TEST_F(MultiOutputFusionTest, 2DFusionSize129) { RunTest2D(true, 129); }
 XLA_TEST_F(MultiOutputFusionTest, DiffentTypesNoFusion) { RunTest1D(false, 8); }
 XLA_TEST_F(MultiOutputFusionTest, DiffentTypesFusion) { RunTest1D(true, 8); }
+
+XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
+  const char* testcase = R"(
+    HloModule m
+
+    fused_computation {
+      x.param_0 = (((s32[]), f32[]), (f32[], s32[])) parameter(0)
+      gte.3 = ((s32[]), f32[]) get-tuple-element(x.param_0), index=0
+      gte.2 = (s32[]) get-tuple-element(gte.3), index=0
+      gte.4 = s32[] get-tuple-element(gte.2), index=0
+      copy = s32[] copy(gte.4)
+      ROOT tuple = (s32[]) tuple(copy)
+    }
+
+    ENTRY thing.v3 {
+      x = (((s32[]), f32[]), (f32[], s32[])) parameter(0)
+      ROOT fusion = (s32[]) fusion(x), kind=kLoop, calls=fused_computation
+    }
+  )";
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::MakeTupleOwned(
+      Literal::MakeTupleOwned(
+          Literal::MakeTupleOwned(Literal::CreateR0<int32>(42)),
+          Literal::CreateR0<float>(1.0)),
+      Literal::MakeTupleOwned(Literal::CreateR0<float>(3.0),
+                              Literal::CreateR0<int32>(4)));
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result, *Literal::MakeTupleOwned(Literal::CreateR0<int32>(42))));
+}
+
+XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
+  const char* testcase = R"(
+    HloModule m
+
+    fused_computation {
+      p = f32[4] parameter(0)
+      multiply = f32[4] multiply(p, p)
+      less-than = pred[4] less-than(p, multiply)
+      ROOT tuple = (pred[4], f32[4]) tuple(less-than, multiply)
+    }
+
+    ENTRY PredFloatMOF {
+      p0 = f32[4] parameter(0)
+      fusion = (pred[4], f32[4]) fusion(p0), kind=kLoop, calls=fused_computation
+      gte0 = pred[4] get-tuple-element(fusion), index=0
+      gte1 = f32[4] get-tuple-element(fusion), index=1
+      const = f32[4] constant({0, 0, 0, 0})
+      ROOT select = f32[4] select(gte0, gte1, const)
+    })";
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR1<float>({1.0, 2.0, 3.0, -1.0});
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result, *Literal::CreateR1<float>({0.0, 4.0, 9.0, 1.0})));
+}
+
+XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
+  const char* testcase = R"(
+    HloModule m
+
+    fused_computation {
+      p = f32[] parameter(0)
+      multiply = f32[] multiply(p, p)
+      less-than = pred[] less-than(p, multiply)
+      ROOT tuple = (pred[], f32[]) tuple(less-than, multiply)
+    }
+
+    map_computation {
+      p0 = f32[] parameter(0)
+      fusion = (pred[], f32[]) fusion(p0), kind=kLoop, calls=fused_computation
+      gte0 = pred[] get-tuple-element(fusion), index=0
+      gte1 = f32[] get-tuple-element(fusion), index=1
+      const = f32[] constant(0)
+      ROOT select = f32[] select(gte0, gte1, const)
+    }
+
+    ENTRY MapMOF {
+      p1 = f32[3] parameter(0)
+      ROOT map = f32[3] map(p1), to_apply=map_computation
+    })";
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR1<float>({1.0, 2.0, 3.0});
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result, *Literal::CreateR1<float>({0.0, 4.0, 9.0})));
+}
+
+const char* const kScalarOps = R"(
+    HloModule m
+
+    Add {
+      lhsadd = f32[] parameter(0)
+      rhsadd = f32[] parameter(1)
+      ROOT add = f32[] add(lhsadd, rhsadd)
+    }
+
+    Max {
+      lhsmax = f32[] parameter(0)
+      rhsmax = f32[] parameter(1)
+      ROOT max = f32[] maximum(lhsmax, rhsmax)
+    }
+)";
+
+XLA_TEST_F(MultiOutputFusionTest,
+           DISABLED_ON_CPU(MultiOutputReduceFusionMinor)) {
+  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+    fused_reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r1 = f32[2,2]{1,0} reduce(p0, c0), dimensions={2}, to_apply=Add
+      mul = f32[2,2,2]{2,1,0} multiply(p0, p0)
+      c1 = f32[] constant(5)
+      r2 = f32[2,2]{1,0} reduce(mul, c1), dimensions={2}, to_apply=Max
+      ROOT tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(r1, r2)
+    }
+
+    ENTRY reduce {
+      p = f32[2,2,2]{2,1,0} parameter(0)
+      ROOT fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(p), kind=kInput,
+                                                        calls=fused_reduce
+    })");
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result,
+      *Literal::MakeTupleOwned(Literal::CreateR2<float>({{3, 7}, {11, 15}}),
+                               Literal::CreateR2<float>({{5, 16}, {36, 64}}))));
+}
+
+XLA_TEST_F(MultiOutputFusionTest,
+           DISABLED_ON_CPU(MultiOutputReduceFusionMajor)) {
+  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+    fused_reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r1 = f32[2,2]{1,0} reduce(p0, c0), dimensions={0}, to_apply=Add
+      mul = f32[2,2,2]{2,1,0} multiply(p0, p0)
+      c1 = f32[] constant(5)
+      r2 = f32[2,2]{1,0} reduce(mul, c1), dimensions={0}, to_apply=Max
+      ROOT tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(r1, r2)
+    }
+
+    ENTRY reduce {
+      p = f32[2,2,2]{2,1,0} parameter(0)
+      ROOT fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(p), kind=kInput,
+                                                        calls=fused_reduce
+    })");
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result, *Literal::MakeTupleOwned(
+                   Literal::CreateR2<float>({{6, 8}, {10, 12}}),
+                   Literal::CreateR2<float>({{25, 36}, {49, 64}}))));
+}
+
+XLA_TEST_F(MultiOutputFusionTest,
+           DISABLED_ON_CPU(MultiOutputReduceFusionScalar)) {
+  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+    fused_reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r1 = f32[2]{0} reduce(p0, c0), dimensions={0,2}, to_apply=Add
+      mul = f32[2,2,2]{2,1,0} multiply(p0, p0)
+      c1 = f32[] constant(1.17549e-38)
+      r2 = f32[2]{0} reduce(mul, c1), dimensions={0,2}, to_apply=Max
+      r3 = f32[2]{0} reduce(mul, c0), dimensions={0,2}, to_apply=Add
+      ROOT tuple = (f32[2]{0}, f32[2]{0}, f32[2]{0}) tuple(r1, r2, r3)
+    }
+
+    ENTRY reduce {
+      p = f32[2,2,2]{2,1,0} parameter(0)
+      ROOT fusion = (f32[2]{0}, f32[2]{0}, f32[2]{0}) fusion(p), kind=kInput,
+                                                        calls=fused_reduce
+    })");
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result, *Literal::MakeTupleOwned(Literal::CreateR1<float>({14, 22}),
+                                        Literal::CreateR1<float>({36, 64}),
+                                        Literal::CreateR1<float>({66, 138}))));
+}
+
+XLA_TEST_F(MultiOutputFusionTest,
+           DISABLED_ON_CPU(MultiOutputReduceFusionMinorWithExtraOutput)) {
+  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+    fused_reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r1 = f32[2,2]{1,0} reduce(p0, c0), dimensions={2}, to_apply=Add
+      mul = f32[2,2,2]{2,1,0} multiply(p0, p0)
+      c1 = f32[] constant(5)
+      r2 = f32[2,2]{1,0} reduce(mul, c1), dimensions={2}, to_apply=Max
+      ROOT tuple = (f32[2,2,2]{2,1,0}, f32[2,2]{1,0}, f32[2,2]{1,0})
+                     tuple(p0, r1, r2)
+    }
+
+    ENTRY reduce {
+      p = f32[2,2,2]{2,1,0} parameter(0)
+      ROOT fusion = (f32[2,2,2]{2,1,0}, f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(p),
+                                                 kind=kInput, calls=fused_reduce
+    })");
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result,
+      *Literal::MakeTupleOwned(
+          Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}),
+          Literal::CreateR2<float>({{3, 7}, {11, 15}}),
+          Literal::CreateR2<float>({{5, 16}, {36, 64}}))));
+}
+
+XLA_TEST_F(MultiOutputFusionTest,
+           DISABLED_ON_CPU(MultiOutputReduceFusionMajorWithExtraOutput)) {
+  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+    fused_reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r1 = f32[2,2]{1,0} reduce(p0, c0), dimensions={0}, to_apply=Add
+      mul = f32[2,2,2]{2,1,0} multiply(p0, p0)
+      c1 = f32[] constant(5)
+      r2 = f32[2,2]{1,0} reduce(mul, c1), dimensions={0}, to_apply=Max
+      ROOT tuple = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}, f32[2,2]{1,0})
+                     tuple(r1, mul, r2)
+    }
+
+    ENTRY reduce {
+      p = f32[2,2,2]{2,1,0} parameter(0)
+      ROOT fusion = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}, f32[2,2]{1,0}) fusion(p),
+                                                 kind=kInput, calls=fused_reduce
+    })");
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result,
+      *Literal::MakeTupleOwned(
+          Literal::CreateR2<float>({{6, 8}, {10, 12}}),
+          Literal::CreateR3<float>({{{1, 4}, {9, 16}}, {{25, 36}, {49, 64}}}),
+          Literal::CreateR2<float>({{25, 36}, {49, 64}}))));
+}
+
+XLA_TEST_F(MultiOutputFusionTest,
+           DISABLED_ON_CPU(MultiOutputReduceFusionScalarWithExtraOutput)) {
+  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+    fused_reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r1 = f32[2]{0} reduce(p0, c0), dimensions={0,2}, to_apply=Add
+      mul = f32[2,2,2]{2,1,0} multiply(p0, p0)
+      c1 = f32[] constant(5)
+      mul2 = f32[2,2,2]{2,1,0} multiply(p0, c1)
+      ROOT tuple = (f32[2]{0}, f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0})
+                                                           tuple(r1, mul, mul2)
+    }
+
+    ENTRY reduce {
+      p = f32[2,2,2]{2,1,0} parameter(0)
+      ROOT fusion = (f32[2]{0}, f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0}) fusion(p),
+                                                 kind=kInput, calls=fused_reduce
+    })");
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          Execute(std::move(module), {param.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result,
+      *Literal::MakeTupleOwned(
+          Literal::CreateR1<float>({14, 22}),
+          Literal::CreateR3<float>({{{1, 4}, {9, 16}}, {{25, 36}, {49, 64}}}),
+          Literal::CreateR3<float>(
+              {{{5, 10}, {15, 20}}, {{25, 30}, {35, 40}}}))));
+}
+
+XLA_TEST_F(MultiOutputFusionTest,
+           DISABLED_ON_CPU(MultiOutputReduceFusionNonConstInit)) {
+  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+    fused_reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      init1 = f32[] parameter(1)
+      init2 = f32[] parameter(2)
+      r1 = f32[2,2]{1,0} reduce(p0, init1), dimensions={2}, to_apply=Add
+      r2 = f32[2,2]{1,0} reduce(p0, init2), dimensions={2}, to_apply=Max
+      ROOT tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(r1, r2)
+    }
+
+    ENTRY reduce {
+      p = f32[2,2,2]{2,1,0} parameter(0)
+      i = f32[] parameter(1)
+      j = f32[] parameter(2)
+      ROOT fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(p, i, j), kind=kInput,
+                                                              calls=fused_reduce
+    })");
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR3<float>({{{0, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
+  auto init1 = Literal::CreateR0<float>(5);
+  auto init2 = Literal::CreateR0<float>(6);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result,
+      Execute(std::move(module), {param.get(), init1.get(), init2.get()}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *result, *Literal::MakeTupleOwned(
+                   Literal::CreateR2<float>({{167, 172}, {176, 180}}),
+                   Literal::CreateR2<float>({{6, 6}, {6, 8}}))));
+}
 
 }  // namespace
 }  // namespace xla

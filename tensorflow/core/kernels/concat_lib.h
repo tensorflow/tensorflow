@@ -41,10 +41,11 @@ namespace tensorflow {
 
 // Assumes all inputs are nonempty
 template <typename T>
-void ConcatCPU(DeviceBase* d,
-               const std::vector<
-                   std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
-               typename TTypes<T, 2>::Matrix* output);
+void ConcatCPU(
+    DeviceBase* d,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs,
+    typename TTypes<T, 2>::Matrix* output);
 #if GOOGLE_CUDA
 template <typename T>
 void ConcatGPU(
@@ -57,11 +58,12 @@ void ConcatGPU(
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-void ConcatSYCL(const Eigen::SyclDevice& d,
-               const std::vector<
-                   std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
-               typename TTypes<T, 2>::Matrix* output);
-#endif // TENSORFLOW_USE_SYCL
+void ConcatSYCL(
+    const Eigen::SyclDevice& d,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs,
+    typename TTypes<T, 2>::Matrix* output);
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_CONCAT_LIB_H_

@@ -205,6 +205,25 @@ class VirtualSchedulerTest : public ::testing::Test {
     dependency_["out"] = {"x", "y", "z", "w"};
   }
 
+  // Graph with some placeholder feed nodes that are not in the fetch fan-in.
+  void CreateGrapplerItemWithUnnecessaryPlaceholderNodes() {
+    Scope s = Scope::NewRootScope().WithDevice(kCPU0);
+    auto unnecessary = ops::Placeholder(s.WithOpName("unnecessary"), DT_FLOAT);
+    auto x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT);
+
+    GraphDef def;
+    TF_CHECK_OK(s.ToGraphDef(&def));
+
+    grappler_item_.reset(new GrapplerItem);
+    grappler_item_->id = "test_extra_placeholders";
+    grappler_item_->graph = def;
+    grappler_item_->fetch = {"x"};
+
+    // Grappler Item Builder puts all placeholder nodes into the feed
+    // list by default.
+    grappler_item_->feed = {{"x", Tensor()}, {"unnecessary", Tensor()}};
+  }
+
   // NoOp that takes 7 NoOps as control dependency.
   void CreateGrapplerItemWithControlDependency() {
     Scope s = Scope::NewRootScope().WithDevice(kCPU0);
@@ -339,6 +358,63 @@ node {
     }
   }
 }
+node {
+  name: "Recv"
+  op: "_Recv"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "client_terminated"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "recv_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device_incarnation"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "tensor_name"
+    value {
+      s: "test"
+    }
+  }
+  attr {
+    key: "tensor_type"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+library {
+}
+versions {
+  producer: 24
+}
+    )EOF";
+
+    grappler_item_.reset(new GrapplerItem);
+    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
+                                                &grappler_item_->graph));
+    grappler_item_->id = "test_graph";
+    grappler_item_->fetch = {"Recv"};
+  }
+
+  void CreateGrapplerItemWithRecvWithoutSend() {
+    const string gdef_ascii = R"EOF(
 node {
   name: "Recv"
   op: "_Recv"
@@ -1700,6 +1776,16 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
                               cpu_state.mem_usage_snapshot_at_peak);
 }
 
+TEST_F(VirtualSchedulerTest, UnnecessaryFeedNodes) {
+  CreateGrapplerItemWithUnnecessaryPlaceholderNodes();
+  InitScheduler();
+
+  // Test that scheduler can run graphs with extra unnecessary feed nodes.
+  auto ops_executed = RunScheduler("");
+  ASSERT_EQ(1, ops_executed.size());
+  ASSERT_EQ(ops_executed.count("x"), 1);
+}
+
 TEST_F(VirtualSchedulerTest, ControlDependency) {
   // Init.
   CreateGrapplerItemWithControlDependency();
@@ -2013,6 +2099,18 @@ TEST_F(VirtualSchedulerTest, GraphWithSendRecvDifferentDevice) {
   EXPECT_GT(ops_executed.count(
                 "Recv_Send_0_on_/job_localhost/replica_0/task_0/cpu_1"),
             0);
+  EXPECT_GT(ops_executed.count("Recv"), 0);
+}
+
+TEST_F(VirtualSchedulerTest, GraphWihtOnlyRecv) {
+  // Init.
+  CreateGrapplerItemWithRecvWithoutSend();
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  // Recv without Send will be treated as initially ready node.
   EXPECT_GT(ops_executed.count("Recv"), 0);
 }
 }  // end namespace grappler

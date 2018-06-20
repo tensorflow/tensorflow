@@ -26,7 +26,7 @@ limitations under the License.
 // never use this functionality.
 namespace xla {
 class ProgramShape;
-class HloProfilePrinter;
+class HloProfilePrinterData;
 }
 
 namespace tensorflow {
@@ -77,12 +77,14 @@ class XlaCompiledCpuFunction {
     // [Optional] Arg and result shapes.
     const xla::ProgramShape* program_shape = nullptr;
 
-    // [Optional] Profile printer.  Null if profiling is disabled.
-    const xla::HloProfilePrinter* hlo_profile_printer = nullptr;
+    // [Optional] Profile printer data.  Null if profiling is disabled.
+    const xla::HloProfilePrinterData* hlo_profile_printer_data = nullptr;
 
     // [Optional] The number of profile counters expected in the profile counter
     // buffer by the generated code and hlo_profile_printer.  0 if profiling is
-    // disabled.
+    // disabled.  This information is already present in
+    // hlo_profile_printer_data but xla::HloProfilePrinterData is forward
+    // declared so we don't have access to that information here.
     int64 profile_counters_size = 0;
   };
 
@@ -205,10 +207,12 @@ class XlaCompiledCpuFunction {
   // program shape isn't available.
   const xla::ProgramShape* ProgramShape() const { return program_shape_; }
 
-  bool hlo_profiling_enabled() const { return hlo_profile_printer_ != nullptr; }
-  const xla::HloProfilePrinter& hlo_profile_printer() const {
+  bool hlo_profiling_enabled() const {
+    return hlo_profile_printer_data_ != nullptr;
+  }
+  const xla::HloProfilePrinterData& hlo_profile_printer_data() const {
     assert(hlo_profiling_enabled());
-    return *hlo_profile_printer_;
+    return *hlo_profile_printer_data_;
   }
 
  private:
@@ -234,7 +238,7 @@ class XlaCompiledCpuFunction {
   const char** arg_names_ = nullptr;
   const char** result_names_ = nullptr;
   const xla::ProgramShape* program_shape_ = nullptr;
-  const xla::HloProfilePrinter* hlo_profile_printer_ = nullptr;
+  const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
 };
 
 }  // namespace tensorflow

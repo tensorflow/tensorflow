@@ -43,7 +43,7 @@ class LLVMCompilerTest : public ::testing::Test {
   ~LLVMCompilerTest() override {}
 
  protected:
-  using Platform = ::perftools::gputools::Platform;
+  using Platform = se::Platform;
 
   explicit LLVMCompilerTest(string platform_name)
       : platform_name_(std::move(platform_name)) {}
@@ -74,7 +74,8 @@ class LLVMCompilerTest : public ::testing::Test {
 
     ASSERT_TRUE(compiler
                     ->RunBackend(std::move(hlo_module),
-                                 backend_->default_stream_executor())
+                                 backend_->default_stream_executor(),
+                                 /*device_allocator=*/nullptr)
                     .ok());
 
     // Test that hooks were called.
@@ -94,11 +95,12 @@ class LLVMCompilerTest : public ::testing::Test {
     modules.push_back(hlo_module->Clone());
     modules.push_back(std::move(hlo_module));
 
-    std::vector<std::vector<perftools::gputools::StreamExecutor *>> executors;
+    std::vector<std::vector<se::StreamExecutor *>> executors;
     executors.push_back({backend_->default_stream_executor()});
     executors.push_back({backend_->default_stream_executor()});
 
-    EXPECT_IS_OK(compiler->Compile(std::move(modules), std::move(executors)));
+    EXPECT_IS_OK(compiler->Compile(std::move(modules), std::move(executors),
+                                   /*device_allocator=*/nullptr));
   }
 
  private:
@@ -122,8 +124,7 @@ class LLVMCompilerTest : public ::testing::Test {
   static std::unique_ptr<HloModule> CreateNewModule() {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
-                                 config);
+    return MakeUnique<HloModule>(TestName(), config);
   }
 };
 

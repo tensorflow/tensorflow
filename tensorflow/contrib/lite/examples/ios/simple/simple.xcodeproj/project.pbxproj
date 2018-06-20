@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		1C0D734B1ECCC460008C1DAB /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C0D734A1ECCC460008C1DAB /* CoreGraphics.framework */; };
 		1CA45FFF1ECCC356002FA6A4 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1CA45FFE1ECCC356002FA6A4 /* UIKit.framework */; };
-		594C14AE1FB8F9B500EE8BFE /* libtensorflow-lite.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 594C14AD1FB8F9B500EE8BFE /* libtensorflow-lite.a */; };
+		1E6F42DBB39A4A3871D4F848 /* libPods-tflite_simple_example.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 73DBC33C5DD9A526EE6D1EF2 /* libPods-tflite_simple_example.a */; };
 		594C14B11FB9037100EE8BFE /* labels.txt in Resources */ = {isa = PBXBuildFile; fileRef = 594C14AF1FB9037100EE8BFE /* labels.txt */; };
 		594C14B21FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite in Resources */ = {isa = PBXBuildFile; fileRef = 594C14B01FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite */; };
 		59A3D0011CF4E68100C4259F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFF21CF4E68100C4259F /* AppDelegate.mm */; };
@@ -24,8 +24,7 @@
 		1C0D73481ECCC41B008C1DAB /* CoreImage.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreImage.framework; path = System/Library/Frameworks/CoreImage.framework; sourceTree = SDKROOT; };
 		1C0D734A1ECCC460008C1DAB /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		1CA45FFE1ECCC356002FA6A4 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
-		5911579B1CF4011C00C31E3A /* tf_simple_example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = tf_simple_example.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		594C14AD1FB8F9B500EE8BFE /* libtensorflow-lite.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libtensorflow-lite.a"; path = "../../../gen/lib/libtensorflow-lite.a"; sourceTree = "<group>"; };
+		5911579B1CF4011C00C31E3A /* tflite_simple_example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = tflite_simple_example.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		594C14AF1FB9037100EE8BFE /* labels.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = labels.txt; sourceTree = "<group>"; };
 		594C14B01FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = mobilenet_v1_1.0_224.tflite; sourceTree = "<group>"; };
 		59A3CFF11CF4E68100C4259F /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
@@ -38,7 +37,9 @@
 		59A3CFFE1CF4E68100C4259F /* RunModelViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RunModelViewController.h; sourceTree = "<group>"; };
 		59A3CFFF1CF4E68100C4259F /* RunModelViewController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = RunModelViewController.mm; sourceTree = "<group>"; };
 		59A3D0001CF4E68100C4259F /* RunModelViewController.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = RunModelViewController.xib; sourceTree = "<group>"; };
-		73DBC33C5DD9A526EE6D1EF2 /* libPods-tf_simple_example.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-tf_simple_example.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		5D6203B9FAEEB9824194DBE8 /* Pods-tflite_simple_example.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tflite_simple_example.release.xcconfig"; path = "Pods/Target Support Files/Pods-tflite_simple_example/Pods-tflite_simple_example.release.xcconfig"; sourceTree = "<group>"; };
+		73DBC33C5DD9A526EE6D1EF2 /* libPods-tflite_simple_example.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-tflite_simple_example.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		987DD5BCAB2DD8B682674E20 /* Pods-tflite_simple_example.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tflite_simple_example.debug.xcconfig"; path = "Pods/Target Support Files/Pods-tflite_simple_example/Pods-tflite_simple_example.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -46,9 +47,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				594C14AE1FB8F9B500EE8BFE /* libtensorflow-lite.a in Frameworks */,
 				1C0D734B1ECCC460008C1DAB /* CoreGraphics.framework in Frameworks */,
 				1CA45FFF1ECCC356002FA6A4 /* UIKit.framework in Frameworks */,
+				1E6F42DBB39A4A3871D4F848 /* libPods-tflite_simple_example.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -58,11 +59,10 @@
 		24D7686C331131624F4454A0 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				594C14AD1FB8F9B500EE8BFE /* libtensorflow-lite.a */,
 				1C0D734A1ECCC460008C1DAB /* CoreGraphics.framework */,
 				1C0D73481ECCC41B008C1DAB /* CoreImage.framework */,
 				1CA45FFE1ECCC356002FA6A4 /* UIKit.framework */,
-				73DBC33C5DD9A526EE6D1EF2 /* libPods-tf_simple_example.a */,
+				73DBC33C5DD9A526EE6D1EF2 /* libPods-tflite_simple_example.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -82,13 +82,14 @@
 				59A3D0001CF4E68100C4259F /* RunModelViewController.xib */,
 				5911579C1CF4011C00C31E3A /* Products */,
 				24D7686C331131624F4454A0 /* Frameworks */,
+				5CE7E4179B26BF77944D8637 /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
 		5911579C1CF4011C00C31E3A /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				5911579B1CF4011C00C31E3A /* tf_simple_example.app */,
+				5911579B1CF4011C00C31E3A /* tflite_simple_example.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -103,24 +104,36 @@
 			path = data;
 			sourceTree = "<group>";
 		};
+		5CE7E4179B26BF77944D8637 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				987DD5BCAB2DD8B682674E20 /* Pods-tflite_simple_example.debug.xcconfig */,
+				5D6203B9FAEEB9824194DBE8 /* Pods-tflite_simple_example.release.xcconfig */,
+			);
+			name = Pods;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		5911579A1CF4011C00C31E3A /* tf_simple_example */ = {
+		5911579A1CF4011C00C31E3A /* tflite_simple_example */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 591157B21CF4011D00C31E3A /* Build configuration list for PBXNativeTarget "tf_simple_example" */;
+			buildConfigurationList = 591157B21CF4011D00C31E3A /* Build configuration list for PBXNativeTarget "tflite_simple_example" */;
 			buildPhases = (
+				A507411BCC70190B9ABD2721 /* [CP] Check Pods Manifest.lock */,
 				591157971CF4011C00C31E3A /* Sources */,
 				591157981CF4011C00C31E3A /* Frameworks */,
 				591157991CF4011C00C31E3A /* Resources */,
+				25E1671BDC7334C678FB5DFB /* [CP] Embed Pods Frameworks */,
+				10976C49D86B7F8A59157601 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = tf_simple_example;
+			name = tflite_simple_example;
 			productName = tf_ios_makefile_example;
-			productReference = 5911579B1CF4011C00C31E3A /* tf_simple_example.app */;
+			productReference = 5911579B1CF4011C00C31E3A /* tflite_simple_example.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -152,7 +165,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				5911579A1CF4011C00C31E3A /* tf_simple_example */,
+				5911579A1CF4011C00C31E3A /* tflite_simple_example */,
 			);
 		};
 /* End PBXProject section */
@@ -170,6 +183,57 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		10976C49D86B7F8A59157601 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Copy Pods Resources";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-tflite_simple_example/Pods-tflite_simple_example-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		25E1671BDC7334C678FB5DFB /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-tflite_simple_example/Pods-tflite_simple_example-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		A507411BCC70190B9ABD2721 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-tflite_simple_example-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		591157971CF4011C00C31E3A /* Sources */ = {
@@ -274,6 +338,7 @@
 		};
 		591157B31CF4011D00C31E3A /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 987DD5BCAB2DD8B682674E20 /* Pods-tflite_simple_example.debug.xcconfig */;
 			buildSettings = {
 				CLANG_DEBUG_INFORMATION_LEVEL = default;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -283,15 +348,10 @@
 				GCC_ENABLE_CPP_RTTI = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
-					../../../../../../,
-					../../../downloads/flatbuffers/include/,
-					../../../downloads/eigen/,
-					../../../downloads/,
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				LIBRARY_SEARCH_PATHS = ../../../gen/lib/;
 				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
 				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.google.tflite-simple-example";
@@ -304,6 +364,7 @@
 		};
 		591157B41CF4011D00C31E3A /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5D6203B9FAEEB9824194DBE8 /* Pods-tflite_simple_example.release.xcconfig */;
 			buildSettings = {
 				CLANG_DEBUG_INFORMATION_LEVEL = default;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -313,15 +374,10 @@
 				GCC_ENABLE_CPP_RTTI = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
-					../../../../../../,
-					../../../downloads/flatbuffers/include/,
-					../../../downloads/eigen/,
-					../../../downloads/,
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				LIBRARY_SEARCH_PATHS = ../../../gen/lib/;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
 				OTHER_LDFLAGS = "$(inherited)";
@@ -344,7 +400,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		591157B21CF4011D00C31E3A /* Build configuration list for PBXNativeTarget "tf_simple_example" */ = {
+		591157B21CF4011D00C31E3A /* Build configuration list for PBXNativeTarget "tflite_simple_example" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				591157B31CF4011D00C31E3A /* Debug */,

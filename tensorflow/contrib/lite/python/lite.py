@@ -16,198 +16,377 @@
 
 EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
+@@TocoConverter
 @@toco_convert
 @@toco_convert_protos
+@@Interpreter
+@@OpHint
+@@convert_op_hints_to_stubs
+@@build_toco_convert_protos
+
+@@FLOAT
+@@QUANTIZED_UINT8
+@@TFLITE
+@@GRAPHVIZ_DOT
 
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import subprocess
-import tempfile
+from six import PY3
 
-from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
-from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
-from tensorflow.contrib.lite.toco import types_pb2 as _types_pb2
-from tensorflow.contrib.lite.toco.python.tensorflow_wrap_toco import TocoConvert as _toco_convert_protos
-from tensorflow.python.framework import dtypes as _dtypes
-from tensorflow.python.platform import resource_loader as _resource_loader
-from tensorflow.python.util.all_util import remove_undocumented
-
-# Enum types from the protobuf promoted to the API
-FLOAT = _types_pb2.FLOAT
-INT32 = _types_pb2.INT32
-INT64 = _types_pb2.INT64
-STRING = _types_pb2.STRING
-QUANTIZED_UINT8 = _types_pb2.QUANTIZED_UINT8
-TENSORFLOW_GRAPHDEF = _toco_flags_pb2.TENSORFLOW_GRAPHDEF
-TFLITE = _toco_flags_pb2.TFLITE
-GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
-
-# Currently the default mode of operation is to shell to another python process
-# to protect against crashes. However, it breaks some dependent targets because
-# it forces us to depend on an external py_binary. The experimental API doesn't
-# have that drawback.
-EXPERIMENTAL_USE_TOCO_API_DIRECTLY = False
-
-# Find the toco_from_protos binary using the resource loader if using from
-# bazel, otherwise we are in a pip where console_scripts already has
-# the toco_from_protos tool.
-if EXPERIMENTAL_USE_TOCO_API_DIRECTLY:
-  _toco_from_proto_bin = ""
-else:
-  _toco_from_proto_bin = _resource_loader.get_path_to_datafile(
-      "../toco/python/toco_from_protos")
-
-if _toco_from_proto_bin and not os.path.exists(_toco_from_proto_bin):
-  _toco_from_proto_bin = "toco_from_protos"
+from google.protobuf import text_format as _text_format
+from google.protobuf.message import DecodeError
+from tensorflow.contrib.lite.python import lite_constants as constants
+from tensorflow.contrib.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
+from tensorflow.contrib.lite.python.convert import tensor_name
+from tensorflow.contrib.lite.python.convert import toco_convert
+from tensorflow.contrib.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
+from tensorflow.contrib.lite.python.convert_saved_model import freeze_saved_model
+from tensorflow.contrib.lite.python.convert_saved_model import get_tensors_from_tensor_names
+from tensorflow.contrib.lite.python.convert_saved_model import set_tensor_shapes
+from tensorflow.contrib.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
+from tensorflow.contrib.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
+from tensorflow.contrib.lite.python.op_hint import OpHint  # pylint: disable=unused-import
+from tensorflow.core.framework import graph_pb2 as _graph_pb2
+from tensorflow.python.client import session as _session
+from tensorflow.python.framework import graph_util as tf_graph_util
+from tensorflow.python.framework.importer import import_graph_def
+from tensorflow.python.ops.variables import global_variables_initializer
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 
 
-def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
-  """Convert `input_data_str` according to model and toco parameters.
+class TocoConverter(object):
+  """Convert a TensorFlow model into `output_format` using TOCO.
 
-  Unless you know what you are doing consider using
-  the more friendly @{tf.contrib.lite.toco_convert}}.
+  This is used to convert from a TensorFlow GraphDef or SavedModel into either a
+  TFLite FlatBuffer or graph visualization.
 
-  Args:
-    model_flags_str: Serialized proto describing model properties, see
-      `toco/model_flags.proto`.
-    toco_flags_str: Serialized proto describing conversion properties, see
-      `toco/toco_flags.proto`.
-    input_data_str: Input data in serialized form (e.g. a graphdef is common)
-  Returns:
-    Converted model in serialized form (e.g. a TFLITE model is common).
-  Raises:
-    RuntimeError: When conversion fails, an exception is raised with the error
-      message embedded.
+  Attributes:
+
+    inference_type: Target data type of arrays in the output file. Currently
+      must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+    inference_input_type: Target data type of input arrays. Allows for a
+      different type for input arrays in the case of quantization. Currently
+      must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
+    output_format: Output file format. Currently must be `{TFLITE,
+      GRAPHVIZ_DOT}`. (default TFLITE)
+    quantized_input_stats: Dict of strings representing input tensor names
+      mapped to tuple of integers representing the mean and standard deviation
+      of the training data (e.g., {"foo" : (0., 1.)}). Only need if
+      `inference_type` is `QUANTIZED_UINT8`. (default {})
+    default_ranges_stats: Tuple of integers representing (min, max) range values
+      for all arrays without a specified range. Intended for experimenting with
+      quantization via "dummy quantization". (default None)
+    drop_control_dependency: Boolean indicating whether to drop control
+      dependencies silently. This is due to TFLite not supporting control
+      dependencies. (default True)
+    reorder_across_fake_quant: Boolean indicating whether to reorder FakeQuant
+      nodes in unexpected locations. Used when the location of the FakeQuant
+      nodes is preventing graph transformations necessary to convert the graph.
+      Results in a graph that differs from the quantized training graph,
+      potentially causing differing arithmetic behavior. (default False)
+    change_concat_input_ranges: Boolean to change behavior of min/max ranges for
+      inputs and outputs of the concat operator for quantized models. Changes
+      the ranges of concat operator overlap when true. (default False)
+    allow_custom_ops: Boolean indicating whether to allow custom operations.
+      When false any unknown operation is an error. When true, custom ops are
+      created for any op that is unknown. The developer will need to provide
+      these to the TensorFlow Lite runtime with a custom resolver.
+      (default False)
+    quantize_weights: Boolean indicating whether to store weights as quantized
+      weights followed by dequantize operations. Computation is still done in
+      float, but reduces model size (at the cost of accuracy and latency).
+      (default False)
+    dump_graphviz_dir: Full filepath of folder to dump the graphs at various
+      stages of processing GraphViz .dot files. Preferred over
+      --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
+      output file. (default None)
+    dump_graphviz_video: Boolean indicating whether to dump the graph after
+      every graph transformation. (default False)
+
+  Example usage:
+
+    # Converting a GraphDef from session.
+    converter = lite.TocoConverter.from_session(sess, in_tensors, out_tensors)
+    tflite_model = converter.convert()
+    open("converted_model.tflite", "wb").write(tflite_model)
+
+    # Converting a GraphDef from file.
+    converter = lite.TocoConverter.from_frozen_graph(
+      graph_def_file, input_arrays, output_arrays)
+    tflite_model = converter.convert()
+    open("converted_model.tflite", "wb").write(tflite_model)
+
+    # Converting a SavedModel.
+    converter = lite.TocoConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
   """
-  # TODO(aselle): When toco does not use fatal errors for failure, we can
-  # switch this on.
-  if not _toco_from_proto_bin:
-    return _toco_convert_protos(model_flags_str, toco_flags_str, input_data_str)
 
-  with tempfile.NamedTemporaryFile() as fp_toco, \
-           tempfile.NamedTemporaryFile() as fp_model, \
-           tempfile.NamedTemporaryFile() as fp_input, \
-           tempfile.NamedTemporaryFile() as fp_output:
-    fp_model.write(model_flags_str)
-    fp_toco.write(toco_flags_str)
-    fp_input.write(input_data_str)
-    fp_model.flush()
-    fp_toco.flush()
-    fp_input.flush()
+  def __init__(self, graph_def, input_tensors, output_tensors):
+    """Constructor for TocoConverter.
 
-    cmd = [
-        _toco_from_proto_bin, fp_model.name, fp_toco.name, fp_input.name,
-        fp_output.name
-    ]
-    cmdline = " ".join(cmd)
-    proc = subprocess.Popen(
-        cmdline,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        close_fds=True)
-    stdout, stderr = proc.communicate()
-    exitcode = proc.returncode
-    if exitcode == 0:
-      stuff = fp_output.read()
-      return stuff
+    Args:
+
+      graph_def: TensorFlow GraphDef.
+      input_tensors: List of input tensors. Type and shape are computed using
+        `foo.get_shape()` and `foo.dtype`.
+      output_tensors: List of output tensors (only .name is used from this).
+    """
+    self._graph_def = graph_def
+    self._input_tensors = input_tensors
+    self._output_tensors = output_tensors
+    self.inference_type = constants.FLOAT
+    self.inference_input_type = None
+    self.output_format = constants.TFLITE
+    self.quantized_input_stats = {}
+    self.default_ranges_stats = None
+    self.drop_control_dependency = True
+    self.reorder_across_fake_quant = False
+    self.change_concat_input_ranges = False
+    self.allow_custom_ops = False
+    self.quantize_weights = False
+    self.dump_graphviz_dir = None
+    self.dump_graphviz_video = False
+
+  @classmethod
+  def from_session(cls, sess, input_tensors, output_tensors):
+    """Creates a TocoConverter class from a TensorFlow Session.
+
+    Args:
+      sess: TensorFlow Session.
+      input_tensors: List of input tensors. Type and shape are computed using
+        `foo.get_shape()` and `foo.dtype`.
+      output_tensors: List of output tensors (only .name is used from this).
+
+    Returns:
+      TocoConverter class.
+    """
+    graph_def = _freeze_graph(sess, output_tensors)
+    return cls(graph_def, input_tensors, output_tensors)
+
+  @classmethod
+  def from_frozen_graph(cls,
+                        graph_def_file,
+                        input_arrays,
+                        output_arrays,
+                        input_shapes=None):
+    """Creates a TocoConverter class from a file containing a frozen GraphDef.
+
+    Args:
+      graph_def_file: Full filepath of file containing TensorFlow GraphDef.
+      input_arrays: List of input tensors to freeze graph with.
+      output_arrays: List of output tensors to freeze graph with.
+      input_shapes: Dict of strings representing input tensor names to list of
+        integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
+        Automatically determined when input shapes is None (e.g., {"foo" :
+        None}). (default None)
+
+    Returns:
+      TocoConverter class.
+
+    Raises:
+      ValueError:
+        Unable to parse input file.
+        The graph is not frozen.
+        input_arrays or output_arrays contains an invalid tensor name.
+    """
+    with _session.Session() as sess:
+      sess.run(global_variables_initializer())
+
+      # Read GraphDef from file.
+      graph_def = _graph_pb2.GraphDef()
+      with open(graph_def_file, "rb") as f:
+        file_content = f.read()
+      try:
+        graph_def.ParseFromString(file_content)
+      except (_text_format.ParseError, DecodeError):
+        try:
+          print("Ignore 'tcmalloc: large alloc' warnings.")
+
+          if not isinstance(file_content, str):
+            if PY3:
+              file_content = file_content.decode('utf-8')
+            else:
+              file_content = file_content.encode('utf-8')
+          _text_format.Merge(file_content, graph_def)
+        except (_text_format.ParseError, DecodeError):
+          raise ValueError(
+              "Unable to parse input file '{}'.".format(graph_def_file))
+      sess.graph.as_default()
+      import_graph_def(graph_def, name="")
+
+      # Get input and output tensors.
+      input_tensors = get_tensors_from_tensor_names(sess.graph, input_arrays)
+      output_tensors = get_tensors_from_tensor_names(sess.graph, output_arrays)
+      set_tensor_shapes(input_tensors, input_shapes)
+
+      # Check if graph is frozen.
+      if not _is_frozen_graph(sess):
+        raise ValueError("Please freeze the graph using freeze_graph.py.")
+
+      # Create TocoConverter class.
+      return cls(sess.graph_def, input_tensors, output_tensors)
+
+  @classmethod
+  def from_saved_model(cls,
+                       saved_model_dir,
+                       input_arrays=None,
+                       input_shapes=None,
+                       output_arrays=None,
+                       tag_set=None,
+                       signature_key=None):
+    """Creates a TocoConverter class from a SavedModel.
+
+    Args:
+      saved_model_dir: SavedModel directory to convert.
+      input_arrays: List of input tensors to freeze graph with. Uses input
+        arrays from SignatureDef when none are provided. (default None)
+      input_shapes: Dict of strings representing input tensor names to list of
+        integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
+        Automatically determined when input shapes is None (e.g., {"foo" :
+        None}). (default None)
+      output_arrays: List of output tensors to freeze graph with. Uses output
+        arrays from SignatureDef when none are provided. (default None)
+      tag_set: Set of tags identifying the MetaGraphDef within the SavedModel to
+        analyze. All tags in the tag set must be present. (default set("serve"))
+      signature_key: Key identifying SignatureDef containing inputs and outputs.
+        (default DEFAULT_SERVING_SIGNATURE_DEF_KEY)
+
+    Returns:
+      TocoConverter class.
+    """
+    if tag_set is None:
+      tag_set = set([tag_constants.SERVING])
+    if signature_key is None:
+      signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+
+    result = freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
+                                output_arrays, tag_set, signature_key)
+    return cls(
+        graph_def=result[0], input_tensors=result[1], output_tensors=result[2])
+
+  def convert(self):
+    """Converts a TensorFlow GraphDef based on instance variables.
+
+    Returns:
+      The converted data in serialized format. Either a TFLite Flatbuffer or a
+      Graphviz graph depending on value in `output_format`.
+
+    Raises:
+      ValueError:
+        Input shape is not specified.
+        None value for dimension in input_tensor.
+    """
+    # Checks dimensions in input tensor.
+    for tensor in self._input_tensors:
+      if not tensor.get_shape():
+        raise ValueError("Provide an input shape for input array '{0}'.".format(
+            tensor_name(tensor)))
+      shape = tensor.get_shape().as_list()
+      if None in shape[1:]:
+        raise ValueError(
+            "None is only supported in the 1st dimension. Tensor '{0}' has "
+            "invalid shape '{1}'.".format(tensor_name(tensor), shape))
+      elif shape[0] is None:
+        self._set_batch_size(batch_size=1)
+
+    # Get quantization stats. Ensures there is one stat per name if the stats
+    # are specified.
+    if self.quantized_input_stats:
+      quantized_stats = []
+      invalid_stats = []
+      for tensor in self._input_tensors:
+        name = tensor_name(tensor)
+        if name in self.quantized_input_stats:
+          quantized_stats.append(self.quantized_input_stats[name])
+        else:
+          invalid_stats.append(name)
+
+      if invalid_stats:
+        raise ValueError("Quantization input stats are not available for input "
+                         "tensors '{0}'.".format(",".join(invalid_stats)))
     else:
-      raise RuntimeError("TOCO failed see console for info.\n%s\n%s\n" %
-                         (stdout, stderr))
+      quantized_stats = None
+
+    # Converts model.
+    result = toco_convert(
+        input_data=self._graph_def,
+        input_tensors=self._input_tensors,
+        output_tensors=self._output_tensors,
+        inference_type=self.inference_type,
+        inference_input_type=self.inference_input_type,
+        input_format=constants.TENSORFLOW_GRAPHDEF,
+        output_format=self.output_format,
+        quantized_input_stats=quantized_stats,
+        default_ranges_stats=self.default_ranges_stats,
+        drop_control_dependency=self.drop_control_dependency,
+        reorder_across_fake_quant=self.reorder_across_fake_quant,
+        change_concat_input_ranges=self.change_concat_input_ranges,
+        allow_custom_ops=self.allow_custom_ops,
+        quantize_weights=self.quantize_weights,
+        dump_graphviz_dir=self.dump_graphviz_dir,
+        dump_graphviz_video=self.dump_graphviz_video)
+    return result
+
+  def get_input_arrays(self):
+    """Returns a list of the names of the input tensors.
+
+    Returns:
+      List of strings.
+    """
+    return [tensor_name(tensor) for tensor in self._input_tensors]
+
+  def _set_batch_size(self, batch_size):
+    """Sets the first dimension of the input tensor to `batch_size`.
+
+    Args:
+      batch_size: Batch size for the model. Replaces the first dimension of an
+        input size array if undefined. (default 1)
+    """
+    for tensor in self._input_tensors:
+      shape = tensor.get_shape().as_list()
+      shape[0] = batch_size
+      tensor.set_shape(shape)
 
 
-def _tensor_name(x):
-  return x.name.split(":")[0]
+def _is_frozen_graph(sess):
+  """Determines if the graph is frozen.
 
-
-def toco_convert(input_data,
-                 input_tensors,
-                 output_tensors,
-                 inference_type=FLOAT,
-                 input_format=TENSORFLOW_GRAPHDEF,
-                 output_format=TFLITE,
-                 quantized_input_stats=None,
-                 drop_control_dependency=True):
-  """Convert a model using TOCO from `input_format` to `output_format`.
-
-  Typically this is to convert from TensorFlow GraphDef to TFLite, in which
-  case the default `input_format` and `output_format` are sufficient.
+  Determines if a graph has previously been frozen by checking for any
+  operations of type Variable*. If variables are found, the graph is not frozen.
 
   Args:
-    input_data: Input data (i.e. often `sess.graph_def`).
-    input_tensors: List of input tensors. Type and shape are computed using
-      `foo.get_shape()` and `foo.dtype`.
+    sess: TensorFlow Session.
+
+  Returns:
+    Bool.
+  """
+  for op in sess.graph.get_operations():
+    if op.type.startswith("Variable"):
+      return False
+  return True
+
+
+def _freeze_graph(sess, output_tensors):
+  """Returns a frozen GraphDef.
+
+  Freezes a graph with Variables in it. Otherwise the existing GraphDef is
+  returned.
+
+  Args:
+    sess: TensorFlow Session.
     output_tensors: List of output tensors (only .name is used from this).
-    inference_type: Currently must be `{FLOAT, QUANTIZED_UINT8}`.
-    input_format: Type of data to read (currently must be TENSORFLOW_GRAPHDEF).
-    output_format: Type of data to write (currently must be TFLITE or
-      GRAPHVIZ_DOT)
-    quantized_input_stats: For each member of input_tensors the mean and
-      std deviation of training data. Only needed if `inference_type` is
-      `QUANTIZED_UINT8`.
-    drop_control_dependency: Drops control dependencies silently. This is due
-      to tf lite not supporting control dependencies.
 
   Returns:
-    The converted data. For example if tflite was the destination, then
-    this will be a tflite flatbuffer in a bytes array.
-
-  Raises:
-    ValueError: If the input tensor type is unknown
-    RuntimeError: If TOCO fails to convert (in which case the runtime error's
-      error text will contain the TOCO error log)
+    Frozen GraphDef.
   """
-  toco = _toco_flags_pb2.TocoFlags()
-  toco.input_format = input_format
-  toco.output_format = output_format
-  toco.drop_control_dependency = drop_control_dependency
-  model = _model_flags_pb2.ModelFlags()
-  toco.inference_type = inference_type
-  for idx, input_tensor in enumerate(input_tensors):
-    if input_tensor.dtype == _dtypes.float32:
-      tflite_input_type = FLOAT
-    elif input_tensor.dtype == _dtypes.int32:
-      tflite_input_type = INT32
-    elif input_tensor.dtype == _dtypes.int64:
-      tflite_input_type = INT64
-    # TODO(aselle): Insert strings when they are available
-    else:
-      raise ValueError("Tensors %s not known type %r" % (input_tensor.name,
-                                                         input_tensor.dtype))
-
-    input_array = model.input_arrays.add()
-
-    if inference_type == QUANTIZED_UINT8:
-      if tflite_input_type == FLOAT:
-        tflite_input_type = QUANTIZED_UINT8
-      input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
-
-    input_array.name = _tensor_name(input_tensor)
-    input_array.shape.dims.extend(map(int, input_tensor.get_shape()))
-    toco.inference_input_type = tflite_input_type
-
-  for output_tensor in output_tensors:
-    model.output_arrays.append(_tensor_name(output_tensor))
-
-  data = toco_convert_protos(model.SerializeToString(),
-                             toco.SerializeToString(),
-                             input_data.SerializeToString())
-  return data
-
-
-_allowed_symbols = [
-    "FLOAT",
-    "INT32",
-    "INT64",
-    "STRING",
-    "QUANTIZED_UINT8",
-    "TENSORFLOW_GRAPHDEF",
-    "TFLITE",
-    "GRAPHVIZ_DOT",
-    "EXPERIMENTAL_USE_TOCO_API_DIRECTLY",
-]
-remove_undocumented(__name__, _allowed_symbols)
+  if not _is_frozen_graph(sess):
+    sess.run(global_variables_initializer())
+    output_arrays = [tensor_name(tensor) for tensor in output_tensors]
+    return tf_graph_util.convert_variables_to_constants(sess, sess.graph_def,
+                                                        output_arrays)
+  else:
+    return sess.graph_def

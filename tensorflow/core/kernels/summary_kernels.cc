@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
 
@@ -42,11 +43,16 @@ class CreateSummaryFileWriterOp : public OpKernel {
     const int32 flush_millis = tmp->scalar<int32>()();
     OP_REQUIRES_OK(ctx, ctx->input("filename_suffix", &tmp));
     const string filename_suffix = tmp->scalar<string>()();
-    SummaryWriterInterface* s;
-    OP_REQUIRES_OK(ctx,
-                   CreateSummaryFileWriter(max_queue, flush_millis, logdir,
-                                           filename_suffix, ctx->env(), &s));
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, HandleFromInput(ctx, 0), s));
+
+    SummaryWriterInterface* s = nullptr;
+    OP_REQUIRES_OK(ctx, LookupOrCreateResource<SummaryWriterInterface>(
+                            ctx, HandleFromInput(ctx, 0), &s,
+                            [max_queue, flush_millis, logdir, filename_suffix,
+                             ctx](SummaryWriterInterface** s) {
+                              return CreateSummaryFileWriter(
+                                  max_queue, flush_millis, logdir,
+                                  filename_suffix, ctx->env(), s);
+                            }));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("CreateSummaryFileWriter").Device(DEVICE_CPU),
@@ -66,17 +72,23 @@ class CreateSummaryDbWriterOp : public OpKernel {
     const string run_name = tmp->scalar<string>()();
     OP_REQUIRES_OK(ctx, ctx->input("user_name", &tmp));
     const string user_name = tmp->scalar<string>()();
-    SummaryWriterInterface* s;
-    Sqlite* db;
-    OP_REQUIRES_OK(ctx, Sqlite::Open(db_uri,
-                                     SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-                                     &db));
-    core::ScopedUnref unref(db);
-    OP_REQUIRES_OK(ctx, SetupTensorboardSqliteDb(db));
+
+    SummaryWriterInterface* s = nullptr;
     OP_REQUIRES_OK(
-        ctx, CreateSummaryDbWriter(db, experiment_name,
-                                   run_name, user_name, ctx->env(), &s));
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, HandleFromInput(ctx, 0), s));
+        ctx,
+        LookupOrCreateResource<SummaryWriterInterface>(
+            ctx, HandleFromInput(ctx, 0), &s,
+            [db_uri, experiment_name, run_name, user_name,
+             ctx](SummaryWriterInterface** s) {
+              Sqlite* db;
+              TF_RETURN_IF_ERROR(Sqlite::Open(
+                  db_uri, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, &db));
+              core::ScopedUnref unref(db);
+              TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db));
+              TF_RETURN_IF_ERROR(CreateSummaryDbWriter(
+                  db, experiment_name, run_name, user_name, ctx->env(), s));
+              return Status::OK();
+            }));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("CreateSummaryDbWriter").Device(DEVICE_CPU),
@@ -267,8 +279,6 @@ class WriteAudioSummaryOp : public OpKernel {
 
  private:
   int max_outputs_;
-  bool has_sample_rate_attr_;
-  float sample_rate_attr_;
 };
 REGISTER_KERNEL_BUILDER(Name("WriteAudioSummary").Device(DEVICE_CPU),
                         WriteAudioSummaryOp);

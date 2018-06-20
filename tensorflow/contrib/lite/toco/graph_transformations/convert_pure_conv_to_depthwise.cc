@@ -33,6 +33,11 @@ bool ConvertPureConvToDepthwise::Run(Model* model, std::size_t op_index) {
   if (conv_op->stride_width != conv_op->stride_height) {
     return false;
   }
+  if ((conv_op->dilation_width_factor != 1) ||
+      (conv_op->dilation_height_factor != 1)) {
+    // Depthwise conv does not support dilation
+    return false;
+  }
   auto& weights_array = model->GetArray(conv_op->inputs[1]);
   if (!weights_array.buffer) {
     // Yield until the weights are resolved as a constant array.
@@ -58,7 +63,7 @@ bool ConvertPureConvToDepthwise::Run(Model* model, std::size_t op_index) {
   depthwiseconv_op->outputs = {conv_op->outputs[0]};
   if (conv_op->outputs.size() > 1) {
     // delete the im2col array.
-    model->arrays.erase(conv_op->outputs[1]);
+    model->EraseArray(conv_op->outputs[1]);
   }
   depthwiseconv_op->fused_activation_function =
       conv_op->fused_activation_function;

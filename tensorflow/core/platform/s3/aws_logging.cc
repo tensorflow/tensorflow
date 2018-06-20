@@ -96,7 +96,7 @@ Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
 
   return log_level;
 }
-}
+}  // namespace
 
 static bool initialized = false;
 static mutex s3_logging_mutex(LINKER_INITIALIZED);

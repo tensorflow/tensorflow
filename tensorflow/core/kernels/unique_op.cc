@@ -223,6 +223,16 @@ class UniqueOp : public OpKernel {
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("out_idx"), \
+                          UniqueOp<type, int64>);                \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int32>("out_idx"), \
+                          UniqueOp<type, int32>)                 \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int64>("out_idx"), \
                           UniqueOp<type, int64>)
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE);
 REGISTER_UNIQUE(string)

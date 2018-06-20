@@ -23,10 +23,17 @@ import itertools
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops import mixture
+from tensorflow.contrib.distributions.python.ops import mixture_same_family
+from tensorflow.contrib.distributions.python.ops import mvn_diag
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import categorical
+from tensorflow.python.ops.distributions import normal
 from tensorflow.python.ops.linalg import linear_operator_diag
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -395,6 +402,41 @@ class MixtureStddevTest(test.TestCase):
     self.assertAllClose(actual_devs, expected_devs)
 
 
+class PadMixtureDimensionsTest(test.TestCase):
+
+  def test_pad_mixture_dimensions_mixture(self):
+    with self.test_session() as sess:
+      gm = mixture.Mixture(
+          cat=categorical.Categorical(probs=[[0.3, 0.7]]),
+          components=[
+              normal.Normal(loc=[-1.0], scale=[1.0]),
+              normal.Normal(loc=[1.0], scale=[0.5])
+          ])
+
+      x = array_ops.constant([[1.0, 2.0], [3.0, 4.0]])
+      x_pad = distribution_util.pad_mixture_dimensions(
+          x, gm, gm.cat, gm.event_shape.ndims)
+      x_out, x_pad_out = sess.run([x, x_pad])
+
+    self.assertAllEqual(x_pad_out.shape, [2, 2])
+    self.assertAllEqual(x_out.reshape([-1]), x_pad_out.reshape([-1]))
+
+  def test_pad_mixture_dimensions_mixture_same_family(self):
+    with self.test_session() as sess:
+      gm = mixture_same_family.MixtureSameFamily(
+          mixture_distribution=categorical.Categorical(probs=[0.3, 0.7]),
+          components_distribution=mvn_diag.MultivariateNormalDiag(
+              loc=[[-1., 1], [1, -1]], scale_identity_multiplier=[1.0, 0.5]))
+
+      x = array_ops.constant([[1.0, 2.0], [3.0, 4.0]])
+      x_pad = distribution_util.pad_mixture_dimensions(
+          x, gm, gm.mixture_distribution, gm.event_shape.ndims)
+      x_out, x_pad_out = sess.run([x, x_pad])
+
+    self.assertAllEqual(x_pad_out.shape, [2, 2, 1])
+    self.assertAllEqual(x_out.reshape([-1]), x_pad_out.reshape([-1]))
+
+
 class _PadTest(object):
 
   def testNegAxisCorrectness(self):
@@ -498,6 +540,52 @@ class PadDynamicTest(_PadTest, test.TestCase):
   @property
   def is_static_shape(self):
     return False
+
+
+class TestMoveDimension(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_move_dimension_static_shape(self):
+
+    x = random_ops.random_normal(shape=[200, 30, 4, 1, 6])
+
+    x_perm = distribution_util.move_dimension(x, 1, 1)
+    self.assertAllEqual(x_perm.shape.as_list(), [200, 30, 4, 1, 6])
+
+    x_perm = distribution_util.move_dimension(x, 0, 3)
+    self.assertAllEqual(x_perm.shape.as_list(), [30, 4, 1, 200, 6])
+
+    x_perm = distribution_util.move_dimension(x, 0, -2)
+    self.assertAllEqual(x_perm.shape.as_list(), [30, 4, 1, 200, 6])
+
+    x_perm = distribution_util.move_dimension(x, 4, 2)
+    self.assertAllEqual(x_perm.shape.as_list(), [200, 30, 6, 4, 1])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_move_dimension_dynamic_shape(self):
+
+    x_ = random_ops.random_normal(shape=[200, 30, 4, 1, 6])
+    x = array_ops.placeholder_with_default(input=x_, shape=None)
+
+    x_perm = distribution_util.move_dimension(x, 1, 1)
+    self.assertAllEqual(self.evaluate(array_ops.shape(x_perm)),
+                        [200, 30, 4, 1, 6])
+
+    x_perm = distribution_util.move_dimension(x, 0, 3)
+    self.assertAllEqual(self.evaluate(array_ops.shape(x_perm)),
+                        [30, 4, 1, 200, 6])
+
+    x_perm = distribution_util.move_dimension(x, 0, -2)
+    self.assertAllEqual(self.evaluate(array_ops.shape(x_perm)),
+                        [30, 4, 1, 200, 6])
+
+    x_perm = distribution_util.move_dimension(x, 4, 2)
+    self.assertAllEqual(self.evaluate(array_ops.shape(x_perm)),
+                        [200, 30, 6, 4, 1])
+
+    x_perm = distribution_util.move_dimension(x, -1, 2)
+    self.assertAllEqual(self.evaluate(array_ops.shape(x_perm)),
+                        [200, 30, 6, 4, 1])
 
 
 if __name__ == "__main__":

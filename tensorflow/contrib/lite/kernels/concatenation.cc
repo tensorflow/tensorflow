@@ -49,6 +49,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // dimensions except 'axis' must be equal.
   TfLiteTensor* t0 = &context->tensors[node->inputs->data[0]];
   TfLiteType input_type = t0->type;
+  if (axis < 0) axis += t0->dims->size;
   TF_LITE_ENSURE(context, axis >= 0);
   TF_LITE_ENSURE(context, axis < t0->dims->size);
 
@@ -66,10 +67,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* t = &context->tensors[node->inputs->data[i]];
     TF_LITE_ENSURE_EQ(context, t->dims->size, t0->dims->size);
     TF_LITE_ENSURE_EQ(context, t->type, input_type);
-    if (input_type == kTfLiteUInt8) {
-      TF_LITE_ENSURE_EQ(context, t->params.zero_point, t0->params.zero_point);
-      TF_LITE_ENSURE_EQ(context, t->params.scale, t0->params.scale);
-    }
     for (int d = 0; d < t0->dims->size; ++d) {
       if (d == axis) {
         sum_axis += t->dims->data[axis];
@@ -86,64 +83,36 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
   TF_LITE_ENSURE_EQ(context, output->type, input_type);
-  if (input_type == kTfLiteUInt8) {
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point,
-                      t0->params.zero_point);
-    TF_LITE_ENSURE_EQ(context, output->params.scale, t0->params.scale);
-  }
 
   return context->ResizeTensor(context, output, output_size);
 }
-
-template <typename T>
-class VectorOfInputs {
- public:
-  VectorOfInputs(const TfLiteContext& context, const TfLiteIntArray& inputs) {
-    int num_inputs = inputs.size;
-
-    all_data_.reserve(num_inputs);
-    all_dims_.reserve(num_inputs);
-    all_dims_ptr_.reserve(num_inputs);
-
-    for (int i = 0; i < num_inputs; ++i) {
-      TfLiteTensor* input = &context.tensors[inputs.data[i]];
-      all_data_.push_back(GetTensorData<T>(input));
-      all_dims_.push_back(GetTensorDims(input));
-    }
-
-    // Taking the pointer from inside a std::vector is only OK if the vector is
-    // never modified, so we populate all_dims in the previous loop and then we
-    // are free to grab iterators here.
-    for (int i = 0; i < num_inputs; ++i) {
-      all_dims_ptr_.push_back(&all_dims_[i]);
-    }
-  }
-  const T* const* data() const { return all_data_.data(); }
-  const Dims<4>* const* dims() const { return all_dims_ptr_.data(); }
-
- private:
-  std::vector<T*> all_data_;
-  std::vector<Dims<4>> all_dims_;
-  std::vector<Dims<4>*> all_dims_ptr_;
-};
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data);
-
+  int axis = params->axis;
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  if (axis < 0) axis += output->dims->size;
 
 // TODO(ahentz): Creating 'all_inputs' below is not very efficient. We should
 // allocate and populate these during Prepare().
 // TODO(ycling): Activation function parameter is ignored. For now we dont have
 // a model with a Concatenation with fused activation function.
 #define TF_LITE_CONCATENATION(type, scalar)                                 \
-  VectorOfInputs<scalar> all_inputs(*context, *node->inputs);               \
+  VectorOfTensors<scalar> all_inputs(*context, *node->inputs);              \
   type::Concatenation<FusedActivationFunctionType::kNone, scalar>(          \
-      RemapDim(NumDimensions(output), params->axis), all_inputs.data(),     \
+      RemapDim(NumDimensions(output), axis), all_inputs.data(),             \
       all_inputs.dims(), node->inputs->size, GetTensorData<scalar>(output), \
       GetTensorDims(output))
+
+#define TF_LITE_CONCATENATION_QUANTIZED(type)                                  \
+  VectorOfQuantizedTensors all_inputs(*context, *node->inputs);                \
+  type::Concatenation(                                                         \
+      RemapDim(NumDimensions(output), axis), all_inputs.data(),                \
+      all_inputs.dims(), all_inputs.zero_point(), all_inputs.scale(),          \
+      node->inputs->size, GetTensorData<uint8>(output), GetTensorDims(output), \
+      output->params.zero_point, output->params.scale)
 
   switch (output->type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:
@@ -155,9 +124,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteUInt8:
       if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION(reference_ops, uint8_t);
+        TF_LITE_CONCATENATION_QUANTIZED(reference_ops);
       } else {
-        TF_LITE_CONCATENATION(optimized_ops, uint8_t);
+        TF_LITE_CONCATENATION_QUANTIZED(optimized_ops);
       }
       break;
     default:
@@ -166,6 +135,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
   }
 
+#undef TF_LITE_CONCATENATION_QUANTIZED
 #undef TF_LITE_CONCATENATION
 
   return kTfLiteOk;

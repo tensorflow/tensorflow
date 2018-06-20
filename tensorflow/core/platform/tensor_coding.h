@@ -18,7 +18,6 @@ limitations under the License.
 #define TENSORFLOW_PLATFORM_TENSOR_CODING_H_
 
 #include <string>
-#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/platform.h"
@@ -26,6 +25,8 @@ limitations under the License.
 
 #ifdef PLATFORM_GOOGLE
 #include "tensorflow/core/platform/google/cord_coding.h"
+#else
+#include "tensorflow/core/platform/default/string_coding.h"
 #endif
 
 namespace tensorflow {
@@ -50,13 +51,6 @@ bool DecodeStringList(const string& src, string* strings, int64 n);
 
 // Assigns base[0..bytes-1] to *s
 void CopyFromArray(string* s, const char* base, size_t bytes);
-
-// Encodes a list of ResourceHandle protos in the given string.
-void EncodeResourceHandleList(const ResourceHandle* handles, int64 n,
-                              string* out);
-
-// Decodes a list of ResourceHandle protos from the given string.
-bool DecodeResourceHandleList(const string& in, ResourceHandle* ps, int64 n);
 
 }  // namespace port
 }  // namespace tensorflow

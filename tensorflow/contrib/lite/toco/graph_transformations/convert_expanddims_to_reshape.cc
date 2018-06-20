@@ -35,7 +35,7 @@ bool ConvertExpandDimsToReshape::Run(Model* model, std::size_t op_index) {
   CHECK_EQ(expand_op->inputs.size(), 2);
   CHECK_EQ(expand_op->outputs.size(), 1);
 
-  const auto& input_array = *model->arrays[expand_op->inputs[0]];
+  const auto& input_array = model->GetArray(expand_op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until input dims have been resolved.
     return false;
@@ -46,7 +46,7 @@ bool ConvertExpandDimsToReshape::Run(Model* model, std::size_t op_index) {
     return false;
   }
 
-  const auto& axis_array = *model->arrays[expand_op->inputs[1]];
+  const auto& axis_array = model->GetArray(expand_op->inputs[1]);
   if (!axis_array.has_shape()) {
     // Yield until input axis array shape has been resolved.
     return false;
@@ -86,7 +86,7 @@ bool ConvertExpandDimsToReshape::Run(Model* model, std::size_t op_index) {
   if (IsDiscardableArray(*model, axis_array_name) &&
       CountOpsWithInput(*model, axis_array_name) == 1 &&
       !GetOpWithOutput(*model, axis_array_name)) {
-    model->arrays.erase(axis_array_name);
+    model->EraseArray(axis_array_name);
   }
 
   // Replace the operator in the graph.

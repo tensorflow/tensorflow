@@ -82,7 +82,7 @@ bool AttrDefEqual(const OpDef::AttrDef& a1, const OpDef::AttrDef& a2);
 uint64 AttrDefHash(const OpDef::AttrDef& a);
 
 // Returns true if all AttrDefs in `a1` equal corresponding AttrDefs in
-// `a2`. Corrspondence is established by name.
+// `a2`. Correspondence is established by name.
 bool RepeatedAttrDefEqual(const protobuf::RepeatedPtrField<OpDef::AttrDef>& a1,
                           const protobuf::RepeatedPtrField<OpDef::AttrDef>& a2);
 

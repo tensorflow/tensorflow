@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -27,8 +27,10 @@ struct WorkerSession;
 // functions across processes by making RPCs.
 class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
  public:
-  ClusterFunctionLibraryRuntime(WorkerSession* worker_session)
-      : worker_session_(worker_session) {}
+  ClusterFunctionLibraryRuntime(WorkerSession* worker_session,
+                                bool create_worker_session_called)
+      : worker_session_(worker_session),
+        create_worker_session_called_(create_worker_session_called) {}
 
   ~ClusterFunctionLibraryRuntime() override;
 
@@ -51,6 +53,7 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
   mutable mutex mu_;
   WorkerSession* const worker_session_ = nullptr;  // not owned.
+  const bool create_worker_session_called_;
 
   struct FunctionData {
     const string graph_handle;
@@ -74,4 +77,4 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_

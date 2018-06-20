@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/platform/mem.h"
@@ -108,7 +109,7 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   // If no sharding metadata is found, XLA is free to use whatever device it
   // wants. In practice this usually has the effect of placing things on device
   // 0.
-  xla::ScopedShardingAssignment assign_sharding(b, op_sharding);
+  xla::XlaScopedShardingAssignment assign_sharding(b, op_sharding);
   op_kernel->Compute(context);
 
   b->ClearOpMetadata();
@@ -126,9 +127,7 @@ Status XlaCompilationDevice::MakeTensorFromProto(
 
 XlaExpression::XlaExpression() = default;
 
-void XlaExpression::set_handle(const xla::ComputationDataHandle& h) {
-  handle_ = h;
-}
+void XlaExpression::set_handle(const xla::XlaOp& h) { handle_ = h; }
 
 void XlaExpression::set_constant_value(Tensor value) {
   has_constant_value_ = true;

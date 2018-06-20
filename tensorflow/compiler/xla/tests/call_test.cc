@@ -16,8 +16,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -32,16 +32,16 @@ namespace {
 
 class CallOpTest : public ClientLibraryTestBase {
  protected:
-  Computation CreateR0F32IdentityComputation() {
-    ComputationBuilder builder(client_, "Identity");
+  XlaComputation CreateR0F32IdentityComputation() {
+    XlaBuilder builder("Identity");
     builder.Parameter(0, r0f32_, "x");
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
     return build_status.ConsumeValueOrDie();
   }
 
-  Computation CreateR1S0F32AdditionComputation() {
-    ComputationBuilder builder(client_, "Addition");
+  XlaComputation CreateR1S0F32AdditionComputation() {
+    XlaBuilder builder("Addition");
     auto x = builder.Parameter(0, r1s0f32_, "x");
     auto y = builder.Parameter(1, r1s0f32_, "y");
     builder.Add(x, y);
@@ -50,8 +50,8 @@ class CallOpTest : public ClientLibraryTestBase {
     return build_status.ConsumeValueOrDie();
   }
 
-  Computation CreateR1S2F32AdditionComputation() {
-    ComputationBuilder builder(client_, "Addition");
+  XlaComputation CreateR1S2F32AdditionComputation() {
+    XlaBuilder builder("Addition");
     auto x = builder.Parameter(0, r1s2f32_, "x");
     auto y = builder.Parameter(1, r1s2f32_, "y");
     builder.Add(x, y);
@@ -60,8 +60,8 @@ class CallOpTest : public ClientLibraryTestBase {
     return build_status.ConsumeValueOrDie();
   }
 
-  Computation CreateR0F32TupleComputation() {
-    ComputationBuilder builder(client_, "Tuple");
+  XlaComputation CreateR0F32TupleComputation() {
+    XlaBuilder builder("Tuple");
     builder.Tuple({builder.Parameter(0, r0f32_, "x")});
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
@@ -74,8 +74,8 @@ class CallOpTest : public ClientLibraryTestBase {
 };
 
 XLA_TEST_F(CallOpTest, CallR0F32IdentityScalar) {
-  ComputationBuilder builder(client_, TestName());
-  Computation callee = CreateR0F32IdentityComputation();
+  XlaBuilder builder(TestName());
+  XlaComputation callee = CreateR0F32IdentityComputation();
   auto constant = builder.ConstantLiteral(*Literal::CreateR0<float>(42.0));
   builder.Call(callee, {constant});
 
@@ -83,8 +83,8 @@ XLA_TEST_F(CallOpTest, CallR0F32IdentityScalar) {
 }
 
 XLA_TEST_F(CallOpTest, CallR1S0F32AddArray) {
-  ComputationBuilder builder(client_, TestName());
-  Computation callee = CreateR1S0F32AdditionComputation();
+  XlaBuilder builder(TestName());
+  XlaComputation callee = CreateR1S0F32AdditionComputation();
   auto x = builder.ConstantLiteral(*Literal::CreateR1<float>({}));
   auto y = builder.ConstantLiteral(*Literal::CreateR1<float>({}));
   builder.Call(callee, {x, y});
@@ -93,8 +93,8 @@ XLA_TEST_F(CallOpTest, CallR1S0F32AddArray) {
 }
 
 XLA_TEST_F(CallOpTest, CallR1S2F32AddArray) {
-  ComputationBuilder builder(client_, TestName());
-  Computation callee = CreateR1S2F32AdditionComputation();
+  XlaBuilder builder(TestName());
+  XlaComputation callee = CreateR1S2F32AdditionComputation();
   auto x = builder.ConstantLiteral(*Literal::CreateR1<float>({1.0f, 2.0f}));
   auto y = builder.ConstantLiteral(*Literal::CreateR1<float>({2.0f, 3.0f}));
   builder.Call(callee, {x, y});
@@ -103,23 +103,23 @@ XLA_TEST_F(CallOpTest, CallR1S2F32AddArray) {
 }
 
 XLA_TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
-  ComputationBuilder builder(client_, "inner");
+  XlaBuilder builder("inner");
   {
     auto x = builder.Parameter(0, r0f32_, "x");
     builder.Add(x, builder.ConstantR0<float>(1.0));
   }
-  TF_ASSERT_OK_AND_ASSIGN(Computation inner, builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation inner, builder.Build());
 
-  ComputationBuilder builder2(client_, "outer");
+  XlaBuilder builder2("outer");
   {
     auto x = builder2.Parameter(0, r0f32_, "x");
     x = builder2.Call(inner, {x});
     x = builder2.Call(inner, {x});
     x = builder2.Call(inner, {x});
   }
-  TF_ASSERT_OK_AND_ASSIGN(Computation outer, builder2.Build());
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation outer, builder2.Build());
 
-  ComputationBuilder builder3(client_, "outermost");
+  XlaBuilder builder3("outermost");
   {
     auto x = builder3.Parameter(0, r0f32_, "x");
     x = builder3.Call(outer, {x});
@@ -134,8 +134,8 @@ XLA_TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
 }
 
 XLA_TEST_F(CallOpTest, CallR0F32Tuple) {
-  ComputationBuilder builder(client_, TestName());
-  Computation callee = CreateR0F32TupleComputation();
+  XlaBuilder builder(TestName());
+  XlaComputation callee = CreateR0F32TupleComputation();
   auto elem = Literal::CreateR0<float>(42.0);
   auto tuple = Literal::MakeTuple({elem.get()});
   builder.Call(callee, {builder.ConstantLiteral(*elem)});

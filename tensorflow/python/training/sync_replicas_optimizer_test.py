@@ -286,8 +286,9 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
     global_step = variables.Variable(0, name="global_step", trainable=False)
     opt.minimize(v, global_step=global_step)
     opt_variables = opt.variables()
-    self.assertIn(opt._opt._beta1_power, opt_variables)
-    self.assertIn(opt._opt._beta2_power, opt_variables)
+    beta1_power, beta2_power = opt._opt._get_beta_accumulators()
+    self.assertIn(beta1_power, opt_variables)
+    self.assertIn(beta2_power, opt_variables)
 
 
 if __name__ == "__main__":

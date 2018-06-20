@@ -31,10 +31,10 @@ InfeedThunk::InfeedThunk(
       destination_buffer_(destination_buffer) {}
 
 Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                    perftools::gputools::Stream* stream) {
+                                    se::Stream* stream) {
   VLOG(2) << "Infeeding to GPU ";
 
-  perftools::gputools::DeviceMemoryBase destination_address =
+  se::DeviceMemoryBase destination_address =
       buffer_allocations.GetDeviceAddress(destination_buffer_);
 
   InfeedManager* infeed_manager = GetOrCreateInfeedManager();
@@ -45,7 +45,7 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     std::vector<void*> tuple_element_addresses;
     for (BufferAllocation::Slice tuple_element_buffer :
          tuple_element_buffers_) {
-      perftools::gputools::DeviceMemoryBase tuple_element_address =
+      se::DeviceMemoryBase tuple_element_address =
           buffer_allocations.GetDeviceAddress(tuple_element_buffer);
 
       InfeedBuffer* buffer = infeed_manager->BlockingDequeueBuffer();

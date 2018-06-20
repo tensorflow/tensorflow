@@ -94,7 +94,7 @@ static int ExtractGpuWithStreamAll(string device_name) {
   } else {
     // Convert the captured string into an integer. But first we need to put
     // the digits back in order
-    string ordered_capture = capture.ToString();
+    string ordered_capture = std::string(capture);
     std::reverse(ordered_capture.begin(), ordered_capture.end());
     int gpu_id;
     CHECK(strings::safe_strto32(ordered_capture, &gpu_id));
@@ -123,7 +123,7 @@ static int ExtractGpuWithoutStream(string device_name) {
   } else {
     // Convert the captured string into an integer. But first we need to put
     // the digits back in order
-    string ordered_capture = capture.ToString();
+    string ordered_capture = std::string(capture);
     std::reverse(ordered_capture.begin(), ordered_capture.end());
     int gpu_id;
     CHECK(strings::safe_strto32(ordered_capture, &gpu_id));
@@ -170,7 +170,7 @@ void StepStatsCollector::BuildCostModel(
 
   for (auto& itr : per_device_stats) {
     const StringPiece device_name = itr.first;
-    const int gpu_id = ExtractGpuWithoutStream(device_name.ToString());
+    const int gpu_id = ExtractGpuWithoutStream(std::string(device_name));
     if (gpu_id >= 0) {
       // Reference the gpu hardware stats in addition to the regular stats
       // for this gpu device if they're available.
@@ -226,22 +226,24 @@ void StepStatsCollector::BuildCostModel(
       if (node) {
         for (int i = 0; i < stats.output_size(); ++i) {
           const auto& output = stats.output(i);
-          cm->RecordMaxMemorySize(node, i, Bytes(output.tensor_description()
-                                                     .allocation_description()
-                                                     .allocated_bytes()),
-                                  stats.output(i).tensor_description().shape(),
-                                  node->output_types()[i]);
-          cm->RecordAllocationId(node, i, output.tensor_description()
-                                              .allocation_description()
-                                              .allocation_id());
+          int output_slot = output.slot();
+          cm->RecordMaxMemorySize(node, output_slot,
+                                  Bytes(output.tensor_description()
+                                            .allocation_description()
+                                            .allocated_bytes()),
+                                  output.tensor_description().shape(),
+                                  node->output_types()[output_slot]);
+          cm->RecordAllocationId(node, output_slot,
+                                 output.tensor_description()
+                                     .allocation_description()
+                                     .allocation_id());
         }
         cm->RecordMemoryStats(node, stats.memory_stats());
         // Use hardware stats to record the execution time if they're available,
         // otherwise use the regular (less accurate) stats
         string node_name = dev_stats.regular_stats->node_stats(i).node_name();
-        if (dev_stats.hardware_stats &&
-            name_to_hw_node_stats.find(node_name) !=
-                name_to_hw_node_stats.end()) {
+        if (dev_stats.hardware_stats && name_to_hw_node_stats.find(node_name) !=
+                                            name_to_hw_node_stats.end()) {
           const NodeExecStats& hw_stats = name_to_hw_node_stats[node_name];
           cm->RecordMaxExecutionTime(
               node, Microseconds(hw_stats.op_end_rel_micros()));

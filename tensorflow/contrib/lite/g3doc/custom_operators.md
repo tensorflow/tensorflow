@@ -39,7 +39,7 @@ TfLiteStatus SinPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
 
   int num_dims = NumDimensions(input);
@@ -54,7 +54,7 @@ TfLiteStatus SinPrepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
   using namespace tflite;
-  TfLiteTensor* input = GetInput(context, node,0);
+  const TfLiteTensor* input = GetInput(context, node,0);
   TfLiteTensor* output = GetOutput(context, node,0);
 
   float* input_data = input->data.f;
@@ -73,7 +73,7 @@ TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteRegistration* Register_SIN() {
-  static TfLiteRegistration r = {nullptr, nullptr, SinResize, SinEval};
+  static TfLiteRegistration r = {nullptr, nullptr, SinPrepare, SinEval};
   return &r;
 }
 ```

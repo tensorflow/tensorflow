@@ -32,7 +32,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import template as template_ops
 from tensorflow.python.ops import variable_scope as variable_scope_lib
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -42,17 +43,18 @@ __all__ = [
 ]
 
 
-class MaskedAutoregressiveFlow(bijector_lib.Bijector):
+class MaskedAutoregressiveFlow(bijector.Bijector):
   """Affine MaskedAutoregressiveFlow bijector for vector-valued events.
 
-  The affine autoregressive flow [1] provides a relatively simple framework for
-  user-specified (deep) architectures to learn a distribution over vector-valued
-  events. Regarding terminology,
+  The affine autoregressive flow [(Papamakarios et al., 2016)][3] provides a
+  relatively simple framework for user-specified (deep) architectures to learn
+  a distribution over vector-valued events. Regarding terminology,
 
     "Autoregressive models decompose the joint density as a product of
     conditionals, and model each conditional in turn. Normalizing flows
     transform a base density (e.g. a standard Gaussian) into the target density
-    by an invertible transformation with tractable Jacobian." [1]
+    by an invertible transformation with tractable Jacobian."
+    [(Papamakarios et al., 2016)][3]
 
   In other words, the "autoregressive property" is equivalent to the
   decomposition, `p(x) = prod{ p(x[i] | x[0:i]) : i=0, ..., d }`. The provided
@@ -60,7 +62,7 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
   this property by zeroing out weights in its `masked_dense` layers.
 
   In the `tf.distributions` framework, a "normalizing flow" is implemented as a
-  `tf.distributions.bijectors.Bijector`. The `forward` "autoregression"
+  `tf.contrib.distributions.bijectors.Bijector`. The `forward` "autoregression"
   is implemented using a `tf.while_loop` and a deep neural network (DNN) with
   masked weights such that the autoregressive property is automatically met in
   the `inverse`.
@@ -75,26 +77,26 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
 
   Given a `shift_and_log_scale_fn`, the forward and inverse transformations are
   (a sequence of) affine transformations. A "valid" `shift_and_log_scale_fn`
-  must compute each `shift` (aka `loc` or "mu" [2]) and `log(scale)` (aka
-  "alpha" [2]) such that each are broadcastable with the arguments to `forward`
-  and `inverse`, i.e., such that the calculations in `forward`, `inverse`
-  [below] are possible.
+  must compute each `shift` (aka `loc` or "mu" in [Germain et al. (2015)][1])
+  and `log(scale)` (aka "alpha" in [Germain et al. (2015)][1]) such that each
+  are broadcastable with the arguments to `forward` and `inverse`, i.e., such
+  that the calculations in `forward`, `inverse` [below] are possible.
 
   For convenience, `masked_autoregressive_default_template` is offered as a
   possible `shift_and_log_scale_fn` function. It implements the MADE
-  architecture [2]. MADE is a feed-forward network that computes a `shift` and
-  `log(scale)` using `masked_dense` layers in a deep neural network. Weights are
-  masked to ensure the autoregressive property. It is possible that this
-  architecture is suboptimal for your task. To build alternative networks,
-  either change the arguments to `masked_autoregressive_default_template`, use
-  the `masked_dense` function to roll-out your own, or use some other
-  architecture, e.g., using `tf.layers`.
+  architecture [(Germain et al., 2015)][1]. MADE is a feed-forward network that
+  computes a `shift` and `log(scale)` using `masked_dense` layers in a deep
+  neural network. Weights are masked to ensure the autoregressive property. It
+  is possible that this architecture is suboptimal for your task. To build
+  alternative networks, either change the arguments to
+  `masked_autoregressive_default_template`, use the `masked_dense` function to
+  roll-out your own, or use some other architecture, e.g., using `tf.layers`.
 
   Warning: no attempt is made to validate that the `shift_and_log_scale_fn`
   enforces the "autoregressive property".
 
   Assuming `shift_and_log_scale_fn` has valid shape and autoregressive
-  semantics, the forward transformation is,
+  semantics, the forward transformation is
 
   ```python
   def forward(x):
@@ -106,7 +108,7 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
     return y
   ```
 
-  and the inverse transformation is,
+  and the inverse transformation is
 
   ```python
   def inverse(y):
@@ -121,7 +123,7 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
   the "last" `y` used to compute `shift`, `log_scale`. (Roughly speaking, this
   also proves the transform is bijective.)
 
-  #### Example Use
+  #### Examples
 
   ```python
   tfd = tf.contrib.distributions
@@ -142,7 +144,8 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
   maf.log_prob(x)   # Almost free; uses Bijector caching.
   maf.log_prob(0.)  # Cheap; no `tf.while_loop` despite no Bijector caching.
 
-  # [1] also describes an "Inverse Autoregressive Flow", e.g.,
+  # [Papamakarios et al. (2016)][3] also describe an Inverse Autoregressive
+  # Flow [(Kingma et al., 2016)][2]:
   iaf = tfd.TransformedDistribution(
       distribution=tfd.Normal(loc=0., scale=1.),
       bijector=tfb.Invert(tfb.MaskedAutoregressiveFlow(
@@ -168,20 +171,35 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
       event_shape=[dims])
   ```
 
-  [1]: "Masked Autoregressive Flow for Density Estimation."
-       George Papamakarios, Theo Pavlakou, Iain Murray. Arxiv. 2017.
-       https://arxiv.org/abs/1705.07057
+  #### References
 
-  [2]: "MADE: Masked Autoencoder for Distribution Estimation."
-       Mathieu Germain, Karol Gregor, Iain Murray, Hugo Larochelle. ICML. 2015.
-       https://arxiv.org/abs/1502.03509
+  [1]: Mathieu Germain, Karol Gregor, Iain Murray, and Hugo Larochelle. MADE:
+       Masked Autoencoder for Distribution Estimation. In _International
+       Conference on Machine Learning_, 2015. https://arxiv.org/abs/1502.03509
 
+  [2]: Diederik P. Kingma, Tim Salimans, Rafal Jozefowicz, Xi Chen, Ilya
+       Sutskever, and Max Welling. Improving Variational Inference with Inverse
+       Autoregressive Flow. In _Neural Information Processing Systems_, 2016.
+       https://arxiv.org/abs/1606.04934
+
+  [3]: George Papamakarios, Theo Pavlakou, and Iain Murray. Masked
+       Autoregressive Flow for Density Estimation. In _Neural Information
+       Processing Systems_, 2017. https://arxiv.org/abs/1705.07057
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                shift_and_log_scale_fn,
                is_constant_jacobian=False,
                validate_args=False,
+               unroll_loop=False,
                name=None):
     """Creates the MaskedAutoregressiveFlow bijector.
 
@@ -201,17 +219,47 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
         inefficient.)
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
+      unroll_loop: Python `bool` indicating whether the `tf.while_loop` in
+        `_forward` should be replaced with a static for loop. Requires that
+        the final dimension of `x` be known at graph construction time. Defaults
+        to `False`.
       name: Python `str`, name given to ops managed by this object.
     """
     name = name or "masked_autoregressive_flow"
     self._shift_and_log_scale_fn = shift_and_log_scale_fn
+    self._unroll_loop = unroll_loop
     super(MaskedAutoregressiveFlow, self).__init__(
+        forward_min_event_ndims=1,
         is_constant_jacobian=is_constant_jacobian,
         validate_args=validate_args,
         name=name)
 
   def _forward(self, x):
+    if self._unroll_loop:
+      event_size = x.shape.with_rank_at_least(1)[-1].value
+      if event_size is None:
+        raise ValueError(
+            "The final dimension of `x` must be known at graph construction "
+            "time if `unroll_loop=True`. `x.shape: %r`" % x.shape)
+      y = array_ops.zeros_like(x, name="y0")
+
+      for _ in range(event_size):
+        shift, log_scale = self._shift_and_log_scale_fn(y)
+        # next_y = scale * x + shift
+        next_y = x
+        if log_scale is not None:
+          next_y *= math_ops.exp(log_scale)
+        if shift is not None:
+          next_y += shift
+        y = next_y
+      return y
+
     event_size = array_ops.shape(x)[-1]
+    # If the event size is available at graph construction time, we can inform
+    # the graph compiler of the maximum number of steps. If not,
+    # static_event_size will be None, and the maximum_iterations argument will
+    # have no effect.
+    static_event_size = x.shape.with_rank_at_least(1)[-1].value
     y0 = array_ops.zeros_like(x, name="y0")
     # call the template once to ensure creation
     _ = self._shift_and_log_scale_fn(y0)
@@ -233,7 +281,8 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
     _, y = control_flow_ops.while_loop(
         cond=lambda index, _: index < event_size,
         body=_loop_body,
-        loop_vars=[0, y0])
+        loop_vars=(0, y0),
+        maximum_iterations=static_event_size)
     return y
 
   def _inverse(self, y):
@@ -256,6 +305,14 @@ MASK_INCLUSIVE = "inclusive"
 MASK_EXCLUSIVE = "exclusive"
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _gen_slices(num_blocks, n_in, n_out, mask_type=MASK_EXCLUSIVE):
   """Generate the slices for building an autoregressive mask."""
   # TODO(b/67594795): Better support of dynamic shape.
@@ -273,6 +330,14 @@ def _gen_slices(num_blocks, n_in, n_out, mask_type=MASK_EXCLUSIVE):
   return slices
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _gen_mask(num_blocks,
               n_in,
               n_out,
@@ -287,6 +352,14 @@ def _gen_mask(num_blocks,
   return mask
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def masked_dense(inputs,
                  units,
                  num_blocks=None,
@@ -298,11 +371,7 @@ def masked_dense(inputs,
                  **kwargs):
   """A autoregressively masked dense layer. Analogous to `tf.layers.dense`.
 
-  See [1] for detailed explanation.
-
-  [1]: "MADE: Masked Autoencoder for Distribution Estimation."
-       Mathieu Germain, Karol Gregor, Iain Murray, Hugo Larochelle. ICML. 2015.
-       https://arxiv.org/abs/1502.03509
+  See [Germain et al. (2015)][1] for detailed explanation.
 
   Arguments:
     inputs: Tensor input.
@@ -327,6 +396,12 @@ def masked_dense(inputs,
   Raises:
     NotImplementedError: if rightmost dimension of `inputs` is unknown prior to
       graph execution.
+
+  #### References
+
+  [1]: Mathieu Germain, Karol Gregor, Iain Murray, and Hugo Larochelle. MADE:
+       Masked Autoencoder for Distribution Estimation. In _International
+       Conference on Machine Learning_, 2015. https://arxiv.org/abs/1502.03509
   """
   # TODO(b/67594795): Better support of dynamic shape.
   input_depth = inputs.shape.with_rank_at_least(1)[-1].value
@@ -357,6 +432,14 @@ def masked_dense(inputs,
     return layer.apply(inputs)
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def masked_autoregressive_default_template(
     hidden_layers,
     shift_only=False,
@@ -367,23 +450,24 @@ def masked_autoregressive_default_template(
     name=None,
     *args,
     **kwargs):
-  """Build the MADE Model [1].
+  """Build the Masked Autoregressive Density Estimator (Germain et al., 2015).
 
   This will be wrapped in a make_template to ensure the variables are only
-  created once. It takes the input and returns the `loc` ("mu" [1]) and
-  `log_scale` ("alpha" [1]) from the MADE network.
+  created once. It takes the input and returns the `loc` ("mu" in [Germain et
+  al. (2015)][1]) and `log_scale` ("alpha" in [Germain et al. (2015)][1]) from
+  the MADE network.
 
   Warning: This function uses `masked_dense` to create randomly initialized
   `tf.Variables`. It is presumed that these will be fit, just as you would any
   other neural architecture which uses `tf.layers.dense`.
 
-  #### About Hidden Layers:
+  #### About Hidden Layers
 
   Each element of `hidden_layers` should be greater than the `input_depth`
   (i.e., `input_depth = tf.shape(input)[-1]` where `input` is the input to the
   neural network). This is necessary to ensure the autoregressivity property.
 
-  #### About Clipping:
+  #### About Clipping
 
   This function also optionally clips the `log_scale` (but possibly not its
   gradient). This is useful because if `log_scale` is too small/large it might
@@ -396,11 +480,7 @@ def masked_autoregressive_default_template(
   `grad[exp(clip(x))] = grad[x] exp(clip(x))` rather than the usual
   `grad[clip(x)] exp(clip(x))`.
 
-  [1]: "MADE: Masked Autoencoder for Distribution Estimation."
-       Mathieu Germain, Karol Gregor, Iain Murray, Hugo Larochelle. ICML. 2015.
-       https://arxiv.org/abs/1502.03509
-
-  Arguments:
+  Args:
     hidden_layers: Python `list`-like of non-negative integer, scalars
       indicating the number of units in each hidden layer. Default: `[512, 512].
     shift_only: Python `bool` indicating if only the `shift` term shall be
@@ -419,12 +499,20 @@ def masked_autoregressive_default_template(
     **kwargs: `tf.layers.dense` keyword arguments.
 
   Returns:
-    shift: `Float`-like `Tensor` of shift terms (the "mu" in [2]).
-    log_scale: `Float`-like `Tensor` of log(scale) terms (the "alpha" in [2]).
+    shift: `Float`-like `Tensor` of shift terms (the "mu" in
+      [Germain et al.  (2015)][1]).
+    log_scale: `Float`-like `Tensor` of log(scale) terms (the "alpha" in
+      [Germain et al. (2015)][1]).
 
   Raises:
     NotImplementedError: if rightmost dimension of `inputs` is unknown prior to
       graph execution.
+
+  #### References
+
+  [1]: Mathieu Germain, Karol Gregor, Iain Murray, and Hugo Larochelle. MADE:
+       Masked Autoencoder for Distribution Estimation. In _International
+       Conference on Machine Learning_, 2015. https://arxiv.org/abs/1502.03509
   """
 
   with ops.name_scope(name, "masked_autoregressive_default_template",
@@ -468,6 +556,14 @@ def masked_autoregressive_default_template(
         "masked_autoregressive_default_template", _fn)
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _clip_by_value_preserve_grad(x, clip_value_min, clip_value_max, name=None):
   """Clips input while leaving gradient unaltered."""
   with ops.name_scope(name, "clip_by_value_preserve_grad",

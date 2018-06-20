@@ -71,10 +71,10 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
     OP_REQUIRES(ctx, XlaContext::Get(ctx).allow_cpu_custom_calls(),
                 errors::InvalidArgument(
                     "ArgMax implementation requires a CustomCall on CPU"));
-    xla::ComputationBuilder& b = *ctx->builder();
+    xla::XlaBuilder& b = *ctx->builder();
 
     // XLA passes <out> to the function, so it is not included here.
-    std::vector<xla::ComputationDataHandle> args;
+    std::vector<xla::XlaOp> args;
     args.push_back(ctx->Input(0));
     args.push_back(b.ConstantLiteral(
         *xla::Literal::CreateR1<int64>(input_shape.dim_sizes())));
@@ -91,7 +91,7 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
 
     // Tell XLA to call the custom code, defined in
     // index_ops_kernel_argmax_float_1d.cc.
-    xla::ComputationDataHandle output;
+    xla::XlaOp output;
     switch (input_shape.dims()) {
       case 1:
         output = b.CustomCall("argmax_float_1d_xla_impl", args, xla_shape);

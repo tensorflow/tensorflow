@@ -171,27 +171,8 @@ Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   return Status::OK();
 }
 
-Status ScalarAndTwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
-  ShapeHandle handle;
-  DimensionHandle unused_handle;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
-  for (int i = 1; i < c->num_inputs(); ++i) {
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &handle));
-    TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_handle));
-  }
-  for (int i = 0; i < c->num_outputs(); ++i) {
-    c->set_output(i, c->Scalar());
-  }
-  return Status::OK();
-}
-
 Status TwoElementOutput(InferenceContext* c) {
   c->set_output(0, c->Vector(2));
-  return Status::OK();
-}
-
-Status ScalarOutput(InferenceContext* c) {
-  c->set_output(0, c->Scalar());
   return Status::OK();
 }
 }  // namespace
@@ -627,6 +608,50 @@ REGISTER_OP("TensorArrayGradV3")
       return Status::OK();
     });
 
+REGISTER_OP("TensorArrayGradWithShape")
+    .Input("handle: resource")
+    .Input("flow_in: float")
+    .Input("shape_to_prepend: int32")
+    .Output("grad_handle: resource")
+    .Output("flow_out: float")
+    .Attr("source: string")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle handle;
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
+      c->set_output(0, c->Vector(2));
+      c->set_output(1, c->Scalar());
+      auto* shape_and_type = c->input_handle_shapes_and_types(0);
+      if (shape_and_type) {
+        auto input_shape = (*shape_and_type)[0].shape;
+        auto dtype = (*shape_and_type)[0].dtype;
+        // Note that shape_to_preped is a rank 1 Tensor representing a shape.
+        // The size of dimension 0 is the number of dimensions we need to add to
+        // output shape.
+        int64 prepend_rank = c->Value(c->Dim(c->input(2), 0));
+        if (c->RankKnown(input_shape) &&
+            prepend_rank != InferenceContext::kUnknownDim) {
+          int32 input_rank = c->Rank(input_shape);
+          std::vector<DimensionHandle> dims;
+          dims.reserve(prepend_rank + input_rank);
+          for (int i = 0; i < prepend_rank; ++i) {
+            dims.push_back(c->UnknownDim());
+          }
+          for (int i = 0; i < input_rank; ++i) {
+            dims.push_back(c->Dim(input_shape, i));
+          }
+          c->set_output_handle_shapes_and_types(0,
+                                                {{c->MakeShape(dims), dtype}});
+        } else {
+          c->set_output_handle_shapes_and_types(0,
+                                                {{c->UnknownShape(), dtype}});
+        }
+      }
+      return Status::OK();
+    });
+
 REGISTER_OP("TensorArrayWriteV3")
     .Input("handle: resource")
     .Input("index: int32")
@@ -687,13 +712,31 @@ REGISTER_OP("TensorArrayGatherV3")
     .Attr("dtype: type")
     .Attr("element_shape: shape = { unknown_rank: true }")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle indices;
       ShapeHandle unused;
       DimensionHandle unused_dim;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &indices));
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      return shape_inference::UnknownShape(c);
+      auto shapes = c->input_handle_shapes_and_types(0);
+      if (shapes != nullptr && !shapes->empty()) {
+        ShapeHandle tensor_shape = shapes->at(0).shape;
+        ShapeHandle output_shape;
+        TF_RETURN_IF_ERROR(
+            c->Concatenate(indices, tensor_shape, &output_shape));
+        c->set_output(0, output_shape);
+        return Status::OK();
+      } else {
+        PartialTensorShape p;
+        TF_RETURN_IF_ERROR(c->GetAttr("element_shape", &p));
+        ShapeHandle s;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(p, &s));
+        ShapeHandle output_shape;
+        TF_RETURN_IF_ERROR(c->Concatenate(indices, s, &output_shape));
+        c->set_output(0, output_shape);
+        return Status::OK();
+      }
     });
 
 REGISTER_OP("TensorArrayScatterV3")
@@ -704,12 +747,25 @@ REGISTER_OP("TensorArrayScatterV3")
     .Output("flow_out: float")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle indices;
       ShapeHandle unused;
       DimensionHandle unused_dim;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &indices));
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      ShapeHandle value_shape;
+      // Assert that the length of the indices tensor is equal to the first
+      // dimension of the value tensor.
+      TF_RETURN_IF_ERROR(
+          c->MergePrefix(c->input(2), indices, &value_shape, &indices));
+      auto shapes = c->input_handle_shapes_and_types(0);
+      if (shapes != nullptr && !shapes->empty()) {
+        ShapeHandle tensor_shape = shapes->at(0).shape;
+        ShapeHandle fed_shape;
+        TF_RETURN_IF_ERROR(c->Subshape(value_shape, 1, &fed_shape));
+        TF_RETURN_IF_ERROR(c->Merge(tensor_shape, fed_shape, &fed_shape));
+      }
       return shape_inference::ScalarShape(c);
     });
 
@@ -787,7 +843,6 @@ REGISTER_OP("TensorArray")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayV3");
-// TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayV2")
     .Input("size: int32")
     .Attr("dtype: type")
@@ -802,7 +857,8 @@ REGISTER_OP("TensorArrayV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       c->set_output(0, c->Vector(2));
       return Status::OK();
-    });
+    })
+    .Deprecated(26, "Use TensorArrayV3");
 REGISTER_OP("TensorArrayGrad")
     .Input("handle: string")
     .Input("flow_in: float")
@@ -811,7 +867,6 @@ REGISTER_OP("TensorArrayGrad")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayGradV3");
-// TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayGradV2")
     .Input("handle: string")
     .Input("flow_in: float")
@@ -825,7 +880,8 @@ REGISTER_OP("TensorArrayGradV2")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
       c->set_output(0, c->Vector(2));
       return Status::OK();
-    });
+    })
+    .Deprecated(26, "Use TensorArrayGradV3");
 REGISTER_OP("TensorArrayWrite")
     .Input("handle: Ref(string)")
     .Input("index: int32")
@@ -835,7 +891,6 @@ REGISTER_OP("TensorArrayWrite")
     .Attr("T: type")
     .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayWriteV3");
-// TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayWriteV2")
     .Input("handle: string")
     .Input("index: int32")
@@ -853,7 +908,8 @@ REGISTER_OP("TensorArrayWriteV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       return shape_inference::ScalarShape(c);
-    });
+    })
+    .Deprecated(26, "Use TensorArrayWriteV3");
 REGISTER_OP("TensorArrayRead")
     .Input("handle: Ref(string)")
     .Input("index: int32")
@@ -862,7 +918,6 @@ REGISTER_OP("TensorArrayRead")
     .Attr("dtype: type")
     .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayReadV3");
-// TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayReadV2")
     .Input("handle: string")
     .Input("index: int32")
@@ -878,7 +933,8 @@ REGISTER_OP("TensorArrayReadV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       return shape_inference::UnknownShape(c);
-    });
+    })
+    .Deprecated(26, "Use TensorArrayReadV3");
 REGISTER_OP("TensorArrayPack")
     .Input("handle: Ref(string)")
     .Input("flow_in: float")
@@ -904,7 +960,6 @@ REGISTER_OP("TensorArrayGather")
     .Attr("element_shape: shape = { unknown_rank: true }")
     .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArrayGatherV3");
-// TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayGatherV2")
     .Input("handle: string")
     .Input("indices: int32")
@@ -920,7 +975,8 @@ REGISTER_OP("TensorArrayGatherV2")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       return shape_inference::UnknownShape(c);
-    });
+    })
+    .Deprecated(26, "Use TensorArrayGatherV3");
 REGISTER_OP("TensorArrayScatter")
     .Input("handle: Ref(string)")
     .Input("indices: int32")
@@ -930,7 +986,6 @@ REGISTER_OP("TensorArrayScatter")
     .Attr("T: type")
     .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(19, "Use TensorArrayGradV3");
-// TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayScatterV2")
     .Input("handle: string")
     .Input("indices: int32")
@@ -946,7 +1001,8 @@ REGISTER_OP("TensorArrayScatterV2")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       return shape_inference::ScalarShape(c);
-    });
+    })
+    .Deprecated(26, "Use TensorArrayScatterV3");
 REGISTER_OP("TensorArrayConcat")
     .Input("handle: Ref(string)")
     .Input("flow_in: float")
@@ -983,7 +1039,6 @@ REGISTER_OP("TensorArraySplit")
     .Attr("T: type")
     .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArraySplitV3");
-// TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArraySplitV2")
     .Input("handle: string")
     .Input("value: T")
@@ -1000,14 +1055,14 @@ REGISTER_OP("TensorArraySplitV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       return shape_inference::ScalarShape(c);
-    });
+    })
+    .Deprecated(26, "Use TensorArraySplitV3");
 REGISTER_OP("TensorArraySize")
     .Input("handle: Ref(string)")
     .Input("flow_in: float")
     .Output("size: int32")
     .SetShapeFn(shape_inference::UnknownShape)
     .Deprecated(16, "Use TensorArraySizeV3");
-// TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArraySizeV2")
     .Input("handle: string")
     .Input("flow_in: float")
@@ -1018,12 +1073,12 @@ REGISTER_OP("TensorArraySizeV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
       return shape_inference::ScalarShape(c);
-    });
+    })
+    .Deprecated(26, "Use TensorArraySizeV3");
 REGISTER_OP("TensorArrayClose")
     .Input("handle: Ref(string)")
     .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
     .Deprecated(16, "Use TensorArrayCloseV3");
-// TODO(cwhipkey): mark this deprecated in favor of V3.
 REGISTER_OP("TensorArrayCloseV2")
     .Input("handle: string")
     .SetShapeFn([](InferenceContext* c) {
@@ -1032,7 +1087,8 @@ REGISTER_OP("TensorArrayCloseV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
       return Status::OK();
-    });
+    })
+    .Deprecated(26, "Use TensorArrayCloseV3");
 
 // --------------------------------------------------------------------------
 

@@ -23,9 +23,3 @@ tf_py_logged_benchmark(
     name = "sample_logged_benchmark",
     target = "//tensorflow/examples/benchmark:sample_benchmark",
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(["**/*"]),
-    visibility = ["//tensorflow:__subpackages__"],
-)

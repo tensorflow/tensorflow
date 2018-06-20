@@ -12,6 +12,16 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
+    name = "all_reduce_py",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":all_reduce",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "all_reduce",
     srcs = [
         "python/all_reduce.py",
@@ -44,17 +54,4 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -20,12 +20,10 @@ import gc
 
 from tensorflow.contrib.eager.python import network
 from tensorflow.contrib.layers.python.layers import regularizers
-from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
 from tensorflow.python.ops import math_ops
@@ -33,6 +31,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 # pylint: disable=not-callable
@@ -63,6 +62,12 @@ class RegularizedNetwork(network.Network):
 
 
 class NetworkTest(test.TestCase):
+
+  def test_checkpointing_not_implemented(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint = checkpointable_utils.Checkpoint(net=MyNetwork())
+    with self.assertRaises(NotImplementedError):
+      checkpoint.save(checkpoint_directory)
 
   def _save_modify_load_network_built(self, net, global_step=None):
     checkpoint_directory = self.get_temp_dir()
@@ -469,36 +474,6 @@ class NetworkTest(test.TestCase):
     self.assertIsInstance(net.trainable_weights[0],
                           resource_variable_ops.ResourceVariable)
 
-  def testGraphOpNames(self):
-    """Network operation names should match variable naming."""
-
-    def _check_op_prefixes(expected_prefix, checked_ops):
-      for operation in ops.get_default_graph().get_operations():
-        if operation.name == "ignore":
-          continue
-        if operation.name in checked_ops:
-          continue
-        checked_ops.add(operation.name)
-        self.assertStartsWith(expected_start=expected_prefix,
-                              actual=operation.name)
-        self.assertNotIn("my_network", operation.name[len(expected_prefix):])
-        self.assertNotIn("dense", operation.name[len(expected_prefix):])
-
-    with context.graph_mode():
-      net = MyNetwork()
-      zero = constant_op.constant([[0.]], name="ignore")
-      net(zero)
-      checked_ops = set()
-      _check_op_prefixes(expected_prefix="my_network/dense/",
-                         checked_ops=checked_ops)
-      net.net2 = net.track_layer(MyNetwork())
-      net.net2(zero)
-      _check_op_prefixes(expected_prefix="my_network/my_network/dense/",
-                         checked_ops=checked_ops)
-      MyNetwork()(zero)
-      _check_op_prefixes(expected_prefix="my_network_1/dense/",
-                         checked_ops=checked_ops)
-
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testVariableRegularizers(self):
     net = RegularizedNetwork()
@@ -539,7 +514,7 @@ class NetworkTest(test.TestCase):
         # No issue here since the name is unique within its scope.
         name_conflict3 = MyNetwork(name="name_conflict")
       net2 = MyNetwork()  # name=outside_scope/my_network_2 to avoid the
-                          # variable_scope my_network_1 below.
+      # variable_scope my_network_1 below.
       vs_name_conflict = MyNetwork(name="vs_name_conflict")  # conflict below
     with variable_scope.variable_scope("intervening_scope"):
       with variable_scope.variable_scope(captured_scope):
@@ -688,7 +663,7 @@ class NetworkTest(test.TestCase):
     net2(one)
     # Layer names typically are globally unique rather than being unique within
     # the scope of their first use. However, within a Network they must be named
-    # locally so that previous Layer consutrciton does not interfere with
+    # locally so that previous Layer construction does not interfere with
     # variable naming (e.g. add a Layer construction before the Network,
     # suddenly your previously saved checkpoint is incompatible).
     self.assertEqual("dense", net1.l1.name)

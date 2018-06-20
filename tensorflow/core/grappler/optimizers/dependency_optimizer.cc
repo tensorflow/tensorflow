@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -36,63 +37,84 @@ namespace grappler {
 
 namespace {
 
-int RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
-  int num_removed = 0;
+bool RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
+  bool removed_input = false;
   int pos = 0;
   while (pos < node->input_size()) {
     if (node->input(pos) == input) {
       node->mutable_input()->SwapElements(pos, node->input_size() - 1);
       node->mutable_input()->RemoveLast();
       node_map->RemoveOutput(NodeName(input), node->name());
+      removed_input = true;
     } else {
       ++pos;
     }
-    ++num_removed;
   }
-  return num_removed;
+  return removed_input;
 }
 
-// Remove duplicate control inputs.
-void PruneControlInputs(NodeDef* node) {
-  std::unordered_set<string> inputs;
-  int pos = 0;
-  while (pos < node->input_size()) {
-    const string& input = node->input(pos);
-    // TODO(rmlarsen): Remove control inputs that also appears as a regular
-    // inputs. Currently, doing so breaks testControlFlowStrictness in
-    // python/framework/function_test.
-    //    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
-    if (IsControlInput(input) && !inputs.insert(input).second) {
-      VLOG(1) << "**** Removing duplicate control input: " << input
-              << " from node " << node->DebugString();
-      node->mutable_input()->SwapElements(pos, node->input_size() - 1);
-      node->mutable_input()->RemoveLast();
-    } else {
-      ++pos;
-    }
+void DeleteNodes(const std::set<int>& nodes_to_delete, GraphDef* graph) {
+  int last = graph->node_size() - 1;
+  for (auto it = nodes_to_delete.rbegin(); it != nodes_to_delete.rend(); ++it) {
+    const int index = *it;
+    graph->mutable_node()->SwapElements(index, last);
+    last--;
   }
+  graph->mutable_node()->DeleteSubrange(last + 1, nodes_to_delete.size());
 }
 
 }  // namespace
 
-bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
+bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
+  if (!IsIdentity(node)) {
+    return true;
+  }
+
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
-  if (!fetch_nodes_known_ || NumNonControlOutputs(node, *node_map_) > 0) {
+  if (!fetch_nodes_known_) {
     // The output values of this node may be needed.
     return false;
   }
-  if (IsMerge(node) || IsSwitch(node)) {
+  const NodeDef* input = node_map_->GetNode(NodeName(node.input(0)));
+  CHECK(input != nullptr) << "node = " << node.name()
+                          << " input = " << node.input(0);
+  // Don't remove Identity nodes corresponding to Variable reads or following
+  // Recv.
+  if (IsVariable(*input) || IsRecv(*input)) {
+    return false;
+  } else if (IsSwitch(*input)) {
+    // Don't turn Identity nodes following Switch into NoOp or remove them
+    // if it requires anchoring a control dependencies the Switch node, which
+    // is not valid.
+    if (str_util::StartsWith(node.name(), kConstantFoldingCtrl)) {
+      // TODO(rmlarsen): Try to remove this artificial contraint.
+      return false;
+    }
+  }
+  for (auto consumer : node_map_->GetOutputs(node.name())) {
+    if (node.input_size() > 1 && IsMerge(*consumer)) {
+      return false;
+    }
+    if (IsSwitch(*input)) {
+      for (const string& consumer_input : consumer->input()) {
+        if (consumer_input == AsControlDependency(node.name())) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
+  if (!fetch_nodes_known_ ||
+      nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
-  if (ModifiesFrameInfo(node)) {
-    return false;
-  }
-  if (!IsFreeOfSideEffect(node)) {
-    return false;
-  }
-  if (node.op() == "ControlTrigger") {
+  if (IsMerge(node) || IsSwitch(node) || ModifiesFrameInfo(node) ||
+      !IsFreeOfSideEffect(node)) {
     return false;
   }
   if (node.op().rfind("Submodel", 0) == 0) {
@@ -103,44 +125,97 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
   if (!status.ok() || op_def->output_arg_size() == 0) {
     return false;
   }
-
-  // Don't turn Identity nodes inserted by Grappler after Switch into NoOp,
-  // since we cannot anchor control dependencies on Switch nodes.
-  // Don't remove Identity nodes corresponding to Variable reads.
-  if (IsIdentity(node)) {
-    const NodeDef* input = node_map_->GetNode(NodeName(node.input(0)));
-    if (input != nullptr) {
-      if (IsVariable(*input) ||
-          (StringPiece(node.name()).starts_with(kConstantFoldingCtrl) &&
-           IsSwitch(*input))) {
-        return false;
-      }
-    }
-  }
-
   const std::unordered_set<string> do_not_rewrite_ops{
       "Assert",     "CheckNumerics",         "_Retval",
-      "_Arg",       "_ParallelConcatUpdate", "_TPUExecute",
-      "_TPUCompile"};
-  return do_not_rewrite_ops.find(node.op()) == do_not_rewrite_ops.end();
+      "_Arg",       "_ParallelConcatUpdate", "TPUExecute",
+      "TPUCompile", "ControlTrigger"};
+  if (do_not_rewrite_ops.find(node.op()) != do_not_rewrite_ops.end()) {
+    return false;
+  }
+  if (!SafeToRemoveIdentity(node)) {
+    return false;
+  }
+  if (NumNonControlOutputs(node, *node_map_) > 0) {
+    // The output values of this node may be needed.
+    return false;
+  }
+  return true;
+}
+
+bool DependencyOptimizer::BypassingNodeIsBeneficial(
+    const NodeDef& node, const std::vector<NodeDef*>& input_nodes,
+    const std::vector<NodeDef*>& output_nodes) const {
+  const bool is_identity = IsIdentity(node);
+  const int num_outputs = output_nodes.size();
+  const int num_inputs = node.input_size();
+
+  // Don't increase the number of edges in the graph.
+  if (num_inputs * num_outputs > num_inputs + num_outputs) {
+    return false;
+  }
+
+  // Make sure that we don't increase the number of edges that cross
+  // device boundaries.
+  if ((num_inputs == 1 && num_outputs > 1 &&
+       input_nodes[0]->device() != node.device()) ||
+      (num_inputs > 1 && num_outputs == 1 &&
+       output_nodes[0]->device() != node.device())) {
+    return false;
+  }
+
+  // TODO(rmlarsen): Not all device crossings are equally expensive.
+  // Assign a cost to each based on device affinity and compute a
+  // cost before and after.
+  const string& node_dev = node.device();
+  int num_cross_in = 0;
+  for (NodeDef* input_node : input_nodes) {
+    num_cross_in += static_cast<int>(input_node->device() != node_dev);
+  }
+  int num_cross_out = 0;
+  for (NodeDef* output_node : output_nodes) {
+    num_cross_out += static_cast<int>(output_node->device() != node_dev);
+  }
+  if (is_identity && num_cross_in > 0 && num_cross_out > 0) {
+    // This identity node follows a device crossing, so it might be
+    // following a _Recv node after partioning. Do not remove such nodes,
+    // unless they only have consumers on the same device as themselves.
+    return false;
+  }
+
+  // Make sure we do not increase the number of device crossings.
+  const int num_cross_before = num_cross_in + num_cross_out;
+  int num_cross_after = 0;
+  for (NodeDef* input_node : input_nodes) {
+    for (NodeDef* output_node : output_nodes) {
+      num_cross_after +=
+          static_cast<int>(input_node->device() != output_node->device());
+    }
+  }
+  if (num_cross_after > num_cross_before) {
+    return false;
+  }
+  return true;
 }
 
 void DependencyOptimizer::OptimizeNode(int node_idx,
                                        SetVector<int>* nodes_to_simplify,
                                        std::set<int>* nodes_to_delete) {
   NodeDef* node = optimized_graph_->mutable_node(node_idx);
-
+  const bool is_noop = IsNoOp(*node);
+  const bool is_identity = IsIdentity(*node);
+  const string node_name = node->name();
   // Constant nodes with no input control dependency are always executed early,
   // so we can prune all their output control dependencies.
   if (IsConstant(*node) && node->input_size() == 0) {
-    const std::set<NodeDef*> output_nodes = node_map_->GetOutputs(node->name());
+    const std::set<NodeDef*> output_nodes = node_map_->GetOutputs(node_name);
     for (NodeDef* fanout : output_nodes) {
       bool optimize_fanout = false;
       bool data_connection = false;
       for (int i = fanout->input_size() - 1; i >= 0; --i) {
         int pos;
-        string input_name = ParseNodeName(fanout->input(i), &pos);
-        if (input_name == node->name()) {
+        StringPiece input_name =
+            ParseNodeNameAsStringPiece(fanout->input(i), &pos);
+        if (input_name == node_name) {
           if (pos < 0) {
             fanout->mutable_input()->SwapElements(i, fanout->input_size() - 1);
             fanout->mutable_input()->RemoveLast();
@@ -153,22 +228,21 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       if (optimize_fanout) {
         nodes_to_simplify->PushBack(node_to_idx_[fanout]);
         if (!data_connection) {
-          node_map_->RemoveOutput(node->name(), fanout->name());
+          node_map_->RemoveOutput(node_name, fanout->name());
         }
       }
     }
-    if (node_map_->GetOutputs(node->name()).empty() && fetch_nodes_known_ &&
-        nodes_to_preserve_.find(node->name()) == nodes_to_preserve_.end()) {
+    if (node_map_->GetOutputs(node_name).empty() && fetch_nodes_known_ &&
+        nodes_to_preserve_.find(node_name) == nodes_to_preserve_.end()) {
       // Mark the node for deletion.
       nodes_to_delete->insert(node_to_idx_[node]);
     }
-
     return;
   }
 
   // Change ops that only have control dependencies as outputs to NoOps.
-  if (node->op() != "NoOp" && SafeToConvertToNoOp(*node)) {
-    VLOG(1) << "***** Replacing  " << node->name() << " (" << node->op()
+  if (!is_noop && SafeToConvertToNoOp(*node)) {
+    VLOG(1) << "***** Replacing  " << node_name << " (" << node->op()
             << ") with NoOp.";
     // The outputs of this node are not consumed. Replace its inputs with
     // control dependencies and replace the op itself with the NoOp op.
@@ -190,7 +264,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
           old_input, optimized_graph_, node_map_.get());
       if (ctrl_inputs.insert(ctrl_input).second) {
         node->set_input(pos, ctrl_input);
-        node_map_->UpdateInput(node->name(), old_input, ctrl_input);
+        node_map_->UpdateInput(node_name, old_input, ctrl_input);
         const NodeDef* old_input_node = node_map_->GetNode(old_input);
         nodes_to_simplify->PushBack(node_to_idx_[old_input_node]);
       }
@@ -198,6 +272,8 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     }
     node->set_op("NoOp");
     node->clear_attr();
+    nodes_to_simplify->PushBack(node_to_idx_[node]);
+    return;
   }
 
   // Remove NoOp nodes if the product of their fan-in and fan-out is less than
@@ -226,84 +302,112 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
   // a and x, respectively, are on the same device. Control edges across device
   // boundaries require inter-device communication (Send/Recv pairs to be
   // inserted in the graph), which is very costly.
+  //
+  // We also remove identity nodes, subject to the same constraints on number of
+  // resulting control edges and device boundary crossings:
+  //
+  // Case a)
+  //          +----------+ ---> a       +---+ ---> a
+  //    x --> | Identity | --^> b  ==>  | x | --^> b
+  //          |          | ...          |   | ...
+  //          +----------+ --^> c       +---+ --^> c
+  //
+  // Case b)
+  //    x ---> +----------+ ---> a      x ---> +---+
+  //    y --^> | Identity |        ==>  y --^> | a |
+  //    ...    |          |               ...  |   |
+  //    z --^> +----------+             z --^> +---+
+  //
+  // Case c)
+  //           +----------+             x ---> +---+
+  //    x ---> | Identity | ---> a ==>   \--^> | a |
+  //    y --^> |          | --^> b       /\    +---+
+  //           +----------+             y --^> b
 
-  if (node->op() == "NoOp") {
-    const auto& output_node_set = node_map_->GetOutputs(node->name());
+  if (is_noop || (is_identity && SafeToRemoveIdentity(*node))) {
+    const auto& output_node_set = node_map_->GetOutputs(node_name);
     const std::vector<NodeDef*> output_nodes(output_node_set.begin(),
                                              output_node_set.end());
-    const int num_outputs = output_nodes.size();
     const int num_inputs = node->input_size();
-
-    if (num_inputs * num_outputs > num_inputs + num_outputs) {
-      return;
-    }
-    VLOG(1) << "***** Rerouting input around " << node->name();
     std::vector<NodeDef*> input_nodes;
     for (int i = 0; i < num_inputs; ++i) {
-      NodeDef* tmp = node_map_->GetNode(node->input(i));
-      CHECK_NE(tmp, nullptr);
-      input_nodes.push_back(tmp);
-    }
-
-    // Make sure that we don't increase the number of control edges that cross
-    // device boundaries.
-    if ((num_inputs == 1 && num_outputs > 1 &&
-         input_nodes[0]->device() != node->device()) ||
-        (num_inputs > 1 && num_outputs == 1 &&
-         output_nodes[0]->device() != node->device())) {
-      return;
-    }
-    if (num_inputs == 2 && num_outputs == 2) {
-      const string& noop_dev = node->device();
-      const string& in0_dev = input_nodes[0]->device();
-      const string& in1_dev = input_nodes[1]->device();
-      const string& out0_dev = output_nodes[0]->device();
-      const string& out1_dev = output_nodes[1]->device();
-      const int num_cross_before = static_cast<int>(in0_dev != noop_dev) +
-                                   static_cast<int>(in1_dev != noop_dev) +
-                                   static_cast<int>(out0_dev != noop_dev) +
-                                   static_cast<int>(out1_dev != noop_dev);
-      const int num_cross_after = static_cast<int>(in0_dev != out0_dev) +
-                                  static_cast<int>(in0_dev != out1_dev) +
-                                  static_cast<int>(in1_dev != out0_dev) +
-                                  static_cast<int>(in1_dev != out1_dev);
-      if (num_cross_after > num_cross_before) {
+      NodeDef* input_node = node_map_->GetNode(node->input(i));
+      if (input_node == nullptr) {
+        LOG(ERROR) << "Invalid input " << node->input(i);
         return;
       }
+      input_nodes.push_back(input_node);
     }
+
+    if (!BypassingNodeIsBeneficial(*node, input_nodes, output_nodes)) {
+      return;
+    }
+
+    VLOG(1) << "***** Rerouting input around\n" << node->DebugString();
+    // Now remove the node and re-wire its inputs to its outputs.
     for (auto consumer : output_nodes) {
       bool updated_consumer = false;
-      VLOG(1) << "***** Considering consumer  " << consumer->name() << "\n"
-              << consumer->DebugString();
+      VLOG(1) << "consumer before:\n" << consumer->DebugString();
       for (int i = 0; i < num_inputs; ++i) {
         const NodeDef* input = input_nodes[i];
         // Forward dependency from input to consumer if it doesn't already
         // depend on it.
-        if (node_map_->GetOutputs(input->name()).count(consumer) == 0) {
-          consumer->add_input(AsControlDependency(input->name()));
+        if (is_identity && i == 0) {
+          // Replace regular input from Identity node.
+          bool found_input = false;
+          string new_input;
+          const string& input_to_forward = node->input(0);
+          CHECK(!IsControlInput(input_to_forward));
+          for (int j = 0; j < consumer->input_size(); ++j) {
+            const string& old_input = consumer->input(j);
+            int old_input_pos;
+            StringPiece old_input_node_name =
+                ParseNodeNameAsStringPiece(old_input, &old_input_pos);
+            if (old_input_node_name == node_name) {
+              if (old_input_pos >= 0) {
+                // Regular input
+                new_input = input_to_forward;
+                node_map_->UpdateInput(consumer->name(), old_input, new_input);
+                consumer->set_input(j, new_input);
+                found_input = true;
+              } else {
+                // Control dependency
+                new_input = AsControlDependency(NodeName(input_to_forward));
+                node_map_->UpdateInput(consumer->name(), old_input, new_input);
+                consumer->set_input(j, new_input);
+                found_input = true;
+              }
+            }
+          }
+          CHECK(found_input);
           updated_consumer = true;
-          node_map_->AddOutput(input->name(), consumer->name());
-          nodes_to_simplify->PushBack(node_to_idx_[input]);
+        } else {
+          // Forward dependency from input to consumer if it doesn't already
+          // depend on it.
+          if (node_map_->GetOutputs(input->name()).count(consumer) == 0) {
+            consumer->add_input(AsControlDependency(input->name()));
+            node_map_->AddOutput(input->name(), consumer->name());
+            nodes_to_simplify->PushBack(node_to_idx_[input]);
+            updated_consumer = true;
+          }
         }
       }
       // Remove dependency on node from consumer.
-      updated_consumer |= RemoveInput(
-          consumer, AsControlDependency(node->name()), node_map_.get());
+      updated_consumer |= RemoveInput(consumer, AsControlDependency(node_name),
+                                      node_map_.get());
       if (updated_consumer) {
-        VLOG(1) << "***** Updated consumer  " << consumer->name() << " ("
-                << consumer->op() << ")";
         nodes_to_simplify->PushBack(node_to_idx_[consumer]);
       }
+      VLOG(1) << "consumer after:\n" << consumer->DebugString();
     }
-
-    node_map_->RemoveOutputs(node->name());
+    node_map_->RemoveOutputs(node_name);
     if (fetch_nodes_known_ &&
-        nodes_to_preserve_.find(node->name()) == nodes_to_preserve_.end()) {
+        nodes_to_preserve_.find(node_name) == nodes_to_preserve_.end()) {
       // Mark the node for deletion.
       nodes_to_delete->insert(node_idx);
 
-      // Unconnect the node from its inputs to enable further optimizations.
-      node_map_->RemoveInputs(node->name());
+      // Disconnect the node from its inputs to enable further optimizations.
+      node_map_->RemoveInputs(node_name);
       node->clear_input();
     }
   }
@@ -311,22 +415,8 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
 
 void DependencyOptimizer::CleanControlInputs() {
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    PruneControlInputs(optimized_graph_->mutable_node(i));
+    DedupControlInputs(optimized_graph_->mutable_node(i));
   }
-}
-
-void DependencyOptimizer::DeleteNodes(const std::set<int>& nodes_to_delete) {
-  int last = optimized_graph_->node_size() - 1;
-  for (auto it = nodes_to_delete.rbegin(); it != nodes_to_delete.rend(); ++it) {
-    const int index = *it;
-    optimized_graph_->mutable_node()->SwapElements(index, last);
-    last--;
-  }
-  optimized_graph_->mutable_node()->DeleteSubrange(last + 1,
-                                                   nodes_to_delete.size());
-  // Rebuild the NodeMap which was invalidated by the node swapping above.
-  node_map_.reset(new NodeMap(optimized_graph_));
-  BuildNodeToIdx();
 }
 
 Status DependencyOptimizer::OptimizeDependencies() {
@@ -334,19 +424,26 @@ Status DependencyOptimizer::OptimizeDependencies() {
   std::set<int> nodes_to_delete;
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
     const NodeDef& node = optimized_graph_->node(i);
-    if (node.op() == "NoOp" || IsConstant(node) || SafeToConvertToNoOp(node)) {
+    if (IsNoOp(node) || IsIdentity(node) || IsConstant(node) ||
+        SafeToConvertToNoOp(node)) {
       nodes_to_simplify.PushBack(i);
     }
   }
   while (!nodes_to_simplify.Empty()) {
-    OptimizeNode(nodes_to_simplify.PopBack(), &nodes_to_simplify,
-                 &nodes_to_delete);
+    int node_to_simplify = nodes_to_simplify.PopBack();
+    // Discard nodes that were marked for deletion already.
+    while (nodes_to_delete.find(node_to_simplify) != nodes_to_delete.end()) {
+      node_to_simplify = nodes_to_simplify.PopBack();
+    }
+    OptimizeNode(node_to_simplify, &nodes_to_simplify, &nodes_to_delete);
   }
 
   if (fetch_nodes_known_) {
     VLOG(1) << "Deleted " << nodes_to_delete.size() << " out of "
             << optimized_graph_->node_size() << " nodes.";
-    DeleteNodes(nodes_to_delete);
+    DeleteNodes(nodes_to_delete, optimized_graph_);
+    node_map_.reset(new NodeMap(optimized_graph_));
+    BuildNodeToIdx();
   }
   return Status::OK();
 }
@@ -435,9 +532,6 @@ Status DependencyOptimizer::TransitiveReduction() {
       if (longest_distance[target] > 1) {
         const int input_slot = control_output.second;
         control_edges_to_remove[target].emplace(input_slot, source);
-        VLOG(1) << "Removing edge from:\n"
-                << optimized_graph_->node(source).DebugString() << "\n\nto:\n\n"
-                << optimized_graph_->node(target).DebugString();
       }
     }
   }
@@ -471,20 +565,105 @@ void DependencyOptimizer::BuildNodeToIdx() {
   }
 }
 
+// Suppose there are cross-device control inputs to node C from multiple nodes
+// that are located on another device, e.g., we have control edges:
+// A->C, B->C
+// where A and B are on device X and C is on device Y.
+// We can reduce cross-device communication by introducing an intermediate
+// NoOp node C' on device X and rewriting the control edges to:
+// A->C', B->C', C' -> C
+void DependencyOptimizer::GroupCrossDeviceControlEdges() {
+  const int num_nodes = optimized_graph_->node_size();
+  for (int i = 0; i < num_nodes; ++i) {
+    NodeDef* node = optimized_graph_->mutable_node(i);
+    if (node->device().empty()) continue;
+
+    // Creates new noop nodes for devices on which multiple control inputs are
+    // located.
+
+    // Map keyed by device name to the newly introduced Noop node for that
+    // device. A nullptr value means that we have only seen a single node on
+    // that device.
+    std::map<string, NodeDef*> noops;
+    int num_noops = 0;
+    for (int j = 0; j < node->input_size(); ++j) {
+      if (IsControlInput(node->input(j))) {
+        const NodeDef* input = node_map_->GetNode(node->input(j));
+        if (input != nullptr && !input->device().empty() &&
+            input->device() != node->device()) {
+          auto emplace_result = noops.emplace(input->device(), nullptr);
+          if (!emplace_result.second &&
+              emplace_result.first->second == nullptr) {
+            // This is the second cross-device control input from the same
+            // device. Creates an intermediate noop node on that device.
+            string group_name;
+            NodeDef* noop;
+            // Creates a fresh node name; there may be conflicting names from
+            // a previous iteration of the optimizer.
+            do {
+              group_name = AddPrefixToNodeName(
+                  node->name(),
+                  strings::StrCat("GroupCrossDeviceControlEdges_", num_noops));
+              noop = node_map_->GetNode(group_name);
+              ++num_noops;
+            } while (noop != nullptr);
+            noop = optimized_graph_->add_node();
+            noop->set_name(group_name);
+            noop->set_device(input->device());
+            noop->set_op("NoOp");
+            node_map_->AddNode(noop->name(), noop);
+            emplace_result.first->second = noop;
+          }
+        }
+      }
+    }
+
+    // Reroute existing control edges to go via the newly introduced NoOp nodes.
+    int pos = 0;
+    while (pos < node->input_size()) {
+      const string& input_name = node->input(pos);
+      if (IsControlInput(input_name)) {
+        NodeDef* input = node_map_->GetNode(input_name);
+        if (input == nullptr) {
+          ++pos;
+        } else {
+          auto it = noops.find(input->device());
+          if (it == noops.end() || it->second == nullptr) {
+            ++pos;
+          } else {
+            node->mutable_input()->SwapElements(pos, node->input_size() - 1);
+            node->mutable_input()->RemoveLast();
+            it->second->add_input(AsControlDependency(*input));
+            node_map_->UpdateOutput(input_name, node->name(),
+                                    it->second->name());
+          }
+        }
+      } else {
+        ++pos;
+      }
+    }
+    for (const auto& entry : noops) {
+      if (entry.second) {
+        node->add_input(AsControlDependency(*entry.second));
+        node_map_->AddOutput(entry.second->name(), node->name());
+      }
+    }
+  }
+}
+
 Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                      GraphDef* optimized_graph) {
   optimized_graph_ = optimized_graph;
   *optimized_graph_ = item.graph;
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
-
   CleanControlInputs();
+
   const int num_iterations = 2;
   for (int iteration = 0; iteration < num_iterations; ++iteration) {
     Status topo_sort_status;
     // Perform topological sort to prepare the graph for transitive reduction.
     topo_sort_status = TopologicalSort(optimized_graph_);
-
     // Set up index-based graph datastructures to speed up analysis steps below.
     node_map_.reset(new NodeMap(optimized_graph_));
     BuildNodeToIdx();
@@ -493,11 +672,18 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // Remove redundant control dependencies.
       TF_RETURN_IF_ERROR(TransitiveReduction());
     } else {
-      LOG(ERROR) << topo_sort_status.error_message();
+      LOG(ERROR) << "Iteration = " << iteration
+                 << ", topological sort failed with message: "
+                 << topo_sort_status.error_message();
     }
-
-    // Turn nodes with only control outputs into NoOps, prune NoOps.
+    // Turn nodes with only control outputs into NoOps, prune NoOp and Identity
+    // nodes.
     TF_RETURN_IF_ERROR(OptimizeDependencies());
+
+    // Dedup control inputs.
+    CleanControlInputs();
+
+    GroupCrossDeviceControlEdges();
   }
 
   return Status::OK();

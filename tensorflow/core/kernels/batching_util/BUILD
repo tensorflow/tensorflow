@@ -8,18 +8,6 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "**/google_*",
-        ],
-    ),
-)
-
 cc_library(
     name = "periodic_function_dynamic",
     srcs = ["periodic_function.cc"],
@@ -132,6 +120,27 @@ tf_cc_test(
     deps = [
         ":adaptive_shared_batch_scheduler",
         ":fake_clock_env",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "serial_device_batch_scheduler",
+    hdrs = ["serial_device_batch_scheduler.h"],
+    deps = [
+        ":batch_scheduler",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "serial_device_batch_scheduler_test",
+    srcs = ["serial_device_batch_scheduler_test.cc"],
+    deps = [
+        ":fake_clock_env",
+        ":serial_device_batch_scheduler",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

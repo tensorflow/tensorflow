@@ -310,6 +310,22 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         # The third tree was added after the save.
         self.assertAllClose(result.eval(), [[-1.1], [-1.1]])
 
+  def testUsedHandlers(self):
+    with self.test_session():
+      tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
+      tree_ensemble_config.growing_metadata.used_handler_ids.append(1)
+      tree_ensemble_config.growing_metadata.used_handler_ids.append(5)
+      stamp_token = 3
+      tree_ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=stamp_token,
+          tree_ensemble_config=tree_ensemble_config.SerializeToString(),
+          name="create_tree")
+      resources.initialize_resources(resources.shared_resources()).run()
+      result = model_ops.tree_ensemble_used_handlers(
+          tree_ensemble_handle, stamp_token, num_all_handlers=6)
+      self.assertAllEqual([0, 1, 0, 0, 0, 1], result.used_handlers_mask.eval())
+      self.assertEqual(2, result.num_used_handlers.eval())
+
 
 if __name__ == "__main__":
   googletest.main()

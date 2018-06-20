@@ -32,6 +32,7 @@
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -353,7 +354,7 @@ class NearestNeighborsOp : public OpKernel {
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     const int64 num_threads = worker_threads.num_threads;
     // This kernel might be configured to use fewer than the total number of
-    // available CPUs on the host machine. To avoid descructive interference
+    // available CPUs on the host machine. To avoid destructive interference
     // with other jobs running on the host machine, we must only use a fraction
     // of total available L3 cache. Unfortunately, we cannot query the host
     // machine to get the number of physical CPUs. So, we use a fixed per-CPU

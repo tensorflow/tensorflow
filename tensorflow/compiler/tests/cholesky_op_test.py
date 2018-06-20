@@ -34,6 +34,13 @@ from tensorflow.python.platform import test
 
 class CholeskyOpTest(XLATestCase):
 
+  # Cholesky defined for float64, float32, complex64, complex128
+  # (https://www.tensorflow.org/api_docs/python/tf/cholesky)
+  @property
+  def float_types(self):
+    return set(super(CholeskyOpTest, self).float_types).intersection(
+        (np.float64, np.float32, np.complex64, np.complex128))
+
   def _verifyCholeskyBase(self, sess, placeholder, x, chol, verification, atol):
     chol_np, verification_np = sess.run([chol, verification], {placeholder: x})
     self.assertAllClose(x, verification_np, atol=atol)

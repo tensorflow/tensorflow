@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/platform/variant_coding.h"
 
 namespace tensorflow {
 
@@ -207,7 +206,8 @@ struct Helper<ResourceHandle> {
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
   static void Encode(TensorBuffer* in, int64 n, Destination* out) {
-    port::EncodeResourceHandleList(in->base<const ResourceHandle>(), n, out);
+    EncodeResourceHandleList(in->base<const ResourceHandle>(), n,
+                             port::NewStringListEncoder(out));
   }
 
   // Decodes "n" elements of type string from "in" and constructs a
@@ -217,7 +217,8 @@ struct Helper<ResourceHandle> {
   static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
     auto* buf = new Buffer<ResourceHandle>(a, n);
     ResourceHandle* ps = buf->template base<ResourceHandle>();
-    if (ps == nullptr || !port::DecodeResourceHandleList(in, ps, n)) {
+    if (ps == nullptr ||
+        !DecodeResourceHandleList(port::NewStringListDecoder(in), ps, n)) {
       buf->Unref();
       return nullptr;
     }
@@ -237,7 +238,8 @@ struct Helper<Variant> {
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
   static void Encode(TensorBuffer* in, int64 n, Destination* out) {
-    port::EncodeVariantList(in->base<const Variant>(), n, out);
+    EncodeVariantList(in->base<const Variant>(), n,
+                      port::NewStringListEncoder(out));
   }
 
   // Decodes "n" elements of type Variant from "in" and constructs a
@@ -247,7 +249,8 @@ struct Helper<Variant> {
   static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
     auto* buf = new Buffer<Variant>(a, n);
     Variant* ps = buf->template base<Variant>();
-    if (ps == nullptr || !port::DecodeVariantList(in, ps, n)) {
+    if (ps == nullptr ||
+        !DecodeVariantList(port::NewStringListDecoder(in), ps, n)) {
       buf->Unref();
       return nullptr;
     }
@@ -610,16 +613,20 @@ bool Tensor::IsInitialized() const {
 }
 
 void Tensor::CheckType(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype);
+  CHECK_EQ(dtype(), expected_dtype)
+      << DataTypeString(expected_dtype) << " expected, got "
+      << DataTypeString(dtype());
 }
 
 void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype);
-  CHECK(IsAligned());
+  CHECK_EQ(dtype(), expected_dtype)
+      << DataTypeString(expected_dtype) << " expected, got "
+      << DataTypeString(dtype());
+  CHECK(IsAligned()) << "ptr = " << base<void>();
 }
 
 void Tensor::CheckIsAlignedAndSingleElement() const {
-  CHECK(IsAligned());
+  CHECK(IsAligned()) << "Aligned and single element";
   CHECK_EQ(1, NumElements()) << "Must have a one element tensor";
 }
 
@@ -884,10 +891,25 @@ bool Tensor::CanUseDMA() const {
 #undef CASE
 
 namespace {
+
+// StrCat and StrAppend don't support Eigen::half directly at the moment, and
+// we would like to keep them compatible with their absl counterparts, for ease
+// of migration. We could rely on errors::internal::PrepareForStrCat() but the
+// logic is so simple we can just replicate it here, where it is close to its
+// usage and easy to change later. And there's the extra benefit of not
+// accessing an 'internal' namespace.
+inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a) {
+  return a;
+}
+inline float PrintOneElement(const Eigen::half& h) {
+  return static_cast<float>(h);
+}
+
 // Print from left dim to right dim recursively.
 template <typename T>
-void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
-                 int shape_size, T* data, int64* data_index, string* result) {
+void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
+                 int64 limit, int shape_size, const T* data, int64* data_index,
+                 string* result) {
   if (*data_index >= limit) return;
   int64 element_count = shape[dim_index];
   // We have reached the right-most dimension of the tensor.
@@ -895,7 +917,7 @@ void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
     for (int64 i = 0; i < element_count; i++) {
       if (*data_index >= limit) return;
       if (i > 0) strings::StrAppend(result, " ");
-      strings::StrAppend(result, data[(*data_index)++]);
+      strings::StrAppend(result, PrintOneElement(data[(*data_index)++]));
     }
     return;
   }
@@ -926,7 +948,7 @@ string SummarizeArray(int64 limit, int64 num_elts,
   if (shape.empty()) {
     for (int64 i = 0; i < limit; ++i) {
       if (i > 0) strings::StrAppend(&ret, " ");
-      strings::StrAppend(&ret, array[i]);
+      strings::StrAppend(&ret, PrintOneElement(array[i]));
     }
     if (num_elts > limit) strings::StrAppend(&ret, "...");
     return ret;
@@ -1024,9 +1046,8 @@ StringPiece Tensor::tensor_data() const {
 }
 
 bool Tensor::SharesBufferWith(const Tensor& b) const {
-  CHECK_NE(nullptr, buf_);
-  CHECK_NE(nullptr, b.buf_);
-  return buf_->root_buffer() == b.buf_->root_buffer();
+  return buf_ != nullptr && b.buf_ != nullptr &&
+         buf_->root_buffer() == b.buf_->root_buffer();
 }
 
 string Tensor::DebugString() const {

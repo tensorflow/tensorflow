@@ -34,7 +34,7 @@ class GumbelBijectorTest(test.TestCase):
     with self.test_session():
       loc = 0.3
       scale = 5.
-      bijector = Gumbel(loc=loc, scale=scale, event_ndims=1, validate_args=True)
+      bijector = Gumbel(loc=loc, scale=scale, validate_args=True)
       self.assertEqual("gumbel", bijector.name)
       x = np.array([[[-3.], [0.], [0.5], [4.2], [12.]]], dtype=np.float32)
       # Gumbel distribution
@@ -43,13 +43,11 @@ class GumbelBijectorTest(test.TestCase):
       self.assertAllClose(y, bijector.forward(x).eval())
       self.assertAllClose(x, bijector.inverse(y).eval())
       self.assertAllClose(
-          # We should lose a dimension from calculating the determinant of the
-          # jacobian.
-          np.squeeze(gumbel_dist.logpdf(x), axis=2),
-          bijector.forward_log_det_jacobian(x).eval())
+          np.squeeze(gumbel_dist.logpdf(x), axis=-1),
+          bijector.forward_log_det_jacobian(x, event_ndims=1).eval())
       self.assertAllClose(
-          -bijector.inverse_log_det_jacobian(y).eval(),
-          bijector.forward_log_det_jacobian(x).eval(),
+          -bijector.inverse_log_det_jacobian(y, event_ndims=1).eval(),
+          bijector.forward_log_det_jacobian(x, event_ndims=1).eval(),
           rtol=1e-4,
           atol=0.)
 
@@ -60,10 +58,10 @@ class GumbelBijectorTest(test.TestCase):
 
   def testBijectiveAndFinite(self):
     with self.test_session():
-      bijector = Gumbel(loc=0., scale=3.0, event_ndims=0, validate_args=True)
+      bijector = Gumbel(loc=0., scale=3.0, validate_args=True)
       x = np.linspace(-10., 10., num=10).astype(np.float32)
       y = np.linspace(0.01, 0.99, num=10).astype(np.float32)
-      assert_bijective_and_finite(bijector, x, y, rtol=1e-3)
+      assert_bijective_and_finite(bijector, x, y, event_ndims=0, rtol=1e-3)
 
 
 if __name__ == "__main__":

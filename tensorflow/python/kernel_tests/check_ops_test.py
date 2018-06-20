@@ -88,6 +88,13 @@ class AssertEqualTest(test.TestCase):
       out = array_ops.identity(small)
     self.evaluate(out)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_scalar_comparison(self):
+    const_true = constant_op.constant(True, name="true")
+    const_false = constant_op.constant(False, name="false")
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
+      check_ops.assert_equal(const_true, const_false, message="fail")
+
   def test_returns_none_with_eager(self):
     with context.eager_mode():
       small = constant_op.constant([1, 2], name="small")
@@ -102,17 +109,15 @@ class AssertEqualTest(test.TestCase):
     with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
       check_ops.assert_equal(static_big, static_small, message="fail")
 
-    # Dynamic check
-    if context.in_graph_mode():
-      with self.test_session():
-        small = array_ops.placeholder(dtypes.int32, name="small")
-        big = array_ops.placeholder(dtypes.int32, name="big")
-        with ops.control_dependencies(
-            [check_ops.assert_equal(
-                big, small, message="fail")]):
-          out = array_ops.identity(small)
-        with self.assertRaisesOpError("fail.*big.*small"):
-          out.eval(feed_dict={small: [1, 2], big: [3, 4]})
+  def test_raises_when_greater_dynamic(self):
+    with self.test_session():
+      small = array_ops.placeholder(dtypes.int32, name="small")
+      big = array_ops.placeholder(dtypes.int32, name="big")
+      with ops.control_dependencies(
+          [check_ops.assert_equal(big, small, message="fail")]):
+        out = array_ops.identity(small)
+      with self.assertRaisesOpError("fail.*big.*small"):
+        out.eval(feed_dict={small: [1, 2], big: [3, 4]})
 
   def test_error_message_eager(self):
     expected_error_msg_full = r"""big does not equal small
@@ -182,15 +187,14 @@ First 2 elements of y:
     with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
       check_ops.assert_equal(static_big, static_small, message="fail")
 
-    # Dynamic check
-    if context.in_graph_mode():
-      with self.test_session():
-        small = array_ops.placeholder(dtypes.int32, name="small")
-        big = array_ops.placeholder(dtypes.int32, name="big")
-        with ops.control_dependencies([check_ops.assert_equal(small, big)]):
-          out = array_ops.identity(small)
-        with self.assertRaisesOpError("small.*big"):
-          out.eval(feed_dict={small: [3, 1], big: [4, 2]})
+  def test_raises_when_less_dynamic(self):
+    with self.test_session():
+      small = array_ops.placeholder(dtypes.int32, name="small")
+      big = array_ops.placeholder(dtypes.int32, name="big")
+      with ops.control_dependencies([check_ops.assert_equal(small, big)]):
+        out = array_ops.identity(small)
+      with self.assertRaisesOpError("small.*big"):
+        out.eval(feed_dict={small: [3, 1], big: [4, 2]})
 
   @test_util.run_in_graph_and_eager_modes()
   def test_doesnt_raise_when_equal_and_broadcastable_shapes(self):
@@ -214,6 +218,12 @@ First 2 elements of y:
       with ops.control_dependencies([check_ops.assert_equal(small, small_2)]):
         out = array_ops.identity(small)
       self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_raises_when_not_equal_and_broadcastable_shapes(self):
+    cond = constant_op.constant([True, False], name="small")
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
+      check_ops.assert_equal(cond, False, message="fail")
 
   @test_util.run_in_graph_and_eager_modes()
   def test_doesnt_raise_when_both_empty(self):

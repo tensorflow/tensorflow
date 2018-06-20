@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
@@ -94,8 +95,8 @@ class AssertNoEntriesWithModulusZeroTest(test.TestCase):
 class BroadcastMatrixBatchDimsTest(test.TestCase):
 
   def test_zero_batch_matrices_returned_as_empty_list(self):
-    self.assertAllEqual(
-        [], linear_operator_util.broadcast_matrix_batch_dims([]))
+    self.assertAllEqual([],
+                        linear_operator_util.broadcast_matrix_batch_dims([]))
 
   def test_one_batch_matrix_returned_after_tensor_conversion(self):
     arr = rng.rand(2, 3, 4)
@@ -194,6 +195,44 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
       linear_operator_util.broadcast_matrix_batch_dims([y, x])
 
 
+class CholeskySolveWithBroadcastTest(test.TestCase):
+
+  def test_static_dims_broadcast(self):
+    # batch_shape = [2]
+    chol = rng.rand(3, 3)
+    rhs = rng.rand(2, 3, 7)
+    chol_broadcast = chol + np.zeros((2, 1, 1))
+
+    with self.test_session():
+      result = linear_operator_util.cholesky_solve_with_broadcast(chol, rhs)
+      self.assertAllEqual((2, 3, 7), result.get_shape())
+      expected = linalg_ops.cholesky_solve(chol_broadcast, rhs)
+      self.assertAllEqual(expected.eval(), result.eval())
+
+  def test_dynamic_dims_broadcast_64bit(self):
+    # batch_shape = [2, 2]
+    chol = rng.rand(2, 3, 3)
+    rhs = rng.rand(2, 1, 3, 7)
+    chol_broadcast = chol + np.zeros((2, 2, 1, 1))
+    rhs_broadcast = rhs + np.zeros((2, 2, 1, 1))
+
+    chol_ph = array_ops.placeholder(dtypes.float64)
+    rhs_ph = array_ops.placeholder(dtypes.float64)
+
+    with self.test_session() as sess:
+      result, expected = sess.run(
+          [
+              linear_operator_util.cholesky_solve_with_broadcast(
+                  chol_ph, rhs_ph),
+              linalg_ops.cholesky_solve(chol_broadcast, rhs_broadcast)
+          ],
+          feed_dict={
+              chol_ph: chol,
+              rhs_ph: rhs,
+          })
+      self.assertAllEqual(expected, result)
+
+
 class MatmulWithBroadcastTest(test.TestCase):
 
   def test_static_dims_broadcast(self):
@@ -209,7 +248,7 @@ class MatmulWithBroadcastTest(test.TestCase):
       expected = math_ops.matmul(x, y_broadcast)
       self.assertAllEqual(expected.eval(), result.eval())
 
-  def test_dynamic_dims_broadcast_32bit(self):
+  def test_dynamic_dims_broadcast_64bit(self):
     # batch_shape = [2]
     # for each batch member, we have a 1x3 matrix times a 3x7 matrix ==> 1x7
     x = rng.rand(2, 1, 3)
@@ -221,9 +260,90 @@ class MatmulWithBroadcastTest(test.TestCase):
 
     with self.test_session() as sess:
       result, expected = sess.run(
-          [linear_operator_util.matmul_with_broadcast(x_ph, y_ph),
-           math_ops.matmul(x, y_broadcast)],
-          feed_dict={x_ph: x, y_ph: y})
+          [
+              linear_operator_util.matmul_with_broadcast(x_ph, y_ph),
+              math_ops.matmul(x, y_broadcast)
+          ],
+          feed_dict={
+              x_ph: x,
+              y_ph: y
+          })
+      self.assertAllEqual(expected, result)
+
+
+class MatrixSolveWithBroadcastTest(test.TestCase):
+
+  def test_static_dims_broadcast(self):
+    # batch_shape = [2]
+    matrix = rng.rand(3, 3)
+    rhs = rng.rand(2, 3, 7)
+    matrix_broadcast = matrix + np.zeros((2, 1, 1))
+
+    with self.test_session():
+      result = linear_operator_util.matrix_solve_with_broadcast(matrix, rhs)
+      self.assertAllEqual((2, 3, 7), result.get_shape())
+      expected = linalg_ops.matrix_solve(matrix_broadcast, rhs)
+      self.assertAllEqual(expected.eval(), result.eval())
+
+  def test_dynamic_dims_broadcast_64bit(self):
+    # batch_shape = [2, 2]
+    matrix = rng.rand(2, 3, 3)
+    rhs = rng.rand(2, 1, 3, 7)
+    matrix_broadcast = matrix + np.zeros((2, 2, 1, 1))
+    rhs_broadcast = rhs + np.zeros((2, 2, 1, 1))
+
+    matrix_ph = array_ops.placeholder(dtypes.float64)
+    rhs_ph = array_ops.placeholder(dtypes.float64)
+
+    with self.test_session() as sess:
+      result, expected = sess.run(
+          [
+              linear_operator_util.matrix_solve_with_broadcast(
+                  matrix_ph, rhs_ph),
+              linalg_ops.matrix_solve(matrix_broadcast, rhs_broadcast)
+          ],
+          feed_dict={
+              matrix_ph: matrix,
+              rhs_ph: rhs,
+          })
+      self.assertAllEqual(expected, result)
+
+
+class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
+
+  def test_static_dims_broadcast(self):
+    # batch_shape = [2]
+    matrix = rng.rand(2, 3, 3)
+    rhs = rng.rand(3, 7)
+    rhs_broadcast = rhs + np.zeros((2, 1, 1))
+
+    with self.test_session():
+      result = linear_operator_util.matrix_triangular_solve_with_broadcast(
+          matrix, rhs)
+      self.assertAllEqual((2, 3, 7), result.get_shape())
+      expected = linalg_ops.matrix_triangular_solve(matrix, rhs_broadcast)
+      self.assertAllEqual(expected.eval(), result.eval())
+
+  def test_dynamic_dims_broadcast_64bit(self):
+    # batch_shape = [2]
+    matrix = rng.rand(2, 3, 3)
+    rhs = rng.rand(3, 7)
+    rhs_broadcast = rhs + np.zeros((2, 1, 1))
+
+    matrix_ph = array_ops.placeholder(dtypes.float64)
+    rhs_ph = array_ops.placeholder(dtypes.float64)
+
+    with self.test_session() as sess:
+      result, expected = sess.run(
+          [
+              linear_operator_util.matrix_triangular_solve_with_broadcast(
+                  matrix_ph, rhs_ph),
+              linalg_ops.matrix_triangular_solve(matrix, rhs_broadcast)
+          ],
+          feed_dict={
+              matrix_ph: matrix,
+              rhs_ph: rhs,
+          })
       self.assertAllEqual(expected, result)
 
 
@@ -244,7 +364,7 @@ class AssertCompatibleMatrixDimensionsTest(test.TestCase):
       operator = DomainDimensionStubOperator(3)
       # Should not raise
       linear_operator_util.assert_compatible_matrix_dimensions(
-          operator, x).run()
+          operator, x).run()  # pyformat: disable
 
   def test_incompatible_dimensions_raise(self):
     with self.test_session():
@@ -252,7 +372,7 @@ class AssertCompatibleMatrixDimensionsTest(test.TestCase):
       operator = DomainDimensionStubOperator(3)
       with self.assertRaisesOpError("Incompatible matrix dimensions"):
         linear_operator_util.assert_compatible_matrix_dimensions(
-            operator, x).run()
+            operator, x).run()  # pyformat: disable
 
 
 if __name__ == "__main__":

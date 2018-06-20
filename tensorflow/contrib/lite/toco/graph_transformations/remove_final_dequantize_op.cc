@@ -51,7 +51,7 @@ bool RemoveFinalDequantizeOp::Run(Model* model, std::size_t op_index) {
 
   // Remove the node and its output array.
   AddMessageF("Removed final %s", LogName(*dequantize_op));
-  model->arrays.erase(output);
+  model->EraseArray(output);
   model->operators.erase(dequantize_it);
   return true;
 }

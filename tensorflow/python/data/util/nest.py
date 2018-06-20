@@ -17,19 +17,16 @@
 """## Functions for working with arbitrarily nested sequences of elements.
 
 NOTE(mrry): This fork of the `tensorflow.python.util.nest` module
-makes three changes:
+makes two changes:
 
-1. It adds support for dictionaries as a level of nesting in nested structures.
-2. It removes support for lists as a level of nesting in nested structures.
-3. It adds support for `SparseTensorValue` as an atomic element.
+1. It removes support for lists as a level of nesting in nested structures.
+2. It adds support for `SparseTensorValue` as an atomic element.
 
-The motivation for this change is threefold:
+The motivation for this change is twofold:
 
-1. Many input-processing functions (e.g. `tf.parse_example()`) return
-   dictionaries, and we would like to support them natively in datasets.
-2. It seems more natural for lists to be treated (e.g. in Dataset constructors)
+1. It seems more natural for lists to be treated (e.g. in Dataset constructors)
    as tensors, rather than lists of (lists of...) tensors.
-3. This is needed because `SparseTensorValue` is implemented as a `namedtuple`
+2. This is needed because `SparseTensorValue` is implemented as a `namedtuple`
    that would normally be flattened and we want to be able to create sparse
    tensor from `SparseTensorValue's similarly to creating tensors from numpy
    arrays.
@@ -43,8 +40,8 @@ import collections as _collections
 
 import six as _six
 
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
-from tensorflow.python.util.all_util import remove_undocumented
 
 
 def _sorted(dict_):
@@ -100,22 +97,13 @@ def _yield_value(iterable):
       yield value
 
 
-def _yield_flat_nest(nest):
-  for n in _yield_value(nest):
-    if is_sequence(n):
-      for ni in _yield_flat_nest(n):
-        yield ni
-    else:
-      yield n
-
-
 def is_sequence(seq):
   """Returns a true if `seq` is a Sequence or dict (except strings/lists).
 
   NOTE(mrry): This differs from `tensorflow.python.util.nest.is_sequence()`,
   which *does* treat a Python list as a sequence. For ergonomic
   reasons, `tf.data` users would prefer to treat lists as
-  implict `tf.Tensor` objects, and dicts as (nested) sequences.
+  implicit `tf.Tensor` objects, and dicts as (nested) sequences.
 
   Args:
     seq: an input sequence.
@@ -124,9 +112,7 @@ def is_sequence(seq):
     True if the sequence is a not a string or list and is a
     collections.Sequence.
   """
-  return (isinstance(seq, (_collections.Sequence, dict)) and
-          not isinstance(seq, _sparse_tensor.SparseTensorValue) and
-          not isinstance(seq, (list, _six.string_types)))
+  return _pywrap_tensorflow.IsSequenceForData(seq)
 
 
 def flatten(nest):
@@ -141,7 +127,7 @@ def flatten(nest):
   Returns:
     A Python list, the flattened version of the input.
   """
-  return list(_yield_flat_nest(nest)) if is_sequence(nest) else [nest]
+  return _pywrap_tensorflow.FlattenForData(nest)
 
 
 def _recursive_assert_same_structure(nest1, nest2, check_types):
@@ -266,7 +252,7 @@ def map_structure(func, *structure, **check_types_dict):
   and the return value will contain the results in the same structure.
 
   Args:
-    func: A callable that acceps as many arguments are there are structures.
+    func: A callable that accepts as many arguments are there are structures.
     *structure: scalar, or tuple or list of constructed scalars and/or other
       tuples/lists, or scalars.  Note: numpy arrays are considered scalars.
     **check_types_dict: only valid keyword argument is `check_types`. If set to
@@ -383,8 +369,8 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
             "structure has keys %s, while shallow structure has keys %s." %
             (list(_six.iterkeys(input_tree)),
              list(_six.iterkeys(shallow_tree))))
-      input_tree = list(_six.iteritems(input_tree))
-      shallow_tree = list(_six.iteritems(shallow_tree))
+      input_tree = list(sorted(_six.iteritems(input_tree)))
+      shallow_tree = list(sorted(_six.iteritems(shallow_tree)))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,
@@ -479,8 +465,8 @@ def map_structure_up_to(shallow_tree, func, *inputs):
   The `inputs`, can be thought of as having the same structure as
   `shallow_tree`, but with leaf nodes that are themselves tree structures.
 
-  This function therefore will return something with the same base structure as
-  `shallow_tree`.
+  This function, therefore, will return something with the same base structure
+  as `shallow_tree`.
 
   Examples:
 
@@ -537,17 +523,3 @@ def map_structure_up_to(shallow_tree, func, *inputs):
 
   results = [func(*tensors) for tensors in zip(*all_flattened_up_to)]
   return pack_sequence_as(structure=shallow_tree, flat_sequence=results)
-
-
-_allowed_symbols = [
-    "assert_same_structure",
-    "is_sequence",
-    "flatten",
-    "pack_sequence_as",
-    "map_structure",
-    "assert_shallow_structure",
-    "flatten_up_to",
-    "map_structure_up_to",
-]
-
-remove_undocumented(__name__, _allowed_symbols)

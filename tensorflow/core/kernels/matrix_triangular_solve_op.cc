@@ -34,11 +34,9 @@ namespace tensorflow {
 #if GOOGLE_CUDA
 namespace {
 template <typename Scalar>
-perftools::gputools::DeviceMemory<Scalar> AsDeviceMemory(
-    const Scalar* cuda_memory) {
-  perftools::gputools::DeviceMemoryBase wrapped(
-      const_cast<Scalar*>(cuda_memory));
-  perftools::gputools::DeviceMemory<Scalar> typed(wrapped);
+se::DeviceMemory<Scalar> AsDeviceMemory(const Scalar* cuda_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<Scalar*>(cuda_memory));
+  se::DeviceMemory<Scalar> typed(wrapped);
   return typed;
 }
 }  // namespace
@@ -204,18 +202,17 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
     // output' = rhs' / matrix' (' stands for transpose)
     // Upper/lower needs to be swapped for this.
 
-    perftools::gputools::blas::UpperLower upper_lower_matrix;
-    perftools::gputools::blas::Transpose transpose_matrix;
+    se::blas::UpperLower upper_lower_matrix;
+    se::blas::Transpose transpose_matrix;
     if (lower_) {
-      upper_lower_matrix = perftools::gputools::blas::UpperLower::kUpper;
+      upper_lower_matrix = se::blas::UpperLower::kUpper;
     } else {
-      upper_lower_matrix = perftools::gputools::blas::UpperLower::kLower;
+      upper_lower_matrix = se::blas::UpperLower::kLower;
     }
     if (adjoint_) {
-      transpose_matrix =
-          perftools::gputools::blas::Transpose::kConjugateTranspose;
+      transpose_matrix = se::blas::Transpose::kConjugateTranspose;
     } else {
-      transpose_matrix = perftools::gputools::blas::Transpose::kNoTranspose;
+      transpose_matrix = se::blas::Transpose::kNoTranspose;
     }
     uint64 leading_dim_matrix = matrix.cols();
     uint64 leading_dim_output = output.cols();
@@ -224,11 +221,11 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
     bool blas_launch_status =
         stream
             ->ThenBlasTrsm(
-                perftools::gputools::blas::Side::kRight /*side*/,
-                upper_lower_matrix /*uplo*/, transpose_matrix /*trans*/,
-                perftools::gputools::blas::Diagonal::kNonUnit /*diag*/,
-                colmajor_rows /*m*/, colmajor_cols /*n*/, Scalar(1.0) /*alpha*/,
-                matrix_ptr, leading_dim_matrix /*lda*/, &out_ptr,
+                se::blas::Side::kRight /*side*/, upper_lower_matrix /*uplo*/,
+                transpose_matrix /*trans*/,
+                se::blas::Diagonal::kNonUnit /*diag*/, colmajor_rows /*m*/,
+                colmajor_cols /*n*/, Scalar(1.0) /*alpha*/, matrix_ptr,
+                leading_dim_matrix /*lda*/, &out_ptr,
                 leading_dim_output /*ldb*/)
             .ok();
     if (!blas_launch_status) {

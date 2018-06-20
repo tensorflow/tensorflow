@@ -176,9 +176,10 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
     }
   }
   for (int i = 0; i < dims; ++i) {
-    OP_REQUIRES(ctx, bits[i], errors::InvalidArgument(
-                                  i, " is missing from {",
-                                  str_util::Join(permutation, ","), "}."));
+    OP_REQUIRES(
+        ctx, bits[i],
+        errors::InvalidArgument(i, " is missing from {",
+                                str_util::Join(permutation, ","), "}."));
   }
 
   // 0-D, 1-D, and identity transposes do nothing.
@@ -217,7 +218,7 @@ Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                             perm, out);
 }
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(DO_NOT_USE_ML)
 #define REGISTER(T)                                   \
   REGISTER_KERNEL_BUILDER(Name("Transpose")           \
                               .Device(DEVICE_CPU)     \

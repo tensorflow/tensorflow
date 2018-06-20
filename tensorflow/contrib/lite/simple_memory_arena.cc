@@ -36,6 +36,12 @@ TfLiteStatus SimpleMemoryArena::Allocate(TfLiteContext* context,
                                          ArenaAlloc* new_alloc) {
   TF_LITE_ENSURE(context, alignment < arena_alignment_);
 
+  if (size == 0) {
+    new_alloc->offset = 0;
+    new_alloc->size = 0;
+    return kTfLiteOk;
+  }
+
   size_t current_top = 0;
 
   if (!allocs_.empty()) {
@@ -75,6 +81,10 @@ TfLiteStatus SimpleMemoryArena::Allocate(TfLiteContext* context,
 
 TfLiteStatus SimpleMemoryArena::Deallocate(TfLiteContext* context,
                                            const ArenaAlloc& alloc) {
+  if (alloc.size == 0) {
+    return kTfLiteOk;
+  }
+
   int erased_allocs_count = 0;
   auto it = allocs_.begin();
   while (it != allocs_.end()) {
@@ -113,21 +123,25 @@ TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context) {
     underlying_buffer_size_ = required_size;
     underlying_buffer_aligned_ptr_ = new_underlying_buffer_aligned_ptr;
   }
-  commited_ = true;
+  committed_ = true;
   return underlying_buffer_ != nullptr ? kTfLiteOk : kTfLiteError;
 }
 
 TfLiteStatus SimpleMemoryArena::ResolveAlloc(TfLiteContext* context,
                                              const ArenaAlloc& alloc,
                                              char** output_ptr) {
-  TF_LITE_ENSURE(context, commited_);
+  TF_LITE_ENSURE(context, committed_);
   TF_LITE_ENSURE(context, output_ptr != nullptr);
-  *output_ptr = underlying_buffer_aligned_ptr_ + alloc.offset;
+  if (alloc.size == 0) {
+    *output_ptr = nullptr;
+  } else {
+    *output_ptr = underlying_buffer_aligned_ptr_ + alloc.offset;
+  }
   return kTfLiteOk;
 }
 
 TfLiteStatus SimpleMemoryArena::Clear() {
-  commited_ = false;
+  committed_ = false;
   high_water_mark_ = 0;
   allocs_.clear();
   return kTfLiteOk;

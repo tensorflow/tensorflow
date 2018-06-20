@@ -9,6 +9,18 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "BestExporter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BoostedTreesClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BoostedTreesRegressor"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DNNClassifier"
     mtype: "<type \'type\'>"
   }

@@ -104,4 +104,4 @@ class BufferedInputStream : public InputStreamInterface {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_LIB_IO_BUFFERED_INPUTSTREAM_H_
+#endif  // TENSORFLOW_LIB_IO_BUFFERED_INPUTSTREAM_H_

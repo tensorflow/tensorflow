@@ -112,15 +112,16 @@ class ConvNetTest(tf.test.TestCase):
   def testMinimizeLossSingleMachine(self):
     with tf.Graph().as_default():
       loss, accuracy, layer_collection = self._build_toy_problem()
-      accuracy_ = convnet.minimize_loss_single_machine(loss, accuracy,
-                                                       layer_collection)
-      self.assertLess(accuracy_, 1.0)
+      accuracy_ = convnet.minimize_loss_single_machine(
+          loss, accuracy, layer_collection, device="/cpu:0")
+      self.assertLess(accuracy_, 2.0)
 
   def testMinimizeLossDistributed(self):
     with tf.Graph().as_default():
       loss, accuracy, layer_collection = self._build_toy_problem()
-      accuracy_ = convnet.minimize_loss_distributed(
+      accuracy_ = convnet.distributed_grads_only_and_ops_chief_worker(
           task_id=0,
+          is_chief=True,
           num_worker_tasks=1,
           num_ps_tasks=0,
           master="",
@@ -128,7 +129,7 @@ class ConvNetTest(tf.test.TestCase):
           loss=loss,
           accuracy=accuracy,
           layer_collection=layer_collection)
-      self.assertLess(accuracy_, 1.0)
+      self.assertLess(accuracy_, 2.0)
 
   def testTrainMnistSingleMachine(self):
     with tf.Graph().as_default():
@@ -138,7 +139,7 @@ class ConvNetTest(tf.test.TestCase):
       # but there are too few parameters for the model to effectively memorize
       # the training set the way an MLP can.
       convnet.train_mnist_single_machine(
-          data_dir=None, num_epochs=1, use_fake_data=True)
+          data_dir=None, num_epochs=1, use_fake_data=True, device="/cpu:0")
 
   def testTrainMnistMultitower(self):
     with tf.Graph().as_default():
@@ -149,13 +150,15 @@ class ConvNetTest(tf.test.TestCase):
   def testTrainMnistDistributed(self):
     with tf.Graph().as_default():
       # Ensure model training doesn't crash.
-      convnet.train_mnist_distributed(
+      convnet.train_mnist_distributed_sync_replicas(
           task_id=0,
+          is_chief=True,
           num_worker_tasks=1,
           num_ps_tasks=0,
           master="",
           data_dir=None,
-          num_epochs=1,
+          num_epochs=2,
+          op_strategy="chief_worker",
           use_fake_data=True)
 
 

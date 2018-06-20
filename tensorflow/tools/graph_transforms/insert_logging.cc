@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -101,7 +102,7 @@ Status InsertLogging(const GraphDef& input_graph_def,
     const bool op_matches = (ops.count(node.op()) > 0);
     bool prefix_matches = false;
     for (const string& prefix : prefixes) {
-      if (StringPiece(node.name()).starts_with(prefix)) {
+      if (str_util::StartsWith(node.name(), prefix)) {
         prefix_matches = true;
       }
     }

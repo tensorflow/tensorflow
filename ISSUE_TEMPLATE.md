@@ -4,7 +4,7 @@ https://stackoverflow.com/questions/tagged/tensorflow
 
 If you open a GitHub issue, here is our policy:
 
-1. It must be a bug or a feature request.
+1. It must be a bug, a feature request, or a significant problem with documentation (for small docs fixes please send a PR instead).
 2. The form below must be filled out.
 3. It shouldn't be a TensorBoard issue. Those go [here](https://github.com/tensorflow/tensorboard/issues).
 

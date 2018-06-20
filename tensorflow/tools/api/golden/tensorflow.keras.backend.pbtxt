@@ -398,7 +398,7 @@ tf_module {
   }
   member_method {
     name: "rnn"
-    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\'], "
+    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\', \'input_length\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "round"
@@ -450,7 +450,7 @@ tf_module {
   }
   member_method {
     name: "softmax"
-    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
   }
   member_method {
     name: "softplus"

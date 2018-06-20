@@ -23,6 +23,7 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_sharding
 
 from tensorflow.python.framework import dtypes
@@ -368,12 +369,19 @@ class InfeedQueue(object):
       policy.freeze()
     self._validate()
 
-  def generate_dequeue_op(self):
+  def generate_dequeue_op(self, tpu_device=0):
     """Generates the device-side Op to dequeue a tuple from the queue.
 
     Implicitly freezes the queue configuration if it is not already
     frozen, which will raise errors if the shapes and types have not
     been fully specified.
+
+    Args:
+      tpu_device: The TPU device ordinal where the infeed instruction should be
+        placed. If None, no explicit placement will be performed, and it is up
+        to the user to call this API from within a proper TPU device scope.
+        The XLA code will fail if the TPU dequeue instruction is not bound to
+        any device.
 
     Returns:
       A list of Outputs corresponding to a shard of infeed dequeued
@@ -392,8 +400,13 @@ class InfeedQueue(object):
         policy.get_sharded_shape(shape)
         for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)
     ]
-    return tpu_ops.infeed_dequeue_tuple(
-        dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
+    if tpu_device is not None:
+      with ops.device(tpu.core(tpu_device)):
+        return tpu_ops.infeed_dequeue_tuple(
+            dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
+    else:
+      return tpu_ops.infeed_dequeue_tuple(
+          dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
 
   def _generate_enqueue_op(self,
                            inputs,

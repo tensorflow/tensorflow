@@ -15,23 +15,22 @@ limitations under the License.
 
 // Basic class for computing MFCCs from spectrogram slices.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MFCC_H_
+#define TENSORFLOW_CORE_KERNELS_MFCC_H_
 
 #include <vector>
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/mfcc_dct.h"
 #include "tensorflow/core/kernels/mfcc_mel_filterbank.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
 class Mfcc {
  public:
   Mfcc();
-  bool Initialize(int input_length,
-                  double input_sample_rate);
+  bool Initialize(int input_length, double input_sample_rate);
 
   // Input is a single squared-magnitude spectrogram frame. The input spectrum
   // is converted to linear magnitude and weighted into bands using a
@@ -74,4 +73,4 @@ class Mfcc {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MFCC_H_

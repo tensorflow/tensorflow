@@ -52,7 +52,9 @@ __all__ = [
     'gan_model',
     'infogan_model',
     'acgan_model',
+    'cyclegan_model',
     'gan_loss',
+    'cyclegan_loss',
     'gan_train_ops',
     'gan_train',
     'get_sequential_train_hooks',
@@ -277,14 +279,16 @@ def acgan_model(
     generator_inputs = _convert_tensor_or_l_or_d(generator_inputs)
     generated_data = generator_fn(generator_inputs)
   with variable_scope.variable_scope(discriminator_scope) as dis_scope:
-    (discriminator_gen_outputs, discriminator_gen_classification_logits
-    ) = _validate_acgan_discriminator_outputs(
-        discriminator_fn(generated_data, generator_inputs))
+    with ops.name_scope(dis_scope.name+'/generated/'):
+      (discriminator_gen_outputs, discriminator_gen_classification_logits
+      ) = _validate_acgan_discriminator_outputs(
+          discriminator_fn(generated_data, generator_inputs))
   with variable_scope.variable_scope(dis_scope, reuse=True):
-    real_data = ops.convert_to_tensor(real_data)
-    (discriminator_real_outputs, discriminator_real_classification_logits
-    ) = _validate_acgan_discriminator_outputs(
-        discriminator_fn(real_data, generator_inputs))
+    with ops.name_scope(dis_scope.name+'/real/'):
+      real_data = ops.convert_to_tensor(real_data)
+      (discriminator_real_outputs, discriminator_real_classification_logits
+      ) = _validate_acgan_discriminator_outputs(
+          discriminator_fn(real_data, generator_inputs))
   if check_shapes:
     if not generated_data.shape.is_compatible_with(real_data.shape):
       raise ValueError(
@@ -303,6 +307,76 @@ def acgan_model(
       discriminator_fn, one_hot_labels,
       discriminator_real_classification_logits,
       discriminator_gen_classification_logits)
+
+
+def cyclegan_model(
+    # Lambdas defining models.
+    generator_fn,
+    discriminator_fn,
+    # data X and Y.
+    data_x,
+    data_y,
+    # Optional scopes.
+    generator_scope='Generator',
+    discriminator_scope='Discriminator',
+    model_x2y_scope='ModelX2Y',
+    model_y2x_scope='ModelY2X',
+    # Options.
+    check_shapes=True):
+  """Returns a CycleGAN model outputs and variables.
+
+  See https://arxiv.org/abs/1703.10593 for more details.
+
+  Args:
+    generator_fn: A python lambda that takes `data_x` or `data_y` as inputs and
+      returns the outputs of the GAN generator.
+    discriminator_fn: A python lambda that takes `real_data`/`generated data`
+      and `generator_inputs`. Outputs a Tensor in the range [-inf, inf].
+    data_x: A `Tensor` of dataset X. Must be the same shape as `data_y`.
+    data_y: A `Tensor` of dataset Y. Must be the same shape as `data_x`.
+    generator_scope: Optional generator variable scope. Useful if you want to
+      reuse a subgraph that has already been created. Defaults to 'Generator'.
+    discriminator_scope: Optional discriminator variable scope. Useful if you
+      want to reuse a subgraph that has already been created. Defaults to
+      'Discriminator'.
+    model_x2y_scope: Optional variable scope for model x2y variables. Defaults
+      to 'ModelX2Y'.
+    model_y2x_scope: Optional variable scope for model y2x variables. Defaults
+      to 'ModelY2X'.
+    check_shapes: If `True`, check that generator produces Tensors that are the
+      same shape as `data_x` (`data_y`). Otherwise, skip this check.
+
+  Returns:
+    A `CycleGANModel` namedtuple.
+
+  Raises:
+    ValueError: If `check_shapes` is True and `data_x` or the generator output
+      does not have the same shape as `data_y`.
+  """
+
+  # Create models.
+  def _define_partial_model(input_data, output_data):
+    return gan_model(
+        generator_fn=generator_fn,
+        discriminator_fn=discriminator_fn,
+        real_data=output_data,
+        generator_inputs=input_data,
+        generator_scope=generator_scope,
+        discriminator_scope=discriminator_scope,
+        check_shapes=check_shapes)
+
+  with variable_scope.variable_scope(model_x2y_scope):
+    model_x2y = _define_partial_model(data_x, data_y)
+  with variable_scope.variable_scope(model_y2x_scope):
+    model_y2x = _define_partial_model(data_y, data_x)
+
+  with variable_scope.variable_scope(model_y2x.generator_scope, reuse=True):
+    reconstructed_x = model_y2x.generator_fn(model_x2y.generated_data)
+  with variable_scope.variable_scope(model_x2y.generator_scope, reuse=True):
+    reconstructed_y = model_x2y.generator_fn(model_y2x.generated_data)
+
+  return namedtuples.CycleGANModel(model_x2y, model_y2x, reconstructed_x,
+                                   reconstructed_y)
 
 
 def _validate_aux_loss_weight(aux_loss_weight, name='aux_loss_weight'):
@@ -386,6 +460,8 @@ def gan_loss(
     # Auxiliary losses.
     gradient_penalty_weight=None,
     gradient_penalty_epsilon=1e-10,
+    gradient_penalty_target=1.0,
+    gradient_penalty_one_sided=False,
     mutual_information_penalty_weight=None,
     aux_cond_generator_weight=None,
     aux_cond_discriminator_weight=None,
@@ -407,6 +483,11 @@ def gan_loss(
       small positive value used by the gradient penalty function for numerical
       stability. Note some applications will need to increase this value to
       avoid NaNs.
+    gradient_penalty_target: If `gradient_penalty_weight` is not None, a Python
+      number or `Tensor` indicating the target value of gradient norm. See the
+      CIFAR10 section of https://arxiv.org/abs/1710.10196. Defaults to 1.0.
+    gradient_penalty_one_sided: If `True`, penalty proposed in
+      https://arxiv.org/abs/1709.08894 is used. Defaults to `False`.
     mutual_information_penalty_weight: If not `None`, must be a non-negative
       Python number or Tensor indicating how much to weight the mutual
       information penalty. See https://arxiv.org/abs/1606.03657 for more
@@ -465,7 +546,11 @@ def gan_loss(
   # Add optional extra losses.
   if _use_aux_loss(gradient_penalty_weight):
     gp_loss = tfgan_losses.wasserstein_gradient_penalty(
-        model, epsilon=gradient_penalty_epsilon, add_summaries=add_summaries)
+        model,
+        epsilon=gradient_penalty_epsilon,
+        target=gradient_penalty_target,
+        one_sided=gradient_penalty_one_sided,
+        add_summaries=add_summaries)
     dis_loss += gradient_penalty_weight * gp_loss
   if _use_aux_loss(mutual_information_penalty_weight):
     info_loss = tfgan_losses.mutual_information_penalty(
@@ -492,6 +577,69 @@ def gan_loss(
     dis_reg_loss = 0
 
   return namedtuples.GANLoss(gen_loss + gen_reg_loss, dis_loss + dis_reg_loss)
+
+
+def cyclegan_loss(
+    model,
+    # Loss functions.
+    generator_loss_fn=tfgan_losses.least_squares_generator_loss,
+    discriminator_loss_fn=tfgan_losses.least_squares_discriminator_loss,
+    # Auxiliary losses.
+    cycle_consistency_loss_fn=tfgan_losses.cycle_consistency_loss,
+    cycle_consistency_loss_weight=10.0,
+    # Options
+    **kwargs):
+  """Returns the losses for a `CycleGANModel`.
+
+  See https://arxiv.org/abs/1703.10593 for more details.
+
+  Args:
+    model: A `CycleGANModel` namedtuple.
+    generator_loss_fn: The loss function on the generator. Takes a `GANModel`
+      named tuple.
+    discriminator_loss_fn: The loss function on the discriminator. Takes a
+      `GANModel` namedtuple.
+    cycle_consistency_loss_fn: The cycle consistency loss function. Takes a
+      `CycleGANModel` namedtuple.
+    cycle_consistency_loss_weight: A non-negative Python number or a scalar
+      `Tensor` indicating how much to weigh the cycle consistency loss.
+    **kwargs: Keyword args to pass directly to `gan_loss` to construct the loss
+      for each partial model of `model`.
+
+  Returns:
+    A `CycleGANLoss` namedtuple.
+
+  Raises:
+    ValueError: If `model` is not a `CycleGANModel` namedtuple.
+  """
+  # Sanity checks.
+  if not isinstance(model, namedtuples.CycleGANModel):
+    raise ValueError(
+        '`model` must be a `CycleGANModel`. Instead, was %s.' % type(model))
+
+  # Defines cycle consistency loss.
+  cycle_consistency_loss = cycle_consistency_loss_fn(
+      model, add_summaries=kwargs.get('add_summaries', True))
+  cycle_consistency_loss_weight = _validate_aux_loss_weight(
+      cycle_consistency_loss_weight, 'cycle_consistency_loss_weight')
+  aux_loss = cycle_consistency_loss_weight * cycle_consistency_loss
+
+  # Defines losses for each partial model.
+  def _partial_loss(partial_model):
+    partial_loss = gan_loss(
+        partial_model,
+        generator_loss_fn=generator_loss_fn,
+        discriminator_loss_fn=discriminator_loss_fn,
+        **kwargs)
+    return partial_loss._replace(
+        generator_loss=partial_loss.generator_loss + aux_loss)
+
+  with ops.name_scope('cyclegan_loss_x2y'):
+    loss_x2y = _partial_loss(model.model_x2y)
+  with ops.name_scope('cyclegan_loss_y2x'):
+    loss_y2x = _partial_loss(model.model_y2x)
+
+  return namedtuples.CycleGANLoss(loss_x2y, loss_y2x)
 
 
 def _get_update_ops(kwargs, gen_scope, dis_scope, check_for_unused_ops=True):
@@ -561,6 +709,27 @@ def gan_train_ops(
     A GANTrainOps tuple of (generator_train_op, discriminator_train_op) that can
     be used to train a generator/discriminator pair.
   """
+  if isinstance(model, namedtuples.CycleGANModel):
+    # Get and store all arguments other than model and loss from locals.
+    # Contents of locals should not be modified, may not affect values. So make
+    # a copy. https://docs.python.org/2/library/functions.html#locals.
+    saved_params = dict(locals())
+    saved_params.pop('model', None)
+    saved_params.pop('loss', None)
+    kwargs = saved_params.pop('kwargs', {})
+    saved_params.update(kwargs)
+    with ops.name_scope('cyclegan_x2y_train'):
+      train_ops_x2y = gan_train_ops(model.model_x2y, loss.loss_x2y,
+                                    **saved_params)
+    with ops.name_scope('cyclegan_y2x_train'):
+      train_ops_y2x = gan_train_ops(model.model_y2x, loss.loss_y2x,
+                                    **saved_params)
+    return namedtuples.GANTrainOps(
+        (train_ops_x2y.generator_train_op, train_ops_y2x.generator_train_op),
+        (train_ops_x2y.discriminator_train_op,
+         train_ops_y2x.discriminator_train_op),
+        training_util.get_or_create_global_step().assign_add(1))
+
   # Create global step increment op.
   global_step = training_util.get_or_create_global_step()
   global_step_inc = global_step.assign_add(1)

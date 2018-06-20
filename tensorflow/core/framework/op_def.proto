@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "OpDefProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/framework/types.proto";
 
@@ -126,6 +126,12 @@ message OpDef {
   // -------------------------------------------------------------------------
   // Optimization constraints.
 
+  // Ops are marked as stateful if their behavior depends on some state beyond
+  // their input tensors (e.g. variable reading op) or if they have
+  // a side-effect (e.g. printing or asserting ops). Equivalently, stateless ops
+  // must always produce the same output for the same input and have
+  // no side-effects.
+  //
   // By default Ops may be moved between devices.  Stateful ops should
   // either not be moved, or should only be moved if that state can also
   // be moved (e.g. via some sort of save / restore).

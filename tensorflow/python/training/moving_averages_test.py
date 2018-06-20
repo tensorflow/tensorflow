@@ -263,6 +263,7 @@ class ExponentialMovingAverageTest(test.TestCase):
       tensor2 = v0 + v1
       ema = moving_averages.ExponentialMovingAverage(
           0.25, zero_debias=zero_debias, name="foo")
+      self.assertEqual("foo", ema.name)
       self.assertEqual("v0/foo", ema.average_name(v0))
       self.assertEqual("v1/foo", ema.average_name(v1))
       self.assertEqual("add/foo", ema.average_name(tensor2))
@@ -376,7 +377,7 @@ class ExponentialMovingAverageTest(test.TestCase):
     with ops.device("/job:dev_v0"):
       v0 = variables.Variable(10.0, name="v0")
     with ops.device("/job:dev_v1"):
-      v1 = gen_state_ops._variable(
+      v1 = gen_state_ops.variable(
           shape=[1],
           dtype=dtypes.float32,
           name="v1",

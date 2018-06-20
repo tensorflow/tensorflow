@@ -15,8 +15,8 @@ limitations under the License.
 
 // Utility class for managing sparse array indices.
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SPARSE_INDEX_ARRAY_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SPARSE_INDEX_ARRAY_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SPARSE_INDEX_ARRAY_H_
+#define TENSORFLOW_COMPILER_XLA_SPARSE_INDEX_ARRAY_H_
 
 #include <vector>
 
@@ -173,4 +173,4 @@ void SparseIndexArray::SortWithValues(
 
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SPARSE_INDEX_ARRAY_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SPARSE_INDEX_ARRAY_H_

@@ -14,9 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/toco/dump_graphviz.h"
 
+#include <cmath>
 #include <memory>
-#include <set>
-#include <unordered_set>
 #include <vector>
 
 #include "absl/strings/str_replace.h"
@@ -63,6 +62,7 @@ struct NodeProperties {
   // color will be chosen for the 'fontcolor' for the inside text
   // label, see Color::TextColorString.
   Color color;
+  float log2_buffer_size;
 };
 
 // All colors in this file are from:
@@ -89,16 +89,11 @@ Color GetColorForArray(const Model& model, const string& array_name) {
   // We use gray colors for them because they are the majority
   // of arrays so we want to highlight other arrays instead of them.
   // First, we use a bolder gray for input/output arrays:
-  const auto& dump_options = *GraphVizDumpOptions::singleton();
-  if (IsInputArray(model, array_name) ||
-      array_name == dump_options.graphviz_first_array ||
-      array_name == dump_options.graphviz_last_array) {
+  if (IsInputArray(model, array_name)) {
     return Color(0x9E, 0x9E, 0x9E);
   }
-  for (const string& output_array : model.flags.output_arrays()) {
-    if (array_name == output_array) {
-      return Color(0x9E, 0x9E, 0x9E);
-    }
+  if (IsOutputArray(model, array_name)) {
+    return Color(0x9E, 0x9E, 0x9E);
   }
   // Remaining arrays are intermediate activation arrays.
   // Lighter tone of the same grey as for input/output arrays:
@@ -119,6 +114,12 @@ void AppendArrayVal(string* string, Array const& array, int index) {
       return;
     }
     AppendF(string, "%d", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kInt16) {
+    const auto& data = array.GetBuffer<ArrayDataType::kInt16>().data;
+    if (index >= data.size()) {
+      return;
+    }
+    AppendF(string, "%d", data[index]);
   } else if (array.buffer->type == ArrayDataType::kInt32) {
     const auto& data = array.GetBuffer<ArrayDataType::kInt32>().data;
     if (index >= data.size()) {
@@ -131,6 +132,12 @@ void AppendArrayVal(string* string, Array const& array, int index) {
       return;
     }
     AppendF(string, "%d", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kBool) {
+    const auto& data = array.GetBuffer<ArrayDataType::kBool>().data;
+    if (index >= data.size()) {
+      return;
+    }
+    AppendF(string, "%d", data[index]);
   }
 }
 
@@ -139,17 +146,12 @@ NodeProperties GetPropertiesForArray(const Model& model,
   NodeProperties node_properties;
   node_properties.color = GetColorForArray(model, array_name);
   node_properties.label = absl::StrReplaceAll(array_name, {{"/", "/\\n"}});
+  node_properties.log2_buffer_size = 0.0f;
 
   // Append array shape to the label.
   auto& array = model.GetArray(array_name);
-
-  if (array.data_type == ArrayDataType::kFloat) {
-    AppendF(&node_properties.label, "\\nType: float");
-  } else if (array.data_type == ArrayDataType::kInt32) {
-    AppendF(&node_properties.label, "\\nType: int32");
-  } else if (array.data_type == ArrayDataType::kUint8) {
-    AppendF(&node_properties.label, "\\nType: uint8");
-  }
+  AppendF(&node_properties.label, "\\nType: %s",
+          ArrayDataTypeName(array.data_type));
 
   if (array.has_shape()) {
     auto& array_shape = array.shape();
@@ -164,9 +166,15 @@ NodeProperties GetPropertiesForArray(const Model& model,
     }
     node_properties.label += "]";
 
+    int buffer_size = 0;
+    if (IsValid(array.shape())) {
+      buffer_size = RequiredBufferSizeForShape(array.shape());
+      node_properties.log2_buffer_size =
+          std::log2(static_cast<float>(buffer_size));
+    }
+
     if (array.buffer) {
       const auto& array = model.GetArray(array_name);
-      int buffer_size = RequiredBufferSizeForShape(array.shape());
       if (buffer_size <= 4) {
         AppendF(&node_properties.label, " = ");
         if (array.shape().dimensions_count() > 0) {
@@ -199,12 +207,12 @@ NodeProperties GetPropertiesForArray(const Model& model,
   }
 
   if (array.minmax) {
-    AppendF(&node_properties.label, "\\nMinMax: [%.3g, %.3g]",
+    AppendF(&node_properties.label, "\\nMinMax: [%.7g, %.7g]",
             array.minmax->min, array.minmax->max);
   }
 
   if (array.quantization_params) {
-    AppendF(&node_properties.label, "\\nQuantization: %.3g * (x - %d)",
+    AppendF(&node_properties.label, "\\nQuantization: %7g * (x - %d)",
             array.quantization_params->scale,
             array.quantization_params->zero_point);
   }
@@ -261,6 +269,19 @@ NodeProperties GetPropertiesForOperator(const Operator& op) {
       node_properties.color = Color(0xC5, 0x39, 0x29);  // Bolder color
       break;
     }
+    case OperatorType::kFakeQuant: {
+      const auto& fakequant_op = static_cast<const FakeQuantOperator&>(op);
+      node_properties.color = Color(0xC5, 0x39, 0x29);  // Bolder color
+      if (fakequant_op.minmax) {
+        AppendF(&node_properties.label, "\\n%dbit [%g,%g]",
+                fakequant_op.num_bits, fakequant_op.minmax->min,
+                fakequant_op.minmax->max);
+      } else {
+        AppendF(&node_properties.label, "\\n%dbit [?,?]",
+                fakequant_op.num_bits);
+      }
+      break;
+    }
     default:
       node_properties.color = Color(0xDB, 0x44, 0x37);
       break;
@@ -269,102 +290,82 @@ NodeProperties GetPropertiesForOperator(const Operator& op) {
   return node_properties;
 }
 
-std::vector<const Operator*> OperatorsToDump(const Model& model) {
-  const auto& dump_options = *GraphVizDumpOptions::singleton();
-  bool first_specified = !dump_options.graphviz_first_array.empty();
-  bool last_specified = !dump_options.graphviz_last_array.empty();
-  CHECK_EQ(first_specified, last_specified);
-  std::vector<const Operator*> ops_to_dump;
-  if (last_specified) {
-    // Return only the part of the graph between graphviz_first_array
-    // and graphviz_last_array.
-    CHECK(model.arrays.count(dump_options.graphviz_first_array));
-    CHECK(model.arrays.count(dump_options.graphviz_last_array));
-    std::unordered_set<string> arrays_already_produced;
-    std::vector<string> arrays_to_produce;
-    arrays_to_produce.push_back(dump_options.graphviz_last_array);
-    while (!arrays_to_produce.empty()) {
-      const string array = arrays_to_produce.back();
-      arrays_to_produce.pop_back();
-      CHECK(!arrays_already_produced.count(array));
-      arrays_already_produced.insert(array);
-      const Operator* op = GetOpWithOutput(model, array);
-      if (!op) {
-        continue;
-      }
-      ops_to_dump.push_back(op);
-      for (const string& input : op->inputs) {
-        if (arrays_already_produced.count(input) ||
-            input == dump_options.graphviz_first_array) {
-          continue;
-        }
-        arrays_to_produce.push_back(input);
-      }
-    }
-  } else {
-    // Return the whole graph.
-    for (const auto& op : model.operators) {
-      ops_to_dump.push_back(op.get());
-    }
-  }
-  return ops_to_dump;
-}
-
 }  // namespace
 
 void DumpGraphviz(const Model& model, string* output_file_contents) {
   AppendF(output_file_contents, "digraph Computegraph {\n");
+  // 'nslimit' is a graphviz (dot) paramater that limits the iterations during
+  // the layout phase. Omitting it allows infinite iterations, causing some
+  // complex graphs to never finish. A value of 125 produces good graphs
+  // while allowing complex graphs to finish.
+  AppendF(output_file_contents, "\t nslimit=125;\n");
 
   constexpr char kNodeFormat[] =
       "\t \"%s\" [label=\"%s\", shape=%s, style=filled, fillcolor=\"#%s\", "
       "fontcolor = \"#%sDD\"];\n";
 
-  constexpr char kEdgeFormat[] = "\t \"%s\" -> \"%s\";\n";
+  constexpr char kEdgeFormat[] =
+      "\t \"%s\" -> \"%s\" [penwidth=%f, weight=%f];\n";
 
   constexpr char kRNNBackEdgeFormat[] =
       "\t \"%s\" -> \"%s\" [color=\"#0F9D58\"];\n";
 
-  std::vector<const Operator*> ops_to_dump = OperatorsToDump(model);
-  std::set<string> already_added_arrays;
-  for (int op_index = 0; op_index < ops_to_dump.size(); op_index++) {
-    const Operator& op = *ops_to_dump[op_index];
+  for (const auto& array_kv : model.GetArrayMap()) {
+    // Add node for array.
+    const string& array_name = array_kv.first;
+    const auto& array_properties = GetPropertiesForArray(model, array_name);
+    AppendF(output_file_contents, kNodeFormat, array_name,
+            array_properties.label, "octagon",
+            array_properties.color.FillColorString().c_str(),
+            array_properties.color.TextColorString().c_str());
+  }
+  for (int op_index = 0; op_index < model.operators.size(); op_index++) {
+    const Operator& op = *model.operators[op_index];
     // Add node for operator.
     auto op_properties = GetPropertiesForOperator(op);
     string operator_id = StringF("op%05d", op_index);
     AppendF(output_file_contents, kNodeFormat, operator_id, op_properties.label,
             "box", op_properties.color.FillColorString().c_str(),
             op_properties.color.TextColorString().c_str());
-    // Add nodes and edges for all inputs of the operator.
+    // Add edges for all inputs of the operator.
     for (const auto& input : op.inputs) {
-      if (model.arrays.count(input) == 0) {
+      if (!model.HasArray(input)) {
         // Arrays should _always_ exist. Except, perhaps, during development.
         continue;
       }
       auto array_properties = GetPropertiesForArray(model, input);
-      if (!already_added_arrays.count(input)) {
-        AppendF(output_file_contents, kNodeFormat, input,
-                array_properties.label, "octagon",
-                array_properties.color.FillColorString().c_str(),
-                array_properties.color.TextColorString().c_str());
+      // Draw lines that transport more data thicker (Otherwise, where would the
+      // data fit? right?).
+      float line_width =
+          std::max(0.5f, array_properties.log2_buffer_size / 3.0f);
+      // Keep edges that transport more data shorter than those with less.
+      float weight = std::max(1.0f, array_properties.log2_buffer_size);
+      if (!IsInputArray(model, input) &&
+          GetOpWithOutput(model, input) == nullptr) {
+        // Give the main line of data flow a straighter path by penalizing edges
+        // to standalone buffers. Weights are generally very large buffers that
+        // otherwise skew the layout without this.
+        weight = 1.0f;
       }
-      AppendF(output_file_contents, kEdgeFormat, input, operator_id);
-      already_added_arrays.insert(input);
+      AppendF(output_file_contents, kEdgeFormat, input, operator_id, line_width,
+              weight);
     }
-    // Add nodes and edges for all outputs of the operator.
+    // Add edges for all outputs of the operator.
     for (const auto& output : op.outputs) {
-      if (model.arrays.count(output) == 0) {
+      if (!model.HasArray(output)) {
         // Arrays should _always_ exist. Except, perhaps, during development.
         continue;
       }
       auto array_properties = GetPropertiesForArray(model, output);
-      if (!already_added_arrays.count(output)) {
-        AppendF(output_file_contents, kNodeFormat, output,
-                array_properties.label, "octagon",
-                array_properties.color.FillColorString().c_str(),
-                array_properties.color.TextColorString().c_str());
+      // See comments above regarding weight and line_width calculations.
+      float line_width =
+          std::max(0.5f, array_properties.log2_buffer_size / 3.0f);
+      float weight = std::max(1.0f, array_properties.log2_buffer_size);
+      if (!IsArrayConsumed(model, output)) {
+        weight = 1.0f;
       }
-      AppendF(output_file_contents, kEdgeFormat, operator_id, output);
-      already_added_arrays.insert(output);
+      AppendF(output_file_contents, kEdgeFormat, operator_id, output,
+              line_width, weight);
     }
   }
 

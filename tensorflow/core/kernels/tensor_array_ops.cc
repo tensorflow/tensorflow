@@ -264,7 +264,10 @@ REGISTER_GPU(bfloat16);
 #endif  // GOOGLE_CUDA
 
 // GRADIENT *******************************************************************
-
+// Note that this op may have an optional third input. If present, it represents
+// a shape value. It indicates that element shape of this gradient array is that
+// shape value concatenated with the element shape of the original tensor array.
+// See TensorArrayGradWithShape.
 class TensorArrayGradOp : public TensorArrayCreationOp {
  public:
   explicit TensorArrayGradOp(OpKernelConstruction* context)
@@ -293,7 +296,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
                                        resource.name());
       }
       tensor_array_name =
-          StringPiece(resource.name()).substr(container.size()).ToString();
+          std::string(StringPiece(resource.name()).substr(container.size()));
     }
 
     auto output_handle = tensor_array_output_handle->flat<string>();
@@ -325,18 +328,38 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           "previous write?  Gradient calculation is impossible when multiple "
           "writes are performed to the same index.");
     }
+    TensorShape shape_to_prepend;
+    auto element_shape = PartialTensorShape();
+    if (ctx->num_inputs() > 2) {
+      TF_RETURN_IF_ERROR(
+          ctx->op_kernel().MakeShape(ctx->input(2), &shape_to_prepend));
+      auto ta_element_shape = tensor_array->ElemShape();
+      if (!ta_element_shape.unknown_rank()) {
+        std::vector<int64> dims;
+        for (auto dim : shape_to_prepend) {
+          dims.push_back(dim.size);
+        }
+        for (auto dim : ta_element_shape) {
+          dims.push_back(dim.size);
+        }
+        TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
+            gtl::ArraySlice<int64>(dims), &element_shape));
+      }
+    } else {
+      element_shape = tensor_array->ElemShape();
+    }
 
     const auto key = strings::StrCat(output_handle(0), output_handle(1));
     auto creator = [this, key, tensor_array, array_size, marked_size,
-                    tensor_array_output_handle,
+                    element_shape, shape_to_prepend, tensor_array_output_handle,
                     output_handle](TensorArray** ret) -> Status {
       *ret = new TensorArray(
           key, tensor_array->ElemType(), *tensor_array_output_handle,
-          array_size, tensor_array->ElemShape(),
-          tensor_array->HasIdenticalElementShapes(), false /* dynamic_size */,
-          true /* multiple_writes_aggregate */, true /* is_grad */,
-          marked_size /* marked_size */, true /* close_after_read */);
-      return (*ret)->CopyShapesFrom(tensor_array);
+          array_size, element_shape, tensor_array->HasIdenticalElementShapes(),
+          false /* dynamic_size */, true /* multiple_writes_aggregate */,
+          true /* is_grad */, marked_size /* marked_size */,
+          true /* close_after_read */);
+      return (*ret)->CopyShapesFrom(tensor_array, &shape_to_prepend);
     };
 
     Status s = rm->LookupOrCreate<TensorArray>(
@@ -361,7 +384,8 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV2").Device(DEVICE_CPU),
                         TensorArrayGradOp);
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV3").Device(DEVICE_CPU),
                         TensorArrayGradOp);
-
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape").Device(DEVICE_CPU),
+                        TensorArrayGradOp);
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGrad")
                             .Device(DEVICE_GPU)
                             .HostMemory("handle")
@@ -375,6 +399,12 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV2")
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV3")
                             .Device(DEVICE_GPU)
                             .HostMemory("handle")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("handle")
+                            .HostMemory("shape_to_prepend")
                             .HostMemory("grad_handle"),
                         TensorArrayGradOp);
 
@@ -1104,9 +1134,9 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
       indices[1] = i;
 
       if (element_shape.num_elements() > 0) {
-        functor::Split<Device, T>()(ctx->eigen_device<Device>(),
-                                    tensor_value_i_t, tensor_value_t, indices,
-                                    sizes);
+        functor::Split<Device, T, 3>()(ctx->eigen_device<Device>(),
+                                       tensor_value_i_t, tensor_value_t,
+                                       indices, sizes);
       }
 
       write_values.push_back(persistent_tensor);
@@ -1295,9 +1325,9 @@ class TensorArraySplitOp : public OpKernel {
         auto tensor_value_i_t = tensor_value_i->shaped<T, 3>(
             {1, tensor_lengths_t(i), elements_per_row});
 
-        functor::Split<Device, T>()(ctx->eigen_device<Device>(),
-                                    tensor_value_i_t, tensor_value_t, indices,
-                                    sizes);
+        functor::Split<Device, T, 3>()(ctx->eigen_device<Device>(),
+                                       tensor_value_i_t, tensor_value_t,
+                                       indices, sizes);
       }
 
       write_values.push_back(persistent_tensor);

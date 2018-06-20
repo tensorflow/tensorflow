@@ -25,19 +25,19 @@
 # pylint: disable=superfluous-parens
 
 import argparse
-import fileinput
 import os
 import re
 import subprocess
 import time
 
-# File parameters
+# File parameters.
 TF_SRC_DIR = "tensorflow"
 VERSION_H = "%s/core/public/version.h" % TF_SRC_DIR
 SETUP_PY = "%s/tools/pip_package/setup.py" % TF_SRC_DIR
 README_MD = "./README.md"
 DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel" % TF_SRC_DIR
 GPU_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-gpu" % TF_SRC_DIR
+CPU_MKL_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-cpu-mkl" % TF_SRC_DIR
 RELEVANT_FILES = [TF_SRC_DIR,
                   VERSION_H,
                   SETUP_PY,
@@ -45,15 +45,9 @@ RELEVANT_FILES = [TF_SRC_DIR,
                   DEVEL_DOCKERFILE,
                   GPU_DEVEL_DOCKERFILE]
 
-# Version type parameters
+# Version type parameters.
 NIGHTLY_VERSION = 1
 REGULAR_VERSION = 0
-
-
-def replace_line(old_line, new_line, filename):
-  """Replace a line in a file."""
-  for line in fileinput.input(filename, inplace=True):
-    print(line.rstrip().replace(old_line, new_line))
 
 
 def check_existence(filename):
@@ -69,9 +63,12 @@ def check_all_files():
     check_existence(file_name)
 
 
-def replace_with_sed(query, filename):
+def replace_string_in_line(search, replace, filename):
   """Replace with sed when regex is required."""
-  subprocess.check_call(['sed', '-i', '-r', '-e', query, filename])
+  with open(filename, "r") as source:
+    content = source.read()
+  with open(filename, "w") as source:
+    source.write(re.sub(search, replace, content))
 
 
 class Version(object):
@@ -125,13 +122,13 @@ class Version(object):
     Raises:
       RuntimeError: If the version string is not valid.
     """
-    # Check validity of new version string
+    # Check validity of new version string.
     if not re.search(r"[0-9]+\.[0-9]+\.[a-zA-Z0-9]+", string):
       raise RuntimeError("Invalid version string: %s" % string)
 
     major, minor, extension = string.split(".", 2)
 
-    # Isolate patch and identifier string if identifier string exists
+    # Isolate patch and identifier string if identifier string exists.
     extension_split = extension.split("-", 1)
     patch = extension_split[0]
     if len(extension_split) == 2:
@@ -154,7 +151,7 @@ def get_current_semver_version():
     core/public/version.h
   """
 
-  # Get current version information
+  # Get current version information.
   version_file = open(VERSION_H, "r")
   for line in version_file:
     major_match = re.search("^#define TF_MAJOR_VERSION ([0-9]+)", line)
@@ -185,32 +182,33 @@ def get_current_semver_version():
 
 def update_version_h(old_version, new_version):
   """Update tensorflow/core/public/version.h."""
-  replace_line("#define TF_MAJOR_VERSION %s" % old_version.major,
-               "#define TF_MAJOR_VERSION %s" % new_version.major, VERSION_H)
-  replace_line("#define TF_MINOR_VERSION %s" % old_version.minor,
-               "#define TF_MINOR_VERSION %s" % new_version.minor, VERSION_H)
-  replace_line("#define TF_PATCH_VERSION %s" % old_version.patch,
-               "#define TF_PATCH_VERSION %s" % new_version.patch, VERSION_H)
-  replace_line("#define TF_VERSION_SUFFIX \"%s\"" %
-               old_version.identifier_string,
-               "#define TF_VERSION_SUFFIX \"%s\""
-               % new_version.identifier_string,
-               VERSION_H)
+  replace_string_in_line("#define TF_MAJOR_VERSION %s" % old_version.major,
+                         "#define TF_MAJOR_VERSION %s" % new_version.major,
+                         VERSION_H)
+  replace_string_in_line("#define TF_MINOR_VERSION %s" % old_version.minor,
+                         "#define TF_MINOR_VERSION %s" % new_version.minor,
+                         VERSION_H)
+  replace_string_in_line("#define TF_PATCH_VERSION %s" % old_version.patch,
+                         "#define TF_PATCH_VERSION %s" % new_version.patch,
+                         VERSION_H)
+  replace_string_in_line(
+      "#define TF_VERSION_SUFFIX \"%s\"" % old_version.identifier_string,
+      "#define TF_VERSION_SUFFIX \"%s\"" % new_version.identifier_string,
+      VERSION_H)
 
 
 def update_setup_dot_py(old_version, new_version):
   """Update setup.py."""
-  replace_line("_VERSION = '%s'" % old_version.string,
-               "_VERSION = '%s'" % new_version.string, SETUP_PY)
+  replace_string_in_line("_VERSION = '%s'" % old_version.string,
+                         "_VERSION = '%s'" % new_version.string, SETUP_PY)
 
 
 def update_readme(old_version, new_version):
   """Update README."""
   pep_440_str = new_version.pep_440_str
-  replace_with_sed(r"s/%s\.%s\.([[:alnum:]]+)-/%s-/g" % (old_version.major,
-                                                         old_version.minor,
-                                                         pep_440_str),
-                   README_MD)
+  replace_string_in_line(r"%s\.%s\.([[:alnum:]]+)-" % (old_version.major,
+                                                       old_version.minor),
+                         "%s-" % pep_440_str, README_MD)
 
 
 def update_md_files(old_version, new_version):
@@ -226,22 +224,39 @@ def update_md_files(old_version, new_version):
   for filename in ["linux", "mac", "windows", "sources"]:
     filepath = "%s/docs_src/install/install_%s.md" % (TF_SRC_DIR,
                                                       filename)
-    replace_with_sed("s/tensorflow-%s/tensorflow-%s/g"
-                     % (old_pep_version, new_pep_version), filepath)
-    replace_with_sed("s/tensorflow_gpu-%s/tensorflow_gpu-%s/g"
-                     % (old_pep_version, new_pep_version), filepath)
-    replace_with_sed("s/TensorFlow %s/TensorFlow %s/g"
-                     % (old_pep_version, new_pep_version), filepath)
+
+    if filename == "sources" and "rc0" in new_pep_version:
+      replace_string_in_line("(?<!<td>)tensorflow-%s" % old_pep_version,
+                             "tensorflow-%s" % new_pep_version, filepath)
+      replace_string_in_line("(?<!<td>)tensorflow_gpu-%s" % old_pep_version,
+                             "tensorflow_gpu-%s" % new_pep_version, filepath)
+    else:
+      replace_string_in_line("tensorflow-%s" % old_pep_version,
+                             "tensorflow-%s" % new_pep_version, filepath)
+      replace_string_in_line("tensorflow_gpu-%s" % old_pep_version,
+                             "tensorflow_gpu-%s" % new_pep_version, filepath)
+    replace_string_in_line("TensorFlow %s" % old_pep_version,
+                           "TensorFlow %s" % new_pep_version, filepath)
 
   for filename in ["java", "go", "c"]:
     filepath = "%s/docs_src/install/install_%s.md" % (TF_SRC_DIR,
                                                       filename)
-    replace_with_sed(r"s/x86_64-%s/x86_64-%s/g"
-                     % (old_version, new_version), filepath)
-    replace_with_sed(r"s/libtensorflow-%s.jar/libtensorflow-%s.jar/g"
-                     % (old_version, new_version), filepath)
-    replace_with_sed(r"s/<version>%s<\/version>/<version>%s<\/version>/g"
-                     % (old_version, new_version), filepath)
+    replace_string_in_line(r"x86_64-%s" % old_version,
+                           "x86_64-%s" % new_version, filepath)
+    replace_string_in_line(r"libtensorflow-%s.jar" % old_version,
+                           "libtensorflow-%s.jar" % new_version, filepath)
+    replace_string_in_line(r"<version>%s<\/version>" % old_version,
+                           "<version>%s</version>" % new_version, filepath)
+
+  # Update any links to colab notebooks.
+  def colab_url(version):
+    version_string = "%s.%s.%s" % (version.major, version.minor, version.patch)
+    prefix = "https://colab.research.google.com/github/tensorflow/models/blob/r"
+    return prefix + version_string + "/"
+
+  replace_string_in_line(
+      colab_url(old_version), colab_url(new_version),
+      "%s/docs_src/get_started/eager.md" % TF_SRC_DIR)
 
 
 def major_minor_change(old_version, new_version):
@@ -256,20 +271,19 @@ def major_minor_change(old_version, new_version):
 def update_dockerfiles(old_version, new_version):
   """Update dockerfiles if there was a major change."""
   if major_minor_change(old_version, new_version):
-    old_r_major_minor = r"r%s\.%s" % (old_version.major, old_version.minor)
-    old_r_major_minor_string = old_r_major_minor.replace("\\", "")
-    r_major_minor = r"r%s\.%s" % (new_version.major, new_version.minor)
-    r_major_minor_string = r_major_minor.replace("\\", "")
+    old_r_major_minor = "r%s.%s" % (old_version.major, old_version.minor)
+    r_major_minor = "r%s.%s" % (new_version.major, new_version.minor)
 
     print("Detected Major.Minor change.")
     print("Updating pattern %s to %s in additional files"
-          % (old_r_major_minor_string, r_major_minor_string))
+          % (old_r_major_minor, r_major_minor))
 
     # Update dockerfiles
-    replace_with_sed("s/%s/%s/g"
-                     % (old_r_major_minor, r_major_minor), DEVEL_DOCKERFILE)
-    replace_with_sed("s/%s/%s/g"
-                     % (old_r_major_minor, r_major_minor), GPU_DEVEL_DOCKERFILE)
+    replace_string_in_line(old_r_major_minor, r_major_minor, DEVEL_DOCKERFILE)
+    replace_string_in_line(old_r_major_minor, r_major_minor,
+                           GPU_DEVEL_DOCKERFILE)
+    replace_string_in_line(old_r_major_minor, r_major_minor,
+                           CPU_MKL_DEVEL_DOCKERFILE)
 
 
 def check_for_lingering_string(lingering_string):
@@ -333,7 +347,7 @@ def main():
   old_version = get_current_semver_version()
 
   if args.nightly:
-    # dev minor version is one ahead of official
+    # Dev minor version is one ahead of official.
     nightly_minor_ver = int(old_version.minor) + 1
     new_version = Version(old_version.major,
                           str(nightly_minor_ver),
@@ -349,12 +363,18 @@ def main():
   update_md_files(old_version, new_version)
   update_dockerfiles(old_version, new_version)
 
-  # Print transition details
+  # Print transition details.
   print("Major: %s -> %s" % (old_version.major, new_version.major))
   print("Minor: %s -> %s" % (old_version.minor, new_version.minor))
   print("Patch: %s -> %s\n" % (old_version.patch, new_version.patch))
 
   check_for_old_version(old_version, new_version)
+  if "rc0" in str(new_version):
+    print("\n\n\033[93mNOTE: Please update the tensorflow/docs_src/install/"
+          "install_sources.md and add a line for tensorflow-%s and "
+          "tensorflow_gpu-%s in the tested source configurations "
+          "table.\033[0m\n" % (new_version.pep_440_str,
+                               new_version.pep_440_str))
 
 
 if __name__ == "__main__":

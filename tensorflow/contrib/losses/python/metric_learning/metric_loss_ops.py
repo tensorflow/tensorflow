@@ -50,16 +50,12 @@ def pairwise_distance(feature, squared=False):
     pairwise_distances: 2-D Tensor of size [number of data, number of data].
   """
   pairwise_distances_squared = math_ops.add(
+      math_ops.reduce_sum(math_ops.square(feature), axis=[1], keepdims=True),
       math_ops.reduce_sum(
-          math_ops.square(feature),
-          axis=[1],
-          keep_dims=True),
-      math_ops.reduce_sum(
-          math_ops.square(
-              array_ops.transpose(feature)),
+          math_ops.square(array_ops.transpose(feature)),
           axis=[0],
-          keep_dims=True)) - 2.0 * math_ops.matmul(
-              feature, array_ops.transpose(feature))
+          keepdims=True)) - 2.0 * math_ops.matmul(feature,
+                                                  array_ops.transpose(feature))
 
   # Deal with numerical inaccuracies. Set small negatives to zero.
   pairwise_distances_squared = math_ops.maximum(pairwise_distances_squared, 0.0)
@@ -132,10 +128,10 @@ def masked_maximum(data, mask, dim=1):
     masked_maximums: N-D `Tensor`.
       The maximized dimension is of size 1 after the operation.
   """
-  axis_minimums = math_ops.reduce_min(data, dim, keep_dims=True)
+  axis_minimums = math_ops.reduce_min(data, dim, keepdims=True)
   masked_maximums = math_ops.reduce_max(
-      math_ops.multiply(
-          data - axis_minimums, mask), dim, keep_dims=True) + axis_minimums
+      math_ops.multiply(data - axis_minimums, mask), dim,
+      keepdims=True) + axis_minimums
   return masked_maximums
 
 
@@ -151,10 +147,10 @@ def masked_minimum(data, mask, dim=1):
     masked_minimums: N-D `Tensor`.
       The minimized dimension is of size 1 after the operation.
   """
-  axis_maximums = math_ops.reduce_max(data, dim, keep_dims=True)
+  axis_maximums = math_ops.reduce_max(data, dim, keepdims=True)
   masked_minimums = math_ops.reduce_min(
-      math_ops.multiply(
-          data - axis_maximums, mask), dim, keep_dims=True) + axis_maximums
+      math_ops.multiply(data - axis_maximums, mask), dim,
+      keepdims=True) + axis_maximums
   return masked_minimums
 
 
@@ -202,8 +198,7 @@ def triplet_semihard_loss(labels, embeddings, margin=1.0):
   mask_final = array_ops.reshape(
       math_ops.greater(
           math_ops.reduce_sum(
-              math_ops.cast(
-                  mask, dtype=dtypes.float32), 1, keep_dims=True),
+              math_ops.cast(mask, dtype=dtypes.float32), 1, keepdims=True),
           0.0), [batch_size, batch_size])
   mask_final = array_ops.transpose(mask_final)
 
@@ -290,7 +285,7 @@ def npairs_loss(labels, embeddings_anchor, embeddings_positive,
 
   labels_remapped = math_ops.to_float(
       math_ops.equal(labels, array_ops.transpose(labels)))
-  labels_remapped /= math_ops.reduce_sum(labels_remapped, 1, keep_dims=True)
+  labels_remapped /= math_ops.reduce_sum(labels_remapped, 1, keepdims=True)
 
   # Add the softmax loss.
   xent_loss = nn.softmax_cross_entropy_with_logits(
@@ -395,7 +390,7 @@ def npairs_loss_multilabel(sparse_labels, embeddings_anchor,
 
     multilabel_adjacency_matrix = _build_multilabel_adjacency(sparse_labels)
     labels_remapped = math_ops.to_float(multilabel_adjacency_matrix)
-    labels_remapped /= math_ops.reduce_sum(labels_remapped, 1, keep_dims=True)
+    labels_remapped /= math_ops.reduce_sum(labels_remapped, 1, keepdims=True)
 
     # Add the softmax loss.
     xent_loss = nn.softmax_cross_entropy_with_logits(
@@ -448,10 +443,10 @@ def lifted_struct_loss(labels, embeddings, margin=1.0):
   # Safe maximum: Temporarily shift negative distances
   #   above zero before taking max.
   #     this is to take the max only among negatives.
-  row_minimums = math_ops.reduce_min(diff, 1, keep_dims=True)
+  row_minimums = math_ops.reduce_min(diff, 1, keepdims=True)
   row_negative_maximums = math_ops.reduce_max(
-      math_ops.multiply(
-          diff - row_minimums, mask), 1, keep_dims=True) + row_minimums
+      math_ops.multiply(diff - row_minimums, mask), 1,
+      keepdims=True) + row_minimums
 
   # Compute the loss.
   # Keep track of matrix of maximums where M_ij = max(m_i, m_j)
@@ -467,10 +462,11 @@ def lifted_struct_loss(labels, embeddings, margin=1.0):
       array_ops.transpose(max_elements), [-1, 1])
 
   loss_exp_left = array_ops.reshape(
-      math_ops.reduce_sum(math_ops.multiply(
-          math_ops.exp(
-              diff_tiled - max_elements_vect),
-          mask_tiled), 1, keep_dims=True), [batch_size, batch_size])
+      math_ops.reduce_sum(
+          math_ops.multiply(
+              math_ops.exp(diff_tiled - max_elements_vect), mask_tiled),
+          1,
+          keepdims=True), [batch_size, batch_size])
 
   loss_mat = max_elements + math_ops.log(
       loss_exp_left + array_ops.transpose(loss_exp_left))
@@ -686,7 +682,7 @@ def _find_loss_augmented_facility_idx(pairwise_distances, labels, chosen_ids,
                   array_ops.reshape(pairwise_distances_candidate, [1, -1])
               ], 0),
               axis=0,
-              keep_dims=True), [num_candidates, -1]),
+              keepdims=True), [num_candidates, -1]),
       axis=1)
 
   nmi_scores = array_ops.zeros([num_candidates])
@@ -715,7 +711,7 @@ def _find_loss_augmented_facility_idx(pairwise_distances, labels, chosen_ids,
       candidate_scores, margin_multiplier * nmi_scores)
 
   argmax_index = math_ops.to_int32(
-      math_ops.argmax(candidate_scores, dimension=0))
+      math_ops.argmax(candidate_scores, axis=0))
 
   return candidate_ids[argmax_index]
 
@@ -815,7 +811,7 @@ def update_medoid_per_cluster(pairwise_distances, pairwise_distances_subset,
   candidate_scores = math_ops.add(scores_fac, margin_multiplier * scores_margin)
 
   argmax_index = math_ops.to_int32(
-      math_ops.argmax(candidate_scores, dimension=0))
+      math_ops.argmax(candidate_scores, axis=0))
 
   best_medoid = math_ops.to_int32(cluster_member_ids[argmax_index])
   chosen_ids = update_1d_tensor(chosen_ids, cluster_idx, best_medoid)

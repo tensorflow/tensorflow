@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_
 
 #include <memory>
 
@@ -43,7 +43,7 @@ class ExternalConstantPool {
   // The constant pool copies out the contents of `literal` into a buffer it
   // owns -- it does not keep pointers to `literal`, or to memory owned by
   // `literal`.
-  void Insert(string name, const Literal& literal, int64 alignment);
+  void Insert(string name, const LiteralSlice& literal, int64 alignment);
 
   // Find the constant with name `name` in this constant pool.  If there isn't
   // such constant, return nullptr.
@@ -62,4 +62,4 @@ class ExternalConstantPool {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_

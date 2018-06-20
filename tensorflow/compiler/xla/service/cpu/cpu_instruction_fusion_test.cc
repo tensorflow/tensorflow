@@ -19,6 +19,7 @@ limitations under the License.
 #include <set>
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -77,7 +78,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_1) {
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
-TEST_F(InstructionFusionTest, DotOperationFusion_Bitcast) {
+TEST_F(InstructionFusionTest, DotOperationNoFusion_Bitcast) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {2, 512, 2, 128}), "arg0"));
@@ -94,8 +95,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Bitcast) {
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
-  EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
-  EXPECT_THAT(computation->root_instruction(), op::Fusion());
+  EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
 }
 
 TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {
@@ -158,37 +158,95 @@ TEST_F(InstructionFusionTest, DotOperationFusion_ElementReuse) {
   EXPECT_EQ(dot, computation->root_instruction());
 }
 
-TEST_F(InstructionFusionTest, DotOperationFusion_TransposeFusion) {
-  HloComputation::Builder builder(TestName());
-  HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {1, 256}), "arg0"));
-  HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {1024, 256}), "arg1"));
+TEST_F(InstructionFusionTest, DotOperationFusion_TransposeFusion_RHS) {
+  string hlo_string = R"(
+HloModule DotOperationFusion_TransposeFusion
 
-  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {1024, 256}), HloOpcode::kExp, arg1));
-  HloInstruction* transpose1 =
-      builder.AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(S32, {256, 1024}), exp1, {1, 0}));
-  builder.AddInstruction(
-      MakeDot(ShapeUtil::MakeShape(F32, {1, 1024}), arg0, transpose1));
+ENTRY DotOperationFusion_TransposeFusion {
+  arg0 = f32[1,256] parameter(0)
+  arg1 = f32[1024,256] parameter(1)
+  exponential = s32[1024,256] exponential(arg1)
+  transpose = s32[256,1024] transpose(exponential), dimensions={1,0}
+  ROOT dot = f32[1,1024] dot(arg0, transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
 
-  auto module = CreateNewModule();
-  auto computation = module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  HloComputation* computation = module->entry_computation();
+
   TransposeFolding transpose_folding(
       [](const HloInstruction& dot,
          const TransposeFolding::OperandIndices& candidate_operands) {
         return candidate_operands;
       },
       TransposeFolding::NeverFoldTranspose);
-  EXPECT_TRUE(transpose_folding.Run(module.get()).ValueOrDie());
-  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kFusion);
-  EXPECT_EQ(computation->root_instruction()->fusion_kind(),
-            HloInstruction::FusionKind::kTransposeDot);
-  EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
-  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kFusion);
-  EXPECT_EQ(computation->root_instruction()->fusion_kind(),
-            HloInstruction::FusionKind::kTransposeDot);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
+  ASSERT_TRUE(changed);
+  ASSERT_THAT(computation->root_instruction(),
+              op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
+                      /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/1));
+}
+
+TEST_F(InstructionFusionTest, DotOperationFusion_TransposeFusion_LHS) {
+  string hlo_string = R"(
+HloModule DotOperationFusion_TransposeFusion
+
+ENTRY DotOperationFusion_TransposeFusion {
+  arg0 = f32[256,1] parameter(0)
+  arg1 = f32[256,1024] parameter(1)
+  transpose = s32[1,256] transpose(arg0), dimensions={1,0}
+  exponential = s32[256,1024] exponential(arg1)
+  ROOT dot = f32[1,1024] dot(transpose, exponential), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  HloComputation* computation = module->entry_computation();
+
+  TransposeFolding transpose_folding(
+      [](const HloInstruction& dot,
+         const TransposeFolding::OperandIndices& candidate_operands) {
+        return candidate_operands;
+      },
+      TransposeFolding::NeverFoldTranspose);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
+  ASSERT_TRUE(changed);
+  ASSERT_THAT(computation->root_instruction(),
+              op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
+                      /*lhs_contracting_dim=*/0, /*rhs_contracting_dim=*/0));
+}
+
+TEST_F(InstructionFusionTest,
+       DotOperationFusion_TransposeFusion_LHS_NonDefault) {
+  string hlo_string = R"(
+HloModule DotOperationFusion_TransposeFusion
+
+ENTRY DotOperationFusion_TransposeFusion {
+  arg0 = f32[1,256] parameter(0)
+  arg1 = f32[256,1024] parameter(1)
+  transpose = s32[256,1] transpose(arg0), dimensions={1,0}
+  exponential = s32[256,1024] exponential(arg1)
+  ROOT dot = f32[1,1024] dot(transpose, exponential), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  HloComputation* computation = module->entry_computation();
+
+  TransposeFolding transpose_folding(
+      [](const HloInstruction& dot,
+         const TransposeFolding::OperandIndices& candidate_operands) {
+        return candidate_operands;
+      },
+      TransposeFolding::NeverFoldTranspose);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
+  ASSERT_TRUE(changed);
+  ASSERT_THAT(computation->root_instruction(),
+              op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
+                      /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/0));
 }
 
 class OpcodeFusionTest : public InstructionFusionTest {
@@ -244,35 +302,33 @@ class OpcodeFusionTest : public InstructionFusionTest {
   }
 };
 
-TEST_F(OpcodeFusionTest, Exponential_Bitcast_Negate) {
+TEST_F(OpcodeFusionTest, Exponential_Reshape_Negate) {
   HloComputation::Builder builder(TestName());
   Shape param_shape = ShapeUtil::MakeShape(F32, {1, 4});
   Shape result_shape = ShapeUtil::MakeShape(F32, {4});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
-  // InstructionFusion::ShouldFuse() precludes fusing a bitcast whose operand
-  // is a parameter, so create an operand between the parameter and bitcast.
   HloInstruction* exp1 = builder.AddInstruction(
       HloInstruction::CreateUnary(param_shape, HloOpcode::kExp, param0));
-  HloInstruction* bitcast2 = builder.AddInstruction(
-      HloInstruction::CreateUnary(result_shape, HloOpcode::kBitcast, exp1));
+  HloInstruction* reshape2 =
+      builder.AddInstruction(HloInstruction::CreateReshape(result_shape, exp1));
   builder.AddInstruction(
-      HloInstruction::CreateUnary(result_shape, HloOpcode::kNegate, bitcast2));
+      HloInstruction::CreateUnary(result_shape, HloOpcode::kNegate, reshape2));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
-      module.get(), {HloOpcode::kNegate, HloOpcode::kBitcast, HloOpcode::kExp,
+      module.get(), {HloOpcode::kNegate, HloOpcode::kReshape, HloOpcode::kExp,
                      HloOpcode::kParameter});
 }
 
-TEST_F(OpcodeFusionTest, Broadcast_Bitcast_DynamicSlice_Tanh) {
+TEST_F(OpcodeFusionTest, Broadcast_Reshape_DynamicSlice_Tanh) {
   HloComputation::Builder builder(TestName());
   Shape param_shape = ShapeUtil::MakeShape(F32, {8});
   Shape starts_shape = ShapeUtil::MakeShape(F32, {2});
   Shape broadcast_shape = ShapeUtil::MakeShape(F32, {1, 8, 8});
-  Shape bitcast_shape = ShapeUtil::MakeShape(F32, {8, 8});
+  Shape reshape_shape = ShapeUtil::MakeShape(F32, {8, 8});
   Shape dynamic_slice_shape = ShapeUtil::MakeShape(F32, {4, 4});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
@@ -280,11 +336,11 @@ TEST_F(OpcodeFusionTest, Broadcast_Bitcast_DynamicSlice_Tanh) {
       HloInstruction::CreateParameter(1, starts_shape, "starts"));
   HloInstruction* broadcast2 = builder.AddInstruction(
       HloInstruction::CreateBroadcast(broadcast_shape, param0, {1}));
-  HloInstruction* bitcast3 = builder.AddInstruction(HloInstruction::CreateUnary(
-      bitcast_shape, HloOpcode::kBitcast, broadcast2));
+  HloInstruction* reshape3 = builder.AddInstruction(
+      HloInstruction::CreateReshape(reshape_shape, broadcast2));
   HloInstruction* dynamic_slice4 =
       builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-          dynamic_slice_shape, bitcast3, param1, {4, 4}));
+          dynamic_slice_shape, reshape3, param1, {4, 4}));
   builder.AddInstruction(HloInstruction::CreateUnary(
       dynamic_slice_shape, HloOpcode::kTanh, dynamic_slice4));
 
@@ -293,7 +349,7 @@ TEST_F(OpcodeFusionTest, Broadcast_Bitcast_DynamicSlice_Tanh) {
 
   RunFusionAndCheckOpcodesWereFused(
       module.get(),
-      {HloOpcode::kTanh, HloOpcode::kDynamicSlice, HloOpcode::kBitcast,
+      {HloOpcode::kTanh, HloOpcode::kDynamicSlice, HloOpcode::kReshape,
        HloOpcode::kBroadcast, HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
@@ -700,6 +756,154 @@ TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x1_multi_use) {
               Not(op::Fusion()));
 }
 
+struct GatherLoopFusionTestSpec {
+  string test_name;
+  string hlo_computation_text;
+
+  static string Name(
+      const ::testing::TestParamInfo<GatherLoopFusionTestSpec>& info) {
+    return info.param.test_name;
+  }
+};
+
+class GatherLoopFusionTest
+    : public OpcodeFusionTest,
+      public ::testing::WithParamInterface<GatherLoopFusionTestSpec> {};
+
+TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
+  const GatherLoopFusionTestSpec& spec = GetParam();
+  string hlo_string = tensorflow::strings::StrCat(
+      "HloModule ", spec.test_name, "\n\n", spec.hlo_computation_text);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(),
+      {HloOpcode::kGather, HloOpcode::kAdd, HloOpcode::kBroadcast,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
+}
+
+std::vector<GatherLoopFusionTestSpec> GetGatherLoopFusionTestSpecs() {
+  std::vector<GatherLoopFusionTestSpec> result;
+
+  result.push_back({"FusedTensorFlowGatherV2", R"(
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  gather = s32[3,2] gather(operand, indices),
+      output_window_dims={0},
+      elided_window_dims={1},
+      gather_dims_to_operand_dims={1},
+      index_vector_dim=1,
+      window_bounds={3, 1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[3,2] broadcast(one), dimensions={}
+  ROOT result = s32[3,2]{1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedTensorFlowGatherMultipleBatchDims", R"(
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,3,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={1},
+      gather_dims_to_operand_dims={1},
+      index_vector_dim=2,
+      window_bounds={3, 1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,3,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,3,2]{2,1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedTensorFlowGatherNdMultipleBatchDims", R"(
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2,2] parameter(1)
+  gather = s32[2,2] gather(operand, indices),
+      output_window_dims={},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=2,
+      window_bounds={1, 1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedTensorFlowGatherNd_0", R"(
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=1,
+      window_bounds={1,1,2}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedTensorFlowGatherNd_1", R"(
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,2] gather(operand, indices),
+      output_window_dims={1},
+      elided_window_dims={0,1},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1,2}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,2] broadcast(one), dimensions={}
+  ROOT result = s32[2,2]{1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedDynamicSlice", R"(
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  gather = s32[1,1] gather(operand, indices),
+      output_window_dims={0,1},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[1,1] broadcast(one), dimensions={}
+  ROOT result = s32[1,1]{1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  result.push_back({"FusedBatchDynamicSlice", R"(
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  gather = s32[2,1,1] gather(operand, indices),
+      output_window_dims={1,2},
+      elided_window_dims={},
+      gather_dims_to_operand_dims={0,1},
+      index_vector_dim=0,
+      window_bounds={1,1}
+  one = s32[] constant(1)
+  one_broadcasted = s32[2,1,1] broadcast(one), dimensions={}
+  ROOT result = s32[2,1,1]{2,1,0} add(gather, one_broadcasted)
+}
+)"});
+
+  return result;
+}
+
+INSTANTIATE_TEST_CASE_P(GatherLoopFusionTestInstantiation, GatherLoopFusionTest,
+                        ::testing::ValuesIn(GetGatherLoopFusionTestSpecs()),
+                        GatherLoopFusionTestSpec::Name);
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

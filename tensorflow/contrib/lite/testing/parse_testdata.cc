@@ -18,6 +18,7 @@ limitations under the License.
 // ASCII file.
 #include "tensorflow/contrib/lite/testing/parse_testdata.h"
 
+#include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -191,39 +192,36 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
   int model_outputs = interpreter->outputs().size();
   TF_LITE_ENSURE_EQ(context, model_outputs, example.outputs.size());
   for (size_t i = 0; i < interpreter->outputs().size(); i++) {
+    bool tensors_differ = false;
     int output_index = interpreter->outputs()[i];
     if (const float* data = interpreter->typed_tensor<float>(output_index)) {
       for (size_t idx = 0; idx < example.outputs[i].flat_data.size(); idx++) {
         float computed = data[idx];
         float reference = example.outputs[0].flat_data[idx];
         float diff = std::abs(computed - reference);
-        bool error_is_large = false;
         // For very small numbers, try absolute error, otherwise go with
         // relative.
-        if (std::abs(reference) < kRelativeThreshold) {
-          error_is_large = (diff > kAbsoluteThreshold);
-        } else {
-          error_is_large = (diff > kRelativeThreshold * std::abs(reference));
-        }
-        if (error_is_large) {
+        bool local_tensors_differ =
+            std::abs(reference) < kRelativeThreshold
+                ? diff > kAbsoluteThreshold
+                : diff > kRelativeThreshold * std::abs(reference);
+        if (local_tensors_differ) {
           fprintf(stdout, "output[%zu][%zu] did not match %f vs reference %f\n",
                   i, idx, data[idx], reference);
-          return kTfLiteError;
+          tensors_differ = local_tensors_differ;
         }
       }
-      fprintf(stderr, "\n");
     } else if (const int32_t* data =
                    interpreter->typed_tensor<int32_t>(output_index)) {
       for (size_t idx = 0; idx < example.outputs[i].flat_data.size(); idx++) {
         int32_t computed = data[idx];
         int32_t reference = example.outputs[0].flat_data[idx];
         if (std::abs(computed - reference) > 0) {
-          fprintf(stderr, "output[%zu][%zu] did not match %d vs reference %f\n",
-                  i, idx, data[idx], example.outputs[0].flat_data[idx]);
-          return kTfLiteError;
+          fprintf(stderr, "output[%zu][%zu] did not match %d vs reference %d\n",
+                  i, idx, computed, reference);
+          tensors_differ = true;
         }
       }
-      fprintf(stderr, "\n");
     } else if (const int64_t* data =
                    interpreter->typed_tensor<int64_t>(output_index)) {
       for (size_t idx = 0; idx < example.outputs[i].flat_data.size(); idx++) {
@@ -231,16 +229,18 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
         int64_t reference = example.outputs[0].flat_data[idx];
         if (std::abs(computed - reference) > 0) {
           fprintf(stderr,
-                  "output[%zu][%zu] did not match %ld vs reference %f\n", i,
-                  idx, data[idx], example.outputs[0].flat_data[idx]);
-          return kTfLiteError;
+                  "output[%zu][%zu] did not match %" PRId64
+                  " vs reference %" PRId64 "\n",
+                  i, idx, computed, reference);
+          tensors_differ = true;
         }
       }
-      fprintf(stderr, "\n");
     } else {
       fprintf(stderr, "output[%zu] was not float or int data\n", i);
       return kTfLiteError;
     }
+    fprintf(stderr, "\n");
+    if (tensors_differ) return kTfLiteError;
   }
   return kTfLiteOk;
 }
@@ -317,8 +317,9 @@ class Reshape : public Message {
 // This is the top-level message in a test file.
 class TestData : public Message {
  public:
-  explicit TestData(TestRunner* test_runner) : test_runner_(test_runner) {}
-
+  explicit TestData(TestRunner* test_runner)
+      : test_runner_(test_runner), num_invocations_(0), max_invocations_(-1) {}
+  void SetMaxInvocations(int max) { max_invocations_ = max; }
   void SetField(const std::string& name, const std::string& value) override {
     if (name == "load_model") {
       test_runner_->LoadModel(value);
@@ -332,7 +333,12 @@ class TestData : public Message {
   Message* AddChild(const std::string& s) override {
     if (s == "invoke") {
       test_runner_->AllocateTensors();
-      return Store(new Invoke(test_runner_));
+      if (max_invocations_ == -1 || num_invocations_ < max_invocations_) {
+        ++num_invocations_;
+        return Store(new Invoke(test_runner_));
+      } else {
+        return nullptr;
+      }
     } else if (s == "reshape") {
       return Store(new Reshape(test_runner_));
     }
@@ -341,10 +347,14 @@ class TestData : public Message {
 
  private:
   TestRunner* test_runner_;
+  int num_invocations_;
+  int max_invocations_;
 };
 
-bool ParseAndRunTests(std::istream* input, TestRunner* test_runner) {
+bool ParseAndRunTests(std::istream* input, TestRunner* test_runner,
+                      int max_invocations) {
   TestData test_data(test_runner);
+  test_data.SetMaxInvocations(max_invocations);
   Message::Read(input, &test_data);
   return test_runner->IsValid() && test_runner->GetOverallSuccess();
 }

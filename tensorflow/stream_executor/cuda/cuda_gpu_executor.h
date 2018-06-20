@@ -35,8 +35,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // CUDA-platform implementation of the platform-agnostic
@@ -74,6 +73,14 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
                           uint64 size_bytes) override;
 
   void Deallocate(DeviceMemoryBase *mem) override;
+
+  void *UnifiedMemoryAllocate(uint64 size) override {
+    return CUDADriver::UnifiedMemoryAllocate(context_, size);
+  }
+
+  void UnifiedMemoryDeallocate(void *location) override {
+    return CUDADriver::UnifiedMemoryDeallocate(context_, location);
+  }
 
   // CUDA allocation/registration functions are necessary because the driver
   // internally sets up buffers for DMA operations (and page locks them).
@@ -273,7 +280,6 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_

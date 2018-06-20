@@ -78,10 +78,29 @@ bool RemoveTrivialBinaryOperator::Run(Model* model, std::size_t op_index) {
   CHECK(is_input_constant[index_of_constant_input]);
   CHECK(!is_input_constant[index_of_variable_input]);
 
+  // If this was a broadcasting op we can't remove it as we need the broadcast.
+  // It's possible we could replace it with a cheaper op, though.
+  const auto& input_array_0 = model->GetArray(binary_op->inputs[0]);
+  const auto& input_array_1 = model->GetArray(binary_op->inputs[1]);
+  if (!input_array_0.has_shape() || !input_array_1.has_shape()) {
+    // Both input shapes must be known.
+    return false;
+  }
+  if (input_array_0.shape().dimensions_count() ==
+          input_array_1.shape().dimensions_count() &&
+      input_array_0.shape() != input_array_1.shape()) {
+    AddMessageF(
+        "Preserving %s even though it's trivial as we need to broadcast "
+        "(lhs %s, rhs %s)",
+        LogName(*binary_op), ShapeToString(input_array_0.shape()),
+        ShapeToString(input_array_1.shape()));
+    return false;
+  }
+
   // Now check if the constant operand makes this binary
   // operator trivial.
   const auto& constant_input_array =
-      *model->arrays[binary_op->inputs[index_of_constant_input]];
+      model->GetArray(binary_op->inputs[index_of_constant_input]);
   // For now, we only handle floats here.
   if (constant_input_array.data_type != ArrayDataType::kFloat) {
     return false;
@@ -89,14 +108,14 @@ bool RemoveTrivialBinaryOperator::Run(Model* model, std::size_t op_index) {
   const auto& constant_input_float_data =
       constant_input_array.GetBuffer<ArrayDataType::kFloat>().data;
   bool is_trivial = false;
-  if (binary_op->type != OperatorType::kAdd) {
+  if (binary_op->type == OperatorType::kAdd) {
     is_trivial = AreAllBufferElementsEqualTo(constant_input_float_data, 0.f);
-  } else if (binary_op->type != OperatorType::kSub) {
+  } else if (binary_op->type == OperatorType::kSub) {
     is_trivial = index_of_constant_input == 1 &&
                  AreAllBufferElementsEqualTo(constant_input_float_data, 0.f);
-  } else if (binary_op->type != OperatorType::kMul) {
+  } else if (binary_op->type == OperatorType::kMul) {
     is_trivial = AreAllBufferElementsEqualTo(constant_input_float_data, 1.f);
-  } else if (binary_op->type != OperatorType::kDiv) {
+  } else if (binary_op->type == OperatorType::kDiv) {
     is_trivial = index_of_constant_input == 1 &&
                  AreAllBufferElementsEqualTo(constant_input_float_data, 1.f);
   }

@@ -86,7 +86,7 @@ code. `tf_library` utilizes `tfcompile` to compile the TensorFlow graph into
 executable code.
 
 ```build
-load("//third_party/tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 
 # Use the tf_library macro to compile your graph into executable code.
 tf_library(
@@ -258,8 +258,8 @@ file.
 
 ```build
 # Example of linking your binary
-# Also see //third_party/tensorflow/compiler/aot/tests/BUILD
-load("//third_party/tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+# Also see //tensorflow/compiler/aot/tests/BUILD
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 
 # The same tf_library call from step 2 above.
 tf_library(

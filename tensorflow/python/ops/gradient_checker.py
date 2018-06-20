@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _product(t):
@@ -264,6 +265,7 @@ def _compute_gradient_list(x,
   return ret
 
 
+@tf_export("test.compute_gradient")
 def compute_gradient(x,
                      x_shape,
                      y,
@@ -281,10 +283,10 @@ def compute_gradient(x,
   numbers.  For example, if `x` is complex with shape `[m]` and `y` is complex
   with shape `[n]`, each Jacobian `J` will have shape `[m * 2, n * 2]` with
 
-      J[:m, :n] = d(Re y)/d(Re x)
-      J[:m, n:] = d(Im y)/d(Re x)
-      J[m:, :n] = d(Re y)/d(Im x)
-      J[m:, n:] = d(Im y)/d(Im x)
+      J[::2, ::2] = d(Re y)/d(Re x)
+      J[::2, 1::2] = d(Im y)/d(Re x)
+      J[1::2, ::2] = d(Re y)/d(Im x)
+      J[1::2, 1::2] = d(Im y)/d(Im x)
 
   Args:
     x: a tensor or list of tensors
@@ -325,6 +327,7 @@ def compute_gradient(x,
     return ret
 
 
+@tf_export("test.compute_gradient_error")
 def compute_gradient_error(x,
                            x_shape,
                            y,

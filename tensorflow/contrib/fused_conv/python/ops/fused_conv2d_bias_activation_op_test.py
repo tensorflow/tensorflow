@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.fused_conv.python.ops import fused_conv2d_bias_activation_op
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -31,6 +33,13 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+
+
+def NoMemoryOptimizationConfig():
+  config = config_pb2.ConfigProto()
+  config.graph_options.rewrite_options.memory_optimization = (
+      rewriter_config_pb2.RewriterConfig.OFF)
+  return config
 
 
 def GetShrunkInceptionShapes(shrink=10):
@@ -193,7 +202,8 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     # This is to guarantee that there is always negative values after
     # bias add so that we can test whether relu works correctly.
     x3 = bias
-    with self.test_session(use_gpu=True):
+    # TODO(b/79323979): re-enable memory optimization after this bug is fixed.
+    with self.test_session(use_gpu=True, config=NoMemoryOptimizationConfig()):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
       fused_t2 = t2
@@ -241,7 +251,9 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     x3 = np.random.rand(*[filter_in_sizes[-1]]).astype(np.float32)
 
     def _SetupVal(data_format, use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      # TODO(b/79323979): re-enable memory optimization after this bug is fixed.
+      with self.test_session(
+          use_gpu=use_gpu, config=NoMemoryOptimizationConfig()):
         t1 = constant_op.constant(x1, shape=tensor_in_sizes)
         t2 = constant_op.constant(x2, shape=filter_in_sizes)
         t3 = constant_op.constant(x3, shape=[filter_in_sizes[-1]])
@@ -289,8 +301,8 @@ class FusedConv2DBiasActivationTest(test.TestCase):
           conv = tensors[i]
           value = values[i]
           ref_value = ref_values[i]
-          print("expected = ", ref_value)
-          print("actual = ", value)
+          tf_logging.info("expected = ", ref_value)
+          tf_logging.info("actual = ", value)
           tol = 1e-5
           if value.dtype == np.float16:
             tol = 1e-3
@@ -566,7 +578,7 @@ def GetInceptionFwdTest(input_size, filter_size, stride, padding,
   return Test
 
 
-def CalculateCovolvedOutputDim(input_dim, filter_dim, stride, padding_type):
+def CalculateConvolvedOutputDim(input_dim, filter_dim, stride, padding_type):
   """Calculates the size of an output dimension of a strided convolution.
 
   Given the sizes of the corresponding dimension of the input and filter shapes,
@@ -827,11 +839,12 @@ class FusedConvInt8Tests(test.TestCase):
             maxval=1.0,
             dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
 
-    output_height = CalculateCovolvedOutputDim(input_height, filter_height,
-                                               vertical_stride, padding_type)
-    output_width = CalculateCovolvedOutputDim(input_width, filter_width,
-                                              horizontal_stride, padding_type)
-    print("output_height=", output_height, ", output_width=", output_width)
+    output_height = CalculateConvolvedOutputDim(input_height, filter_height,
+                                                vertical_stride, padding_type)
+    output_width = CalculateConvolvedOutputDim(input_width, filter_width,
+                                               horizontal_stride, padding_type)
+    tf_logging.info("output_height=", output_height, ", output_width=", 
+			                 output_width)
 
     side_input, _, _ = gen_array_ops.quantize_v2(
         random_ops.random_uniform(
@@ -864,10 +877,12 @@ class FusedConvInt8Tests(test.TestCase):
         conv_input_scale, conv_input, kernel, padding_type, strides,
         side_input_scale, side_input, biases)
 
-    with self.test_session(use_gpu=True) as sess:
+    # TODO(b/79323979): re-enable memory optimization after this bug is fixed.
+    with self.test_session(
+        use_gpu=True, config=NoMemoryOptimizationConfig()) as sess:
       actual_y, expected_y = sess.run([actual, expected])
-      print("actual_y = ", actual_y)
-      print("expected_y = ", expected_y)
+      tf_logging.info("actual_y = ", actual_y)
+      tf_logging.info("expected_y = ", expected_y)
       self.assertTrue(np.array_equal(actual_y, expected_y))
 
   def testFusedConvInt8(self):

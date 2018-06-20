@@ -230,6 +230,7 @@ def evaluation_loop(master,
                     max_number_of_evaluations=None,
                     session_config=None,
                     timeout=None,
+                    timeout_fn=None,
                     hooks=None):
   """Runs TF-Slim's Evaluation Loop.
 
@@ -261,6 +262,9 @@ def evaluation_loop(master,
       configure the `Session`. If left as `None`, the default will be used.
     timeout: The maximum amount of time to wait between checkpoints. If left as
       `None`, then the process will wait indefinitely.
+    timeout_fn: Optional function to call after a timeout.  If the function
+      returns True, then it means that no new checkpoints will be generated and
+      the iterator will exit.  The function is called with no arguments.
     hooks: A list of additional `SessionRunHook` objects to pass during
       repeated evaluations.
 
@@ -298,4 +302,5 @@ def evaluation_loop(master,
       hooks=all_hooks,
       config=session_config,
       max_number_of_evaluations=max_number_of_evaluations,
-      timeout=timeout)
+      timeout=timeout,
+      timeout_fn=timeout_fn)

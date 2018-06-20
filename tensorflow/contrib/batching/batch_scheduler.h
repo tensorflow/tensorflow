@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BATCHING_BATCH_SCHEDULER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BATCHING_BATCH_SCHEDULER_H_
+#ifndef TENSORFLOW_CONTRIB_BATCHING_BATCH_SCHEDULER_H_
+#define TENSORFLOW_CONTRIB_BATCHING_BATCH_SCHEDULER_H_
 
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BATCHING_BATCH_SCHEDULER_H_
+#endif  // TENSORFLOW_CONTRIB_BATCHING_BATCH_SCHEDULER_H_

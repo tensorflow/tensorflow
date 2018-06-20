@@ -94,7 +94,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new Iterator(
           {this, strings::StrCat(prefix, "::DenseToSparseBatch")}));
@@ -109,7 +109,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("DenseToSparseBatchDatasetOp(", batch_size_,
                              ")::Dataset");
     }
@@ -137,8 +137,12 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset<T>> {
      public:
       explicit Iterator(const typename Iterator::Params& params)
-          : DatasetIterator<Dataset<T>>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset<T>>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return DatasetIterator<Dataset<T>>::dataset()->input_->MakeIterator(
+            ctx, DatasetIterator<Dataset<T>>::prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -155,7 +159,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
         // Determine the size of the output tensors:
         // * dense_shape will be [`row_shape + 1`].
-        Tensor dense_shape(cpu_allocator(), DT_INT64, {row_ndims + 1});
+        Tensor dense_shape(ctx->allocator({}), DT_INT64, {row_ndims + 1});
         auto dense_shape_vec = dense_shape.vec<int64>();
         for (size_t i = 0; i < row_ndims; ++i) {
           if (row_shape.dim_size(i) == -1) {
@@ -215,10 +219,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
         // * indices will be [`total_elements`, `row_shape + 1`].
         // * values will be [`total_elements`].
-        Tensor indices(cpu_allocator(), DT_INT64,
+        Tensor indices(ctx->allocator({}), DT_INT64,
                        {total_elements, row_ndims + 1});
         Tensor values(
-            cpu_allocator(),
+            ctx->allocator({}),
             DatasetIterator<Dataset<T>>::dataset()->input_->output_dtypes()[0],
             {total_elements});
         auto indices_matrix = indices.matrix<int64>();

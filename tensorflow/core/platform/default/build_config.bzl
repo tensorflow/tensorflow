@@ -1,7 +1,6 @@
 # Platform-specific build configurations.
 
 load("@protobuf_archive//:protobuf.bzl", "proto_gen")
-load("@protobuf_archive//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
@@ -72,6 +71,8 @@ def pyx_library(
         name = filename + "_cython_translation",
         srcs = [filename],
         outs = [filename.split(".")[0] + ".cpp"],
+        # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
+        # works. Windows has issues with cython_binary so skip PYTHON_BIN_PATH.
         cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
         tools = ["@cython//:cython_binary"] + pxd_srcs,
     )
@@ -83,7 +84,7 @@ def pyx_library(
     native.cc_binary(
         name=shared_object_name,
         srcs=[stem + ".cpp"],
-        deps=deps + ["//util/python:python_headers"],
+        deps=deps + ["//third_party/python_runtime:headers"],
         linkshared = 1,
     )
     shared_objects.append(shared_object_name)
@@ -110,6 +111,12 @@ def _proto_cc_srcs(srcs, use_grpc_plugin=False):
     ret += [s[:-len(".proto")] + ".grpc.pb.cc" for s in srcs]
   return ret
 
+def _proto_py_outs(srcs, use_grpc_plugin=False):
+  ret = [s[:-len(".proto")] + "_pb2.py" for s in srcs]
+  if use_grpc_plugin:
+    ret += [s[:-len(".proto")] + "_pb2_grpc.py" for s in srcs]
+  return ret
+
 # Re-defined protocol buffer rule to allow building "header only" protocol
 # buffers, to avoid duplicate registrations. Also allows non-iterable cc_libs
 # containing select() statements.
@@ -122,6 +129,7 @@ def cc_proto_library(
     protoc="@protobuf_archive//:protoc",
     internal_bootstrap_hack=False,
     use_grpc_plugin=False,
+    use_grpc_namespace=False,
     default_header=False,
     **kargs):
   """Bazel rule to create a C++ protobuf library from proto source files.
@@ -169,8 +177,11 @@ def cc_proto_library(
     return
 
   grpc_cpp_plugin = None
+  plugin_options = []
   if use_grpc_plugin:
     grpc_cpp_plugin = "//external:grpc_cpp_plugin"
+    if use_grpc_namespace:
+      plugin_options = ["services_namespace=grpc"]
 
   gen_srcs = _proto_cc_srcs(srcs, use_grpc_plugin)
   gen_hdrs = _proto_cc_hdrs(srcs, use_grpc_plugin)
@@ -184,13 +195,17 @@ def cc_proto_library(
       protoc=protoc,
       plugin=grpc_cpp_plugin,
       plugin_language="grpc",
+      plugin_options=plugin_options,
       gen_cc=1,
       outs=outs,
       visibility=["//visibility:public"],
   )
 
   if use_grpc_plugin:
-    cc_libs += ["//external:grpc_lib"]
+    cc_libs += select({
+        "//tensorflow:linux_s390x": ["//external:grpc_lib_unsecure"],
+        "//conditions:default": ["//external:grpc_lib"],
+    })
 
   if default_header:
     header_only_name = name
@@ -212,6 +227,80 @@ def cc_proto_library(
       hdrs=gen_hdrs,
       **kargs)
 
+# Re-defined protocol buffer rule to bring in the change introduced in commit
+# https://github.com/google/protobuf/commit/294b5758c373cbab4b72f35f4cb62dc1d8332b68
+# which was not part of a stable protobuf release in 04/2018.
+# TODO(jsimsa): Remove this once the protobuf dependency version is updated
+# to include the above commit.
+def py_proto_library(
+        name,
+        srcs=[],
+        deps=[],
+        py_libs=[],
+        py_extra_srcs=[],
+        include=None,
+        default_runtime="@protobuf_archive//:protobuf_python",
+        protoc="@protobuf_archive//:protoc",
+        use_grpc_plugin=False,
+        **kargs):
+  """Bazel rule to create a Python protobuf library from proto source files
+
+  NOTE: the rule is only an internal workaround to generate protos. The
+  interface may change and the rule may be removed when bazel has introduced
+  the native rule.
+
+  Args:
+    name: the name of the py_proto_library.
+    srcs: the .proto files of the py_proto_library.
+    deps: a list of dependency labels; must be py_proto_library.
+    py_libs: a list of other py_library targets depended by the generated
+        py_library.
+    py_extra_srcs: extra source files that will be added to the output
+        py_library. This attribute is used for internal bootstrapping.
+    include: a string indicating the include path of the .proto files.
+    default_runtime: the implicitly default runtime which will be depended on by
+        the generated py_library target.
+    protoc: the label of the protocol compiler to generate the sources.
+    use_grpc_plugin: a flag to indicate whether to call the Python C++ plugin
+        when processing the proto files.
+    **kargs: other keyword arguments that are passed to cc_library.
+  """
+  outs = _proto_py_outs(srcs, use_grpc_plugin)
+
+  includes = []
+  if include != None:
+    includes = [include]
+
+  grpc_python_plugin = None
+  if use_grpc_plugin:
+    grpc_python_plugin = "//external:grpc_python_plugin"
+    # Note: Generated grpc code depends on Python grpc module. This dependency
+    # is not explicitly listed in py_libs. Instead, host system is assumed to
+    # have grpc installed.
+
+  proto_gen(
+      name=name + "_genproto",
+      srcs=srcs,
+      deps=[s + "_genproto" for s in deps],
+      includes=includes,
+      protoc=protoc,
+      gen_py=1,
+      outs=outs,
+      visibility=["//visibility:public"],
+      plugin=grpc_python_plugin,
+      plugin_language="grpc"
+  )
+
+  if default_runtime and not default_runtime in py_libs + deps:
+    py_libs = py_libs + [default_runtime]
+
+  native.py_library(
+      name=name,
+      srcs=outs+py_extra_srcs,
+      deps=py_libs+deps,
+      imports=includes,
+      **kargs)
+
 def tf_proto_library_cc(name, srcs = [], has_services = None,
                         protodeps = [],
                         visibility = [], testonly = 0,
@@ -219,7 +308,8 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
                         cc_stubby_versions = None,
                         cc_grpc_version = None,
                         j2objc_api_version = 1,
-                        cc_api_version = 2, go_api_version = 2,
+                        cc_api_version = 2,
+                        dart_api_version = 2,
                         java_api_version = 2, py_api_version = 2,
                         js_api_version = 2, js_codegen = "jspb",
                         default_header = False):
@@ -235,10 +325,36 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
   use_grpc_plugin = None
   if cc_grpc_version:
     use_grpc_plugin = True
+
+  cc_deps = tf_deps(protodeps, "_cc")
+  cc_name = name + "_cc"
+  if not srcs:
+    # This is a collection of sub-libraries. Build header-only and impl
+    # libraries containing all the sources.
+    proto_gen(
+        name = cc_name + "_genproto",
+        deps = [s + "_genproto" for s in cc_deps],
+        protoc = "@protobuf_archive//:protoc",
+        visibility=["//visibility:public"],
+    )
+    native.cc_library(
+        name = cc_name,
+        deps = cc_deps + ["@protobuf_archive//:protobuf_headers"] +
+               if_static([name + "_cc_impl"]),
+        testonly = testonly,
+        visibility = visibility,
+    )
+    native.cc_library(
+        name = cc_name + "_impl",
+        deps = [s + "_impl" for s in cc_deps] + ["@protobuf_archive//:cc_wkt_protos"],
+    )
+
+    return
+
   cc_proto_library(
-      name = name + "_cc",
+      name = cc_name,
       srcs = srcs,
-      deps = tf_deps(protodeps, "_cc") + ["@protobuf_archive//:cc_wkt_protos"],
+      deps = cc_deps + ["@protobuf_archive//:cc_wkt_protos"],
       cc_libs = cc_libs + if_static(
           ["@protobuf_archive//:protobuf"],
           ["@protobuf_archive//:protobuf_headers"]
@@ -256,17 +372,36 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
   )
 
 def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
-                        testonly=0,
-                        srcs_version="PY2AND3"):
+                        testonly=0, srcs_version="PY2AND3", use_grpc_plugin=False):
+  py_deps = tf_deps(protodeps, "_py")
+  py_name = name + "_py"
+  if not srcs:
+    # This is a collection of sub-libraries. Build header-only and impl
+    # libraries containing all the sources.
+    proto_gen(
+        name = py_name + "_genproto",
+        deps = [s + "_genproto" for s in py_deps],
+        protoc = "@protobuf_archive//:protoc",
+        visibility=["//visibility:public"],
+    )
+    native.py_library(
+        name = py_name,
+        deps = py_deps + ["@protobuf_archive//:protobuf_python"],
+        testonly = testonly,
+        visibility = visibility,
+    )
+    return
+
   py_proto_library(
-      name = name + "_py",
+      name = py_name,
       srcs = srcs,
       srcs_version = srcs_version,
-      deps = deps + tf_deps(protodeps, "_py") + ["@protobuf_archive//:protobuf_python"],
+      deps = deps + py_deps + ["@protobuf_archive//:protobuf_python"],
       protoc = "@protobuf_archive//:protoc",
       default_runtime = "@protobuf_archive//:protobuf_python",
       visibility = visibility,
       testonly = testonly,
+      use_grpc_plugin = use_grpc_plugin,
   )
 
 def tf_jspb_proto_library(**kwargs):
@@ -280,14 +415,14 @@ def tf_proto_library(name, srcs = [], has_services = None,
                      visibility = [], testonly = 0,
                      cc_libs = [],
                      cc_api_version = 2, cc_grpc_version = None,
-                     go_api_version = 2,
-                     j2objc_api_version = 1,
+                     dart_api_version = 2, j2objc_api_version = 1,
                      java_api_version = 2, py_api_version = 2,
                      js_api_version = 2, js_codegen = "jspb",
+                     provide_cc_alias = False,
                      default_header = False):
   """Make a proto library, possibly depending on other proto libraries."""
-  js_api_version = js_api_version  # unused argument
-  js_codegen = js_codegen  # unused argument
+  _ignore = (js_api_version, js_codegen, provide_cc_alias)
+
   tf_proto_library_cc(
       name = name,
       srcs = srcs,
@@ -306,7 +441,35 @@ def tf_proto_library(name, srcs = [], has_services = None,
       srcs_version = "PY2AND3",
       testonly = testonly,
       visibility = visibility,
+      use_grpc_plugin = has_services,
   )
+
+# A list of all files under platform matching the pattern in 'files'. In
+# contrast with 'tf_platform_srcs' below, which seletive collects files that
+# must be compiled in the 'default' platform, this is a list of all headers
+# mentioned in the platform/* files.
+def tf_platform_hdrs(files):
+  return native.glob(["platform/*/" + f for f in files])
+
+def tf_platform_srcs(files):
+  base_set = ["platform/default/" + f for f in files]
+  windows_set = base_set + ["platform/windows/" + f for f in files]
+  posix_set = base_set + ["platform/posix/" + f for f in files]
+
+  # Handle cases where we must also bring the posix file in. Usually, the list
+  # of files to build on windows builds is just all the stuff in the
+  # windows_set. However, in some cases the implementations in 'posix/' are
+  # just what is necessary and historically we choose to simply use the posix
+  # file instead of making a copy in 'windows'.
+  for f in files:
+    if f == "error.cc":
+      windows_set.append("platform/posix/" + f)
+
+  return select({
+    "//tensorflow:windows" : native.glob(windows_set),
+    "//tensorflow:windows_msvc" : native.glob(windows_set),
+    "//conditions:default" : native.glob(posix_set),
+  })
 
 def tf_additional_lib_hdrs(exclude = []):
   windows_hdrs = native.glob([
@@ -338,14 +501,6 @@ def tf_additional_lib_srcs(exclude = []):
       ], exclude = exclude),
   })
 
-# pylint: disable=unused-argument
-def tf_additional_framework_hdrs(exclude = []):
-  return []
-
-def tf_additional_framework_srcs(exclude = []):
-  return []
-# pylint: enable=unused-argument
-
 def tf_additional_minimal_lib_srcs():
   return [
       "platform/default/integral_types.h",
@@ -363,9 +518,11 @@ def tf_additional_proto_hdrs():
 
 def tf_additional_proto_srcs():
   return [
-      "platform/default/logging.cc",
       "platform/default/protobuf.cc",
   ]
+
+def tf_additional_human_readable_json_deps():
+  return []
 
 def tf_additional_all_protos():
   return ["//tensorflow/core:protos_all"]
@@ -378,24 +535,13 @@ def tf_protos_all():
       extra_deps=tf_protos_all_impl(),
       otherwise=["//tensorflow/core:protos_all_cc"])
 
-def tf_env_time_hdrs():
-  return [
-      "platform/env_time.h",
-  ]
+def tf_protos_grappler_impl():
+  return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
 
-def tf_env_time_srcs():
-  win_env_time = native.glob([
-    "platform/windows/env_time.cc",
-    "platform/env_time.cc",
-  ], exclude = [])
-  return select({
-    "//tensorflow:windows" : win_env_time,
-    "//tensorflow:windows_msvc" : win_env_time,
-    "//conditions:default" : native.glob([
-        "platform/posix/env_time.cc",
-        "platform/env_time.cc",
-      ], exclude = []),
-  })
+def tf_protos_grappler():
+  return if_static(
+      extra_deps=tf_protos_grappler_impl(),
+      otherwise=["//tensorflow/core/grappler/costs:op_performance_data_cc"])
 
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
@@ -491,6 +637,7 @@ def tf_additional_cloud_op_deps():
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
+        "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
       ],
       "//conditions:default": [],
   })
@@ -503,6 +650,7 @@ def tf_additional_cloud_kernel_deps():
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
+        "//tensorflow/contrib/cloud/kernels:gcs_config_ops",
       ],
       "//conditions:default": [],
   })

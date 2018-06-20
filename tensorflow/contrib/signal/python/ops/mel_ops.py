@@ -64,14 +64,11 @@ def _hertz_to_mel(frequencies_hertz, name=None):
         1.0 + (frequencies_hertz / _MEL_BREAK_FREQUENCY_HERTZ))
 
 
-def _validate_arguments(num_mel_bins, num_spectrogram_bins, sample_rate,
+def _validate_arguments(num_mel_bins, sample_rate,
                         lower_edge_hertz, upper_edge_hertz, dtype):
   """Checks the inputs to linear_to_mel_weight_matrix."""
   if num_mel_bins <= 0:
     raise ValueError('num_mel_bins must be positive. Got: %s' % num_mel_bins)
-  if num_spectrogram_bins <= 0:
-    raise ValueError('num_spectrogram_bins must be positive. Got: %s' %
-                     num_spectrogram_bins)
   if sample_rate <= 0.0:
     raise ValueError('sample_rate must be positive. Got: %s' % sample_rate)
   if lower_edge_hertz < 0.0:
@@ -122,9 +119,9 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
 
   Args:
     num_mel_bins: Python int. How many bands in the resulting mel spectrum.
-    num_spectrogram_bins: Python int. How many bins there are in the source
-      spectrogram data, which is understood to be `fft_size // 2 + 1`, i.e. the
-      spectrogram only contains the nonredundant FFT bins.
+    num_spectrogram_bins: An integer `Tensor`. How many bins there are in the
+      source spectrogram data, which is understood to be `fft_size // 2 + 1`,
+      i.e. the spectrogram only contains the nonredundant FFT bins.
     sample_rate: Python float. Samples per second of the input signal used to
       create the spectrogram. We need this to figure out the actual frequencies
       for each spectrogram bin, which dictates how they are mapped into the mel
@@ -148,7 +145,10 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
   [mel]: https://en.wikipedia.org/wiki/Mel_scale
   """
   with ops.name_scope(name, 'linear_to_mel_weight_matrix') as name:
-    _validate_arguments(num_mel_bins, num_spectrogram_bins, sample_rate,
+    # Note: As num_spectrogram_bins is passed to `math_ops.linspace`
+    # and the validation is already done in linspace (both in shape function
+    # and in kernel), there is no need to validate num_spectrogram_bins here.
+    _validate_arguments(num_mel_bins, sample_rate,
                         lower_edge_hertz, upper_edge_hertz, dtype)
 
     # To preserve accuracy, we compute the matrix at float64 precision and then

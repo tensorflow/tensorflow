@@ -96,7 +96,7 @@ def pool_direct_single_axis(
 
 
 def pool_direct(
-    input,
+    input,  # pylint: disable=redefined-builtin
     window_shape,
     pooling_type,
     padding,  # pylint: disable=redefined-builtin

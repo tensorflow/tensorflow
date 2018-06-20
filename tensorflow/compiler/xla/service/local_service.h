@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -39,13 +41,15 @@ class LocalService : public Service {
   static StatusOr<std::unique_ptr<LocalService>> NewService(
       const ServiceOptions& options);
 
-  // Builds an Executable with the given argument layouts and options. If
-  // result_layout is non-null, then the executable is compiled to produce a
-  // result of the given layout.
+  // Builds an Executable with the given XlaComputation, argument layouts and
+  // options. If result_layout is non-null, then the executable is compiled to
+  // produce a result of the given layout.  If device_allocator is non-null,
+  // then the compiler may use it to allocate temp space on the device.  The
+  // compiler is responsible for freeing any memory it allocates this way.
   StatusOr<std::unique_ptr<Executable>> CompileExecutable(
-      const ComputationHandle& computation,
+      const XlaComputation& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-      const Shape* result_layout, int device_ordinal);
+      const ExecutableBuildOptions& build_options);
 
   // Returns the device ordinal that corresponds to the given replica number.
   //
@@ -53,6 +57,11 @@ class LocalService : public Service {
   // replicas to device ordinals, but is useful as a short term mechanism for
   // the "easy" case where a single replica is a single device.
   StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
+
+  // Converts a GlobalDataHandle into a pointer to a ShapedBuffer that's valid
+  // as long as the handle is valid.
+  StatusOr<const ShapedBuffer*> GlobalDataToShapedBuffer(
+      const GlobalDataHandle& data, int replica_number);
 
  private:
   explicit LocalService(const ServiceOptions& options,

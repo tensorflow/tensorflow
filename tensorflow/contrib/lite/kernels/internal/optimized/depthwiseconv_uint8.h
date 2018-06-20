@@ -12,12 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
 
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
+#include "tensorflow/contrib/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -1206,6 +1207,55 @@ struct QuantizedDepthwiseConvKernel<true, 1, 32> {
 };
 
 template <>
+struct QuantizedDepthwiseConvKernel<true, 1, 20> {
+  static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
+                  const uint8* input_ptr, int16 input_offset,
+                  int input_ptr_increment, const uint8* filter_ptr,
+                  int16 filter_offset, int32* acc_buffer_ptr) {
+    // Load the filters, add filter_offset.
+    // NEON wants to load 8 bytes at a time, but 20 is not divisible by 8.
+    // We load the first 16 bytes into filter_u8_{0,1} as usual.
+    // Then we load the 8 last bytes into filter_u8_x  (x for 'extra').
+    // This is redundant: the first 4 bytes of filter_u8_x are the same
+    // as the last 4 bytes of filter_u8_x.
+    uint8x8_t filter_u8_0 = vld1_u8(filter_ptr + 8 * 0);
+    uint8x8_t filter_u8_1 = vld1_u8(filter_ptr + 8 * 1);
+    uint8x8_t filter_u8_x = vld1_u8(filter_ptr + 8 * 1 + 4);
+    int16x8_t filter_0 = vreinterpretq_s16_u16(vmovl_u8(filter_u8_0));
+    int16x8_t filter_1 = vreinterpretq_s16_u16(vmovl_u8(filter_u8_1));
+    int16x8_t filter_x = vreinterpretq_s16_u16(vmovl_u8(filter_u8_x));
+    filter_0 = vaddq_s16(filter_0, vdupq_n_s16(filter_offset));
+    filter_1 = vaddq_s16(filter_1, vdupq_n_s16(filter_offset));
+    filter_x = vaddq_s16(filter_x, vdupq_n_s16(filter_offset));
+    // Handle one output pixel at a time.
+    for (int outp = 0; outp < num_output_pixels; outp++) {
+      uint8 input_u8 = *input_ptr;
+      input_ptr += input_ptr_increment;
+      int16 input = static_cast<int16>(input_u8 + input_offset);
+      // Load the accumulators from acc_buffer
+      int32x4_t acc_0 = vld1q_s32(acc_buffer_ptr + 4 * 0);
+      int32x4_t acc_1 = vld1q_s32(acc_buffer_ptr + 4 * 1);
+      int32x4_t acc_2 = vld1q_s32(acc_buffer_ptr + 4 * 2);
+      int32x4_t acc_3 = vld1q_s32(acc_buffer_ptr + 4 * 3);
+      int32x4_t acc_4 = vld1q_s32(acc_buffer_ptr + 4 * 4);
+      // Multiply-accumulate
+      acc_0 = vmlal_n_s16(acc_0, vget_low_s16(filter_0), input);
+      acc_1 = vmlal_n_s16(acc_1, vget_high_s16(filter_0), input);
+      acc_2 = vmlal_n_s16(acc_2, vget_low_s16(filter_1), input);
+      acc_3 = vmlal_n_s16(acc_3, vget_high_s16(filter_1), input);
+      acc_4 = vmlal_n_s16(acc_4, vget_high_s16(filter_x), input);
+      // Store the accumulators back to acc_buffer
+      vst1q_s32(acc_buffer_ptr + 4 * 0, acc_0);
+      vst1q_s32(acc_buffer_ptr + 4 * 1, acc_1);
+      vst1q_s32(acc_buffer_ptr + 4 * 2, acc_2);
+      vst1q_s32(acc_buffer_ptr + 4 * 3, acc_3);
+      vst1q_s32(acc_buffer_ptr + 4 * 4, acc_4);
+      acc_buffer_ptr += 20;
+    }
+  }
+};
+
+template <>
 struct QuantizedDepthwiseConvKernel<true, 1, 8> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
                   const uint8* input_ptr, int16 input_offset,
@@ -1504,7 +1554,7 @@ inline void QuantizedDepthwiseConvAccumRowGeneric(
       << "*\n"
       << "* If you would like to carry on with the slow code, compile\n"
       << "* with this preprocessor token defined:\n"
-      << "* TFLITE_ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK.\n"
+      << "* ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK.\n"
       << "*\n"
       << "* The right thing to do, if you care about performance, is to add\n"
       << "* a new DepthwiseConv kernel to tfmini to cover your case.\n"
@@ -1641,7 +1691,29 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   const int filter_width = ArraySize(filter_dims, 1);
   const int output_height = ArraySize(output_dims, 2);
   const int output_width = ArraySize(output_dims, 1);
+#ifdef USE_NEON
+  const bool shift_left = (output_shift <= 0);
+  const int32 multiplier_power_of_two = shift_left ? (1 << -output_shift) : 1;
+#endif
   TFLITE_DCHECK(output_depth == input_depth * depth_multiplier);
+
+// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+// Jetson TX-2. This compiler does not support the offsetof() macro.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+  // Call kernel optimized for depthwise convolutions using 3x3 filters if
+  // parameters are supported.
+  if (Fast3x3FilterKernelSupported(
+          input_dims, filter_dims, stride_width, stride_height, pad_width,
+          pad_height, depth_multiplier, output_dims, output_shift)) {
+    DepthwiseConv3x3Filter(input_data, input_dims, input_offset, filter_data,
+                           filter_dims, filter_offset, bias_data, bias_dims,
+                           stride_width, stride_height, pad_width, pad_height,
+                           depth_multiplier, output_offset, output_multiplier,
+                           output_shift, output_activation_min,
+                           output_activation_max, output_data, output_dims);
+    return;
+  }
+#endif
 
   static const int kAccBufferMaxSize = 2048;
   int32 acc_buffer[kAccBufferMaxSize];
@@ -1691,6 +1763,7 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 8, 2)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 16, 1)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 16)
+  TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 20)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 32)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 8)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 8, 1)
@@ -1766,12 +1839,20 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
             acc[j] = vld1q_s32(acc_buffer + i + 4 * j);
           }
 
-          // Fixed-point multiplication.
-          for (int j = 0; j < 4; j++) {
-            acc[j] = vqrdmulhq_n_s32(acc[j], output_multiplier);
-          }
-          for (int j = 0; j < 4; j++) {
-            acc[j] = RoundingDivideByPOT(acc[j], output_shift);
+          if (!shift_left) {
+            // Fixed-point multiplication.
+            for (int j = 0; j < 4; j++) {
+              acc[j] = vqrdmulhq_n_s32(acc[j], output_multiplier);
+            }
+            for (int j = 0; j < 4; j++) {
+              acc[j] = RoundingDivideByPOT(acc[j], output_shift);
+            }
+          } else {
+            // Fixed-point multiplication.
+            for (int j = 0; j < 4; j++) {
+              acc[j] = vmulq_n_s32(acc[j], multiplier_power_of_two);
+              acc[j] = vqrdmulhq_n_s32(acc[j], output_multiplier);
+            }
           }
           // Add the output offset.
           for (int j = 0; j < 4; j++) {
@@ -1803,12 +1884,21 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
         for (; i <= num_output_values - 8; i += 8) {
           int32x4_t acc0 = vld1q_s32(acc_buffer + i);
           int32x4_t acc1 = vld1q_s32(acc_buffer + i + 4);
-          // Fixed-point multiplication.
-          acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
-          acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
-          // Rounding right shift.
-          acc0 = RoundingDivideByPOT(acc0, output_shift);
-          acc1 = RoundingDivideByPOT(acc1, output_shift);
+          if (!shift_left) {
+            // Fixed-point multiplication.
+            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+            // Rounding right shift.
+            acc0 = RoundingDivideByPOT(acc0, output_shift);
+            acc1 = RoundingDivideByPOT(acc1, output_shift);
+          } else {
+            // Fixed-point multiplication.
+            acc0 = vmulq_n_s32(acc0, multiplier_power_of_two);
+            acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+
+            acc1 = vmulq_n_s32(acc1, multiplier_power_of_two);
+            acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+          }
           // Add the output offset.
           acc0 = vaddq_s32(acc0, output_offset_vec);
           acc1 = vaddq_s32(acc1, output_offset_vec);
@@ -1832,10 +1922,16 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
         // that will have to go through the very slow scalar code.
         for (; i <= num_output_values - 4; i += 4) {
           int32x4_t acc = vld1q_s32(acc_buffer + i);
-          // Fixed-point multiplication.
-          acc = vqrdmulhq_n_s32(acc, output_multiplier);
-          // Rounding right shift.
-          acc = RoundingDivideByPOT(acc, output_shift);
+          if (!shift_left) {
+            // Fixed-point multiplication.
+            acc = vqrdmulhq_n_s32(acc, output_multiplier);
+            // Rounding right shift.
+            acc = RoundingDivideByPOT(acc, output_shift);
+          } else {
+            // Fixed-point multiplication.
+            acc = vmulq_n_s32(acc, multiplier_power_of_two);
+            acc = vqrdmulhq_n_s32(acc, output_multiplier);
+          }
           // Add the output offset.
           acc = vaddq_s32(acc, output_offset_vec);
           // Apply the activation function.
@@ -1856,8 +1952,8 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
         // Handle leftover values, one by one. This is very slow.
         for (; i < num_output_values; i++) {
           int32 acc = acc_buffer[i];
-          acc = MultiplyByQuantizedMultiplierSmallerThanOne(
-              acc, output_multiplier, output_shift);
+          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                              -output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -1913,4 +2009,4 @@ void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
 }  // namespace optimized_ops
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_

@@ -19,9 +19,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -29,8 +32,32 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+class TestClusterFLR : public DistributedFunctionLibraryRuntime {
+ public:
+  TestClusterFLR() {}
+
+  Status Instantiate(const string& function_name,
+                     const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
+                     const FunctionLibraryRuntime::InstantiateOptions& options,
+                     FunctionLibraryRuntime::LocalHandle* handle) override {
+    mutex_lock l(mu_);
+    *handle = next_handle_;
+    next_handle_++;
+    return Status::OK();
+  }
+
+  void Run(const FunctionLibraryRuntime::Options& opts,
+           FunctionLibraryRuntime::LocalHandle handle,
+           gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+           FunctionLibraryRuntime::DoneCallback done) override {}
+
+ private:
+  mutex mu_;
+  int next_handle_ GUARDED_BY(mu_) = 0;
+};
+
 class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
- protected:
+ public:
   void Init(const std::vector<FunctionDef>& flib) {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
@@ -42,10 +69,18 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
+    cluster_flr_.reset(new TestClusterFLR());
     proc_flr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, nullptr /* cluster_flr */));
+        opts, nullptr, cluster_flr_.get()));
     rendezvous_ = new IntraProcessRendezvous(device_mgr_.get());
+  }
+
+  Status Instantiate(
+      const string& name, test::function::Attrs attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& instantiate_opts,
+      FunctionLibraryRuntime::Handle* handle) {
+    return proc_flr_->Instantiate(name, attrs, instantiate_opts, handle);
   }
 
   Status Run(const string& name, FunctionLibraryRuntime::Options opts,
@@ -98,7 +133,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                    });
     done2.WaitForNotification();
     EXPECT_TRUE(errors::IsNotFound(status));
-    EXPECT_TRUE(StringPiece(status.error_message()).contains("not found."));
+    EXPECT_TRUE(str_util::StrContains(status.error_message(), "not found."));
 
     return Status::OK();
   }
@@ -106,6 +141,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
+  std::unique_ptr<TestClusterFLR> cluster_flr_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr_;
   IntraProcessRendezvous* rendezvous_;
 };
@@ -118,7 +154,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr(
       new ProcessFunctionLibraryRuntime(
           nullptr /* device_mgr */, Env::Default(), TF_GRAPH_DEF_VERSION,
-          lib_def.get(), opts, nullptr /* cluster_flr */));
+          lib_def.get(), opts, nullptr, nullptr /* cluster_flr */));
   FunctionLibraryRuntime* flr =
       proc_flr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   EXPECT_NE(flr, nullptr);
@@ -247,6 +283,61 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsDiffDeviceFindDevice) {
   test::ExpectTensorEqual<string>(
       y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
                                 TensorShape({})));
+  rendezvous_->Unref();
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRSerialTest) {
+  Init({test::function::FindDevice()});
+  FunctionLibraryRuntime::Options opts;
+  opts.source_device = "/job:a/replica:0/task:0/cpu:0";
+  opts.rendezvous = rendezvous_;
+  opts.remote_execution = true;
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:b/replica:0/task:0/device:CPU:0";
+  FunctionLibraryRuntime::Handle h;
+  TF_CHECK_OK(Instantiate("FindDevice",
+                          {{"_target", "/job:b/replica:0/task:0/device:CPU:0"}},
+                          instantiate_opts, &h));
+  EXPECT_EQ(0, proc_flr_->GetHandleOnDevice(
+                   "/job:b/replica:0/task:0/device:CPU:0", h));
+  TF_CHECK_OK(Instantiate("FindDevice",
+                          {{"_target", "/job:b/replica:0/task:0/device:CPU:0"}},
+                          instantiate_opts, &h));
+  EXPECT_EQ(0, proc_flr_->GetHandleOnDevice(
+                   "/job:b/replica:0/task:0/device:CPU:0", h));
+  instantiate_opts.target = "/job:c/replica:0/task:0/device:CPU:0";
+  TF_CHECK_OK(Instantiate("FindDevice",
+                          {{"_target", "/job:c/replica:0/task:0/device:CPU:0"}},
+                          instantiate_opts, &h));
+  EXPECT_EQ(1, proc_flr_->GetHandleOnDevice(
+                   "/job:c/replica:0/task:0/device:CPU:0", h));
+  rendezvous_->Unref();
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRParallelTest) {
+  Init({test::function::FindDevice()});
+  FunctionLibraryRuntime::Options opts;
+  opts.source_device = "/job:a/replica:0/task:0/cpu:0";
+  opts.rendezvous = rendezvous_;
+  opts.remote_execution = true;
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:b/replica:0/task:0/device:CPU:0";
+
+  thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
+  auto fn = [this, &instantiate_opts]() {
+    FunctionLibraryRuntime::Handle h;
+    TF_CHECK_OK(Instantiate(
+        "FindDevice", {{"_target", "/job:b/replica:0/task:0/device:CPU:0"}},
+        instantiate_opts, &h));
+    EXPECT_EQ(0, proc_flr_->GetHandleOnDevice(
+                     "/job:b/replica:0/task:0/device:CPU:0", h));
+  };
+
+  for (int i = 0; i < 100; ++i) {
+    tp->Schedule(fn);
+  }
+  delete tp;
+
   rendezvous_->Unref();
 }
 

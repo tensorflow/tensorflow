@@ -34,51 +34,31 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace interpreter {
 
-namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::interpreter;
-
-/*
- * Run optimization passes on the module. The graph is transformed by
- * each pass in the optimization pipeline. The service subdirectory
- * contains useful optimization passes.
- */
 Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("Interpreter");
-  pipeline.AddPass<Inliner>();
-  pipeline.AddPass<HloSubcomputationUnification>();
-  pipeline.AddPass<HloCSE>(false);
 
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-      false, [](const Shape&, const Shape&) { return false; });
-  pipeline.AddPass<WhileLoopSimplifier>();
-  pipeline.AddPass<ReshapeMover>();
-  pipeline.AddPass<HloConstantFolding>();
-  pipeline.AddPass<HloCSE>(true);
   pipeline.AddPass<LayoutAssignment>(
-      hlo_module->mutable_entry_computation_layout());
-
-  pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
+      hlo_module->mutable_device_entry_computation_layout());
   return pipeline.Run(hlo_module).status();
 }
 
 StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
-    std::unique_ptr<HloModule> hlo_module,
-    se::StreamExecutor* /*stream_exec*/) {
+    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* /*stream_exec*/,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   VLOG(1) << "Run hlo passes on graph " << hlo_module->name();
   TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
   return std::move(hlo_module);
 }
 
 StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
-    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec) {
+    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   TF_RET_CHECK(stream_exec != nullptr);
 
   VLOG(1) << "Run backend " << hlo_module->name();
@@ -89,14 +69,16 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
 
   // Create executable from only the Hlo module.
   std::unique_ptr<Executable> executable =
-      xla::MakeUnique<InterpreterExecutable>(std::move(hlo_module));
+      xla::MakeUnique<InterpreterExecutable>(std::move(hlo_module),
+                                             xla::MakeUnique<HloEvaluator>());
 
   return std::move(executable);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> InterpreterCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> /*hlo_modules*/,
-    std::vector<std::vector<se::StreamExecutor*>> /*stream_execs*/) {
+    std::vector<std::vector<se::StreamExecutor*>> /*stream_execs*/,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   return tensorflow::errors::Unimplemented(
       "Compilation of multiple HLO modules is not supported on Interpreter.");
 }
@@ -110,7 +92,7 @@ InterpreterCompiler::CompileAheadOfTime(
 }
 
 se::Platform::Id InterpreterCompiler::PlatformId() const {
-  return sep::kInterpreterPlatformId;
+  return se::interpreter::kXlaInterpreterPlatformId;
 }
 
 HloCostAnalysis::ShapeSizeFunction InterpreterCompiler::ShapeSizeBytesFunction()
@@ -118,16 +100,14 @@ HloCostAnalysis::ShapeSizeFunction InterpreterCompiler::ShapeSizeBytesFunction()
   return InterpreterExecutable::ShapeSizeBytes;
 }
 
-static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
-  return xla::MakeUnique<xla::ComputationPlacer>();
-}
-
 static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(sep::kInterpreterPlatformId, []() {
-    return xla::MakeUnique<xla::interpreter::InterpreterCompiler>();
-  });
-  xla::ComputationPlacer::RegisterComputationPlacer(sep::kInterpreterPlatformId,
-                                                    &CreateComputationPlacer);
+  xla::Compiler::RegisterCompilerFactory(
+      se::interpreter::kXlaInterpreterPlatformId, []() {
+        return xla::MakeUnique<xla::interpreter::InterpreterCompiler>();
+      });
+  xla::ComputationPlacer::RegisterComputationPlacer(
+      se::interpreter::kXlaInterpreterPlatformId,
+      []() { return xla::MakeUnique<xla::ComputationPlacer>(); });
   return true;
 }
 

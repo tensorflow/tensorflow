@@ -110,7 +110,7 @@ class GridRNNCell(rnn.RNNCell):
       logging.warning('%s: Using a concatenated state is slower and will '
                       'soon be deprecated.  Use state_is_tuple=True.', self)
     if not output_is_tuple:
-      logging.warning('%s: Using a concatenated output is slower and will'
+      logging.warning('%s: Using a concatenated output is slower and will '
                       'soon be deprecated.  Use output_is_tuple=True.', self)
 
     if num_dims < 1:

@@ -23,7 +23,6 @@ import math
 import six
 
 from tensorflow.python.estimator import estimator
-from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import linear
@@ -32,11 +31,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
+from tensorflow.python.util.tf_export import estimator_export
 
 # The default learning rates are a historical artifact of the initial
 # implementation.
@@ -116,7 +117,7 @@ def _dnn_linear_combined_model_fn(features,
     config: `RunConfig` object to configure the runtime settings.
 
   Returns:
-    `ModelFnOps`
+    An `EstimatorSpec` instance.
 
   Raises:
     ValueError: If both `linear_feature_columns` and `dnn_features_columns`
@@ -214,8 +215,7 @@ def _dnn_linear_combined_model_fn(features,
 
     train_op = control_flow_ops.group(*train_ops)
     with ops.control_dependencies([train_op]):
-      with ops.colocate_with(global_step):
-        return state_ops.assign_add(global_step, 1)
+      return distribute_lib.increment_var(global_step)
 
   return head.create_estimator_spec(
       features=features,
@@ -225,6 +225,7 @@ def _dnn_linear_combined_model_fn(features,
       logits=logits)
 
 
+@estimator_export('estimator.DNNLinearCombinedClassifier')
 class DNNLinearCombinedClassifier(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined classification models.
 
@@ -291,7 +292,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
   Loss is calculated by using softmax cross entropy.
 
   @compatibility(eager)
-  Estimators are not compatible with eager execution.
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
   @end_compatibility
   """
 
@@ -309,7 +313,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                label_vocabulary=None,
                input_layer_partitioner=None,
                config=None,
-               warm_start_from=None):
+               warm_start_from=None,
+               loss_reduction=losses.Reduction.SUM):
     """Initializes a DNNLinearCombinedClassifier instance.
 
     Args:
@@ -356,6 +361,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         string filepath is provided instead of a `WarmStartSettings`, then all
         weights are warm-started, and it is assumed that vocabularies and Tensor
         names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -371,16 +378,18 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
           weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
           n_classes,
           weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
 
     def _model_fn(features, labels, mode, config):
-      """Call the _dnn_linear_combined_model_fn and possibly warm-start."""
-      estimator_spec = _dnn_linear_combined_model_fn(
+      """Call the _dnn_linear_combined_model_fn."""
+      return _dnn_linear_combined_model_fn(
           features=features,
           labels=labels,
           mode=mode,
@@ -394,19 +403,13 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config)
-      # pylint: disable=protected-access
-      warm_start_settings = warm_starting_util._get_default_warm_start_settings(
-          warm_start_from)
-      if warm_start_settings:
-        warm_starting_util._warm_start(warm_start_settings)
-      # pylint: enable=protected-access
-
-      return estimator_spec
 
     super(DNNLinearCombinedClassifier, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        warm_start_from=warm_start_from)
 
 
+@estimator_export('estimator.DNNLinearCombinedRegressor')
 class DNNLinearCombinedRegressor(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined models for regression.
 
@@ -473,7 +476,10 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
   Loss is calculated by using mean squared error.
 
   @compatibility(eager)
-  Estimators are not compatible with eager execution.
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
   @end_compatibility
   """
 
@@ -490,7 +496,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                weight_column=None,
                input_layer_partitioner=None,
                config=None,
-               warm_start_from=None):
+               warm_start_from=None,
+               loss_reduction=losses.Reduction.SUM):
     """Initializes a DNNLinearCombinedRegressor instance.
 
     Args:
@@ -531,6 +538,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         string filepath is provided instead of a `WarmStartSettings`, then all
         weights are warm-started, and it is assumed that vocabularies and Tensor
         names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -545,14 +554,14 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                        'must be defined.')
 
     def _model_fn(features, labels, mode, config):
-      """Call the _dnn_linear_combined_model_fn and possibly warm-start."""
-      estimator_spec = _dnn_linear_combined_model_fn(
+      """Call the _dnn_linear_combined_model_fn."""
+      return _dnn_linear_combined_model_fn(
           features=features,
           labels=labels,
           mode=mode,
-          head=head_lib.  # pylint: disable=protected-access
-          _regression_head_with_mean_squared_error_loss(
-              label_dimension=label_dimension, weight_column=weight_column),
+          head=head_lib._regression_head(  # pylint: disable=protected-access
+              label_dimension=label_dimension, weight_column=weight_column,
+              loss_reduction=loss_reduction),
           linear_feature_columns=linear_feature_columns,
           linear_optimizer=linear_optimizer,
           dnn_feature_columns=dnn_feature_columns,
@@ -562,14 +571,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config)
-      # pylint: disable=protected-access
-      warm_start_settings = warm_starting_util._get_default_warm_start_settings(
-          warm_start_from)
-      if warm_start_settings:
-        warm_starting_util._warm_start(warm_start_settings)
-      # pylint: enable=protected-access
-
-      return estimator_spec
 
     super(DNNLinearCombinedRegressor, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        warm_start_from=warm_start_from)

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_QUANTILES_WEIGHTED_QUANTILES_SUMMARY_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_QUANTILES_WEIGHTED_QUANTILES_SUMMARY_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_QUANTILES_WEIGHTED_QUANTILES_SUMMARY_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_QUANTILES_WEIGHTED_QUANTILES_SUMMARY_H_
 
 #include <cstring>
 #include <vector>
@@ -195,7 +195,7 @@ class WeightedQuantilesSummary {
   // designed to be cache-friendly.
   void Compress(int64 size_hint, double min_eps = 0) {
     // No-op if we're already within the size requirement.
-    size_hint = std::max(size_hint, 2LL);
+    size_hint = std::max(size_hint, int64{2});
     if (entries_.size() <= size_hint) {
       return;
     }
@@ -235,6 +235,11 @@ class WeightedQuantilesSummary {
   // The resulting boundaries are guaranteed to both contain at least
   // num_boundaries unique elements and maintain approximation bounds.
   std::vector<ValueType> GenerateBoundaries(int64 num_boundaries) const {
+    std::vector<ValueType> output;
+    if (entries_.empty()) {
+      return output;
+    }
+
     // Generate soft compressed summary.
     WeightedQuantilesSummary<ValueType, WeightType, CompareFn>
         compressed_summary;
@@ -246,7 +251,6 @@ class WeightedQuantilesSummary {
     compressed_summary.Compress(num_boundaries, compression_eps);
 
     // Return boundaries.
-    std::vector<ValueType> output;
     output.reserve(compressed_summary.entries_.size());
     for (const auto& entry : compressed_summary.entries_) {
       output.push_back(entry.value);
@@ -260,7 +264,10 @@ class WeightedQuantilesSummary {
   // full rank queries O(nlogn).
   std::vector<ValueType> GenerateQuantiles(int64 num_quantiles) const {
     std::vector<ValueType> output;
-    num_quantiles = std::max(num_quantiles, 2LL);
+    if (entries_.empty()) {
+      return output;
+    }
+    num_quantiles = std::max(num_quantiles, int64{2});
     output.reserve(num_quantiles + 1);
 
     // Make successive rank queries to get boundaries.
@@ -334,4 +341,4 @@ constexpr decltype(CompareFn())
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_QUANTILES_WEIGHTED_QUANTILES_SUMMARY_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_QUANTILES_WEIGHTED_QUANTILES_SUMMARY_H_

@@ -28,8 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 // An implementation of StreamExecutor that does no communication or interaction
@@ -107,19 +106,19 @@ class HostExecutor : public internal::StreamExecutorInterface {
   bool HostCallback(Stream *stream, std::function<void()> callback) override;
 
   port::Status AllocateEvent(Event *event) override {
-    return port::Status{port::error::UNIMPLEMENTED, ""};
+    return port::Status(port::error::UNIMPLEMENTED, "");
   }
 
   port::Status DeallocateEvent(Event *event) override {
-    return port::Status{port::error::UNIMPLEMENTED, ""};
+    return port::Status(port::error::UNIMPLEMENTED, "");
   }
 
   port::Status RecordEvent(Stream *stream, Event *event) override {
-    return port::Status{port::error::UNIMPLEMENTED, ""};
+    return port::Status(port::error::UNIMPLEMENTED, "");
   }
 
   port::Status WaitForEvent(Stream *stream, Event *event) override {
-    return port::Status{port::error::UNIMPLEMENTED, ""};
+    return port::Status(port::error::UNIMPLEMENTED, "");
   }
 
   Event::Status PollForEventStatus(Event *event) override {
@@ -168,7 +167,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
         "Shared memory configuration is unsupported for host "
         "executors."};
     LOG(INFO) << error_msg;
-    return port::Status{port::error::UNIMPLEMENTED, error_msg};
+    return port::Status(port::error::UNIMPLEMENTED, error_msg);
   }
 
   bool SupportsBlas() const override;
@@ -210,7 +209,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
 };
 
 }  // namespace host
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_GPU_EXECUTOR_H_

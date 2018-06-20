@@ -26,8 +26,7 @@ limitations under the License.
 #undef DECLARE_MODULE_INITIALIZER
 #undef REGISTER_MODULE_INITIALIZER_SEQUENCE
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 class Initializer {
@@ -49,20 +48,18 @@ class Initializer {
 };
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
-#define REGISTER_INITIALIZER(type, name, body)                               \
-  static void google_init_##type##_##name() { body; }                        \
-  perftools::gputools::port::Initializer google_initializer_##type##_##name( \
+#define REGISTER_INITIALIZER(type, name, body)                             \
+  static void google_init_##type##_##name() { body; }                      \
+  ::stream_executor::port::Initializer google_initializer_##type##_##name( \
       google_init_##type##_##name)
 
 #define REGISTER_MODULE_INITIALIZER(name, body) \
   REGISTER_INITIALIZER(module, name, body)
 
-#define DECLARE_INITIALIZER(type, name)         \
-  extern perftools::gputools::port::Initializer \
-      google_initializer_##type##_##name
+#define DECLARE_INITIALIZER(type, name) \
+  extern ::stream_executor::port::Initializer google_initializer_##type##_##name
 
 #define DECLARE_MODULE_INITIALIZER(name) DECLARE_INITIALIZER(module, name)
 

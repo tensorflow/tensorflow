@@ -25,6 +25,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'FisherEstimator',
+    'make_fisher_estimator',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

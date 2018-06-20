@@ -75,7 +75,7 @@ StatusOr<bool> ReducePrecisionInsertion::insert_after(
     return false;
   }
 
-  // Check that we haven't already inserted an equivalant reduce-precision
+  // Check that we haven't already inserted an equivalent reduce-precision
   // operation after this instruction.  (The zero-user case occurs when this is
   // the root instruction.)
   if (instruction->user_count() > 0) {

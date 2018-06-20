@@ -60,18 +60,20 @@ import functools
 import os
 import sys
 import time
+import urllib
 
 import six
 import tensorflow as tf
 
 from tensorflow.contrib.eager.python import tfe
-from tensorflow.python.eager import context
 
 try:
   import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
   HAS_MATPLOTLIB = True
 except ImportError:
   HAS_MATPLOTLIB = False
+
+layers = tf.keras.layers
 
 
 def parse(line):
@@ -90,13 +92,35 @@ def parse(line):
   return rgb, chars, length
 
 
+def maybe_download(filename, work_directory, source_url):
+  """Download the data from source url, unless it's already here.
+
+  Args:
+    filename: string, name of the file in the directory.
+    work_directory: string, path to working directory.
+    source_url: url to download from if file doesn't exist.
+
+  Returns:
+    Path to resulting file.
+  """
+  if not tf.gfile.Exists(work_directory):
+    tf.gfile.MakeDirs(work_directory)
+  filepath = os.path.join(work_directory, filename)
+  if not tf.gfile.Exists(filepath):
+    temp_file_name, _ = urllib.request.urlretrieve(source_url)
+    tf.gfile.Copy(temp_file_name, filepath)
+    with tf.gfile.GFile(filepath) as f:
+      size = f.size()
+      print("Successfully downloaded", filename, size, "bytes.")
+  return filepath
+
+
 def load_dataset(data_dir, url, batch_size):
   """Loads the colors data at path into a PaddedDataset."""
 
   # Downloads data at url into data_dir/basename(url). The dataset has a header
   # row (color_name, r, g, b) followed by comma-separated lines.
-  path = tf.contrib.learn.datasets.base.maybe_download(
-      os.path.basename(url), data_dir, url)
+  path = maybe_download(os.path.basename(url), data_dir, url)
 
   # This chain of commands loads our data by:
   #   1. skipping the header; (.skip(1))
@@ -110,7 +134,7 @@ def load_dataset(data_dir, url, batch_size):
 
 
 # pylint: disable=not-callable
-class RNNColorbot(tfe.Network):
+class RNNColorbot(tf.keras.Model):
   """Multi-layer (LSTM) RNN that regresses on real-valued vector labels.
   """
 
@@ -128,23 +152,20 @@ class RNNColorbot(tfe.Network):
     self.label_dimension = label_dimension
     self.keep_prob = keep_prob
 
-    # Note the calls to `track_layer` below; these calls register the layers as
-    # network components that house trainable variables.
-    self.cells = [
-        self.track_layer(tf.nn.rnn_cell.BasicLSTMCell(size))
-        for size in rnn_cell_sizes
-    ]
-    self.relu = self.track_layer(
-        tf.layers.Dense(label_dimension, activation=tf.nn.relu, name="relu"))
+    self.cells = tf.contrib.checkpoint.List(
+        [tf.nn.rnn_cell.BasicLSTMCell(size) for size in rnn_cell_sizes])
+    self.relu = layers.Dense(
+        label_dimension, activation=tf.nn.relu, name="relu")
 
-  def call(self, chars, sequence_length, training=False):
+  def call(self, inputs, training=False):
     """Implements the RNN logic and prediction generation.
 
     Args:
-      chars: a Tensor of dimension [batch_size, time_steps, 256] holding a
-        batch of one-hot encoded color names
-      sequence_length: a Tensor of dimension [batch_size] holding the length
-        of each character sequence (i.e., color name)
+      inputs: A tuple (chars, sequence_length), where chars is a batch of
+        one-hot encoded color names represented as a Tensor with dimensions
+        [batch_size, time_steps, 256] and sequence_length holds the length
+        of each character sequence (color name) as a Tensor with dimension
+        [batch_size].
       training: whether the invocation is happening during training
 
     Returns:
@@ -152,6 +173,7 @@ class RNNColorbot(tfe.Network):
       passing chars through a multi-layer RNN and applying a ReLU to the final
       hidden state.
     """
+    (chars, sequence_length) = inputs
     # Transpose the first and second dimensions so that chars is of shape
     # [time_steps, batch_size, dimension].
     chars = tf.transpose(chars, [1, 0, 2])
@@ -192,7 +214,7 @@ def test(model, eval_data):
   """Computes the average loss on eval_data, which should be a Dataset."""
   avg_loss = tfe.metrics.Mean("loss")
   for (labels, chars, sequence_length) in tfe.Iterator(eval_data):
-    predictions = model(chars, sequence_length, training=False)
+    predictions = model((chars, sequence_length), training=False)
     avg_loss(loss(labels, predictions))
   print("eval/loss: %.6f\n" % avg_loss.result())
   with tf.contrib.summary.always_record_summaries():
@@ -205,7 +227,7 @@ def train_one_epoch(model, optimizer, train_data, log_interval=10):
   tf.train.get_or_create_global_step()
 
   def model_loss(labels, chars, sequence_length):
-    predictions = model(chars, sequence_length, training=True)
+    predictions = model((chars, sequence_length), training=True)
     loss_value = loss(labels, predictions)
     tf.contrib.summary.scalar("loss", loss_value)
     return loss_value
@@ -278,7 +300,7 @@ def main(_):
       (chars, length) = (tf.identity(chars), tf.identity(length))
       chars = tf.expand_dims(chars, 0)
       length = tf.expand_dims(length, 0)
-      preds = tf.unstack(model(chars, length, training=False)[0])
+      preds = tf.unstack(model((chars, length), training=False)[0])
 
     # Predictions cannot be negative, as they are generated by a ReLU layer;
     # they may, however, be greater than 1.

@@ -22,6 +22,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 DEFAULT_GRAPH_SEED = 87654321
@@ -32,6 +33,7 @@ def _truncate_seed(seed):
   return seed % _MAXINT32  # Truncate to fit into 32-bit integer
 
 
+@tf_export('get_seed')
 def get_seed(op_seed):
   """Returns the local seeds an operation should use given an op-specific seed.
 
@@ -50,20 +52,20 @@ def get_seed(op_seed):
     A tuple of two integers that should be used for the local seed of this
     operation.
   """
-  is_graph_mode = context.in_graph_mode()
+  eager = context.executing_eagerly()
 
-  if is_graph_mode:
-    global_seed = ops.get_default_graph().seed
-  else:
+  if eager:
     global_seed = context.global_seed()
+  else:
+    global_seed = ops.get_default_graph().seed
 
   if global_seed is not None:
     if op_seed is None:
       # pylint: disable=protected-access
-      if is_graph_mode:
-        op_seed = ops.get_default_graph()._last_id
-      else:
+      if eager:
         op_seed = context.internal_operation_seed()
+      else:
+        op_seed = ops.get_default_graph()._last_id
 
     seeds = _truncate_seed(global_seed), _truncate_seed(op_seed)
   else:
@@ -78,6 +80,7 @@ def get_seed(op_seed):
   return seeds
 
 
+@tf_export('set_random_seed')
 def set_random_seed(seed):
   """Sets the graph-level random seed.
 
@@ -173,7 +176,7 @@ def set_random_seed(seed):
   Args:
     seed: integer.
   """
-  if context.in_graph_mode():
-    ops.get_default_graph().seed = seed
-  else:
+  if context.executing_eagerly():
     context.set_global_seed(seed)
+  else:
+    ops.get_default_graph().seed = seed

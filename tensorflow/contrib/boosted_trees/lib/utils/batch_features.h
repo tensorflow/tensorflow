@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_
 
 #include <vector>
 #include "tensorflow/contrib/boosted_trees/lib/utils/examples_iterable.h"
@@ -48,9 +48,9 @@ class BatchFeatures {
   Status GetFeatureColumnSizes(int64* const num_dense_float_features,
                                int64* const num_sparse_float_features,
                                int64* const num_sparse_int_features) const {
-    QCHECK_NE(num_dense_float_features, nullptr);
-    QCHECK_NE(num_sparse_float_features, nullptr);
-    QCHECK_NE(num_sparse_int_features, nullptr);
+    QCHECK_NE(num_dense_float_features, static_cast<int64*>(nullptr));
+    QCHECK_NE(num_sparse_float_features, static_cast<int64*>(nullptr));
+    QCHECK_NE(num_sparse_int_features, static_cast<int64*>(nullptr));
     *num_dense_float_features = dense_float_feature_columns_.size();
     *num_sparse_float_features = sparse_float_feature_columns_.size();
     *num_sparse_int_features = sparse_int_feature_columns_.size();
@@ -92,4 +92,4 @@ class BatchFeatures {
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_

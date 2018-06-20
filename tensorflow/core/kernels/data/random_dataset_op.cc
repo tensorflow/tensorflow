@@ -54,7 +54,7 @@ class RandomDatasetOp : public DatasetOpKernel {
     Dataset(OpKernelContext* ctx, int64 seed, int64 seed2)
         : GraphDatasetBase(ctx), seed_(seed), seed2_(seed2) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Random")}));
@@ -71,7 +71,7 @@ class RandomDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("RandomDatasetOp(", seed_, ", ", seed2_,
                              ")::Dataset");
     }
@@ -99,7 +99,7 @@ class RandomDatasetOp : public DatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        Tensor value_tensor(cpu_allocator(), DT_INT64, {});
+        Tensor value_tensor(ctx->allocator({}), DT_INT64, {});
         value_tensor.scalar<int64>()() = Random();
         out_tensors->emplace_back(std::move(value_tensor));
         *end_of_sequence = false;

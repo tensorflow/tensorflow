@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
-#define TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_
+#define TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_
 
 #include <stdlib.h>
 
@@ -67,13 +67,8 @@ struct AllocatorStats {
 // device memory.
 class Allocator {
  public:
-#ifdef EIGEN_VECTORIZE_AVX512
   // Align to 64 byte boundary.
   static constexpr size_t kAllocatorAlignment = 64;
-#else
-  // Align to 32 byte boundary.
-  static constexpr size_t kAllocatorAlignment = 32;
-#endif
 
   virtual ~Allocator();
 
@@ -156,7 +151,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t RequestedSize(void* ptr) {
+  virtual size_t RequestedSize(const void* ptr) {
     CHECK(false) << "allocator doesn't track sizes";
     return size_t(0);
   }
@@ -169,7 +164,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSize(void* ptr) { return RequestedSize(ptr); }
+  virtual size_t AllocatedSize(const void* ptr) { return RequestedSize(ptr); }
 
   // Returns either 0 or an identifier assigned to the buffer at 'ptr'
   // when the buffer was returned by AllocateRaw. If non-zero, the
@@ -180,7 +175,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual int64 AllocationId(void* ptr) { return 0; }
+  virtual int64 AllocationId(const void* ptr) { return 0; }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
   // otherwise returns 0. This method can be called when
@@ -188,7 +183,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSizeSlow(void* ptr) {
+  virtual size_t AllocatedSizeSlow(const void* ptr) {
     if (TracksAllocationSizes()) {
       return AllocatedSize(ptr);
     }
@@ -312,17 +307,19 @@ class AllocatorWrapper : public Allocator {
     return wrapped_->TracksAllocationSizes();
   }
 
-  size_t RequestedSize(void* ptr) override {
+  size_t RequestedSize(const void* ptr) override {
     return wrapped_->RequestedSize(ptr);
   }
 
-  size_t AllocatedSize(void* ptr) override {
+  size_t AllocatedSize(const void* ptr) override {
     return wrapped_->AllocatedSize(ptr);
   }
 
-  int64 AllocationId(void* ptr) override { return wrapped_->AllocationId(ptr); }
+  int64 AllocationId(const void* ptr) override {
+    return wrapped_->AllocationId(ptr);
+  }
 
-  size_t AllocatedSizeSlow(void* ptr) override {
+  size_t AllocatedSizeSlow(const void* ptr) override {
     return wrapped_->AllocatedSizeSlow(ptr);
   }
 
@@ -357,7 +354,12 @@ struct AllocatorAttributes {
   bool nic_compatible() const { return value & (0x1 << 1); }
   void set_gpu_compatible(bool v) { value |= (static_cast<int>(v) << 2); }
   bool gpu_compatible() const { return value & (0x1 << 2); }
-  void Merge(AllocatorAttributes other) { value |= other.value; }
+  void Merge(AllocatorAttributes other) {
+    value |= other.value;
+    scope_id = (scope_id > 0 && other.scope_id == 0)
+                   ? scope_id
+                   : ((scope_id == 0) ? other.scope_id : 0);
+  }
   // Returns true if the fields set in *this is a subset of or equal to
   // those set in other.
   bool IsEqualOrLessRestrictiveThan(const AllocatorAttributes& other) const {
@@ -369,6 +371,9 @@ struct AllocatorAttributes {
   // upper 8 bits in device-specific ways, and ops implemented for those
   // devices are responsible for setting those 8 bits appropriately.
   uint32 value = 0;
+  // EXPERIMENTAL: If this is greater than zero, then allocation is delegated to
+  // a named special-purpose allocator on the same device.
+  int32 scope_id = 0;
 };
 
 // Returns a trivial implementation of Allocator which uses the system
@@ -394,4 +399,4 @@ class SubAllocator {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_

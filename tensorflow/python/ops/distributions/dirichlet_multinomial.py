@@ -28,6 +28,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -49,6 +50,7 @@ fractional components, and such that
 with `self.concentration` and `self.total_count`."""
 
 
+@tf_export("distributions.DirichletMultinomial")
 class DirichletMultinomial(distribution.Distribution):
   """Dirichlet-Multinomial compound distribution.
 
@@ -189,8 +191,8 @@ class DirichletMultinomial(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[total_count, concentration]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[total_count, concentration]) as name:
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
       #   we use the last dimension for the distribution, whereas

@@ -22,20 +22,28 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
 
-#include "tensorflow/core/kernels/conv_ops_gpu.h"
-
 namespace tensorflow {
 
 #if GOOGLE_CUDA
 
+struct ConvParametersPeer {
+  template <typename T>
+  bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() {
+    return params.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
+  }
+
+  ConvParameters params;
+};
+
 TEST(ConvParameters, WinogradNonfusedAlgoSize) {
-  ConvParameters conv_params_small = {
+  ConvParametersPeer conv_params_small = {{
       1,         // batch
       32,        // in_depths
       {{300,     // in_rows
@@ -51,10 +59,11 @@ TEST(ConvParameters, WinogradNonfusedAlgoSize) {
         0}},     // padding_cols
       DT_FLOAT,  // tensor datatype
       0,         // device_id
-  };
-  EXPECT_TRUE(conv_params_small.ShouldIncludeWinogradNonfusedAlgo<float>());
+  }};
+  EXPECT_TRUE(
+      conv_params_small.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<float>());
 
-  ConvParameters conv_params_large = {
+  ConvParametersPeer conv_params_large = {{
       1,         // batch
       128,       // in_depths
       {{300,     // in_rows
@@ -70,8 +79,9 @@ TEST(ConvParameters, WinogradNonfusedAlgoSize) {
         0}},     // padding_cols
       DT_FLOAT,  // tensor datatype
       0,         // device_id
-  };
-  EXPECT_FALSE(conv_params_large.ShouldIncludeWinogradNonfusedAlgo<float>());
+  }};
+  EXPECT_FALSE(
+      conv_params_large.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<float>());
 }
 
 #endif  // GOOGLE_CUDA
@@ -401,7 +411,7 @@ class ConvOpTest : public OpsTestBase {
     // (1*0)+(4*5)+(7*6)+(2*0)+(5*9)+(8*10)+(3*0)+(6*0)+(9*0)=187
     // (1*5)+(4*6)+(7*7)+(2*9)+(5*10)+(8*11)+(3*0)+(6*0)+(9*0)=234
     // (1*6)+(4*7)+(7*8)+(2*10)+(5*11)+(8*12)+(3*0)+(6*0)+(9*0)=261
-    // (1*7)+(4*11)+(7*0)+(2*8)+(5*12)+(8*0)+(3*0)+(6*0)+(9*0)=121
+    // (1*7)+(4*8)+(7*0)+(2*11)+(5*12)+(8*0)+(3*0)+(6*0)+(9*0)=121
     // This means we should end up with this matrix:
     // |  105  |  150  |  183  |   95  |
     // |  235  |  312  |  357  |  178  |

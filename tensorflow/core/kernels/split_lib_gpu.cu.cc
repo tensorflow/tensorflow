@@ -29,12 +29,12 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-template <typename Device, typename T>
-void Split<Device, T>::operator()(
-    const Device& d, typename TTypes<T, 3>::Tensor output,
-    typename TTypes<T, 3>::ConstTensor input,
-    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
-    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes) {
+template <typename Device, typename T, int NDims>
+void Split<Device, T, NDims>::operator()(
+    const Device& d, typename TTypes<T, NDims>::Tensor output,
+    typename TTypes<T, NDims>::ConstTensor input,
+    const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_indices,
+    const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_sizes) {
   To32Bit(output).device(d) = To32Bit(input).slice(slice_indices, slice_sizes);
 }
 
@@ -47,7 +47,9 @@ void SplitCustom<Device, T>::operator()(
   To32Bit(output).device(d) = To32Bit(input).slice(slice_indices, slice_sizes);
 }
 
-#define DEFINE_GPU_KERNELS(T) template struct Split<Eigen::GpuDevice, T>;
+#define DEFINE_GPU_KERNELS(T)                    \
+  template struct Split<Eigen::GpuDevice, T, 2>; \
+  template struct Split<Eigen::GpuDevice, T, 3>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 TF_CALL_complex64(DEFINE_GPU_KERNELS);

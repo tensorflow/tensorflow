@@ -35,7 +35,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationDataHandle input = ctx->Input(0);
+    xla::XlaOp input = ctx->Input(0);
     const DataType data_type = ctx->input_type(0);
 
     // Comments taken from semantics description at
@@ -46,8 +46,8 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
     // m = max(abs(input_min), abs(input_max)) if range_given is true,
     // m = max(abs(min_elem(input)),
     //         abs(max_elem(input))) otherwise.
-    xla::ComputationBuilder* b = ctx->builder();
-    xla::ComputationDataHandle input_min, input_max;
+    xla::XlaBuilder* b = ctx->builder();
+    xla::XlaOp input_min, input_max;
     if (range_given_) {
       double input_min_value, input_max_value;
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsFloatScalar(1, &input_min_value));
@@ -55,14 +55,14 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
       input_min = XlaHelpers::FloatLiteral(b, data_type, input_min_value);
       input_max = XlaHelpers::FloatLiteral(b, data_type, input_max_value);
     } else {
-      const xla::Computation* fmax = ctx->GetOrCreateMax(data_type);
-      const xla::Computation* fmin = ctx->GetOrCreateMin(data_type);
+      const xla::XlaComputation* fmax = ctx->GetOrCreateMax(data_type);
+      const xla::XlaComputation* fmin = ctx->GetOrCreateMin(data_type);
       input_min =
           b->ReduceAll(input, XlaHelpers::MaxValue(b, data_type), *fmin);
       input_max =
           b->ReduceAll(input, XlaHelpers::MinValue(b, data_type), *fmax);
     }
-    xla::ComputationDataHandle m = b->Max(b->Abs(input_min), b->Abs(input_max));
+    xla::XlaOp m = b->Max(b->Abs(input_min), b->Abs(input_max));
 
     // Next, we choose our fixed-point quantization buckets, [min_fixed,
     // max_fixed]. If signed_input is true, this is
@@ -85,7 +85,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
     // From this we compute our scaling factor, s:
     //
     // s = (max_fixed - min_fixed) / (2 * m).
-    xla::ComputationDataHandle s =
+    xla::XlaOp s =
         b->Div(XlaHelpers::FloatLiteral(b, data_type, max_fixed - min_fixed),
                b->Mul(XlaHelpers::FloatLiteral(b, data_type, 2.0), m));
 
@@ -93,7 +93,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
     // e is transformed into e':
     //
     // e' = (e * s).round_to_nearest() / s.
-    xla::ComputationDataHandle result = b->Div(b->Round(b->Mul(input, s)), s);
+    xla::XlaOp result = b->Div(b->Round(b->Mul(input, s)), s);
 
     ctx->SetOutput(0, result);
   }

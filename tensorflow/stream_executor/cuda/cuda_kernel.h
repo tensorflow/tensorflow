@@ -40,8 +40,7 @@ limitations under the License.
     "CUDA runtime being included into CUDA GPU executor; should be driver only."
 #endif
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // Wraps a CUfunction to implement the platform-independent KernelInterface.
@@ -124,7 +123,6 @@ inline CUDAKernel *AsCUDAKernel(KernelBase *kernel) {
 }
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_KERNEL_H_

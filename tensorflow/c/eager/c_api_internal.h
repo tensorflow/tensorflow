@@ -19,91 +19,116 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <map>
 #include <memory>
+#include <queue>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/c/eager/runtime.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/eager_executor.h"
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/distributed_runtime/remote_device.h"
+#include "tensorflow/core/distributed_runtime/rpc/eager/eager_grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/public/version.h"
 
 struct TFE_ContextOptions {
   TF_SessionOptions session_options;
-  TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_EXPLICIT};
+  // true if async execution is enabled.
+  bool async = false;
+  TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_SILENT};
+  tensorflow::ServerDef server_def;
 };
 
 struct TFE_Context {
-  explicit TFE_Context(TF_Session* s) : session(s) {}
+  explicit TFE_Context(const tensorflow::SessionOptions& opts,
+                       TFE_ContextDevicePlacementPolicy default_policy,
+                       bool async,
+                       std::unique_ptr<tensorflow::DeviceMgr> device_mgr,
+                       tensorflow::Rendezvous* rendezvous)
+      : context(opts,
+                static_cast<tensorflow::ContextDevicePlacementPolicy>(
+                    default_policy),
+                async, std::move(device_mgr), rendezvous) {}
 
-  TFE_ContextDevicePlacementPolicy policy;
+  explicit TFE_Context(
+      const tensorflow::SessionOptions& opts,
+      TFE_ContextDevicePlacementPolicy default_policy, bool async,
+      tensorflow::DeviceMgr* local_device_mgr,
+      tensorflow::Rendezvous* rendezvous,
+      std::unique_ptr<tensorflow::GrpcServer> server,
+      std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers,
+      std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr,
+      const tensorflow::gtl::FlatMap<tensorflow::string, tensorflow::uint64>&
+          remote_contexts)
+      : context(opts,
+                static_cast<tensorflow::ContextDevicePlacementPolicy>(
+                    default_policy),
+                async, local_device_mgr, rendezvous, std::move(server),
+                std::move(remote_eager_workers), std::move(remote_device_mgr),
+                remote_contexts) {}
 
-  // TFE_Context is an extension of TF_Session. And TF_Session needs a TF_Graph.
-  TF_Session* session;
-  tensorflow::Rendezvous* rendezvous;
-
-  tensorflow::mutex functions_mu;
-  tensorflow::FunctionLibraryDefinition func_lib_def GUARDED_BY(functions_mu){
-      tensorflow::OpRegistry::Global(), {}};
-
-  // One FunctionLibraryRuntime per device.
-  // func_libs[i] is the FunctionLibraryRuntime corresponding to
-  // session->devices[i].
-  std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
-
-  tensorflow::mutex cache_mu;
-  std::unordered_map<tensorflow::Fprint128, tensorflow::KernelAndDevice*,
-                     tensorflow::Fprint128Hasher>
-      kernel_cache GUARDED_BY(cache_mu);
-
-  tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) {
-    return pflr->GetFLR(d->name());
-  }
-
-  const std::vector<tensorflow::Device*>& devices() { return session->devices; }
-
-  // Whether we should compute RunMetadata.
-  std::atomic<bool> should_store_metadata{false};
-  tensorflow::mutex metadata_mu;
-  tensorflow::RunMetadata run_metadata GUARDED_BY(metadata_mu);
+  tensorflow::EagerContext context;
 };
 
 struct TFE_TensorHandle {
-  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d)
-      : t(t), d(d) {}
+  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d,
+                   tensorflow::Device* op_device)
+      : handle(new tensorflow::TensorHandle(t, d, op_device, nullptr)) {}
 
-  tensorflow::Tensor t;
-  // TODO(ashankar): d == nullptr iff local CPU
-  // This was expedient, but perhaps worth revisiting ('d' should always be a
-  // valid pointer?)
-  // This can be done if TFE_NewOp() and the TFE_TensorHandle constructors are
-  // provided with the appropriate TFE_Context.
-  //
-  // TODO(ashankar): Reference count TFE_Context to ensure that 'd' of a
-  // TFE_TensorHandle does not outlive the TFE_Context from which it came?
-  tensorflow::Device* d;
+  TFE_TensorHandle(tensorflow::uint64 node_id, tensorflow::DataType dtype,
+                   tensorflow::EagerContext* ctx)
+      : handle(new tensorflow::TensorHandle(node_id, dtype, ctx)) {}
+
+  TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
+
+  tensorflow::TensorHandle* handle;
+};
+
+struct TFE_TensorDebugInfo {
+  TFE_TensorDebugInfo(const std::vector<tensorflow::int64>& dims)
+      : dev_dims(dims) {}
+
+  // Fully-padded, minor-to-major.
+  std::vector<tensorflow::int64> dev_dims;
 };
 
 struct TFE_Op {
+  // t is NULL iff the TFE_Op corresponds to a TensorFlow function instead of a
+  // primitive operation.
   TFE_Op(TFE_Context* ctx, const char* op, const tensorflow::AttrTypeMap* t)
-      : ctx(ctx), name(op), attrs(op), attr_types(t), device(nullptr) {}
+      : operation(&ctx->context, op, t) {}
 
-  bool const is_function() const { return attr_types == nullptr; }
-
-  TFE_Context* ctx;  // Must outlive the TFE_Op.
-  const tensorflow::string name;
-  tensorflow::AttrBuilder attrs;
-  const tensorflow::AttrTypeMap* attr_types;
-  std::vector<tensorflow::Tensor> inputs;
-  std::vector<tensorflow::Device*> input_devices;
-  tensorflow::Device* device;
+  tensorflow::EagerOperation operation;
 };
+
+namespace tensorflow {
+// Set an AttrValue on the op. Doesn't handle the list types.
+void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
+                          const tensorflow::AttrValue& default_value,
+                          const char* attr_name, TF_Status* status);
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

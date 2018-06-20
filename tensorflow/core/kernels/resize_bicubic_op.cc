@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/image_resizer_state.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace {
@@ -57,7 +57,7 @@ const float* GetCoeffsTable() {
 }
 
 inline int64 Bound(int64 val, int64 limit) {
-  return std::min(limit - 1ll, std::max(0ll, val));
+  return std::min(limit - 1ll, std::max(int64{0}, val));
 }
 
 struct WeightsAndIndices {
@@ -480,9 +480,8 @@ class ResizeBicubicOp : public OpKernel {
 
     if (!context->status().ok()) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
-    typename TTypes<float, 4>::Tensor output_data =
-        st.output->tensor<float, 4>();
+    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
+    TTypes<float, 4>::Tensor output_data = st.output->tensor<float, 4>();
 
     interpolate_with_caching<T>(input_data, st, output_data);
   }
@@ -510,9 +509,8 @@ class ResizeBicubicOpGrad : public OpKernel {
 
     if (!context->status().ok()) return;
 
-    typename TTypes<float, 4>::ConstTensor input_grad =
-        input.tensor<float, 4>();
-    typename TTypes<T, 4>::Tensor output_grad = st.output->tensor<T, 4>();
+    TTypes<float, 4>::ConstTensor input_grad = input.tensor<float, 4>();
+    typename TTypes<T, 4>::Tensor output_grad(st.output->tensor<T, 4>());
 
     ResizeBicubicGrad<T>(input_grad, st, output_grad);
   }

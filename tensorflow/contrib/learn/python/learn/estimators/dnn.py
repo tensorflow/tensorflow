@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Deep Neural Network estimators."""
+"""Deep Neural Network estimators (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -211,6 +216,10 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
 
 class DNNClassifier(estimator.Estimator):
   """A classifier for TensorFlow DNN models.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Example:
 
@@ -521,6 +530,10 @@ class DNNClassifier(estimator.Estimator):
 class DNNRegressor(estimator.Estimator):
   """A regressor for TensorFlow DNN models.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Example:
 
   ```python
@@ -795,6 +808,10 @@ class DNNRegressor(estimator.Estimator):
 
 class DNNEstimator(estimator.Estimator):
   """A Estimator for TensorFlow DNN models with user specified _Head.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Example:
 

@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -48,7 +49,7 @@ class CopyOpTest : public HloTestBase {
     module->AddEntryComputation(std::move(computation));
 
     std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
-    LiteralTestUtil::ExpectEqual(literal, *result);
+    EXPECT_TRUE(LiteralTestUtil::Equal(literal, *result));
   }
 
   void TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3);
@@ -246,13 +247,13 @@ XLA_TEST_F(CopyOpClientTest, Copy0x0) {
   Shape out_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {1, 0});
   auto empty = Literal::CreateFromShape(in_shape);
 
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto param0 = builder.Parameter(0, in_shape, "input");
   auto input_data = client_->TransferToServer(*empty).ConsumeValueOrDie();
 
   auto actual = ExecuteAndTransfer(&builder, {input_data.get()}, &out_shape)
                     .ConsumeValueOrDie();
-  LiteralTestUtil::ExpectEqual(*empty, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*empty, *actual));
 }
 
 }  // namespace

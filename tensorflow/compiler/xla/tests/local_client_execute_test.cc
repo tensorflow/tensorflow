@@ -18,9 +18,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -43,8 +42,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace {
 
@@ -56,61 +53,57 @@ class LocalClientExecuteTest : public LocalClientTestBase {
 };
 
 XLA_TEST_F(LocalClientExecuteTest, Constant) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto y = builder.ConstantR0<float>(123.0f);
 
-  std::unique_ptr<ScopedShapedBuffer> result =
+  ScopedShapedBuffer result =
       ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {});
-
-  LiteralTestUtil::ExpectR0Near<float>(123.f, *ShapedBufferToLiteral(*result),
+  LiteralTestUtil::ExpectR0Near<float>(123.f, *ShapedBufferToLiteral(result),
                                        error_spec_);
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddScalars) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
   auto y = builder.ConstantR0<float>(123.0f);
   builder.Add(x, y);
 
   auto x_value = LiteralToShapedBuffer(*Literal::CreateR0<float>(42.0f));
-  std::unique_ptr<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {x_value.get()});
-
-  LiteralTestUtil::ExpectR0Near<float>(165.f, *ShapedBufferToLiteral(*result),
+  ScopedShapedBuffer result =
+      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {&x_value});
+  LiteralTestUtil::ExpectR0Near<float>(165.f, *ShapedBufferToLiteral(result),
                                        error_spec_);
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddZeroElementVectors) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {0}), "x");
   auto y = builder.ConstantR1<float>({});
   builder.Add(x, y);
 
   auto x_array = LiteralToShapedBuffer(*Literal::CreateR1<float>({}));
-  std::unique_ptr<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {x_array.get()});
-
-  LiteralTestUtil::ExpectR1Near<float>({}, *ShapedBufferToLiteral(*result),
+  ScopedShapedBuffer result =
+      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {&x_array});
+  LiteralTestUtil::ExpectR1Near<float>({}, *ShapedBufferToLiteral(result),
                                        error_spec_);
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddVectors) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
   builder.Add(x, y);
 
   auto x_array =
       LiteralToShapedBuffer(*Literal::CreateR1<float>({0.0f, 1.0f, 2.0f}));
-  std::unique_ptr<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {x_array.get()});
-
+  ScopedShapedBuffer result =
+      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {&x_array});
   LiteralTestUtil::ExpectR1Near<float>(
-      {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(*result), error_spec_);
+      {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(result), error_spec_);
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddVectorsWithProfile) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
   builder.Add(x, y);
@@ -118,18 +111,17 @@ XLA_TEST_F(LocalClientExecuteTest, AddVectorsWithProfile) {
   auto x_array =
       LiteralToShapedBuffer(*Literal::CreateR1<float>({0.0f, 1.0f, 2.0f}));
   ExecutionProfile profile;
-  std::unique_ptr<ScopedShapedBuffer> result = ExecuteLocallyOrDie(
-      builder.Build().ValueOrDie(), {x_array.get()},
-      DefaultExecutableBuildOptions(),
+  ScopedShapedBuffer result = ExecuteLocallyOrDie(
+      builder.Build().ValueOrDie(), {&x_array}, DefaultExecutableBuildOptions(),
       DefaultExecutableRunOptions().set_execution_profile(&profile));
 
   LiteralTestUtil::ExpectR1Near<float>(
-      {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(*result), error_spec_);
+      {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(result), error_spec_);
   EXPECT_GT(profile.compute_and_transfer_time_ns(), 0);
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   builder.Add(x, y);
@@ -138,31 +130,31 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
   // Create x as a col-major array.
   auto x_array = LiteralToShapedBuffer(*Literal::CreateR2WithLayout(
       {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({0, 1})));
-  EXPECT_TRUE(LayoutUtil::Equal(x_array->on_device_shape().layout(),
+  EXPECT_TRUE(LayoutUtil::Equal(x_array.on_device_shape().layout(),
                                 LayoutUtil::MakeLayout({0, 1})));
 
   // Create y as a row-major array.
   auto y_array = LiteralToShapedBuffer(*Literal::CreateR2WithLayout(
       {{10.0f, 20.0f}, {30.0f, 40.0f}}, LayoutUtil::MakeLayout({1, 0})));
-  EXPECT_TRUE(LayoutUtil::Equal(y_array->on_device_shape().layout(),
+  EXPECT_TRUE(LayoutUtil::Equal(y_array.on_device_shape().layout(),
                                 LayoutUtil::MakeLayout({1, 0})));
 
-  std::unique_ptr<ScopedShapedBuffer> result_colmaj =
-      ExecuteLocallyOrDie(computation, {x_array.get(), y_array.get()});
+  ScopedShapedBuffer result_colmaj =
+      ExecuteLocallyOrDie(computation, {&x_array, &y_array});
   LiteralTestUtil::ExpectR2Near<float>({{11.0f, 22.0f}, {33.0f, 44.0f}},
-                                       *ShapedBufferToLiteral(*result_colmaj),
+                                       *ShapedBufferToLiteral(result_colmaj),
                                        error_spec_);
 
   // Run with the parameter values in a different order.
-  std::unique_ptr<ScopedShapedBuffer> result_param_swap =
-      ExecuteLocallyOrDie(computation, {y_array.get(), x_array.get()});
+  ScopedShapedBuffer result_param_swap =
+      ExecuteLocallyOrDie(computation, {&y_array, &x_array});
   LiteralTestUtil::ExpectR2Near<float>(
       {{11.0f, 22.0f}, {33.0f, 44.0f}},
-      *ShapedBufferToLiteral(*result_param_swap), error_spec_);
+      *ShapedBufferToLiteral(result_param_swap), error_spec_);
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   builder.Add(x, y);
@@ -174,32 +166,32 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
       *Literal::CreateR2<float>({{10.0f, 20.0f}, {30.0f, 40.0f}}));
 
   // Run with col-major result layout.
-  std::unique_ptr<ScopedShapedBuffer> result_colmaj = ExecuteLocallyOrDie(
-      computation, {x_array.get(), y_array.get()},
+  ScopedShapedBuffer result_colmaj = ExecuteLocallyOrDie(
+      computation, {&x_array, &y_array},
       DefaultExecutableBuildOptions().set_result_layout(
           ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2}, {0, 1})),
       DefaultExecutableRunOptions());
-  EXPECT_TRUE(LayoutUtil::Equal(result_colmaj->on_device_shape().layout(),
+  EXPECT_TRUE(LayoutUtil::Equal(result_colmaj.on_device_shape().layout(),
                                 LayoutUtil::MakeLayout({0, 1})));
   LiteralTestUtil::ExpectR2Near<float>({{11.0f, 22.0f}, {33.0f, 44.0f}},
-                                       *ShapedBufferToLiteral(*result_colmaj),
+                                       *ShapedBufferToLiteral(result_colmaj),
                                        error_spec_);
 
   // Run with row-major result layout.
-  std::unique_ptr<ScopedShapedBuffer> result_rowmaj = ExecuteLocallyOrDie(
-      computation, {x_array.get(), y_array.get()},
+  ScopedShapedBuffer result_rowmaj = ExecuteLocallyOrDie(
+      computation, {&x_array, &y_array},
       DefaultExecutableBuildOptions().set_result_layout(
           ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2}, {1, 0})),
       DefaultExecutableRunOptions());
-  EXPECT_TRUE(LayoutUtil::Equal(result_rowmaj->on_device_shape().layout(),
+  EXPECT_TRUE(LayoutUtil::Equal(result_rowmaj.on_device_shape().layout(),
                                 LayoutUtil::MakeLayout({1, 0})));
   LiteralTestUtil::ExpectR2Near<float>({{11.0f, 22.0f}, {33.0f, 44.0f}},
-                                       *ShapedBufferToLiteral(*result_rowmaj),
+                                       *ShapedBufferToLiteral(result_rowmaj),
                                        error_spec_);
 }
 
 XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   builder.Tuple({x, y, x});
@@ -210,24 +202,24 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
   auto y_array = LiteralToShapedBuffer(
       *Literal::CreateR2<float>({{10.0f, 20.0f}, {30.0f, 40.0f}}));
 
-  std::unique_ptr<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(computation, {x_array.get(), y_array.get()});
+  ScopedShapedBuffer result =
+      ExecuteLocallyOrDie(computation, {&x_array, &y_array});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result->on_host_shape()));
-  EXPECT_EQ(3, ShapeUtil::TupleElementCount(result->on_host_shape()));
+  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_EQ(3, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
-  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(*result);
+  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralView::Create(*result_literal, {0}));
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {0}));
   LiteralTestUtil::ExpectR2Equal<float>(
       {{10.0f, 20.0f}, {30.0f, 40.0f}},
-      LiteralView::Create(*result_literal, {1}));
+      LiteralSlice(*result_literal, {1}));
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralView::Create(*result_literal, {2}));
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {2}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   auto inner_tuple = builder.Tuple({x, y, x});
@@ -239,29 +231,29 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
   auto y_array = LiteralToShapedBuffer(
       *Literal::CreateR2<float>({{10.0f, 20.0f}, {30.0f, 40.0f}}));
 
-  std::unique_ptr<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(computation, {x_array.get(), y_array.get()});
+  ScopedShapedBuffer result =
+      ExecuteLocallyOrDie(computation, {&x_array, &y_array});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result->on_host_shape()));
-  EXPECT_EQ(2, ShapeUtil::TupleElementCount(result->on_host_shape()));
+  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
-  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(*result);
+  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralView::Create(*result_literal, {1}));
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {1}));
   LiteralTestUtil::ExpectR2Equal<float>(
       {{1.0f, 2.0f}, {3.0f, 4.0f}},
-      LiteralView::Create(*result_literal, {0, 0}));
+      LiteralSlice(*result_literal, {0, 0}));
   LiteralTestUtil::ExpectR2Equal<float>(
       {{10.0f, 20.0f}, {30.0f, 40.0f}},
-      LiteralView::Create(*result_literal, {0, 1}));
+      LiteralSlice(*result_literal, {0, 1}));
   LiteralTestUtil::ExpectR2Equal<float>(
       {{1.0f, 2.0f}, {3.0f, 4.0f}},
-      LiteralView::Create(*result_literal, {0, 2}));
+      LiteralSlice(*result_literal, {0, 2}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
   // Verify setting the result layout of a computation with a tuple output.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   builder.Tuple({x, y});
@@ -276,15 +268,15 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
        ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2},
                                       /*minor_to_major=*/{1, 0})});
   options.set_result_layout(shape_with_layout);
-  std::unique_ptr<ScopedShapedBuffer> result = ExecuteLocallyOrDie(
-      builder.Build().ValueOrDie(), {array.get(), array.get()}, options,
-      DefaultExecutableRunOptions());
+  ScopedShapedBuffer result =
+      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {&array, &array},
+                          options, DefaultExecutableRunOptions());
 
-  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(*result);
+  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralView::Create(*result_literal, {0}));
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {0}));
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralView::Create(*result_literal, {1}));
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
@@ -298,7 +290,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
 
   // Computation adds the respective array and vector elements from each tuple
   // argument and returns the results as a tuple.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, tuple_shape0, "x");
   auto y = builder.Parameter(1, tuple_shape1, "y");
   auto x_0 = builder.GetTupleElement(x, 0);
@@ -320,18 +312,18 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
   auto x_buffer = LiteralToShapedBuffer(*x_literal);
   auto y_buffer = LiteralToShapedBuffer(*y_literal);
 
-  std::unique_ptr<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(computation, {x_buffer.get(), y_buffer.get()});
+  ScopedShapedBuffer result =
+      ExecuteLocallyOrDie(computation, {&x_buffer, &y_buffer});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result->on_host_shape()));
-  EXPECT_EQ(2, ShapeUtil::TupleElementCount(result->on_host_shape()));
+  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
-  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(*result);
+  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>(
       {{56.0f, 46.0f}, {36.0f, 26.0f}},
-      LiteralView::Create(*result_literal, {0}));
+      LiteralSlice(*result_literal, {0}));
   LiteralTestUtil::ExpectR1Equal<float>(
-      {40.0f, 71.0f, 117.0f}, LiteralView::Create(*result_literal, {1}));
+      {40.0f, 71.0f, 117.0f}, LiteralSlice(*result_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
@@ -345,7 +337,7 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
 
   // Computation negates the array element and sums the two vector elements in
   // the nested tuple. The resulting array and vector are returned as a tuple.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto param = builder.Parameter(0, nested_tuple_shape, "param");
   auto inner_tuple = builder.GetTupleElement(param, 0);
   auto inner_array = builder.GetTupleElement(inner_tuple, 0);
@@ -365,14 +357,13 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
        Literal::CreateR1<float>({222.0, -2.0, 10.0}).get()});
   auto arg_buffer = LiteralToShapedBuffer(*arg_literal);
 
-  std::unique_ptr<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(computation, {arg_buffer.get()});
+  ScopedShapedBuffer result = ExecuteLocallyOrDie(computation, {&arg_buffer});
 
-  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(*result);
+  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{-1.0, -2.0}, {-3.0, -4}}, LiteralView::Create(*result_literal, {0}));
+      {{-1.0, -2.0}, {-3.0, -4}}, LiteralSlice(*result_literal, {0}));
   LiteralTestUtil::ExpectR1Equal<float>(
-      {264.0, 73.0, 133.0}, LiteralView::Create(*result_literal, {1}));
+      {264.0, 73.0, 133.0}, LiteralSlice(*result_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
@@ -384,7 +375,7 @@ XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
   const Shape tuple_shape =
       ShapeUtil::MakeTupleShape({array_shape, array_shape});
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto param = builder.Parameter(0, tuple_shape, "param");
   auto element_0 = builder.GetTupleElement(param, 0);
   auto element_1 = builder.GetTupleElement(param, 1);
@@ -396,22 +387,20 @@ XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
        Literal::CreateR2<float>({{11.0, 3.0}, {4.0, 5.0}}).get()});
   auto arg_buffer = LiteralToShapedBuffer(*arg_literal);
 
-  std::unique_ptr<ScopedShapedBuffer> result_0 =
-      ExecuteLocallyOrDie(computation, {arg_buffer.get()});
-  std::unique_ptr<Literal> result_0_literal = ShapedBufferToLiteral(*result_0);
+  ScopedShapedBuffer result_0 = ExecuteLocallyOrDie(computation, {&arg_buffer});
+  std::unique_ptr<Literal> result_0_literal = ShapedBufferToLiteral(result_0);
   LiteralTestUtil::ExpectR2Equal<float>(
       {{-1.0, -2.0}, {-3.0, -4.0}},
-      LiteralView::Create(*result_0_literal, {0}));
+      LiteralSlice(*result_0_literal, {0}));
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{22.0, 6.0}, {8.0, 10}}, LiteralView::Create(*result_0_literal, {1}));
+      {{22.0, 6.0}, {8.0, 10}}, LiteralSlice(*result_0_literal, {1}));
 
-  std::unique_ptr<ScopedShapedBuffer> result_1 =
-      ExecuteLocallyOrDie(computation, {result_0.get()});
-  std::unique_ptr<Literal> result_1_literal = ShapedBufferToLiteral(*result_1);
+  ScopedShapedBuffer result_1 = ExecuteLocallyOrDie(computation, {&result_0});
+  std::unique_ptr<Literal> result_1_literal = ShapedBufferToLiteral(result_1);
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0, 2.0}, {3.0, 4.0}}, LiteralView::Create(*result_1_literal, {0}));
+      {{1.0, 2.0}, {3.0, 4.0}}, LiteralSlice(*result_1_literal, {0}));
   LiteralTestUtil::ExpectR2Equal<float>(
-      {{44.0, 12.0}, {16.0, 20}}, LiteralView::Create(*result_1_literal, {1}));
+      {{44.0, 12.0}, {16.0, 20}}, LiteralSlice(*result_1_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
@@ -430,11 +419,11 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
   std::vector<Shape> element_shapes(kElementCount, element_shape);
   const Shape tuple_shape = ShapeUtil::MakeTupleShape(element_shapes);
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto param = builder.Parameter(0, tuple_shape, "param");
 
   // Add each element's tuple index value to every element.
-  std::vector<ComputationDataHandle> result_elements;
+  std::vector<XlaOp> result_elements;
   for (int i = 0; i < kElementCount; ++i) {
     auto element = builder.GetTupleElement(param, i);
     result_elements.push_back(
@@ -453,21 +442,17 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
       Literal::MakeTupleOwned(std::move(arg_elements));
   auto arg_buffer = LiteralToShapedBuffer(*arg_literal);
 
-  std::unique_ptr<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(computation, {arg_buffer.get()});
-
-  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(*result);
+  ScopedShapedBuffer result = ExecuteLocallyOrDie(computation, {&arg_buffer});
+  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
 
   for (int i = 0; i < kElementCount; ++i) {
     LiteralTestUtil::ExpectR1Near<float>(
-        {2.0f * i, 0.0f}, LiteralView::Create(*result_literal, {i}),
+        {2.0f * i, 0.0f}, LiteralSlice(*result_literal, {i}),
         error_spec_);
   }
 }
 
-// TODO(b/66968986): Test times out on CPU parallel backend. Disabled
-// 2017-09-26.
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_CPU_PARALLEL(LargeNestedTuple)) {
+XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
   // Construct and run a computation which takes a two-level nested tuple
   // parameter with a large fanout.
   const int kFanout = 40;
@@ -479,15 +464,15 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_CPU_PARALLEL(LargeNestedTuple)) {
   std::vector<Shape> inner_tuple_shapes(kFanout, inner_tuple_shape);
   const Shape tuple_shape = ShapeUtil::MakeTupleShape(inner_tuple_shapes);
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto param = builder.Parameter(0, tuple_shape, "param");
 
   // The computation increments each leaf value by an amount equal to the leaf's
   // ordinal position in a traversal of the tuple.
-  std::vector<ComputationDataHandle> result_elements;
+  std::vector<XlaOp> result_elements;
   for (int i = 0; i < kFanout; ++i) {
     auto outer_element = builder.GetTupleElement(param, i);
-    std::vector<ComputationDataHandle> inner_result_elements;
+    std::vector<XlaOp> inner_result_elements;
     for (int j = 0; j < kFanout; ++j) {
       auto inner_element = builder.GetTupleElement(outer_element, j);
       inner_result_elements.push_back(builder.Add(
@@ -511,14 +496,13 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_CPU_PARALLEL(LargeNestedTuple)) {
   auto arg_literal = Literal::MakeTupleOwned(std::move(outer_tuple_elements));
   auto arg_buffer = LiteralToShapedBuffer(*arg_literal);
 
-  std::unique_ptr<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(computation, {arg_buffer.get()});
-  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(*result);
+  ScopedShapedBuffer result = ExecuteLocallyOrDie(computation, {&arg_buffer});
+  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
 
   for (int i = 0; i < kFanout; ++i) {
     for (int j = 0; j < kFanout; ++j) {
       LiteralTestUtil::ExpectR0Near<float>(
-          i + j + i * kFanout + j, LiteralView::Create(*result_literal, {i, j}),
+          i + j + i * kFanout + j, LiteralSlice(*result_literal, {i, j}),
           error_spec_);
     }
   }
@@ -535,7 +519,7 @@ XLA_TEST_F(LocalClientExecuteTest, DeepTuple) {
     shape = ShapeUtil::MakeTupleShape({shape});
   }
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto element = builder.Parameter(0, shape, "param");
   for (int i = 0; i < kTupleDepth; ++i) {
     element = builder.GetTupleElement(element, 0);
@@ -556,21 +540,20 @@ XLA_TEST_F(LocalClientExecuteTest, DeepTuple) {
   }
   auto arg_buffer = LiteralToShapedBuffer(*arg_literal);
 
-  std::unique_ptr<ScopedShapedBuffer> result =
-      ExecuteLocallyOrDie(computation, {arg_buffer.get()});
-  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(*result);
+  ScopedShapedBuffer result = ExecuteLocallyOrDie(computation, {&arg_buffer});
+  std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
 
   ShapeIndex index;
   for (int i = 0; i < kTupleDepth; ++i) {
     index.push_back(0);
   }
   LiteralTestUtil::ExpectR0Equal<float>(
-      165.0, LiteralView::Create(*result_literal, index));
+      165.0, LiteralSlice(*result_literal, index));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
   // Test passing in an invalid number of arguments.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {3}), "y");
   builder.Add(x, y);
@@ -578,7 +561,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
   auto x_array =
       LiteralToShapedBuffer(*Literal::CreateR1<float>({1.0f, 2.0f, 3.0f}));
   auto execute_status =
-      ExecuteLocally(builder.Build().ValueOrDie(), {x_array.get()});
+      ExecuteLocally(builder.Build().ValueOrDie(), {&x_array});
 
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().error_message(),
@@ -587,14 +570,14 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
 
 XLA_TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
   // Test passing in an argument with the wrong shape.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3}), "x");
   builder.Neg(x);
 
   auto x_array = LiteralToShapedBuffer(
       *Literal::CreateR2<float>({{0.0f, 1.0f}, {2.0f, 3.0f}}));
   auto execute_status =
-      ExecuteLocally(builder.Build().ValueOrDie(), {x_array.get()});
+      ExecuteLocally(builder.Build().ValueOrDie(), {&x_array});
 
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().error_message(),
@@ -604,14 +587,14 @@ XLA_TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
 
 XLA_TEST_F(LocalClientExecuteTest, InvalidResultLayout) {
   // Test passing in an invalid result layout parameter.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   builder.Neg(x);
 
   auto x_array = LiteralToShapedBuffer(
       *Literal::CreateR2<float>({{0.0f, 1.0f}, {2.0f, 3.0f}}));
   auto execute_status = ExecuteLocally(
-      builder.Build().ValueOrDie(), {x_array.get()},
+      builder.Build().ValueOrDie(), {&x_array},
       DefaultExecutableBuildOptions().set_result_layout(
           ShapeUtil::MakeShapeWithLayout(F32,
                                          /*dimensions=*/{1, 2, 3, 4},
@@ -627,7 +610,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidResultLayout) {
 XLA_TEST_F(LocalClientExecuteTest, RunOnAllDeviceOrdinals) {
   // Try to run a trivial computation on every device on the system. If a
   // specific device is not supported, check that the right error is returned.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR0<float>(42.0f);
   auto computation = builder.Build().ConsumeValueOrDie();
   for (int d = 0; d < local_client_->device_count(); ++d) {
@@ -644,9 +627,9 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnAllDeviceOrdinals) {
           computation, {},
           DefaultExecutableBuildOptions().set_device_ordinal(d),
           DefaultExecutableRunOptions().set_device_ordinal(d));
-      EXPECT_EQ(d, result->device_ordinal());
+      EXPECT_EQ(d, result.device_ordinal());
       LiteralTestUtil::ExpectR0Equal<float>(42.0f,
-                                            *ShapedBufferToLiteral(*result));
+                                            *ShapedBufferToLiteral(result));
     }
   }
 }
@@ -654,7 +637,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnAllDeviceOrdinals) {
 XLA_TEST_F(LocalClientExecuteTest, InvalidDeviceOrdinalValues) {
   // Try running computations on devices with device ordinal values which do not
   // exist.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR0<float>(42.0f);
   auto computation = builder.Build().ConsumeValueOrDie();
 
@@ -671,7 +654,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidDeviceOrdinalValues) {
 
 XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
   // Run a computation on a specific stream on each device on the system.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR0<float>(42.0f);
   auto computation = builder.Build().ConsumeValueOrDie();
 
@@ -689,9 +672,9 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
                             DefaultExecutableRunOptions().set_stream(&stream));
     // As a check to verify that the computation ran of the device associated
     // with the stream. This is a weak check, but stronger verification is hard.
-    EXPECT_EQ(d, result->device_ordinal());
+    EXPECT_EQ(d, result.device_ordinal());
     LiteralTestUtil::ExpectR0Equal<float>(42.0f,
-                                          *ShapedBufferToLiteral(*result));
+                                          *ShapedBufferToLiteral(result));
   }
 }
 
@@ -707,7 +690,7 @@ XLA_TEST_F(LocalClientExecuteTest,
   se::Stream wrong_stream(wrong_platform->ExecutorForDevice(0).ValueOrDie());
   wrong_stream.Init();
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR0<float>(42.0f);
   auto execute_status = ExecuteLocally(
       builder.Build().ValueOrDie(), {}, DefaultExecutableBuildOptions(),
@@ -724,7 +707,7 @@ XLA_TEST_F(LocalClientExecuteTest,
           .ValueOrDie();
   TestAllocator allocator(wrong_platform);
 
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto y = builder.ConstantR0<float>(123.0f);
 
   auto execute_status = ExecuteLocally(
@@ -737,7 +720,7 @@ XLA_TEST_F(LocalClientExecuteTest,
 
 XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
   // Try to run a computation on a stream that has not been initialized.
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR0<float>(42.0f);
 
   LOG(INFO) << "default device = " << local_client_->default_device_ordinal();
@@ -757,7 +740,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
 }
 
 XLA_TEST_F(LocalClientExecuteTest, SelectBetweenTuples) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
 
   std::initializer_list<float> vec1 = {1.f, 2.f, 3.f};
   std::initializer_list<float> vec2 = {2.f, 4.f, 6.f};
@@ -767,17 +750,17 @@ XLA_TEST_F(LocalClientExecuteTest, SelectBetweenTuples) {
       {builder.ConstantR1<float>(vec2), builder.ConstantR1<float>(vec1)});
   builder.Select(builder.ConstantR0<bool>(false), tuple12, tuple21);
 
-  std::unique_ptr<ScopedShapedBuffer> result =
+  ScopedShapedBuffer result =
       ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {});
-  std::unique_ptr<Literal> tuple_literal = ShapedBufferToLiteral(*result);
+  std::unique_ptr<Literal> tuple_literal = ShapedBufferToLiteral(result);
   LiteralTestUtil::ExpectR1Equal<float>(
-      {2.0f, 4.0f, 6.0f}, LiteralView::Create(*tuple_literal, {0}));
+      {2.0f, 4.0f, 6.0f}, LiteralSlice(*tuple_literal, {0}));
   LiteralTestUtil::ExpectR1Equal<float>(
-      {1.0f, 2.0f, 3.0f}, LiteralView::Create(*tuple_literal, {1}));
+      {1.0f, 2.0f, 3.0f}, LiteralSlice(*tuple_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
-  ComputationBuilder builder(local_client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
   builder.Add(x, y);
@@ -793,12 +776,12 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
 
   auto x_array =
       LiteralToShapedBuffer(*Literal::CreateR1<float>({0.0f, 1.0f, 2.0f}));
-  std::unique_ptr<ScopedShapedBuffer> result =
-      executable->Run({x_array.get()}, DefaultExecutableRunOptions())
+  ScopedShapedBuffer result =
+      executable->Run({&x_array}, DefaultExecutableRunOptions())
           .ConsumeValueOrDie();
 
   LiteralTestUtil::ExpectR1Near<float>(
-      {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(*result), error_spec_);
+      {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(result), error_spec_);
 }
 
 XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
@@ -811,7 +794,7 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
             literal, local_client_->default_device_ordinal(), allocator_));
     TF_ASSERT_OK_AND_ASSIGN(
         auto transferred_literal,
-        local_client_->ShapedBufferToLiteral(*shaped_buffer));
+        local_client_->ShapedBufferToLiteral(shaped_buffer));
     EXPECT_EQ(literal, *transferred_literal);
   };
 
@@ -851,7 +834,7 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
             literal, local_client_->default_device_ordinal(), allocator_));
     TF_ASSERT_OK_AND_ASSIGN(
         auto transferred_literal,
-        local_client_->ShapedBufferToLiteral(*shaped_buffer));
+        local_client_->ShapedBufferToLiteral(shaped_buffer));
     EXPECT_EQ(literal, *transferred_literal);
   };
 
@@ -867,9 +850,8 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
 
 // TODO(b/34359662): Support infeed/outfeed on GPU and CPU parallel.
 // 2017-10-18.
-XLA_TEST_F(LocalClientExecuteTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(InfeedOutfeedTest))) {
-  ComputationBuilder builder(local_client_, TestName());
+XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(InfeedOutfeedTest)) {
+  XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = builder.Infeed(shape);
   auto constant = builder.ConstantR1<float>({1.0f, 2.0f, 3.0f});
@@ -907,7 +889,7 @@ void BM_LocalClientOverhead(int num_iters) {
   int device_ordinal = client->default_device_ordinal();
 
   // Use a tiny add operation as the computation.
-  ComputationBuilder builder(client, "Add");
+  XlaBuilder builder("Add");
   auto shape = ShapeUtil::MakeShape(F32, {2, 3});
   auto x = builder.Parameter(0, shape, "x");
   builder.Add(x, x);
@@ -919,12 +901,12 @@ void BM_LocalClientOverhead(int num_iters) {
           .ConsumeValueOrDie();
   auto literal = Literal::CreateR2<float>({{0, 0, 0}, {0, 0, 0}});
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *literal, *buffer));
+      executors[device_ordinal], *literal, buffer));
 
   const int kWarmups = 2;
 
   auto executable_status = client->Compile(
-      computation, {&buffer->on_host_shape()}, ExecutableBuildOptions());
+      computation, {&buffer.on_host_shape()}, ExecutableBuildOptions());
   ASSERT_IS_OK(executable_status);
   std::unique_ptr<LocalExecutable> executable =
       executable_status.ConsumeValueOrDie();
@@ -936,13 +918,13 @@ void BM_LocalClientOverhead(int num_iters) {
   run_options.set_allocator(&allocator).set_stream(&stream);
 
   for (int i = 0; i < kWarmups; ++i) {
-    auto result = executable->Run({buffer.get()}, run_options);
+    auto result = executable->Run({&buffer}, run_options);
     ASSERT_IS_OK(result);
   }
 
   tensorflow::testing::StartTiming();
   for (int i = 0; i < num_iters; ++i) {
-    auto result = executable->Run({buffer.get()}, run_options);
+    auto result = executable->Run({&buffer}, run_options);
     ASSERT_IS_OK(result);
   }
 }

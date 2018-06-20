@@ -35,12 +35,14 @@ enum KernelType {
 
 struct BatchToSpaceNDContext {
   BatchToSpaceNDContext(TfLiteContext* context, TfLiteNode* node) {
-    params = reinterpret_cast<TfLiteBatchToSpaceNDParams*>(node->builtin_data);
     input = GetInput(context, node, 0);
+    block_shape = GetInput(context, node, 1);
+    crops = GetInput(context, node, 2);
     output = GetOutput(context, node, 0);
   }
-  TfLiteBatchToSpaceNDParams* params;
-  TfLiteTensor* input;
+  const TfLiteTensor* input;
+  const TfLiteTensor* block_shape;
+  const TfLiteTensor* crops;
   TfLiteTensor* output;
 };
 
@@ -48,23 +50,26 @@ struct BatchToSpaceNDContext {
 // The 4D array need to have exactly 2 spatial dimensions.
 // TODO(ycling): Support arbitrary dimension in BatchToSpaceND.
 const int kInputDimensionNum = 4;
-const int kOutputDimensionNum = 4;
+const int kBlockSizeDimensionNum = 1;
 const int kSpatialDimensionNum = 2;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  // The 2nd tensor (block_shape) and the 3rd tensor (crops) are ignored now.
-  TF_LITE_ENSURE(context, NumInputs(node) >= 1 && NumInputs(node) <= 3);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
+                                BatchToSpaceNDContext* op_context) {
+  TfLiteIntArray* input_size = op_context->input->dims;
+  const int* block_shape = GetTensorData<int32>(op_context->block_shape);
+  const int* crops = GetTensorData<int32>(op_context->crops);
 
-  BatchToSpaceNDContext op_context(context, node);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context.input),
-                    kInputDimensionNum);
-  TF_LITE_ENSURE_EQ(context, op_context.params->num_spatial_dimensions,
+  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->block_shape),
+                    kBlockSizeDimensionNum);
+  TF_LITE_ENSURE_EQ(context, op_context->block_shape->dims->data[0],
                     kSpatialDimensionNum);
-  TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->crops),
+                    kSpatialDimensionNum);
 
-  const TfLiteIntArray* input_size = op_context.input->dims;
-  const int* block_shape = op_context.params->block_shape;
+  TF_LITE_ENSURE(context, crops[0] >= 0);
+  TF_LITE_ENSURE(context, crops[1] >= 0);
+  TF_LITE_ENSURE(context, crops[2] >= 0);
+  TF_LITE_ENSURE(context, crops[3] >= 0);
 
   // Number of batch must be multiple of (block_shape[0] * block_shape[1]).
   TF_LITE_ENSURE_EQ(context,
@@ -72,31 +77,61 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const int output_batch_size =
       input_size->data[0] / (block_shape[0] * block_shape[1]);
-  const int output_height = input_size->data[1] * block_shape[0];
-  const int output_width = input_size->data[2] * block_shape[1];
+
+  const int crops_top = crops[0];
+  const int crops_bottom = crops[1];
+  const int crops_left = crops[2];
+  const int crops_right = crops[3];
+  const int output_height =
+      input_size->data[1] * block_shape[0] - crops_top - crops_bottom;
+  const int output_width =
+      input_size->data[2] * block_shape[1] - crops_left - crops_right;
+
   const int output_channel_size = input_size->data[3];
 
-  TfLiteIntArray* output_size = TfLiteIntArrayCreate(kOutputDimensionNum);
+  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_size);
   output_size->data[0] = output_batch_size;
   output_size->data[1] = output_height;
   output_size->data[2] = output_width;
   output_size->data[3] = output_channel_size;
 
-  return context->ResizeTensor(context, op_context.output, output_size);
+  return context->ResizeTensor(context, op_context->output, output_size);
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
+  BatchToSpaceNDContext op_context(context, node);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context.input),
+                    kInputDimensionNum);
+  TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
+
+  if (!IsConstantTensor(op_context.block_shape) ||
+      !IsConstantTensor(op_context.crops)) {
+    SetTensorToDynamic(op_context.output);
+    return kTfLiteOk;
+  }
+  return ResizeOutputTensor(context, &op_context);
 }
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   BatchToSpaceNDContext op_context(context, node);
 
-  int block_shape_dims_array[1] = {kSpatialDimensionNum};
-  Dims<4> block_shape_dims = GetTensorDims(block_shape_dims_array, 1);
+  // Resize the output tensor if the output tensor is dynamic.
+  if (IsDynamicTensor(op_context.output)) {
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
+  }
 
-#define TF_LITE_BATCH_TO_SPACE_ND(type, scalar)                          \
-  type::BatchToSpaceND(GetTensorData<scalar>(op_context.input),          \
-                       GetTensorDims(op_context.input),                  \
-                       op_context.params->block_shape, block_shape_dims, \
-                       GetTensorData<scalar>(op_context.output),         \
+#define TF_LITE_BATCH_TO_SPACE_ND(type, scalar)                        \
+  type::BatchToSpaceND(GetTensorData<scalar>(op_context.input),        \
+                       GetTensorDims(op_context.input),                \
+                       GetTensorData<int32_t>(op_context.block_shape), \
+                       GetTensorDims(op_context.block_shape),          \
+                       GetTensorData<int32_t>(op_context.crops),       \
+                       GetTensorDims(op_context.crops),                \
+                       GetTensorData<scalar>(op_context.output),       \
                        GetTensorDims(op_context.output))
   switch (op_context.input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
@@ -128,8 +163,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      context->ReportError(context,
-                           "Type is currently not supported by BatchToSpace.");
+      context->ReportError(
+          context, "Type %d is currently not supported by BatchToSpace.",
+          op_context.input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_BATCH_TO_SPACE_ND

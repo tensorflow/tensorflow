@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -81,7 +82,7 @@ TEST(AlgorithmTest, ReversePostOrder) {
   BinaryOp("TestMul", w2, {input, 1}, b.opts().WithName("t3"));
 
   Graph g(OpRegistry::Global());
-  TF_ASSERT_OK(b.ToGraph(&g));
+  TF_ASSERT_OK(GraphDefBuilderToGraph(b, &g));
   std::vector<Node*> order;
 
   // Test reverse post order:
@@ -139,12 +140,12 @@ TEST(AlgorithmTest, ReversePostOrderStable) {
     BinaryOp("TestMul", w1, {input, 1}, b.opts().WithName("t3"));
 
     Graph g(OpRegistry::Global());
-    TF_ASSERT_OK(b.ToGraph(&g));
+    TF_ASSERT_OK(GraphDefBuilderToGraph(b, &g));
     std::vector<Node*> order;
 
     // Test reverse post order generates expected ordering.
-    GetReversePostOrder(g, &order, /*stable_comparator=*/NodeComparatorID());
-    EXPECT_TRUE(ExpectBefore({{"t3", "t2"}}, order, &error));
+    GetReversePostOrder(g, &order, /*stable_comparator=*/NodeComparatorName());
+    EXPECT_TRUE(ExpectBefore({{"t2", "t3"}}, order, &error));
   }
 }
 }  // namespace

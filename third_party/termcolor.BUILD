@@ -3,7 +3,7 @@
 
 licenses(["notice"])  # MIT
 
-exports_files(["LICENSE"])
+exports_files(["COPYING.txt"])
 
 py_library(
     name = "termcolor",

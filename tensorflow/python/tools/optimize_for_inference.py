@@ -87,7 +87,9 @@ def main(unused_args):
   output_graph_def = optimize_for_inference_lib.optimize_for_inference(
       input_graph_def,
       FLAGS.input_names.split(","),
-      FLAGS.output_names.split(","), FLAGS.placeholder_type_enum)
+      FLAGS.output_names.split(","),
+      FLAGS.placeholder_type_enum,
+      FLAGS.toco_compatible)
 
   if FLAGS.frozen_graph:
     f = gfile.FastGFile(FLAGS.output, "w")
@@ -138,6 +140,14 @@ def parse_args():
       type=int,
       default=dtypes.float32.as_datatype_enum,
       help="The AttrValue enum to use for placeholders.")
+  parser.add_argument(
+      "--toco_compatible",
+      type=bool,
+      default=False,
+      help="""\
+      If true, only use ops compatible with Tensorflow
+      Lite Optimizing Converter.\
+      """)
   return parser.parse_known_args()
 
 

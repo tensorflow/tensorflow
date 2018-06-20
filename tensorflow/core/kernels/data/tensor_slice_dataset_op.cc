@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -70,7 +70,7 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::TensorSlice")}));
@@ -81,7 +81,9 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       return shapes_;
     }
 
-    string DebugString() override { return "TensorSliceDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "TensorSliceDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
@@ -117,7 +119,7 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
           out_tensors->reserve(dataset()->tensors_.size());
           for (int i = 0; i < dataset()->tensors_.size(); ++i) {
             const Tensor& t = dataset()->tensors_[i];
-            Tensor t_slice(cpu_allocator(), t.dtype(),
+            Tensor t_slice(ctx->allocator({}), t.dtype(),
                            TensorShape(dataset()->shapes_[i].dim_sizes()));
             TF_RETURN_IF_ERROR(batch_util::CopySliceToElement(t, &t_slice, i_));
             out_tensors->emplace_back(std::move(t_slice));

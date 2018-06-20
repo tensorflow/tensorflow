@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
@@ -20,25 +21,228 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace {
 
-bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
-                      string* diff) {
-  // TODO(phawkins) use a more sophisticated equality test.
-  if (a.DebugString() != b.DebugString()) {
+const char* const kXlaHostTransferSequencerAttr =
+    "_xla_host_transfer_sequencer";
+
+Status AddGraphDefToFunctionLibrary(const GraphDefBuilder& graphdef_builder,
+                                    const string& name_suffix,
+                                    FunctionDefLibrary* library) {
+  GraphDef graphdef;
+  TF_RETURN_IF_ERROR(graphdef_builder.ToGraphDef(&graphdef));
+  std::unique_ptr<Graph> graph =
+      std::unique_ptr<Graph>(new Graph(OpRegistry::Global()));
+  GraphConstructorOptions opts;
+  opts.allow_internal_ops = true;
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graphdef, graph.get()));
+  FunctionDef* fdef = library->add_function();
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(
+      *graph,
+      strings::StrCat("_outside_compilation_shape_inference_", name_suffix),
+      fdef));
+  return Status::OK();
+}
+
+template <class Tkey, class Tvalue>
+bool EqualProtoMap(const ::tensorflow::protobuf::Map<Tkey, Tvalue>& a,
+                   const ::tensorflow::protobuf::Map<Tkey, Tvalue>& b,
+                   const std::function<string(const Tkey&)>& key_to_string,
+                   const std::function<string(const Tvalue&)>& value_to_string,
+                   const std::function<bool(const Tkey&, const Tvalue&,
+                                            const Tvalue&)>& compare,
+                   const string& map_name, string* diff) {
+  for (const auto& elt_a : a) {
+    const auto iter = b.find(elt_a.first);
+    if (iter == b.end()) {
+      if (diff) {
+        *diff = strings::StrCat(
+            map_name, " expected: contains element with key '",
+            key_to_string(elt_a.first), "' got: map has no such element");
+      }
+      return false;
+    }
+    if (!compare(elt_a.first, elt_a.second, iter->second)) {
+      if (diff) {
+        *diff = strings::StrCat(map_name, " expected: element with key '",
+                                key_to_string(elt_a.first), "' has value '",
+                                value_to_string(elt_a.second), "' got: '",
+                                value_to_string(iter->second), "'");
+      }
+      return false;
+    }
+  }
+  for (const auto& elt_b : b) {
+    const auto iter = a.find(elt_b.first);
+    if (iter == a.end()) {
+      if (diff) {
+        *diff = strings::StrCat(map_name, " got: contains element with key '",
+                                key_to_string(elt_b.first),
+                                "' expected: map has no such element");
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
+                          const string& diff_preamble, string* diff) {
+  if (a.op() != b.op()) {
     if (diff) {
-      *diff = strings::StrCat("Definition mismatch for function ",
-                              a.signature().name(), ", expected:\n",
+      *diff = strings::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                              ", expected op '", a.op(), "' got '", b.op());
+    }
+    return false;
+  }
+  if (a.device() != b.device()) {
+    if (diff) {
+      *diff = strings::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                              ", expected device '", a.device(), "' got '",
+                              b.device());
+    }
+    return false;
+  }
+  if (a.input_size() != b.input_size()) {
+    if (diff) {
+      *diff = strings::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                              ", expected ", a.input_size(), " inputs got ",
+                              b.input_size(), " expected:\n", a.DebugString(),
+                              "\ngot:\n", b.DebugString());
+    }
+    return false;
+  }
+  std::unordered_set<string> control_input_a;
+  std::unordered_set<string> control_input_b;
+  for (int i = 0; i < a.input_size(); ++i) {
+    if (str_util::StartsWith(a.input(i), "^")) {
+      if (!str_util::StartsWith(b.input(i), "^")) {
+        if (diff) {
+          *diff = strings::StrCat(
+              diff_preamble, " mismatch for node ", a.name(), " input ", i,
+              ", expected control input ", a.input(i), " got ", b.input(i),
+              " expected:\n", a.DebugString(), "\ngot:\n", b.DebugString());
+        }
+        return false;
+      }
+      control_input_a.insert(a.input(i));
+      control_input_b.insert(b.input(i));
+    } else if (a.input(i) != b.input(i)) {
+      if (diff) {
+        *diff = strings::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                                " input ", i, ", expected ", a.input(i),
+                                " got ", b.input(i), " expected:\n",
+                                a.DebugString(), "\ngot:\n", b.DebugString());
+      }
+      return false;
+    }
+  }
+  if (control_input_a != control_input_b) {
+    if (diff) {
+      *diff = strings::StrCat(diff_preamble, " mismatch for node ", a.name(),
+                              " control inputs differ expected:\n",
                               a.DebugString(), "\ngot:\n", b.DebugString());
     }
     return false;
+  }
+  return EqualProtoMap<string, AttrValue>(
+      a.attr(), b.attr(), [](const string& s) { return s; },
+      [](const AttrValue& v) { return v.DebugString(); },
+      [](const string& key, const AttrValue& av, const AttrValue& bv) {
+        if (key == "ancestors") {
+          // The ancestors are added from a set so the order is unpredictable;
+          // just compare set equality not list equality.
+          std::unordered_set<string> a_set(av.list().s().begin(),
+                                           av.list().s().end());
+          std::unordered_set<string> b_set(bv.list().s().begin(),
+                                           bv.list().s().end());
+          return a_set == b_set;
+        } else {
+          return av.DebugString() == bv.DebugString();
+        }
+      },
+      strings::StrCat(diff_preamble, " attr mismatch for node ", a.name()),
+      diff);
+}
+
+bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
+                      string* diff) {
+  if (a.signature().DebugString() != b.signature().DebugString()) {
+    if (diff) {
+      *diff = strings::StrCat("Signature mismatch for function ",
+                              a.signature().name(), ", expected:\n",
+                              a.signature().DebugString(), "\ngot:\n",
+                              b.signature().DebugString());
+    }
+    return false;
+  }
+  if (!EqualProtoMap<string, AttrValue>(
+          a.attr(), b.attr(), [](const string& s) { return s; },
+          [](const AttrValue& v) { return v.DebugString(); },
+          [](const string& key, const AttrValue& av, const AttrValue& bv) {
+            return av.DebugString() == bv.DebugString();
+          },
+          strings::StrCat("attr mismatch for function ", a.signature().name()),
+          diff)) {
+    return false;
+  }
+  if (!EqualProtoMap<string, string>(
+          a.ret(), b.ret(), [](const string& s) { return s; },
+          [](const string& s) { return s; },
+          [](const string& key, const string& av, const string& bv) {
+            return av == bv;
+          },
+          strings::StrCat("ret mismatch for function ", a.signature().name()),
+          diff)) {
+    return false;
+  }
+  for (int i = 0; i < a.node_def_size(); ++i) {
+    bool found = false;
+    for (int j = 0; j < b.node_def_size(); ++j) {
+      if (a.node_def(i).name() == b.node_def(j).name()) {
+        if (!EqualFunctionNodeDef(
+                a.node_def(i), b.node_def(j),
+                strings::StrCat("Function ", a.signature().name()), diff)) {
+          return false;
+        }
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      if (diff) {
+        *diff = strings::StrCat("Function ", a.signature().name(),
+                                ", expected: has node '", a.node_def(i).name(),
+                                "' got: no node of that name");
+      }
+      return false;
+    }
+  }
+  for (int i = 0; i < b.node_def_size(); ++i) {
+    bool found = false;
+    for (int j = 0; j < a.node_def_size(); ++j) {
+      if (b.node_def(i).name() == a.node_def(j).name()) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      if (diff) {
+        *diff = strings::StrCat("Function ", a.signature().name(),
+                                ", got: has node '", b.node_def(i).name(),
+                                "' expected: no node of that name");
+      }
+      return false;
+    }
   }
   return true;
 }
@@ -82,31 +286,73 @@ bool EqualFunctionDefLibrary(const FunctionDefLibrary& expected,
         << diff << "\nActual: " << actual.DebugString();          \
   } while (false)
 
-// TODO(misard): remove these fake registrations once there are real Ops to be
-// compiled.
-REGISTER_OP("_XlaSendToHost")
-    .Input("input: dtypes")
-    .Attr("dtypes: list(type) >= 0");
-
-REGISTER_OP("_XlaRecvFromHost")
-    .Output("output: dtypes")
-    .Attr("dtypes: list(type) >= 0");
+// These dummy Op registrations are here because the real Op registrations live
+// in contrib and there can't be a dependence from this test to contrib.
+REGISTER_OP("XlaHostCompute")
+    .Input("inputs: Tinputs")
+    .Output("outputs: Toutputs")
+    .Attr("Tinputs: list(type) >= 0")
+    .Attr("Toutputs: list(type) >= 0")
+    .Attr("ancestors: list(string) >= 0")
+    .Attr("key: string")
+    .Attr("shape_inference_graph: string = ''")
+    .Attr("shapes: list(shape) >= 0")
+    .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
 
 REGISTER_OP("_XlaSendFromHost")
-    .Input("input: dtypes")
-    .Attr("dtypes: list(type) >= 0");
+    .Input("inputs: Tinputs")
+    .Input("dynamic_key: string")
+    .Attr("Tinputs: list(type) >= 0")
+    .Attr("key: string")
+    .Attr("device_ordinal: int")
+    .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
 
 REGISTER_OP("_XlaRecvAtHost")
-    .Output("output: dtypes")
-    .Attr("dtypes: list(type) >= 0");
+    .Input("dynamic_key: string")
+    .Output("outputs: Toutputs")
+    .Attr("Toutputs: list(type) >= 0")
+    .Attr("key: string")
+    .Attr("device_ordinal: int")
+    .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
 
-REGISTER_OP("InputTest").Output("o: float");
+REGISTER_OP("InputTest")
+    .Output("o: float")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    });
 
-REGISTER_OP("UnaryTest").Input("a: float").Output("o: float");
+REGISTER_OP("InputTestShaped")
+    .Output("o: float")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Vector(2));
+      return Status::OK();
+    });
+
+REGISTER_OP("UnaryTest")
+    .Input("a: float")
+    .Output("o: float")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      ::tensorflow::shape_inference::ShapeHandle o;
+      TF_RETURN_IF_ERROR(c->Merge(c->UnknownShape(), c->input(0), &o));
+      c->set_output(0, o);
+      return Status::OK();
+    });
 REGISTER_OP("BinaryTest")
     .Input("a: float")
     .Input("b: float")
-    .Output("o: float");
+    .Output("o: float")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      ::tensorflow::shape_inference::ShapeHandle o;
+      TF_RETURN_IF_ERROR(c->Merge(c->UnknownShape(), c->input(0), &o));
+      c->set_output(0, o);
+      return Status::OK();
+    });
+REGISTER_OP("BinaryTest2")
+    .Input("a: float")
+    .Input("b: float")
+    .Output("o: float")
+    .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
 
 REGISTER_OP("AddNLikeTest")
     .Input("inputs: N * T")
@@ -116,30 +362,103 @@ REGISTER_OP("AddNLikeTest")
     .SetIsCommutative()
     .SetIsAggregate();
 
-Node* NoOp(const GraphDefBuilder::Options& opts) {
-  return ops::SourceOp("NoOp", opts);
+Node* Sequencer(const GraphDefBuilder::Options& opts,
+                const string& call_node_name) {
+  if (opts.HaveError()) return nullptr;
+  NodeBuilder node_builder(opts.GetNameForOp("NoOp"), "NoOp",
+                           opts.op_registry());
+  return opts.WithAttr(kXlaHostTransferSequencerAttr, call_node_name)
+      .FinalizeBuilder(&node_builder);
 }
 
 Node* Input(const GraphDefBuilder::Options& opts) {
   return ops::SourceOp("InputTest", opts);
 }
 
-Node* RecvAtHost(const gtl::ArraySlice<DataType>& dtypes,
-                 const GraphDefBuilder::Options& opts) {
-  if (opts.HaveError()) return nullptr;
-  NodeBuilder node_builder(opts.GetNameForOp("_XlaRecvAtHost"),
-                           "_XlaRecvAtHost", opts.op_registry());
-  return opts.WithAttr("dtypes", dtypes).FinalizeBuilder(&node_builder);
+Node* InputShaped(const GraphDefBuilder::Options& opts) {
+  return ops::SourceOp("InputTestShaped", opts);
 }
 
-Node* SendFromHost(const std::vector<ops::NodeOut>& inputs,
-                   const gtl::ArraySlice<DataType>& dtypes,
+Node* KnownShapeBase(DataType dtype, const gtl::ArraySlice<int>& shape,
+                     const GraphDefBuilder::Options& opts) {
+  if (opts.HaveError()) return nullptr;
+  NodeBuilder node_builder(opts.GetNameForOp("Const"), "Const",
+                           opts.op_registry());
+  TensorProto value;
+  value.set_dtype(dtype);
+  for (int dim : shape) {
+    value.mutable_tensor_shape()->add_dim()->set_size(dim);
+  }
+  return opts.WithAttr("value", value)
+      .WithAttr("dtype", dtype)
+      .FinalizeBuilder(&node_builder);
+}
+
+Node* KnownShape(const gtl::ArraySlice<int>& shape,
+                 const GraphDefBuilder::Options& opts) {
+  return KnownShapeBase(DT_FLOAT, shape, opts);
+}
+
+Node* KeyPlaceholderShape(const GraphDefBuilder::Options& opts) {
+  return KnownShapeBase(DT_STRING, {2}, opts);
+}
+
+Node* KeyPlaceholder(const string& call_node,
+                     const GraphDefBuilder::Options& opts) {
+  if (opts.HaveError()) return nullptr;
+  NodeBuilder node_builder(opts.GetNameForOp("Placeholder"), "Placeholder",
+                           opts.op_registry());
+  TensorShapeProto shape;
+  shape.add_dim()->set_size(2);
+  return opts.WithAttr("shape", shape)
+      .WithAttr("dtype", DT_STRING)
+      .WithAttr("_host_compute_call_node", call_node)
+      .FinalizeBuilder(&node_builder);
+}
+
+Node* RecvAtHost(ops::NodeOut key_input, const string& cluster,
+                 const string& oc_cluster,
+                 const gtl::ArraySlice<DataType>& dtypes,
+                 const GraphDefBuilder::Options& opts) {
+  if (opts.HaveError()) return nullptr;
+  string key =
+      strings::StrCat("host_compute_channel_", cluster, "_", oc_cluster);
+  string name = strings::StrCat("outside_compilation_", cluster, "_",
+                                oc_cluster, "_recv");
+  NodeBuilder node_builder(opts.WithName(name).GetNameForOp("_XlaRecvAtHost"),
+                           "_XlaRecvAtHost", opts.op_registry());
+  node_builder.Input(std::move(key_input));
+  return opts.WithAttr("Toutputs", dtypes)
+      .WithAttr("key", key)
+      .WithAttr("device_ordinal", 0)
+      .WithAttr("_encapsulate", cluster)
+      .WithAttr("_outside", oc_cluster)
+      .FinalizeBuilder(&node_builder);
+}
+
+Node* SendFromHost(ops::NodeOut key_input, const string& cluster,
+                   const string& oc_cluster,
+                   const std::vector<ops::NodeOut>& inputs,
                    const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
-  NodeBuilder node_builder(opts.GetNameForOp("_XlaSendFromHost"),
+  string key =
+      strings::StrCat("host_compute_channel_", cluster, "_", oc_cluster);
+  string name = strings::StrCat("outside_compilation_", cluster, "_",
+                                oc_cluster, "_send");
+  NodeBuilder node_builder(opts.WithName(name).GetNameForOp("_XlaSendFromHost"),
                            "_XlaSendFromHost", opts.op_registry());
   node_builder.Input(inputs);
-  return opts.WithAttr("dtypes", dtypes).FinalizeBuilder(&node_builder);
+  node_builder.Input(std::move(key_input));
+  std::vector<DataType> dtypes;
+  for (const auto& node : inputs) {
+    dtypes.push_back(node.dt);
+  }
+  return opts.WithAttr("Tinputs", dtypes)
+      .WithAttr("key", key)
+      .WithAttr("device_ordinal", 0)
+      .WithAttr("_encapsulate", cluster)
+      .WithAttr("_outside", oc_cluster)
+      .FinalizeBuilder(&node_builder);
 }
 
 Node* Unary(ops::NodeOut a, const GraphDefBuilder::Options& opts) {
@@ -149,6 +468,11 @@ Node* Unary(ops::NodeOut a, const GraphDefBuilder::Options& opts) {
 Node* Binary(ops::NodeOut a, ops::NodeOut b,
              const GraphDefBuilder::Options& opts) {
   return ops::BinaryOp("BinaryTest", std::move(a), std::move(b), opts);
+}
+
+Node* BinaryUnknownShape(ops::NodeOut a, ops::NodeOut b,
+                         const GraphDefBuilder::Options& opts) {
+  return ops::BinaryOp("BinaryTest2", std::move(a), std::move(b), opts);
 }
 
 Node* AddNLike(const std::vector<ops::NodeOut>& inputs,
@@ -187,7 +511,6 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library) {
   std::unique_ptr<Graph> graph_out;
   s = EncapsulateSubgraphsInFunctions("_encapsulate", "_outside", *graph,
                                       /*rewrite_subgraph_fn=*/{},
-                                      /*parallel_checking=*/false,
                                       /*reuse_existing_functions=*/false,
                                       &graph_out, lib_def.get());
   if (!s.ok()) return s;
@@ -236,8 +559,9 @@ TEST(EncapsulateSubgraphsTest, OneFunction) {
     Node* b = Input(b1.opts().WithName("B"));
     // Give nodes 'c' and 'd' names that collide after lowercasing.
     Node* c = Unary(a, b1.opts().WithName("C").WithAttr("_encapsulate", "F1"));
-    Node* d = Binary(b, c, b1.opts().WithName("c").WithControlInput(c).WithAttr(
-                               "_encapsulate", "F1"));
+    Node* d = Binary(b, c,
+                     b1.opts().WithName("c").WithControlInput(c).WithAttr(
+                         "_encapsulate", "F1"));
     Binary(a, d, b1.opts().WithName("E"));
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
@@ -290,8 +614,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctions) {
     Node* c =
         Unary(a, b1.opts().WithName("C").WithControlInput(control).WithAttr(
                      "_encapsulate", "F1"));
-    Node* d =
-        Binary(b, c, b1.opts().WithName("D").WithControlInput(control).WithAttr(
+    Node* d = Binary(b, c,
+                     b1.opts().WithName("D").WithControlInput(control).WithAttr(
                          "_encapsulate", "F2"));
     Binary(a, d, b1.opts().WithName("E"));
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
@@ -383,7 +707,7 @@ TEST(EncapsulateSubgraphsTest, InputDeduplication) {
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_cluster", "_outside", graph_before_encapsulation,
-      /*rewrite_subgraph_fn=*/{}, /*parallel_checking=*/false,
+      /*rewrite_subgraph_fn=*/{},
       /*reuse_existing_functions=*/false, &graph, &library));
 
   std::vector<string> expected_nodes = {"cluster1", "cluster2", "mul", "x"};
@@ -394,47 +718,6 @@ TEST(EncapsulateSubgraphsTest, InputDeduplication) {
       {"cluster1:0", "mul:0"},
       {"cluster2:0", "mul:1"},
       {"x:0", "cluster1:0"}};
-  EXPECT_EQ(expected_edges, GraphEdges(*graph));
-}
-
-TEST(EncapsulateSubgraphsTest, ParallelChecking) {
-  Scope root = Scope::NewRootScope().ExitOnError().WithDevice(
-      "/job:localhost/replica:0/task:0/cpu:0");
-  auto x1 = ops::Placeholder(root.WithOpName("x1"), DT_FLOAT);
-  auto x2 = ops::Placeholder(root.WithOpName("x2"), DT_FLOAT);
-  auto add1 = ops::Add(root.WithOpName("add1"), x1, x2);
-  add1.node()->AddAttr("_cluster", "cluster1");
-  auto add2 = ops::Add(root.WithOpName("add2"), add1, x2);
-  add2.node()->AddAttr("_cluster", "cluster1");
-  auto out = ops::Mul(root.WithOpName("mul"), x1, add2);
-
-  Graph graph_before_encapsulation(OpRegistry::Global());
-  TF_ASSERT_OK(root.ToGraph(&graph_before_encapsulation));
-
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
-  std::unique_ptr<Graph> graph;
-  TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
-      "_cluster", "_outside", graph_before_encapsulation,
-      /*rewrite_subgraph_fn=*/{}, /*parallel_checking=*/true,
-      /*reuse_existing_functions=*/false, &graph, &library));
-
-  std::vector<string> expected_nodes = {
-      "add1", "add2", "cluster1", "cluster1_parallel_check/_0",
-      "mul",  "x1",   "x2"};
-  EXPECT_EQ(expected_nodes, GraphNodes(*graph));
-
-  std::vector<std::pair<string, string>> expected_edges = {
-      {"add1:0", "add2:0"},
-      {"add2:0", "cluster1_parallel_check/_0:0"},
-      {"cluster1:0", "cluster1_parallel_check/_0:1"},
-      {"cluster1_parallel_check/_0:0", "mul:1"},
-      {"x1:0", "add1:0"},
-      {"x1:0", "cluster1:0"},
-      {"x1:0", "mul:0"},
-      {"x2:0", "add1:1"},
-      {"x2:0", "add2:1"},
-      {"x2:0", "cluster1:1"},
-  };
   EXPECT_EQ(expected_edges, GraphEdges(*graph));
 }
 
@@ -474,14 +757,15 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_encapsulate", "_outside", graph_before,
       /*rewrite_subgraph_fn=*/
-      [&guaranteed_consts](std::unique_ptr<Graph>* graph_ptr,
+      [&guaranteed_consts](const std::vector<OutputTensor>& arg_source_tensors,
+                           std::unique_ptr<Graph>* graph_ptr,
                            std::vector<int>* input_permutation,
                            std::vector<int>* output_permutation,
                            NodeDef* call_def) {
         Graph* graph = graph_ptr->get();
         for (const Node* n : graph->nodes()) {
           if (n->type_string() == "_Arg" &&
-              StringPiece(n->name()).starts_with("const")) {
+              str_util::StartsWith(n->name(), "const")) {
             ++guaranteed_consts;
             EXPECT_TRUE(HasGuaranteeConstAttr(*n));
           } else {
@@ -490,7 +774,6 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
         }
         return Status::OK();
       },
-      /*parallel_checking=*/false,
       /*reuse_existing_functions=*/false, &graph_after, &library));
   EXPECT_EQ(2, guaranteed_consts);
 }
@@ -519,14 +802,15 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_encapsulate", "_outside", graph_before,
       /*rewrite_subgraph_fn=*/
-      [&guaranteed_consts](std::unique_ptr<Graph>* graph_ptr,
+      [&guaranteed_consts](const std::vector<OutputTensor>& arg_source_tensors,
+                           std::unique_ptr<Graph>* graph_ptr,
                            std::vector<int>* input_permutation,
                            std::vector<int>* output_permutation,
                            NodeDef* call_def) {
         Graph* graph = graph_ptr->get();
         for (const Node* n : graph->nodes()) {
           if (n->type_string() == "_Arg" &&
-              StringPiece(n->name()).starts_with("const")) {
+              str_util::StartsWith(n->name(), "const")) {
             ++guaranteed_consts;
             EXPECT_TRUE(HasGuaranteeConstAttr(*n));
           } else {
@@ -535,7 +819,6 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
         }
         return Status::OK();
       },
-      /*parallel_checking=*/false,
       /*reuse_existing_functions=*/false, &graph_after, &library));
   // Only 1 runtime const, which is const_guarantee_add1. Add2 has one const
   // and another non-const, so overall non-const.
@@ -576,6 +859,22 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
+  {
+    GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
+    Node* key_constant =
+        KeyPlaceholderShape(shape.opts().WithName("KnownShape/_0"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT, DT_FLOAT}, shape.opts());
+    Node* e = Binary(ops::NodeOut(recv, 0), ops::NodeOut(recv, 1),
+                     shape.opts()
+                         .WithName("E")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F1_O1", &library_expected));
+  }
+
   *library_expected.add_function() = test::function::XTimesTwo();
   *library_expected.add_function() = FunctionDefHelper::Create(
       "F1", {"a_0_arg:float", "b_0_arg:float"}, {"f_0_retval:float"}, {},
@@ -584,19 +883,21 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
           {{"c"}, "BinaryTest", {"b_0_arg", "C:o:0"}, {}, {"C"}},
           {{"F"},
            "BinaryTest",
-           {"C:o:0", "outside_compilation_O1_recv:output:0"},
+           {"C:o:0", "outside_compilation_O1_host_compute:outputs:0"},
            {},
-           {"outside_compilation_O1_recv"}},
-          {{"outside_compilation_O1_send"},
-           "_XlaSendToHost",
+           {"outside_compilation_O1_host_compute"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
            {"C:o:0", "c:o:0"},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})}},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O1"},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"c"}},
-          {{"outside_compilation_O1_recv"},
-           "_XlaRecvFromHost",
-           {},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT})}},
-           {"outside_compilation_O1_send"}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -607,24 +908,29 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
     Node* a = Input(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
 
+    Node* key_constant =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT, DT_FLOAT}, b2.opts());
+    Node* e = Binary(ops::NodeOut(recv, 0), ops::NodeOut(recv, 1),
+                     b2.opts()
+                         .WithName("E")
+                         .WithControlInputs({recv, b})
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    Node* send = SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e},
+                              b2.opts().WithControlInput(e));
+
+    Node* s = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}),
+        "F1");
+
     NodeBuilder node_builder("F1", "F1", lib_def.get());
     node_builder.Input(a).Input(b);
-    Node* call = b2.opts().FinalizeBuilder(&node_builder);
+    Node* call =
+        b2.opts().WithControlInputs({s}).FinalizeBuilder(&node_builder);
 
-    Node* recv =
-        RecvAtHost({DT_FLOAT, DT_FLOAT},
-                   b2.opts().WithName("outside_compilation_F1_O1_recv"));
-    Node* e = Binary(ops::NodeOut(recv, 0), ops::NodeOut(recv, 1),
-                     b2.opts().WithName("E").WithControlInputs({recv, b}));
-    Node* send = SendFromHost({e}, {DT_FLOAT},
-                              b2.opts()
-                                  .WithName("outside_compilation_F1_O1_send")
-                                  .WithControlInput(e));
-
-    Node* s = NoOp(
-        b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}));
-
-    Binary(a, call, b2.opts().WithName("G").WithControlInputs({s, e}));
+    Binary(a, call, b2.opts().WithName("G").WithControlInputs({e}));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -674,37 +980,83 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
+  {
+    GraphDefBuilder shape1(GraphDefBuilder::kFailImmediately);
+    Node* key_constant =
+        KeyPlaceholderShape(shape1.opts().WithName("KnownShape/_0"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT, DT_FLOAT}, shape1.opts());
+    Node* e = Binary(ops::NodeOut(recv, 0), ops::NodeOut(recv, 1),
+                     shape1.opts()
+                         .WithName("E")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape1.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape1, "F1_O1", &library_expected));
+  }
+
+  {
+    GraphDefBuilder shape2(GraphDefBuilder::kFailImmediately);
+    Node* key_constant =
+        KeyPlaceholderShape(shape2.opts().WithName("KnownShape/_0"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT, DT_FLOAT}, shape2.opts());
+    Node* e = Binary(ops::NodeOut(recv1, 0), ops::NodeOut(recv1, 1),
+                     shape2.opts()
+                         .WithName("E")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
+                             {DT_FLOAT, DT_FLOAT}, shape2.opts());
+    Node* h = Binary(ops::NodeOut(recv2, 1), e,
+                     shape2.opts()
+                         .WithName("H")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O2"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O2", {h}, shape2.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape2, "F1_O2", &library_expected));
+  }
+
   *library_expected.add_function() = FunctionDefHelper::Create(
       "F1", {"a_0_arg:float", "b_0_arg:float"}, {"i_0_retval:float"}, {},
       {
           {{"C"}, "UnaryTest", {"a_0_arg"}},
           {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}, {}},
-          {{"I"}, "UnaryTest", {"outside_compilation_O2_recv:output:0"}},
+          {{"I"},
+           "UnaryTest",
+           {"outside_compilation_O2_host_compute:outputs:0"}},
           {{"F"},
            "BinaryTest",
-           {"C:o:0", "outside_compilation_O1_recv:output:0"},
+           {"C:o:0", "outside_compilation_O1_host_compute:outputs:0"},
            {},
-           {"outside_compilation_O1_recv"}},
-          {{"outside_compilation_O2_send"},
-           "_XlaSendToHost",
-           {"D:o:0", "F:o:0"},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})}},
-           {"F"}},
-          {{"outside_compilation_O1_send"},
-           "_XlaSendToHost",
+           {"outside_compilation_O1_host_compute"}},
+          {{"outside_compilation_O2_host_compute"},
+           "XlaHostCompute",
+           {"F:o:0", "D:o:0"},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors",
+             gtl::ArraySlice<string>({"outside_compilation_O1_host_compute"})},
+            {"key", "host_compute_channel_F1_O2"},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O2"},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O2"}},
+           {"F", "outside_compilation_O1_host_compute"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
            {"C:o:0", "D:o:0"},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})}},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O1"},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
-          {{"outside_compilation_O2_recv"},
-           "_XlaRecvFromHost",
-           {},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT})}},
-           {"outside_compilation_O2_send"}},
-          {{"outside_compilation_O1_recv"},
-           "_XlaRecvFromHost",
-           {},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT})}},
-           {"outside_compilation_O1_send"}},
       },
       {{"i_0_retval", "I:o:0"}});
 
@@ -715,34 +1067,45 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
     Node* a = Input(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
 
+    Node* key_constant =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT, DT_FLOAT}, b2.opts());
+    Node* e = Binary(ops::NodeOut(recv1, 0), ops::NodeOut(recv1, 1),
+                     b2.opts()
+                         .WithName("E")
+                         .WithControlInputs({recv1, b})
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    Node* send1 = SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e},
+                               b2.opts().WithControlInput(e));
+
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
+                             {DT_FLOAT, DT_FLOAT}, b2.opts());
+    Node* g = Binary(e, ops::NodeOut(recv2, 0),
+                     b2.opts()
+                         .WithName("G")
+                         .WithControlInputs({recv2, e})
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O2"));
+    Node* h = Binary(ops::NodeOut(recv2, 1), e,
+                     b2.opts()
+                         .WithName("H")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O2"));
+    Node* send2 =
+        SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O2", {h}, b2.opts());
+
+    Node* s = Sequencer(b2.opts()
+                            .WithName("F1_sequencer")
+                            .WithControlInputs({recv1, send1, recv2, send2}),
+                        "F1");
+
     NodeBuilder node_builder("F1", "F1", lib_def.get());
     node_builder.Input(a).Input(b);
-    Node* call = b2.opts().FinalizeBuilder(&node_builder);
+    Node* call = b2.opts().WithControlInput(s).FinalizeBuilder(&node_builder);
 
-    Node* recv1 =
-        RecvAtHost({DT_FLOAT, DT_FLOAT},
-                   b2.opts().WithName("outside_compilation_F1_O1_recv"));
-    Node* e = Binary(ops::NodeOut(recv1, 0), ops::NodeOut(recv1, 1),
-                     b2.opts().WithName("E").WithControlInputs({recv1, b}));
-    Node* send1 = SendFromHost({e}, {DT_FLOAT},
-                               b2.opts()
-                                   .WithName("outside_compilation_F1_O1_send")
-                                   .WithControlInput(e));
-
-    Node* recv2 =
-        RecvAtHost({DT_FLOAT, DT_FLOAT},
-                   b2.opts().WithName("outside_compilation_F1_O2_recv"));
-    Node* g = Binary(e, ops::NodeOut(recv2, 1),
-                     b2.opts().WithName("G").WithControlInputs({recv2, e}));
-    Node* h = Binary(ops::NodeOut(recv2, 0), e, b2.opts().WithName("H"));
-    Node* send2 = SendFromHost(
-        {h}, {DT_FLOAT}, b2.opts().WithName("outside_compilation_F1_O2_send"));
-
-    Node* s = NoOp(b2.opts()
-                       .WithName("F1_sequencer")
-                       .WithControlInputs({recv1, send1, recv2, send2}));
-
-    Binary(g, call, b2.opts().WithName("J").WithControlInput(s));
+    Binary(g, call, b2.opts().WithName("J"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -758,8 +1121,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
 
   {
     GraphDefBuilder b1(GraphDefBuilder::kFailImmediately);
-    Node* a = Input(b1.opts().WithName("A"));
-    Node* b = Input(b1.opts().WithName("B"));
+    Node* a = InputShaped(b1.opts().WithName("A"));
+    Node* b = InputShaped(b1.opts().WithName("B"));
     Node* c = Unary(a, b1.opts().WithName("C").WithAttr("_encapsulate", "F1"));
     Node* d =
         Binary(b, c, b1.opts().WithName("D").WithAttr("_encapsulate", "F1"));
@@ -791,6 +1154,25 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
+  {
+    GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
+    Node* key_constant =
+        KeyPlaceholderShape(shape.opts().WithName("KnownShape/_0"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT, DT_FLOAT}, shape.opts());
+    Node* e = Binary(ops::NodeOut(recv, 0), ops::NodeOut(recv, 1),
+                     shape.opts()
+                         .WithName("E")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F1_O1", &library_expected));
+  }
+
+  TensorShapeProto shape_proto_expected;
+  shape_proto_expected.add_dim()->set_size(2);
+
   *library_expected.add_function() = FunctionDefHelper::Create(
       "F1", {"a_0_arg:float", "b_0_arg:float"},
       {"f_0_retval:float", "d_0_retval:float"}, {},
@@ -799,19 +1181,21 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
           {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}},
           {{"F"},
            "BinaryTest",
-           {"C:o:0", "outside_compilation_O1_recv:output:0"},
+           {"C:o:0", "outside_compilation_O1_host_compute:outputs:0"},
            {},
-           {"outside_compilation_O1_recv"}},
-          {{"outside_compilation_O1_send"},
-           "_XlaSendToHost",
+           {"outside_compilation_O1_host_compute"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
            {"C:o:0", "D:o:0"},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})}},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O1"},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
-          {{"outside_compilation_O1_recv"},
-           "_XlaRecvFromHost",
-           {},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT})}},
-           {"outside_compilation_O1_send"}},
       },
       {{"d_0_retval", "D:o:0"}, {"f_0_retval", "F:o:0"}});
 
@@ -822,16 +1206,18 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
           {{"G"}, "BinaryTest", {"e_0_arg", "f_0_arg"}},
           {{"I"},
            "BinaryTest",
-           {"f_0_arg", "outside_compilation_O1_recv:output:0"}},
-          {{"outside_compilation_O1_send"},
-           "_XlaSendToHost",
+           {"f_0_arg", "outside_compilation_O1_host_compute:outputs:0"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
            {"G:o:0"},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT})}}},
-          {{"outside_compilation_O1_recv"},
-           "_XlaRecvFromHost",
-           {},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT})}},
-           {"outside_compilation_O1_send"}},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F2_O1"},
+            {"shape_inference_graph", ""},
+            {"shapes",
+             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"g_0_retval", "G:o:0"}, {"i_0_retval", "I:o:0"}});
 
@@ -839,40 +1225,224 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
     std::unique_ptr<FunctionLibraryDefinition> lib_def(
         new FunctionLibraryDefinition(OpRegistry::Global(), library_expected));
     GraphDefBuilder b2(GraphDefBuilder::kFailImmediately, lib_def.get());
-    Node* a = Input(b2.opts().WithName("A"));
-    Node* b = Input(b2.opts().WithName("B"));
+    Node* a = InputShaped(b2.opts().WithName("A"));
+    Node* b = InputShaped(b2.opts().WithName("B"));
 
-    Node* recv1 =
-        RecvAtHost({DT_FLOAT, DT_FLOAT},
-                   b2.opts().WithName("outside_compilation_F1_O1_recv"));
+    Node* key_constant1 =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant1, 0), "F1", "O1",
+                             {DT_FLOAT, DT_FLOAT}, b2.opts());
     Node* e = Binary(ops::NodeOut(recv1, 0), ops::NodeOut(recv1, 1),
-                     b2.opts().WithName("E").WithControlInputs({recv1, b}));
-    Node* send1 = SendFromHost({e}, {DT_FLOAT},
-                               b2.opts()
-                                   .WithName("outside_compilation_F1_O1_send")
-                                   .WithControlInput(e));
+                     b2.opts()
+                         .WithName("E")
+                         .WithControlInputs({recv1, b})
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    Node* send1 = SendFromHost(ops::NodeOut(key_constant1, 0), "F1", "O1", {e},
+                               b2.opts().WithControlInput(e));
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}),
+        "F1");
+
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
-    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
-    Node* s1 = NoOp(
-        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}));
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
 
-    Node* recv2 = RecvAtHost(
-        {DT_FLOAT}, b2.opts().WithName("outside_compilation_F2_O1_recv"));
+    Node* key_constant2 =
+        KeyPlaceholder("F2", b2.opts().WithName("F2_key_placeholder"));
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant2, 0), "F2", "O1",
+                             {DT_FLOAT}, b2.opts());
     Node* h = Binary(ops::NodeOut(call1, 1), recv2,
-                     b2.opts().WithName("H").WithControlInput(s1));
-    Node* send2 = SendFromHost(
-        {h}, {DT_FLOAT}, b2.opts().WithName("outside_compilation_F2_O1_send"));
+                     b2.opts()
+                         .WithName("H")
+                         .WithAttr("_encapsulate", "F2")
+                         .WithAttr("_outside", "O1"));
+    Node* send2 = SendFromHost(ops::NodeOut(key_constant2, 0), "F2", "O1", {h},
+                               b2.opts());
 
+    Node* s2 = Sequencer(
+        b2.opts().WithName("F2_sequencer").WithControlInputs({recv2, send2}),
+        "F2");
     NodeBuilder node_builder2("F2", "F2", lib_def.get());
     node_builder2.Input(e).Input(call1);
     Node* call2 = b2.opts()
-                      .WithControlInputs({s1, e, call1})
+                      .WithControlInputs({s2, e, call1})
                       .FinalizeBuilder(&node_builder2);
-    Node* s2 = NoOp(
-        b2.opts().WithName("F2_sequencer").WithControlInputs({recv2, send2}));
-    Binary(call2, ops::NodeOut(call2, 1),
-           b2.opts().WithName("J").WithControlInput(s2));
+    Binary(call2, ops::NodeOut(call2, 1), b2.opts().WithName("J"));
+    TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
+  }
+
+  TF_EXPECT_GRAPH_EQ(graphdef_expected, graphdef);
+  TF_EXPECT_FUNCTIONDEFLIBRARY_EQ(library_expected, library);
+}
+
+// Test with two functions to transform, each with one outside_compilation
+// cluster, with the dependency between them purely from an outside_compilation
+// edge.
+TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
+  FunctionDefLibrary library;
+  GraphDef graphdef;
+
+  {
+    GraphDefBuilder b1(GraphDefBuilder::kFailImmediately);
+    Node* a = InputShaped(b1.opts().WithName("A"));
+    Node* b = InputShaped(b1.opts().WithName("B"));
+    Node* c = Unary(a, b1.opts().WithName("C").WithAttr("_encapsulate", "F1"));
+    Node* d =
+        Binary(b, c, b1.opts().WithName("D").WithAttr("_encapsulate", "F1"));
+    Node* e = Binary(c, d,
+                     b1.opts()
+                         .WithName("E")
+                         .WithControlInputs({b, d})
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    Node* f = Binary(c, e,
+                     b1.opts().WithName("F").WithControlInput(e).WithAttr(
+                         "_encapsulate", "F1"));
+    Node* g =
+        Binary(a, b, b1.opts().WithName("G").WithAttr("_encapsulate", "F2"));
+    Node* h = Unary(g, b1.opts()
+                           .WithName("H")
+                           .WithAttr("_encapsulate", "F2")
+                           .WithAttr("_outside", "O1")
+                           .WithControlInput(e));
+    Node* i = Unary(h, b1.opts().WithName("I").WithAttr("_encapsulate", "F2"));
+    Binary(f, i, b1.opts().WithName("J"));
+    TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
+  }
+
+  TF_EXPECT_OK(Encapsulate(&graphdef, &library));
+
+  FunctionDefLibrary library_expected;
+  GraphDef graphdef_expected;
+
+  {
+    GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
+    Node* key_constant =
+        KeyPlaceholderShape(shape.opts().WithName("KnownShape/_0"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT, DT_FLOAT}, shape.opts());
+    Node* e = Binary(ops::NodeOut(recv, 0), ops::NodeOut(recv, 1),
+                     shape.opts()
+                         .WithName("E")
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F1_O1", &library_expected));
+  }
+
+  {
+    GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
+    Node* key_constant =
+        KeyPlaceholderShape(shape.opts().WithName("KnownShape/_0"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F2", "O1",
+                            {DT_FLOAT}, shape.opts());
+    Node* h = Unary(recv, shape.opts()
+                              .WithName("H")
+                              .WithAttr("_encapsulate", "F2")
+                              .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F2", "O1", {h}, shape.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F2_O1", &library_expected));
+  }
+
+  *library_expected.add_function() = FunctionDefHelper::Create(
+      "F1", {"a_0_arg:float", "b_0_arg:float"}, {"f_0_retval:float"}, {},
+      {
+          {{"C"}, "UnaryTest", {"a_0_arg"}},
+          {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}},
+          {{"F"},
+           "BinaryTest",
+           {"C:o:0", "outside_compilation_O1_host_compute:outputs:0"},
+           {},
+           {"outside_compilation_O1_host_compute"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
+           {"C:o:0", "D:o:0"},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O1"},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
+            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"_outside_compilation_subgraph", "O1"}},
+           {"D"}},
+      },
+      {{"f_0_retval", "F:o:0"}});
+
+  *library_expected.add_function() = FunctionDefHelper::Create(
+      "F2", {"a_0_arg:float", "b_0_arg:float"}, {"i_0_retval:float"}, {},
+      {
+          {{"G"}, "BinaryTest", {"a_0_arg", "b_0_arg"}},
+          {{"I"},
+           "UnaryTest",
+           {"outside_compilation_O1_host_compute:outputs:0"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
+           {"G:o:0"},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F2_O1"},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F2_O1"},
+            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"_outside_compilation_subgraph", "O1"}}},
+      },
+      {{"i_0_retval", "I:o:0"}});
+
+  {
+    std::unique_ptr<FunctionLibraryDefinition> lib_def(
+        new FunctionLibraryDefinition(OpRegistry::Global(), library_expected));
+    GraphDefBuilder b2(GraphDefBuilder::kFailImmediately, lib_def.get());
+    Node* a = InputShaped(b2.opts().WithName("A"));
+    Node* b = InputShaped(b2.opts().WithName("B"));
+
+    Node* key_constant1 =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant1, 0), "F1", "O1",
+                             {DT_FLOAT, DT_FLOAT}, b2.opts());
+    Node* e = Binary(ops::NodeOut(recv1, 0), ops::NodeOut(recv1, 1),
+                     b2.opts()
+                         .WithName("E")
+                         .WithControlInputs({recv1, b})
+                         .WithAttr("_encapsulate", "F1")
+                         .WithAttr("_outside", "O1"));
+    Node* send1 = SendFromHost(ops::NodeOut(key_constant1, 0), "F1", "O1", {e},
+                               b2.opts().WithControlInput(e));
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}),
+        "F1");
+
+    NodeBuilder node_builder1("F1", "F1", lib_def.get());
+    node_builder1.Input(a).Input(b);
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
+
+    Node* key_constant2 =
+        KeyPlaceholder("F2", b2.opts().WithName("F2_key_placeholder"));
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant2, 0), "F2", "O1",
+                             {DT_FLOAT}, b2.opts());
+    Node* h = Unary(recv2, b2.opts()
+                               .WithName("H")
+                               .WithAttr("_encapsulate", "F2")
+                               .WithAttr("_outside", "O1")
+                               .WithControlInput(e));
+    Node* send2 = SendFromHost(ops::NodeOut(key_constant2, 0), "F2", "O1", {h},
+                               b2.opts());
+
+    Node* s2 = Sequencer(
+        b2.opts().WithName("F2_sequencer").WithControlInputs({recv2, send2}),
+        "F2");
+    NodeBuilder node_builder2("F2", "F2", lib_def.get());
+    node_builder2.Input(a).Input(b);
+    Node* call2 = b2.opts()
+                      .WithControlInputs({s2, call1})
+                      .FinalizeBuilder(&node_builder2);
+    Binary(call1, call2, b2.opts().WithName("J"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -888,7 +1458,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
 
   {
     GraphDefBuilder b1(GraphDefBuilder::kFailImmediately);
-    Node* a = Input(b1.opts().WithName("A"));
+    Node* a = InputShaped(b1.opts().WithName("A"));
     Node* b = Input(b1.opts().WithName("B"));
     Node* c = Unary(a, b1.opts().WithName("C").WithAttr("_encapsulate", "F1"));
     Node* d =
@@ -908,6 +1478,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
+  TensorShapeProto shape_proto_expected;
+  shape_proto_expected.add_dim()->set_size(2);
+
   *library_expected.add_function() = FunctionDefHelper::Create(
       "F1", {"a_0_arg:float", "b_0_arg:float"}, {"f_0_retval:float"}, {},
       {
@@ -915,11 +1488,18 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
           {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}},
           {{"F"},
            "BinaryTest",
-           {"D:o:0", "outside_compilation_O1_recv:output:0"}},
-          {{"outside_compilation_O1_recv"},
-           "_XlaRecvFromHost",
+           {"D:o:0", "outside_compilation_O1_host_compute:outputs:0"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
            {},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT})}}},
+           {{"Tinputs", gtl::ArraySlice<DataType>({})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O1"},
+            {"shape_inference_graph", ""},
+            {"shapes",
+             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -927,18 +1507,25 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
     std::unique_ptr<FunctionLibraryDefinition> lib_def(
         new FunctionLibraryDefinition(OpRegistry::Global(), library_expected));
     GraphDefBuilder b2(GraphDefBuilder::kFailImmediately, lib_def.get());
-    Node* a = Input(b2.opts().WithName("A"));
+    Node* a = InputShaped(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
 
-    Node* e = Unary(a, b2.opts().WithName("E"));
-    Node* send1 = SendFromHost(
-        {e}, {DT_FLOAT}, b2.opts().WithName("outside_compilation_F1_O1_send"));
+    Node* e = Unary(a, b2.opts()
+                           .WithName("E")
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O1"));
+    Node* key_constant =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* send1 =
+        SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, b2.opts());
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInput(send1), "F1");
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
-    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
-    Node* s1 = NoOp(b2.opts().WithName("F1_sequencer").WithControlInput(send1));
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
 
-    Unary(call1, b2.opts().WithName("G").WithControlInput(s1));
+    Unary(call1, b2.opts().WithName("G"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -954,7 +1541,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
 
   {
     GraphDefBuilder b1(GraphDefBuilder::kFailImmediately);
-    Node* a = Input(b1.opts().WithName("A"));
+    Node* a = InputShaped(b1.opts().WithName("A"));
     Node* b = Input(b1.opts().WithName("B"));
     Node* c = Unary(a, b1.opts().WithName("C").WithAttr("_encapsulate", "F1"));
     Node* d =
@@ -975,6 +1562,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
   FunctionDefLibrary library_expected;
   GraphDef graphdef_expected;
 
+  TensorShapeProto shape_proto_expected;
+  shape_proto_expected.add_dim()->set_size(2);
+
   *library_expected.add_function() = FunctionDefHelper::Create(
       "F1", {"a_0_arg:float", "b_0_arg:float"}, {"f_0_retval:float"}, {},
       {
@@ -982,17 +1572,19 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
           {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}},
           {{"F"},
            "BinaryTest",
-           {"D:o:0", "outside_compilation_O1_recv:output:0"}},
-          {{"outside_compilation_O1_send"},
-           "_XlaSendToHost",
+           {"D:o:0", "outside_compilation_O1_host_compute:outputs:0"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
            {},
-           {{"dtypes", gtl::ArraySlice<DataType>({})}},
+           {{"Tinputs", gtl::ArraySlice<DataType>({})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O1"},
+            {"shape_inference_graph", ""},
+            {"shapes",
+             gtl::ArraySlice<TensorShapeProto>({shape_proto_expected})},
+            {"_outside_compilation_subgraph", "O1"}},
            {"D"}},
-          {{"outside_compilation_O1_recv"},
-           "_XlaRecvFromHost",
-           {},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT})}},
-           {"outside_compilation_O1_send"}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -1000,21 +1592,29 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
     std::unique_ptr<FunctionLibraryDefinition> lib_def(
         new FunctionLibraryDefinition(OpRegistry::Global(), library_expected));
     GraphDefBuilder b2(GraphDefBuilder::kFailImmediately, lib_def.get());
-    Node* a = Input(b2.opts().WithName("A"));
+    Node* a = InputShaped(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
 
+    Node* key_constant =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
     Node* recv1 =
-        RecvAtHost({}, b2.opts().WithName("outside_compilation_F1_O1_recv"));
-    Node* e = Unary(a, b2.opts().WithName("E").WithControlInput(recv1));
-    Node* send1 = SendFromHost(
-        {e}, {DT_FLOAT}, b2.opts().WithName("outside_compilation_F1_O1_send"));
+        RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1", {}, b2.opts());
+    Node* e = Unary(a, b2.opts()
+                           .WithName("E")
+                           .WithControlInput(recv1)
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O1"));
+    Node* send1 =
+        SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, b2.opts());
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}),
+        "F1");
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
-    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
-    Node* s1 = NoOp(
-        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}));
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
 
-    Unary(call1, b2.opts().WithName("G").WithControlInput(s1));
+    Unary(call1, b2.opts().WithName("G"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -1055,10 +1655,16 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
           {{"C"}, "UnaryTest", {"a_0_arg"}},
           {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}},
           {{"F"}, "UnaryTest", {"D:o:0"}},
-          {{"outside_compilation_O1_send"},
-           "_XlaSendToHost",
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
            {"D:o:0"},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT})}}},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O1"},
+            {"shape_inference_graph", ""},
+            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -1069,15 +1675,22 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
     Node* a = Input(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
 
-    Node* recv1 = RecvAtHost(
-        {DT_FLOAT}, b2.opts().WithName("outside_compilation_F1_O1_recv"));
-    Node* e = Unary(recv1, b2.opts().WithName("E"));
+    Node* key_constant =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT}, b2.opts());
+    Node* e = Unary(recv1, b2.opts()
+                               .WithName("E")
+                               .WithAttr("_encapsulate", "F1")
+                               .WithAttr("_outside", "O1"));
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInput(recv1), "F1");
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
-    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
-    Node* s1 = NoOp(b2.opts().WithName("F1_sequencer").WithControlInput(recv1));
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
 
-    Binary(e, call1, b2.opts().WithName("G").WithControlInput(s1));
+    Binary(e, call1, b2.opts().WithName("G"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -1118,16 +1731,21 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
       {
           {{"C"}, "UnaryTest", {"a_0_arg"}},
           {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}},
-          {{"F"}, "UnaryTest", {"D:o:0"}, {}, {"outside_compilation_O1_recv"}},
-          {{"outside_compilation_O1_send"},
-           "_XlaSendToHost",
+          {{"F"},
+           "UnaryTest",
            {"D:o:0"},
-           {{"dtypes", gtl::ArraySlice<DataType>({DT_FLOAT})}}},
-          {{"outside_compilation_O1_recv"},
-           "_XlaRecvFromHost",
            {},
-           {{"dtypes", gtl::ArraySlice<DataType>({})}},
-           {"outside_compilation_O1_send"}},
+           {"outside_compilation_O1_host_compute"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
+           {"D:o:0"},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O1"},
+            {"shape_inference_graph", ""},
+            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"_outside_compilation_subgraph", "O1"}}},
       },
       {{"f_0_retval", "F:o:0"}});
 
@@ -1138,20 +1756,390 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
     Node* a = Input(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
 
-    Node* recv1 = RecvAtHost(
-        {DT_FLOAT}, b2.opts().WithName("outside_compilation_F1_O1_recv"));
-    Node* e = Unary(recv1, b2.opts().WithName("E"));
-    Node* send1 = SendFromHost({}, {},
-                               b2.opts()
-                                   .WithName("outside_compilation_F1_O1_send")
-                                   .WithControlInput(e));
+    Node* key_constant =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT}, b2.opts());
+    Node* e = Unary(recv1, b2.opts()
+                               .WithName("E")
+                               .WithAttr("_encapsulate", "F1")
+                               .WithAttr("_outside", "O1"));
+    Node* send1 = SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {},
+                               b2.opts().WithControlInput(e));
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}),
+        "F1");
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
-    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
-    Node* s1 = NoOp(
-        b2.opts().WithName("F1_sequencer").WithControlInputs({recv1, send1}));
+    Node* call1 =
+        b2.opts().WithControlInput(s1).FinalizeBuilder(&node_builder1);
 
-    Binary(e, call1, b2.opts().WithName("G").WithControlInput(s1));
+    Binary(e, call1, b2.opts().WithName("G"));
+    TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
+  }
+
+  TF_EXPECT_GRAPH_EQ(graphdef_expected, graphdef);
+  TF_EXPECT_FUNCTIONDEFLIBRARY_EQ(library_expected, library);
+}
+
+// Test with two outside_compilation clusters that interact outside the compiled
+// subgraph, where the ancestor has no HostCompute Op.
+TEST(EncapsulateSubgraphsTest,
+     OutsideCompilationClusterDependencyNoSrcCluster) {
+  FunctionDefLibrary library;
+  GraphDef graphdef;
+
+  {
+    GraphDefBuilder b1(GraphDefBuilder::kFailImmediately);
+    Node* a = Input(b1.opts().WithName("A"));
+    Node* b = Input(b1.opts().WithName("B"));
+    Node* c = Unary(a, b1.opts().WithName("C").WithAttr("_encapsulate", "F1"));
+    Node* d =
+        Binary(b, c, b1.opts().WithName("D").WithAttr("_encapsulate", "F1"));
+    Node* e = Unary(a, b1.opts()
+                           .WithName("E")
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O1"));
+    Node* f = Unary(d, b1.opts().WithName("F").WithAttr("_encapsulate", "F1"));
+    Node* g = Unary(f, b1.opts()
+                           .WithName("G")
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O2")
+                           .WithControlInput(e));
+    Node* h = Unary(g, b1.opts().WithName("H").WithAttr("_encapsulate", "F1"));
+    Binary(e, h, b1.opts().WithName("I"));
+    TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
+  }
+
+  TF_EXPECT_OK(Encapsulate(&graphdef, &library));
+
+  FunctionDefLibrary library_expected;
+  GraphDef graphdef_expected;
+
+  {
+    GraphDefBuilder shape2(GraphDefBuilder::kFailImmediately);
+    Node* key_constant =
+        KeyPlaceholderShape(shape2.opts().WithName("KnownShape/_0"));
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
+                             {DT_FLOAT}, shape2.opts());
+    Node* g = Unary(ops::NodeOut(recv2, 0), shape2.opts()
+                                                .WithName("G")
+                                                .WithAttr("_encapsulate", "F1")
+                                                .WithAttr("_outside", "O2"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O2", {g}, shape2.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape2, "F1_O2", &library_expected));
+  }
+
+  *library_expected.add_function() = FunctionDefHelper::Create(
+      "F1", {"a_0_arg:float", "b_0_arg:float"}, {"h_0_retval:float"}, {},
+      {
+          {{"C"}, "UnaryTest", {"a_0_arg"}},
+          {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}},
+          {{"F"}, "UnaryTest", {"D:o:0"}},
+          {{"H"},
+           "UnaryTest",
+           {"outside_compilation_O2_host_compute:outputs:0"}},
+          {{"outside_compilation_O2_host_compute"},
+           "XlaHostCompute",
+           {"F:o:0"},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O2"},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O2"},
+            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"_outside_compilation_subgraph", "O2"}}},
+      },
+      {{"h_0_retval", "H:o:0"}});
+
+  {
+    std::unique_ptr<FunctionLibraryDefinition> lib_def(
+        new FunctionLibraryDefinition(OpRegistry::Global(), library_expected));
+    GraphDefBuilder b2(GraphDefBuilder::kFailImmediately, lib_def.get());
+    Node* a = Input(b2.opts().WithName("A"));
+    Node* b = Input(b2.opts().WithName("B"));
+
+    Node* e = Unary(a, b2.opts()
+                           .WithName("E")
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O1"));
+    Node* key_constant =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
+                            {DT_FLOAT}, b2.opts());
+    Node* g = Unary(recv, b2.opts()
+                              .WithName("G")
+                              .WithAttr("_encapsulate", "F1")
+                              .WithAttr("_outside", "O2")
+                              .WithControlInput(e));
+    Node* send =
+        SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O2", {g}, b2.opts());
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}),
+        "F1");
+    NodeBuilder node_builder1("F1", "F1", lib_def.get());
+    node_builder1.Input(a).Input(b).ControlInput(s1);
+    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
+
+    Binary(e, call1, b2.opts().WithName("I"));
+    TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
+  }
+
+  TF_EXPECT_GRAPH_EQ(graphdef_expected, graphdef);
+  TF_EXPECT_FUNCTIONDEFLIBRARY_EQ(library_expected, library);
+}
+
+// Test with two outside_compilation clusters that interact outside the compiled
+// subgraph, where the successor has no HostCompute Op.
+TEST(EncapsulateSubgraphsTest,
+     OutsideCompilationClusterDependencyNoDstCluster) {
+  FunctionDefLibrary library;
+  GraphDef graphdef;
+
+  {
+    GraphDefBuilder b1(GraphDefBuilder::kFailImmediately);
+    Node* a = Input(b1.opts().WithName("A"));
+    Node* b = Input(b1.opts().WithName("B"));
+    Node* c = Unary(a, b1.opts().WithName("C").WithAttr("_encapsulate", "F1"));
+    Node* d =
+        Binary(b, c, b1.opts().WithName("D").WithAttr("_encapsulate", "F1"));
+    Node* e = Unary(d, b1.opts()
+                           .WithName("E")
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O1"));
+    Node* f = Unary(e, b1.opts().WithName("F").WithAttr("_encapsulate", "F1"));
+    /*Node* g =*/Unary(a, b1.opts()
+                              .WithName("G")
+                              .WithAttr("_encapsulate", "F1")
+                              .WithAttr("_outside", "O2")
+                              .WithControlInput(e));
+    Node* h = Unary(f, b1.opts().WithName("H").WithAttr("_encapsulate", "F1"));
+    Binary(e, h, b1.opts().WithName("I"));
+    TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
+  }
+
+  TF_EXPECT_OK(Encapsulate(&graphdef, &library));
+
+  FunctionDefLibrary library_expected;
+  GraphDef graphdef_expected;
+
+  {
+    GraphDefBuilder shape1(GraphDefBuilder::kFailImmediately);
+    Node* key_constant =
+        KeyPlaceholderShape(shape1.opts().WithName("KnownShape/_0"));
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT}, shape1.opts());
+    Node* e = Unary(ops::NodeOut(recv2, 0), shape1.opts()
+                                                .WithName("E")
+                                                .WithAttr("_encapsulate", "F1")
+                                                .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape1.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape1, "F1_O1", &library_expected));
+  }
+
+  *library_expected.add_function() = FunctionDefHelper::Create(
+      "F1", {"a_0_arg:float", "b_0_arg:float"}, {"h_0_retval:float"}, {},
+      {
+          {{"C"}, "UnaryTest", {"a_0_arg"}},
+          {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}},
+          {{"F"},
+           "UnaryTest",
+           {"outside_compilation_O1_host_compute:outputs:0"}},
+          {{"H"}, "UnaryTest", {"F:o:0"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
+           {"D:o:0"},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O1"},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
+            {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+            {"_outside_compilation_subgraph", "O1"}}},
+      },
+      {{"h_0_retval", "H:o:0"}});
+
+  {
+    std::unique_ptr<FunctionLibraryDefinition> lib_def(
+        new FunctionLibraryDefinition(OpRegistry::Global(), library_expected));
+    GraphDefBuilder b2(GraphDefBuilder::kFailImmediately, lib_def.get());
+    Node* a = Input(b2.opts().WithName("A"));
+    Node* b = Input(b2.opts().WithName("B"));
+
+    Node* key_constant =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT}, b2.opts());
+    Node* e = Unary(recv, b2.opts()
+                              .WithName("E")
+                              .WithAttr("_encapsulate", "F1")
+                              .WithAttr("_outside", "O1"));
+    Node* send =
+        SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, b2.opts());
+    /*Node* g =*/Unary(a, b2.opts()
+                              .WithName("G")
+                              .WithAttr("_encapsulate", "F1")
+                              .WithAttr("_outside", "O2")
+                              .WithControlInput(e));
+    Node* s1 = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}),
+        "F1");
+    NodeBuilder node_builder1("F1", "F1", lib_def.get());
+    node_builder1.Input(a).Input(b).ControlInput(s1);
+    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
+
+    Binary(e, call1, b2.opts().WithName("I"));
+    TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
+  }
+
+  TF_EXPECT_GRAPH_EQ(graphdef_expected, graphdef);
+  TF_EXPECT_FUNCTIONDEFLIBRARY_EQ(library_expected, library);
+}
+
+// Test with two outside_compilation clusters that interact outside the compiled
+// subgraph.
+TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
+  FunctionDefLibrary library;
+  GraphDef graphdef;
+
+  {
+    GraphDefBuilder b1(GraphDefBuilder::kFailImmediately);
+    Node* a = Input(b1.opts().WithName("A"));
+    Node* b = Input(b1.opts().WithName("B"));
+    Node* c = Unary(a, b1.opts().WithName("C").WithAttr("_encapsulate", "F1"));
+    Node* d =
+        Binary(b, c, b1.opts().WithName("D").WithAttr("_encapsulate", "F1"));
+    Node* e = Unary(d, b1.opts()
+                           .WithName("E")
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O1"));
+    Node* f = Unary(e, b1.opts().WithName("F").WithAttr("_encapsulate", "F1"));
+    Node* g = Unary(d, b1.opts()
+                           .WithName("G")
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O2")
+                           .WithControlInput(e));
+    Node* h = Unary(f, b1.opts().WithName("H").WithAttr("_encapsulate", "F1"));
+    /*Node* i =*/Binary(d, e,
+                        b1.opts()
+                            .WithName("I")
+                            .WithAttr("_encapsulate", "F1")
+                            .WithAttr("_outside", "O3")
+                            .WithControlInput(g));
+    Binary(e, h, b1.opts().WithName("J"));
+    TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
+  }
+
+  TF_EXPECT_OK(Encapsulate(&graphdef, &library));
+
+  FunctionDefLibrary library_expected;
+  GraphDef graphdef_expected;
+
+  {
+    GraphDefBuilder shape1(GraphDefBuilder::kFailImmediately);
+    Node* key_constant =
+        KeyPlaceholderShape(shape1.opts().WithName("KnownShape/_0"));
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT}, shape1.opts());
+    Node* e = Unary(ops::NodeOut(recv2, 0), shape1.opts()
+                                                .WithName("E")
+                                                .WithAttr("_encapsulate", "F1")
+                                                .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape1.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape1, "F1_O1", &library_expected));
+  }
+
+  *library_expected.add_function() = FunctionDefHelper::Create(
+      "F1", {"a_0_arg:float", "b_0_arg:float"}, {"h_0_retval:float"}, {},
+      {{{"C"}, "UnaryTest", {"a_0_arg"}},
+       {{"D"}, "BinaryTest", {"b_0_arg", "C:o:0"}},
+       {{"F"}, "UnaryTest", {"outside_compilation_O1_host_compute:outputs:0"}},
+       {{"H"}, "UnaryTest", {"F:o:0"}},
+       {{"outside_compilation_O1_host_compute"},
+        "XlaHostCompute",
+        {"D:o:0"},
+        {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+         {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+         {"ancestors", gtl::ArraySlice<string>({})},
+         {"key", "host_compute_channel_F1_O1"},
+         {"shape_inference_graph",
+          "_outside_compilation_shape_inference_F1_O1"},
+         {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+         {"_outside_compilation_subgraph", "O1"}}},
+       {{"outside_compilation_O2_host_compute"},
+        "XlaHostCompute",
+        {"D:o:0"},
+        {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+         {"Toutputs", gtl::ArraySlice<DataType>({})},
+         {"ancestors",
+          gtl::ArraySlice<string>({"outside_compilation_O1_host_compute"})},
+         {"key", "host_compute_channel_F1_O2"},
+         {"shape_inference_graph", ""},
+         {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+         {"_outside_compilation_subgraph", "O2"}},
+        {"outside_compilation_O1_host_compute"}},
+       {{"outside_compilation_O3_host_compute"},
+        "XlaHostCompute",
+        {"D:o:0"},
+        {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+         {"Toutputs", gtl::ArraySlice<DataType>({})},
+         {"ancestors",
+          gtl::ArraySlice<string>({"outside_compilation_O1_host_compute",
+                                   "outside_compilation_O2_host_compute"})},
+         {"key", "host_compute_channel_F1_O3"},
+         {"shape_inference_graph", ""},
+         {"shapes", gtl::ArraySlice<TensorShapeProto>({})},
+         {"_outside_compilation_subgraph", "O3"}},
+        {"outside_compilation_O1_host_compute",
+         "outside_compilation_O2_host_compute"}}},
+      {{"h_0_retval", "H:o:0"}});
+
+  {
+    std::unique_ptr<FunctionLibraryDefinition> lib_def(
+        new FunctionLibraryDefinition(OpRegistry::Global(), library_expected));
+    GraphDefBuilder b2(GraphDefBuilder::kFailImmediately, lib_def.get());
+    Node* a = Input(b2.opts().WithName("A"));
+    Node* b = Input(b2.opts().WithName("B"));
+
+    Node* key_constant =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* recv1 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                             {DT_FLOAT}, b2.opts());
+    Node* e = Unary(recv1, b2.opts()
+                               .WithName("E")
+                               .WithAttr("_encapsulate", "F1")
+                               .WithAttr("_outside", "O1"));
+    Node* send =
+        SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, b2.opts());
+    Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
+                             {DT_FLOAT}, b2.opts());
+    Node* g = Unary(recv2, b2.opts()
+                               .WithName("G")
+                               .WithAttr("_encapsulate", "F1")
+                               .WithAttr("_outside", "O2")
+                               .WithControlInput(e));
+    Node* recv3 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O3",
+                             {DT_FLOAT}, b2.opts());
+    /*Node* i =*/Binary(recv3, e,
+                        b2.opts()
+                            .WithName("I")
+                            .WithAttr("_encapsulate", "F1")
+                            .WithAttr("_outside", "O3")
+                            .WithControlInput(g));
+    Node* s1 = Sequencer(b2.opts()
+                             .WithName("F1_sequencer")
+                             .WithControlInputs({recv1, send, recv2, recv3}),
+                         "F1");
+    NodeBuilder node_builder1("F1", "F1", lib_def.get());
+    node_builder1.Input(a).Input(b).ControlInput(s1);
+    Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
+
+    Binary(e, call1, b2.opts().WithName("J"));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
@@ -1202,12 +2190,128 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputsOrOutputs) {
     Node* a = Input(b2.opts().WithName("A"));
     Node* b = Input(b2.opts().WithName("B"));
 
-    Node* e = Unary(a, b2.opts().WithName("E"));
+    Node* e = Unary(a, b2.opts()
+                           .WithName("E")
+                           .WithAttr("_encapsulate", "F1")
+                           .WithAttr("_outside", "O1"));
     NodeBuilder node_builder1("F1", "F1", lib_def.get());
     node_builder1.Input(a).Input(b);
     Node* call1 = b2.opts().FinalizeBuilder(&node_builder1);
 
     Binary(e, call1, b2.opts().WithName("G"));
+    TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
+  }
+
+  TF_EXPECT_GRAPH_EQ(graphdef_expected, graphdef);
+  TF_EXPECT_FUNCTIONDEFLIBRARY_EQ(library_expected, library);
+}
+
+// Test for shape inference of outside compilation.
+TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
+  FunctionDefLibrary library;
+  GraphDef graphdef;
+
+  {
+    *library.add_function() = test::function::XTimesTwo();
+
+    GraphDefBuilder b1(GraphDefBuilder::kFailImmediately);
+    Node* a = InputShaped(b1.opts().WithName("A"));
+    Node* b = Input(b1.opts().WithName("B"));
+    // Give nodes 'c' and 'd' names that collide after lowercasing.
+    Node* c = Unary(a, b1.opts().WithName("C"));
+    Node* d = Unary(b, b1.opts().WithName("c").WithControlInput(c).WithAttr(
+                           "_encapsulate", "F1"));
+    Node* e = BinaryUnknownShape(c, d,
+                                 b1.opts()
+                                     .WithName("E")
+                                     .WithControlInputs({b, d})
+                                     .WithAttr("_encapsulate", "F1")
+                                     .WithAttr("_outside", "O1"));
+    Node* f = Binary(c, e,
+                     b1.opts().WithName("F").WithControlInput(e).WithAttr(
+                         "_encapsulate", "F1"));
+    Binary(a, f, b1.opts().WithName("G").WithControlInput(e));
+    TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
+  }
+
+  TF_EXPECT_OK(Encapsulate(&graphdef, &library));
+
+  FunctionDefLibrary library_expected;
+  GraphDef graphdef_expected;
+
+  {
+    GraphDefBuilder shape(GraphDefBuilder::kFailImmediately);
+    Node* key_constant =
+        KeyPlaceholderShape(shape.opts().WithName("KnownShape/_0"));
+    Node* known = KnownShape({2}, shape.opts().WithName("KnownShape/_1"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT}, shape.opts());
+    Node* e = BinaryUnknownShape(known, recv,
+                                 shape.opts()
+                                     .WithName("E")
+                                     .WithAttr("_encapsulate", "F1")
+                                     .WithAttr("_outside", "O1"));
+    SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e}, shape.opts());
+    TF_EXPECT_OK(
+        AddGraphDefToFunctionLibrary(shape, "F1_O1", &library_expected));
+  }
+
+  *library_expected.add_function() = test::function::XTimesTwo();
+  *library_expected.add_function() = FunctionDefHelper::Create(
+      "F1", {"b_0_arg:float", "c_0_arg:float"}, {"f_0_retval:float"}, {},
+      {
+          {{"c"}, "UnaryTest", {"b_0_arg"}, {}, {}},
+          {{"F"},
+           "BinaryTest",
+           {"c_0_arg", "outside_compilation_O1_host_compute:outputs:0"},
+           {},
+           {"outside_compilation_O1_host_compute"}},
+          {{"outside_compilation_O1_host_compute"},
+           "XlaHostCompute",
+           {"c:o:0"},
+           {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
+            {"ancestors", gtl::ArraySlice<string>({})},
+            {"key", "host_compute_channel_F1_O1"},
+            {"shape_inference_graph",
+             "_outside_compilation_shape_inference_F1_O1"},
+            {"shapes", gtl::ArraySlice<DataType>({})},
+            {"_outside_compilation_subgraph", "O1"}},
+           {"c"}},
+      },
+      {{"f_0_retval", "F:o:0"}});
+
+  {
+    std::unique_ptr<FunctionLibraryDefinition> lib_def(
+        new FunctionLibraryDefinition(OpRegistry::Global(), library_expected));
+    GraphDefBuilder b2(GraphDefBuilder::kFailImmediately, lib_def.get());
+    Node* a = InputShaped(b2.opts().WithName("A"));
+    Node* b = Input(b2.opts().WithName("B"));
+    Node* c = Unary(a, b2.opts().WithName("C"));
+
+    Node* key_constant =
+        KeyPlaceholder("F1", b2.opts().WithName("F1_key_placeholder"));
+    Node* recv = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O1",
+                            {DT_FLOAT}, b2.opts());
+    Node* e = BinaryUnknownShape(c, ops::NodeOut(recv, 0),
+                                 b2.opts()
+                                     .WithName("E")
+                                     .WithControlInputs({recv, b})
+                                     .WithAttr("_encapsulate", "F1")
+                                     .WithAttr("_outside", "O1"));
+    Node* send = SendFromHost(ops::NodeOut(key_constant, 0), "F1", "O1", {e},
+                              b2.opts().WithControlInput(e));
+
+    Node* s = Sequencer(
+        b2.opts().WithName("F1_sequencer").WithControlInputs({recv, send}),
+        "F1");
+
+    NodeBuilder node_builder("F1", "F1", lib_def.get());
+    node_builder.Input(b).Input(c);
+    Node* call =
+        b2.opts().WithControlInputs({s, c}).FinalizeBuilder(&node_builder);
+
+    Binary(a, call, b2.opts().WithName("G").WithControlInputs({e}));
     TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 

@@ -209,9 +209,9 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
         parameter_addresses[i], ir_builder->getInt8PtrTy(),
         AsStringRef(tensorflow::strings::StrCat(name, "_parameter_", i,
                                                 "_address_as_i8ptr")));
-    llvm::Value* slot_in_param_adresses = ir_builder->CreateInBoundsGEP(
+    llvm::Value* slot_in_param_addresses = ir_builder->CreateInBoundsGEP(
         parameter_addresses_buffer, {ir_builder->getInt64(i)});
-    ir_builder->CreateStore(parameter_as_i8ptr, slot_in_param_adresses);
+    ir_builder->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
   }
 
   const auto to_int8_ptr = [=](llvm::Value* ptr) {

@@ -17,13 +17,14 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
+
+class Event;
+class GraphDef;
 
 // Main interface for the summary writer resource.
 class SummaryWriterInterface : public ResourceBase {

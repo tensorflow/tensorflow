@@ -16,9 +16,10 @@ TensorFlow:
     for your own file and record formats.
 
 Python is currently the only language supported by TensorFlow's API stability
-promises.  However, TensorFlow also provides functionality in C++, Java, and Go,
+promises. However, TensorFlow also provides functionality in C++, Go, Java and
+[JavaScript](https://js.tensorflow.org),
 plus community support for [Haskell](https://github.com/tensorflow/haskell) and
-[Rust](https://github.com/tensorflow/rust).  If you'd like to create or
+[Rust](https://github.com/tensorflow/rust). If you'd like to create or
 develop TensorFlow features in a language other than these languages, read the
 following guide:
 

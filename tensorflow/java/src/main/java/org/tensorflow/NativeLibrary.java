@@ -88,7 +88,7 @@ final class NativeLibrary {
       // Deletions are in the reverse order of requests, so we need to request that the directory be
       // deleted first, so that it is empty when the request is fulfilled.
       tempPath.deleteOnExit();
-      final String tempDirectory = tempPath.toString();
+      final String tempDirectory = tempPath.getCanonicalPath();
       if (frameworkResource != null) {
         extractResource(frameworkResource, frameworkLibName, tempDirectory);
       } else {

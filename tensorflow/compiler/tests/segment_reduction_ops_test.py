@@ -60,6 +60,14 @@ class SegmentReductionOpsTest(XLATestCase):
               np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
               np.array([3, 0, 2, 1, 3, 3], dtype=np.int32), 4))
 
+  def testUnsortedSegmentSum1DIndices1DDataNegativeIndices(self):
+    for dtype in self.numeric_types:
+      self.assertAllClose(
+          np.array([6, 3, 0, 6], dtype=dtype),
+          self.UnsortedSegmentSum(
+              np.array([0, 1, 2, 3, 4, 5, 6], dtype=dtype),
+              np.array([3, -1, 0, 1, 0, -1, 3], dtype=np.int32), 4))
+
   def testUnsortedSegmentSum1DIndices2DDataDisjoint(self):
     for dtype in self.numeric_types:
       data = np.array(

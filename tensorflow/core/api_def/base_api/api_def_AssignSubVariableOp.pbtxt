@@ -20,10 +20,7 @@ END
   }
   summary: "Subtracts a value from the current value of a variable."
   description: <<END
-Any ReadVariableOp which depends directly or indirectly on this assign is
-guaranteed to see the incremented value or a subsequent newer one.
-
-Outputs the incremented value, which can be used to totally order the
-increments to this variable.
+Any ReadVariableOp with a control dependency on this op is guaranteed to
+see the decremented value or a subsequent newer one.
 END
 }

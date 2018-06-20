@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -32,79 +32,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
-
-namespace se = ::perftools::gputools;
 
 namespace xla {
 namespace gpu {
 namespace {
 
-// A helper class for profiling HLO in the course of GPU program execution.
-// All of the profiling is guarded internally, to avoid the caller needing to
-// have lots of conditionals sprinkled around.
-class HloExecutionProfiler {
- public:
-  // If profiling is enabled, start an execution timer running.
-  explicit HloExecutionProfiler(bool do_profile, HloExecutionProfile* profile,
-                                se::Stream* stream,
-                                const HloComputation* computation)
-      : do_profile_(do_profile),
-        profile_(profile),
-        stream_(stream),
-        computation_(computation) {
-    if (do_profile_) {
-      clock_rate_ghz_ =
-          stream->parent()->GetDeviceDescription().clock_rate_ghz();
-      execution_timer_.reset(new se::Timer(stream->parent()));
-      per_op_timer_.reset(new se::Timer(stream->parent()));
-      stream->InitTimer(execution_timer_.get())
-          .ThenStartTimer(execution_timer_.get());
-      stream->InitTimer(per_op_timer_.get());
-    }
-  }
-
-  // If profiling is enabled, sets the total cycle count on the profile from the
-  // execution timer.
-  void FinishExecution() {
-    CHECK(!finished_execution_) << "Call FinishExecution only once!";
-    finished_execution_ = true;
-    if (do_profile_) {
-      stream_->ThenStopTimer(execution_timer_.get());
-      stream_->BlockHostUntilDone().IgnoreError();
-      profile_->set_total_cycles_executed(
-          *computation_, execution_timer_->Nanoseconds() * clock_rate_ghz_);
-    }
-  }
-
-  // If profiling is enabled, starts the per-operation timer.
-  void StartOperation() {
-    if (do_profile_) {
-      stream_->ThenStartTimer(per_op_timer_.get());
-    }
-  }
-
-  // If profiling is enabled, stops the per-operation timer and records the time
-  // that the hlo_instruction took to execute in the profile.
-  void FinishOperation(const HloInstruction* hlo_instruction) {
-    if (do_profile_) {
-      stream_->ThenStopTimer(per_op_timer_.get());
-      stream_->BlockHostUntilDone().IgnoreError();
-      profile_->SetCyclesTakenBy(
-          hlo_instruction, per_op_timer_->Nanoseconds() * clock_rate_ghz_);
-    }
-  }
-
- private:
-  const bool do_profile_;
-  double clock_rate_ghz_;
-  HloExecutionProfile* profile_;
-  se::Stream* stream_;
-  const HloComputation* computation_;
-  std::unique_ptr<se::Timer> execution_timer_;
-  std::unique_ptr<se::Timer> per_op_timer_;
-  bool finished_execution_ = false;
-};
+using tensorflow::tracing::ScopedAnnotation;
 
 }  // namespace
 
@@ -116,9 +51,9 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<const HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-    : Executable(std::move(hlo_module), std::move(hlo_profile_printer),
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       ptx_(ptx),
       cubin_(cubin),
@@ -131,9 +66,10 @@ Status GpuExecutable::ExecuteThunks(
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* main_stream = run_options->stream();
+  se::StreamExecutor* executor = main_stream->parent();
 
   std::pair<int, int> stream_compute_compatibility;
-  main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
+  executor->GetDeviceDescription().cuda_compute_capability(
       &stream_compute_compatibility.first,
       &stream_compute_compatibility.second);
   TF_RET_CHECK(stream_compute_compatibility == compute_capability_)
@@ -147,26 +83,44 @@ Status GpuExecutable::ExecuteThunks(
     LOG(WARNING) << "PROFILING: profiling is enabled";
   }
 
-  HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
-                                hlo_module_->entry_computation());
-
-  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
-
   // Stream 0 indicates `main_stream` and substreams start from stream 1.
   std::vector<Pool<se::Stream>::SmartPtr> sub_streams;
+  sub_streams.reserve(thunk_schedule_->StreamCount() - 1);
   while (sub_streams.size() + 1 < thunk_schedule_->StreamCount()) {
     sub_streams.emplace_back();
-    TF_ASSIGN_OR_RETURN(
-        sub_streams.back(),
-        run_options->BorrowStream(main_stream->parent()->device_ordinal()));
+    TF_ASSIGN_OR_RETURN(sub_streams.back(),
+                        run_options->BorrowStream(executor->device_ordinal()));
   }
 
-  // The next event enqueued on stream N must not run until the thunk at
-  // last_blocking_thunk_for_stream[N] completes.
-  std::map<int32, const Thunk*> last_blocking_thunk_for_stream;
+  HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
+                                sub_streams, hlo_module_->entry_computation());
+  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
+
+  // This top-level trace serves two purposes:
+  //  1) It marks the scope of the whole XLA module.
+  //  2) It tells us whether tracing is enabled.  We use this to avoid the
+  //     expensive HloInstruction::ToString() calls inside the loop below if
+  //     tracing is disabled.
+  ScopedAnnotation top_level_annotation(hlo_module_->name(), "XLA GPU module");
+
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(*this));
+    // Annotate execution of this op if tracing was enabled when we started
+    // running this module.  If tracing is enabled *while* we're running the
+    // module, we won't get any data, but that's probably an OK trade-off.
+    //
+    // TODO(jlebar): Should we cache the results of HloInstruction::ToString(),
+    // since we expect it to be an expensive call?
+    tensorflow::gtl::optional<ScopedAnnotation> op_annotation;
+    if (top_level_annotation.IsEnabled()) {
+      op_annotation.emplace(
+          thunk->hlo_instruction() != nullptr
+              ? thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical())
+              : "<unknown>",
+          "XLA op");
+    }
+
+    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     int32 stream_no =
         thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
     se::Stream* stream =
@@ -176,18 +130,10 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
-    if (last_blocking_thunk_for_stream.count(stream_no)) {
-      stream->ThenWaitFor(FindOrDie(thunk_to_finish_event,
-                                    last_blocking_thunk_for_stream[stream_no])
-                              .get());
-      last_blocking_thunk_for_stream.erase(stream_no);
-    }
-
     // If this thunk requests it, wait for all currently-executing thunks to
     // finish.  This is useful e.g. if the thunk is about to perform autotuning.
     if (thunk->ShouldHaltAllActivityBeforeRunning(stream)) {
       TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
-      last_blocking_thunk_for_stream.clear();
     }
 
     profiler.StartOperation();
@@ -195,22 +141,11 @@ Status GpuExecutable::ExecuteThunks(
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(buffer_allocations, stream));
-    if (thunk_schedule_->Depended(thunk) || thunk->ShouldBlockFutureThunks()) {
+    if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = MakeUnique<se::Event>(main_stream->parent());
       finish_event->Init();
       stream->ThenRecordEvent(finish_event.get());
       thunk_to_finish_event[thunk] = std::move(finish_event);
-
-      if (thunk->ShouldBlockFutureThunks()) {
-        // Set last_blocking_thunk_for_stream on all streams other than this one
-        // so that all other streams will wait for this thunk to complete before
-        // executing any events that occur later in the total order.
-        for (int32 i = 0; i < sub_streams.size() + 1; ++i) {
-          if (i != stream_no) {
-            last_blocking_thunk_for_stream[i] = thunk;
-          }
-        }
-      }
     }
     profiler.FinishOperation(thunk->hlo_instruction());
   }
@@ -247,7 +182,7 @@ Status GpuExecutable::ExecuteThunks(
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -263,15 +198,28 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
       auto param_no = allocation.parameter_number();
-      buffer_allocations_builder.RegisterBuffer(
-          i, arguments[param_no]->root_buffer());
+      se::DeviceMemoryBase buffer =
+          arguments[param_no]->buffer(allocation.param_shape_index());
+
+      // All top-level buffers and sub-buffers must have an explicit, non-null
+      // pointer, except for zero-sized buffers, which may be null.
+      if (buffer.is_null() && buffer.size() > 0) {
+        return FailedPrecondition(
+            "Cannot run XLA computation because pointer to (sub-)buffer at "
+            "index %s of parameter %lld was null.  All pointers to "
+            "(sub-)buffers must not be null, unless the (sub-)buffer has zero "
+            "elements.",
+            allocation.param_shape_index().ToString().c_str(), param_no);
+      }
+
+      buffer_allocations_builder.RegisterBuffer(i, buffer);
     }
   }
   se::StreamExecutor* executor = run_options->stream()->parent();
   TF_ASSIGN_OR_RETURN(
       auto buffer_allocations,
-      buffer_allocations_builder.Build(*assignment_, executor->device_ordinal(),
-                                       memory_allocator));
+      buffer_allocations_builder.Build(
+          assignment_.get(), executor->device_ordinal(), memory_allocator));
 
   bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
@@ -281,13 +229,13 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   auto device_ordinal = executor->device_ordinal();
-  auto shaped_buffer = MakeUnique<ShapedBuffer>(
-      root->shape(), root->shape(), executor->platform(), device_ordinal);
+  ScopedShapedBuffer shaped_buffer(root->shape(), root->shape(),
+                                   memory_allocator, device_ordinal);
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer.
   std::set<se::DeviceMemoryBase> buffers_in_result;
-  TF_RETURN_IF_ERROR(shaped_buffer->buffers().ForEachMutableElementWithStatus(
+  TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
       [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
           const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootPointsToSet().element(index);
@@ -306,20 +254,19 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
             this->assignment_->GetUniqueSlice(src_hlo, sources[0]->index()));
         CHECK(!slice.allocation()->is_entry_computation_parameter());
 
-        perftools::gputools::DeviceMemoryBase src_base =
+        se::DeviceMemoryBase src_base =
             buffer_allocations->GetDeviceAddress(slice.index());
         CHECK(!src_base.is_null() || src_base.size() == 0);
         *device_memory = src_base;
         buffers_in_result.insert(src_base);
         return Status::OK();
       }));
-  TF_RETURN_IF_ERROR(
-      buffer_allocations->TearDown(buffers_in_result, *assignment_));
+  TF_RETURN_IF_ERROR(buffer_allocations->TearDown(buffers_in_result));
 
   return std::move(shaped_buffer);
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.

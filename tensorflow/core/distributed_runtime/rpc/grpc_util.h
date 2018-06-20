@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
 
 #include <memory>
 
-#include "grpc++/grpc++.h"
-#include "grpc++/impl/codegen/proto_utils.h"
-#include "grpc++/support/byte_buffer.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/impl/codegen/proto_utils.h"
+#include "grpcpp/support/byte_buffer.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -28,6 +28,33 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
+
+// Thin wrapper around ::grpc::ProtoBufferReader to give TensorResponse an
+// efficient byte reader from which to decode a RecvTensorResponse.
+class GrpcByteSource : public TensorResponse::Source {
+ public:
+  explicit GrpcByteSource(::grpc::ByteBuffer* buffer) : buffer_(buffer) {}
+  ~GrpcByteSource() override { DeleteStream(); }
+
+  typedef ::grpc::ProtoBufferReader Reader;
+
+  protobuf::io::ZeroCopyInputStream* contents() override {
+    DeleteStream();
+    stream_ = new (&space_) Reader(buffer_);
+    return stream_;
+  }
+
+ private:
+  void DeleteStream() {
+    if (stream_) {
+      stream_->~Reader();
+    }
+  }
+
+  ::grpc::ByteBuffer* buffer_;  // Not owned
+  Reader* stream_ = nullptr;    // Points into space_ if non-nullptr
+  char space_[sizeof(Reader)];
+};
 
 constexpr char kStreamRemovedMessage[] = "Stream removed";
 
@@ -79,39 +106,22 @@ typedef std::shared_ptr<::grpc::Channel> SharedGrpcChannelPtr;
 inline string GrpcIdKey() { return "tf-rpc"; }
 
 // Serialize src and store in *dst.
-void GrpcMaybeUnparseProto(const protobuf::Message& src,
-                           ::grpc::ByteBuffer* dst);
+::grpc::Status GrpcMaybeUnparseProto(const protobuf::Message& src,
+                                     ::grpc::ByteBuffer* dst);
 
 // Parse contents of src and initialize *dst with them.
-bool GrpcMaybeParseProto(const ::grpc::ByteBuffer& src, protobuf::Message* dst);
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst);
 
 // Specialization for TensorResponse
-bool GrpcMaybeParseProto(const ::grpc::ByteBuffer& src, TensorResponse* dst);
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, TensorResponse* dst);
 
 // Copy string src to grpc buffer *dst.
-void GrpcMaybeUnparseProto(const string& src, ::grpc::ByteBuffer* dst);
+::grpc::Status GrpcMaybeUnparseProto(const string& src,
+                                     ::grpc::ByteBuffer* dst);
 
 // Copy grpc buffer src to string *dst.
-bool GrpcMaybeParseProto(const ::grpc::ByteBuffer& src, string* dst);
-
-// A ZeroCopyInputStream that reads from a grpc::ByteBuffer.
-class GrpcByteBufferSource : public ::grpc::protobuf::io::ZeroCopyInputStream {
- public:
-  GrpcByteBufferSource();
-  bool Init(const ::grpc::ByteBuffer& src);  // Can be called multiple times.
-  bool Next(const void** data, int* size) override;
-  void BackUp(int count) override;
-  bool Skip(int count) override;
-  ::grpc::protobuf::int64 ByteCount() const override;
-
- private:
-  std::vector<::grpc::Slice> slices_;
-  int cur_;          // Current slice index.
-  int left_;         // Number of bytes in slices_[cur_] left to yield.
-  const char* ptr_;  // Address of next byte in slices_[cur_] to yield.
-  ::grpc::protobuf::int64 byte_count_;
-};
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, string* dst);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_

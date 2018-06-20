@@ -33,9 +33,7 @@ class SqliteTest : public ::testing::Test {
     db_->PrepareOrDie("CREATE TABLE T (a BLOB, b BLOB)").StepAndResetOrDie();
   }
 
-  void TearDown() override {
-    db_->Unref();
-  }
+  void TearDown() override { db_->Unref(); }
 
   Sqlite* db_;
   bool is_done_;
@@ -213,7 +211,7 @@ TEST_F(SqliteTest, BindFailed) {
   Status s = stmt.StepOnce();
   EXPECT_NE(string::npos,
             s.error_message().find("INSERT INTO T (a) VALUES (123)"))
-            << s.error_message();
+      << s.error_message();
 }
 
 TEST_F(SqliteTest, SnappyExtension) {
@@ -226,7 +224,7 @@ TEST_F(SqliteTest, SnappyBinaryCompatibility) {
   EXPECT_EQ(
       "today is the end of the republic",
       db_->PrepareOrDie("SELECT UNSNAP(X'03207C746F6461792069732074686520656E64"
-                            "206F66207468652072657075626C6963')")
+                        "206F66207468652072657075626C6963')")
           .StepOnceOrDie()
           .ColumnString(0));
 }

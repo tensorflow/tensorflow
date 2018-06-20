@@ -32,26 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
-
-
-def _gather(params, ids, name=None):
-  """Helper function for _embedding_lookup_and_transform.
-
-  This function gathers embeddings from a single tensor. The gather deals with
-  resource variables specially.
-
-  Args:
-    params: A `Tensor` of embeddings.
-    ids: A `Tensor` indexing the embeddings to be retrieved from `params`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` with the same type as `params`.
-  """
-  if isinstance(params, resource_variable_ops.ResourceVariable):
-    return params.sparse_read(ids, name=name)
-  else:
-    return array_ops.gather(params, ids, name=name)
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _clip(params, ids, max_norm):
@@ -60,10 +41,10 @@ def _clip(params, ids, max_norm):
   This function optionally clips embeddings to an l2-norm of max_norm.
 
   Args:
-    params: A `Tensor` of embeddings retrieved by `_gather`.
-    ids: The `ids` argument that was passed to `_gather`.
-    max_norm: If provided, the embeddings are l2-normalized to the value of
-      max_norm.
+    params: A `Tensor` of embeddings retrieved by `gather`.
+    ids: The `ids` argument that was passed to `gather`.
+    max_norm: If not `None`, each embedding is clipped if its l2-norm is
+      larger than this value.
 
   Returns:
     A `Tensor` with the same type as `params`.
@@ -147,7 +128,8 @@ def _embedding_lookup_and_transform(params,
     ids = ops.convert_to_tensor(ids, name="ids")
     if np == 1 and (not transform_fn or ids.get_shape().ndims == 1):
       with ops.colocate_with(params[0]):
-        result = _clip(_gather(params[0], ids, name=name), ids, max_norm)
+        result = _clip(array_ops.gather(params[0], ids, name=name),
+                       ids, max_norm)
         if transform_fn:
           result = transform_fn(result)
         return result
@@ -211,7 +193,7 @@ def _embedding_lookup_and_transform(params,
       for p in xrange(np):
         pids = gather_ids[p]
         with ops.colocate_with(params[p]):
-          result = _gather(params[p], pids)
+          result = array_ops.gather(params[p], pids)
           if transform_fn:
             # If transform_fn is provided, the clip_by_norm precedes
             # the transform and hence must be co-located. See below
@@ -257,6 +239,7 @@ def _embedding_lookup_and_transform(params,
       return ret
 
 
+@tf_export("nn.embedding_lookup")
 def embedding_lookup(
     params,
     ids,
@@ -307,8 +290,8 @@ def embedding_lookup(
       in `indices` are always validated to be within range.  If assigned to GPU,
       out-of-bound indices result in safe but unspecified behavior, which may
       include raising an error.
-    max_norm: If provided, embedding values are l2-normalized to the value of
-      max_norm.
+    max_norm: If not `None`, each embedding is clipped if its l2-norm is
+      larger than this value.
 
   Returns:
     A `Tensor` with the same type as the tensors in `params`.
@@ -325,6 +308,7 @@ def embedding_lookup(
       transform_fn=None)
 
 
+@tf_export("nn.embedding_lookup_sparse")
 def embedding_lookup_sparse(params,
                             sp_ids,
                             sp_weights,
@@ -347,11 +331,11 @@ def embedding_lookup_sparse(params,
       representing sharded embedding tensors.  Alternatively, a
       `PartitionedVariable`, created by partitioning along dimension 0. Each
       element must be appropriately sized for the given `partition_strategy`.
-    sp_ids: N x M SparseTensor of int64 ids (typically from FeatureValueToId),
-      where N is typically batch size and M is arbitrary.
-    sp_weights: either a SparseTensor of float / double weights, or None to
-      indicate all weights should be taken to be 1. If specified, sp_weights
-      must have exactly the same shape and indices as sp_ids.
+    sp_ids: N x M `SparseTensor` of int64 ids where N is typically batch size
+      and M is arbitrary.
+    sp_weights: either a `SparseTensor` of float / double weights, or `None` to
+      indicate all weights should be taken to be 1. If specified, `sp_weights`
+      must have exactly the same shape and indices as `sp_ids`.
     partition_strategy: A string specifying the partitioning strategy, relevant
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`. See `tf.nn.embedding_lookup` for more details.
@@ -362,44 +346,48 @@ def embedding_lookup_sparse(params,
       "mean" is the weighted sum divided by the total weight.
       "sqrtn" is the weighted sum divided by the square root of the sum of the
       squares of the weights.
-    max_norm: If provided, each embedding is normalized to have l2 norm equal
-      to max_norm before combining.
+    max_norm: If not `None`, each embedding is clipped if its l2-norm is
+      larger than this value, before combining.
 
   Returns:
     A dense tensor representing the combined embeddings for the
-    sparse ids. For each row in the dense tensor represented by sp_ids, the op
+    sparse ids. For each row in the dense tensor represented by `sp_ids`, the op
     looks up the embeddings for all ids in that row, multiplies them by the
     corresponding weight, and combines these embeddings as specified.
 
     In other words, if
 
-      shape(combined params) = [p0, p1, ..., pm]
+      `shape(combined params) = [p0, p1, ..., pm]`
 
     and
 
-      shape(sp_ids) = shape(sp_weights) = [d0, d1, ..., dn]
+      `shape(sp_ids) = shape(sp_weights) = [d0, d1, ..., dn]`
 
     then
 
-      shape(output) = [d0, d1, ..., dn-1, p1, ..., pm].
+      `shape(output) = [d0, d1, ..., dn-1, p1, ..., pm]`.
 
     For instance, if params is a 10x20 matrix, and sp_ids / sp_weights are
 
+      ```python
       [0, 0]: id 1, weight 2.0
       [0, 1]: id 3, weight 0.5
       [1, 0]: id 0, weight 1.0
       [2, 3]: id 1, weight 3.0
+      ```
 
     with `combiner`="mean", then the output will be a 3x20 matrix where
 
+      ```python
       output[0, :] = (params[1, :] * 2.0 + params[3, :] * 0.5) / (2.0 + 0.5)
-      output[1, :] = params[0, :] * 1.0
-      output[2, :] = params[1, :] * 3.0
+      output[1, :] = (params[0, :] * 1.0) / 1.0
+      output[2, :] = (params[1, :] * 3.0) / 3.0
+      ```
 
   Raises:
-    TypeError: If sp_ids is not a SparseTensor, or if sp_weights is neither
-      None nor SparseTensor.
-    ValueError: If combiner is not one of {"mean", "sqrtn", "sum"}.
+    TypeError: If `sp_ids` is not a `SparseTensor`, or if `sp_weights` is
+      neither `None` nor `SparseTensor`.
+    ValueError: If `combiner` is not one of {"mean", "sqrtn", "sum"}.
   """
   if combiner is None:
     logging.warn("The default value of combiner will change from \"mean\" "
@@ -433,10 +421,7 @@ def embedding_lookup_sparse(params,
       segment_ids = math_ops.cast(segment_ids, dtypes.int32)
 
     ids = sp_ids.values
-    if ignore_weights:
-      ids, idx = array_ops.unique(ids)
-    else:
-      idx = None
+    ids, idx = array_ops.unique(ids)
 
     embeddings = embedding_lookup(
         params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
@@ -444,6 +429,8 @@ def embedding_lookup_sparse(params,
       weights = sp_weights.values
       if weights.dtype != embeddings.dtype:
         weights = math_ops.cast(weights, embeddings.dtype)
+
+      embeddings = array_ops.gather(embeddings, idx)
 
       # Reshape weights to allow broadcast
       ones = array_ops.fill(

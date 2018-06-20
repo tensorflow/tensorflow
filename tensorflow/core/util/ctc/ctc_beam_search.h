@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
 #define TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
+#include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -69,6 +73,7 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   //   P(l=abc? @ t=3) = P(a @ 0)*P(b @ 1)*P(c @ 2)*P(? @ 3)
   // but we calculate it recursively for speed purposes.
   typedef ctc_beam_search::BeamEntry<CTCBeamState> BeamEntry;
+  typedef ctc_beam_search::BeamRoot<CTCBeamState> BeamRoot;
   typedef ctc_beam_search::BeamProbability BeamProbability;
 
  public:
@@ -142,7 +147,7 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   float label_selection_margin_ = -1;  // -1 means unlimited.
 
   gtl::TopN<BeamEntry*, CTCBeamComparer> leaves_;
-  std::unique_ptr<BeamEntry> beam_root_;
+  std::unique_ptr<BeamRoot> beam_root_;
   BaseBeamScorer<CTCBeamState>* beam_scorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CTCBeamSearchDecoder);
@@ -367,15 +372,15 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Reset() {
 
   // This beam root, and all of its children, will be in memory until
   // the next reset.
-  beam_root_.reset(new BeamEntry(nullptr, -1));
-  beam_root_->newp.total = 0.0;  // ln(1)
-  beam_root_->newp.blank = 0.0;  // ln(1)
+  beam_root_.reset(new BeamRoot(nullptr, -1));
+  beam_root_->RootEntry()->newp.total = 0.0;  // ln(1)
+  beam_root_->RootEntry()->newp.blank = 0.0;  // ln(1)
 
   // Add the root as the initial leaf.
-  leaves_.push(beam_root_.get());
+  leaves_.push(beam_root_->RootEntry());
 
   // Call initialize state on the root object.
-  beam_scorer_->InitializeState(&beam_root_->state);
+  beam_scorer_->InitializeState(&beam_root_->RootEntry()->state);
 }
 
 template <typename CTCBeamState, typename CTCBeamComparer>

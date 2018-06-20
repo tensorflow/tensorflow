@@ -12,22 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Spectral operators (e.g. DCT, FFT, RFFT).
-
-@@dct
-@@fft
-@@ifft
-@@fft2d
-@@ifft2d
-@@fft3d
-@@ifft3d
-@@rfft
-@@irfft
-@@rfft2d
-@@irfft2d
-@@rfft3d
-@@irfft3d
-"""
+"""Spectral operators (e.g. DCT, FFT, RFFT)."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -40,7 +25,7 @@ from tensorflow.python.framework import tensor_util as _tensor_util
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import math_ops as _math_ops
-from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _infer_fft_length_for_rfft(input_tensor, fft_rank):
@@ -164,11 +149,17 @@ ifft2d = gen_spectral_ops.ifft2d
 fft3d = gen_spectral_ops.fft3d
 ifft3d = gen_spectral_ops.ifft3d
 rfft = _rfft_wrapper(gen_spectral_ops.rfft, 1, "rfft")
+tf_export("spectral.rfft")(rfft)
 irfft = _irfft_wrapper(gen_spectral_ops.irfft, 1, "irfft")
+tf_export("spectral.irfft")(irfft)
 rfft2d = _rfft_wrapper(gen_spectral_ops.rfft2d, 2, "rfft2d")
+tf_export("spectral.rfft2d")(rfft2d)
 irfft2d = _irfft_wrapper(gen_spectral_ops.irfft2d, 2, "irfft2d")
+tf_export("spectral.irfft2d")(irfft2d)
 rfft3d = _rfft_wrapper(gen_spectral_ops.rfft3d, 3, "rfft3d")
+tf_export("spectral.rfft3d")(rfft3d)
 irfft3d = _irfft_wrapper(gen_spectral_ops.irfft3d, 3, "irfft3d")
+tf_export("spectral.irfft3d")(irfft3d)
 
 
 def _validate_dct_arguments(dct_type, n, axis, norm):
@@ -184,6 +175,7 @@ def _validate_dct_arguments(dct_type, n, axis, norm):
 
 
 # TODO(rjryan): Implement `type`, `n` and `axis` parameters.
+@tf_export("spectral.dct")
 def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
   """Computes the 1D [Discrete Cosine Transform (DCT)][dct] of `input`.
 
@@ -241,5 +233,3 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
       dct2 *= weights
 
     return dct2
-
-remove_undocumented(__name__)

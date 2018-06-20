@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/contrib/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -31,17 +32,32 @@ namespace {
 
 void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
                       int kheight, int stride_width, int stride_height,
+                      int dilation_width_factor, int dilation_height_factor,
                       PaddingType padding_type, Shape* output_shape,
                       FixedPadding* fixed_padding) {
   const int input_width = input_shape.dims(2);
   const int input_height = input_shape.dims(1);
   const int batch = input_shape.dims(0);
 
+  CHECK_GE(input_width, 1);
+  CHECK_GE(input_height, 1);
+  CHECK_GE(batch, 1);
+  CHECK_GE(kwidth, 1);
+  CHECK_GE(kheight, 1);
+  CHECK_GE(stride_width, 1);
+  CHECK_GE(stride_height, 1);
+  CHECK_GE(dilation_width_factor, 1);
+  CHECK_GE(dilation_height_factor, 1);
+
+  int dilated_kwidth = dilation_width_factor * (kwidth - 1) + 1;
+  int dilated_kheight = dilation_height_factor * (kheight - 1) + 1;
+
   int output_height = 0;
   int output_width = 0;
   if (padding_type == PaddingType::kValid) {
-    output_height = (input_height + stride_height - kheight) / stride_height;
-    output_width = (input_width + stride_width - kwidth) / stride_width;
+    output_height =
+        (input_height + stride_height - dilated_kheight) / stride_height;
+    output_width = (input_width + stride_width - dilated_kwidth) / stride_width;
   } else if (padding_type == PaddingType::kSame) {
     output_height = (input_height + stride_height - 1) / stride_height;
     output_width = (input_width + stride_width - 1) / stride_width;
@@ -49,10 +65,12 @@ void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
     LOG(FATAL) << "Only supporting SAME or VALID padding";
   }
 
-  fixed_padding->height = std::max(
-      0, ((output_height - 1) * stride_height + kheight - input_height) / 2);
+  fixed_padding->height = std::max(0, ((output_height - 1) * stride_height +
+                                       dilated_kheight - input_height) /
+                                          2);
   fixed_padding->width = std::max(
-      0, ((output_width - 1) * stride_width + kwidth - input_width) / 2);
+      0,
+      ((output_width - 1) * stride_width + dilated_kwidth - input_width) / 2);
 
   // Actually had to debug a situation where those were negative due to bad
   // propagation of placeholder -1 sizes in TensorFlowReshape.
@@ -61,23 +79,42 @@ void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
   output_shape->ReplaceDims({batch, output_height, output_width, output_depth});
 }
 
-void ComputeBinaryOperatorOutputSize(const Shape& input_shape1,
-                                     const Shape& input_shape2,
+void ComputeBinaryOperatorOutputSize(const Shape& input_shape_x,
+                                     const Shape& input_shape_y,
                                      Array* output_array) {
-  const int size1 = RequiredBufferSizeForShape(input_shape1);
-  const int size2 = RequiredBufferSizeForShape(input_shape2);
-  if (size1 > size2) {
-    output_array->copy_shape(input_shape1);
-  } else if (size2 > size1) {
-    output_array->copy_shape(input_shape2);
-  } else {
-    CHECK_EQ(size1, size2);
-    const int dims1 = input_shape1.dimensions_count();
-    const int dims2 = input_shape2.dimensions_count();
-    if (dims1 >= dims2) {
-      output_array->copy_shape(input_shape1);
+  // This matches the code in BroadcastBinaryOpShapeFn from tensorflow.
+  // It zips together the two input shapes and pads with 1 to make them the
+  // same length. For each dimension we broadcast if either dimension is 1 and
+  // otherwise expect them to match.
+  int rank_x = input_shape_x.dimensions_count();
+  int rank_y = input_shape_y.dimensions_count();
+  int rank_out = std::max(rank_x, rank_y);
+  std::vector<int>* dims_out = output_array->mutable_shape()->mutable_dims();
+  dims_out->clear();
+  dims_out->reserve(rank_out);
+  for (int i = 0; i < rank_out; ++i) {
+    int dim_x = i < (rank_out - rank_x)
+                    ? 1
+                    : input_shape_x.dims(i - (rank_out - rank_x));
+    bool dim_y_is_one = i < (rank_out - rank_y);
+    int dim_y = dim_y_is_one ? 1 : input_shape_y.dims(i - (rank_out - rank_y));
+    if (dim_x == -1 || dim_y == -1) {
+      // One or both dimensions is unknown.
+      QCHECK(false) << "Shapes must be specified";
+    } else if (dim_x == 1 || dim_y == 1) {
+      // Broadcast one dimension to the other that is 1.
+      if (dim_x == 1 && !dim_y_is_one) {
+        // Broadcast dim_y to dim_x (1).
+        dims_out->push_back(dim_y);
+      } else {
+        // Broadcast dim_x to dim_y (1).
+        DCHECK_EQ(dim_y, 1);
+        dims_out->push_back(dim_x);
+      }
     } else {
-      output_array->copy_shape(input_shape2);
+      // Expect the dimensions to match.
+      CHECK_EQ(dim_x, dim_y) << "Dimensions must match";
+      dims_out->push_back(dim_x);
     }
   }
   CHECK(output_array->has_shape());
@@ -85,7 +122,7 @@ void ComputeBinaryOperatorOutputSize(const Shape& input_shape1,
 
 int GetOutputDepthFromWeights(const Model& model, const Operator& op) {
   const string& weights_name = op.inputs[1];
-  const auto& weights_shape = model.arrays.at(weights_name)->shape();
+  const auto& weights_shape = model.GetArray(weights_name).shape();
   if (op.type == OperatorType::kConv ||
       op.type == OperatorType::kFullyConnected) {
     return weights_shape.dims(0);
@@ -98,7 +135,7 @@ int GetOutputDepthFromWeights(const Model& model, const Operator& op) {
 
 bool EnsureBiasVectorShape(Model* model, Operator* op) {
   const string& weights_name = op->inputs[1];
-  const auto& weights_array = *model->arrays[weights_name];
+  const auto& weights_array = model->GetArray(weights_name);
   // Yield until weights shape has been resolved.
   if (!weights_array.has_shape()) {
     return false;
@@ -107,7 +144,7 @@ bool EnsureBiasVectorShape(Model* model, Operator* op) {
   if (op->inputs.size() < 3) {
     return false;
   }
-  auto& bias_array = *model->arrays[op->inputs[2]];
+  auto& bias_array = model->GetArray(op->inputs[2]);
   if (bias_array.has_shape()) {
     return true;
   }
@@ -126,15 +163,17 @@ void ProcessConvOperator(Model* model, ConvOperator* op) {
     return;
   }
 
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
   }
   const auto& input_shape = input_array.shape();
-  CHECK_EQ(input_shape.dimensions_count(), 4);
+  CHECK(input_shape.dimensions_count() == 4)
+      << "Conv ops require 4D inputs. Input array \"" << op->inputs[0]
+      << "\" is " << input_shape.dimensions_count() << "D.";
 
-  const auto& weights_array = *model->arrays[op->inputs[1]];
+  const auto& weights_array = model->GetArray(op->inputs[1]);
   // Yield until weights dims have been resolved.
   if (!weights_array.has_shape()) {
     return;
@@ -147,7 +186,8 @@ void ProcessConvOperator(Model* model, ConvOperator* op) {
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
   ComputeConvSizes(input_shape, output_depth, kwidth, kheight, op->stride_width,
-                   op->stride_height, op->padding.type,
+                   op->stride_height, op->dilation_width_factor,
+                   op->dilation_height_factor, op->padding.type,
                    output_array.mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
   CHECK_EQ(output_array.shape().dimensions_count(), 4);
@@ -156,10 +196,98 @@ void ProcessConvOperator(Model* model, ConvOperator* op) {
   if (op->outputs.size() == 2) {
     const auto& output_shape = output_array.shape();
     const int input_depth = weights_shape.dims(3);
-    auto& im2col_array = *model->arrays[op->outputs[1]];
+    auto& im2col_array = model->GetArray(op->outputs[1]);
     im2col_array.copy_shape(Shape{output_shape.dims(0), output_shape.dims(1),
                                   output_shape.dims(2),
                                   input_depth * kheight * kwidth});
+  }
+}
+
+void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
+  // TransposeConv is unique in that it is specifically given the output shape
+  // as a 1D array on it's 1st input. Theoretically then, resolving the output
+  // shape is as easy as waiting for this input to be resolved. However, we also
+  // have to calculate the padding which requires the weights shape. So, we
+  // might as well calculate the output shape and ensure it matches the
+  // specified one
+
+  // SPECIFIED OUTPUT SHAPE
+  // The below is the specified, or prescribed output shape, _given_ to the
+  // operator as an input.
+  auto& specified_output_shape_array =
+      model->GetArray(op->inputs[TransposeConvOperator::OUTPUT_SHAPE]);
+  if (!specified_output_shape_array.has_shape() ||
+      !specified_output_shape_array.buffer) {
+    // Yield until the specified output shape is resolved as a constant
+    return;
+  }
+
+  CHECK(specified_output_shape_array.data_type == ArrayDataType::kInt32)
+      << "TransposeConv input_dims must be int32";
+
+  CHECK(specified_output_shape_array.shape().dimensions_count() == 1 &&
+        specified_output_shape_array.shape().dims(0) == 4)
+      << "TransposeConv requires a 1D, 4 element array on it's 0th input "
+         "specifying the output shape. \""
+      << op->inputs[TransposeConvOperator::OUTPUT_SHAPE] << "\" had shape "
+      << toco::ShapeToString(specified_output_shape_array.shape());
+
+  // COMPUTE PADDING
+  // We require the weights shape to calculate padding.
+  const auto& weights_array =
+      model->GetArray(op->inputs[TransposeConvOperator::WEIGHTS]);
+  if (!weights_array.has_shape()) {
+    // Yield until weights dims have been resolved.
+    return;
+  }
+  const auto& weights_shape = weights_array.shape();
+  CHECK_EQ(weights_shape.dimensions_count(), 4)
+      << "TransposeConv weights must have 4 input dimensions. Input weights \""
+      << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
+      << toco::ShapeToString(weights_shape) << ".";
+
+  // Compute padding
+  const int kheight = weights_shape.dims(1);
+  const int kwidth = weights_shape.dims(2);
+  op->padding.GetOrCreateFixedPadding();
+  if (op->padding.type == PaddingType::kValid) {
+    op->padding.fixed->height = 0;
+    op->padding.fixed->width = 0;
+  } else if (op->padding.type == PaddingType::kSame) {
+    op->padding.fixed->height = (kheight - 1) / 2;
+    op->padding.fixed->width = (kwidth - 1) / 2;
+  } else {
+    LOG(FATAL) << "TransposeConv only supports SAME or VALID padding";
+  }
+
+  // VALIDATE some dimensions and set the output shape.
+  const auto& input_array =
+      model->GetArray(op->inputs[TransposeConvOperator::DATA_INPUT]);
+  if (!input_array.has_shape()) {
+    // Yield until input dims have been resolved.
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  CHECK_EQ(input_shape.dimensions_count(), 4)
+      << "TransposeConv input shape must have 4 dimensions. Input \""
+      << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
+      << toco::ShapeToString(weights_shape) << ".";
+  CHECK_EQ(input_shape.dims(3), weights_shape.dims(3))
+      << "Input shape depth and weight depth do not agree";
+
+  // Set the output shape according to the specified output shape.
+  std::vector<int32> const& specified_output_shape =
+      specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+  auto& output_array = model->GetArray(op->outputs[0]);
+  *(output_array.mutable_shape()->mutable_dims()) = specified_output_shape;
+
+  // Set im2col array dimensions if there is one.
+  if (op->outputs.size() == 2) {
+    const int input_depth = weights_shape.dims(3);
+    auto& im2col_array = model->GetArray(op->outputs[1]);
+    im2col_array.copy_shape(
+        Shape{specified_output_shape[0], specified_output_shape[1],
+              specified_output_shape[2], input_depth * kheight * kwidth});
   }
 }
 
@@ -168,7 +296,7 @@ void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
     return;
   }
 
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -176,7 +304,7 @@ void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
   const auto& input_shape = input_array.shape();
   CHECK_EQ(input_shape.dimensions_count(), 4);
 
-  const auto& weights_array = *model->arrays[op->inputs[1]];
+  const auto& weights_array = model->GetArray(op->inputs[1]);
   // Yield until weights dims have been resolved.
   if (!weights_array.has_shape()) {
     return;
@@ -203,13 +331,13 @@ void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
   ComputeConvSizes(input_shape, output_depth, kwidth, kheight, op->stride_width,
-                   op->stride_height, op->padding.type,
+                   op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
 
 void ProcessDepthToSpaceOperator(Model* model, DepthToSpaceOperator* op) {
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -232,7 +360,7 @@ void ProcessDepthToSpaceOperator(Model* model, DepthToSpaceOperator* op) {
 }
 
 void ProcessSpaceToDepthOperator(Model* model, SpaceToDepthOperator* op) {
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -255,10 +383,9 @@ void ProcessSpaceToDepthOperator(Model* model, SpaceToDepthOperator* op) {
                          depth * block_size * block_size}));
 }
 
-void ProcessFillOperator(Model* model, FillOperator* op) {
-  CHECK_EQ(op->inputs.size(), 2);
+void ProcessOpWithShapeInput(Model* model, Operator* op) {
   CHECK_EQ(op->outputs.size(), 1);
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
     // We have already run
     return;
@@ -287,7 +414,7 @@ void ProcessFullyConnectedOperator(Model* model, FullyConnectedOperator* op) {
     return;
   }
 
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -295,7 +422,7 @@ void ProcessFullyConnectedOperator(Model* model, FullyConnectedOperator* op) {
   const auto& input_shape = input_array.shape();
   CHECK_GE(input_shape.dimensions_count(), 1);
 
-  const auto& weights_array = *model->arrays[op->inputs[1]];
+  const auto& weights_array = model->GetArray(op->inputs[1]);
   // Yield until weights dims have been resolved.
   if (!weights_array.has_shape()) {
     return;
@@ -315,13 +442,13 @@ void ProcessFullyConnectedOperator(Model* model, FullyConnectedOperator* op) {
 
 void ProcessTensorFlowReshapeOperator(Model* model,
                                       TensorFlowReshapeOperator* op) {
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
     // We have already run
     return;
   }
 
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until input dims have been resolved.
     return;
@@ -376,15 +503,15 @@ void ProcessTensorFlowReshapeOperator(Model* model,
       << op->outputs[0] << "\". Are your input shapes correct?";
 }
 
-void ProcessSimpleOperator(Model* model, Operator* op) {
-  const auto& input_array = *model->arrays[op->inputs[0]];
+void ProcessSimpleOperator(Model* model, Operator* op, int input_index) {
+  const auto& input_array = model->GetArray(op->inputs[input_index]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
   }
 
   const string& output_name = op->outputs[0];
-  auto& output_array = *model->arrays[output_name];
+  auto& output_array = model->GetArray(output_name);
   if (output_array.has_shape()) {
     return;
   }
@@ -394,16 +521,53 @@ void ProcessSimpleOperator(Model* model, Operator* op) {
 
 void ProcessSimpleBinaryOperator(Model* model, Operator* op) {
   CHECK_EQ(op->inputs.size(), 2);
-  const auto& input0_array = *model->arrays[op->inputs[0]];
-  const auto& input1_array = *model->arrays[op->inputs[1]];
+  const auto& input0_array = model->GetArray(op->inputs[0]);
+  const auto& input1_array = model->GetArray(op->inputs[1]);
   // Yield until input dims have been resolved.
   if (!input0_array.has_shape() || !input1_array.has_shape()) {
     return;
   }
   const string& output_name = op->outputs[0];
-  auto& output_array = *model->arrays[output_name];
+  auto& output_array = model->GetArray(output_name);
   ComputeBinaryOperatorOutputSize(input0_array.shape(), input1_array.shape(),
                                   &output_array);
+}
+
+void ProcessSelectOperator(Model* model, SelectOperator* op) {
+  // Yield until all input dims have been resolved.
+  for (const auto& input : op->inputs) {
+    const auto& input_array = model->GetArray(input);
+    if (!input_array.has_shape()) {
+      return;
+    }
+  }
+
+  // Select's output matches the second and third output.
+  const auto& input1_array = model->GetArray(op->inputs[1]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  output_array.copy_shape(input1_array.shape());
+}
+
+void ProcessAddNOperator(Model* model, Operator* op) {
+  // Yield until all input dims have been resolved.
+  //
+  // TODO(myenik): Since AddN does not support broadcasting, maybe we could
+  // actually use this to improve shape propagation by propagating the shape of
+  // one input to all other inputs once it is resolved instead of just the
+  // output, since all inputs must be the same size and shape for a well-formed
+  // graph.
+  for (const auto& input : op->inputs) {
+    const auto& input_array = model->GetArray(input);
+    if (!input_array.has_shape()) {
+      return;
+    }
+  }
+
+  // AddN does not support broadcasting, all inputs must be the same shape, so
+  // we just take the first input shape and apply it to the output.
+  const auto& input0_array = model->GetArray(op->inputs[0]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  output_array.copy_shape(input0_array.shape());
 }
 
 bool KeepDims(const Operator& op) {
@@ -424,11 +588,11 @@ bool KeepDims(const Operator& op) {
 
 void ProcessTensorFlowReductionOperator(Model* model, Operator* op) {
   CHECK_LE(op->inputs.size(), 2);
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
     return;
   }
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     return;
   }
@@ -436,7 +600,7 @@ void ProcessTensorFlowReductionOperator(Model* model, Operator* op) {
   const bool keep_dims = KeepDims(*op);
   if (op->inputs.size() == 2) {
     // There is a reduction_indices input.
-    const auto& reduction_array = *model->arrays[op->inputs[1]];
+    const auto& reduction_array = model->GetArray(op->inputs[1]);
     if (!reduction_array.buffer) {
       return;
     }
@@ -476,11 +640,11 @@ void ProcessSliceOperator(Model* model, SliceOperator* op) {
   if (op->begin.empty()) return;
 
   // Yield until input dims have been resolved.
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) return;
   const Shape& input_shape = input_array.shape();
 
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) return;
 
   CHECK_EQ(input_shape.dims().size(), op->size.size());
@@ -500,7 +664,7 @@ void ProcessSliceOperator(Model* model, SliceOperator* op) {
 
 void ProcessReorderAxesOperator(Model* model, ReorderAxesOperator* op) {
   const string& input_name = op->inputs[0];
-  const auto& input_array = *model->arrays[input_name];
+  const auto& input_array = model->GetArray(input_name);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -515,20 +679,22 @@ void ProcessReorderAxesOperator(Model* model, ReorderAxesOperator* op) {
 void ProcessConcatenationOperator(Model* model, ConcatenationOperator* op) {
   // Yield until input dims have been resolved.
   for (const auto& input_name : op->inputs) {
-    auto& input_array = *model->arrays[input_name];
+    auto& input_array = model->GetArray(input_name);
     if (!input_array.has_shape()) {
       return;
     }
   }
   auto& output_array = model->GetArray(op->outputs[0]);
   // Use 0 input as basis for output dimensions.
-  const auto& first_input_array = *model->arrays[op->inputs[0]];
+  const auto& first_input_array = model->GetArray(op->inputs[0]);
   output_array.copy_shape(first_input_array.shape());
+  // Negative axis means the count starts at the back of the dims().
+  if (op->axis < 0) op->axis += first_input_array.shape().dims().size();
   // Determine the concat size, and enfore that all inputs have
   // the same dimensions count.
   int concat_size = 0;
   for (const auto& input_name : op->inputs) {
-    auto& input_array = *model->arrays[input_name];
+    auto& input_array = model->GetArray(input_name);
     CHECK(input_array.has_shape());
     if (input_array.shape().dimensions_count() == 0) {
       continue;
@@ -548,16 +714,16 @@ void ProcessConcatenationOperator(Model* model, ConcatenationOperator* op) {
 
 void ProcessRangeOperator(Model* model, RangeOperator* op) {
   CHECK_EQ(op->inputs.size(), 3);
-  const auto& start_array = *model->arrays[op->inputs[0]];
+  const auto& start_array = model->GetArray(op->inputs[0]);
   if (!start_array.has_shape()) {
     // Yield until input dims have been resolved.
     return;
   }
-  const auto& limit_array = *model->arrays[op->inputs[1]];
+  const auto& limit_array = model->GetArray(op->inputs[1]);
   if (!limit_array.has_shape()) {
     return;
   }
-  const auto& delta_array = *model->arrays[op->inputs[2]];
+  const auto& delta_array = model->GetArray(op->inputs[2]);
   if (!delta_array.has_shape()) {
     return;
   }
@@ -599,32 +765,51 @@ void ProcessRangeOperator(Model* model, RangeOperator* op) {
 void ProcessTensorFlowSplitOperator(Model* model, TensorFlowSplitOperator* op) {
   CHECK_EQ(op->inputs.size(), 2);
   const string& input_name = op->inputs[1];
-  const auto& input_array = *model->arrays[input_name];
+  const auto& input_array = model->GetArray(input_name);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
   }
   const Shape& input_shape = input_array.shape();
 
-  // This code is slightly suspect.  The TensorFlow docs say that the axis
-  // selection defaults to 0, but we are splitting across the final axis.
-  const int input_dims_count = input_shape.dimensions_count();
-  const int input_depth = input_shape.dims(input_dims_count - 1);
-  CHECK_EQ(input_depth % op->num_split, 0);
-  const int split_depth = input_depth / op->num_split;
+  // Yield until axis is constant.
+  if (!IsConstantParameterArray(*model, op->inputs[0])) {
+    return;
+  }
+
+  const auto& axis_array = model->GetArray(op->inputs[0]);
+
+  // Yield until axis dims have been resolved.
+  if (!axis_array.has_shape()) {
+    return;
+  }
+
+  CHECK(axis_array.data_type == ArrayDataType::kInt32)
+      << "Axis array must be int32.";
+  CHECK_EQ(RequiredBufferSizeForShape(axis_array.shape()), 1)
+      << "Axis array must be scalar.";
+
+  int axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
+  if (axis < 0) {
+    axis += input_shape.dimensions_count();
+  }
+
+  const int split_dim = input_shape.dims(axis);
+  CHECK_EQ(split_dim % op->num_split, 0);
+  const int split_depth = split_dim / op->num_split;
 
   Shape output_shape = input_shape;
-  (*output_shape.mutable_dims())[input_dims_count - 1] = split_depth;
+  (*output_shape.mutable_dims())[axis] = split_depth;
 
   CHECK_EQ(op->outputs.size(), op->num_split);
   for (const auto& output : op->outputs) {
-    model->arrays[output]->copy_shape(output_shape);
+    model->GetArray(output).copy_shape(output_shape);
   }
 }
 
 void ProcessAveragePoolOperator(Model* model, AveragePoolOperator* op) {
   const string& input_name = op->inputs[0];
-  const auto& input_array = *model->arrays[input_name];
+  const auto& input_array = model->GetArray(input_name);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -634,14 +819,14 @@ void ProcessAveragePoolOperator(Model* model, AveragePoolOperator* op) {
   const string& output_name = op->outputs[0];
   const int output_depth = input_shape.dims(3);
   ComputeConvSizes(input_shape, output_depth, op->kwidth, op->kheight,
-                   op->stride_width, op->stride_height, op->padding.type,
+                   op->stride_width, op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
 
 void ProcessMaxPoolOperator(Model* model, MaxPoolOperator* op) {
   const string& input_name = op->inputs[0];
-  const auto& input_array = *model->arrays[input_name];
+  const auto& input_array = model->GetArray(input_name);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -651,14 +836,14 @@ void ProcessMaxPoolOperator(Model* model, MaxPoolOperator* op) {
   const string& output_name = op->outputs[0];
   const int output_depth = input_shape.dims(3);
   ComputeConvSizes(input_shape, output_depth, op->kwidth, op->kheight,
-                   op->stride_width, op->stride_height, op->padding.type,
+                   op->stride_width, op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
 
 void ProcessL2PoolOperator(Model* model, L2PoolOperator* op) {
   const string& input_name = op->inputs[0];
-  const auto& input_array = *model->arrays[input_name];
+  const auto& input_array = model->GetArray(input_name);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -670,7 +855,7 @@ void ProcessL2PoolOperator(Model* model, L2PoolOperator* op) {
   const string& output_name = op->outputs[0];
   const int output_depth = input_shape.dims(3);
   ComputeConvSizes(input_shape, output_depth, op->kwidth, op->kheight,
-                   op->stride_width, op->stride_height, op->padding.type,
+                   op->stride_width, op->stride_height, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
@@ -679,14 +864,14 @@ void ProcessResizeBilinearOperator(Model* model, ResizeBilinearOperator* op) {
   CHECK_EQ(op->inputs.size(), 2);
   CHECK_EQ(op->outputs.size(), 1);
 
-  if (!model->arrays[op->inputs[0]]->has_shape() ||
-      !model->arrays[op->inputs[1]]->has_shape()) {
+  if (!model->GetArray(op->inputs[0]).has_shape() ||
+      !model->GetArray(op->inputs[1]).has_shape()) {
     return;
   }
-  const auto& input_data_shape = model->arrays[op->inputs[0]]->shape();
+  const auto& input_data_shape = model->GetArray(op->inputs[0]).shape();
 
   const string& output_size_name = op->inputs[1];
-  const auto& output_size_array = *model->arrays[output_size_name];
+  const auto& output_size_array = model->GetArray(output_size_name);
   CHECK(output_size_array.data_type == ArrayDataType::kInt32);
   CHECK(output_size_array.has_shape());
   const auto& output_size_shape = output_size_array.shape();
@@ -697,18 +882,17 @@ void ProcessResizeBilinearOperator(Model* model, ResizeBilinearOperator* op) {
   }
   std::vector<int32> output_shape =
       output_size_array.GetBuffer<ArrayDataType::kInt32>().data;
-  model->arrays[op->outputs[0]]->copy_shape(
-      Shape({input_data_shape.dims(0), output_shape[0], output_shape[1],
-             input_data_shape.dims(3)}));
+  model->GetArray(op->outputs[0])
+      .copy_shape(Shape({input_data_shape.dims(0), output_shape[0],
+                         output_shape[1], input_data_shape.dims(3)}));
 }
 
 void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
-  // I/O arrays should be allocated on creation of op.
-  QCHECK_EQ(op->inputs.size(), LstmCellOperator::NUM_INPUTS);
-  QCHECK_EQ(op->outputs.size(), LstmCellOperator::NUM_OUTPUTS);
+  // Only required for compact LstmCell with default NUM_INPUTS of inputs.
+  if (op->inputs.size() != LstmCellOperator::NUM_INPUTS) return;
 
   const auto& input_array =
-      *model->arrays[op->inputs[LstmCellOperator::DATA_INPUT]];
+      model->GetArray(op->inputs[LstmCellOperator::DATA_INPUT]);
   // Yield until all input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -717,7 +901,7 @@ void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
   CHECK_GE(input_shape.dimensions_count(), 2);
 
   const auto& prev_activ_array =
-      *model->arrays[op->inputs[LstmCellOperator::PREV_ACTIV_INPUT]];
+      model->GetArray(op->inputs[LstmCellOperator::PREV_ACTIV_INPUT]);
   // Yield until all input dims have been resolved.
   if (!prev_activ_array.has_shape()) {
     return;
@@ -726,7 +910,7 @@ void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
   CHECK_GE(prev_activ_shape.dimensions_count(), 2);
 
   const auto& weights_array =
-      *model->arrays[op->inputs[LstmCellOperator::WEIGHTS_INPUT]];
+      model->GetArray(op->inputs[LstmCellOperator::WEIGHTS_INPUT]);
   // Yield until weights dims have been resolved.
   if (!weights_array.has_shape()) {
     return;
@@ -735,7 +919,7 @@ void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
   CHECK_EQ(weights_shape.dimensions_count(), 2);
 
   const auto& bias_array =
-      *model->arrays[op->inputs[LstmCellOperator::BIASES_INPUT]];
+      model->GetArray(op->inputs[LstmCellOperator::BIASES_INPUT]);
   // Yield until bias dims have been resolved.
   if (!bias_array.has_shape()) {
     return;
@@ -744,7 +928,7 @@ void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
   CHECK_GE(bias_shape.dimensions_count(), 1);
 
   const auto& prev_state_array =
-      *model->arrays[op->inputs[LstmCellOperator::PREV_STATE_INPUT]];
+      model->GetArray(op->inputs[LstmCellOperator::PREV_STATE_INPUT]);
   // Yield until all input dims have been resolved.
   if (!prev_state_array.has_shape()) {
     return;
@@ -784,7 +968,7 @@ void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
 }
 
 void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -797,8 +981,8 @@ void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
   const auto input_height = input_shape.dims(1);
   const auto input_width = input_shape.dims(2);
 
-  const auto& block_shape_array = *model->arrays[op->inputs[1]];
-  const auto& paddings_array = *model->arrays[op->inputs[2]];
+  const auto& block_shape_array = model->GetArray(op->inputs[1]);
+  const auto& paddings_array = model->GetArray(op->inputs[2]);
   const auto& block_shape_array_shape = block_shape_array.shape();
   const auto& paddings_array_shape = paddings_array.shape();
   QCHECK_EQ(block_shape_array_shape.dimensions_count(), 1);
@@ -830,13 +1014,13 @@ void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
   int output_height = height_with_paddings / block_height;
   int output_width = width_with_paddings / block_width;
 
-  model->arrays[op->outputs[0]]->copy_shape(
-      Shape({input_shape.dims(0) * block_height * block_width, output_height,
-             output_width, input_shape.dims(3)}));
+  model->GetArray(op->outputs[0])
+      .copy_shape(Shape({input_shape.dims(0) * block_height * block_width,
+                         output_height, output_width, input_shape.dims(3)}));
 }
 
 void ProcessBatchToSpaceNDOperator(Model* model, BatchToSpaceNDOperator* op) {
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -846,8 +1030,8 @@ void ProcessBatchToSpaceNDOperator(Model* model, BatchToSpaceNDOperator* op) {
   const auto input_height = input_shape.dims(1);
   const auto input_width = input_shape.dims(2);
 
-  const auto& block_shape_array = *model->arrays[op->inputs[1]];
-  const auto& crops_array = *model->arrays[op->inputs[2]];
+  const auto& block_shape_array = model->GetArray(op->inputs[1]);
+  const auto& crops_array = model->GetArray(op->inputs[2]);
   const auto& block_shape_array_shape = block_shape_array.shape();
   const auto& crops_array_shape = crops_array.shape();
   QCHECK_EQ(block_shape_array_shape.dimensions_count(), 1);
@@ -871,26 +1055,24 @@ void ProcessBatchToSpaceNDOperator(Model* model, BatchToSpaceNDOperator* op) {
   }
   QCHECK(crops_array.data_type == ArrayDataType::kInt32);
   const auto& crops_data = crops_array.GetBuffer<ArrayDataType::kInt32>().data;
-  // We don't support crops now.
-  QCHECK_EQ(crops_data[0], 0);
-  QCHECK_EQ(crops_data[1], 0);
-  QCHECK_EQ(crops_data[2], 0);
-  QCHECK_EQ(crops_data[3], 0);
-
+  const int crops_top = crops_data[0];
+  const int crops_bottom = crops_data[1];
+  const int crops_left = crops_data[2];
+  const int crops_right = crops_data[3];
+  const int output_height =
+      input_height * block_height - crops_top - crops_bottom;
+  const int output_width = input_width * block_width - crops_left - crops_right;
   QCHECK_EQ(input_shape.dims(0) % (block_height * block_width), 0);
 
-  int output_height = input_height * block_height;
-  int output_width = input_width * block_width;
-
-  model->arrays[op->outputs[0]]->copy_shape(
-      Shape({input_shape.dims(0) / (block_height * block_width), output_height,
-             output_width, input_shape.dims(3)}));
+  model->GetArray(op->outputs[0])
+      .copy_shape(Shape({input_shape.dims(0) / (block_height * block_width),
+                         output_height, output_width, input_shape.dims(3)}));
 }
 
 void ProcessGatherOperator(Model* model, GatherOperator* op) {
-  const auto& input_array = *model->arrays[op->inputs[0]];
-  const auto& indices_array = *model->arrays[op->inputs[1]];
-  auto& output_array = *model->arrays[op->outputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  const auto& indices_array = model->GetArray(op->inputs[1]);
+  auto& output_array = model->GetArray(op->outputs[0]);
 
   // Bail if we already know the output shape.
   if (output_array.has_shape()) {
@@ -920,11 +1102,48 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
   }
 }
 
+void ProcessTopkV2Operator(Model* model, TopKV2Operator* op) {
+  const auto& input_values = model->GetArray(op->inputs[0]);
+  const auto& input_k = model->GetArray(op->inputs[1]);
+  auto& output_values = model->GetArray(op->outputs[0]);
+  auto& output_indexes = model->GetArray(op->outputs[1]);
+
+  // Bail if we already know the output shape.
+  if (output_indexes.has_shape()) {
+    QCHECK(output_values.has_shape());
+    return;
+  }
+
+  // Yield until input dims have been resolved.
+  if (!input_values.has_shape()) {
+    return;
+  }
+
+  const auto& input_values_shape = input_values.shape();
+  auto output_indexes_dims = output_indexes.mutable_shape()->mutable_dims();
+  auto output_values_dims = output_values.mutable_shape()->mutable_dims();
+  for (int dim = 0; dim < input_values_shape.dimensions_count() - 1; dim++) {
+    output_indexes_dims->push_back(input_values_shape.dims(dim));
+    output_values_dims->push_back(input_values_shape.dims(dim));
+  }
+  // If the value is initialized, we can specify the last dimension, otherwise
+  // unknown.
+  if (input_k.buffer) {
+    const int32_t k_value = input_k.GetBuffer<ArrayDataType::kInt32>().data[0];
+    output_indexes_dims->push_back(k_value);
+    output_values_dims->push_back(k_value);
+
+  } else {
+    output_indexes_dims->push_back(0);
+    output_values_dims->push_back(0);
+  }
+}
+
 void ProcessPadOperator(Model* model, PadOperator* op) {
   CHECK_EQ(op->inputs.size(), 2);
   CHECK_EQ(op->outputs.size(), 1);
 
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
 
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) return;
@@ -932,7 +1151,33 @@ void ProcessPadOperator(Model* model, PadOperator* op) {
   if (op->left_padding.empty()) return;
   CHECK_EQ(op->left_padding.size(), op->right_padding.size());
 
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) return;
+
+  Shape output_shape = input_array.shape();
+  std::vector<int>& dims = *output_shape.mutable_dims();
+  CHECK_EQ(op->left_padding.size(), dims.size());
+
+  for (int i = 0; i < op->left_padding.size(); ++i) {
+    dims[i] += op->left_padding[i] + op->right_padding[i];
+  }
+
+  output_array.copy_shape(output_shape);
+}
+
+void ProcessPadV2Operator(Model* model, PadV2Operator* op) {
+  CHECK_EQ(op->inputs.size(), 3);
+  CHECK_EQ(op->outputs.size(), 1);
+
+  const auto& input_array = model->GetArray(op->inputs[0]);
+
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) return;
+
+  if (op->left_padding.empty()) return;
+  CHECK_EQ(op->left_padding.size(), op->right_padding.size());
+
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) return;
 
   Shape output_shape = input_array.shape();
@@ -949,13 +1194,18 @@ void ProcessPadOperator(Model* model, PadOperator* op) {
 void ProcessRankOperator(Model* model, RankOperator* op) {
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
     // Shape already propagated
     return;
   }
 
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  if (output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
+  const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until input dims have been resolved.
     return;
@@ -970,13 +1220,18 @@ void ProcessRankOperator(Model* model, RankOperator* op) {
 void ProcessShapeOperator(Model* model, TensorFlowShapeOperator* op) {
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
     // Shape already propagated
     return;
   }
 
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  if (output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
+  const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until input dims have been resolved.
     return;
@@ -991,7 +1246,7 @@ void ProcessShapeOperator(Model* model, TensorFlowShapeOperator* op) {
 void ProcessStackOperator(Model* model, StackOperator* op) {
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
     // Shape already propagated
     return;
@@ -1006,10 +1261,6 @@ void ProcessStackOperator(Model* model, StackOperator* op) {
     }
 
     Shape shape = input_array.shape();
-    if (shape.dimensions_count() == 0) {
-      // Convert 0D scalars to 1D scalars of shape {1}.
-      shape.mutable_dims()->push_back(1);
-    }
     if (!stacked_shape) {
       stacked_shape.reset(new Shape(shape));
     } else {
@@ -1032,7 +1283,7 @@ void ProcessStackOperator(Model* model, StackOperator* op) {
 void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
     // Shape already propagated
     return;
@@ -1066,42 +1317,45 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
     return;
   }
 
-  int dim_count = input_array.shape().dimensions_count();
-  CHECK(op->start_indices.size() == dim_count)
-      << ": Incorrect number of start indices supplied to StridedSlice op with "
-         "output \""
-      << op->outputs[0] << "\". Op requires " << dim_count << " start indices";
-  CHECK(op->stop_indices.size() == dim_count)
-      << ": Incorrect number of stop indices supplied to StridedSlice op with "
-         "output \""
-      << op->outputs[0] << "\". Op requires " << dim_count << " stop indices";
-  CHECK(op->strides.size() == dim_count)
-      << ": Incorrect number of strides supplied to StridedSlice op with "
-         " output \""
-      << op->outputs[0] << "\". Op requires " << dim_count << " strides";
+  int num_input_axes = input_array.shape().dimensions_count();
+  CHECK_LE(op->start_indices.size(), num_input_axes)
+      << "StridedSlice op with output \"" << op->outputs[0]
+      << "\", requires no more than " << num_input_axes << " start indices";
+  CHECK_LE(op->stop_indices.size(), num_input_axes)
+      << "StridedSlice op with output \"" << op->outputs[0]
+      << "\", requires no more than " << num_input_axes << " stop indices";
+  CHECK_LE(op->strides.size(), num_input_axes)
+      << "StridedSlice op with output \"" << op->outputs[0]
+      << "\", requires no more than " << num_input_axes << " strides";
+  for (int i = 0; i < op->strides.size(); i++) {
+    CHECK_NE(op->strides[i], 0) << "Strides must be non-zero. Axis " << i
+                                << " has stride=" << op->strides[i] << ".";
+  }
 
   // Create output shape
   std::vector<int>* dims = output_array.mutable_shape()->mutable_dims();
 
   // Compute output shape
-  for (int i = 0; i < dim_count; ++i) {
-    const int mask = 1 << i;
-    int start = (op->begin_mask & mask) ? 0 : op->start_indices[i];
-    if (start < 0) {
-      // handle negative indices
-      start += input_array.shape().dims(i);
-    }
-    int stop = (op->end_mask & mask) ? input_array.shape().dims(i)
-                                     : op->stop_indices[i];
-    if (stop < 0) {
-      // handle negative indices
-      stop += input_array.shape().dims(i);
-    }
+  for (int axis = 0; axis < num_input_axes; ++axis) {
+    int start_index = tflite::strided_slice::StartForAxis(
+        op->begin_mask, op->start_indices, op->strides,
+        input_array.shape().dims().data(), axis);
+    int stop_index = tflite::strided_slice::StopForAxis(
+        op->end_mask, op->stop_indices, op->strides,
+        input_array.shape().dims().data(), axis);
+    int dim_size =
+        ceil(static_cast<float>(stop_index - start_index) / op->strides[axis]);
 
-    int dim_size = (stop - start) / op->strides[i];
-    if (op->shrink_axis_mask & mask) {
-      CHECK_EQ(dim_size, 1) << "Output size for an axis must compute to 1 when "
-                               "shrinking that axis";
+    CHECK_GT(dim_size, 0)
+        << "Output size for an axis must be greater than 0. Axis " << axis
+        << " computes to size " << dim_size
+        << " for StridedSlice op with output \"" << op->outputs[0] << "\".";
+    if (op->shrink_axis_mask & (1 << axis)) {
+      CHECK_EQ(dim_size, 1)
+          << "Output size for an axis must compute to 1 when shrinking an "
+             "axis. Axis "
+          << axis << " computes to size " << dim_size
+          << " for StridedSlice op with output \"" << op->outputs[0] << "\".";
     } else {
       dims->push_back(dim_size);
     }
@@ -1112,12 +1366,12 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
   CHECK_EQ(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
 
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
 
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) return;
 
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) return;
 
   const std::vector<int>& input_dims = input_array.shape().dims();
@@ -1136,18 +1390,18 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
 
 void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
   CHECK(op->inputs.size() == 3 || op->inputs.size() == 4);
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) return;
 
-  auto& weights_feature_array = *model->arrays[op->inputs[1]];
+  auto& weights_feature_array = model->GetArray(op->inputs[1]);
   if (!weights_feature_array.has_shape()) return;
 
-  const auto& weights_time_array = *model->arrays[op->inputs[2]];
+  const auto& weights_time_array = model->GetArray(op->inputs[2]);
   if (!weights_time_array.has_shape()) return;
 
   const bool has_bias = (op->inputs.size() == 4);
   if (has_bias) {
-    const auto& bias_array = *model->arrays[op->inputs[3]];
+    const auto& bias_array = model->GetArray(op->inputs[3]);
     if (!bias_array.has_shape()) return;
   }
 
@@ -1164,13 +1418,13 @@ void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
 }
 
 void ProcessTransposeOperator(Model* model, TransposeOperator* op) {
-  auto& output_array = *model->arrays[op->outputs[0]];
+  auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.has_shape()) {
     // We have already run
     return;
   }
 
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until input dims have been resolved.
     return;
@@ -1192,7 +1446,8 @@ void ProcessTransposeOperator(Model* model, TransposeOperator* op) {
   std::vector<int32> const& perm =
       perm_array.GetBuffer<ArrayDataType::kInt32>().data;
   CHECK_EQ(perm.size(), input_shape.dimensions_count())
-      << "Transpose permutation input must be same length as input dimensions";
+      << "Transpose permutation input " << op->inputs[1]
+      << " must be same length as input dimensions";
   std::vector<int>* output_dims = output_array.mutable_shape()->mutable_dims();
   for (int i = 0; i < perm.size(); i++) {
     int axis = perm[i];
@@ -1204,29 +1459,96 @@ void ProcessTransposeOperator(Model* model, TransposeOperator* op) {
 
 void ProcessArgMaxOperator(Model* model, ArgMaxOperator* op) {
   CHECK_EQ(op->inputs.size(), 2);
-  const auto& input_array = *model->arrays[op->inputs[0]];
+  const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
   }
 
-  // The current ArgMax implementation only supports 4-dimensional inputs with
-  // the last dimension as the axis to perform ArgMax for.
   const std::vector<int>& input_dims = input_array.shape().dims();
-  CHECK_EQ(input_dims.size(), 4);
   std::vector<int> output_dims;
 
-  output_dims.reserve(input_dims.size() - 1);
+  output_dims.reserve(input_dims.size());
   for (int i = 0; i < input_dims.size() - 1; ++i) {
     output_dims.push_back(input_dims[i]);
   }
   output_dims.push_back(1);
   const string& output_name = op->outputs[0];
-  auto& output_array = *model->arrays[output_name];
+  auto& output_array = model->GetArray(output_name);
   if (output_array.has_shape()) {
     return;
   }
   *output_array.mutable_shape()->mutable_dims() = output_dims;
+}
+
+void ProcessSparseToDenseOperator(Model* model, SparseToDenseOperator* op) {
+  CHECK_EQ(op->inputs.size(), 4);
+
+  const Array& output_shape_array = model->GetArray(op->inputs[1]);
+  if (!output_shape_array.has_shape()) return;
+  CHECK_EQ(output_shape_array.shape().dimensions_count(), 1);
+
+  // Output should not go over four dimensions.
+  CHECK_LE(output_shape_array.shape().dims(0), 4);
+
+  const string& output_name = op->outputs[0];
+  Array& output_array = model->GetArray(output_name);
+  if (output_array.has_shape()) return;
+
+  CHECK(output_shape_array.data_type == ArrayDataType::kInt32 ||
+        output_shape_array.data_type == ArrayDataType::kInt64);
+  if (output_shape_array.data_type == ArrayDataType::kInt32) {
+    *output_array.mutable_shape()->mutable_dims() =
+        output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+  } else {
+    const std::vector<int64>& output_shape_data =
+        output_shape_array.GetBuffer<ArrayDataType::kInt64>().data;
+    std::copy(
+        output_shape_data.begin(), output_shape_data.end(),
+        std::back_inserter(*output_array.mutable_shape()->mutable_dims()));
+  }
+}
+
+void ProcessTileOperator(Model* model, TensorFlowTileOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  CHECK_EQ(op->outputs.size(), 1);
+
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // We have already run.
+    return;
+  }
+
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  if (!input_array.has_shape()) {
+    // Yield until input dims have been resolved.
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+
+  auto& multiples_array = model->GetArray(op->inputs[1]);
+  if (!multiples_array.has_shape()) {
+    // Yield until multiples shape been resolved.
+    return;
+  }
+  if (!multiples_array.buffer) {
+    // Yield until the multiples is constant.
+    return;
+  }
+  CHECK(multiples_array.data_type == ArrayDataType::kInt32)
+      << "Tile multiples input must be int32";
+
+  std::vector<int32> const& multiples =
+      multiples_array.GetBuffer<ArrayDataType::kInt32>().data;
+  CHECK_EQ(multiples.size(), input_shape.dimensions_count())
+      << "Tile multiples input " << op->inputs[1]
+      << " must be same length as input dimensions";
+
+  auto* mutable_dims = output_array.mutable_shape()->mutable_dims();
+  mutable_dims->resize(multiples.size());
+  for (int i = 0; i < mutable_dims->size(); ++i) {
+    (*mutable_dims)[i] = input_shape.dims(i) * multiples[i];
+  }
 }
 
 }  // namespace
@@ -1236,8 +1558,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
   auto* op = it->get();
   std::unordered_map<string, std::vector<int>> old_output_dims;
   for (const auto& output : op->outputs) {
-    if (model->arrays[output]->has_shape()) {
-      old_output_dims[output] = model->arrays[output]->shape().dims();
+    if (model->GetArray(output).has_shape()) {
+      old_output_dims[output] = model->GetArray(output).shape().dims();
     }
   }
 
@@ -1248,7 +1570,10 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
+    case OperatorType::kPRelu:
     case OperatorType::kSoftmax:
+    case OperatorType::kLogSoftmax:
+    case OperatorType::kLog:
     case OperatorType::kLogistic:
     case OperatorType::kTanh:
     case OperatorType::kLocalResponseNormalization:
@@ -1262,12 +1587,16 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowAssert:
     case OperatorType::kCast:
     case OperatorType::kFloor:
-      ProcessSimpleOperator(model, op);
+    case OperatorType::kExp:
+    case OperatorType::kSin:
+      ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:
       ProcessGatherOperator(model, static_cast<GatherOperator*>(op));
       break;
-
+    case OperatorType::kTopK_V2:
+      ProcessTopkV2Operator(model, static_cast<TopKV2Operator*>(op));
+      break;
     case OperatorType::kAdd:
     case OperatorType::kSub:
     case OperatorType::kMul:
@@ -1280,14 +1609,19 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowMaximum:
     case OperatorType::kTensorFlowMinimum:
     case OperatorType::kTensorFlowGreaterEqual:
+    case OperatorType::kTensorFlowEqual:
+    case OperatorType::kTensorFlowNotEqual:
       ProcessSimpleBinaryOperator(model, op);
+      break;
+    case OperatorType::kAddN:
+      ProcessAddNOperator(model, op);
       break;
     case OperatorType::kConv:
       ProcessConvOperator(model, static_cast<ConvOperator*>(op));
       break;
     case OperatorType::kTransposeConv:
-      // Unimplemented, hopefully another graph transformation will drop it or
-      // rewrite it.
+      ProcessTransposeConvOperator(model,
+                                   static_cast<TransposeConvOperator*>(op));
       break;
     case OperatorType::kDepthwiseConv:
       ProcessDepthwiseConvOperator(model,
@@ -1302,7 +1636,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
                                   static_cast<SpaceToDepthOperator*>(op));
       break;
     case OperatorType::kFill:
-      ProcessFillOperator(model, static_cast<FillOperator*>(op));
+      CHECK_EQ(op->inputs.size(), 2);
+      ProcessOpWithShapeInput(model, op);
       break;
     case OperatorType::kFullyConnected:
       ProcessFullyConnectedOperator(model,
@@ -1327,19 +1662,13 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kMean:
       ProcessTensorFlowReductionOperator(model, op);
       break;
-
+    case OperatorType::kSelect:
+      ProcessSelectOperator(model, static_cast<SelectOperator*>(op));
+      break;
     case OperatorType::kSlice:
       ProcessSliceOperator(model, static_cast<SliceOperator*>(op));
       break;
 
-    case OperatorType::kTensorFlowTile:
-      // We don't currently implement the propagation of fixed sizes through
-      // a TensorFlow Tile.
-      //
-      // Fortunately, we don't need to: so far, we have only dealt with Tile
-      // or Slice ops in subgraphs that are identified as L2Normalization.
-      // See IdentifyL2Normalization.
-      break;
     case OperatorType::kTensorFlowSwitch:
       // We can't know the sizes of the outputs until we have resolved the
       // predicate, and once we have resolved the predicate, the whole
@@ -1395,6 +1724,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kLstmCell:
       ProcessLstmCellOperator(model, static_cast<LstmCellOperator*>(op));
       break;
+    case OperatorType::kBatchMatMul:
     case OperatorType::kTensorFlowMatMul:
       // MatMul operators are converted to FullyConnected, after which their
       // shapes are propagated.
@@ -1409,6 +1739,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       break;
     case OperatorType::kPad:
       ProcessPadOperator(model, static_cast<PadOperator*>(op));
+      break;
+    case OperatorType::kPadV2:
+      ProcessPadV2Operator(model, static_cast<PadV2Operator*>(op));
       break;
     case OperatorType::kStridedSlice:
       ProcessStridedSliceOperator(model,
@@ -1425,6 +1758,23 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTranspose:
       ProcessTransposeOperator(model, static_cast<TransposeOperator*>(op));
       break;
+    case OperatorType::kDynamicPartition:
+    case OperatorType::kDynamicStitch:
+      // DynamicPartition/DynamicStitch are currently only supported for
+      // transforms that remove them, so we avoid propagating shapes through
+      // them and let things settle once they've been removed.
+      break;
+    case OperatorType::kRandomUniform:
+      CHECK_EQ(op->inputs.size(), 1);
+      ProcessOpWithShapeInput(model, op);
+      break;
+    case OperatorType::kSparseToDense:
+      ProcessSparseToDenseOperator(model,
+                                   static_cast<SparseToDenseOperator*>(op));
+      break;
+    case OperatorType::kTensorFlowTile:
+      ProcessTileOperator(model, static_cast<TensorFlowTileOperator*>(op));
+      break;
     default:
       // Unimplemented, another graph transformation should drop it.
       LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(op->type);
@@ -1433,10 +1783,10 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
   // Return true if any output dim changed, false if none changed.
   // Assumption: no transformation clears an output shape, they only add shapes.
   for (const auto& output : op->outputs) {
-    if (model->arrays[output]->has_shape() &&
-        (old_output_dims[output] != model->arrays[output]->shape().dims())) {
+    if (model->GetArray(output).has_shape() &&
+        (old_output_dims[output] != model->GetArray(output).shape().dims())) {
       AddMessageF("Set shape of %s to [%s]", output,
-                  absl::StrJoin(model->arrays[output]->shape().dims(), ","));
+                  absl::StrJoin(model->GetArray(output).shape().dims(), ","));
       return true;
     }
   }

@@ -23,40 +23,70 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/toco_cmdline_flags.h"
 #include "tensorflow/contrib/lite/toco/toco_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
+#include "tensorflow/contrib/lite/toco/toco_saved_model.h"
 #include "tensorflow/contrib/lite/toco/toco_tooling.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 #include "tensorflow/core/platform/logging.h"
 
-#ifndef CHECK_OK
-#define CHECK_OK(val) CHECK_EQ((val).ok(), true)
-#define QCHECK_OK(val) QCHECK_EQ((val).ok(), true)
-#endif
-
 namespace toco {
 namespace {
 
-#define QCHECK_REQUIRE_TOCO_FLAG(arg) \
-  QCHECK(parsed_toco_flags.arg.specified()) << "Missing required flag: " #arg;
+// Checks the permissions of the output file to ensure it is writeable.
+void CheckOutputFilePermissions(const Arg<string>& output_file) {
+  QCHECK(output_file.specified()) << "Missing required flag --output_file.\n";
+  QCHECK(port::file::Writable(output_file.value()).ok())
+      << "Specified output_file is not writable: " << output_file.value()
+      << ".\n";
+}
 
-void CheckFilePermissions(const ParsedTocoFlags& parsed_toco_flags,
-                          const ParsedModelFlags& parsed_model_flags,
-                          const TocoFlags& toco_flags) {
-  port::CheckInitGoogleIsDone("InitGoogle is not done yet");
-
-  QCHECK_REQUIRE_TOCO_FLAG(input_file)
-  QCHECK_OK(port::file::Exists(parsed_toco_flags.input_file.value(),
-                               port::file::Defaults()))
-      << "Specified input_file does not exist: "
-      << parsed_toco_flags.input_file.value();
-  QCHECK_OK(port::file::Readable(parsed_toco_flags.input_file.value(),
-                                 port::file::Defaults()))
+// Checks the permissions of the frozen model file.
+void CheckFrozenModelPermissions(const Arg<string>& input_file) {
+  QCHECK(input_file.specified()) << "Missing required flag --input_file.\n";
+  QCHECK(port::file::Exists(input_file.value(), port::file::Defaults()).ok())
+      << "Specified input_file does not exist: " << input_file.value() << ".\n";
+  QCHECK(port::file::Readable(input_file.value(), port::file::Defaults()).ok())
       << "Specified input_file exists, but is not readable: "
-      << parsed_toco_flags.input_file.value();
+      << input_file.value() << ".\n";
+}
 
-  QCHECK_REQUIRE_TOCO_FLAG(output_file);
-  QCHECK_OK(port::file::Writable(parsed_toco_flags.output_file.value()))
-      << "parsed_toco_flags.input_file.value() output_file is not writable: "
-      << parsed_toco_flags.output_file.value();
+// Checks the permissions of the SavedModel directory.
+void CheckSavedModelPermissions(const Arg<string>& savedmodel_directory) {
+  QCHECK(savedmodel_directory.specified())
+      << "Missing required flag --savedmodel_directory.\n";
+  QCHECK(
+      port::file::Exists(savedmodel_directory.value(), port::file::Defaults())
+          .ok())
+      << "Specified savedmodel_directory does not exist: "
+      << savedmodel_directory.value() << ".\n";
+}
+
+// Reads the contents of the GraphDef from either the frozen graph file or the
+// SavedModel directory. If it reads the SavedModel directory, it updates the
+// ModelFlags and TocoFlags accordingly.
+void ReadInputData(const ParsedTocoFlags& parsed_toco_flags,
+                   const ParsedModelFlags& parsed_model_flags,
+                   TocoFlags* toco_flags, ModelFlags* model_flags,
+                   string* graph_def_contents) {
+  port::CheckInitGoogleIsDone("InitGoogle is not done yet.\n");
+
+  bool has_input_file = parsed_toco_flags.input_file.specified();
+  bool has_savedmodel_dir = parsed_toco_flags.savedmodel_directory.specified();
+
+  // Ensure either input_file or savedmodel_directory flag has been set.
+  QCHECK_NE(has_input_file, has_savedmodel_dir)
+      << "Specify either input_file or savedmodel_directory flag.\n";
+
+  // Checks the input file permissions and reads the contents.
+  if (has_input_file) {
+    CheckFrozenModelPermissions(parsed_toco_flags.input_file);
+    CHECK(port::file::GetContents(parsed_toco_flags.input_file.value(),
+                                  graph_def_contents, port::file::Defaults())
+              .ok());
+  } else {
+    CheckSavedModelPermissions(parsed_toco_flags.savedmodel_directory);
+    GetSavedModelContents(parsed_toco_flags, parsed_model_flags, toco_flags,
+                          model_flags, graph_def_contents);
+  }
 }
 
 void ToolMain(const ParsedTocoFlags& parsed_toco_flags,
@@ -67,21 +97,20 @@ void ToolMain(const ParsedTocoFlags& parsed_toco_flags,
   TocoFlags toco_flags;
   ReadTocoFlagsFromCommandLineFlags(parsed_toco_flags, &toco_flags);
 
-  CheckFilePermissions(parsed_toco_flags, parsed_model_flags, toco_flags);
+  string graph_def_contents;
+  ReadInputData(parsed_toco_flags, parsed_model_flags, &toco_flags,
+                &model_flags, &graph_def_contents);
+  CheckOutputFilePermissions(parsed_toco_flags.output_file);
 
-  string input_file_contents;
-  CHECK_OK(port::file::GetContents(parsed_toco_flags.input_file.value(),
-                                   &input_file_contents,
-                                   port::file::Defaults()));
   std::unique_ptr<Model> model =
-      Import(toco_flags, model_flags, input_file_contents);
+      Import(toco_flags, model_flags, graph_def_contents);
   Transform(toco_flags, model.get());
   string output_file_contents;
   Export(toco_flags, *model, toco_flags.allow_custom_ops(),
          &output_file_contents);
-  CHECK_OK(port::file::SetContents(parsed_toco_flags.output_file.value(),
-                                   output_file_contents,
-                                   port::file::Defaults()));
+  CHECK(port::file::SetContents(parsed_toco_flags.output_file.value(),
+                                output_file_contents, port::file::Defaults())
+            .ok());
 }
 
 }  // namespace

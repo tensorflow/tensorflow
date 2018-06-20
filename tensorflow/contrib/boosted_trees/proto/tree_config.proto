@@ -53,7 +53,7 @@ message DenseFloatBinarySplit {
   // Float feature column and split threshold describing
   // the rule feature <= threshold.
   int32 feature_column = 1;
-  // If feature column is multivalent, this holds the index of the dimensiong
+  // If feature column is multivalent, this holds the index of the dimension
   // for the split. Defaults to 0.
   int32 dimension_id = 5;
   float threshold = 2;

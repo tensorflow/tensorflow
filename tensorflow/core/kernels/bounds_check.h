@@ -48,7 +48,7 @@ EIGEN_ALWAYS_INLINE EIGEN_DEVICE_FUNC const T SubtleMustCopy(const T &x) {
   auto *to_x = reinterpret_cast<const volatile T *>(&x);
   return *to_x;
 }
-}  // namespace tensorflow::internal
+}  // namespace internal
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_UTIL_BOUNDS_CHECK_H_

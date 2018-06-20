@@ -18,12 +18,12 @@ limitations under the License.
 #include <mutex>
 
 #include "sqlite3.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/lib/core/refcount.h"
 
 /// TensorFlow SQLite Veneer
 ///
@@ -121,10 +121,7 @@ class LOCKABLE Sqlite : public core::RefCounted {
 
   Sqlite(sqlite3* db, sqlite3_stmt* begin, sqlite3_stmt* commit,
          sqlite3_stmt* rollback) noexcept
-      : db_(db),
-        begin_(begin),
-        commit_(commit),
-        rollback_(rollback) {}
+      : db_(db), begin_(begin), commit_(commit), rollback_(rollback) {}
 
   sqlite3* const db_;
   sqlite3_stmt* const begin_;
@@ -233,7 +230,8 @@ class SqliteStatement {
   /// freed until this statement is Reset() or finalized.
   void BindText(int parameter, const StringPiece& text) {
     Update(sqlite3_bind_text64(stmt_, parameter, text.data(), text.size(),
-                               SQLITE_TRANSIENT, SQLITE_UTF8), parameter);
+                               SQLITE_TRANSIENT, SQLITE_UTF8),
+           parameter);
     size_ += text.size();
   }
   void BindText(const char* parameter, const StringPiece& text) {
@@ -241,7 +239,8 @@ class SqliteStatement {
   }
   void BindTextUnsafe(int parameter, const StringPiece& text) {
     Update(sqlite3_bind_text64(stmt_, parameter, text.data(), text.size(),
-                               SQLITE_STATIC, SQLITE_UTF8), parameter);
+                               SQLITE_STATIC, SQLITE_UTF8),
+           parameter);
     size_ += text.size();
   }
   void BindTextUnsafe(const char* parameter, const StringPiece& text) {
@@ -254,7 +253,8 @@ class SqliteStatement {
   /// freed until this statement is Reset() or finalized.
   void BindBlob(int parameter, const StringPiece& blob) {
     Update(sqlite3_bind_blob64(stmt_, parameter, blob.data(), blob.size(),
-                               SQLITE_TRANSIENT), parameter);
+                               SQLITE_TRANSIENT),
+           parameter);
     size_ += blob.size();
   }
   void BindBlob(const char* parameter, const StringPiece& blob) {
@@ -262,7 +262,8 @@ class SqliteStatement {
   }
   void BindBlobUnsafe(int parameter, const StringPiece& blob) {
     Update(sqlite3_bind_blob64(stmt_, parameter, blob.data(), blob.size(),
-                               SQLITE_STATIC), parameter);
+                               SQLITE_STATIC),
+           parameter);
     size_ += blob.size();
   }
   void BindBlobUnsafe(const char* parameter, const StringPiece& text) {
@@ -320,9 +321,7 @@ class SqliteStatement {
 
   /// \brief Move constructor, after which <other> is reset to empty.
   SqliteStatement(SqliteStatement&& other) noexcept
-      : db_(other.db_),
-        stmt_(other.stmt_),
-        bind_error_(other.bind_error_) {
+      : db_(other.db_), stmt_(other.stmt_), bind_error_(other.bind_error_) {
     other.db_ = nullptr;
     other.stmt_ = nullptr;
     other.bind_error_ = SQLITE_OK;

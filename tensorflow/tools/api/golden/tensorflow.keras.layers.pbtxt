@@ -113,7 +113,19 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CuDNNGRU"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CuDNNLSTM"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Dense"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DepthwiseConv2D"
     mtype: "<type \'type\'>"
   }
   member {
@@ -269,6 +281,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Minimum"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Multiply"
     mtype: "<type \'type\'>"
   }
@@ -293,7 +309,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SeparableConv1D"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SeparableConv2D"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SeparableConvolution1D"
     mtype: "<type \'type\'>"
   }
   member {
@@ -306,6 +330,10 @@ tf_module {
   }
   member {
     name: "SimpleRNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Softmax"
     mtype: "<type \'type\'>"
   }
   member {
@@ -322,6 +350,10 @@ tf_module {
   }
   member {
     name: "StackedRNNCells"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Subtract"
     mtype: "<type \'type\'>"
   }
   member {
@@ -385,7 +417,15 @@ tf_module {
     argspec: "args=[\'inputs\'], varargs=None, keywords=kwargs, defaults=None"
   }
   member_method {
+    name: "minimum"
+    argspec: "args=[\'inputs\'], varargs=None, keywords=kwargs, defaults=None"
+  }
+  member_method {
     name: "multiply"
+    argspec: "args=[\'inputs\'], varargs=None, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "subtract"
     argspec: "args=[\'inputs\'], varargs=None, keywords=kwargs, defaults=None"
   }
 }

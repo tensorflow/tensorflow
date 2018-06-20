@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_UTILS_H_
-#define TENSORFLOW_GRAPPLER_UTILS_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_H_
 
 #include <functional>
 #include <unordered_map>
@@ -23,10 +23,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/strings/scanner.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -62,7 +65,7 @@ class NodeMap {
 // A vector with a set. The set stores the same elements as the vector, and
 // quickly answers whether a value is in the vector. Duplicated elements are not
 // allowed for now.
-template <class T>
+template <class T, class Hash = std::hash<T>>
 class SetVector {
  public:
   // Returns false if value already existed in the set, true otherwise.
@@ -88,7 +91,7 @@ class SetVector {
   void Reserve(int64 size) { vector_.reserve(size); }
 
  private:
-  std::unordered_set<T> set_;
+  std::unordered_set<T, Hash> set_;
   std::vector<T> vector_;
 };
 
@@ -106,8 +109,38 @@ string NodeName(const string& name);
 // Get the trailing position number ":{digits}" (if any) of a node name.
 int NodePosition(const string& name);
 
+inline StringPiece ParseNodeNameAsStringPiece(const string& name,
+                                              int* position) {
+  // Strip the prefix '^' (if any), and strip the trailing ":{digits} (if any)
+  // to get a node name.
+  strings::Scanner scan(name);
+  scan.ZeroOrOneLiteral("^")
+      .RestartCapture()
+      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
+      .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+  StringPiece capture;
+  StringPiece remaining;
+  if (scan.Peek(':') != ':' || !scan.GetResult(&remaining, &capture)) {
+    *position = 0;
+    static const string empty;
+    return StringPiece(empty);
+  } else {
+    if (name[0] == '^') {
+      *position = -1;
+    } else if (remaining.empty()) {
+      *position = 0;
+    } else {
+      // Skip the first ':' character.
+      CHECK(strings::safe_strto32(remaining.substr(1), position));
+    }
+    return capture;
+  }
+}
+
 // Returns the node name and position in a single call.
-string ParseNodeName(const string& name, int* position);
+inline string ParseNodeName(const string& name, int* position) {
+  return std::string(ParseNodeNameAsStringPiece(name, position));
+}
 
 // Add a prefix to a node name with a custom delimiter.
 string AddPrefixToNodeName(const string& name, const string& prefix,
@@ -135,13 +168,23 @@ string AsControlDependency(const string& node);
 
 // Returns the number of outputs of a node according to its OpDef. Note that
 // some of the outputs may be unconnected.
-int NumOutputs(const NodeDef& node);
+int NumOutputs(const NodeDef& node, GraphDef* graph);
+
+// Returns true iff the node has at least one control input.
+bool HasControlInputs(const NodeDef& node);
 
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
 
 // Number of connected non-control outputs.
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map);
+
+// Number of connected non-control data outputs (Ops that consume output tensor
+// data, not just it's shape).
+int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
+
+// Removes redundant control inputs from node.
+void DedupControlInputs(NodeDef* node);
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
@@ -164,14 +207,30 @@ NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
 void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
                          bool invert_permutation);
 
+Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
+
 class SimpleGraphView {
  public:
+  // Build a graph view for the specified graphdef.
   Status Initialize(const GraphDef& graph) {
-    return Initialize(graph, true, true);
+    return Initialize(graph, nullptr, true, true);
   }
-  Status Initialize(const GraphDef& graph, bool dedup_inputs,
-                    bool dedup_outputs);
+  // Build a graph view for the specified graphdef augmented with the additional
+  // edges specified in 'extra_dependencies' if any. Note that
+  // extra_dependencies can be null.
+  Status Initialize(
+      const GraphDef& graph,
+      const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+          extra_dependencies) {
+    return Initialize(graph, extra_dependencies, true, true);
+  }
+  Status Initialize(
+      const GraphDef& graph,
+      const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+          extra_dependencies,
+      bool dedup_inputs, bool dedup_outputs);
 
+  const GraphDef* graph() const { return graph_; }
   inline int num_nodes() const { return index_to_name_.size(); }
   inline const int index(const string& node_name) const {
     const auto& it = name_to_index_.find(node_name);
@@ -188,9 +247,18 @@ class SimpleGraphView {
     return outputs_[node_idx];
   }
 
+  // Traverse the graph starting at `node_idx`, collecting indices of nodes
+  // visited in nodes_found. If a node has an op in `op_types_to_traverse`, the
+  // walk continues to its children. It is assumed that *graph_ was not modified
+  // after the call to Initialize().
+  // If `op_types_to_traverse` is empty the DFS will traverse any node type.
+  void DepthFirstSearch(const std::unordered_set<string>& op_types_to_traverse,
+                        int node_idx, std::set<int>* nodes_found) const;
+
   string PrintToString() const;
 
  private:
+  const GraphDef* graph_;  // Not owned.
   std::vector<string> index_to_name_;
   std::unordered_map<string, int> name_to_index_;
   std::vector<gtl::InlinedVector<int, 4>> inputs_;
@@ -200,4 +268,4 @@ class SimpleGraphView {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_UTILS_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_H_

@@ -78,7 +78,7 @@ training CIFAR-10 illustrates the use of the `tf.data` API along with
 The `tf.data` API utilizes C++ multi-threading and has a much lower overhead
 than the Python-based `queue_runner` that is limited by Python's multi-threading
 performance. A detailed performance guide for the `tf.data` API can be found
-[here](#datasets_performance).
+@{$datasets_performance$here}.
 
 While feeding data using a `feed_dict` offers a high level of flexibility, in
 general `feed_dict` does not provide a scalable solution. If only a single GPU
@@ -475,7 +475,7 @@ optimizations.
 ### TensorFlow with Intel® MKL DNN
 
 Intel® has added optimizations to TensorFlow for Intel® Xeon® and Intel® Xeon
-Phi™ though the use of Intel® Math Kernel Library for Deep Neural Networks
+Phi™ through the use of the Intel® Math Kernel Library for Deep Neural Networks
 (Intel® MKL-DNN) optimized primitives. The optimizations also provide speedups
 for the consumer line of processors, e.g. i5 and i7 Intel processors. The Intel
 published paper
@@ -498,7 +498,7 @@ For TensorFlow source versions after 1.3.0:
 ```bash
 ./configure
 # Pick the desired options
-bazel build --config=mkl -c opt //tensorflow/tools/pip_package:build_pip_package
+bazel build --config=mkl --config=opt //tensorflow/tools/pip_package:build_pip_package
 
 ```
 
@@ -581,9 +581,9 @@ Each variable that impacts performance is discussed below.
     for optimal settings.
 
 *   **intra_op_parallelism_threads**: Setting this equal to the number of
-    physical cores is recommended. Setting the value to 0, which is the default
-    and will result in the value being set to the number of logical cores, is an
-    option to try for some architectures.  This value and `OMP_NUM_THREADS`
+    physical cores is recommended. Setting the value to 0, which is the default,
+    results in the value being set to the number of logical cores - this is an
+    alternate option to try for some architectures.  This value and `OMP_NUM_THREADS`
     should be equal.
 
 *   **inter_op_parallelism_threads**: Setting this equal to the number of

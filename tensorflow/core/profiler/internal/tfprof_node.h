@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
 
 #include <map>
 #include <set>
@@ -915,4 +915,4 @@ bool IsCanonicalDevice(const string& device);
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_H_

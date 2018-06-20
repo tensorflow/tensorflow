@@ -69,12 +69,12 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "SeparableConv2D"
+    name: "SeparableConv1D"
     mtype: "<type \'type\'>"
   }
-  member_method {
-    name: "Input"
-    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'float32\'>\", \'False\', \'None\'], "
+  member {
+    name: "SeparableConv2D"
+    mtype: "<type \'type\'>"
   }
   member_method {
     name: "average_pooling1d"
@@ -135,6 +135,10 @@ tf_module {
   member_method {
     name: "max_pooling3d"
     argspec: "args=[\'inputs\', \'pool_size\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'valid\', \'channels_last\', \'None\'], "
+  }
+  member_method {
+    name: "separable_conv1d"
+    argspec: "args=[\'inputs\', \'filters\', \'kernel_size\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\', \'depth_multiplier\', \'activation\', \'use_bias\', \'depthwise_initializer\', \'pointwise_initializer\', \'bias_initializer\', \'depthwise_regularizer\', \'pointwise_regularizer\', \'bias_regularizer\', \'activity_regularizer\', \'depthwise_constraint\', \'pointwise_constraint\', \'bias_constraint\', \'trainable\', \'name\', \'reuse\'], varargs=None, keywords=None, defaults=[\'1\', \'valid\', \'channels_last\', \'1\', \'1\', \'None\', \'True\', \'None\', \'None\', \'<tensorflow.python.ops.init_ops.Zeros object instance>\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "separable_conv2d"

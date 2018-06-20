@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// StatusOr<T> is the union of a Status object and a T
-// object. StatusOr models the concept of an object that is either a
-// usable value, or an error Status explaining why such a value is
-// not present. To this end, StatusOr<T> does not allow its Status
-// value to be Status::OK. Furthermore, the value of a StatusOr<T*>
-// must not be null. This is enforced by a debug check in most cases,
-// but even when it is not, clients must not set the value to null.
+// StatusOr<T> is the union of a Status object and a T object. StatusOr models
+// the concept of an object that is either a value, or an error Status
+// explaining why such a value is not present. To this end, StatusOr<T> does not
+// allow its Status value to be Status::OK.
 //
 // The primary use-case for StatusOr<T> is as the return value of a
 // function which may fail.
@@ -113,17 +110,19 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   StatusOr& operator=(StatusOr&&) = default;
 
   // Conversion copy/move constructor, T must be convertible from U.
-  // TODO(b/62186717): These should not participate in overload resolution if U
-  // is not convertible to T.
-  template <typename U>
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
   StatusOr(const StatusOr<U>& other);
-  template <typename U>
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
   StatusOr(StatusOr<U>&& other);
 
   // Conversion copy/move assignment operator, T must be convertible from U.
-  template <typename U>
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
   StatusOr& operator=(const StatusOr<U>& other);
-  template <typename U>
+  template <typename U, typename std::enable_if<
+                            std::is_convertible<U, T>::value>::type* = nullptr>
   StatusOr& operator=(StatusOr<U>&& other);
 
   // Constructs a new StatusOr with the given value. After calling this
@@ -233,12 +232,14 @@ StatusOr<T>& StatusOr<T>::operator=(Status&& status) {
 }
 
 template <typename T>
-template <typename U>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
 inline StatusOr<T>::StatusOr(const StatusOr<U>& other)
     : Base(static_cast<const typename StatusOr<U>::Base&>(other)) {}
 
 template <typename T>
-template <typename U>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
 inline StatusOr<T>& StatusOr<T>::operator=(const StatusOr<U>& other) {
   if (other.ok())
     this->Assign(other.ValueOrDie());
@@ -248,12 +249,14 @@ inline StatusOr<T>& StatusOr<T>::operator=(const StatusOr<U>& other) {
 }
 
 template <typename T>
-template <typename U>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
 inline StatusOr<T>::StatusOr(StatusOr<U>&& other)
     : Base(static_cast<typename StatusOr<U>::Base&&>(other)) {}
 
 template <typename T>
-template <typename U>
+template <typename U,
+          typename std::enable_if<std::is_convertible<U, T>::value>::type*>
 inline StatusOr<T>& StatusOr<T>::operator=(StatusOr<U>&& other) {
   if (other.ok()) {
     this->Assign(std::move(other).ValueOrDie());

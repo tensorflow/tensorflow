@@ -45,7 +45,7 @@ class ConstOp : public XlaOpKernel {
       ctx->SetInvalidOutput(0);
       return;
     }
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
 
     // To avoid blowups for large constants filled with the same value,
     // recognize that case and emit a scalar broadcast instead.

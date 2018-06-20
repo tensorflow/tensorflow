@@ -15,8 +15,8 @@ limitations under the License.
 
 // Basic minimal DCT class for MFCC speech processing.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_DCT_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_DCT_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MFCC_DCT_H_
+#define TENSORFLOW_CORE_KERNELS_MFCC_DCT_H_
 
 #include <vector>
 
@@ -41,4 +41,4 @@ class MfccDct {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_DCT_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MFCC_DCT_H_

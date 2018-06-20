@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_NODE_EVALUATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_NODE_EVALUATOR_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_NODE_EVALUATOR_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_NODE_EVALUATOR_H_
 
 #include "tensorflow/contrib/decision_trees/proto/generic_tree_model.pb.h"
 #include "tensorflow/contrib/decision_trees/proto/generic_tree_model_extensions.pb.h"
@@ -21,7 +21,6 @@
 
 namespace tensorflow {
 namespace tensorforest {
-
 
 // Base class for evaluators of decision nodes that effectively copy proto
 // contents into C++ structures for faster execution.
@@ -61,7 +60,7 @@ class InequalityDecisionNodeEvaluator : public BinaryDecisionNodeEvaluator {
   bool include_equals_;
 };
 
-// Evalutor for splits with multiple weighted features.
+// Evaluator for splits with multiple weighted features.
 class ObliqueInequalityDecisionNodeEvaluator
     : public BinaryDecisionNodeEvaluator {
  public:
@@ -104,4 +103,4 @@ struct CandidateEvalatorCollection {
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_NODE_EVALUATOR_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_DECISION_NODE_EVALUATOR_H_

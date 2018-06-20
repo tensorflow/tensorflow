@@ -336,6 +336,20 @@ class SplitOpTest(test.TestCase):
     for s in splits:
       self.assertEqual(None, s.get_shape().ndims)
 
+  def testNonexistentDimTensor(self):
+    x = array_ops.placeholder(dtypes.int32)
+    values = np.zeros([5, 30])
+    splits = array_ops.placeholder(dtypes.int32)
+    with self.assertRaisesRegexp(ValueError, "Cannot infer"):
+      y = array_ops.split(values, splits, axis=x)
+
+    splits = array_ops.placeholder(dtypes.int32, [3])
+    y = array_ops.split(values, splits, axis=x)
+    with self.test_session(use_gpu=True) as sess:
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   "must have exactly one element"):
+        sess.run(y, {x: np.array([], dtype=np.int32), splits: [4, 11, 15]})
+
 
 if __name__ == "__main__":
   test.main()

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -164,4 +164,4 @@ bool ProtoParseStringLiteralFromScanner(Scanner* scanner, string* value);
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_

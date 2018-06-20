@@ -79,5 +79,24 @@ TEST(ConstAnalysisTest, TopologicalOrder) {
   }
 }
 
+TEST(ConstAnalysisTest, DontFollowControlDependencies) {
+  Scope root = Scope::NewRootScope();
+
+  Output arg0 = ops::_Arg(root.WithOpName("Arg0"), DT_INT32, 0);
+  Output arg1 = ops::_Arg(root.WithOpName("Arg1"), DT_INT32, 1);
+  Output c1 =
+      ops::Const(root.WithOpName("c1").WithControlDependencies(arg0), 1, {1});
+  Output add = ops::Add(root, arg1, c1);
+  Output reshape = ops::Reshape(root, arg1, add);
+
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(&graph));
+
+  std::vector<bool> const_args(2, false);
+  TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args));
+
+  EXPECT_EQ(const_args, std::vector<bool>({false, true}));
+}
+
 }  // namespace
 }  // namespace tensorflow

@@ -41,12 +41,10 @@ def _ResizeNearestNeighborGrad(op, grad):
   else:
     image_shape = array_ops.shape(image)[1:3]
 
-  # pylint: disable=protected-access
-  grads = gen_image_ops._resize_nearest_neighbor_grad(
+  grads = gen_image_ops.resize_nearest_neighbor_grad(
       grad,
       image_shape,
       align_corners=op.get_attr("align_corners"))
-  # pylint: enable=protected-access
   return [grads, None]
 
 
@@ -61,15 +59,8 @@ def _ResizeBilinearGrad(op, grad):
   Returns:
     The gradients w.r.t. the input.
   """
-  allowed_types = [dtypes.float32, dtypes.float64]
-  grad0 = None
-  if op.inputs[0].dtype in allowed_types:
-    # pylint: disable=protected-access
-    grad0 = gen_image_ops._resize_bilinear_grad(
-        grad,
-        op.inputs[0],
-        align_corners=op.get_attr("align_corners"))
-    # pylint: enable=protected-access
+  grad0 = gen_image_ops.resize_bilinear_grad(
+      grad, op.inputs[0], align_corners=op.get_attr("align_corners"))
   return [grad0, None]
 
 
@@ -87,10 +78,8 @@ def _ResizeBicubicGrad(op, grad):
   allowed_types = [dtypes.float32, dtypes.float64]
   grad0 = None
   if op.inputs[0].dtype in allowed_types:
-    # pylint: disable=protected-access
-    grad0 = gen_image_ops._resize_bicubic_grad(
+    grad0 = gen_image_ops.resize_bicubic_grad(
         grad, op.inputs[0], align_corners=op.get_attr("align_corners"))
-    # pylint: enable=protected-access
   return [grad0, None]
 
 
@@ -118,16 +107,20 @@ def _CropAndResizeGrad(op, grad):
   allowed_types = [dtypes.float16, dtypes.float32, dtypes.float64]
   if op.inputs[0].dtype in allowed_types:
     # pylint: disable=protected-access
-    grad0 = gen_image_ops.crop_and_resize_grad_image(grad,
-                                                     op.inputs[1],
-                                                     op.inputs[2],
-                                                     image_shape,
-                                                     T=op.get_attr("T"))
+    grad0 = gen_image_ops.crop_and_resize_grad_image(
+        grad, op.inputs[1], op.inputs[2], image_shape, T=op.get_attr("T"),
+        method=op.get_attr("method"))
     # pylint: enable=protected-access
   else:
     grad0 = None
 
-  grad1 = gen_image_ops.crop_and_resize_grad_boxes(grad, op.inputs[0],
-                                                   op.inputs[1], op.inputs[2])
+  # `grad0` is the gradient to the input image pixels and it
+  # has been implemented for nearest neighbor and bilinear sampling
+  # respectively. `grad1` is the gradient to the input crop boxes' coordinates.
+  # When using nearest neighbor sampling, the gradient to crop boxes'
+  # coordinates are not well defined. In practice, we still approximate
+  # grad1 using the gradient derived from bilinear sampling.
+  grad1 = gen_image_ops.crop_and_resize_grad_boxes(
+      grad, op.inputs[0], op.inputs[1], op.inputs[2])
 
   return [grad0, grad1, None, None]

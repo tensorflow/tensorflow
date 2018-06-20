@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_DUMP_GRAPHVIZ_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_DUMP_GRAPHVIZ_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_DUMP_GRAPHVIZ_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_DUMP_GRAPHVIZ_H_
 
 #include <string>
 
@@ -25,4 +25,4 @@ void DumpGraphviz(const Model& model, string* output_file_contents);
 
 }  // namespace toco
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_DUMP_GRAPHVIZ_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_DUMP_GRAPHVIZ_H_

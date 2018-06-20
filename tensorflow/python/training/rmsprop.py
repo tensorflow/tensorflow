@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """One-line documentation for rmsprop module.
 
 rmsprop algorithm [tieleman2012rmsprop]
@@ -43,16 +42,20 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.RMSPropOptimizer")
 class RMSPropOptimizer(optimizer.Optimizer):
   """Optimizer that implements the RMSProp algorithm.
 
-  See the [paper](http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
+  See the
+  [paper](http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
   """
 
   def __init__(self,
@@ -89,6 +92,13 @@ class RMSPropOptimizer(optimizer.Optimizer):
         computation and memory. Defaults to False.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "RMSProp".
+
+    @compatibility(eager)
+    When eager execution is enabled, `learning_rate`, `decay`, `momentum`, and
+    `epsilon` can each be a callable that takes no arguments and returns the
+    actual value to use. This can be useful for changing these values across
+    different invocations of optimizer functions.
+    @end_compatibility
     """
     super(RMSPropOptimizer, self).__init__(use_locking, name)
     self._learning_rate = learning_rate
@@ -105,21 +115,27 @@ class RMSPropOptimizer(optimizer.Optimizer):
 
   def _create_slots(self, var_list):
     for v in var_list:
-      init_rms = init_ops.ones_initializer(dtype=v.dtype)
+      if v.get_shape().is_fully_defined():
+        init_rms = init_ops.ones_initializer(dtype=v.dtype.base_dtype)
+      else:
+        init_rms = array_ops.ones_like(v)
       self._get_or_make_slot_with_initializer(v, init_rms, v.get_shape(),
-                                              v.dtype, "rms", self._name)
+                                              v.dtype.base_dtype, "rms",
+                                              self._name)
       if self._centered:
         self._zeros_slot(v, "mg", self._name)
       self._zeros_slot(v, "momentum", self._name)
 
   def _prepare(self):
-    self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
-                                                       name="learning_rate")
-    self._decay_tensor = ops.convert_to_tensor(self._decay, name="decay")
-    self._momentum_tensor = ops.convert_to_tensor(self._momentum,
-                                                  name="momentum")
-    self._epsilon_tensor = ops.convert_to_tensor(self._epsilon,
-                                                 name="epsilon")
+    lr = self._call_if_callable(self._learning_rate)
+    decay = self._call_if_callable(self._decay)
+    momentum = self._call_if_callable(self._momentum)
+    epsilon = self._call_if_callable(self._epsilon)
+
+    self._learning_rate_tensor = ops.convert_to_tensor(lr, name="learning_rate")
+    self._decay_tensor = ops.convert_to_tensor(decay, name="decay")
+    self._momentum_tensor = ops.convert_to_tensor(momentum, name="momentum")
+    self._epsilon_tensor = ops.convert_to_tensor(epsilon, name="epsilon")
 
   def _apply_dense(self, grad, var):
     rms = self.get_slot(var, "rms")

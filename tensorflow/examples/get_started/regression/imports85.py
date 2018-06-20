@@ -131,11 +131,12 @@ def dataset(y_name="price", train_fraction=0.7):
     # booleans but we are dealing with symbolic tensors.
     return ~in_training_set(line)
 
-  base_dataset = (tf.contrib.data
-                  # Get the lines from the file.
-                  .TextLineDataset(path)
-                  # drop lines with question marks.
-                  .filter(has_no_question_marks))
+  base_dataset = (
+      tf.data
+      # Get the lines from the file.
+      .TextLineDataset(path)
+      # drop lines with question marks.
+      .filter(has_no_question_marks))
 
   train = (base_dataset
            # Take only the training-set lines.

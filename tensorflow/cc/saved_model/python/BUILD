@@ -7,18 +7,6 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_py_clif_cc")
 
 tf_py_clif_cc(

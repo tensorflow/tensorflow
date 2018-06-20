@@ -54,7 +54,7 @@ class ConcatBaseOp : public XlaOpKernel {
     // TODO(annarev): add a helper to support int64 input.
     const int32 concat_dim = literal.Get<int>({});
 
-    std::vector<xla::ComputationDataHandle> values;
+    std::vector<xla::XlaOp> values;
     std::vector<TensorShape> shapes;
     OP_REQUIRES_OK(ctx, ctx->InputList("values", &values, &shapes));
     const int N = values.size();
@@ -70,13 +70,13 @@ class ConcatBaseOp : public XlaOpKernel {
                     "[",
                     -input_dims, ", ", input_dims, "), but got ", concat_dim));
 
-    // Make a vector holding the ComputationDataHandles for each of
-    // the inputs that has non-zero elements.
-    std::vector<xla::ComputationDataHandle> input_data;
+    // Make a vector holding the XlaOp for each of the inputs that has non-zero
+    // elements.
+    std::vector<xla::XlaOp> input_data;
     int output_concat_dim = 0;
     const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
-      xla::ComputationDataHandle handle = values[i];
+      xla::XlaOp handle = values[i];
       const TensorShape& in_shape = shapes[i];
       const bool in_is_scalar = IsLegacyScalar(in_shape);
       OP_REQUIRES(

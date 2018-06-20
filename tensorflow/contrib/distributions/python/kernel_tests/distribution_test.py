@@ -16,6 +16,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib import distributions
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -25,23 +27,23 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
-ds = distributions
+tfd = distributions
 
 
 class DistributionTest(test.TestCase):
 
   def testParamShapesAndFromParams(self):
     classes = [
-        ds.Normal,
-        ds.Bernoulli,
-        ds.Beta,
-        ds.Chi2,
-        ds.Exponential,
-        ds.Gamma,
-        ds.InverseGamma,
-        ds.Laplace,
-        ds.StudentT,
-        ds.Uniform,
+        tfd.Normal,
+        tfd.Bernoulli,
+        tfd.Beta,
+        tfd.Chi2,
+        tfd.Exponential,
+        tfd.Gamma,
+        tfd.InverseGamma,
+        tfd.Laplace,
+        tfd.StudentT,
+        tfd.Uniform,
     ]
 
     sample_shapes = [(), (10,), (10, 20, 30)]
@@ -63,15 +65,15 @@ class DistributionTest(test.TestCase):
     with self.test_session():
       # Note: we cannot easily test all distributions since each requires
       # different initialization arguments. We therefore spot test a few.
-      normal = ds.Normal(loc=1., scale=2., validate_args=True)
+      normal = tfd.Normal(loc=1., scale=2., validate_args=True)
       self.assertEqual(normal.parameters, normal.copy().parameters)
-      wishart = ds.WishartFull(df=2, scale=[[1., 2], [2, 5]],
-                               validate_args=True)
+      wishart = tfd.WishartFull(df=2, scale=[[1., 2], [2, 5]],
+                                validate_args=True)
       self.assertEqual(wishart.parameters, wishart.copy().parameters)
 
   def testCopyOverride(self):
     with self.test_session():
-      normal = ds.Normal(loc=1., scale=2., validate_args=True)
+      normal = tfd.Normal(loc=1., scale=2., validate_args=True)
       unused_normal_copy = normal.copy(validate_args=False)
       base_params = normal.parameters.copy()
       copy_params = normal.copy(validate_args=False).parameters.copy()
@@ -84,19 +86,19 @@ class DistributionTest(test.TestCase):
       mu = 1.
       sigma = 2.
 
-      normal = ds.Normal(mu, sigma, validate_args=True)
+      normal = tfd.Normal(mu, sigma, validate_args=True)
       self.assertTrue(tensor_util.constant_value(normal.is_scalar_event()))
       self.assertTrue(tensor_util.constant_value(normal.is_scalar_batch()))
 
-      normal = ds.Normal([mu], [sigma], validate_args=True)
+      normal = tfd.Normal([mu], [sigma], validate_args=True)
       self.assertTrue(tensor_util.constant_value(normal.is_scalar_event()))
       self.assertFalse(tensor_util.constant_value(normal.is_scalar_batch()))
 
-      mvn = ds.MultivariateNormalDiag([mu], [sigma], validate_args=True)
+      mvn = tfd.MultivariateNormalDiag([mu], [sigma], validate_args=True)
       self.assertFalse(tensor_util.constant_value(mvn.is_scalar_event()))
       self.assertTrue(tensor_util.constant_value(mvn.is_scalar_batch()))
 
-      mvn = ds.MultivariateNormalDiag([[mu]], [[sigma]], validate_args=True)
+      mvn = tfd.MultivariateNormalDiag([[mu]], [[sigma]], validate_args=True)
       self.assertFalse(tensor_util.constant_value(mvn.is_scalar_event()))
       self.assertFalse(tensor_util.constant_value(mvn.is_scalar_batch()))
 
@@ -126,7 +128,7 @@ class DistributionTest(test.TestCase):
       self.assertFalse(is_scalar.eval(feed_dict={x: [1]}))
 
   def _GetFakeDistribution(self):
-    class FakeDistribution(ds.Distribution):
+    class FakeDistribution(tfd.Distribution):
       """Fake Distribution for testing _set_sample_static_shape."""
 
       def __init__(self, batch_shape=None, event_shape=None):
@@ -187,6 +189,124 @@ class DistributionTest(test.TestCase):
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertTrue(y.get_shape().ndims is None)
+
+  def testNameScopeWorksCorrectly(self):
+    x = tfd.Normal(loc=0., scale=1., name="x")
+    x_duplicate = tfd.Normal(loc=0., scale=1., name="x")
+    with ops.name_scope("y") as name:
+      y = tfd.Bernoulli(logits=0., name=name)
+    x_sample = x.sample(name="custom_sample")
+    x_sample_duplicate = x.sample(name="custom_sample")
+    x_log_prob = x.log_prob(0., name="custom_log_prob")
+    x_duplicate_sample = x_duplicate.sample(name="custom_sample")
+
+    self.assertEqual(x.name, "x/")
+    self.assertEqual(x_duplicate.name, "x_1/")
+    self.assertEqual(y.name, "y/")
+    self.assertTrue(x_sample.name.startswith("x/custom_sample"))
+    self.assertTrue(x_sample_duplicate.name.startswith("x/custom_sample_1"))
+    self.assertTrue(x_log_prob.name.startswith("x/custom_log_prob"))
+    self.assertTrue(x_duplicate_sample.name.startswith(
+        "x_1/custom_sample"))
+
+  def testStrWorksCorrectlyScalar(self):
+    normal = tfd.Normal(loc=np.float16(0), scale=np.float16(1))
+    self.assertEqual(
+        ("tf.distributions.Normal("
+         "\"Normal/\", "
+         "batch_shape=(), "
+         "event_shape=(), "
+         "dtype=float16)"),  # Got the dtype right.
+        str(normal))
+
+    chi2 = tfd.Chi2(df=np.float32([1., 2.]), name="silly")
+    self.assertEqual(
+        ("tf.distributions.Chi2("
+         "\"silly/\", "  # What a silly name that is!
+         "batch_shape=(2,), "
+         "event_shape=(), "
+         "dtype=float32)"),
+        str(chi2))
+
+    exp = tfd.Exponential(rate=array_ops.placeholder(dtype=dtypes.float32))
+    self.assertEqual(
+        ("tf.distributions.Exponential(\"Exponential/\", "
+         # No batch shape.
+         "event_shape=(), "
+         "dtype=float32)"),
+        str(exp))
+
+  def testStrWorksCorrectlyMultivariate(self):
+    mvn_static = tfd.MultivariateNormalDiag(
+        loc=np.zeros([2, 2]), name="MVN")
+    self.assertEqual(
+        ("tf.distributions.MultivariateNormalDiag("
+         "\"MVN/\", "
+         "batch_shape=(2,), "
+         "event_shape=(2,), "
+         "dtype=float64)"),
+        str(mvn_static))
+
+    mvn_dynamic = tfd.MultivariateNormalDiag(
+        loc=array_ops.placeholder(shape=[None, 3], dtype=dtypes.float32),
+        name="MVN2")
+    self.assertEqual(
+        ("tf.distributions.MultivariateNormalDiag("
+         "\"MVN2/\", "
+         "batch_shape=(?,), "  # Partially known.
+         "event_shape=(3,), "
+         "dtype=float32)"),
+        str(mvn_dynamic))
+
+  def testReprWorksCorrectlyScalar(self):
+    normal = tfd.Normal(loc=np.float16(0), scale=np.float16(1))
+    self.assertEqual(
+        ("<tf.distributions.Normal"
+         " 'Normal/'"
+         " batch_shape=()"
+         " event_shape=()"
+         " dtype=float16>"),  # Got the dtype right.
+        repr(normal))
+
+    chi2 = tfd.Chi2(df=np.float32([1., 2.]), name="silly")
+    self.assertEqual(
+        ("<tf.distributions.Chi2"
+         " 'silly/'"  # What a silly name that is!
+         " batch_shape=(2,)"
+         " event_shape=()"
+         " dtype=float32>"),
+        repr(chi2))
+
+    exp = tfd.Exponential(rate=array_ops.placeholder(dtype=dtypes.float32))
+    self.assertEqual(
+        ("<tf.distributions.Exponential"
+         " 'Exponential/'"
+         " batch_shape=<unknown>"
+         " event_shape=()"
+         " dtype=float32>"),
+        repr(exp))
+
+  def testReprWorksCorrectlyMultivariate(self):
+    mvn_static = tfd.MultivariateNormalDiag(
+        loc=np.zeros([2, 2]), name="MVN")
+    self.assertEqual(
+        ("<tf.distributions.MultivariateNormalDiag"
+         " 'MVN/'"
+         " batch_shape=(2,)"
+         " event_shape=(2,)"
+         " dtype=float64>"),
+        repr(mvn_static))
+
+    mvn_dynamic = tfd.MultivariateNormalDiag(
+        loc=array_ops.placeholder(shape=[None, 3], dtype=dtypes.float32),
+        name="MVN2")
+    self.assertEqual(
+        ("<tf.distributions.MultivariateNormalDiag"
+         " 'MVN2/'"
+         " batch_shape=(?,)"  # Partially known.
+         " event_shape=(3,)"
+         " dtype=float32>"),
+        repr(mvn_dynamic))
 
 
 if __name__ == "__main__":

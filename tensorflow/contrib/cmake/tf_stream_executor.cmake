@@ -64,7 +64,15 @@ file(GLOB tf_stream_executor_srcs
 if (tensorflow_ENABLE_GPU)
     file(GLOB tf_stream_executor_gpu_srcs
         "${tensorflow_source_dir}/tensorflow/stream_executor/cuda/*.cc"
+        "${tensorflow_source_dir}/tensorflow/compiler/xla/statusor.h"
+        "${tensorflow_source_dir}/tensorflow/compiler/xla/statusor.cc"
     )
+    if (NOT tensorflow_BUILD_CC_TESTS)
+        file(GLOB tf_stream_executor_gpu_tests
+            "${tensorflow_source_dir}/tensorflow/stream_executor/cuda/*_test.cc"
+        )
+        list(REMOVE_ITEM tf_stream_executor_gpu_srcs ${tf_stream_executor_gpu_tests})
+    endif()
     list(APPEND tf_stream_executor_srcs ${tf_stream_executor_gpu_srcs})
 endif()
 

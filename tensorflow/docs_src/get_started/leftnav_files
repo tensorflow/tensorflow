@@ -1,11 +1,4 @@
 index.md
 
-### Getting Started
-get_started_for_beginners.md
-premade_estimators.md
-
-### Details
-checkpoints.md
-feature_columns.md
+eager.md
 datasets_quickstart.md
-custom_estimators.md

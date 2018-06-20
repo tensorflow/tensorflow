@@ -95,9 +95,6 @@ class LSTMOpModel : public SingleOpModel {
       projection_bias_ = AddNullInput();
     }
 
-    scratch_buffer_ = AddOutput(TensorType_FLOAT32);
-    // TODO(ghodrat): Modify these states when we have a permanent solution for
-    // persistent buffer.
     output_state_ = AddOutput(TensorType_FLOAT32);
     cell_state_ = AddOutput(TensorType_FLOAT32);
     output_ = AddOutput(TensorType_FLOAT32);
@@ -235,14 +232,12 @@ class LSTMOpModel : public SingleOpModel {
   int output_;
   int output_state_;
   int cell_state_;
-  int scratch_buffer_;
 
   int n_batch_;
   int n_input_;
   int n_cell_;
   int n_output_;
 };
-
 
 TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
   const int n_batch = 1;
@@ -281,7 +276,6 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    });
-
 
   lstm.SetInputToCellWeights({-0.49770179, -0.27711356, -0.09624726, 0.05100781,
                               0.04717243, 0.48944736, -0.38535351,

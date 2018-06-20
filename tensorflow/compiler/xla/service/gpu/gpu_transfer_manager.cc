@@ -33,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 // TODO(b/30467474) Once GPU infeed implementation settles, consider
@@ -46,8 +44,8 @@ GpuTransferManager::GpuTransferManager()
           /*pointer_size=*/llvm::DataLayout(gpu::GpuCompiler::kDataLayout)
               .getPointerSize(0 /* default address space */)) {}
 
-Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                                   const Literal& literal) {
+Status GpuTransferManager::TransferLiteralToInfeed(
+    se::StreamExecutor* executor, const LiteralSlice& literal) {
   const Shape& shape = literal.shape();
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(shape);
@@ -153,8 +151,8 @@ static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
 }
 
 static bool InitModule() {
-  xla::TransferManager::RegisterTransferManager(se::cuda::kCudaPlatformId,
-                                                &CreateGpuTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::cuda::kCudaPlatformId, &CreateGpuTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();

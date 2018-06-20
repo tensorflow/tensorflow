@@ -616,8 +616,8 @@ bool Initialize() {
   };
 
   // Comparisons
-  const std::array<int, 3> compare_types = {npy_bfloat16_, npy_bfloat16_,
-                                            NPY_BOOL};
+  const std::array<int, 3> compare_types = {
+      {npy_bfloat16_, npy_bfloat16_, NPY_BOOL}};
 
   if (!register_ufunc("equal", CompareUFunc<Bfloat16EqFunctor>,
                       compare_types)) {

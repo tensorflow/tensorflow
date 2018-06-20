@@ -21,7 +21,6 @@ from __future__ import print_function
 import argparse
 import fnmatch
 import os
-import sys
 
 import six
 
@@ -51,7 +50,11 @@ def _is_free_function(py_object, full_name, index):
   return True
 
 
-def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
+def write_docs(output_dir,
+               parser_config,
+               yaml_toc,
+               root_title='TensorFlow',
+               search_hints=True):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol included in the indices of parser_config to
@@ -67,6 +70,8 @@ def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
       indices.
     yaml_toc: Set to `True` to generate a "_toc.yaml" file.
     root_title: The title name for the root level index.md.
+    search_hints: (bool) include meta-data search hints at the top of each
+      output file.
 
   Raises:
     ValueError: if `output_dir` is not an absolute path
@@ -134,8 +139,18 @@ def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
     try:
       if not os.path.exists(directory):
         os.makedirs(directory)
-      with open(path, 'w') as f:
-        f.write(pretty_docs.build_md_page(page_info))
+      # This function returns raw bytes in PY2 or unicode in PY3.
+      if search_hints:
+        content = [page_info.get_metadata_html()]
+      else:
+        content = ['']
+
+      content.append(pretty_docs.build_md_page(page_info))
+      text = '\n'.join(content)
+      if six.PY3:
+        text = text.encode('utf-8')
+      with open(path, 'wb') as f:
+        f.write(text)
     except OSError as e:
       print('Cannot write documentation for %s to %s: %s' % (full_name,
                                                              directory, e))
@@ -215,7 +230,6 @@ def _get_default_do_not_descend_map():
           # Block contrib.keras to de-clutter the docs
           'keras',
           'labeled_tensor',
-          'ndlstm',
           'quantization',
           'session_bundle',
           'slim',
@@ -309,6 +323,10 @@ def build_doc_index(src_dir):
         continue
       title_parser = _GetMarkdownTitle()
       title_parser.process(os.path.join(dirpath, base_name))
+      if title_parser.title is None:
+        msg = ('`{}` has no markdown title (# title)'.format(
+            os.path.join(dirpath, base_name)))
+        raise ValueError(msg)
       key_parts = os.path.join(suffix, base_name[:-3]).split('/')
       if key_parts[-1] == 'index':
         key_parts = key_parts[:-1]
@@ -434,19 +452,19 @@ def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
       full_out_path = os.path.join(output_dir, suffix)
       if not fnmatch.fnmatch(base_name, file_pattern):
         print('Copying un-matched file %s...' % suffix)
-        open(full_out_path, 'w').write(open(full_in_path).read())
+        open(full_out_path, 'wb').write(open(full_in_path, 'rb').read())
         continue
       if dirpath.endswith('/api_guides/python'):
         print('Processing Python guide %s...' % base_name)
         content = tag_updater.process(full_in_path)
       else:
         print('Processing doc %s...' % suffix)
-        content = open(full_in_path).read()
+        content = open(full_in_path, 'rb').read().decode('utf-8')
 
       content = reference_resolver.replace_references(content,
                                                       relative_path_to_root)
-      with open(full_out_path, 'w') as f:
-        f.write(content)
+      with open(full_out_path, 'wb') as f:
+        f.write(content.encode('utf-8'))
 
   print('Done.')
 
@@ -455,13 +473,17 @@ class DocGenerator(object):
   """Main entry point for generating docs."""
 
   def __init__(self):
-    if sys.version_info >= (3, 0):
-      sys.exit('Doc generation is not supported from python3.')
     self.argument_parser = argparse.ArgumentParser()
     self._py_modules = None
     self._private_map = _get_default_private_map()
     self._do_not_descend_map = _get_default_do_not_descend_map()
     self.yaml_toc = True
+
+    self.argument_parser.add_argument(
+        '--no_search_hints',
+        dest='search_hints',
+        action='store_false',
+        default=True)
 
   def add_output_dir_argument(self):
     self.argument_parser.add_argument(
@@ -549,7 +571,8 @@ class DocGenerator(object):
         output_dir,
         parser_config,
         yaml_toc=self.yaml_toc,
-        root_title=root_title)
+        root_title=root_title,
+        search_hints=getattr(flags, 'search_hints', True))
     _other_docs(flags.src_dir, flags.output_dir, reference_resolver)
 
     parser_config.reference_resolver.log_errors()

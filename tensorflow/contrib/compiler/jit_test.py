@@ -173,7 +173,7 @@ class CompilationEnabledInGradientTest(test.TestCase):
 
   def testCompilationInGradient(self):
     with self.test_session():
-      x = constant_op.constant([[3]])
+      x = constant_op.constant([[3.]])
       y_nc = math_ops.matmul(x, x, name="not_compiled")
       with jit.experimental_jit_scope():
         y_c = math_ops.matmul(y_nc, y_nc, name="compiled")
@@ -188,7 +188,7 @@ class CompilationEnabledInGradientTest(test.TestCase):
       for cg in c_grad_ops:
         self.assertTrue(cg.get_attr("_XlaCompile"))
       for ncg in nc_grad_ops:
-        with self.assertRaisesRegexp(ValueError, "No attr named"):
+        with self.assertRaisesRegexp(ValueError, "[Nn]o attr named"):
           ncg.get_attr("_XlaCompile")
 
       # d/dx (x ** 4) = 4 * (x ** 3)
@@ -198,11 +198,11 @@ class CompilationEnabledInGradientTest(test.TestCase):
     with self.test_session(graph=ops.Graph()):
       with jit.experimental_jit_scope():
         # XlaScope 0
-        a1 = constant_op.constant([[1]])
+        a1 = constant_op.constant([[1.]])
         a1t = math_ops.matmul(a1, a1)
       with jit.experimental_jit_scope():
         # XlaScope 1
-        a2 = constant_op.constant([[1]])
+        a2 = constant_op.constant([[1.]])
         a2t = math_ops.matmul(a2, a2)
 
       self.assertEqual(b"jit_scope_0", a1.op.get_attr("_XlaScope"))
@@ -220,11 +220,11 @@ class CompilationEnabledInGradientTest(test.TestCase):
     with self.test_session(graph=ops.Graph()):
       with jit.experimental_jit_scope(True, separate_compiled_gradients=True):
         # XlaScope 0
-        a1 = constant_op.constant([[1]])
+        a1 = constant_op.constant([[1.]])
         a1t = math_ops.matmul(a1, a1)
       with jit.experimental_jit_scope(True, separate_compiled_gradients=True):
         # XlaScope 1
-        a2 = constant_op.constant([[1]])
+        a2 = constant_op.constant([[1.]])
         a2t = math_ops.matmul(a2, a2)
 
       self.assertEqual(b"jit_scope_0", a1.op.get_attr("_XlaScope"))

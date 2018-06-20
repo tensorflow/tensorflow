@@ -108,7 +108,6 @@ void LinearAlgebraOp<Scalar>::Compute(OpKernelContext* context) {
   auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
   Shard(worker_threads.num_threads, worker_threads.workers,
         batch_shape.num_elements(), GetCostPerUnit(input_matrix_shapes), shard);
-
 }
 
 template <typename Scalar>

@@ -453,6 +453,13 @@ inline bool DataTypeIsInteger(DataType dt) {
   return kDataTypeIsInteger.Contains(dt);
 }
 
+// Is the dtype a signed integral type?
+constexpr DataTypeSet kDataTypeIsSigned =
+    ToSet(DT_INT8) | ToSet(DT_INT16) | ToSet(DT_INT32) | ToSet(DT_INT64);
+inline bool DataTypeIsSigned(DataType dt) {
+  return kDataTypeIsSigned.Contains(dt);
+}
+
 // Is the dtype an unsigned integral type?
 constexpr DataTypeSet kDataTypeIsUnsigned =
     ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_UINT32) | ToSet(DT_UINT64);

@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.tensorflow</groupId>
     <artifactId>parentpom</artifactId>
-    <version>1.5.0-rc1</version>
+    <version>1.9.0-rc0</version>
     <relativePath>../</relativePath>
   </parent>
   <artifactId>proto</artifactId>
@@ -16,7 +16,7 @@
     <dependency>
       <groupId>com.google.protobuf</groupId>
       <artifactId>protobuf-java</artifactId>
-      <version>3.3.1</version>
+      <version>3.5.1</version>
     </dependency>
   </dependencies>
 

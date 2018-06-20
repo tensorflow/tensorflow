@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_DATA_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_DATA_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_DATA_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_DATA_H_
 #include <ctime>
 #include <unordered_map>
 #include "google/protobuf/any.pb.h"
@@ -23,6 +23,7 @@
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 
 namespace tensorflow {
@@ -44,18 +45,20 @@ class TensorDataSet {
     int column_count = 0;
     for (int i = 0; i < input_spec_.dense_size(); ++i) {
       for (int j = 0; j < input_spec_.dense(i).size(); ++j) {
-        decision_trees::FeatureId id;
-        id.mutable_id()->set_value(strings::StrCat(column_count));
-        available_features_.push_back(id);
         ++column_count;
       }
+    }
+    available_features_.reserve(column_count);
+    decision_trees::FeatureId id;
+    for (int i = 0; i < column_count; i++) {
+      id.mutable_id()->set_value(strings::StrCat(i));
+      available_features_.emplace_back(id);
     }
 
     // Set up the random number generator.
     if (split_sampling_random_seed_ == 0) {
-      uint64 time_seed = static_cast<uint64>(std::clock());
       single_rand_ = std::unique_ptr<random::PhiloxRandom>(
-          new random::PhiloxRandom(time_seed));
+          new random::PhiloxRandom(random::New64()));
     } else {
       single_rand_ = std::unique_ptr<random::PhiloxRandom>(
           new random::PhiloxRandom(split_sampling_random_seed_));
@@ -93,9 +96,7 @@ class TensorDataSet {
   // an int32 you can avoid the atoi32.
   virtual float GetExampleValue(int example, int32 feature_id) const;
 
-  int num_features() {
-    return available_features_.size();
-  }
+  int num_features() { return available_features_.size(); }
 
   const Tensor& original_tensor() const { return original_dense_tensor_; }
 
@@ -123,4 +124,4 @@ class TensorDataSet {
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_DATA_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_DATA_H_

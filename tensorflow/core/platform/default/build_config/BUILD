@@ -114,6 +114,43 @@ cc_library(
 )
 
 cc_library(
+    name = "base",
+    srcs = [],
+    copts = tf_copts(),
+)
+
+cc_library(
+    name = "port",
+    srcs = [],
+    copts = tf_copts(),
+)
+
+cc_library(
+    name = "protobuf",
+    srcs = [],
+    copts = tf_copts(),
+)
+
+cc_library(
+    name = "env",
+    srcs = [],
+    copts = tf_copts(),
+)
+
+cc_library(
+    name = "other",
+    srcs = [],
+    copts = tf_copts(),
+    deps = [
+        "@com_googlesource_code_re2//:re2",
+        "@farmhash_archive//:farmhash",
+        "@fft2d",
+        "@highwayhash//:sip_hash",
+        "@png_archive//:png",
+    ],
+)
+
+cc_library(
     name = "platformlib",
     copts = tf_copts(),
     deps = [
@@ -122,10 +159,15 @@ cc_library(
         "//tensorflow/core:protos_cc",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
-        "@fft2d//:fft2d",
+        "@fft2d",
         "@highwayhash//:sip_hash",
         "@png_archive//:png",
     ],
+)
+
+cc_library(
+    name = "stacktrace",
+    srcs = [],
 )
 
 cc_library(
@@ -140,7 +182,7 @@ cc_library(
     name = "jpeg",
     copts = tf_copts(),
     deps = [
-        "@jpeg//:jpeg",
+        "@jpeg",
     ],
 )
 
@@ -158,6 +200,13 @@ cc_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+cc_library(
+    name = "test_lite_main",
+    testonly = 1,
+    linkstatic = 1,
+    deps = [],
 )
 
 cc_library(
@@ -217,16 +266,4 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

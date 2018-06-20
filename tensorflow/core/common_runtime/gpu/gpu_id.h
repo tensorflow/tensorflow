@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_H_
 
 #include "tensorflow/core/lib/gtl/int_type.h"
 
@@ -40,7 +40,7 @@ namespace tensorflow {
 //   a BaseGPUDevice. Note that the configuration allows us to create multiple
 //   BaseGPUDevice per GPU hardware in order to use multi CUDA streams on the
 //   hardware, so the mapping between TF GPU id and CUDA GPU id is not a 1:1
-//   mappping, see the example below.
+//   mapping, see the example below.
 //
 // For example, assuming that in the machine we have GPU device with index 0, 1,
 // 2 and 3 (physical GPU id). Setting "CUDA_VISIBLE_DEVICES=1,2,3" will create
@@ -85,4 +85,4 @@ TF_LIB_GTL_DEFINE_INT_TYPE(CudaGpuId, int32);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_H_

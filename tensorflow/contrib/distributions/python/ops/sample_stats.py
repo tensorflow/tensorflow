@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -301,13 +302,16 @@ def percentile(x,
 
   with ops.name_scope(name, [x, q]):
     x = ops.convert_to_tensor(x, name="x")
-    q = math_ops.to_float(q, name="q")
+    # Double is needed here and below, else we get the wrong index if the array
+    # is huge along axis.
+    q = math_ops.to_double(q, name="q")
     _get_static_ndims(q, expect_ndims=0)
 
     if validate_args:
       q = control_flow_ops.with_dependencies([
-          check_ops.assert_rank(q, 0), check_ops.assert_greater_equal(q, 0.),
-          check_ops.assert_less_equal(q, 100.)
+          check_ops.assert_rank(q, 0),
+          check_ops.assert_greater_equal(q, math_ops.to_double(0.)),
+          check_ops.assert_less_equal(q, math_ops.to_double(100.))
       ], q)
 
     if axis is None:
@@ -332,7 +336,7 @@ def percentile(x,
       y = _move_dims_to_flat_end(x, axis, x_ndims)
 
     frac_at_q_or_above = 1. - q / 100.
-    d = math_ops.to_float(array_ops.shape(y)[-1])
+    d = math_ops.to_double(array_ops.shape(y)[-1])
 
     if interpolation == "lower":
       index = math_ops.ceil((d - 1) * frac_at_q_or_above)
@@ -341,12 +345,18 @@ def percentile(x,
     elif interpolation == "nearest":
       index = math_ops.round((d - 1) * frac_at_q_or_above)
 
+    # If d is gigantic, then we would have d == d - 1, even in double... So
+    # let's use max/min to avoid out of bounds errors.
+    d = array_ops.shape(y)[-1]
+    # d - 1 will be distinct from d in int32.
+    index = clip_ops.clip_by_value(math_ops.to_int32(index), 0, d - 1)
+
     # Sort everything, not just the top 'k' entries, which allows multiple calls
     # to sort only once (under the hood) and use CSE.
     sorted_y = _sort_tensor(y)
 
     # result.shape = B
-    result = sorted_y[..., math_ops.to_int32(index)]
+    result = sorted_y[..., index]
     result.set_shape(y.get_shape()[:-1])
 
     if keep_dims:

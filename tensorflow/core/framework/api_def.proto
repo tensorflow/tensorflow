@@ -8,6 +8,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "ApiDefProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 import "tensorflow/core/framework/attr_value.proto";
 
 // Used to specify and override the default API & behavior in the
@@ -55,8 +56,10 @@ message ApiDef {
     // use a snake_case convention instead of CamelCase.
     string name = 1;
 
-    // First GraphDef version at which the op is disallowed.
-    int32 deprecation_version = 2;
+    // If this endpoint is deprecated, set deprecation_message to a
+    // message that should be logged when the endpoint is used.
+    // The message should indicate alternative endpoint to use, if any.
+    string deprecation_message = 2;
   }
   repeated Endpoint endpoint = 3;
 

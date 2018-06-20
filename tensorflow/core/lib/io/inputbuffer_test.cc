@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -287,7 +288,7 @@ TEST(InputBuffer, Seek) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(1, &read)));
 
     EXPECT_TRUE(
-        StringPiece(in.Seek(-1).ToString()).contains("negative position"));
+        str_util::StrContains(in.Seek(-1).ToString(), "negative position"));
   }
 }
 

@@ -30,6 +30,8 @@ limitations under the License.
 
 namespace xla {
 
+class ScopedShapedBuffer;
+
 // Class which encapsulates a buffer or set of buffers containing data of a
 // particular XLA shape.
 class ShapedBuffer {
@@ -41,8 +43,19 @@ class ShapedBuffer {
   // determines the number of device allocations (DeviceMemoryBase) held by the
   // ShapedBuffer.
   ShapedBuffer(const Shape& on_host_shape, const Shape& on_device_shape,
-               const perftools::gputools::Platform* platform,
-               int device_ordinal);
+               const se::Platform* platform, int device_ordinal);
+
+  // Movable, but not copyable.
+  ShapedBuffer(ShapedBuffer&& s);
+  ShapedBuffer& operator=(ShapedBuffer&&);
+  ShapedBuffer(const ShapedBuffer&) = delete;
+  ShapedBuffer& operator=(const ShapedBuffer&) = delete;
+
+  // Prevent (some forms of) accidental object slicing.
+  ShapedBuffer(const ScopedShapedBuffer&) = delete;
+  ShapedBuffer& operator=(const ScopedShapedBuffer&) = delete;
+
+  virtual ~ShapedBuffer();
 
   // Returns the shape of the on-host representation of the data held by this
   // ShapedBuffer.
@@ -52,35 +65,29 @@ class ShapedBuffer {
   // ShapedBuffer.
   const Shape& on_device_shape() const { return on_device_shape_; }
 
-  const perftools::gputools::Platform* platform() const { return platform_; }
+  const se::Platform* platform() const { return platform_; }
   int device_ordinal() const { return device_ordinal_; }
 
   // Return the root buffer of the shape (shape index {}).
-  const perftools::gputools::DeviceMemoryBase& root_buffer() const {
+  const se::DeviceMemoryBase& root_buffer() const {
     return buffer(/*index=*/{});
   }
 
   // Returns the buffer at the given shape index where index is defined as in
   // ShapeUtil::GetSubshape.
-  const perftools::gputools::DeviceMemoryBase& buffer(
-      const ShapeIndex& index) const {
+  const se::DeviceMemoryBase& buffer(const ShapeIndex& index) const {
     return buffers_.element(index);
   }
 
   // Sets the device memory buffer at the given index.
-  void set_buffer(const perftools::gputools::DeviceMemoryBase& buffer,
-                  const ShapeIndex& index) {
+  void set_buffer(const se::DeviceMemoryBase& buffer, const ShapeIndex& index) {
     *buffers_.mutable_element(index) = buffer;
   }
 
   // Returns the underlying ShapeTree containing all the device addresses in the
   // ShapedBuffer.
-  const ShapeTree<perftools::gputools::DeviceMemoryBase>& buffers() const {
-    return buffers_;
-  }
-  ShapeTree<perftools::gputools::DeviceMemoryBase>& buffers() {
-    return buffers_;
-  }
+  const ShapeTree<se::DeviceMemoryBase>& buffers() const { return buffers_; }
+  ShapeTree<se::DeviceMemoryBase>& buffers() { return buffers_; }
 
   // Set all device memory pointers in the object to null.
   void clear();
@@ -89,19 +96,19 @@ class ShapedBuffer {
 
  protected:
   // The shape of the data when represented on the host.
-  const Shape on_host_shape_;
+  Shape on_host_shape_;
 
   // The shape of the data on the device.
-  const Shape on_device_shape_;
+  Shape on_device_shape_;
 
   // The platform the memory is allocated on.
-  const perftools::gputools::Platform* platform_;
+  const se::Platform* platform_;
 
   // The device the memory is allocated on.
-  const int device_ordinal_;
+  int device_ordinal_;
 
   // The tree of device buffers. Its shape is on_device_shape().
-  ShapeTree<perftools::gputools::DeviceMemoryBase> buffers_;
+  ShapeTree<se::DeviceMemoryBase> buffers_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
@@ -109,34 +116,60 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
 // ShapedBuffer derived class which allocates all internal buffers on
 // construction and deallocates the memory when the object is
 // destructed.
+//
+// TODO(timshen): Remove inheritance between ScopedShapedBuffer and
+// ShapedBuffer.  There should never be a need to consider a ScopedShapedBuffer
+// as a ShapedBuffer, because in that case we should just be able to pass around
+// our ShapeTree<DeviceMemoryBase>.  Inheritance only adds complexity.  See
+// discussion in cl/192849370.
 class ScopedShapedBuffer : public ShapedBuffer {
  public:
-  // Takes a ShapedBuffer and returns a ScopedShapedBuffer which manages the
-  // deallocation of the device memory held in the shaped buffer. All device
-  // memory pointers in the given ShapedBuffer are set to null.
-  static StatusOr<std::unique_ptr<ScopedShapedBuffer>> MakeScoped(
-      ShapedBuffer* shaped_buffer, DeviceMemoryAllocator* allocator);
+  // Creates a ScopedShapedBuffer with null DeviceMemoryBases at each index.
+  explicit ScopedShapedBuffer(const Shape& on_host_shape,
+                              const Shape& on_device_shape,
+                              DeviceMemoryAllocator* allocator,
+                              int device_ordinal);
 
-  // Create a ScopedShapedBuffer with null DeviceMemoryBases at each index.
-  ScopedShapedBuffer(const Shape& on_host_shape, const Shape& on_device_shape,
-                     DeviceMemoryAllocator* allocator, int device_ordinal);
+  // Create a ScopedShapedBuffer by taking over the memory from the incoming
+  // ShapedBuffer.
+  explicit ScopedShapedBuffer(ShapedBuffer shaped_buffer,
+                              DeviceMemoryAllocator* allocator);
+
+  // Movable, but not copyable.
+  ScopedShapedBuffer(ScopedShapedBuffer&& s);
+  ScopedShapedBuffer& operator=(ScopedShapedBuffer&&);
+  ScopedShapedBuffer(const ScopedShapedBuffer&) = delete;
+  ScopedShapedBuffer& operator=(const ScopedShapedBuffer&) = delete;
+
+  // All buffers in the shape are deallocated on destruction.
+  ~ScopedShapedBuffer() override;
 
   // Return the allocator used to allocate the device memory held in this
   // ScopedShapedBuffer.
   DeviceMemoryAllocator* memory_allocator() const { return allocator_; }
 
-  // Release all device memory owned by this ScopedShapedBuffer and return the
-  // device memory pointers in the form of a ShapedBuffer. Device memory
-  // pointers in this ScopedShapedBuffer object are set to null. This method is
-  // analogous to std::unique_ptr::release().
-  std::unique_ptr<ShapedBuffer> release();
+  // Sets the device memory buffer at the given index.
+  //
+  // If the given buffer's device memory is non-null, its device_ordinal and
+  // allocator must match those in `this`.
+  void set_buffer(OwningDeviceMemory buffer, const ShapeIndex& index) {
+    if (!buffer.is_null()) {
+      CHECK_EQ(buffer.device_ordinal(), device_ordinal());
+      CHECK_EQ(buffer.allocator(), allocator_);
+      *buffers_.mutable_element(index) = buffer.Forget();
+    } else {
+      *buffers_.mutable_element(index) = se::DeviceMemoryBase();
+    }
+  }
 
-  // All buffers in the shape are deallocated on destruction.
-  virtual ~ScopedShapedBuffer();
+  // Like unique_ptr::release(), creates and returns a regular ShapedBuffer from
+  // this ScopedShapedBuffer, without freeing any of the associated memory.
+  //
+  // It's the caller's job to ensure that the memory contained therein is freed.
+  TF_MUST_USE_RESULT ShapedBuffer release();
 
  protected:
-  ScopedShapedBuffer(const ScopedShapedBuffer&) = delete;
-  void operator=(const ScopedShapedBuffer&) = delete;
+  void Deallocate();
 
   DeviceMemoryAllocator* allocator_;
 };

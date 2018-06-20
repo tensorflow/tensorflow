@@ -101,6 +101,7 @@ public class LabelImage {
                   b.constant("mean", mean)),
               b.constant("scale", scale));
       try (Session s = new Session(g)) {
+        // Generally, there may be multiple output tensors, all of them must be closed to prevent resource leaks.
         return s.runner().fetch(output.op().name()).run().get(0).expect(Float.class);
       }
     }
@@ -110,6 +111,7 @@ public class LabelImage {
     try (Graph g = new Graph()) {
       g.importGraphDef(graphDef);
       try (Session s = new Session(g);
+          // Generally, there may be multiple output tensors, all of them must be closed to prevent resource leaks.
           Tensor<Float> result =
               s.runner().feed("input", image).fetch("output").run().get(0).expect(Float.class)) {
         final long[] rshape = result.shape();

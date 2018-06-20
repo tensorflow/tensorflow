@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
 
 #include <assert.h>
 #include <stdint.h>
@@ -129,8 +129,9 @@ class EigenTensorConvFunctor {
       const int conv_width = output_height * output_width;
       Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
       dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
-      EigenMatrix output(output_data, conv_width, filter_count);
-      ConstEigenMatrix input(input_data, conv_width, input_depth);
+      EigenMatrix output(output_data, input_batches * conv_width, filter_count);
+      ConstEigenMatrix input(input_data, input_batches * conv_width,
+                             input_depth);
       ConstEigenMatrix filter(filter_data, input_depth, filter_count);
       MatMulConvFunctor<Eigen::ThreadPoolDevice, T>()(device, output, input,
                                                       filter, dim_pair);
@@ -192,4 +193,4 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
 }  // namespace multithreaded_ops
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV

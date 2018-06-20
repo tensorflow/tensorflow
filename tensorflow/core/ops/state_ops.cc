@@ -122,7 +122,10 @@ Status ScatterUpdateShape(InferenceContext* c) {
   ShapeHandle var_subshape;
   TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
   TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
-  TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
+  TF_RETURN_IF_ERROR(
+      InferenceContext::Rank(c->input(2)) == 0
+          ? Status::OK()
+          : c->Merge(c->input(2), concat, &unused_updates_shape));
 
   c->set_output(0, var_shape);
   return Status::OK();
@@ -180,6 +183,26 @@ REGISTER_OP("ScatterDiv")
     .Attr("use_locking: bool = false")
     .SetShapeFn(ScatterUpdateShape);
 
+REGISTER_OP("ScatterMin")
+    .Input("ref: Ref(T)")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output_ref: Ref(T)")
+    .Attr("T: {half, bfloat16, float, double, int32, int64}")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ScatterUpdateShape);
+
+REGISTER_OP("ScatterMax")
+    .Input("ref: Ref(T)")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output_ref: Ref(T)")
+    .Attr("T: {half, bfloat16, float, double, int32, int64}")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ScatterUpdateShape);
+
 REGISTER_OP("ScatterNdUpdate")
     .Input("ref: Ref(T)")
     .Input("indices: Tindices")
@@ -191,6 +214,15 @@ REGISTER_OP("ScatterNdUpdate")
     .SetShapeFn(shape_inference::ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdUpdate")
+    .Input("ref: resource")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = true")
+    .SetShapeFn(shape_inference::ScatterNdUpdateShape);
+
+REGISTER_OP("ResourceScatterNdAdd")
     .Input("ref: resource")
     .Input("indices: Tindices")
     .Input("updates: T")

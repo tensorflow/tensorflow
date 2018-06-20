@@ -32,6 +32,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import categorical
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class Mixture(distribution.Distribution):
@@ -66,11 +67,20 @@ class Mixture(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                cat,
                components,
                validate_args=False,
                allow_nan_stats=True,
+               use_static_graph=False,
                name="Mixture"):
     """Initialize a Mixture distribution.
 
@@ -96,6 +106,11 @@ class Mixture(distribution.Distribution):
        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member. If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
+      use_static_graph: Calls to `sample` will not rely on dynamic tensor
+        indexing, allowing for some static graph compilation optimizations, but
+        at the expense of sampling all underlying distributions in the mixture.
+        (Possibly useful when running on TPUs).
+        Default value: `False` (i.e., use dynamic indexing).
       name: A name for this distribution (optional).
 
     Raises:
@@ -110,7 +125,7 @@ class Mixture(distribution.Distribution):
         matching static batch shapes, or all components do not
         have matching static event shapes.
     """
-    parameters = locals()
+    parameters = dict(locals())
     if not isinstance(cat, categorical.Categorical):
       raise TypeError("cat must be a Categorical distribution, but saw: %s" %
                       cat)
@@ -139,7 +154,7 @@ class Mixture(distribution.Distribution):
           "none of the components provide a static number of ndims")
 
     # Ensure that all batch and event ndims are consistent.
-    with ops.name_scope(name, values=[cat.logits]):
+    with ops.name_scope(name, values=[cat.logits]) as name:
       num_components = cat.event_size
       static_num_components = tensor_util.constant_value(num_components)
       if static_num_components is None:
@@ -178,6 +193,10 @@ class Mixture(distribution.Distribution):
       self._static_event_shape = static_event_shape
       self._static_batch_shape = static_batch_shape
 
+      self._use_static_graph = use_static_graph
+      if use_static_graph and static_num_components is None:
+        raise ValueError("Number of categories must be known statically when "
+                         "`static_sample=True`.")
     # We let the Mixture distribution access _graph_parents since its arguably
     # more like a baseclass.
     graph_parents = self._cat._graph_parents  # pylint: disable=protected-access
@@ -292,6 +311,31 @@ class Mixture(distribution.Distribution):
       return mixture_log_cdf
 
   def _sample_n(self, n, seed=None):
+    if self._use_static_graph:
+      # This sampling approach is almost the same as the approach used by
+      # `MixtureSameFamily`. The differences are due to having a list of
+      # `Distribution` objects rather than a single object, and maintaining
+      # random seed management that is consistent with the non-static code path.
+      samples = []
+      cat_samples = self.cat.sample(n, seed=seed)
+      for c in range(self.num_components):
+        seed = distribution_util.gen_new_seed(seed, "mixture")
+        samples.append(self.components[c].sample(n, seed=seed))
+      x = array_ops.stack(
+          samples, -self._static_event_shape.ndims - 1)     # [n, B, k, E]
+      npdt = x.dtype.as_numpy_dtype
+      mask = array_ops.one_hot(
+          indices=cat_samples,                              # [n, B]
+          depth=self._num_components,                       # == k
+          on_value=np.ones([], dtype=npdt),
+          off_value=np.zeros([], dtype=npdt))               # [n, B, k]
+      mask = distribution_utils.pad_mixture_dimensions(
+          mask, self, self._cat,
+          self._static_event_shape.ndims)                   # [n, B, k, [1]*e]
+      return math_ops.reduce_sum(
+          x * mask,
+          axis=-1 - self._static_event_shape.ndims)         # [n, B, E]
+
     with ops.control_dependencies(self._assertions):
       n = ops.convert_to_tensor(n, name="n")
       static_n = tensor_util.constant_value(n)

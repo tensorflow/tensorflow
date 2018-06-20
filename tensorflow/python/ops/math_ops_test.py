@@ -35,7 +35,6 @@ exp = np.exp
 log = np.log
 
 
-@test_util.with_c_api
 class ReduceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
@@ -60,7 +59,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testReduceInvalidAxis(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       # The shape check is in run a graph construction time. In eager mode,
       # it misses the check, magically return result given wrong shape.
       return
@@ -70,7 +69,6 @@ class ReduceTest(test_util.TensorFlowTestCase):
       math_ops.reduce_sum(x, axis)
 
 
-@test_util.with_c_api
 class LogSumExpTest(test_util.TensorFlowTestCase):
 
   def testReduceLogSumExp(self):
@@ -105,7 +103,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
       with self.test_session(use_gpu=True):
-        y_tf_np = math_ops.reduce_logsumexp(x_np, keep_dims=True).eval()
+        y_tf_np = math_ops.reduce_logsumexp(x_np, keepdims=True).eval()
         self.assertEqual(y_tf_np.ndim, x_np.ndim)
         y_np = log(np.sum(exp(x_np), keepdims=True))
         self.assertAllClose(y_tf_np, y_np)
@@ -150,14 +148,11 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
       self.assertEqual(-np.inf, res)
 
 
-@test_util.with_c_api
 class RoundTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testRounding(self):
-    x = [0.49, 0.7, -0.3, -0.8]
-    # TODO(nolivia): Remove this when RoundOp is forwards compatible
-    # x = np.arange(-5.0, 5.0, .25)
+    x = np.arange(-5.0, 5.0, .25)
     for dtype in [np.float32, np.double, np.int32]:
       x_np = np.array(x, dtype=dtype)
       with test_util.device(use_gpu=True):
@@ -168,7 +163,6 @@ class RoundTest(test_util.TensorFlowTestCase):
         self.assertAllClose(y_tf_np, y_np, atol=1e-2)
 
 
-@test_util.with_c_api
 class ModTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -198,7 +192,6 @@ class ModTest(test_util.TensorFlowTestCase):
         self.assertAllClose(y_tf_np, y_np)
 
 
-@test_util.with_c_api
 class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
@@ -212,7 +205,6 @@ class SquaredDifferenceTest(test_util.TensorFlowTestCase):
         self.assertAllClose(z, z_tf)
 
 
-@test_util.with_c_api
 class ApproximateEqualTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
@@ -243,13 +235,21 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
         z_tf = self.evaluate(math_ops.approximate_equal(x, y, tolerance=0.0001))
         self.assertAllEqual(z, z_tf)
 
+  def testApproximateEqualShape(self):
+    for dtype in [np.float32, np.double]:
+      x = np.array([1, 2], dtype=np.float32)
+      y = np.array([[1, 2]], dtype=np.float32)
+      # The inputs 'x' and 'y' must have the same shape.
+      with self.assertRaisesRegexp(
+          ValueError, "Shapes must be equal rank, but are 1 and 2"):
+        math_ops.approximate_equal(x, y)
 
-@test_util.with_c_api
+
 class ScalarMulTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testAcceptsRefs(self):
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       var = resource_variable_ops.ResourceVariable(10, name="var")
     else:
       var = variables.Variable(10)
@@ -286,7 +286,6 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(self.evaluate(x.indices), [0, 2, 5])
 
 
-@test_util.with_c_api
 class AccumulateNTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -306,7 +305,6 @@ class AccumulateNTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(x[0] * 6, math_ops.accumulate_n([tf_x[0]] * 6).eval())
 
 
-@test_util.with_c_api
 class AddNTest(test_util.TensorFlowTestCase):
 
   def testPartials(self):
@@ -360,7 +358,6 @@ class AddNTest(test_util.TensorFlowTestCase):
                             [g.eval() for g in add_n_grad])
 
 
-@test_util.with_c_api
 class DivAndModTest(test_util.TensorFlowTestCase):
   # TODO(aselle): Test more types before exposing new division operators.
 

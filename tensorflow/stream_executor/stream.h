@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/fft.h"
+#include "tensorflow/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -38,8 +39,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 namespace host {
 class HostBlas;
@@ -63,9 +63,6 @@ class DeviceMemory;
 class Timer;
 
 namespace dnn {
-class BatchDescriptor;
-class FilterDescriptor;
-class ConvolutionDescriptor;
 class BatchDescriptor;
 class FilterDescriptor;
 class ConvolutionDescriptor;
@@ -360,6 +357,17 @@ class Stream {
 
   Stream &ThenConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<double> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<double> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
       const DeviceMemory<float> &input_data,
       const dnn::FilterDescriptor &filter_descriptor,
       const DeviceMemory<float> &filter_data,
@@ -478,6 +486,18 @@ class Stream {
 
   Stream &ThenConvolveBackwardDataWithAlgorithm(
       const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<double> &filter_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<double> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveBackwardDataWithAlgorithm(
+      const dnn::FilterDescriptor &filter_descriptor,
       const DeviceMemory<float> &filter_data,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> backward_output_data,
@@ -528,6 +548,18 @@ class Stream {
       const dnn::FilterDescriptor &filter_descriptor,
       DeviceMemory<Eigen::half> *backward_filter_data,
       ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveBackwardFilterWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<double> &input_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<double> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      DeviceMemory<double> *backward_filter_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardFilterWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -1388,54 +1420,64 @@ class Stream {
   // See BlasSupport::DoBlasGemmWithAlgorithm.
   Stream &ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, const Eigen::half &alpha, const DeviceMemory<Eigen::half> &a,
-      int lda, const DeviceMemory<Eigen::half> &b, int ldb,
-      const Eigen::half &beta, DeviceMemory<Eigen::half> *c, int ldc,
-      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(blas::Transpose transa,
-                                    blas::Transpose transb, uint64 m, uint64 n,
-                                    uint64 k, int alpha,
-                                    const DeviceMemory<int8> &a, int lda,
-                                    const DeviceMemory<int8> &b, int ldb,
-                                    int beta, DeviceMemory<int> *c, int ldc,
-                                    blas::ComputationType computation_type,
-                                    blas::AlgorithmType algorithm,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(blas::Transpose transa,
-                                    blas::Transpose transb, uint64 m, uint64 n,
-                                    uint64 k, float alpha,
-                                    const DeviceMemory<float> &a, int lda,
-                                    const DeviceMemory<float> &b, int ldb,
-                                    float beta, DeviceMemory<float> *c, int ldc,
-                                    blas::ComputationType computation_type,
-                                    blas::AlgorithmType algorithm,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
-      const DeviceMemory<double> &b, int ldb, double beta,
-      DeviceMemory<double> *c, int ldc, blas::ComputationType computation_type,
+      uint64 k, const HostOrDeviceScalar<Eigen::half> &alpha,
+      const DeviceMemory<Eigen::half> &a, int lda,
+      const DeviceMemory<Eigen::half> &b, int ldb,
+      const HostOrDeviceScalar<Eigen::half> &beta, DeviceMemory<Eigen::half> *c,
+      int ldc, blas::ComputationType computation_type,
       blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result);
   Stream &ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, std::complex<float> alpha,
+      uint64 k, const HostOrDeviceScalar<int> &alpha,
+      const DeviceMemory<int8> &a, int lda, const DeviceMemory<int8> &b,
+      int ldb, const HostOrDeviceScalar<int> &beta, DeviceMemory<int> *c,
+      int ldc, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, const HostOrDeviceScalar<float> &alpha,
+      const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &b,
+      int ldb, const HostOrDeviceScalar<float> &beta, DeviceMemory<float> *c,
+      int ldc, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, const HostOrDeviceScalar<double> &alpha,
+      const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &b,
+      int ldb, const HostOrDeviceScalar<double> &beta, DeviceMemory<double> *c,
+      int ldc, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, const HostOrDeviceScalar<std::complex<float>> &alpha,
       const DeviceMemory<std::complex<float>> &a, int lda,
       const DeviceMemory<std::complex<float>> &b, int ldb,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
+      const HostOrDeviceScalar<std::complex<float>> &beta,
+      DeviceMemory<std::complex<float>> *c, int ldc,
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result);
   Stream &ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
-      uint64 k, std::complex<double> alpha,
+      uint64 k, const HostOrDeviceScalar<std::complex<double>> &alpha,
       const DeviceMemory<std::complex<double>> &a, int lda,
       const DeviceMemory<std::complex<double>> &b, int ldb,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
+      const HostOrDeviceScalar<std::complex<double>> &beta,
+      DeviceMemory<std::complex<double>> *c, int ldc,
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result);
 
   // See BlasSupport::DoBlasGemmBatched.
+  Stream &ThenBlasGemmBatched(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb,
+      float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,
+      int ldc, int batch_count);
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
                               uint64 m, uint64 n, uint64 k, float alpha,
                               const port::ArraySlice<DeviceMemory<float> *> &a,
@@ -1468,6 +1510,13 @@ class Stream {
       std::complex<double> beta,
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c, int ldc,
       int batch_count);
+  Stream &ThenBlasGemmBatchedWithScratch(
+      blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+      uint64 k, float alpha,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
+      const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb,
+      float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,
+      int ldc, int batch_count, ScratchAllocator *scratch_allocator);
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
       uint64 k, float alpha, const port::ArraySlice<DeviceMemory<float> *> &a,
@@ -1767,7 +1816,8 @@ class Stream {
                          DeviceMemory<Eigen::half> *output_c_data,
                          bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1784,7 +1834,8 @@ class Stream {
                          const dnn::RnnStateTensorDescriptor &output_c_desc,
                          DeviceMemory<float> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1801,7 +1852,8 @@ class Stream {
                          const dnn::RnnStateTensorDescriptor &output_c_desc,
                          DeviceMemory<double> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator);
+                         ScratchAllocator *workspace_allocator,
+                         dnn::ProfileResult *output_profile_result);
 
   // Enqueue a backward operation of the RNN model onto the stream.
   // See DnnSupport::DoRnnBackward for more details.
@@ -1828,7 +1880,8 @@ class Stream {
       DeviceMemory<Eigen::half> *input_c_backprop_data,
       DeviceMemory<Eigen::half> *params_backprop_data,
       DeviceMemory<uint8> *reserve_space_data,
-      ScratchAllocator *workspace_allocator);
+      ScratchAllocator *workspace_allocator,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1852,7 +1905,8 @@ class Stream {
                           DeviceMemory<float> *input_c_backprop_data,
                           DeviceMemory<float> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
-                          ScratchAllocator *workspace_allocator);
+                          ScratchAllocator *workspace_allocator,
+                          dnn::ProfileResult *output_profile_result);
 
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1876,7 +1930,8 @@ class Stream {
                           DeviceMemory<double> *input_c_backprop_data,
                           DeviceMemory<double> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
-                          ScratchAllocator *workspace_allocator);
+                          ScratchAllocator *workspace_allocator,
+                          dnn::ProfileResult *output_profile_result);
 
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.
@@ -1933,15 +1988,14 @@ class Stream {
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
   // (execute one at a time, block later stream operations).
+  //
   // Behavior is undefined when synchronizing using OpenCL user events.
   // Behavior is undefined if host callbacks call device routines or insert
   // them into any stream.
+  //
   // On certain platforms, ThenDoHostCallback is expected to have significant
   // negative effects on performance.
   Stream &ThenDoHostCallback(std::function<void()> callback);
-
-  // Identical to ThenDoHostCallback; only exposed for testing purposes.
-  Stream &ThenDoHostCallbackForTest(std::function<void()> callback);
 
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {
@@ -1962,7 +2016,7 @@ class Stream {
   friend class ocl::CLBlas;    // for parent_.
 
   bool InErrorState() const LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock{mu_};
+    tf_shared_lock lock(mu_);
     return !ok_;
   }
 
@@ -1972,7 +2026,7 @@ class Stream {
     if (operation_retcode) {
       return;
     }
-    mutex_lock lock{mu_};
+    mutex_lock lock(mu_);
     ok_ = false;
   }
 
@@ -2058,7 +2112,6 @@ struct Quantization<int32> {
       dnn::QuantizedActivationMode::k32Bit;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_STREAM_H_

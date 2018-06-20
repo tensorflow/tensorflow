@@ -38,8 +38,7 @@ using ElementGenerator =
 // Emits a loop for every element in the given shape.
 class LoopEmitter {
  public:
-  using BodyEmitter =
-      std::function<tensorflow::Status(const IrArray::Index& index)>;
+  using BodyEmitter = std::function<Status(const IrArray::Index& index)>;
 
   LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
               llvm::IRBuilder<>* ir_builder);
@@ -47,25 +46,32 @@ class LoopEmitter {
   // element of the given target array.
   LoopEmitter(const ElementGenerator& target_element_generator,
               const IrArray& target_array, llvm::IRBuilder<>* ir_builder);
-  // Same as previous method except emits multiple targets in an array.
+
+  // Constructs a LoopEmitter that emits one element into each of N separate
+  // arrays on each iteration of the loop.
+  //
+  // This is used for multi-output fusion.  target_element_generator must
+  // produce an LLVM struct with N elements.
   LoopEmitter(const ElementGenerator& target_element_generator,
               tensorflow::gtl::ArraySlice<IrArray> target_arrays,
               llvm::IRBuilder<>* ir_builder);
+
   LoopEmitter(const LoopEmitter&) = delete;
   LoopEmitter& operator=(const LoopEmitter&) = delete;
   virtual ~LoopEmitter() = default;
 
   // Emits a loop nest (with a yet-to-be-filled loop body) that iterates through
   // every element in the given shape. Returns the multi-dimensional index that
-  // specifies the element.
-  IrArray::Index EmitIndexAndSetExitBasicBlock() {
+  // specifies the element, will return multiple indices if the loop is
+  // unrolled.
+  std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock() {
     return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"");
   }
-  virtual IrArray::Index EmitIndexAndSetExitBasicBlock(
+  virtual std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock(
       tensorflow::StringPiece loop_name);
 
   // Emits a complete loop nest for every element in the given shape.
-  tensorflow::Status EmitLoop(tensorflow::StringPiece loop_name = "");
+  Status EmitLoop(tensorflow::StringPiece loop_name = "");
 
  protected:
   // An IR emitter that generates the loop body.

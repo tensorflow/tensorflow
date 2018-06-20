@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
+#ifndef TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
+#define TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
 
 #include <array>
 
@@ -265,9 +265,15 @@ Status ConcatShape(shape_inference::InferenceContext* c,
 // Shape function for concat operations.
 Status ConcatV2Shape(shape_inference::InferenceContext* c);
 
+// Shape function for binary operators that broadcast their inputs
+// and with output to output_index.
+Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index);
+
 // Shape function for binary operators that broadcast their inputs.
 // Tested by ops/math_ops_test.cc.
-Status BroadcastBinaryOpShapeFn(InferenceContext* c);
+inline Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
+  return BroadcastBinaryOpOutputShapeFn(c, 0);
+}
 
 // Shape function for random operations.
 Status RandomShape(shape_inference::InferenceContext* c);
@@ -283,8 +289,11 @@ Status ScatterNdUpdateShape(InferenceContext* c);
 // Shape function for ops with an explicit "shape" attribute.
 Status ExplicitShape(InferenceContext* c);
 
+// Shape function for multiple-output ops with an explicit "shapes" attribute.
+Status ExplicitShapes(InferenceContext* c);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
+#endif  // TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_

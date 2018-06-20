@@ -31,6 +31,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import transformed_distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class ExpRelaxedOneHotCategorical(distribution.Distribution):
@@ -125,6 +126,14 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
   A Continuous Relaxation of Discrete Random Variables. 2016.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(
       self,
       temperature,
@@ -162,8 +171,8 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[logits, probs, temperature]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[logits, probs, temperature]) as name:
 
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           name=name, logits=logits, probs=probs, validate_args=validate_args,
@@ -278,15 +287,12 @@ class ExpRelaxedOneHotCategorical(distribution.Distribution):
                       * math_ops.log(self.temperature))
     # compute the unnormalized density
     log_softmax = nn_ops.log_softmax(logits_2d - x_2d * self._temperature_2d)
-    log_unnorm_prob = math_ops.reduce_sum(log_softmax, [-1], keep_dims=False)
+    log_unnorm_prob = math_ops.reduce_sum(log_softmax, [-1], keepdims=False)
     # combine unnormalized density with normalization constant
     log_prob = log_norm_const + log_unnorm_prob
     # Reshapes log_prob to be consistent with shape of user-supplied logits
     ret = array_ops.reshape(log_prob, logits_shape)
     return ret
-
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
 
   def _assert_valid_sample(self, x):
     if not self.validate_args:
@@ -306,7 +312,7 @@ class RelaxedOneHotCategorical(
   The RelaxedOneHotCategorical is a distribution over random probability
   vectors, vectors of positive real values that sum to one, which continuously
   approximates a OneHotCategorical. The degree of approximation is controlled by
-  a temperature: as the temperaturegoes to 0 the RelaxedOneHotCategorical
+  a temperature: as the temperature goes to 0 the RelaxedOneHotCategorical
   becomes discrete with a distribution described by the `logits` or `probs`
   parameters, as the temperature goes to infinity the RelaxedOneHotCategorical
   becomes the constant distribution that is identically the constant vector of
@@ -371,6 +377,14 @@ class RelaxedOneHotCategorical(
   A Continuous Relaxation of Discrete Random Variables. 2016.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(
       self,
       temperature,
@@ -412,5 +426,5 @@ class RelaxedOneHotCategorical(
                                        validate_args=validate_args,
                                        allow_nan_stats=allow_nan_stats)
     super(RelaxedOneHotCategorical, self).__init__(dist,
-                                                   bijectors.Exp(event_ndims=1),
+                                                   bijectors.Exp(),
                                                    name=name)

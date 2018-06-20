@@ -196,10 +196,19 @@ TEST_F(SingleMachineTest, GraphOptimizations) {
   TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
   std::set<string> cost_nodes;
   for (const auto& node : metadata.cost_graph().node()) {
+#ifdef INTEL_MKL
+    // Skip the special nodes inserted by TF (and MKL): these are either
+    // prefixed with an underscore or contain "/_".
+    if (node.name()[0] == '_' || node.name().find("/_") != string::npos) {
+      continue;
+    }
+    cost_nodes.insert(node.name());
+#else
     // Skip nodes added by TF internally.
     if (node.name()[0] != '_') {
       cost_nodes.insert(node.name());
     }
+#endif
   }
   const std::set<string> expected_cost_nodes = {
       "zero",      "one",      "add",         "square",

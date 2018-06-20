@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
+#define TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
 
 #include "tensorflow/core/platform/types.h"
 
@@ -29,4 +29,4 @@ string LibdeviceRoot();
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CUDA_LIBDEVICE_PATH_H_

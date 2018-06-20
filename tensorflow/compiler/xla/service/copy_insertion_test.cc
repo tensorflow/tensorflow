@@ -1595,6 +1595,45 @@ TEST_F(CopyInsertionTest, WhileBodyWithConstantRoot) {
   EXPECT_THAT(condition->root_instruction(), op::Constant());
 }
 
+TEST_F(CopyInsertionTest, TokensShouldNotBeCopied) {
+  string module_string = R"(
+HloModule TokensShouldNotBeCopied
+
+%Body (param.1: (s32[], token[])) -> (s32[], token[]) {
+  %param.1 = (s32[], token[]) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element((s32[], token[]) %param.1), index=0
+  %constant.1 = s32[] constant(1)
+  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
+  %get-tuple-element.2 = token[] get-tuple-element((s32[], token[]) %param.1), index=1
+  %generate-token = token[] generate-token(token[] %get-tuple-element.2)
+  ROOT %tuple = (s32[], token[]) tuple(s32[] %add, token[] %generate-token)
+}
+
+%Cond (param: (s32[], token[])) -> pred[] {
+  %param = (s32[], token[]) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element((s32[], token[]) %param), index=0
+  %constant = s32[] constant(42)
+  ROOT %less-than = pred[] less-than(s32[] %get-tuple-element, s32[] %constant)
+}
+
+ENTRY %TokensShouldNotBeCopied () -> s32[] {
+  %one = s32[] constant(1)
+  %negative_one = s32[] negate(%one)
+  %init_token = token[] generate-token()
+  %init_tuple = (s32[], token[]) tuple(s32[] %negative_one, token[] %init_token)
+  %while = (s32[], token[]) while((s32[], token[]) %init_tuple), condition=%Cond, body=%Body
+  ROOT %root = s32[] get-tuple-element((s32[], token[]) %while), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          HloRunner::CreateModuleFromString(
+                              module_string, GetDebugOptionsForTest()));
+  InsertCopies(module.get());
+
+  // There should be no copies added because tokens should not be copied.
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
 std::unique_ptr<HloComputation> MakeTrivialCondition(const Shape& shape) {
   auto builder = HloComputation::Builder("trivial_condition");
   builder.AddInstruction(
@@ -1636,8 +1675,7 @@ void BM_SequentialWhiles(int num_iters, int num_whiles) {
   for (int i = 0; i < num_iters; ++i) {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    HloModule module("BM_SequentialWhiles", VersionedComputationHandle(),
-                     config);
+    HloModule module("BM_SequentialWhiles", config);
 
     auto builder = HloComputation::Builder("BM_SequentialWhiles");
     HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -1677,8 +1715,7 @@ void BM_ParallelWhiles(int num_iters, int num_whiles) {
   for (int i = 0; i < num_iters; ++i) {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    HloModule module("BM_SequentialWhiles", VersionedComputationHandle(),
-                     config);
+    HloModule module("BM_SequentialWhiles", config);
 
     auto builder = HloComputation::Builder("BM_ParallelWhiles");
     HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -1724,8 +1761,57 @@ void BM_ParallelWhiles(int num_iters, int num_whiles) {
   }
 }
 
+std::unique_ptr<HloComputation> MakeBenchmarkWhileBody(
+    const int num_tuple_inputs) {
+  auto builder = HloComputation::Builder("benchmark_loop_body");
+  const Shape element_shape = ShapeUtil::MakeShape(F32, {});
+  std::vector<Shape> input_shape(num_tuple_inputs, element_shape);
+  const Shape loop_state_shape = ShapeUtil::MakeTupleShape(input_shape);
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, loop_state_shape, "loop_state"));
+  std::vector<HloInstruction*> gte_nodes(num_tuple_inputs);
+  for (int i = 0; i < num_tuple_inputs; ++i) {
+    gte_nodes[i] = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(element_shape, param, i));
+  }
+  builder.AddInstruction(HloInstruction::CreateTuple(gte_nodes));
+  return builder.Build();
+}
+
+void BM_ManyElementTuple(int num_iters, const int num_tuple_inputs) {
+  tensorflow::testing::StopTiming();
+  HloModuleConfig config;
+  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  CopyInsertion copy_insertion;
+  const Shape element_shape = ShapeUtil::MakeShape(F32, {});
+  std::vector<HloInstruction*> tuple_params(num_tuple_inputs);
+  for (int i = 0; i < num_iters; ++i) {
+    auto builder = HloComputation::Builder("BM_ParallelWhiles");
+    HloModule module("BM_ManyElementTuple", config);
+    for (int j = 0; j < num_tuple_inputs; ++j) {
+      tuple_params[j] = builder.AddInstruction(
+          HloInstruction::CreateParameter(j, element_shape, ""));
+    }
+    HloInstruction* init =
+        builder.AddInstruction(HloInstruction::CreateTuple(tuple_params));
+    HloComputation* condition =
+        module.AddEmbeddedComputation(MakeTrivialCondition(init->shape()));
+    HloComputation* body =
+        module.AddEmbeddedComputation(MakeBenchmarkWhileBody(num_tuple_inputs));
+    HloInstruction* xla_while = builder.AddInstruction(
+        HloInstruction::CreateWhile(init->shape(), condition, body, init));
+    builder.AddInstruction(HloInstruction::CreateGetTupleElement(
+        ShapeUtil::MakeShape(F32, {}), xla_while, 0));
+    module.AddEntryComputation(builder.Build());
+    tensorflow::testing::StartTiming();
+    ASSERT_IS_OK(copy_insertion.Run(&module).status());
+    tensorflow::testing::StopTiming();
+  }
+}
+
 BENCHMARK(BM_SequentialWhiles)->Arg(512)->Arg(1024)->Arg(2048)->Arg(4096);
 BENCHMARK(BM_ParallelWhiles)->Arg(512)->Arg(1024)->Arg(2048)->Arg(4096);
+BENCHMARK(BM_ManyElementTuple)->Arg(1024)->Arg(12288);
 
 TEST_F(CopyInsertionTest, SimpleControlFlowTest) {
   const string& hlo_string = R"(

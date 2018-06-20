@@ -288,7 +288,7 @@ if __name__ == '__main__':
       '--data_url',
       type=str,
       # pylint: disable=line-too-long
-      default='http://download.tensorflow.org/data/speech_commands_v0.01.tar.gz',
+      default='http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz',
       # pylint: enable=line-too-long
       help='Location of speech training data archive on the web.')
   parser.add_argument(
@@ -357,12 +357,12 @@ if __name__ == '__main__':
       '--window_size_ms',
       type=float,
       default=30.0,
-      help='How long each spectrogram timeslice is',)
+      help='How long each spectrogram timeslice is.',)
   parser.add_argument(
       '--window_stride_ms',
       type=float,
       default=10.0,
-      help='How long each spectrogram timeslice is',)
+      help='How far to move in time between spectogram timeslices.',)
   parser.add_argument(
       '--dct_coefficient_count',
       type=int,

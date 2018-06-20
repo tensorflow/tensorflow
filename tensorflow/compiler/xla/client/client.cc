@@ -64,7 +64,7 @@ StatusOr<std::unique_ptr<Literal>> Client::Transfer(
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
-    const Literal& literal, const DeviceHandle* device_handle) {
+    const LiteralSlice& literal, const DeviceHandle* device_handle) {
   TransferToServerRequest request;
   *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
@@ -91,7 +91,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
   return MakeUnique<GlobalData>(stub_, response.data());
 }
 
-Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
+Status Client::TransferToInfeed(const LiteralSlice& literal, int64 replica_id,
                                 const DeviceHandle* device_handle) {
   TransferToInfeedRequest request;
   *request.mutable_literal() = literal.ToProto();
@@ -162,7 +162,7 @@ Status Client::ResetDevice() {
 }
 
 StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
-    const Computation& computation,
+    const XlaComputation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
@@ -177,27 +177,46 @@ StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
   return Transfer(*data, shape_with_output_layout);
 }
 
-StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
-  LoadComputationSnapshotRequest request;
-  *request.mutable_module() = module;
-  LoadComputationSnapshotResponse response;
+StatusOr<std::unique_ptr<Literal>> Client::ComputeConstant(
+    const XlaComputation& computation, const Layout* output_layout) const {
+  ComputeConstantGraphRequest request;
+  *request.mutable_computation() = computation.proto();
+  if (output_layout != nullptr) {
+    *request.mutable_output_layout() = *output_layout;
+  }
 
-  Status s = stub_->LoadComputationSnapshot(&request, &response);
+  ComputeConstantResponse response;
+
+  VLOG(2) << "making compute-constant-graph request";
+  Status s = stub_->ComputeConstantGraph(&request, &response);
+  VLOG(2) << "done with request";
+
   if (!s.ok()) {
     return s;
   }
 
-  VLOG(1) << "load snapshot response: " << response.ShortDebugString();
-  return Computation(stub_, response.computation());
+  VLOG(3) << "ComputeConstant: {" << response.DebugString() << "}";
+
+  if (!response.has_literal()) {
+    return InternalError(
+        "no computed literal in the provided response in ComputeConstantGraph "
+        "request");
+  }
+  return Literal::CreateFromProto(response.literal());
+}
+
+StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
+  TF_RET_CHECK(module.has_hlo() && module.hlo().has_hlo_module());
+  return XlaComputation(module.hlo().hlo_module());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
-    const Computation& computation,
+    const XlaComputation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
-  ExecuteRequest request;
-  *request.mutable_computation() = computation.handle();
+  ExecuteGraphRequest request;
+  *request.mutable_computation() = computation.proto();
 
   if (execution_options == nullptr) {
     *request.mutable_execution_options() = CreateDefaultExecutionOptions();
@@ -211,7 +230,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
 
   ExecuteResponse response;
   VLOG(1) << "making execute request: " << request.ShortDebugString();
-  Status s = stub_->Execute(&request, &response);
+  Status s = stub_->ExecuteGraph(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -232,12 +251,12 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
 }
 
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
-    tensorflow::gtl::ArraySlice<ComputationInstance> computations) {
-  ExecuteParallelRequest request;
+    tensorflow::gtl::ArraySlice<XlaComputationInstance> computations) {
+  ExecuteGraphParallelRequest request;
 
-  for (const ComputationInstance& computation : computations) {
-    ExecuteRequest single_request;
-    *single_request.mutable_computation() = computation.computation.handle();
+  for (const XlaComputationInstance& computation : computations) {
+    ExecuteGraphRequest single_request;
+    *single_request.mutable_computation() = computation.computation.proto();
     for (GlobalData* argument : computation.arguments) {
       *single_request.add_arguments() = argument->handle();
     }
@@ -246,8 +265,9 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   }
 
   ExecuteParallelResponse response;
-  VLOG(1) << "making execute-parallel request: " << request.ShortDebugString();
-  tensorflow::Status s = stub_->ExecuteParallel(&request, &response);
+  VLOG(1) << "making execute-graph-parallel request: "
+          << request.ShortDebugString();
+  Status s = stub_->ExecuteGraphParallel(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -276,7 +296,7 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
 
   GetDeviceHandlesResponse response;
   VLOG(1) << "making get device request: " << request.ShortDebugString();
-  tensorflow::Status s = stub_->GetDeviceHandles(&request, &response);
+  Status s = stub_->GetDeviceHandles(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -325,14 +345,17 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
 }
 
 StatusOr<ComputationStats> Client::GetComputationStats(
-    const Computation& computation, const DebugOptions& debug_options) const {
-  ComputationStatsRequest request;
-  *request.mutable_computation() = computation.handle();
+    const XlaComputation& computation,
+    const DebugOptions& debug_options) const {
+  ComputationGraphStatsRequest request;
+
+  // TODO(b/74197823): Find a way to avoid the copy of the hlo proto.
+  *request.mutable_computation() = computation.proto();
   *request.mutable_debug_options() = debug_options;
   ComputationStatsResponse response;
 
-  VLOG(1) << "making computation stats request";
-  Status s = stub_->GetComputationStats(&request, &response);
+  VLOG(1) << "making computation graph stats request";
+  Status s = stub_->GetComputationGraphStats(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -343,20 +366,9 @@ StatusOr<ComputationStats> Client::GetComputationStats(
 }
 
 StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
-    const Computation& computation) {
-  GetComputationShapeRequest request;
-  *request.mutable_computation() = computation.handle();
-  GetComputationShapeResponse response;
-
-  VLOG(1) << "making get-computation-shape request";
-  Status s = stub_->GetComputationShape(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-
-  return WrapUnique(response.release_program_shape());
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
+  return MakeUnique<ProgramShape>(result);
 }
 
 StatusOr<Shape> Client::GetShape(const GlobalData& data) {
@@ -376,7 +388,7 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
 }
 
 StatusOr<string> Client::ExecutionStatsAsString(
-    const Computation& computation, const ExecutionProfile& profile) {
+    const XlaComputation& computation, const ExecutionProfile& profile) {
   TF_ASSIGN_OR_RETURN(
       auto computation_stats,
       GetComputationStats(computation,

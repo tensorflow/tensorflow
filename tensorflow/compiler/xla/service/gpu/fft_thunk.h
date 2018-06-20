@@ -34,24 +34,22 @@ namespace gpu {
 // released on destruction.
 //
 // Not thread-safe in that AllocateBytes, destructor are not locked.
-class FftScratchAllocator : public perftools::gputools::ScratchAllocator {
+class FftScratchAllocator : public se::ScratchAllocator {
  public:
   FftScratchAllocator(int device_ordinal,
                       DeviceMemoryAllocator* memory_allocator);
 
-  ~FftScratchAllocator() override;
-
-  int64 GetMemoryLimitInBytes(perftools::gputools::Stream* stream) override;
+  int64 GetMemoryLimitInBytes(se::Stream* stream) override;
 
   int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
 
-  perftools::gputools::port::StatusOr<perftools::gputools::DeviceMemory<uint8>>
-  AllocateBytes(perftools::gputools::Stream* stream, int64 byte_size) override;
+  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+      se::Stream* stream, int64 byte_size) override;
 
  private:
   const int device_ordinal_;
   DeviceMemoryAllocator* memory_allocator_;
-  std::vector<perftools::gputools::DeviceMemoryBase> allocated_buffers_;
+  std::vector<OwningDeviceMemory> allocated_buffers_;
   int64 total_allocated_bytes_ = 0;
 };
 
@@ -73,17 +71,16 @@ class FftThunk : public Thunk {
   FftThunk& operator=(const FftThunk&) = delete;  // Cannot share fft_plan_
 
   // Does the FFT for the thunk on "stream".
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         se::Stream* stream) override;
 
  private:
-  const perftools::gputools::fft::Type fft_type_;
+  const se::fft::Type fft_type_;
   const std::vector<int64> fft_length_;
 
   float scale_factor_;
 
-  std::unique_ptr<perftools::gputools::fft::Plan> fft_plan_;
+  std::unique_ptr<se::fft::Plan> fft_plan_;
 
   const BufferAllocation::Slice input_buffer_;
   const BufferAllocation::Slice output_buffer_;

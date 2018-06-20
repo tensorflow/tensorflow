@@ -15,24 +15,6 @@
 """Operations that generate constants.
 
 See the @{$python/constant_op$constants guide}.
-
-@@zeros
-@@zeros_like
-@@ones
-@@ones_like
-@@fill
-@@constant
-@@linspace
-@@range
-@@random_normal
-@@truncated_normal
-@@random_uniform
-@@random_shuffle
-@@random_crop
-@@multinomial
-@@random_gamma
-@@random_poisson
-@@set_random_seed
 """
 
 # Must be separate from array_ops to avoid a cyclic dependency.
@@ -52,6 +34,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _eager_reshape(tensor, shape, ctx):
@@ -59,7 +42,6 @@ def _eager_reshape(tensor, shape, ctx):
   attr_t = tensor._datatype_enum()  # pylint: disable=protected-access
   attr_tshape, (shape,) = execute.args_to_matching_eager(
       [shape], ctx, dtypes.int32)
-  attr_tshape = attr_tshape
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
   result, = execute.execute(
@@ -131,6 +113,7 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
     return ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
 
 
+@tf_export("constant")
 def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   """Creates a constant tensor.
 
@@ -180,7 +163,7 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
     TypeError: if shape is incorrectly specified or unsupported.
   """
   ctx = context.context()
-  if not ctx.in_graph_mode():
+  if ctx.executing_eagerly():
     t = convert_to_eager_tensor(value, ctx, dtype)
     if shape is None:
       return t

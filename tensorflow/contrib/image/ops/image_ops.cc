@@ -93,7 +93,7 @@ row_to_col_match_indices: A vector of length num_rows, which is the number of
   If `row_to_col_match_indices[i]` is not -1, row i is matched to column
   `row_to_col_match_indices[i]`.
 col_to_row_match_indices: A vector of length num_columns, which is the number
-  of columns of the input ditance matrix.
+  of columns of the input distance matrix.
   If `col_to_row_match_indices[j]` is not -1, column j is matched to row
   `col_to_row_match_indices[j]`.
 )doc");

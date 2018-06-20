@@ -18,7 +18,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service/interpreter:platform_id",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
@@ -63,10 +62,7 @@ cc_library(
     name = "platform_id",
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
-    deps = [
-        "@nsync//:nsync_headers",
-        "//tensorflow/core:stream_executor_headers_lib",
-    ] + if_static(
+    deps = ["//tensorflow/core:stream_executor_headers_lib"] + if_static(
         ["@protobuf_archive//:protobuf"],
         ["@protobuf_archive//:protobuf_headers"],
     ),
@@ -120,17 +116,5 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_headers_lib",
-        "//tensorflow/core:stream_executor_no_cuda",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

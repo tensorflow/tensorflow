@@ -23,7 +23,7 @@ namespace {
 TfLiteTensor* convertLongToTensor(JNIEnv* env, jlong handle) {
   if (handle == 0) {
     throwException(env, kIllegalArgumentException,
-                   "Invalid handle to TfLiteTensor.");
+                   "Internal error: Invalid handle to TfLiteTensor.");
     return nullptr;
   }
   return reinterpret_cast<TfLiteTensor*>(handle);
@@ -36,45 +36,42 @@ size_t writeOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
   size_t to_copy = num_elements * elementByteSize(type);
   if (to_copy > dst_size) {
     throwException(env, kIllegalStateException,
-                   "cannot write Java array of %d bytes to Tensor of %d bytes",
+                   "Internal error: cannot write Java array of %d bytes to "
+                   "Tensor of %d bytes",
                    to_copy, dst_size);
     return 0;
   }
   switch (type) {
     case kTfLiteFloat32: {
-      jfloatArray a = static_cast<jfloatArray>(array);
-      jfloat* values = env->GetFloatArrayElements(a, nullptr);
-      memcpy(dst, values, to_copy);
-      env->ReleaseFloatArrayElements(a, values, JNI_ABORT);
+      jfloatArray float_array = static_cast<jfloatArray>(array);
+      jfloat* float_dst = static_cast<jfloat*>(dst);
+      env->GetFloatArrayRegion(float_array, 0, num_elements, float_dst);
       return to_copy;
     }
     case kTfLiteInt32: {
-      jintArray a = static_cast<jintArray>(array);
-      jint* values = env->GetIntArrayElements(a, nullptr);
-      memcpy(dst, values, to_copy);
-      env->ReleaseIntArrayElements(a, values, JNI_ABORT);
+      jintArray int_array = static_cast<jintArray>(array);
+      jint* int_dst = static_cast<jint*>(dst);
+      env->GetIntArrayRegion(int_array, 0, num_elements, int_dst);
       return to_copy;
     }
     case kTfLiteInt64: {
-      jlongArray a = static_cast<jlongArray>(array);
-      jlong* values = env->GetLongArrayElements(a, nullptr);
-      memcpy(dst, values, to_copy);
-      env->ReleaseLongArrayElements(a, values, JNI_ABORT);
+      jlongArray long_array = static_cast<jlongArray>(array);
+      jlong* long_dst = static_cast<jlong*>(dst);
+      env->GetLongArrayRegion(long_array, 0, num_elements, long_dst);
       return to_copy;
     }
     case kTfLiteUInt8: {
-      jbyteArray a = static_cast<jbyteArray>(array);
-      jbyte* values = env->GetByteArrayElements(a, nullptr);
-      memcpy(dst, values, to_copy);
-      env->ReleaseByteArrayElements(a, values, JNI_ABORT);
+      jbyteArray byte_array = static_cast<jbyteArray>(array);
+      jbyte* byte_dst = static_cast<jbyte*>(dst);
+      env->GetByteArrayRegion(byte_array, 0, num_elements, byte_dst);
       return to_copy;
     }
     default: {
       throwException(env, kUnsupportedOperationException,
-                     "TensorFlowLite currently supports float (32 bits), "
-                     "int (32 bits), byte (8 bits), and long (64 bits), "
-                     "support for other types (DataType %d in this case) will "
-                     "be added in the future",
+                     "DataType error: TensorFlowLite currently supports float "
+                     "(32 bits), int (32 bits), byte (8 bits), and long "
+                     "(64 bits), support for other types (DataType %d in this "
+                     "case) will be added in the future",
                      kTfLiteFloat32, type);
       return 0;
     }
@@ -88,8 +85,9 @@ size_t readOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
   if (size > src_size) {
     throwException(
         env, kIllegalStateException,
-        "cannot fill a Java array of %d bytes with a Tensor of %d bytes", size,
-        src_size);
+        "Internal error: cannot fill a Java array of %d bytes with a Tensor of "
+        "%d bytes",
+        size, src_size);
     return 0;
   }
   switch (data_type) {
@@ -117,8 +115,8 @@ size_t readOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
       return size;
     }
     default: {
-      throwException(env, kIllegalStateException, "invalid DataType(%d)",
-                     data_type);
+      throwException(env, kIllegalStateException,
+                     "DataType error: invalid DataType(%d)", data_type);
     }
   }
   return 0;
@@ -152,19 +150,22 @@ size_t elementByteSize(TfLiteType data_type) {
   switch (data_type) {
     case kTfLiteFloat32:
       static_assert(sizeof(jfloat) == 4,
-                    "Java float not compatible with kTfLiteFloat");
+                    "Interal error: Java float not compatible with "
+                    "kTfLiteFloat");
       return 4;
     case kTfLiteInt32:
       static_assert(sizeof(jint) == 4,
-                    "Java int not compatible with kTfLiteInt");
+                    "Interal error: Java int not compatible with kTfLiteInt");
       return 4;
     case kTfLiteUInt8:
       static_assert(sizeof(jbyte) == 1,
-                    "Java byte not compatible with kTfLiteUInt8");
+                    "Interal error: Java byte not compatible with "
+                    "kTfLiteUInt8");
       return 1;
     case kTfLiteInt64:
       static_assert(sizeof(jlong) == 8,
-                    "Java long not compatible with kTfLiteInt64");
+                    "Interal error: Java long not compatible with "
+                    "kTfLiteInt64");
       return 8;
     default:
       return 0;
@@ -212,7 +213,7 @@ Java_org_tensorflow_lite_Tensor_readMultiDimensionalArray(JNIEnv* env,
   int num_dims = tensor->dims->size;
   if (num_dims == 0) {
     throwException(env, kIllegalArgumentException,
-                   "copyTo() is not meant for scalar Tensors.");
+                   "Internal error: Cannot copy empty/scalar Tensors.");
     return;
   }
   readMultiDimensionalArray(env, tensor->type, tensor->data.raw, tensor->bytes,
@@ -233,10 +234,6 @@ Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env, jclass clazz, jlong handle) {
   if (tensor == nullptr) return nullptr;
   int num_dims = tensor->dims->size;
   jintArray result = env->NewIntArray(num_dims);
-  jint* dims = env->GetIntArrayElements(result, nullptr);
-  for (int i = 0; i < num_dims; ++i) {
-    dims[i] = static_cast<jint>(tensor->dims->data[i]);
-  }
-  env->ReleaseIntArrayElements(result, dims, 0);
+  env->SetIntArrayRegion(result, 0, num_dims, tensor->dims->data);
   return result;
 }

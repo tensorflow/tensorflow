@@ -27,11 +27,14 @@ build --define framework_shared_object=true
 build:mkl --define=using_mkl=true
 build:mkl -c opt
 
+build:download_clang --crosstool_top=@local_config_download_clang//:toolchain
+build:download_clang --define=using_clang=true
+
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --define=using_cuda=true --define=using_cuda_nvcc=true
 
 build:cuda_clang --crosstool_top=@local_config_cuda//crosstool:toolchain
-build:cuda_clang --define=using_cuda=true --define=using_cuda_clang=true
+build:cuda_clang --define=using_cuda=true --define=using_cuda_clang=true --define=using_clang=true
 
 build:win-cuda --define=using_cuda=true --define=using_cuda_nvcc=true
 

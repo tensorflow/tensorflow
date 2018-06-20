@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_CHOLESKY_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_CHOLESKY_H_
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 
 namespace tensorflow {
 
@@ -29,9 +29,9 @@ namespace tensorflow {
 // the block size to use.
 // TODO(phawkins): check for negative values on the diagonal and return an
 // error, instead of silently yielding NaNs.
-xla::StatusOr<xla::ComputationDataHandle> Cholesky(
-    xla::ComputationBuilder* builder, xla::ComputationDataHandle a,
-    int64 block_size = 256);
+// TODO(znado): handle the complex Hermitian case
+xla::StatusOr<xla::XlaOp> Cholesky(xla::XlaBuilder* builder, xla::XlaOp a,
+                                   int64 block_size = 256);
 
 }  // namespace tensorflow
 

@@ -171,24 +171,21 @@ class BufferValueMap {
     return value_to_buffer_number_.at(&value);
   }
 
-  // Compute and return a vector of buffers that the given value must be
-  // contained in due to HLO aliasing rules.
-  std::vector<BufferNumber> ComputeAliasedBuffers(const HloValue& value) {
+  void ComputeWhileAliasedBuffers(const HloValue& value,
+                                  std::vector<BufferNumber>* aliased_buffers) {
+    VLOG(3) << "Compute kWhile aliases";
     // Value is init of a while (use is while).
-    std::vector<BufferNumber> aliased_buffers;
     for (const HloUse& use : value.uses()) {
-      VLOG(2) << "use of value " << value.ToShortString() << ": " << use;
       if (use.instruction->opcode() == HloOpcode::kWhile) {
         // Determine the while value that this shares a buffer with.
         const HloValue& while_value =
             dataflow_.GetUniqueValueAt(use.instruction, use.operand_index);
-        aliased_buffers.push_back(GetBufferForValue(while_value));
+        aliased_buffers->push_back(GetBufferForValue(while_value));
         VLOG(3) << "  value is init value to a while; must share buffer with "
                    "while value "
                 << while_value.ToShortString();
       }
     }
-
     // Value is a parameter of a while body/condition.
     if (value.defining_instruction()->opcode() == HloOpcode::kParameter) {
       const HloComputation* computation =
@@ -205,11 +202,10 @@ class BufferValueMap {
           VLOG(3) << "  value is parameter value of the body or condition of a "
                      "while; must share buffer with while value "
                   << while_value.ToShortString();
-          aliased_buffers.push_back(GetBufferForValue(while_value));
+          aliased_buffers->push_back(GetBufferForValue(while_value));
         }
       }
     }
-
     // Value is the root of a while body.
     for (const HloPosition& position : value.positions()) {
       const HloComputation* computation = position.instruction->parent();
@@ -224,27 +220,71 @@ class BufferValueMap {
 
             const HloValue& while_value = dataflow_.GetUniqueValueAt(
                 callsite.instruction(), position.index);
-            VLOG(3) << "  value is root the body computation of a while; must "
-                       "share buffer with while value "
+            VLOG(3) << "  value @ " << position << " is root of "
+                    << callsite.instruction()->name()
+                    << "; body root and while value root must share buffer "
+                       "among them : "
                     << while_value.ToShortString();
-            aliased_buffers.push_back(GetBufferForValue(while_value));
+            aliased_buffers->push_back(GetBufferForValue(while_value));
           }
         }
       }
     }
-
     // Value is the output of the while instruction itself.
     if (value.defining_instruction()->opcode() == HloOpcode::kWhile) {
       VLOG(3) << "  value is output of a while instruction";
-      aliased_buffers.push_back(GetBufferForValue(value));
+      aliased_buffers->push_back(GetBufferForValue(value));
     }
+  }
 
+  void ComputeConditionalAliasedBuffers(
+      const HloValue& value, std::vector<BufferNumber>* aliased_buffers) {
+    VLOG(3) << "Compute kConditional aliases";
+    // Aliases the buffers of the true/false computations roots, with the one of
+    // the conditional.
+    for (const HloPosition& position : value.positions()) {
+      const HloComputation* computation = position.instruction->parent();
+      const CallGraphNode& call_graph_node =
+          dataflow_.call_graph().GetNode(computation);
+      if (position.instruction == computation->root_instruction()) {
+        for (const CallSite& callsite : call_graph_node.caller_callsites()) {
+          if (callsite.instruction()->opcode() == HloOpcode::kConditional) {
+            // Call graph must have been flattened.
+            CHECK_EQ(call_graph_node.caller_callsites().size(), 1);
+
+            const HloValue& cond_value = dataflow_.GetUniqueValueAt(
+                callsite.instruction(), position.index);
+            VLOG(3)
+                << "  value @ " << position << " is root of "
+                << callsite.instruction()->name()
+                << "; true/false branch roots must share buffer among them : "
+                << cond_value.ToShortString();
+            aliased_buffers->push_back(GetBufferForValue(cond_value));
+          }
+        }
+      }
+    }
+    // Value is the output of the conditional instruction itself.
+    if (value.defining_instruction()->opcode() == HloOpcode::kConditional) {
+      VLOG(3) << "  value is output of a conditional instruction";
+      aliased_buffers->push_back(GetBufferForValue(value));
+    }
+  }
+
+  // Compute and return a vector of buffers that the given value must be
+  // contained in due to HLO aliasing rules.
+  std::vector<BufferNumber> ComputeAliasedBuffers(const HloValue& value) {
+    for (const HloUse& use : value.uses()) {
+      VLOG(2) << "Use of value " << value.ToShortString() << ": " << use;
+    }
+    std::vector<BufferNumber> aliased_buffers;
+    ComputeWhileAliasedBuffers(value, &aliased_buffers);
+    ComputeConditionalAliasedBuffers(value, &aliased_buffers);
     // Uniquify aliased buffers.
     std::sort(aliased_buffers.begin(), aliased_buffers.end());
     aliased_buffers.erase(
         std::unique(aliased_buffers.begin(), aliased_buffers.end()),
         aliased_buffers.end());
-
     return aliased_buffers;
   }
 
@@ -419,7 +459,7 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   auto alias_analysis = WrapUnique(new HloAliasAnalysis(module));
   TF_ASSIGN_OR_RETURN(
       alias_analysis->dataflow_analysis_,
-      HloDataflowAnalysis::Run(module, /*ssa_form=*/true,
+      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
                                /*bitcast_defines_value=*/false));
 
   BufferValueMap buffer_map(alias_analysis->dataflow_analysis());
@@ -453,6 +493,16 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
 bool HloAliasAnalysis::HasLiveRangeInterference(
     const HloOrdering& ordering) const {
   for (const HloBuffer& buffer : buffers()) {
+    CHECK(!buffer.values().empty());
+    if (ShapeUtil::IsToken(buffer.values().front()->shape())) {
+      // Tokens have no on-device representation and cannot interfere.
+      for (const HloValue* value : buffer.values()) {
+        // If one of the values is a token, all values must be a token.
+        DCHECK(ShapeUtil::IsToken(value->shape()));
+      }
+      continue;
+    }
+
     // Check that the values in the buffer are totally ordered with respect to
     // 'ordering'. Begin by sorting the values with respect to 'ordering' with a
     // tie-break using value ID. The tie-break is necessary because we need a
@@ -477,7 +527,6 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
     // a buffer and A interferes with C, then necessarily A also interferes
     // with B. So to check interference you only need to check interference
     // between A and B, and between B and C.
-    CHECK(!values.empty());
     for (int i = 1; i < values.size(); ++i) {
       if (!ordering.IsDefinedBefore(*values[i - 1], *values[i])) {
         VLOG(1) << values[i - 1]->ToShortString() << " and "

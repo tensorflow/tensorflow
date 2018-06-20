@@ -126,7 +126,9 @@ endfunction()
 file(GLOB_RECURSE tf_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/proto/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/tpu/proto/*.proto"
 )
+
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
     ${tensorflow_source_dir} ${tf_protos_cc_srcs}
 )
@@ -211,10 +213,6 @@ else()
   list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_srcs_exclude})
 endif()
 
-file(GLOB tf_core_platform_exclude_srcs
-  "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc")
-list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_exclude_srcs})
-
 list(APPEND tf_core_lib_srcs ${tf_core_platform_srcs})
 
 if(UNIX)
@@ -274,7 +272,7 @@ add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
 add_custom_command(OUTPUT
     ${VERSION_INFO_CC}
     COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
-    --raw_generate ${VERSION_INFO_CC}
+    ARGS --raw_generate ${VERSION_INFO_CC} --source_dir ${tensorflow_source_dir} --git_tag_override=${GIT_TAG_OVERRIDE}
     DEPENDS __force_rebuild)
 set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 
@@ -284,12 +282,16 @@ set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.c
 file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*.cc"
-    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.h"
-    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.h"
     "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/graph.h"
     "${tensorflow_source_dir}/tensorflow/core/graph/graph.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph_def_builder.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph_def_builder.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/node_builder.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/node_builder.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/tensor_id.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/tensor_id.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/while_context.h"
     "${tensorflow_source_dir}/tensorflow/core/graph/while_context.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*.h"
@@ -333,9 +335,3 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
-
-if(WIN32)
-  # Cmake > 3.6 will quote this as -D"__VERSION__=\"MSVC\"" which nvcc fails on.
-  # Instead of defining this global, limit it to tf_core_framework where its used.
-  target_compile_definitions(tf_core_framework PRIVATE __VERSION__="MSVC")
-endif()

@@ -32,10 +32,11 @@ import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 from tensorflow.examples.tutorials.mnist import input_data
 
+layers = tf.keras.layers
 FLAGS = None
 
 
-class Discriminator(tfe.Network):
+class Discriminator(tf.keras.Model):
   """GAN Discriminator.
 
   A network to differentiate between generated and real handwritten digits.
@@ -56,19 +57,15 @@ class Discriminator(tfe.Network):
     else:
       assert data_format == 'channels_last'
       self._input_shape = [-1, 28, 28, 1]
-    self.conv1 = self.track_layer(tf.layers.Conv2D(64, 5, padding='SAME',
-                                                   data_format=data_format,
-                                                   activation=tf.tanh))
-    self.pool1 = self.track_layer(
-        tf.layers.AveragePooling2D(2, 2, data_format=data_format))
-    self.conv2 = self.track_layer(tf.layers.Conv2D(128, 5,
-                                                   data_format=data_format,
-                                                   activation=tf.tanh))
-    self.pool2 = self.track_layer(
-        tf.layers.AveragePooling2D(2, 2, data_format=data_format))
-    self.flatten = self.track_layer(tf.layers.Flatten())
-    self.fc1 = self.track_layer(tf.layers.Dense(1024, activation=tf.tanh))
-    self.fc2 = self.track_layer(tf.layers.Dense(1, activation=None))
+    self.conv1 = layers.Conv2D(
+        64, 5, padding='SAME', data_format=data_format, activation=tf.tanh)
+    self.pool1 = layers.AveragePooling2D(2, 2, data_format=data_format)
+    self.conv2 = layers.Conv2D(
+        128, 5, data_format=data_format, activation=tf.tanh)
+    self.pool2 = layers.AveragePooling2D(2, 2, data_format=data_format)
+    self.flatten = layers.Flatten()
+    self.fc1 = layers.Dense(1024, activation=tf.tanh)
+    self.fc2 = layers.Dense(1, activation=None)
 
   def call(self, inputs):
     """Return two logits per image estimating input authenticity.
@@ -95,7 +92,7 @@ class Discriminator(tfe.Network):
     return x
 
 
-class Generator(tfe.Network):
+class Generator(tf.keras.Model):
   """Generator of handwritten digits similar to the ones in the MNIST dataset.
   """
 
@@ -116,18 +113,17 @@ class Generator(tfe.Network):
     else:
       assert data_format == 'channels_last'
       self._pre_conv_shape = [-1, 6, 6, 128]
-    self.fc1 = self.track_layer(tf.layers.Dense(6 * 6 * 128,
-                                                activation=tf.tanh))
+    self.fc1 = layers.Dense(6 * 6 * 128, activation=tf.tanh)
 
     # In call(), we reshape the output of fc1 to _pre_conv_shape
 
     # Deconvolution layer. Resulting image shape: (batch, 14, 14, 64)
-    self.conv1 = self.track_layer(tf.layers.Conv2DTranspose(
-        64, 4, strides=2, activation=None, data_format=data_format))
+    self.conv1 = layers.Conv2DTranspose(
+        64, 4, strides=2, activation=None, data_format=data_format)
 
     # Deconvolution layer. Resulting image shape: (batch, 28, 28, 1)
-    self.conv2 = self.track_layer(tf.layers.Conv2DTranspose(
-        1, 2, strides=2, activation=tf.nn.sigmoid, data_format=data_format))
+    self.conv2 = layers.Conv2DTranspose(
+        1, 2, strides=2, activation=tf.nn.sigmoid, data_format=data_format)
 
   def call(self, inputs):
     """Return a batch of generated images.
@@ -168,7 +164,8 @@ def discriminator_loss(discriminator_real_outputs, discriminator_gen_outputs):
   """
 
   loss_on_real = tf.losses.sigmoid_cross_entropy(
-      tf.ones_like(discriminator_real_outputs), discriminator_real_outputs,
+      tf.ones_like(discriminator_real_outputs),
+      discriminator_real_outputs,
       label_smoothing=0.25)
   loss_on_generated = tf.losses.sigmoid_cross_entropy(
       tf.zeros_like(discriminator_gen_outputs), discriminator_gen_outputs)
@@ -198,9 +195,9 @@ def generator_loss(discriminator_gen_outputs):
   return loss
 
 
-def train_one_epoch(generator, discriminator,
-                    generator_optimizer, discriminator_optimizer,
-                    dataset, log_interval, noise_dim):
+def train_one_epoch(generator, discriminator, generator_optimizer,
+                    discriminator_optimizer, dataset, step_counter,
+                    log_interval, noise_dim):
   """Trains `generator` and `discriminator` models on `dataset`.
 
   Args:
@@ -209,7 +206,8 @@ def train_one_epoch(generator, discriminator,
     generator_optimizer: Optimizer to use for generator.
     discriminator_optimizer: Optimizer to use for discriminator.
     dataset: Dataset of images to train on.
-    log_interval: How many global steps to wait between logging and collecting
+    step_counter: An integer variable, used to write summaries regularly.
+    log_interval: How many steps to wait between logging and collecting
       summaries.
     noise_dim: Dimension of noise vector to use.
   """
@@ -218,18 +216,23 @@ def train_one_epoch(generator, discriminator,
   total_discriminator_loss = 0.0
   for (batch_index, images) in enumerate(tfe.Iterator(dataset)):
     with tf.device('/cpu:0'):
-      tf.assign_add(tf.train.get_global_step(), 1)
+      tf.assign_add(step_counter, 1)
 
-    with tf.contrib.summary.record_summaries_every_n_global_steps(log_interval):
+    with tf.contrib.summary.record_summaries_every_n_global_steps(
+        log_interval, global_step=step_counter):
       current_batch_size = images.shape[0]
-      noise = tf.random_uniform(shape=[current_batch_size, noise_dim],
-                                minval=-1., maxval=1., seed=batch_index)
+      noise = tf.random_uniform(
+          shape=[current_batch_size, noise_dim],
+          minval=-1.,
+          maxval=1.,
+          seed=batch_index)
 
-      with tfe.GradientTape(persistent=True) as g:
+      with tf.GradientTape(persistent=True) as g:
         generated_images = generator(noise)
-        tf.contrib.summary.image('generated_images',
-                                 tf.reshape(generated_images, [-1, 28, 28, 1]),
-                                 max_images=10)
+        tf.contrib.summary.image(
+            'generated_images',
+            tf.reshape(generated_images, [-1, 28, 28, 1]),
+            max_images=10)
 
         discriminator_gen_outputs = discriminator(generated_images)
         discriminator_real_outputs = discriminator(images)
@@ -244,18 +247,16 @@ def train_one_epoch(generator, discriminator,
       discriminator_grad = g.gradient(discriminator_loss_val,
                                       discriminator.variables)
 
-      with tf.variable_scope('generator'):
-        generator_optimizer.apply_gradients(zip(generator_grad,
-                                                generator.variables))
-      with tf.variable_scope('discriminator'):
-        discriminator_optimizer.apply_gradients(zip(discriminator_grad,
-                                                    discriminator.variables))
+      generator_optimizer.apply_gradients(
+          zip(generator_grad, generator.variables))
+      discriminator_optimizer.apply_gradients(
+          zip(discriminator_grad, discriminator.variables))
 
       if log_interval and batch_index > 0 and batch_index % log_interval == 0:
         print('Batch #%d\tAverage Generator Loss: %.6f\t'
-              'Average Discriminator Loss: %.6f' % (
-                  batch_index, total_generator_loss/batch_index,
-                  total_discriminator_loss/batch_index))
+              'Average Discriminator Loss: %.6f' %
+              (batch_index, total_generator_loss / batch_index,
+               total_discriminator_loss / batch_index))
 
 
 def main(_):
@@ -266,18 +267,18 @@ def main(_):
 
   # Load the datasets
   data = input_data.read_data_sets(FLAGS.data_dir)
-  dataset = (tf.data.Dataset
-             .from_tensor_slices(data.train.images)
-             .shuffle(60000)
-             .batch(FLAGS.batch_size))
+  dataset = (
+      tf.data.Dataset.from_tensor_slices(data.train.images).shuffle(60000)
+      .batch(FLAGS.batch_size))
 
-  # Create the models and optimizers
-  generator = Generator(data_format)
-  discriminator = Discriminator(data_format)
-  with tf.variable_scope('generator'):
-    generator_optimizer = tf.train.AdamOptimizer(FLAGS.lr)
-  with tf.variable_scope('discriminator'):
-    discriminator_optimizer = tf.train.AdamOptimizer(FLAGS.lr)
+  # Create the models and optimizers.
+  model_objects = {
+      'generator': Generator(data_format),
+      'discriminator': Discriminator(data_format),
+      'generator_optimizer': tf.train.AdamOptimizer(FLAGS.lr),
+      'discriminator_optimizer': tf.train.AdamOptimizer(FLAGS.lr),
+      'step_counter': tf.train.get_or_create_global_step(),
+  }
 
   # Prepare summary writer and checkpoint info
   summary_writer = tf.contrib.summary.create_summary_file_writer(
@@ -286,32 +287,26 @@ def main(_):
   latest_cpkt = tf.train.latest_checkpoint(FLAGS.checkpoint_dir)
   if latest_cpkt:
     print('Using latest checkpoint at ' + latest_cpkt)
+  checkpoint = tfe.Checkpoint(**model_objects)
+  # Restore variables on creation if a checkpoint exists.
+  checkpoint.restore(latest_cpkt)
 
   with tf.device(device):
-    for epoch in range(1, 101):
-      with tfe.restore_variables_on_create(latest_cpkt):
-        global_step = tf.train.get_or_create_global_step()
-        start = time.time()
-        with summary_writer.as_default():
-          train_one_epoch(generator, discriminator, generator_optimizer,
-                          discriminator_optimizer,
-                          dataset, FLAGS.log_interval, FLAGS.noise)
-        end = time.time()
-        print('\nTrain time for epoch #%d (global step %d): %f' % (
-            epoch, global_step.numpy(), end - start))
-
-      all_variables = (
-          generator.variables
-          + discriminator.variables
-          + generator_optimizer.variables()
-          + discriminator_optimizer.variables()
-          + [global_step])
-      tfe.Saver(all_variables).save(
-          checkpoint_prefix, global_step=global_step)
+    for _ in range(100):
+      start = time.time()
+      with summary_writer.as_default():
+        train_one_epoch(dataset=dataset, log_interval=FLAGS.log_interval,
+                        noise_dim=FLAGS.noise, **model_objects)
+      end = time.time()
+      checkpoint.save(checkpoint_prefix)
+      print('\nTrain time for epoch #%d (step %d): %f' %
+            (checkpoint.save_counter.numpy(),
+             checkpoint.step_counter.numpy(),
+             end - start))
 
 
 if __name__ == '__main__':
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
 
   parser = argparse.ArgumentParser()
   parser.add_argument(

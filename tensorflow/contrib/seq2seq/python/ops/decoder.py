@@ -28,8 +28,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
@@ -39,6 +41,7 @@ __all__ = ["Decoder", "dynamic_decode"]
 
 
 _transpose_batch_time = rnn._transpose_batch_time  # pylint: disable=protected-access
+_zero_state_tensors = rnn_cell_impl._zero_state_tensors  # pylint: disable=protected-access
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -133,16 +136,8 @@ class Decoder(object):
 
 def _create_zero_outputs(size, dtype, batch_size):
   """Create a zero outputs Tensor structure."""
-  def _t(s):
-    return (s if isinstance(s, ops.Tensor) else constant_op.constant(
-        tensor_shape.TensorShape(s).as_list(),
-        dtype=dtypes.int32,
-        name="zero_suffix_shape"))
-
   def _create(s, d):
-    return array_ops.zeros(
-        array_ops.concat(
-            ([batch_size], _t(s)), axis=0), dtype=d)
+    return _zero_state_tensors(s, batch_size, d)
 
   return nest.map_structure(_create, size, dtype)
 
@@ -187,6 +182,15 @@ def dynamic_decode(decoder,
     raise TypeError("Expected decoder to be type Decoder, but saw: %s" %
                     type(decoder))
 
+  def _is_xla_tensor(tensor):
+    try:
+      op = tensor.op
+    except AttributeError:
+      return False
+    if control_flow_util.IsInXLAContext(op):
+      return True
+    return False
+
   with variable_scope.variable_scope(scope, "decoder") as varscope:
     # Properly cache variable values inside the while_loop
     if varscope.caching_device is None:
@@ -204,6 +208,11 @@ def dynamic_decode(decoder,
                                         decoder.output_dtype,
                                         decoder.batch_size)
 
+    is_xla = False
+    if any([_is_xla_tensor(i) for i in nest.flatten(initial_inputs)]):
+      is_xla = True
+    if is_xla and maximum_iterations is None:
+      raise ValueError("maximum_iterations is required for XLA compilation.")
     if maximum_iterations is not None:
       initial_finished = math_ops.logical_or(
           initial_finished, 0 >= maximum_iterations)
@@ -212,7 +221,8 @@ def dynamic_decode(decoder,
     initial_time = constant_op.constant(0, dtype=dtypes.int32)
 
     def _shape(batch_size, from_shape):
-      if not isinstance(from_shape, tensor_shape.TensorShape):
+      if (not isinstance(from_shape, tensor_shape.TensorShape) or
+          from_shape.ndims == 0):
         return tensor_shape.TensorShape(None)
       else:
         batch_size = tensor_util.constant_value(
@@ -220,11 +230,13 @@ def dynamic_decode(decoder,
                 batch_size, name="batch_size"))
         return tensor_shape.TensorShape([batch_size]).concatenate(from_shape)
 
+    dynamic_size = maximum_iterations is None or not is_xla
+
     def _create_ta(s, d):
       return tensor_array_ops.TensorArray(
           dtype=d,
-          size=0,
-          dynamic_size=True,
+          size=0 if dynamic_size else maximum_iterations,
+          dynamic_size=dynamic_size,
           element_shape=_shape(decoder.batch_size, s))
 
     initial_outputs_ta = nest.map_structure(_create_ta, decoder.output_size,
@@ -256,11 +268,8 @@ def dynamic_decode(decoder,
         next_finished = decoder_finished
       else:
         next_finished = math_ops.logical_or(decoder_finished, finished)
-      if maximum_iterations is not None:
-        next_finished = math_ops.logical_or(
-            next_finished, time + 1 >= maximum_iterations)
       next_sequence_lengths = array_ops.where(
-          math_ops.logical_and(math_ops.logical_not(finished), next_finished),
+          math_ops.logical_not(finished),
           array_ops.fill(array_ops.shape(sequence_lengths), time + 1),
           sequence_lengths)
 
@@ -301,11 +310,16 @@ def dynamic_decode(decoder,
     res = control_flow_ops.while_loop(
         condition,
         body,
-        loop_vars=[
-            initial_time, initial_outputs_ta, initial_state, initial_inputs,
-            initial_finished, initial_sequence_lengths,
-        ],
+        loop_vars=(
+            initial_time,
+            initial_outputs_ta,
+            initial_state,
+            initial_inputs,
+            initial_finished,
+            initial_sequence_lengths,
+        ),
         parallel_iterations=parallel_iterations,
+        maximum_iterations=maximum_iterations,
         swap_memory=swap_memory)
 
     final_outputs_ta = res[1]

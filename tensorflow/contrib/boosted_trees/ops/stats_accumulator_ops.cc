@@ -19,9 +19,9 @@
 
 namespace tensorflow {
 namespace boosted_trees {
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
-using shape_inference::DimensionHandle;
 
 REGISTER_RESOURCE_HANDLE_OP(StatsAccumulatorScalarResource);
 

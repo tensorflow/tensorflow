@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/contrib/lite/testing/util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tflite {
 namespace {
@@ -98,12 +100,18 @@ class TestGraph {
   std::vector<TfLiteTensor>* tensors() { return &tensors_; }
   const std::vector<int>& inputs() { return inputs_; }
   const std::vector<int>& outputs() { return outputs_; }
+  const std::vector<int>& variables() { return variables_; }
+
+  void SetVariables(const std::vector<int>& variables) {
+    variables_ = variables;
+  }
 
  private:
   std::vector<TfLiteNode> nodes_;
   std::vector<TfLiteTensor> tensors_;
   std::vector<int> inputs_;
   std::vector<int> outputs_;
+  std::vector<int> variables_;
 };
 
 // The GraphInfo for a TestGraph.
@@ -121,6 +129,9 @@ class TestGraphInfo : public GraphInfo {
   }
   const std::vector<int>& inputs() const override { return graph_->inputs(); }
   const std::vector<int>& outputs() const override { return graph_->outputs(); }
+  const std::vector<int>& variables() const override {
+    return graph_->variables();
+  }
 
  private:
   TestGraph* graph_;
@@ -191,8 +202,8 @@ TEST_F(ArenaPlannerTest, GraphWithNoOps) {
   EXPECT_EQ(GetOffset(10), GetOffsetAfter(0));
   // The outputs are never allocated because they are not connected to any
   // inputs.
-  EXPECT_EQ(GetOffset(5), 0);
-  EXPECT_EQ(GetOffset(11), 0);
+  EXPECT_TRUE((*graph.tensors())[5].data.raw == nullptr);
+  EXPECT_TRUE((*graph.tensors())[11].data.raw == nullptr);
 }
 
 TEST_F(ArenaPlannerTest, GraphWithOneOp) {
@@ -207,11 +218,8 @@ TEST_F(ArenaPlannerTest, ZeroSizedTensors) {
   TestGraph graph({1}, {{{1}, {2}, {}}}, {2});
   (*graph.tensors())[1].bytes = 0;
   SetGraph(&graph);
-  // TODO(ahentz): this is currently broken because the arena finds two
-  // allocations with the same offset and returns an error.
-  ASSERT_FALSE(planner_->ExecuteAllocations(0, 10) == kTfLiteOk);
-  // EXPECT_EQ(GetOffset(1), 0);
-  // EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  ASSERT_EQ(planner_->ExecuteAllocations(0, 10), kTfLiteOk);
+  EXPECT_EQ((*graph_->tensors())[1].data.raw, nullptr);
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraph) {
@@ -307,13 +315,15 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithPersistentTensor) {
                   {
                       /* in, out, tmp */
                       {{0, 1}, {2}, {}},   // First op
-                      {{2, 0}, {4}, {5}},  // Second op, with temporary
+                      {{2, 0}, {4}, {5}},  // Second op, with persistent
                       {{4, -1}, {3}, {}}   // Third op, with optional
                   },
                   {3});
 
   // Make #1 persistent so it goes into its own arena.
   (*graph.tensors())[1].allocation_type = kTfLiteArenaRwPersistent;
+  // The only use case for kTfLiteArenaRwPersistent is variable tensor now.
+  graph.SetVariables({1});
 
   SetGraph(&graph);
   Execute(0, 10);
@@ -371,11 +381,7 @@ TEST_F(ArenaPlannerTest, LargerGraphAndStepwiseAllocation) {
   SetGraph(&graph);
 
   auto is_unallocated = [&](int tensor_index) {
-    // TODO(ahentz): We'd to use nullptr to represent unallocated tensors, but
-    // the current code still points them all to the beginning fo the alloc
-    // (that is, zero offset).
-    // return (*graph.tensors())[tensor_index].data.raw == nullptr;
-    return GetOffset(tensor_index) == 0;
+    return (*graph.tensors())[tensor_index].data.raw == nullptr;
   };
 
   // The allocation plan is made at the beginning and is independent of
@@ -464,9 +470,7 @@ TEST_F(ArenaPlannerTest, LargerGraphAndStepwiseAllocation) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // ::tflite::LogToStderr();
-  FLAGS_logtostderr = true;
-
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

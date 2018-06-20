@@ -150,7 +150,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllClose(aggregated_update_var.eval(),
                               repeated_index_update_var.eval())
 
-  def doTestBasic(self, use_resource=False):
+  def doTestBasic(self, use_resource=False, use_callable_params=False):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       with self.test_session(graph=ops.Graph()):
         # Initialize variables for numpy implementation.
@@ -171,17 +171,29 @@ class AdamOptimizerTest(test.TestCase):
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
-        opt = adam.AdamOptimizer()
+        learning_rate = lambda: 0.001
+        beta1 = lambda: 0.9
+        beta2 = lambda: 0.999
+        epsilon = lambda: 1e-8
+        if not use_callable_params:
+          learning_rate = learning_rate()
+          beta1 = beta1()
+          beta2 = beta2()
+          epsilon = epsilon()
+
+        opt = adam.AdamOptimizer(learning_rate=learning_rate)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         opt_variables = opt.variables()
-        self.assertIn(opt._beta1_power, opt_variables)
-        self.assertIn(opt._beta2_power, opt_variables)
+        beta1_power, beta2_power = opt._get_beta_accumulators()
+        self.assertTrue(beta1_power is not None)
+        self.assertTrue(beta2_power is not None)
+        self.assertIn(beta1_power, opt_variables)
+        self.assertIn(beta2_power, opt_variables)
 
-        with ops.Graph().as_default():
-          # Shouldn't return non-slot variables from other graphs.
-          self.assertEqual(0, len(opt.variables()))
-
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
+          with ops.Graph().as_default():
+            # Shouldn't return non-slot variables from other graphs.
+            self.assertEqual(0, len(opt.variables()))
           self.evaluate(variables.global_variables_initializer())
           # Fetch params to validate initial values
           self.assertAllClose([1.0, 2.0], self.evaluate(var0))
@@ -191,7 +203,7 @@ class AdamOptimizerTest(test.TestCase):
 
         # Run 3 steps of Adam
         for t in range(1, 4):
-          if context.in_graph_mode():
+          if not context.executing_eagerly():
             self.evaluate(update)
           elif t > 1:
             opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
@@ -218,6 +230,10 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
+
+  def testBasicCallableParams(self):
+    with context.eager_mode():
+      self.doTestBasic(use_resource=True, use_callable_params=True)
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -316,6 +332,15 @@ class AdamOptimizerTest(test.TestCase):
         # fails.
         optimizer.apply_gradients([(grads0, var0)])
 
+  def testSlotsUniqueEager(self):
+    with context.eager_mode():
+      v1 = resource_variable_ops.ResourceVariable(1.)
+      v2 = resource_variable_ops.ResourceVariable(1.)
+      opt = adam.AdamOptimizer(1.)
+      opt.minimize(lambda: v1 + v2)
+      # There should be two non-slot variables, and two unique slot variables
+      # for v1 and v2 respectively.
+      self.assertEqual(6, len(set(opt.variables())))
 
 if __name__ == "__main__":
   test.main()

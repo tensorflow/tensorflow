@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// TODO(intel): Improve error handling in this file; instead of CHECK failing
+// all over the place, we should log an error and execute the original graph.
 #ifdef INTEL_MKL
 
 #include <algorithm>
@@ -37,12 +39,12 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "tensorflow/core/graph/mkl_layout_pass.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
+#include "tensorflow/core/graph/mkl_layout_pass.h"
 
 namespace tensorflow {
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -281,7 +283,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_conv2d_grad_filter = "_MklConv2DBackpropFilter";
     csinfo_.mkl_conv2d_with_bias = "_MklConv2DWithBias";
     csinfo_.mkl_conv2d_with_bias_backprop_bias =
-                                   "_MklConv2DWithBiasBackpropBias";
+        "_MklConv2DWithBiasBackpropBias";
     csinfo_.relu = "Relu";
     csinfo_.relu_grad = "ReluGrad";
     csinfo_.reshape = "Reshape";
@@ -297,10 +299,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // End - element-wise ops. See note above.
 
     // NOTE: names are alphabetically sorted.
-    rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn), CopyAttrsAddN,
-                      AddNRewrite, nullptr});
-    rinfo_.push_back({csinfo_.add,
-                      mkl_op_registry::GetMklOpName(csinfo_.add),
+    rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
+                      CopyAttrsAddN, AddNRewrite, nullptr});
+    rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
                       CopyAttrsDataType, AlwaysRewrite, nullptr});
     rinfo_.push_back({csinfo_.avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
@@ -337,14 +338,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite, nullptr});
-    rinfo_.push_back({csinfo_.fused_batch_norm_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad),
-                      CopyAttrsFusedBatchNorm, AlwaysRewrite, nullptr});
+    rinfo_.push_back(
+        {csinfo_.fused_batch_norm_grad,
+         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad),
+         CopyAttrsFusedBatchNorm, AlwaysRewrite, nullptr});
     rinfo_.push_back({csinfo_.identity,
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
                       CopyAttrsIdentity, AlwaysRewrite, nullptr});
-    rinfo_.push_back({csinfo_.lrn,
-                      mkl_op_registry::GetMklOpName(csinfo_.lrn),
+    rinfo_.push_back({csinfo_.lrn, mkl_op_registry::GetMklOpName(csinfo_.lrn),
                       CopyAttrsLRN, AlwaysRewrite, nullptr});
     rinfo_.push_back({csinfo_.lrn_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.lrn_grad),
@@ -358,11 +359,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.maximum,
                       mkl_op_registry::GetMklOpName(csinfo_.maximum),
                       CopyAttrsDataType, AlwaysRewrite, nullptr});
-    rinfo_.push_back({csinfo_.mul,
-                      mkl_op_registry::GetMklOpName(csinfo_.mul),
+    rinfo_.push_back({csinfo_.mul, mkl_op_registry::GetMklOpName(csinfo_.mul),
                       CopyAttrsDataType, AlwaysRewrite, nullptr});
-    rinfo_.push_back({csinfo_.relu,
-                      mkl_op_registry::GetMklOpName(csinfo_.relu),
+    rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsDataType, AlwaysRewrite, nullptr});
     rinfo_.push_back({csinfo_.relu_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.relu_grad),
@@ -373,8 +372,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.squared_difference,
                       mkl_op_registry::GetMklOpName(csinfo_.squared_difference),
                       CopyAttrsDataType, AlwaysRewrite, nullptr});
-    rinfo_.push_back({csinfo_.sub,
-                      mkl_op_registry::GetMklOpName(csinfo_.sub),
+    rinfo_.push_back({csinfo_.sub, mkl_op_registry::GetMklOpName(csinfo_.sub),
                       CopyAttrsDataType, AlwaysRewrite, nullptr});
 
     // Add info about which ops to add workspace edge to and the slots.
@@ -388,9 +386,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     biasaddgrad_matmul_context_ = {csinfo_.bias_add_grad, csinfo_.matmul,
                                    IsBiasAddGradInMatMulContext};
 
-    biasaddgrad_conv2dwithbias_context_ = {csinfo_.bias_add_grad,
-                                   csinfo_.mkl_conv2d_with_bias,
-                                   IsBiasAddGradInConv2DWithBiasContext};
+    biasaddgrad_conv2dwithbias_context_ = {
+        csinfo_.bias_add_grad, csinfo_.mkl_conv2d_with_bias,
+        IsBiasAddGradInConv2DWithBiasContext};
 
     cinfo_.push_back(&biasaddgrad_matmul_context_);
     cinfo_.push_back(&biasaddgrad_conv2dwithbias_context_);
@@ -410,9 +408,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   /// Structure to specify the context information used in a node rewrite rule
   typedef struct {
-    string node;     // Name of the node to be rewritten
-    string fwd;      // Name of the node in the forward pass that this node
-                     // corresponds to
+    string node;  // Name of the node to be rewritten
+    string fwd;   // Name of the node in the forward pass that this node
+                  // corresponds to
     std::function<bool(const Node*, const Node**, void* c)> context_match_fn;
   } ContextInfo;
 
@@ -549,14 +547,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // If Op has been specifically assigned to a non-CPU device, then No.
     if (!n->assigned_device_name().empty() &&
-        !StringPiece(n->assigned_device_name()).contains(kCPUDeviceSubStr)) {
+        !str_util::StrContains(n->assigned_device_name(),kCPUDeviceSubStr)) {
       result = false;
       reason = "Op has been assigned a runtime device that is not CPU.";
     }
 
     // If user has specifically assigned this op to a non-CPU device, then No.
     if (!n->def().device().empty() &&
-        !StringPiece(n->def().device()).contains(kCPUDeviceSubStr)) {
+        !str_util::StrContains(n->def().device(),kCPUDeviceSubStr)) {
       result = false;
       reason = "User has assigned a device that is not CPU.";
     }
@@ -615,14 +613,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     std::vector<int32> ksize, strides;
     CHECK_EQ(GetNodeAttr(n->def(), "ksize", &ksize).ok(), true);
     CHECK_EQ(GetNodeAttr(n->def(), "strides", &strides).ok(), true);
-    CHECK_EQ(GetNodeAttr(n->def(), "data_format", &data_format_str).ok(),
-             true);
+    CHECK_EQ(GetNodeAttr(n->def(), "data_format", &data_format_str).ok(), true);
     CHECK_EQ(FormatFromString(data_format_str, &data_format), true);
 
     // Condition that specifies non-batch-wise and non-depth-wise pooling.
-    if (GetTensorDim(ksize,   data_format, 'N') == 1 &&
+    if (GetTensorDim(ksize, data_format, 'N') == 1 &&
         GetTensorDim(strides, data_format, 'N') == 1 &&
-        GetTensorDim(ksize,   data_format, 'C') == 1 &&
+        GetTensorDim(ksize, data_format, 'C') == 1 &&
         GetTensorDim(strides, data_format, 'C') == 1) {
       return true;
     }
@@ -785,8 +782,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       for (const Edge* fe : first_inp_of_filter->out_edges()) {
         if (fe->dst()->type_string() == csinfo_.mkl_conv2d_with_bias &&
             fe->dst_input() == 0) {
-          VLOG(1) << "MklLayoutRewritePass: found "
-                  << fe->dst()->DebugString()
+          VLOG(1) << "MklLayoutRewritePass: found " << fe->dst()->DebugString()
                   << " as the forward node for matching context, backward"
                   << " node is: " << n->DebugString();
           *fwd_node = fe->dst();
@@ -803,12 +799,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   //
   // @return - true (if BiasAddGrad is associated with MatMul);
   //           false otherwise.
-  static bool IsBiasAddGradInMatMulContext(const Node* n,
-                                           const Node** fwd_node,
+  static bool IsBiasAddGradInMatMulContext(const Node* n, const Node** fwd_node,
                                            void* ci) {
     return (!IsBiasAddGradInConv2DWithBiasContext(n, fwd_node, ci));
   }
-
 
   // Rewrite rule that uses context-information for matching,
   // used in scenario 2.
@@ -880,10 +874,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // @output output_nodes - the list of new nodes creating Mkl tensors
   //
   // @return None
-  void GetNodesProducingMklTensorList(std::unique_ptr<Graph>* g,
-    Node* orig_node, const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
-    int* input_idx, int list_length,
-    std::vector<NodeBuilder::NodeOut>* output_nodes);
+  void GetNodesProducingMklTensorList(
+      std::unique_ptr<Graph>* g, Node* orig_node,
+      const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
+      int* input_idx, int list_length,
+      std::vector<NodeBuilder::NodeOut>* output_nodes);
 
   // Get a node that will feed an Mkl tensor to the new
   // node that we are constructing. The output node could be (1) 'n'
@@ -900,7 +895,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   //                                will feed the tensor
   // @return None
   void GetNodeProducingMklTensor(std::unique_ptr<Graph>* g, Node* orig_node,
-    Node* n, int n_output_slot, Node** mkl_node, int* mkl_node_output_slot);
+                                 Node* n, int n_output_slot, Node** mkl_node,
+                                 int* mkl_node_output_slot);
 
   // Setup new inputs using old inputs 'inputs' for the rewritten node in 'nb'
   // in graph 'g'. Original node is input in 'old_node'. Inputs to 'nb' are
@@ -970,9 +966,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
 MklLayoutRewritePass::ConstStringsInfo MklLayoutRewritePass::csinfo_;
 MklLayoutRewritePass::ContextInfo
-  MklLayoutRewritePass::biasaddgrad_conv2dwithbias_context_;
+    MklLayoutRewritePass::biasaddgrad_conv2dwithbias_context_;
 MklLayoutRewritePass::ContextInfo
-  MklLayoutRewritePass::biasaddgrad_matmul_context_;
+    MklLayoutRewritePass::biasaddgrad_matmul_context_;
 std::vector<MklLayoutRewritePass::ContextInfo*> MklLayoutRewritePass::cinfo_;
 
 // We register Mkl rewrite pass for phase 1 in post partitioning group.
@@ -1036,18 +1032,17 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
   TensorProto proto;
   proto.set_dtype(dt);
   uint8 zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           8);
+  proto.set_tensor_content(string(reinterpret_cast<const char*>(zero), 8));
   TensorShape dummy_shape({8});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
-               .Attr("value", proto)
-               .Attr("dtype", dt)
-               .Device(orig_node->def().device())  // We place this node on
-                                                   // the same device as the
-                                                   // device of the original
-                                                   // node.
-               .Finalize(&**g, out));
+                  .Attr("value", proto)
+                  .Attr("dtype", dt)
+                  .Device(orig_node->def().device())  // We place this node on
+                                                      // the same device as the
+                                                      // device of the original
+                                                      // node.
+                  .Finalize(&**g, out));
 
   // If number of inputs to the original node is > 0, then we add
   // control dependency between 1st input (index 0) of the original node and
@@ -1060,8 +1055,8 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
   // the same frame.
   if (orig_node->num_inputs() > 0) {
     Node* orig_input0 = nullptr;
-    TF_CHECK_OK(orig_node->input_node(0,
-                                      const_cast<const Node**>(&orig_input0)));
+    TF_CHECK_OK(
+        orig_node->input_node(0, const_cast<const Node**>(&orig_input0)));
     CHECK_NOTNULL((*g)->AddControlEdge(orig_input0, *out));
   }
 
@@ -1069,11 +1064,9 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
 }
 
 void MklLayoutRewritePass::GetNodesProducingMklTensorList(
-    std::unique_ptr<Graph>* g,
-    Node* orig_node,
-    const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
-    int* input_idx, int list_length,
-    std::vector<NodeBuilder::NodeOut>* output_nodes) {
+    std::unique_ptr<Graph>* g, Node* orig_node,
+    const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs, int* input_idx,
+    int list_length, std::vector<NodeBuilder::NodeOut>* output_nodes) {
   CHECK_LT(*input_idx, inputs.size());
   CHECK_GT(list_length, 0);
   CHECK_NOTNULL(output_nodes);
@@ -1090,8 +1083,8 @@ void MklLayoutRewritePass::GetNodesProducingMklTensorList(
     int mkl_node_output_slot = 0;
     GetNodeProducingMklTensor(g, orig_node, n, slot, &mkl_node,
                               &mkl_node_output_slot);
-    output_nodes->push_back(NodeBuilder::NodeOut(mkl_node,
-                                                mkl_node_output_slot));
+    output_nodes->push_back(
+        NodeBuilder::NodeOut(mkl_node, mkl_node_output_slot));
     (*input_idx)++;
     list_length--;
   }
@@ -1101,9 +1094,9 @@ void MklLayoutRewritePass::GetNodesProducingMklTensorList(
 // node that we are constructing. An input node could be (1) 'n'
 // if it is Mkl layer, or (2) a dummy node producing dummy Mkl tensor
 // if 'n' is not an Mkl layer.
-void MklLayoutRewritePass::GetNodeProducingMklTensor(std::unique_ptr<Graph>* g,
-    Node* orig_node, Node* n,
-    int n_output_slot, Node** mkl_node, int* mkl_node_output_slot) {
+void MklLayoutRewritePass::GetNodeProducingMklTensor(
+    std::unique_ptr<Graph>* g, Node* orig_node, Node* n, int n_output_slot,
+    Node** mkl_node, int* mkl_node_output_slot) {
   CHECK_NOTNULL(n);
   CHECK_NOTNULL(mkl_node);
   CHECK_NOTNULL(mkl_node_output_slot);
@@ -1152,7 +1145,8 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     // For that let's first find filter node that is 2nd input (slot 1)
     // of BackpropInput.
     Node* filter_node = nullptr;
-    old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx, &filter_node);
+    TF_CHECK_OK(old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx,
+                                     &filter_node));
     CHECK_NOTNULL(filter_node);
 
     // Now check which nodes receive from filter_node. Filter feeds as
@@ -1234,8 +1228,8 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     if (ArgIsList(arg)) {
       std::vector<NodeBuilder::NodeOut> new_node_inputs;
       int N = GetTensorListLength(arg, old_node);
-      GetNodesProducingMklTensorList(g, old_node, old_node_inputs, &iidx,
-                                     N, &new_node_inputs);
+      GetNodesProducingMklTensorList(g, old_node, old_node_inputs, &iidx, N,
+                                     &new_node_inputs);
       nb->Input(new_node_inputs);
       nn_slot_idx++;
     } else {
@@ -1331,18 +1325,17 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
   TensorProto proto;
   proto.set_dtype(dt);
   float zero[1] = {0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           4);
+  proto.set_tensor_content(string(reinterpret_cast<char*>(&zero), 4));
   TensorShape dummy_shape({1});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
-                .Attr("value", proto)
-                .Attr("dtype", dt)
-                .Device(orig_node->def().device())  // We place this node on
-                                                    // same the device as the
-                                                    // device of the original
-                                                    // node.
-                .Finalize(&**g, out));
+                  .Attr("value", proto)
+                  .Attr("dtype", dt)
+                  .Device(orig_node->def().device())  // We place this node on
+                                                      // same the device as the
+                                                      // device of the original
+                                                      // node.
+                  .Finalize(&**g, out));
 
   // If number of inputs to the original node is > 0, then we add
   // control dependency between 1st input (index 0) of the original node and
@@ -1355,8 +1348,8 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
   // the same frame.
   if (orig_node->num_inputs() > 0) {
     Node* orig_input0 = nullptr;
-    TF_CHECK_OK(orig_node->input_node(0,
-                                      const_cast<const Node**>(&orig_input0)));
+    TF_CHECK_OK(
+        orig_node->input_node(0, const_cast<const Node**>(&orig_input0)));
     CHECK_NOTNULL((*g)->AddControlEdge(orig_input0, *out));
   }
 
@@ -1374,7 +1367,8 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   for (auto ws : wsinfo_) {
     if (orig_node->type_string() == ws.fwd_op &&
-        mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(orig_node->type_string()), T)) {
+        mkl_op_registry::IsMklOp(
+            mkl_op_registry::GetMklOpName(orig_node->type_string()), T)) {
       // If this op is a fwd op, then we need to check if there is an
       // edge from this node's fwd_slot to bwdop's bwd_slot. If there is
       // an edge, then we just add an attribute on this node for setting
@@ -1400,8 +1394,9 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
         nb->Attr("workspace_enabled", false);
       }
     } else if (orig_node->type_string() == ws.bwd_op &&
-               mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(orig_node->type_string()),
-                                        T)) {
+               mkl_op_registry::IsMklOp(
+                   mkl_op_registry::GetMklOpName(orig_node->type_string()),
+                   T)) {
       // If this op is a bwd op, then we need to add workspace edge and
       // it's Mkl tensor edge between its corresponding fwd op and this
       // op. Corresponding fwd op is specified in 'fwd_op' field of
@@ -1416,7 +1411,8 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
         if (e->src_output() == ws.fwd_slot &&
             // We would have rewritten the forward op, so we need to use
             // GetMklOpName call to get its Mkl name.
-            e->src()->type_string() == mkl_op_registry::GetMklOpName(ws.fwd_op) &&
+            e->src()->type_string() ==
+                mkl_op_registry::GetMklOpName(ws.fwd_op) &&
             e->dst_input() == ws.bwd_slot) {
           nb->Attr("workspace_enabled", true);
           CHECK_NOTNULL(ws_tensors);
@@ -1593,7 +1589,7 @@ void MklLayoutRewritePass::CopyAttrsDataType(const Node* orig_node,
 }
 
 void MklLayoutRewritePass::CopyAttrsReshape(const Node* orig_node,
-                                           NodeBuilder* nb) {
+                                            NodeBuilder* nb) {
   DataType T;
   DataType Tshape;
 
@@ -1834,7 +1830,7 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* succ,
 
     // Create node.
     Node* new_node;
-    nb.Finalize(&**g, &new_node);
+    TF_CHECK_OK(nb.Finalize(&**g, &new_node));
     CHECK_NOTNULL(new_node);
 
     // Set the Mkl layer label for this op.
@@ -1869,8 +1865,8 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* succ,
       if (e->IsControlEdge()) {
         CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst()));
       } else {
-        CHECK_NOTNULL((*g)->AddEdge(new_node, e->src_output(), e->dst(),
-                                  e->dst_input()));
+        CHECK_NOTNULL(
+            (*g)->AddEdge(new_node, e->src_output(), e->dst(), e->dst_input()));
       }
     }
 
@@ -1941,9 +1937,9 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
       // and leave BiasAddGrad as it is. But we check for this condition
       // when we check for node rewrite rule. So we should not even come
       // here for MatMul. So we will fail now.
-        return Status(
-            error::Code::INVALID_ARGUMENT,
-            "No rewrite is required for BiasAddGrad for MatMul context.");
+      return Status(
+          error::Code::INVALID_ARGUMENT,
+          "No rewrite is required for BiasAddGrad for MatMul context.");
     }
   }
 
@@ -2012,9 +2008,10 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
     if (e->IsControlEdge()) {
       CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst()));
     } else {
-      CHECK_NOTNULL((*g)->AddEdge(new_node, GetTensorDataIndex(e->src_output(),
-                            e->src()->num_outputs()),
-                    e->dst(), e->dst_input()));
+      CHECK_NOTNULL((*g)->AddEdge(
+          new_node,
+          GetTensorDataIndex(e->src_output(), e->src()->num_outputs()),
+          e->dst(), e->dst_input()));
     }
   }
 
@@ -2070,7 +2067,8 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
 
   // BiasAddGrad is not an Mkl layer, so we make an exception for it.
   if (n->type_string() != csinfo_.bias_add_grad) {
-    if (!mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()), T)) {
+    if (!mkl_op_registry::IsMklOp(
+            mkl_op_registry::GetMklOpName(n->type_string()), T)) {
       return nullptr;
     }
   }
@@ -2186,8 +2184,7 @@ bool RunMklLayoutRewritePass(std::unique_ptr<Graph>* g) {
   return MklLayoutRewritePass().RunPass(g);
 }
 
-Status MklLayoutRewritePass::Run(
-  const GraphOptimizationPassOptions& options) {
+Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
     return Status::OK();
   }
@@ -2215,7 +2212,7 @@ Status MklLayoutRewritePass::Run(
   return Status::OK();
 }
 
-#else  // INTEL_MKL_DNN
+#else   // INTEL_MKL_ML
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -2421,7 +2418,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.conv2d_grad_input = "Conv2DBackpropInput";
     csinfo_.conv2d_grad_filter = "Conv2DBackpropFilter";
     csinfo_.conv2d_grad_filter_with_bias =
-                              "__MklDummyConv2DBackpropFilterWithBias";
+        "__MklDummyConv2DBackpropFilterWithBias";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.identity = "Identity";
@@ -2435,11 +2432,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_conv2d_grad_filter = "_MklConv2DBackpropFilter";
     csinfo_.mkl_conv2d_with_bias = "_MklConv2DWithBias";
     csinfo_.mkl_conv2d_grad_filter_with_bias =
-                                   "_MklConv2DBackpropFilterWithBias";
+        "_MklConv2DBackpropFilterWithBias";
     csinfo_.relu = "Relu";
     csinfo_.relu_grad = "ReluGrad";
-    csinfo_.tanh       = "Tanh";
-    csinfo_.tanh_grad  = "TanhGrad";
+    csinfo_.tanh = "Tanh";
+    csinfo_.tanh_grad = "TanhGrad";
     csinfo_.reshape = "Reshape";
     csinfo_.softmax = "Softmax";
     csinfo_.split = "Split";
@@ -2456,9 +2453,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // NOTE: names are alphabetically sorted.
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAddN, AddNRewrite});
-    /* rinfo_.push_back({csinfo_.add,
-                      mkl_op_registry::GetMklOpName(csinfo_.add),
-                      CopyAttrsDataType, AlwaysRewrite}); */
+    rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
+                      CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
                       CopyAttrsPooling, AlwaysRewrite});
@@ -2474,49 +2470,46 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d),
                       CopyAttrsConv2D, AlwaysRewrite});
-    rinfo_.push_back({csinfo_.conv2d_with_bias,
-                      csinfo_.mkl_conv2d_with_bias,
+    rinfo_.push_back({csinfo_.conv2d_with_bias, csinfo_.mkl_conv2d_with_bias,
                       CopyAttrsConv2D, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_filter,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_filter),
                       CopyAttrsConv2D, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_filter_with_bias,
-                      csinfo_.mkl_conv2d_grad_filter_with_bias,
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      csinfo_.mkl_conv2d_grad_filter_with_bias, CopyAttrsConv2D,
+                      AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_input),
                       CopyAttrsConv2D, AlwaysRewrite});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite});
-    rinfo_.push_back({csinfo_.fused_batch_norm_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad),
-                      CopyAttrsFusedBatchNorm, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.fused_batch_norm_grad,
+         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad),
+         CopyAttrsFusedBatchNorm, AlwaysRewrite});
     rinfo_.push_back({csinfo_.identity,
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
                       CopyAttrsDataType, AlwaysRewrite});
-    rinfo_.push_back({csinfo_.lrn,
-                      mkl_op_registry::GetMklOpName(csinfo_.lrn),
-                      CopyAttrsLRN, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.lrn, mkl_op_registry::GetMklOpName(csinfo_.lrn),
+                      CopyAttrsLRN, LrnRewrite});
     rinfo_.push_back({csinfo_.lrn_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.lrn_grad),
-                      CopyAttrsLRN, AlwaysRewrite});
+                      CopyAttrsLRN, LrnRewrite});
     rinfo_.push_back({csinfo_.max_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool),
                       CopyAttrsPooling, NonDepthBatchWisePoolRewrite});
     rinfo_.push_back({csinfo_.max_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool_grad),
                       CopyAttrsPooling, AlwaysRewrite});
-    /*
+
     rinfo_.push_back({csinfo_.maximum,
                       mkl_op_registry::GetMklOpName(csinfo_.maximum),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.mul,
                       mkl_op_registry::GetMklOpName(csinfo_.mul),
                       CopyAttrsDataType, AlwaysRewrite});
-    */
-    rinfo_.push_back({csinfo_.relu,
-                      mkl_op_registry::GetMklOpName(csinfo_.relu),
+    rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.relu_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.relu_grad),
@@ -2535,14 +2528,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.softmax,
                       mkl_op_registry::GetMklOpName(csinfo_.softmax),
                       CopyAttrsDataType, AlwaysRewrite});
-    /*
+
     rinfo_.push_back({csinfo_.squared_difference,
                       mkl_op_registry::GetMklOpName(csinfo_.squared_difference),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.sub,
                       mkl_op_registry::GetMklOpName(csinfo_.sub),
                       CopyAttrsDataType, AlwaysRewrite});
-    */
 
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
@@ -2550,8 +2542,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // Add a rule for merging nodes
     minfo_.push_back({csinfo_.conv2d, csinfo_.bias_add,
-                      csinfo_.conv2d_with_bias,
-                      GetConv2DOrBiasAdd});
+                      csinfo_.conv2d_with_bias, GetConv2DOrBiasAdd});
 
     minfo_.push_back({csinfo_.conv2d_grad_filter, csinfo_.bias_add_grad,
                       csinfo_.conv2d_grad_filter_with_bias,
@@ -2700,14 +2691,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // If Op has been specifically assigned to a non-CPU device, then No.
     if (!n->assigned_device_name().empty() &&
-        !StringPiece(n->assigned_device_name()).contains(kCPUDeviceSubStr)) {
+        !str_util::StrContains(n->assigned_device_name(), kCPUDeviceSubStr)) {
       result = false;
       reason = "Op has been assigned a runtime device that is not CPU.";
     }
 
     // If user has specifically assigned this op to a non-CPU device, then No.
     if (!n->def().device().empty() &&
-        !StringPiece(n->def().device()).contains(kCPUDeviceSubStr)) {
+        !str_util::StrContains(n->def().device(), kCPUDeviceSubStr)) {
       result = false;
       reason = "User has assigned a device that is not CPU.";
     }
@@ -2846,9 +2837,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   // Default rewrite rule to be used in scenario 1 for rewrite.
   // @return - true (since we want to always rewrite)
-  static bool AlwaysRewrite(const Node* n) {
-    return true;
-  }
+  static bool AlwaysRewrite(const Node* n) { return true; }
 
   // Check if we are performing pooling on depth or batch. If it is, then we
   // do not rewrite MaxPool node to Mkl version.
@@ -2862,17 +2851,38 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     std::vector<int32> ksize, strides;
     CHECK_EQ(GetNodeAttr(n->def(), "ksize", &ksize).ok(), true);
     CHECK_EQ(GetNodeAttr(n->def(), "strides", &strides).ok(), true);
-    CHECK_EQ(GetNodeAttr(n->def(), "data_format", &data_format_str).ok(),
-             true);
+    CHECK_EQ(GetNodeAttr(n->def(), "data_format", &data_format_str).ok(), true);
     CHECK_EQ(FormatFromString(data_format_str, &data_format), true);
 
     // Condition that specifies non-batch-wise and non-depth-wise pooling.
-    if (GetTensorDim(ksize,   data_format, 'N') == 1 &&
+    if (GetTensorDim(ksize, data_format, 'N') == 1 &&
         GetTensorDim(strides, data_format, 'N') == 1 &&
-        GetTensorDim(ksize,   data_format, 'C') == 1 &&
+        GetTensorDim(ksize, data_format, 'C') == 1 &&
         GetTensorDim(strides, data_format, 'C') == 1) {
       return true;
     }
+
+    return false;
+  }
+
+  // If the depth_radius of LRN is not 2, then MKL DNN takes unoptimized
+  // path. The unoptimized path is slow. Thus we dont rewrite the node
+  // and use default Eigen. But for depth_radius=2, MKL DNN optimized
+  // path is taken, i.e., eigen node is rewritten by MKl DNN node.
+  static bool LrnRewrite(const Node* n) {
+    CHECK_NOTNULL(n);
+
+    int depth_radius;
+    CHECK_EQ(GetNodeAttr(n->def(), "depth_radius", &depth_radius).ok(), true);
+
+    // if the depth_radius of LRN is not 2, don't rewrite the node by MKL DNN
+    // and use eigen node instead
+    if (depth_radius == 2) {
+      return true;
+    }
+    VLOG(1) << "LrnRewrite: The model sets depth_radius as not 2 which"
+            << "case is not optimized by Intel MKL, thus using Eigen op"
+            << "for LRN ";
 
     return false;
   }
@@ -2941,10 +2951,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // @output output_nodes - the list of new nodes creating Mkl tensors
   //
   // @return None
-  void GetNodesProducingMklTensorList(std::unique_ptr<Graph>* g,
-    Node* orig_node, const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
-    int* input_idx, int list_length,
-    std::vector<NodeBuilder::NodeOut>* output_nodes);
+  void GetNodesProducingMklTensorList(
+      std::unique_ptr<Graph>* g, Node* orig_node,
+      const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
+      int* input_idx, int list_length,
+      std::vector<NodeBuilder::NodeOut>* output_nodes);
 
   // Get a node that will feed an Mkl tensor to the new
   // node that we are constructing. The output node could be (1) 'n'
@@ -2961,7 +2972,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   //                                will feed the tensor
   // @return None
   void GetNodeProducingMklTensor(std::unique_ptr<Graph>* g, Node* orig_node,
-    Node* n, int n_output_slot, Node** mkl_node, int* mkl_node_output_slot);
+                                 Node* n, int n_output_slot, Node** mkl_node,
+                                 int* mkl_node_output_slot);
 
   // Setup new inputs using old inputs 'inputs' for the rewritten node in 'nb'
   // in graph 'g'. Original node is input in 'old_node'. Inputs to 'nb' are
@@ -3002,6 +3014,35 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                 NodeBuilder* nb,
                                 std::vector<NodeBuilder::NodeOut>* ws_tensors,
                                 bool* are_ws_tensors_added);
+
+  // Helper function used by FixMklMetaDataEdges. Fixes the metadata edge
+  // pointed by 'e_metadata' corresponding to the data edge 'e_data' in graph
+  // 'g'. Returns true is fixup was done; otherwise, it returns false.
+  bool FixMklMetaDataEdgeIfNeeded(std::unique_ptr<Graph>* g,
+    const Edge* e_data, const Edge* e_metadata);
+
+  // Are the input Mkl metadata edges for node 'n' in graph 'g' correctly
+  // connected? If not, then fix them. This is needed because a graph may have
+  // some input Mkl metadata edges incorrectly setup after node merge and
+  // rewrite passes. This could happen because GetReversePostOrder function may
+  // not provide topologically sorted order if a graph contains cycles. The
+  // function returns true if at least one Mkl metadata edge for node 'n' was
+  // fixed. Otherwise, it returns false.
+  //
+  // Example:
+  //
+  // X = MklConv2D(_, _, _)
+  // Y = MklConv2DWithBias(_, _, _, _, _, _)
+  // Z = MklAdd(X, Y, DummyMklTensor, Y:1)
+  //
+  // For a graph such as shown above, note that 3rd argument of MklAdd contains
+  // DummyMklTensor. Actually, it should be getting the Mkl metadata from
+  // MklConv2D op (specifically, X:2). This incorrect plumbing could be possible
+  // (although rare) if the Mkl NodeMerge + NodeRewrite passes visit Z before X
+  // (possible if X, Y, Z are part of a loop.) This function fixes the Mkl
+  // metadata edges only - it does not rewrite nodes nor does it modify the Mkl
+  // data edges (1st and 2nd arguments of MklAdd).
+  bool FixMklMetaDataEdges(std::unique_ptr<Graph>* g, Node* n);
 
   // Functions specific to operators to copy attributes
   // We need operator-specific function to copy attributes because the framework
@@ -3091,18 +3132,17 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
   TensorProto proto;
   proto.set_dtype(dt);
   uint8 zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           8);
+  proto.set_tensor_content(string(reinterpret_cast<char*>(&zero), 8));
   TensorShape dummy_shape({8});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
-               .Attr("value", proto)
-               .Attr("dtype", dt)
-               .Device(orig_node->def().device())  // We place this node on
-                                                   // the same device as the
-                                                   // device of the original
-                                                   // node.
-               .Finalize(&**g, out));
+                  .Attr("value", proto)
+                  .Attr("dtype", dt)
+                  .Device(orig_node->def().device())  // We place this node on
+                                                      // the same device as the
+                                                      // device of the original
+                                                      // node.
+                  .Finalize(&**g, out));
 
   // If number of inputs to the original node is > 0, then we add
   // control dependency between 1st input (index 0) of the original node and
@@ -3115,8 +3155,8 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
   // the same frame.
   if (orig_node->num_inputs() > 0) {
     Node* orig_input0 = nullptr;
-    TF_CHECK_OK(orig_node->input_node(0,
-                                      const_cast<const Node**>(&orig_input0)));
+    TF_CHECK_OK(
+        orig_node->input_node(0, const_cast<const Node**>(&orig_input0)));
     // Allow duplicate while adding control edge as it would fail (return
     // NULL) if we try to add duplicate edge.
     CHECK_NOTNULL((*g)->AddControlEdge(orig_input0, *out, true));
@@ -3126,11 +3166,9 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
 }
 
 void MklLayoutRewritePass::GetNodesProducingMklTensorList(
-    std::unique_ptr<Graph>* g,
-    Node* orig_node,
-    const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs,
-    int* input_idx, int list_length,
-    std::vector<NodeBuilder::NodeOut>* output_nodes) {
+    std::unique_ptr<Graph>* g, Node* orig_node,
+    const gtl::InlinedVector<std::pair<Node*, int>, 4>& inputs, int* input_idx,
+    int list_length, std::vector<NodeBuilder::NodeOut>* output_nodes) {
   CHECK_LT(*input_idx, inputs.size());
   CHECK_GT(list_length, 0);
   CHECK_NOTNULL(output_nodes);
@@ -3147,8 +3185,8 @@ void MklLayoutRewritePass::GetNodesProducingMklTensorList(
     int mkl_node_output_slot = 0;
     GetNodeProducingMklTensor(g, orig_node, n, slot, &mkl_node,
                               &mkl_node_output_slot);
-    output_nodes->push_back(NodeBuilder::NodeOut(mkl_node,
-                                                mkl_node_output_slot));
+    output_nodes->push_back(
+        NodeBuilder::NodeOut(mkl_node, mkl_node_output_slot));
     (*input_idx)++;
     list_length--;
   }
@@ -3158,9 +3196,9 @@ void MklLayoutRewritePass::GetNodesProducingMklTensorList(
 // node that we are constructing. An input node could be (1) 'n'
 // if it is Mkl layer, or (2) a dummy node producing dummy Mkl tensor
 // if 'n' is not an Mkl layer.
-void MklLayoutRewritePass::GetNodeProducingMklTensor(std::unique_ptr<Graph>* g,
-    Node* orig_node, Node* n,
-    int n_output_slot, Node** mkl_node, int* mkl_node_output_slot) {
+void MklLayoutRewritePass::GetNodeProducingMklTensor(
+    std::unique_ptr<Graph>* g, Node* orig_node, Node* n, int n_output_slot,
+    Node** mkl_node, int* mkl_node_output_slot) {
   CHECK_NOTNULL(n);
   CHECK_NOTNULL(mkl_node);
   CHECK_NOTNULL(mkl_node_output_slot);
@@ -3209,7 +3247,8 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     // For that let's first find filter node that is 2nd input (slot 1)
     // of BackpropInput.
     Node* filter_node = nullptr;
-    old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx, &filter_node);
+    TF_CHECK_OK(old_node->input_node(kConv2DBackpropInputFilterInputSlotIdx,
+                                     &filter_node));
     CHECK_NOTNULL(filter_node);
 
     // Now check which nodes receive from filter_node. Filter feeds as
@@ -3292,8 +3331,8 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     if (ArgIsList(arg)) {
       std::vector<NodeBuilder::NodeOut> new_node_inputs;
       int N = GetTensorListLength(arg, old_node);
-      GetNodesProducingMklTensorList(g, old_node, old_node_inputs, &iidx,
-                                     N, &new_node_inputs);
+      GetNodesProducingMklTensorList(g, old_node, old_node_inputs, &iidx, N,
+                                     &new_node_inputs);
       nb->Input(new_node_inputs);
       nn_slot_idx++;
     } else {
@@ -3389,18 +3428,17 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
   TensorProto proto;
   proto.set_dtype(dt);
   float zero[1] = {0};
-  proto.set_tensor_content(const_cast<const void*>(static_cast<void*>(&zero)),
-                           4);
+  proto.set_tensor_content(string(reinterpret_cast<char*>(&zero), 4));
   TensorShape dummy_shape({1});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
-                .Attr("value", proto)
-                .Attr("dtype", dt)
-                .Device(orig_node->def().device())  // We place this node on
-                                                    // same the device as the
-                                                    // device of the original
-                                                    // node.
-                .Finalize(&**g, out));
+                  .Attr("value", proto)
+                  .Attr("dtype", dt)
+                  .Device(orig_node->def().device())  // We place this node on
+                                                      // same the device as the
+                                                      // device of the original
+                                                      // node.
+                  .Finalize(&**g, out));
 
   // If number of inputs to the original node is > 0, then we add
   // control dependency between 1st input (index 0) of the original node and
@@ -3413,8 +3451,8 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
   // the same frame.
   if (orig_node->num_inputs() > 0) {
     Node* orig_input0 = nullptr;
-    TF_CHECK_OK(orig_node->input_node(0,
-                                      const_cast<const Node**>(&orig_input0)));
+    TF_CHECK_OK(
+        orig_node->input_node(0, const_cast<const Node**>(&orig_input0)));
     // Allow duplicate while adding control edge as it would fail (return
     // NULL) if we try to add duplicate edge.
     CHECK_NOTNULL((*g)->AddControlEdge(orig_input0, *out, true));
@@ -3434,8 +3472,8 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   for (auto ws : wsinfo_) {
     if (orig_node->type_string() == ws.fwd_op &&
-        mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(
-          orig_node->type_string()), T)) {
+        mkl_op_registry::IsMklOp(
+            mkl_op_registry::GetMklOpName(orig_node->type_string()), T)) {
       // If this op is a fwd op, then we need to check if there is an
       // edge from this node's fwd_slot to bwdop's bwd_slot. If there is
       // an edge, then we just add an attribute on this node for setting
@@ -3461,8 +3499,9 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
         nb->Attr("workspace_enabled", false);
       }
     } else if (orig_node->type_string() == ws.bwd_op &&
-               mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(
-                                          orig_node->type_string()), T)) {
+               mkl_op_registry::IsMklOp(
+                   mkl_op_registry::GetMklOpName(orig_node->type_string()),
+                   T)) {
       // If this op is a bwd op, then we need to add workspace edge and
       // it's Mkl tensor edge between its corresponding fwd op and this
       // op. Corresponding fwd op is specified in 'fwd_op' field of
@@ -3477,8 +3516,8 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
         if (e->src_output() == ws.fwd_slot &&
             // We would have rewritten the forward op, so we need to use
             // GetMklOpName call to get its Mkl name.
-            e->src()->type_string() == mkl_op_registry::GetMklOpName(
-                                                          ws.fwd_op) &&
+            e->src()->type_string() ==
+                mkl_op_registry::GetMklOpName(ws.fwd_op) &&
             e->dst_input() == ws.bwd_slot) {
           nb->Attr("workspace_enabled", true);
           CHECK_NOTNULL(ws_tensors);
@@ -3539,11 +3578,13 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   string data_format;
   string padding;
   std::vector<int32> strides;
+  std::vector<int32> dilations;
   bool use_cudnn_on_gpu;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
   TF_CHECK_OK(
@@ -3552,6 +3593,7 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("strides", strides);
+  nb->Attr("dilations", dilations);
   nb->Attr("padding", padding);
   nb->Attr("data_format", data_format);
   nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
@@ -3645,7 +3687,7 @@ void MklLayoutRewritePass::CopyAttrsDataType(const Node* orig_node,
 }
 
 void MklLayoutRewritePass::CopyAttrsReshape(const Node* orig_node,
-                                           NodeBuilder* nb) {
+                                            NodeBuilder* nb) {
   DataType T;
   DataType Tshape;
 
@@ -3776,8 +3818,9 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
                                                     Node* m, Node* n) {
   CHECK_EQ(((m->type_string() == csinfo_.bias_add &&
              n->type_string() == csinfo_.conv2d)) ||
-           ((n->type_string() == csinfo_.bias_add &&
-             m->type_string() == csinfo_.conv2d)), true);
+               ((n->type_string() == csinfo_.bias_add &&
+                 m->type_string() == csinfo_.conv2d)),
+           true);
 
   // If 'm' is BiasAdd, then 'n' is Conv2D. Since Conv2D feeds BiasAdd,
   // BiasAdd is successor node, and Conv2D predecessor node.
@@ -3788,16 +3831,17 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   DataType T_pred, T_succ;
   string padding;
   std::vector<int32> strides;
+  std::vector<int32> dilations;
   string data_format_pred, data_format_succ;
   bool use_cudnn_on_gnu;
   TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(pred->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "data_format", &data_format_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
-  TF_CHECK_OK(
-      GetNodeAttr(pred->def(), "use_cudnn_on_gpu", &use_cudnn_on_gnu));
+  TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu", &use_cudnn_on_gnu));
   // We check to ensure that data formats of both succ and pred are same.
   // We expect them to be same, so we can enforce this as assert.
   // But assert can be too strict, so we enforce this as a check.
@@ -3860,7 +3904,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 
   // Create node.
   Node* new_node;
-  nb.Finalize(&**g, &new_node);
+  TF_CHECK_OK(nb.Finalize(&**g, &new_node));
   CHECK_NOTNULL(new_node);
 
   // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
@@ -3900,8 +3944,8 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
       // BiasAdd has only 1 output (at slot 0) and merged node also has only 1
       // output (at slot 0).
       const int kConv2DWithBiasOutputSlot = 0;
-      CHECK_NOTNULL((*g)->AddEdge(new_node, kConv2DWithBiasOutputSlot,
-                                    e->dst(), e->dst_input()));
+      CHECK_NOTNULL((*g)->AddEdge(new_node, kConv2DWithBiasOutputSlot, e->dst(),
+                                  e->dst_input()));
     }
   }
 
@@ -3924,8 +3968,9 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
     std::unique_ptr<Graph>* g, Node* m, Node* n) {
   CHECK_EQ(((m->type_string() == csinfo_.bias_add_grad &&
              n->type_string() == csinfo_.conv2d_grad_filter)) ||
-           ((n->type_string() == csinfo_.bias_add_grad &&
-             m->type_string() == csinfo_.conv2d_grad_filter)), true);
+               ((n->type_string() == csinfo_.bias_add_grad &&
+                 m->type_string() == csinfo_.conv2d_grad_filter)),
+           true);
 
   // If 'm' is BiasAddGrad, then 'n' is BackpropFilter.
   Node* badd = m->type_string() == csinfo_.bias_add_grad ? m : n;
@@ -3970,7 +4015,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
 
   // Create node.
   Node* new_node;
-  nb.Finalize(&**g, &new_node);
+  TF_CHECK_OK(nb.Finalize(&**g, &new_node));
   CHECK_NOTNULL(new_node);
 
   // Incoming data edges from BiasAddGrad node and Conv2DBackpropFilter node to
@@ -4132,9 +4177,10 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
       // NULL) if we try to add duplicate edge.
       CHECK_NOTNULL((*g)->AddControlEdge(new_node, e->dst(), true));
     } else {
-      CHECK_NOTNULL((*g)->AddEdge(new_node, GetTensorDataIndex(e->src_output(),
-                            e->src()->num_outputs()),
-                    e->dst(), e->dst_input()));
+      CHECK_NOTNULL((*g)->AddEdge(
+          new_node,
+          GetTensorDataIndex(e->src_output(), e->src()->num_outputs()),
+          e->dst(), e->dst_input()));
     }
   }
 
@@ -4166,9 +4212,9 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   // names.
   if (n->type_string() != csinfo_.conv2d_with_bias &&
       n->type_string() != csinfo_.conv2d_grad_filter_with_bias &&
-      !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(
-                                        n->type_string()), T)) {
-      return nullptr;
+      !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
+                                T)) {
+    return nullptr;
   }
 
   // For elementwise node, we reuse the Eigen implementation and pass the MKL
@@ -4184,29 +4230,30 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   // eigen code to reduce cross-library dependency.
   VLOG(1) << "ELEMENTWISE: checking op: " << n->type_string();
   if (mkl_op_registry::IsMklElementWiseOp(
-        mkl_op_registry::GetMklOpName(n->type_string()), T) ||
+          mkl_op_registry::GetMklOpName(n->type_string()), T) ||
       n->type_string().find("Identity") != string::npos) {
     VLOG(1) << "ELEMENTWISE: op is elementwise: " << n->type_string();
     bool incoming_mkl_edge = false;
     int num_parent = 0;
     for (auto parent : n->in_edges()) {
       if (mkl_op_registry::IsMklOp(parent->src()->type_string(), T)) {
-        VLOG(1) << "ELEMENTWISE: parent " << num_parent++ << " is MKL op: "
-                << parent->src()->type_string();
+        VLOG(1) << "ELEMENTWISE: parent " << num_parent++
+                << " is MKL op: " << parent->src()->type_string();
         incoming_mkl_edge = true;
         break;
       } else {
-        VLOG(1) << "ELEMENTWISE: parent " << num_parent++ << " is NON-MKL op: "
-                << parent->src()->type_string();
+        VLOG(1) << "ELEMENTWISE: parent " << num_parent++
+                << " is NON-MKL op: " << parent->src()->type_string();
       }
     }
     if (incoming_mkl_edge == false) {
-      VLOG(1) << "ELEMENTWISE: Skipping replacement of elementwise node which has no MKL "
+      VLOG(1) << "ELEMENTWISE: Skipping replacement of elementwise node which "
+                 "has no MKL "
                  "parents.";
       return nullptr;
     } else {
-      VLOG(1) << "ELEMENTWISE: Replacing elementwise node " << n->type_string() <<
-        " which has MKL parents";
+      VLOG(1) << "ELEMENTWISE: Replacing elementwise node " << n->type_string()
+              << " which has MKL parents";
     }
   }
 
@@ -4214,14 +4261,99 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   // for this op, then we rewrite it to Mkl op.
   // Find matching RewriteInfo and then check that rewrite rule applies.
   for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
-    if (n->type_string().compare(ri->name) == 0 &&
-        ri->rewrite_rule(n)) {
+    if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
       return &*ri;
     }
   }
 
   // Else return not found.
   return nullptr;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+//              Post-rewrite Mkl metadata fixup pass
+///////////////////////////////////////////////////////////////////////////////
+bool MklLayoutRewritePass::FixMklMetaDataEdgeIfNeeded(std::unique_ptr<Graph>* g,
+    const Edge* e_data, const Edge* e_metadata) {
+  if (g == nullptr || e_data == nullptr || e_metadata == nullptr) {
+    return false;
+  }
+
+  Node* n_data = e_data->src();
+  int n_data_op_slot = e_data->src_output();
+  int n_metadata_op_slot = GetTensorMetaDataIndex(n_data_op_slot,
+                                                  n_data->num_outputs());
+
+  // If the source of meta edge is a constant node (producing dummy Mkl metadata
+  // tensor), then we will need to fix.
+  if (IsConstant(e_metadata->src())) {
+    Node* e_metadata_dst = e_metadata->dst();
+    int e_metadata_in_slot = e_metadata->dst_input();
+    CHECK_NOTNULL((*g)->AddEdge(n_data, n_metadata_op_slot,
+                  e_metadata_dst, e_metadata_in_slot));
+
+    (*g)->RemoveEdge(e_metadata);
+    return true;
+  }
+
+  return false;
+}
+
+bool MklLayoutRewritePass::FixMklMetaDataEdges(std::unique_ptr<Graph>* g,
+    Node* n) {
+  bool result = false;
+
+  // If graph node is not Mkl node, then return.
+  DataType T = DT_INVALID;
+  if (!GetNodeAttr(n->def(), "T", &T).ok() ||
+      !mkl_op_registry::IsMklOp(n->type_string(), T)) {
+    return result;
+  }
+
+  // If it is Mkl node, then check if the input edges to this node that carry
+  // Mkl metadata are linked up correctly with the source node.
+
+  // For Mkl nodes, we generate twice the number of input tensors (n for Mkl
+  // data tensors + n for Mkl metadata tensors). We need to check for correct
+  // connection of n metadata tensors only.
+  int num_data_inputs = n->num_inputs() / 2;
+  for (int idx = 0; idx < num_data_inputs; idx++) {
+    // Get the edge connecting input slot with index (idx).
+    const Edge* e = nullptr;
+    TF_CHECK_OK(n->input_edge(idx, &e));
+
+    // If e is control edge, then skip.
+    if (e->IsControlEdge()) {
+      continue;
+    }
+
+    // Check that the source node for edge 'e' is Mkl node. If it is not an Mkl
+    // node, then we don't need to do anything.
+    Node* e_src = e->src();
+    if (GetNodeAttr(e_src->def(), "T", &T).ok() &&
+        mkl_op_registry::IsMklOp(e_src->type_string(), T)) {
+      // Source node for edge 'e' is Mkl node.
+      // Destination node and destination input slot of e is node 'n' and 'idx'
+      // resp.
+      CHECK_EQ(e->dst(), n);
+      CHECK_EQ(e->dst_input(), idx);
+
+      // Let's get edge that carries Mkl metadata corresponding to Mkl data edge
+      // 'e'. For that, let's first get the input slot of 'n' where the meta
+      // edge will feed the value.
+      int e_meta_in_slot = GetTensorMetaDataIndex(e->dst_input(),
+                                                  n->num_inputs());
+      const Edge* e_meta = nullptr;
+      TF_CHECK_OK(n->input_edge(e_meta_in_slot, &e_meta));
+
+      // Let's check if we need to fix this meta edge.
+      if (FixMklMetaDataEdgeIfNeeded(g, e, e_meta)) {
+        result = true;
+      }
+    }
+  }
+
+  return result;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -4290,6 +4422,25 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
 
   DumpGraph("After running MklLayoutRewritePass(NodeMerge+Rewrite)", &**g);
 
+  order.clear();
+  GetReversePostOrder(**g, &order);  // This will give us topological sort.
+  for (Node* n : order) {
+    // If node is not an op or it cannot run on CPU device, then skip.
+    if (!n->IsOp() || !CanOpRunOnCPUDevice(n)) {
+      continue;
+    }
+    if (FixMklMetaDataEdges(g, n)) {
+      string node_name = n->name();
+      string op_name = n->type_string();
+
+      VLOG(1) << "MklLayoutRewritePass: fixed metadata edges for node "
+              << node_name << " with op " << op_name;
+      result = true;
+    }
+  }
+  DumpGraph("After running MklLayoutRewritePass(NodeMerge+Rewrite+Fixup)",
+            &**g);
+
   return result;
 }
 
@@ -4297,8 +4448,7 @@ bool RunMklLayoutRewritePass(std::unique_ptr<Graph>* g) {
   return MklLayoutRewritePass().RunPass(g);
 }
 
-Status MklLayoutRewritePass::Run(
-  const GraphOptimizationPassOptions& options) {
+Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
     return Status::OK();
   }
@@ -4325,7 +4475,7 @@ Status MklLayoutRewritePass::Run(
 
   return Status::OK();
 }
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 }  // namespace tensorflow
 
 #endif

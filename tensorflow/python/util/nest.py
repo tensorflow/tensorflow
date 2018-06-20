@@ -36,7 +36,6 @@ import collections as _collections
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
-from tensorflow.python.util.all_util import remove_undocumented
 
 
 def _sorted(dict_):
@@ -47,13 +46,20 @@ def _sorted(dict_):
     raise TypeError("nest only supports dicts with sortable keys.")
 
 
-def _is_namedtuple(instance):
-  """Returns True iff `instance` is a `namedtuple`."""
-  return (
-      isinstance(instance, tuple) and
-      hasattr(instance, "_fields") and
-      isinstance(instance._fields, _collections.Sequence) and
-      all(isinstance(f, _six.string_types) for f in instance._fields))
+def _is_namedtuple(instance, strict=False):
+  """Returns True iff `instance` is a `namedtuple`.
+
+  Args:
+    instance: An instance of a Python object.
+    strict: If True, `instance` is considered to be a `namedtuple` only if
+        it is a "plain" namedtuple. For instance, a class inheriting
+        from a `namedtuple` will be considered to be a `namedtuple`
+        iff `strict=False`.
+
+  Returns:
+    True if `instance` is a `namedtuple`.
+  """
+  return _pywrap_tensorflow.IsNamedtuple(instance, strict)
 
 
 def _sequence_like(instance, args):
@@ -140,43 +146,23 @@ def flatten(nest):
   return _pywrap_tensorflow.Flatten(nest)
 
 
-def _recursive_assert_same_structure(nest1, nest2, check_types):
-  """Helper function for `assert_same_structure`."""
-  is_sequence_nest1 = is_sequence(nest1)
-  if is_sequence_nest1 != is_sequence(nest2):
-    raise ValueError(
-        "The two structures don't have the same nested structure.\n\n"
-        "First structure: %s\n\nSecond structure: %s." % (nest1, nest2))
-
-  if not is_sequence_nest1:
-    return  # finished checking
-
-  if check_types:
-    type_nest1 = type(nest1)
-    type_nest2 = type(nest2)
-    if type_nest1 != type_nest2:
-      raise TypeError(
-          "The two structures don't have the same sequence type. First "
-          "structure has type %s, while second structure has type %s."
-          % (type_nest1, type_nest2))
-
-    if isinstance(nest1, dict):
-      keys1 = set(_six.iterkeys(nest1))
-      keys2 = set(_six.iterkeys(nest2))
-      if keys1 != keys2:
-        raise ValueError(
-            "The two dictionaries don't have the same set of keys. First "
-            "structure has keys {}, while second structure has keys {}."
-            .format(keys1, keys2))
-
-  nest1_as_sequence = [n for n in _yield_value(nest1)]
-  nest2_as_sequence = [n for n in _yield_value(nest2)]
-  for n1, n2 in zip(nest1_as_sequence, nest2_as_sequence):
-    _recursive_assert_same_structure(n1, n2, check_types)
+def _same_namedtuples(nest1, nest2):
+  """Returns True if the two namedtuples have the same name and fields."""
+  return _pywrap_tensorflow.SameNamedtuples(nest1, nest2)
 
 
 def assert_same_structure(nest1, nest2, check_types=True):
   """Asserts that two structures are nested in the same way.
+
+  Note that namedtuples with identical name and fields are always considered
+  to have the same shallow structure (even with `check_types=True`).
+  For intance, this code will print `True`:
+
+  ```python
+  def nt(a, b):
+    return collections.namedtuple('foo', 'a b')(a, b)
+  print(assert_same_structure(nt(0, 1), nt(2, 3)))
+  ```
 
   Args:
     nest1: an arbitrarily nested structure.
@@ -184,7 +170,8 @@ def assert_same_structure(nest1, nest2, check_types=True):
     check_types: if `True` (default) types of sequences are checked as
         well, including the keys of dictionaries. If set to `False`, for example
         a list and a tuple of objects will look the same if they have the same
-        size.
+        size. Note that namedtuples with identical name and fields are always
+        considered to have the same shallow structure.
 
   Raises:
     ValueError: If the two structures do not have the same number of elements or
@@ -192,14 +179,7 @@ def assert_same_structure(nest1, nest2, check_types=True):
     TypeError: If the two structures differ in the type of sequence in any of
       their substructures. Only possible if `check_types` is `True`.
   """
-  len_nest1 = len(flatten(nest1)) if is_sequence(nest1) else 1
-  len_nest2 = len(flatten(nest2)) if is_sequence(nest2) else 1
-  if len_nest1 != len_nest2:
-    raise ValueError("The two structures don't have the same number of "
-                     "elements.\n\nFirst structure (%i elements): %s\n\n"
-                     "Second structure (%i elements): %s"
-                     % (len_nest1, nest1, len_nest2, nest2))
-  _recursive_assert_same_structure(nest1, nest2, check_types)
+  _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types)
 
 
 def flatten_dict_items(dictionary):
@@ -354,6 +334,8 @@ def map_structure(func, *structure, **check_types_dict):
       `True` (default) the types of iterables within the structures have to be
       same (e.g. `map_structure(func, [1], (1,))` raises a `TypeError`
       exception). To allow this set this argument to `False`.
+      Note that namedtuples with identical name and fields are always
+      considered to have the same shallow structure.
 
   Returns:
     A new structure with the same arity as `structure`, whose values correspond
@@ -430,7 +412,9 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
     shallow_tree: an arbitrarily nested structure.
     input_tree: an arbitrarily nested structure.
     check_types: if `True` (default) the sequence types of `shallow_tree` and
-      `input_tree` have to be the same.
+      `input_tree` have to be the same. Note that even with check_types==True,
+      this function will consider two different namedtuple classes with the same
+      name and _fields attribute to be the same class.
 
   Raises:
     TypeError: If `shallow_tree` is a sequence but `input_tree` is not.
@@ -446,10 +430,21 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "Input has type: %s." % type(input_tree))
 
     if check_types and not isinstance(input_tree, type(shallow_tree)):
-      raise TypeError(
-          "The two structures don't have the same sequence type. Input "
-          "structure has type %s, while shallow structure has type %s."
-          % (type(input_tree), type(shallow_tree)))
+      # Duck-typing means that nest should be fine with two different
+      # namedtuples with identical name and fields.
+      shallow_is_namedtuple = _is_namedtuple(shallow_tree, False)
+      input_is_namedtuple = _is_namedtuple(input_tree, False)
+      if shallow_is_namedtuple and input_is_namedtuple:
+        if not _same_namedtuples(shallow_tree, input_tree):
+          raise TypeError(
+              "The two namedtuples don't have the same sequence type. Input "
+              "structure has type %s, while shallow structure has type %s."
+              % (type(input_tree), type(shallow_tree)))
+      else:
+        raise TypeError(
+            "The two structures don't have the same sequence type. Input "
+            "structure has type %s, while shallow structure has type %s."
+            % (type(input_tree), type(shallow_tree)))
 
     if len(input_tree) != len(shallow_tree):
       raise ValueError(
@@ -465,8 +460,8 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
             (list(_six.iterkeys(input_tree)),
              list(_six.iterkeys(shallow_tree))))
 
-      input_tree = list(_six.iteritems(input_tree))
-      shallow_tree = list(_six.iteritems(shallow_tree))
+      input_tree = list(sorted(_six.iteritems(input_tree)))
+      shallow_tree = list(sorted(_six.iteritems(shallow_tree)))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,
@@ -762,21 +757,3 @@ def flatten_with_joined_string_paths(structure, separator="/"):
 
 
 _pywrap_tensorflow.RegisterSequenceClass(_collections.Sequence)
-
-
-_allowed_symbols = [
-    "assert_same_structure",
-    "is_sequence",
-    "flatten",
-    "flatten_dict_items",
-    "pack_sequence_as",
-    "map_structure",
-    "assert_shallow_structure",
-    "flatten_up_to",
-    "map_structure_up_to",
-    "get_traverse_shallow_structure",
-    "yield_flat_paths",
-    "flatten_with_joined_string_paths",
-]
-
-remove_undocumented(__name__, _allowed_symbols)

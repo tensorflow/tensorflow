@@ -22,12 +22,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
+#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -88,8 +90,8 @@ ProcessState::~ProcessState() {
 }
 
 string ProcessState::MemDesc::DebugString() {
-  return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index, ", dma: ",
-                         gpu_registered, ", nic: ", nic_registered);
+  return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
+                         ", dma: ", gpu_registered, ", nic: ", nic_registered);
 }
 
 ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
@@ -124,7 +126,8 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options,
       return nullptr;
     }
 
-    const CudaGpuId cuda_gpu_id = GpuIdUtil::TfToCudaGpuId(tf_gpu_id);
+    CudaGpuId cuda_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id));
     gpu_allocator =
         new GPUBFCAllocator(cuda_gpu_id, total_bytes, options,
                             strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
@@ -144,7 +147,7 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options,
 
     // If there are any pending AllocVisitors for this bus, add
     // them now.
-    gpu::StreamExecutor* se =
+    se::StreamExecutor* se =
         GpuIdUtil::ExecutorForTfGpuId(tf_gpu_id).ValueOrDie();
     int bus_id = se->GetDeviceDescription().numa_node();
     if (bus_id >= 0 && bus_id < static_cast<int64>(gpu_visitors_.size())) {
@@ -230,8 +233,24 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   // TODO(tucker): actually maintain separate CPUAllocators for
   // different numa_nodes.  For now, just one.
   numa_node = 0;
-  mutex_lock lock(mu_);
 
+  {
+    // Here we optimize the most common use case where cuda_host_allocators_
+    // and cuda_al_ have already been populated and since we're only reading
+    // these vectors, we can get by with a shared lock. In the slower case,
+    // we take a unique lock and populate these vectors.
+    tf_shared_lock lock(mu_);
+
+    if (FLAGS_brain_gpu_record_mem_types &&
+        static_cast<int>(cuda_al_.size()) > 0) {
+      return cuda_al_[0];
+    }
+    if (static_cast<int>(cuda_host_allocators_.size()) > numa_node) {
+      return cuda_host_allocators_[0];
+    }
+  }
+
+  mutex_lock lock(mu_);
   // Find the first valid StreamExecutor to request CUDA host memory
   // through, since any will work.
   //
@@ -239,7 +258,7 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   // better source of information about which executor to use.  For
   // example, process_state could maybe save the first stream executor
   // it knows is valid.
-  gpu::StreamExecutor* se = nullptr;
+  se::StreamExecutor* se = nullptr;
   for (int i = 0; i < static_cast<int>(gpu_allocators_.size()); ++i) {
     if (gpu_allocators_[i] != nullptr) {
       se = GpuIdUtil::ExecutorForTfGpuId(TfGpuId(i)).ValueOrDie();
@@ -287,7 +306,7 @@ void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {
 #if GOOGLE_CUDA
   mutex_lock lock(mu_);
   for (int i = 0; i < static_cast<int64>(gpu_allocators_.size()); ++i) {
-    gpu::StreamExecutor* se =
+    se::StreamExecutor* se =
         GpuIdUtil::ExecutorForTfGpuId(TfGpuId(i)).ValueOrDie();
     if (gpu_allocators_[i] &&
         (se->GetDeviceDescription().numa_node() + 1) == bus_id) {
@@ -299,6 +318,19 @@ void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {
   }
   gpu_visitors_[bus_id].push_back(visitor);
 #endif  // GOOGLE_CUDA
+}
+
+void ProcessState::TestOnlyReset() {
+  mutex_lock lock(mu_);
+  gpu_device_enabled_ = false;
+  gpu_visitors_.clear();
+  mem_desc_map_.clear();
+  gtl::STLDeleteElements(&cpu_allocators_);
+  gtl::STLDeleteElements(&gpu_allocators_);
+  gtl::STLDeleteElements(&cuda_host_allocators_);
+  gtl::STLDeleteElements(&cpu_al_);
+  gtl::STLDeleteElements(&gpu_al_);
+  gtl::STLDeleteElements(&cuda_al_);
 }
 
 }  // namespace tensorflow

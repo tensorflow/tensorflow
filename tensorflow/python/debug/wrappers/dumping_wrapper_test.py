@@ -389,6 +389,11 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
         r"mode\."):
       sess.invoke_node_stepper(node_stepper)
 
+  def testDumpingWrapperWithEmptyFetchWorks(self):
+    sess = dumping_wrapper.DumpingDebugWrapperSession(
+        self.sess, session_root=self.session_root, log_usage=False)
+    sess.run([])
+
 
 if __name__ == "__main__":
   googletest.main()

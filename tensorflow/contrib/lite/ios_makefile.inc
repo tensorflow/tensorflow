@@ -22,6 +22,7 @@ ifeq ($(TARGET), IOS)
 	IOS_ARCH := x86_64
 	CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
+		-DTFLITE_USE_APPLE_ACCELERATE_FOR_CONV \
 		-fembed-bitcode \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
@@ -30,9 +31,6 @@ ifeq ($(TARGET), IOS)
 		${IPHONEOS_SYSROOT} \
 		-arch $(IOS_ARCH) \
 		-O3
-	ifeq ($(IOS_ARCH), x86_64)
-		CXXFLAGS += -msse4.1
-	endif
 	CCFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-fembed-bitcode \
 		-mno-thumb \
@@ -42,6 +40,7 @@ ifeq ($(TARGET), IOS)
 		-O3
 	LDFLAGS := -fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-arch $(IOS_ARCH)
 	OBJDIR := $(OBJDIR)ios_$(IOS_ARCH)/
 	LIBDIR := $(LIBDIR)ios_$(IOS_ARCH)/

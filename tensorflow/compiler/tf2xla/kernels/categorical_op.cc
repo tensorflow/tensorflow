@@ -34,7 +34,7 @@ class CategoricalOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     // Get the logits
-    const xla::ComputationDataHandle& logits = ctx->Input(0);
+    const xla::XlaOp& logits = ctx->Input(0);
     TensorShape logits_shape = ctx->InputShape(0);
     int64 num_samples;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &num_samples));
@@ -56,7 +56,7 @@ class CategoricalOp : public XlaOpKernel {
     const int64 batch_size = logits_shape.dim_size(0);
     const int64 num_classes = logits_shape.dim_size(1);
 
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     std::array<int64, 3> uniform_shape_array = {
         {batch_size, num_samples, num_classes}};
@@ -78,7 +78,7 @@ class CategoricalOp : public XlaOpKernel {
                      /*broadcast_dimensions=*/{0, 2});
 
     TensorShape softmax_shape(uniform_shape_array);
-    xla::ComputationDataHandle argmax;
+    xla::XlaOp argmax;
     OP_REQUIRES_OK(
         ctx,
         XlaHelpers::ArgMax(builder, ctx, softmax_entries, softmax_shape,

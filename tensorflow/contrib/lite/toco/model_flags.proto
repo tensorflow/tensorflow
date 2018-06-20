@@ -81,19 +81,31 @@ message RnnState {
   optional string state_array = 1;
   optional string back_edge_source_array = 2;
   optional bool discardable = 5;
-  // TODO(benoitjacob): drop the 'size' field. Should be redundant with
-  // --input_shapes and shapes propagation.
+  // size allows to specify a 1-D shape for the RNN state array.
+  // Will be expanded with 1's to fit the model.
+  // TODO(benoitjacob): should allow a generic, explicit shape.
   optional int32 size = 3;
-  // TODO(benoitjacob): manually_create is a temporary hack:
-  // due to discrepancies between the current toco dims tracking and
-  // TensorFlow shapes, for some models we need to manually create RNN state
-  // arrays with a specified shape.
-  // Maybe we should actually implement back-edges as operators of their own,
-  // which would remove the need for much special-casing, including here,
-  // we could probably consistently let PropagateFixedSizes handle state
-  // arrays.
-  // TODO(benoitjacob): should really drop manually_create now.
-  optional bool manually_create = 4;
+}
+
+// An ArraysExtraInfo message stores a collection of additional Information
+// about arrays in a model, complementing the information in the model itself.
+// It is intentionally a separate message so that it may be serialized and
+// passed separately from the model. See --arrays_extra_info_file.
+//
+// A typical use case is to manually specify MinMax for specific arrays in a
+// model that does not already contain such MinMax information.
+message ArraysExtraInfo {
+  message Entry {
+    // Next ID to use: 8.
+    optional string name = 1;
+    optional string name_regexp = 7;
+    optional double min = 2;
+    optional double max = 3;
+    optional IODataType data_type = 4;
+    optional InputArrayShape shape = 5;
+    optional float constant_float_value = 6;
+  }
+  repeated Entry entries = 1;
 }
 
 // ModelFlags encodes properties of a model that, depending on the file
@@ -117,7 +129,7 @@ message RnnState {
 //   optional int32 input_dims = 11 [ default = 4];
 //   repeated int32 input_shape = 13;
 //
-// Next ID to USE: 18.
+// Next ID to USE: 20.
 message ModelFlags {
   // Information about the input arrays, i.e. the arrays from which input
   // activations will be read.
@@ -160,4 +172,12 @@ message ModelFlags {
   // catch common copy-and-paste issues where invisible unicode
   // characters are unwittingly added to these strings.
   optional bool allow_nonascii_arrays = 17;
+
+  // If set, this ArraysExtraInfo allows to pass extra information about arrays
+  // not specified in the input model file, such as extra MinMax information.
+  optional ArraysExtraInfo arrays_extra_info = 18;
+
+  // When set to false, toco will not change the input ranges and the output
+  // ranges of concat operator to the overlap of all input ranges.
+  optional bool change_concat_input_ranges = 19 [default = true];
 }

@@ -15,9 +15,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -35,7 +35,7 @@ using ::testing::ContainsRegex;
 class CheckExecutionArityTest : public ClientLibraryTestBase {};
 
 TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
-  ComputationBuilder builder(client_, "add_two_params");
+  XlaBuilder builder("add_two_params");
   auto param_literal = Literal::CreateR1<float>({1.1f, 2.2f});
 
   auto p0 = builder.Parameter(0, param_literal->shape(), "param0");
@@ -75,7 +75,7 @@ TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
 }
 
 XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
-  ComputationBuilder builder(client_, "add_two_params");
+  XlaBuilder builder("add_two_params");
 
   auto p0 = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param0");
   auto p1 = builder.Parameter(1, ShapeUtil::MakeShape(F32, {4}), "param1");
@@ -104,7 +104,8 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
-              ContainsRegex("expects parameter 0"));
+              ContainsRegex(
+                  "Argument does not match shape of computation parameter 0"));
 
   // Shape mismatch in parameter 1 (rank)
   status = client_->Execute(computation, {f32_data.get(), f32_data.get()},
@@ -112,7 +113,8 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
-              ContainsRegex("expects parameter 1"));
+              ContainsRegex(
+                  "Argument does not match shape of computation parameter 1"));
 
   // Shape mismatch in parameter 1 (element type)
   status = client_->Execute(computation, {f32_data.get(), u8_4_data.get()},
@@ -120,7 +122,8 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
-              ContainsRegex("expects parameter 1"));
+              ContainsRegex(
+                  "Argument does not match shape of computation parameter 1"));
 }
 
 }  // namespace

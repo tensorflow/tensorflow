@@ -70,7 +70,7 @@ Status TensorStore::SaveTensors(const std::vector<string>& output_names,
     // Save only the tensors in output_names in the session.
     for (const string& name : output_names) {
       TensorId id(ParseTensorName(name));
-      const string& op_name = id.first.ToString();
+      const string& op_name = std::string(id.first);
       auto it = tensors_.find(op_name);
       if (it != tensors_.end()) {
         // Save the tensor to the session state.

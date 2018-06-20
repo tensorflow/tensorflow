@@ -57,6 +57,7 @@ namespace xla {
   V(kCall, "call", kHloOpcodeIsVariadic)                     \
   V(kCeil, "ceil")                                           \
   V(kClamp, "clamp")                                         \
+  V(kClz, "count-leading-zeros")                             \
   V(kComplex, "complex")                                     \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)       \
   V(kConditional, "conditional")                             \
@@ -68,22 +69,28 @@ namespace xla {
   V(kCrossReplicaSum, "cross-replica-sum")                   \
   V(kCustomCall, "custom-call")                              \
   V(kDivide, "divide")                                       \
+  V(kDomain, "domain")                                       \
   V(kDot, "dot")                                             \
   V(kDynamicSlice, "dynamic-slice")                          \
   V(kDynamicUpdateSlice, "dynamic-update-slice")             \
   V(kEq, "equal-to", kHloOpcodeIsComparison)                 \
   V(kExp, "exponential")                                     \
+  V(kExpm1, "exponential-minus-one")                         \
   V(kFft, "fft")                                             \
   V(kFloor, "floor")                                         \
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                 \
+  V(kGather, "gather")                                       \
   V(kGe, "greater-than-or-equal-to", kHloOpcodeIsComparison) \
+  V(kGenerateToken, "generate-token", kHloOpcodeIsVariadic)  \
   V(kGetTupleElement, "get-tuple-element")                   \
   V(kGt, "greater-than", kHloOpcodeIsComparison)             \
+  V(kHostCompute, "host-compute")                            \
   V(kImag, "imag")                                           \
   V(kInfeed, "infeed")                                       \
   V(kIsFinite, "is-finite")                                  \
   V(kLe, "less-than-or-equal-to", kHloOpcodeIsComparison)    \
   V(kLog, "log")                                             \
+  V(kLog1p, "log-plus-one")                                  \
   V(kAnd, "and")                                             \
   V(kNot, "not")                                             \
   V(kOr, "or")                                               \

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SESSION_MGR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SESSION_MGR_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SESSION_MGR_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SESSION_MGR_H_
 
 #include <functional>
 
@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
@@ -49,15 +50,22 @@ class SessionMgr {
                        bool isolate_session_state);
 
   // Locates the worker session for a given session handle
-  std::shared_ptr<WorkerSession> WorkerSessionForSession(const string& session);
+  Status WorkerSessionForSession(const string& session_handle,
+                                 std::shared_ptr<WorkerSession>* out_session);
   std::shared_ptr<WorkerSession> LegacySession();
 
   Status DeleteSession(const string& session);
 
   static string WorkerNameFromServerDef(const ServerDef& server_def);
 
+  void SetLogging(bool active);
+
+  void RetrieveLogs(tensorflow::int64 step_id, LoggingResponse* response);
+
+  void ClearLogs();
+
  private:
-  const WorkerEnv* const worker_env_;  // Not owned.
+  WorkerEnv* const worker_env_;  // Not owned.
 
   // A note about destruction:
   // We must delete graph_mgr before device_mgr, due to shared
@@ -75,10 +83,13 @@ class SessionMgr {
   std::unique_ptr<WorkerCacheInterface> default_worker_cache_;
   std::shared_ptr<WorkerSession> legacy_session_;
 
+  bool is_logging_active_ = false;
+
   const WorkerCacheFactory worker_cache_factory_;
 
-  std::shared_ptr<WorkerSession> WorkerSessionForSessionUnlocked(
-      const string& session) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status WorkerSessionForSessionLocked(
+      const string& session_handle, std::shared_ptr<WorkerSession>* out_session)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
   // A map from session identifier to internal session structure.
@@ -87,4 +98,4 @@ class SessionMgr {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SESSION_MGR_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SESSION_MGR_H_

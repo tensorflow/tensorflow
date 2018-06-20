@@ -40,10 +40,19 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
   flags->set_xla_cpu_multi_thread_eigen(true);
   flags->set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   flags->set_xla_eliminate_hlo_implicit_broadcast(true);
-
+#ifdef INTEL_MKL
+  flags->set_xla_cpu_use_mkl_dnn(true);
+#endif  // INTEL_MKL
+  flags->set_xla_gpu_max_kernel_unroll_factor(4);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
   flags->set_xla_gpu_use_cudnn_batchnorm(false);
+
+  // Run all GPU work on one stream by default.  Using multiple streams
+  // increases memory usage and we lack strong motivating benchmarks for tuning
+  // the heuristics needed to decide when to run on multiple streams.  See
+  // b/77879207.
+  flags->set_xla_gpu_disable_multi_streaming(true);
 }
 
 // Allocates flag_values and flag_objects; this function must not be called more
@@ -221,8 +230,24 @@ void AllocateFlags() {
           flag_values->xla_gpu_disable_multi_streaming(),
           "If true, multi-streaming in the GPU backend is disabled."),
       tensorflow::Flag(
-          "xla_dump_hlo_proto_to", flag_values->mutable_xla_dump_hlo_proto_to(),
-          "Dump compilation artifacts as proto binary into this directory."),
+          "xla_gpu_max_kernel_unroll_factor",
+          int32_setter_for(&DebugOptions::set_xla_gpu_max_kernel_unroll_factor),
+          flag_values->xla_gpu_max_kernel_unroll_factor(),
+          "Specify the maximum kernel unroll factor for the GPU backend."),
+      tensorflow::Flag(
+          "xla_dump_optimized_hlo_proto_to",
+          flag_values->mutable_xla_dump_optimized_hlo_proto_to(),
+          "Dump Hlo after all hlo passes are executed as proto binary into "
+          "this directory."),
+      tensorflow::Flag(
+          "xla_dump_unoptimized_hlo_proto_to",
+          flag_values->mutable_xla_dump_unoptimized_hlo_proto_to(),
+          "Dump HLO before any hlo passes are executed as proto binary into "
+          "this directory."),
+      tensorflow::Flag("xla_dump_per_pass_hlo_proto_to",
+                       flag_values->mutable_xla_dump_per_pass_hlo_proto_to(),
+                       "Dump HLO after each pass as an HloProto in binary file "
+                       "format into this directory."),
       tensorflow::Flag(
           "xla_test_all_output_layouts",
           bool_setter_for(&DebugOptions::set_xla_test_all_output_layouts),
@@ -277,6 +302,10 @@ void AllocateFlags() {
           flag_values->xla_gpu_use_cudnn_batchnorm(),
           "Allows the GPU backend to implement batchnorm HLOs using cudnn, "
           "rather than expanding them to a soup of HLOs."),
+      tensorflow::Flag("xla_cpu_use_mkl_dnn",
+                       bool_setter_for(&DebugOptions::set_xla_cpu_use_mkl_dnn),
+                       flag_values->xla_cpu_use_mkl_dnn(),
+                       "Generate calls to MKL-DNN in the CPU backend."),
   });
   ParseFlagsFromEnv(*flag_objects);
 }

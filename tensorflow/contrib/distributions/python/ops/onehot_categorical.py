@@ -29,6 +29,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class OneHotCategorical(distribution.Distribution):
@@ -52,7 +53,7 @@ class OneHotCategorical(distribution.Distribution):
 
   #### Examples
 
-  Creates a 3-class distiribution, with the 2nd class, the most likely to be
+  Creates a 3-class distribution, with the 2nd class, the most likely to be
   drawn from.
 
   ```python
@@ -60,7 +61,7 @@ class OneHotCategorical(distribution.Distribution):
   dist = OneHotCategorical(probs=p)
   ```
 
-  Creates a 3-class distiribution, with the 2nd class the most likely to be
+  Creates a 3-class distribution, with the 2nd class the most likely to be
   drawn from, using logits.
 
   ```python
@@ -83,6 +84,14 @@ class OneHotCategorical(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(
       self,
       logits=None,
@@ -115,8 +124,8 @@ class OneHotCategorical(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[logits, probs]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[logits, probs]) as name:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           name=name, logits=logits, probs=probs, validate_args=validate_args,
           multidimensional=True)
@@ -203,9 +212,6 @@ class OneHotCategorical(distribution.Distribution):
     ret = array_ops.reshape(ret, logits_shape)
     return ret
 
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
   def _entropy(self):
     return -math_ops.reduce_sum(
         nn_ops.log_softmax(self.logits) * self.probs, axis=-1)
@@ -236,6 +242,14 @@ class OneHotCategorical(distribution.Distribution):
 
 
 @kullback_leibler.RegisterKL(OneHotCategorical, OneHotCategorical)
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _kl_categorical_categorical(a, b, name=None):
   """Calculate the batched KL divergence KL(a || b) with a, b OneHotCategorical.
 

@@ -102,16 +102,12 @@ REGISTER_OP("DecodeVideo")
       return Status::OK();
     })
     .Doc(R"doc(
-Processes the contents of an audio file into a tensor using FFmpeg to decode
+Processes the contents of an video file into a tensor using FFmpeg to decode
 the file.
 
-One row of the tensor is created for each channel in the audio file. Each
-channel contains audio samples starting at the beginning of the audio and
-having `1/samples_per_second` time between them. If the `channel_count` is
-different from the contents of the file, channels will be merged or created.
-
-contents: The binary audio file contents, as a string or rank-0 string
-    tensor.
+contents: The binary contents of the video file to decode. This is a
+    scalar.
+output: A rank-4 `Tensor` that has `[frames, height, width, 3]` RGB as output.
 )doc");
 
 }  // namespace ffmpeg

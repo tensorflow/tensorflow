@@ -94,10 +94,6 @@
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
-# TODO(jhseu): Temporary for the gRPC pull request due to the
-# protobuf -> protobuf_archive rename. Remove later.
-TF_BUILD_BAZEL_CLEAN=1
-
 # Helper function: Convert to lower case
 to_lower () {
   echo "$1" | tr '[:upper:]' '[:lower:]'
@@ -168,7 +164,6 @@ else
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_test"
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_sparse_test"
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:fully_connected_test"
-  # BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/testing:generated_examples_zip_test"
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:hashtable_lookup_test"
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:local_response_norm_test"
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:lsh_projection_test"
@@ -237,7 +232,7 @@ function get_cuda_capability_version() {
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
 
 # Determine if the machine is a Mac
-OPT_FLAG=""
+OPT_FLAG="--test_output=errors"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   DO_DOCKER=0
 

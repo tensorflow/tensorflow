@@ -25,25 +25,22 @@ limitations under the License.
 
 namespace tensorflow {
 
-// The current implementation simply unrolls the computation along the batch
-// dimension.
-xla::StatusOr<xla::ComputationDataHandle> BatchDot(
-    xla::ComputationBuilder* builder, xla::ComputationDataHandle x,
-    xla::ComputationDataHandle y, bool transpose_x, bool transpose_y) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> x_shape,
-                      builder->GetShape(x));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> y_shape,
-                      builder->GetShape(y));
+xla::StatusOr<xla::XlaOp> BatchDot(xla::XlaBuilder* builder, xla::XlaOp x,
+                                   xla::XlaOp y, bool transpose_x,
+                                   bool transpose_y, bool conjugate_x,
+                                   bool conjugate_y) {
+  TF_ASSIGN_OR_RETURN(xla::Shape x_shape, builder->GetShape(x));
+  TF_ASSIGN_OR_RETURN(xla::Shape y_shape, builder->GetShape(y));
 
   // Check that both tensors have the same number of dimensions. There must be
   // at least two (the batch dimensions can be empty).
-  if (xla::ShapeUtil::Rank(*x_shape) != xla::ShapeUtil::Rank(*y_shape)) {
+  if (xla::ShapeUtil::Rank(x_shape) != xla::ShapeUtil::Rank(y_shape)) {
     return errors::InvalidArgument(
         "Arguments to BatchedDot have different ranks: ",
-        xla::ShapeUtil::HumanString(*x_shape), " vs. ",
-        xla::ShapeUtil::HumanString(*y_shape));
+        xla::ShapeUtil::HumanString(x_shape), " vs. ",
+        xla::ShapeUtil::HumanString(y_shape));
   }
-  const int ndims = xla::ShapeUtil::Rank(*x_shape);
+  const int ndims = xla::ShapeUtil::Rank(x_shape);
   if (ndims < 2) {
     return errors::InvalidArgument(
         "Arguments to BatchedDot must have rank >= 2: ", ndims);
@@ -53,46 +50,46 @@ xla::StatusOr<xla::ComputationDataHandle> BatchDot(
   // valid.
   std::vector<int64> batch_dimension_numbers;
   for (int i = 0; i < ndims - 2; ++i) {
-    if (x_shape->dimensions(i) != y_shape->dimensions(i)) {
+    if (x_shape.dimensions(i) != y_shape.dimensions(i)) {
       return errors::InvalidArgument(
           "Dimension ", i, " of inputs to BatchedDot must be equal: ",
-          xla::ShapeUtil::HumanString(*x_shape), " vs ",
-          xla::ShapeUtil::HumanString(*y_shape));
+          xla::ShapeUtil::HumanString(x_shape), " vs ",
+          xla::ShapeUtil::HumanString(y_shape));
     }
     batch_dimension_numbers.push_back(i);
   }
 
   int x_inner_dim = transpose_x ? (ndims - 2) : (ndims - 1);
   int y_inner_dim = transpose_y ? (ndims - 1) : (ndims - 2);
-  if (x_shape->dimensions(x_inner_dim) != y_shape->dimensions(y_inner_dim)) {
+  if (x_shape.dimensions(x_inner_dim) != y_shape.dimensions(y_inner_dim)) {
     return errors::InvalidArgument(
         "Dimensions ", x_inner_dim, " and ", y_inner_dim,
         " of arguments to BatchedDot must be equal: ",
-        xla::ShapeUtil::HumanString(*x_shape), " transpose: ", transpose_x,
-        " vs. ", xla::ShapeUtil::HumanString(*y_shape),
+        xla::ShapeUtil::HumanString(x_shape), " transpose: ", transpose_x,
+        " vs. ", xla::ShapeUtil::HumanString(y_shape),
         " transpose: ", transpose_y);
   }
 
   // Check for zero lhs/rhs dim size.
-  if (xla::ShapeUtil::HasZeroElements(*x_shape) ||
-      xla::ShapeUtil::HasZeroElements(*y_shape)) {
+  if (xla::ShapeUtil::IsZeroElementArray(x_shape) ||
+      xla::ShapeUtil::IsZeroElementArray(y_shape)) {
     std::vector<int64> dimensions(batch_dimension_numbers.size());
     for (int i = 0; i < batch_dimension_numbers.size(); ++i) {
-      dimensions[i] = x_shape->dimensions(batch_dimension_numbers[i]);
+      dimensions[i] = x_shape.dimensions(batch_dimension_numbers[i]);
     }
     int x_outer_dim = transpose_x ? (ndims - 1) : (ndims - 2);
     int y_outer_dim = transpose_y ? (ndims - 2) : (ndims - 1);
-    dimensions.push_back(x_shape->dimensions(x_outer_dim));
-    dimensions.push_back(y_shape->dimensions(y_outer_dim));
+    dimensions.push_back(x_shape.dimensions(x_outer_dim));
+    dimensions.push_back(y_shape.dimensions(y_outer_dim));
     return builder->Broadcast(
-        builder->ConstantLiteral(xla::Literal::Zero(x_shape->element_type())),
+        builder->ConstantLiteral(xla::Literal::Zero(x_shape.element_type())),
         dimensions);
   }
 
-  if (x_shape->element_type() == xla::C64 && transpose_x) {
+  if (x_shape.element_type() == xla::C64 && conjugate_x) {
     x = builder->Conj(x);
   }
-  if (y_shape->element_type() == xla::C64 && transpose_y) {
+  if (y_shape.element_type() == xla::C64 && conjugate_y) {
     y = builder->Conj(y);
   }
 

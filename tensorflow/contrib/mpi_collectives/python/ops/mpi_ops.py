@@ -26,7 +26,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
 
 _mpi_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_mpi_ops.so"))
+    resource_loader.get_path_to_datafile('_mpi_ops.so'))
+
 
 def size(name=None):
   """An op which returns the number of MPI processes.
@@ -120,15 +121,14 @@ def allgather(tensor, name=None):
   """
   # Specify that first allgather is to collect the tensor gather sizes,
   # indicated by passing in a scalar (0-D tensor) of value 0
-  sizes_flag = tf.constant(0, dtype=tf.int64, name="size_flag_const")
-  my_size = tf.slice(tf.shape(tensor, out_type=tf.int64), [0], [1], name="size_slice")
+  sizes_flag = tf.constant(0, dtype=tf.int64, name='size_flag_const')
+  my_size = tf.slice(
+      tf.shape(tensor, out_type=tf.int64), [0], [1], name='size_slice')
   if name is None:
-    name = "allgather"
-  sizing_name = "{}_sizing".format(name)
+    name = 'allgather'
+  sizing_name = '{}_sizing'.format(name)
   sizes = gen_mpi_ops.mpi_allgather(my_size, sizes_flag, name=sizing_name)
   return gen_mpi_ops.mpi_allgather(tensor, sizes, name=name)
 
 
 ops.NotDifferentiable('MPIAllgather')
-
-

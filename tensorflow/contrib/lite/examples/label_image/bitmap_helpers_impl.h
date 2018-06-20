@@ -13,8 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H
-#define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H
+#ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H_
+#define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H_
+
+#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/kernels/register.h"
+#include "tensorflow/contrib/lite/string_util.h"
+#include "tensorflow/contrib/lite/version.h"
+
+#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/kernels/register.h"
+#include "tensorflow/contrib/lite/string_util.h"
+#include "tensorflow/contrib/lite/version.h"
 
 #include "tensorflow/contrib/lite/examples/label_image/label_image.h"
 
@@ -22,28 +34,70 @@ namespace tflite {
 namespace label_image {
 
 template <class T>
-void downsize(T* out, uint8_t* in, int image_height, int image_width,
-              int image_channels, int wanted_height, int wanted_width,
-              int wanted_channels, Settings* s) {
-  for (int y = 0; y < wanted_height; ++y) {
-    const int in_y = (y * image_height) / wanted_height;
-    uint8_t* in_row = in + (in_y * image_width * image_channels);
-    T* out_row = out + (y * wanted_width * wanted_channels);
-    for (int x = 0; x < wanted_width; ++x) {
-      const int in_x = (x * image_width) / wanted_width;
-      uint8_t* in_pixel = in_row + (in_x * image_channels);
-      T* out_pixel = out_row + (x * wanted_channels);
-      for (int c = 0; c < wanted_channels; ++c) {
-        if (s->input_floating)
-          out_pixel[c] = (in_pixel[c] - s->input_mean) / s->input_std;
-        else
-          out_pixel[c] = in_pixel[c];
-      }
-    }
+void resize(T* out, uint8_t* in, int image_height, int image_width,
+            int image_channels, int wanted_height, int wanted_width,
+            int wanted_channels, Settings* s) {
+  int number_of_pixels = image_height * image_width * image_channels;
+  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+
+  int base_index = 0;
+
+  // two inputs: input and new_sizes
+  interpreter->AddTensors(2, &base_index);
+  // one output
+  interpreter->AddTensors(1, &base_index);
+  // set input and output tensors
+  interpreter->SetInputs({0, 1});
+  interpreter->SetOutputs({2});
+
+  // set parameters of tensors
+  TfLiteQuantizationParams quant;
+  interpreter->SetTensorParametersReadWrite(
+      0, kTfLiteFloat32, "input",
+      {1, image_height, image_width, image_channels}, quant);
+  interpreter->SetTensorParametersReadWrite(1, kTfLiteInt32, "new_size", {2},
+                                            quant);
+  interpreter->SetTensorParametersReadWrite(
+      2, kTfLiteFloat32, "output",
+      {1, wanted_height, wanted_width, wanted_channels}, quant);
+
+  ops::builtin::BuiltinOpResolver resolver;
+  const TfLiteRegistration* resize_op =
+      resolver.FindOp(BuiltinOperator_RESIZE_BILINEAR, 1);
+  auto* params = reinterpret_cast<TfLiteResizeBilinearParams*>(
+      malloc(sizeof(TfLiteResizeBilinearParams)));
+  params->align_corners = false;
+  interpreter->AddNodeWithParameters({0, 1}, {2}, nullptr, 0, params, resize_op,
+                                     nullptr);
+
+  interpreter->AllocateTensors();
+
+  // fill input image
+  // in[] are integers, cannot do memcpy() directly
+  auto input = interpreter->typed_tensor<float>(0);
+  for (int i = 0; i < number_of_pixels; i++) {
+    input[i] = in[i];
+  }
+
+  // fill new_sizes
+  interpreter->typed_tensor<int>(1)[0] = wanted_height;
+  interpreter->typed_tensor<int>(1)[1] = wanted_width;
+
+  interpreter->Invoke();
+
+  auto output = interpreter->typed_tensor<float>(2);
+  auto output_number_of_pixels =
+      wanted_height * wanted_height * wanted_channels;
+
+  for (int i = 0; i < output_number_of_pixels; i++) {
+    if (s->input_floating)
+      out[i] = (output[i] - s->input_mean) / s->input_std;
+    else
+      out[i] = (uint8_t)output[i];
   }
 }
 
 }  // namespace label_image
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H
+#endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H_

@@ -22,6 +22,7 @@ from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import mvn_linear_operator as mvn_linop
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -134,6 +135,14 @@ class MultivariateNormalTriL(
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale_tril=None,
@@ -179,12 +188,12 @@ class MultivariateNormalTriL(
     Raises:
       ValueError: if neither `loc` nor `scale_tril` are specified.
     """
-    parameters = locals()
+    parameters = dict(locals())
     def _convert_to_tensor(x, name):
       return None if x is None else ops.convert_to_tensor(x, name=name)
     if loc is None and scale_tril is None:
       raise ValueError("Must specify one or both of `loc`, `scale_tril`.")
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[loc, scale_tril]):
         loc = _convert_to_tensor(loc, name="loc")
         scale_tril = _convert_to_tensor(scale_tril, name="scale_tril")

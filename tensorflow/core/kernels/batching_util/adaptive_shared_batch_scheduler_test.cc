@@ -64,82 +64,11 @@ std::unique_ptr<Thread> CreateFakeClockAdvancerThread(
       }));
 }
 
-TEST(AdaptiveSharedBatchSchedulerTest, Basic) {
-  for (const bool delete_scheduler_early : {false, true}) {
-    for (const bool delete_queue_1_early : {false, true}) {
-      int queue_0_tasks = 0;
-      auto queue_0_callback =
-          [&queue_0_tasks](std::unique_ptr<Batch<FakeTask>> batch) {
-            ASSERT_TRUE(batch->IsClosed());
-            EXPECT_GT(batch->num_tasks(), 0);
-            for (int i = 0; i < batch->num_tasks(); i++) {
-              queue_0_tasks += batch->task(i).size();
-            }
-          };
-      int queue_1_tasks = 0;
-      auto queue_1_callback =
-          [&queue_1_tasks](std::unique_ptr<Batch<FakeTask>> batch) {
-            ASSERT_TRUE(batch->IsClosed());
-            EXPECT_GT(batch->num_tasks(), 0);
-            for (int i = 0; i < batch->num_tasks(); i++) {
-              queue_1_tasks += batch->task(i).size();
-            }
-          };
-      {
-        std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
-        TF_ASSERT_OK(
-            AdaptiveSharedBatchScheduler<FakeTask>::Create({}, &scheduler));
-
-        // Create two queues.
-        std::unique_ptr<BatchScheduler<FakeTask>> queue_0;
-        TF_ASSERT_OK(scheduler->AddQueue({}, queue_0_callback, &queue_0));
-        std::unique_ptr<BatchScheduler<FakeTask>> queue_1;
-        TF_ASSERT_OK(scheduler->AddQueue({}, queue_1_callback, &queue_1));
-
-        if (delete_scheduler_early) {
-          // Delete our copy of the scheduler. The queues should keep it alive
-          // under the covers.
-          scheduler = nullptr;
-        }
-        // Submit tasks to the two queues, and (optionally) remove the queues.
-        TF_ASSERT_OK(ScheduleTask(1, queue_0.get()));
-        TF_ASSERT_OK(ScheduleTask(2, queue_1.get()));
-        TF_ASSERT_OK(ScheduleTask(3, queue_0.get()));
-        TF_ASSERT_OK(ScheduleTask(4, queue_1.get()));
-        if (delete_queue_1_early) {
-          queue_1 = nullptr;
-        }
-        TF_ASSERT_OK(ScheduleTask(5, queue_0.get()));
-      }
-      EXPECT_EQ(queue_0_tasks, 9);
-      EXPECT_EQ(queue_1_tasks, 6);
-    }
-  }
-}
-
 TEST(AdaptiveSharedBatchSchedulerTest, BadOptions) {
   using Scheduler = AdaptiveSharedBatchScheduler<FakeTask>;
   std::shared_ptr<Scheduler> scheduler;
   Scheduler::Options options;
   options.num_batch_threads = 0;
-  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
-  options = Scheduler::Options();
-  options.min_scheduling_period_micros = 50;
-  options.max_scheduling_period_micros = 100;
-  options.initial_scheduling_period_micros = 1;
-  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
-  options = Scheduler::Options();
-  options.min_scheduling_period_micros = 50;
-  options.max_scheduling_period_micros = 100;
-  options.initial_scheduling_period_micros = 1000;
-  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
-  options = Scheduler::Options();
-  options.min_scheduling_period_micros = 100;
-  options.max_scheduling_period_micros = 50;
-  options.initial_scheduling_period_micros = 75;
-  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
-  options = Scheduler::Options();
-  options.feedback_smoothing_batches = 0;
   EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
   options = Scheduler::Options();
   options.initial_in_flight_batches_limit = 0.5;
@@ -151,303 +80,22 @@ TEST(AdaptiveSharedBatchSchedulerTest, BadOptions) {
   options = Scheduler::Options();
   options.batches_to_average_over = -5;
   EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
+  options = Scheduler::Options();
+  options.min_in_flight_batches_limit = 0;
+  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
+  options = Scheduler::Options();
+  options.min_in_flight_batches_limit = 5;
+  options.num_batch_threads = 3;
+  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
+  options = Scheduler::Options();
+  options.initial_in_flight_batches_limit = 1;
+  options.min_in_flight_batches_limit = 2;
+  options.num_batch_threads = 3;
+  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
 }
 
-TEST(AdaptiveSharedBatchSchedulerTest, ObeysQueueOptions) {
-  test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
-  std::unique_ptr<Thread> teardown_thread =
-      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
-  {
-    AdaptiveSharedBatchScheduler<FakeTask>::Options options;
-    options.initial_scheduling_period_micros = 1000;
-    options.env = &env;
-    std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(
-        AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    std::unique_ptr<BatchScheduler<FakeTask>> queue_0;
-    std::unique_ptr<BatchScheduler<FakeTask>> queue_1;
-    int queue_0_tasks = 0;
-    int queue_1_tasks = 0;
-    auto queue_0_callback = [&queue_0_tasks,
-                             &env](std::unique_ptr<Batch<FakeTask>> batch) {
-      ASSERT_TRUE(batch->IsClosed());
-      EXPECT_GT(batch->num_tasks(), 0);
-      for (int i = 0; i < batch->num_tasks(); i++) {
-        queue_0_tasks += batch->task(i).size();
-      }
-      env.SleepForMicroseconds(1);
-    };
-    auto queue_1_callback = [&queue_1_tasks,
-                             &env](std::unique_ptr<Batch<FakeTask>> batch) {
-      ASSERT_TRUE(batch->IsClosed());
-      EXPECT_GT(batch->num_tasks(), 0);
-      for (int i = 0; i < batch->num_tasks(); i++) {
-        queue_1_tasks += batch->task(i).size();
-      }
-      env.SleepForMicroseconds(1);
-    };
-    AdaptiveSharedBatchScheduler<FakeTask>::QueueOptions queue_options;
-    queue_options.max_batch_size = 10;
-    queue_options.max_enqueued_batches = 0;
-    // Queue must have max_enqueued_batchs > 1.
-    EXPECT_FALSE(
-        scheduler->AddQueue(queue_options, queue_0_callback, &queue_0).ok());
-    queue_options.max_enqueued_batches = 2;
-    TF_ASSERT_OK(
-        scheduler->AddQueue(queue_options, queue_0_callback, &queue_0));
-    EXPECT_EQ(10, queue_0->max_task_size());
-    queue_options.max_batch_size = 0;
-    // Queue must have max_batch_size > 0.
-    EXPECT_FALSE(
-        scheduler->AddQueue(queue_options, queue_1_callback, &queue_1).ok());
-    queue_options.max_batch_size = 2;
-    queue_options.max_enqueued_batches = 1;
-    TF_ASSERT_OK(
-        scheduler->AddQueue(queue_options, queue_1_callback, &queue_1));
-
-    // Wait for scheduling_thread to sleep.
-    env.BlockUntilThreadsAsleep(1);
-    // Task larger than max_batch_size shouldn't schedule.
-    EXPECT_FALSE(ScheduleTask(15, queue_0.get()).ok());
-    TF_ASSERT_OK(ScheduleTask(5, queue_0.get()));
-    TF_ASSERT_OK(ScheduleTask(5, queue_0.get()));
-    env.AdvanceByMicroseconds(1);
-
-    // Task larger than max_batch_size shouldn't schedule.
-    EXPECT_FALSE(ScheduleTask(3, queue_1.get()).ok());
-    TF_ASSERT_OK(ScheduleTask(1, queue_1.get()));
-    TF_ASSERT_OK(ScheduleTask(1, queue_1.get()));
-    env.AdvanceByMicroseconds(1);
-    // Exceeds max_enqueued_batches, shouldn't schedule.
-    EXPECT_FALSE(ScheduleTask(1, queue_1.get()).ok());
-
-    TF_ASSERT_OK(ScheduleTask(5, queue_0.get()));
-    // Exceeds max_enqueued_batches, shouldn't schedule.
-    EXPECT_FALSE(ScheduleTask(6, queue_0.get()).ok());
-    TF_ASSERT_OK(ScheduleTask(4, queue_0.get()));
-
-    // Batches should be processed in order from oldest to newest.
-    env.AdvanceByMicroseconds(1000);
-    env.BlockUntilThreadsAsleep(2);
-    EXPECT_EQ(queue_0_tasks, 10);
-    EXPECT_EQ(queue_1_tasks, 0);
-
-    env.AdvanceByMicroseconds(1000);
-    env.BlockUntilThreadsAsleep(2);
-    EXPECT_EQ(queue_0_tasks, 10);
-    EXPECT_EQ(queue_1_tasks, 2);
-
-    env.AdvanceByMicroseconds(1000);
-    env.BlockUntilThreadsAsleep(2);
-    EXPECT_EQ(queue_0_tasks, 19);
-    EXPECT_EQ(queue_1_tasks, 2);
-    start_teardown.Notify();
-  }
-  stop_teardown.Notify();
-}
-
-TEST(AdaptiveSharedBatchSchedulerTest, RateFeedback) {
-  test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
-  std::unique_ptr<Thread> teardown_thread =
-      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
-  {
-    double feedback = 0;
-    AdaptiveSharedBatchScheduler<FakeTask>::Options options;
-    options.initial_scheduling_period_micros = 1000;
-    options.min_scheduling_period_micros = 200;
-    options.max_scheduling_period_micros = 2000;
-    options.env = &env;
-    options.scheduling_period_feedback = [&feedback] { return feedback; };
-    options.feedback_smoothing_batches = 1;
-    std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(
-        AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    int scheduled_items = 0;
-    auto queue_callback = [&scheduled_items,
-                           &env](std::unique_ptr<Batch<FakeTask>> batch) {
-      ASSERT_TRUE(batch->IsClosed());
-      EXPECT_GT(batch->num_tasks(), 0);
-      scheduled_items = 0;
-      for (int i = 0; i < batch->num_tasks(); i++) {
-        scheduled_items += batch->task(i).size();
-      }
-      env.SleepForMicroseconds(1);
-    };
-
-    TF_ASSERT_OK(scheduler->AddQueue({}, queue_callback, &queue));
-
-    // Wait for scheduling_thread to sleep.
-    env.BlockUntilThreadsAsleep(1);
-    // Enqueue 6 batches.
-    for (int i = 0; i < 6; i++) {
-      TF_ASSERT_OK(ScheduleTask(900 + i, queue.get()));
-      env.AdvanceByMicroseconds(1);
-    }
-    feedback = -500;
-    env.AdvanceByMicroseconds(994);
-    env.BlockUntilThreadsAsleep(2);  // scheduling period = 500 usec.
-    EXPECT_EQ(scheduled_items, 900);
-    env.AdvanceByMicroseconds(500);
-    env.BlockUntilThreadsAsleep(2);  // scheduling period = 250 usec.
-    EXPECT_EQ(scheduled_items, 901);
-    feedback = 0;
-    env.AdvanceByMicroseconds(250);
-    env.BlockUntilThreadsAsleep(2);  // scheduling period = 250 usec.
-    EXPECT_EQ(scheduled_items, 902);
-    feedback = 10000;  // large feedback should hit max_scheduling_period.
-    env.AdvanceByMicroseconds(250);
-    env.BlockUntilThreadsAsleep(2);  // scheduling period = 2000 usec.
-    EXPECT_EQ(scheduled_items, 903);
-    feedback = -10000;  // large feedback should hit min_scheduling_period.
-    env.AdvanceByMicroseconds(1999);
-    // No callback scheduled, only scheduling thread sleeping.
-    env.BlockUntilThreadsAsleep(1);
-    EXPECT_EQ(scheduled_items, 903);
-    env.AdvanceByMicroseconds(1);
-    env.BlockUntilThreadsAsleep(2);  // scheduling period = 200 usec.
-    EXPECT_EQ(scheduled_items, 904);
-    env.AdvanceByMicroseconds(200);
-    env.BlockUntilThreadsAsleep(2);
-    EXPECT_EQ(scheduled_items, 905);
-    start_teardown.Notify();
-  }
-  stop_teardown.Notify();
-}
-
-TEST(AdaptiveSharedBatchSchedulerTest, FeedbackSmoothing) {
-  test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
-  std::unique_ptr<Thread> teardown_thread =
-      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
-  {
-    double feedback = 0;
-    AdaptiveSharedBatchScheduler<FakeTask>::Options options;
-    options.initial_scheduling_period_micros = 1000;
-    options.env = &env;
-    options.scheduling_period_feedback = [&feedback] { return feedback; };
-    options.feedback_smoothing_batches = 3;
-    std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(
-        AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    int scheduled_items = 0;
-    auto queue_callback = [&scheduled_items,
-                           &env](std::unique_ptr<Batch<FakeTask>> batch) {
-      ASSERT_TRUE(batch->IsClosed());
-      EXPECT_GT(batch->num_tasks(), 0);
-      scheduled_items = 0;
-      for (int i = 0; i < batch->num_tasks(); i++) {
-        scheduled_items += batch->task(i).size();
-      }
-      env.SleepForMicroseconds(1);
-    };
-
-    TF_ASSERT_OK(scheduler->AddQueue({}, queue_callback, &queue));
-
-    // Wait for scheduling_thread to sleep.
-    env.BlockUntilThreadsAsleep(1);
-    // Enqueue 4 batches.
-    for (int i = 0; i < 4; i++) {
-      TF_ASSERT_OK(ScheduleTask(900 + i, queue.get()));
-      env.AdvanceByMicroseconds(1);
-    }
-    feedback = -300;
-    env.AdvanceByMicroseconds(996);
-    env.BlockUntilThreadsAsleep(2);
-    // ewma_feedback = 100, scheduling_period = 900.
-    EXPECT_EQ(scheduled_items, 900);
-    env.AdvanceByMicroseconds(899);
-    // No callback scheduled, only scheduling thread sleeping.
-    env.BlockUntilThreadsAsleep(1);
-    EXPECT_EQ(scheduled_items, 900);
-    env.AdvanceByMicroseconds(1);
-    env.BlockUntilThreadsAsleep(2);
-    // ewma_feedback = 167, scheduling_period = 750.
-    EXPECT_EQ(scheduled_items, 901);
-    env.AdvanceByMicroseconds(749);
-    // No callback scheduled, only scheduling thread sleeping.
-    env.BlockUntilThreadsAsleep(1);
-    EXPECT_EQ(scheduled_items, 901);
-    feedback = 1000 / 3.;
-    env.AdvanceByMicroseconds(1);
-    env.BlockUntilThreadsAsleep(2);
-    // emwa_feedback = 0, scheduling_period = 750.
-    EXPECT_EQ(scheduled_items, 902);
-    env.AdvanceByMicroseconds(749);
-    // No callback scheduled, only scheduling thread sleeping.
-    env.BlockUntilThreadsAsleep(1);
-    EXPECT_EQ(scheduled_items, 902);
-    env.AdvanceByMicroseconds(1);
-    env.BlockUntilThreadsAsleep(2);
-    EXPECT_EQ(scheduled_items, 903);
-    start_teardown.Notify();
-  }
-  stop_teardown.Notify();
-}
-
-TEST(AdaptiveSharedBatchSchedulerTest, QueueCapacityInfo) {
-  test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
-  std::unique_ptr<Thread> teardown_thread =
-      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
-  {
-    AdaptiveSharedBatchScheduler<FakeTask>::Options options;
-    options.initial_scheduling_period_micros = 1000;
-    options.env = &env;
-    std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
-    TF_ASSERT_OK(
-        AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    int scheduled_items = 0;
-    auto queue_callback = [&scheduled_items,
-                           &env](std::unique_ptr<Batch<FakeTask>> batch) {
-      ASSERT_TRUE(batch->IsClosed());
-      EXPECT_GT(batch->num_tasks(), 0);
-      scheduled_items = 0;
-      for (int i = 0; i < batch->num_tasks(); i++) {
-        scheduled_items += batch->task(i).size();
-      }
-      env.SleepForMicroseconds(1);
-    };
-    AdaptiveSharedBatchScheduler<FakeTask>::QueueOptions queue_options;
-    queue_options.max_batch_size = 10;
-    queue_options.max_enqueued_batches = 10;
-    TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_callback, &queue));
-
-    // Wait for scheduling_thread to sleep.
-    env.BlockUntilThreadsAsleep(1);
-    // Enqueue 3 tasks.
-    EXPECT_EQ(queue->NumEnqueuedTasks(), 0);
-    EXPECT_EQ(queue->SchedulingCapacity(), 100);
-    TF_ASSERT_OK(ScheduleTask(5, queue.get()));
-    EXPECT_EQ(queue->NumEnqueuedTasks(), 1);
-    EXPECT_EQ(queue->SchedulingCapacity(), 95);
-    env.AdvanceByMicroseconds(1);
-    TF_ASSERT_OK(ScheduleTask(6, queue.get()));
-    EXPECT_EQ(queue->NumEnqueuedTasks(), 2);
-    EXPECT_EQ(queue->SchedulingCapacity(), 84);
-    env.AdvanceByMicroseconds(1);
-    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
-    EXPECT_EQ(queue->NumEnqueuedTasks(), 3);
-    EXPECT_EQ(queue->SchedulingCapacity(), 83);
-
-    env.AdvanceByMicroseconds(998);
-    env.BlockUntilThreadsAsleep(2);
-    EXPECT_EQ(scheduled_items, 5);
-    env.AdvanceByMicroseconds(1000);
-    env.BlockUntilThreadsAsleep(2);
-    EXPECT_EQ(scheduled_items, 7);
-    start_teardown.Notify();
-  }
-  stop_teardown.Notify();
-}
-
-TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesImplementation) {
+TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimit) {
   AdaptiveSharedBatchScheduler<FakeTask>::Options options;
-  options.use_in_flight_batches_implementation = true;
   options.initial_in_flight_batches_limit = 2;
   options.batches_to_average_over = 1000;
   mutex mu;
@@ -476,7 +124,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesImplementation) {
   std::unique_ptr<BatchScheduler<FakeTask>> queue;
   TF_ASSERT_OK(scheduler->AddQueue({}, queue_callback, &queue));
 
-  // Enqueue 3 batches.
+  // Enqueue 3 tasks, should result in 3 batches.
   for (int i = 0; i < 3; i++) {
     TF_ASSERT_OK(ScheduleTask(100, queue.get()));
   }
@@ -490,7 +138,6 @@ TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimitTuning) {
   {
     AdaptiveSharedBatchScheduler<FakeTask>::Options options;
     options.env = &env;
-    options.use_in_flight_batches_implementation = true;
     options.initial_in_flight_batches_limit = 2;
     options.batches_to_average_over = 1;
     auto queue_callback = [&env](std::unique_ptr<Batch<FakeTask>> batch) {
@@ -543,6 +190,196 @@ TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimitTuning) {
     start_teardown.Notify();
   }
   stop_teardown.Notify();
+}
+
+TEST(AdaptiveSharedBatchSchedulerTest, FullBatchSchedulingBoostMicros) {
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+  {
+    AdaptiveSharedBatchScheduler<FakeTask>::Options options;
+    options.env = &env;
+    options.initial_in_flight_batches_limit = 1;
+    options.batches_to_average_over = 1000;
+    options.full_batch_scheduling_boost_micros = 100;
+    mutex mu;
+    int processed_batches = 0;
+    Notification finish_processing;
+    auto queue_callback = [&mu, &processed_batches, &finish_processing](
+                              std::unique_ptr<Batch<FakeTask>> batch) {
+      ASSERT_TRUE(batch->IsClosed());
+      finish_processing.WaitForNotification();
+      mutex_lock l(mu);
+      processed_batches++;
+      switch (processed_batches) {
+        case 1:
+          EXPECT_EQ(100, batch->size());
+          break;
+        case 2:
+          EXPECT_EQ(50, batch->size());
+          break;
+        case 3:
+          EXPECT_EQ(900, batch->size());
+          break;
+        case 4:
+          EXPECT_EQ(200, batch->size());
+          break;
+        default:
+          EXPECT_TRUE(false) << "Should only have 4 batches";
+      }
+    };
+    std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+    TF_ASSERT_OK(
+        AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
+    AdaptiveSharedBatchScheduler<FakeTask>::QueueOptions queue_options;
+    std::unique_ptr<BatchScheduler<FakeTask>> queue1;
+    std::unique_ptr<BatchScheduler<FakeTask>> queue2;
+    queue_options.max_batch_size = 1000;
+    TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_callback, &queue1));
+    queue_options.max_batch_size = 100;
+    TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_callback, &queue2));
+
+    // First batch immediately processed.
+    TF_ASSERT_OK(ScheduleTask(100, queue1.get()));
+
+    TF_ASSERT_OK(ScheduleTask(100, queue1.get()));
+    env.AdvanceByMicroseconds(10);
+    TF_ASSERT_OK(ScheduleTask(100, queue1.get()));
+    env.AdvanceByMicroseconds(10);
+
+    TF_ASSERT_OK(ScheduleTask(50, queue2.get()));
+    env.AdvanceByMicroseconds(45);
+
+    TF_ASSERT_OK(ScheduleTask(900, queue1.get()));
+
+    // Second batch - creation time: 0, fullness: 0.2, sched score: -20
+    // Third batch - creation time: 20, fullness: 0.5, sched score: -30
+    // Fourth batch - creation time: 65, fullness: 0.9, sched score: -25
+
+    finish_processing.Notify();
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
+TEST(AdaptiveSharedBatchSchedulerTest, DeleteQueue) {
+  AdaptiveSharedBatchScheduler<FakeTask>::Options options;
+  options.initial_in_flight_batches_limit = 1;
+  options.batches_to_average_over = 1000;
+  mutex mu;
+  int processed_batches = 0;
+  Notification finish_processing;
+  auto queue_callback = [&mu, &processed_batches, &finish_processing](
+                            std::unique_ptr<Batch<FakeTask>> batch) {
+    ASSERT_TRUE(batch->IsClosed());
+    EXPECT_GT(batch->num_tasks(), 0);
+    finish_processing.WaitForNotification();
+    mu.lock();
+    processed_batches++;
+    mu.unlock();
+  };
+
+  std::unique_ptr<Thread> queue_deleter;
+  std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+  TF_ASSERT_OK(
+      AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_ASSERT_OK(scheduler->AddQueue({}, queue_callback, &queue));
+
+  // Enqueue 2 tasks, should result in 2 batches.
+  for (int i = 0; i < 2; i++) {
+    TF_ASSERT_OK(ScheduleTask(100, queue.get()));
+  }
+  // Delete queue, should be kept alive until empty.
+  queue_deleter.reset(Env::Default()->StartThread(
+      {}, "QueueDeleterThread", [&queue, &mu, &processed_batches] {
+        queue.reset();
+        mutex_lock l(mu);
+        EXPECT_EQ(processed_batches, 2);
+      }));
+  // Give queue_deleter thread time to delete queue.
+  Env::Default()->SleepForMicroseconds(1000);
+  finish_processing.Notify();
+}
+
+TEST(AdaptiveSharedBatchSchedulerTest, DeleteScheduler) {
+  AdaptiveSharedBatchScheduler<FakeTask>::Options options;
+  options.initial_in_flight_batches_limit = 1;
+  options.batches_to_average_over = 1000;
+  mutex mu;
+  int processed_batches = 0;
+  Notification finish_processing;
+  auto queue_callback = [&mu, &processed_batches, &finish_processing](
+                            std::unique_ptr<Batch<FakeTask>> batch) {
+    ASSERT_TRUE(batch->IsClosed());
+    EXPECT_GT(batch->num_tasks(), 0);
+    finish_processing.WaitForNotification();
+    mu.lock();
+    processed_batches++;
+    mu.unlock();
+  };
+
+  std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+  TF_ASSERT_OK(
+      AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_ASSERT_OK(scheduler->AddQueue({}, queue_callback, &queue));
+
+  // Enqueue 2 tasks, should result in 2 batches.
+  for (int i = 0; i < 2; i++) {
+    TF_ASSERT_OK(ScheduleTask(100, queue.get()));
+  }
+  // Delete scheduler, should be kept alive until queues are empty.
+  scheduler.reset();
+  finish_processing.Notify();
+  while (true) {
+    mutex_lock l(mu);
+    if (processed_batches == 2) break;
+  }
+}
+
+TEST(AdaptiveSharedBatchSchedulerTest, QueueCapacityInfo) {
+  AdaptiveSharedBatchScheduler<FakeTask>::Options options;
+  options.initial_in_flight_batches_limit = 1;
+  options.batches_to_average_over = 1000;
+  mutex mu;
+  int processed_batches = 0;
+  Notification finish_processing;
+  auto queue_callback = [&mu, &processed_batches, &finish_processing](
+                            std::unique_ptr<Batch<FakeTask>> batch) {
+    ASSERT_TRUE(batch->IsClosed());
+    EXPECT_GT(batch->num_tasks(), 0);
+    mu.lock();
+    int batch_num = ++processed_batches;
+    mu.unlock();
+    if (batch_num == 1) {
+      finish_processing.WaitForNotification();
+    }
+  };
+  std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+  TF_ASSERT_OK(
+      AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_ASSERT_OK(scheduler->AddQueue({}, queue_callback, &queue));
+
+  // Enqueue 2 tasks, should result in 2 batches.
+  for (int i = 0; i < 2; i++) {
+    TF_ASSERT_OK(ScheduleTask(100, queue.get()));
+  }
+  // First batch was immediately processed, no longer counts as enqueued.
+  EXPECT_EQ(queue->NumEnqueuedTasks(), 1);
+  EXPECT_EQ(queue->SchedulingCapacity(), 9 * 1000 + 900);
+  // Enqueue 2 more tasks, should fall in same batch.
+  TF_ASSERT_OK(ScheduleTask(100, queue.get()));
+  TF_ASSERT_OK(ScheduleTask(200, queue.get()));
+  EXPECT_EQ(queue->NumEnqueuedTasks(), 3);
+  EXPECT_EQ(queue->SchedulingCapacity(), 9 * 1000 + 600);
+  // Enqueue 1 more task, should create new batch.
+  TF_ASSERT_OK(ScheduleTask(700, queue.get()));
+  EXPECT_EQ(queue->NumEnqueuedTasks(), 4);
+  EXPECT_EQ(queue->SchedulingCapacity(), 8 * 1000 + 300);
+  finish_processing.Notify();
 }
 }  // namespace anonymous
 }  // namespace serving

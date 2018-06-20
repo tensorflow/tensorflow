@@ -19,19 +19,6 @@ See the @{$python/test} guide.
 
 Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
 depending on the python version.
-
-@@main
-@@TestCase
-@@test_src_dir_path
-@@assert_equal_graph_def
-@@get_temp_dir
-@@is_built_with_cuda
-@@is_gpu_available
-@@gpu_device_name
-@@compute_gradient
-@@compute_gradient_error
-@@create_local_cluster
-
 """
 
 from __future__ import absolute_import
@@ -42,7 +29,6 @@ from __future__ import print_function
 # pylint: disable=g-bad-import-order
 from tensorflow.python.framework import test_util as _test_util
 from tensorflow.python.platform import googletest as _googletest
-from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=unused-import
 from tensorflow.python.framework.test_util import assert_equal_graph_def
@@ -56,10 +42,13 @@ from tensorflow.python.ops.gradient_checker import compute_gradient
 # pylint: enable=unused-import,g-bad-import-order
 
 import sys
+from tensorflow.python.util.tf_export import tf_export
 if sys.version_info.major == 2:
   import mock                # pylint: disable=g-import-not-at-top,unused-import
 else:
   from unittest import mock  # pylint: disable=g-import-not-at-top
+
+tf_export('test.mock')(mock)
 
 # Import Benchmark class
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
@@ -68,12 +57,14 @@ Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
 StubOutForTesting = _googletest.StubOutForTesting  # pylint: disable=invalid-name
 
 
+@tf_export('test.main')
 def main(argv=None):
   """Runs all unit tests."""
   _test_util.InstallStackTraceHandler()
   return _googletest.main(argv)
 
 
+@tf_export('test.get_temp_dir')
 def get_temp_dir():
   """Returns a temporary directory for use during tests.
 
@@ -85,6 +76,7 @@ def get_temp_dir():
   return _googletest.GetTempDir()
 
 
+@tf_export('test.test_src_dir_path')
 def test_src_dir_path(relative_path):
   """Creates an absolute test srcdir path given a relative path.
 
@@ -98,16 +90,7 @@ def test_src_dir_path(relative_path):
   return _googletest.test_src_dir_path(relative_path)
 
 
+@tf_export('test.is_built_with_cuda')
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return _test_util.IsGoogleCudaEnabled()
-
-
-_allowed_symbols = [
-    # We piggy-back googletest documentation.
-    'Benchmark',
-    'mock',
-    'StubOutForTesting',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

@@ -35,7 +35,7 @@ bool ResolveTransposeAttributes::Run(Model* model, std::size_t op_index) {
   if (!IsConstantParameterArray(*model, op->inputs[1])) return false;
 
   // Handling perm.
-  const auto& perm_array = *model->arrays[op->inputs[1]];
+  const auto& perm_array = model->GetArray(op->inputs[1]);
   if (!perm_array.has_shape()) return false;
 
   const std::vector<int>& perm_dims = perm_array.shape().dims();

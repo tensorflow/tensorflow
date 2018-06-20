@@ -34,6 +34,13 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
 
 
+def GenerateNumpyRandomRGB(shape):
+  # Only generate floating points that are fractions like n / 256, since they
+  # are RGB pixels. Some low-precision floating point types in this test can't
+  # handle arbitrary precision floating points well.
+  return np.random.randint(0, 256, shape) / 256.
+
+
 class RGBToHSVTest(XLATestCase):
 
   def testBatch(self):
@@ -43,7 +50,7 @@ class RGBToHSVTest(XLATestCase):
     shape = (batch_size, 2, 7, 3)
 
     for nptype in self.float_types:
-      inp = np.random.rand(*shape).astype(nptype)
+      inp = GenerateNumpyRandomRGB(shape).astype(nptype)
 
       # Convert to HSV and back, as a batch and individually
       with self.test_session() as sess:
@@ -58,14 +65,13 @@ class RGBToHSVTest(XLATestCase):
         join1 = array_ops.stack(split1)
         join2 = array_ops.stack(split2)
         batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2],
-                                                {
-                                                    batch0: inp
-                                                })
+                                                {batch0: inp})
 
       # Verify that processing batch elements together is the same as separate
       self.assertAllClose(batch1, join1)
       self.assertAllClose(batch2, join2)
-      self.assertAllClose(batch2, inp)
+      self.assertAllCloseAccordingToType(
+          batch2, inp, bfloat16_atol=0.03, half_rtol=0.02)
 
   def testRGBToHSVRoundTrip(self):
     data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
@@ -77,21 +83,25 @@ class RGBToHSVTest(XLATestCase):
           hsv = image_ops.rgb_to_hsv(placeholder)
           rgb = image_ops.hsv_to_rgb(hsv)
         rgb_tf = rgb.eval(feed_dict={placeholder: rgb_np})
-      self.assertAllClose(rgb_tf, rgb_np)
+      self.assertAllCloseAccordingToType(rgb_tf, rgb_np, bfloat16_atol=0.03)
 
   def testRGBToHSVNumpy(self):
     """Tests the RGB to HSV conversion matches a reference implementation."""
     for nptype in self.float_types:
-      rgb_flat = np.random.random(64 * 3).reshape((64, 3)).astype(nptype)
+      rgb_flat = GenerateNumpyRandomRGB((64, 3)).astype(nptype)
       rgb_np = rgb_flat.reshape(4, 4, 4, 3)
-      hsv_np = np.array([colorsys.rgb_to_hsv(r, g, b) for r, g, b in rgb_flat])
+      hsv_np = np.array([
+          colorsys.rgb_to_hsv(
+              r.astype(np.float64), g.astype(np.float64), b.astype(np.float64))
+          for r, g, b in rgb_flat
+      ])
       hsv_np = hsv_np.reshape(4, 4, 4, 3)
       with self.test_session():
         placeholder = array_ops.placeholder(nptype)
         with self.test_scope():
           hsv_op = image_ops.rgb_to_hsv(placeholder)
         hsv_tf = hsv_op.eval(feed_dict={placeholder: rgb_np})
-      self.assertAllClose(hsv_tf, hsv_np)
+      self.assertAllCloseAccordingToType(hsv_tf, hsv_np)
 
 
 class AdjustContrastTest(XLATestCase):
@@ -389,9 +399,7 @@ class AdjustSaturationTest(XLATestCase):
           x = array_ops.placeholder(dtypes.float32, shape=x_shape)
           with self.test_scope():
             y_fused = self._adjust_saturation(x,
-                                              scale).eval(feed_dict={
-                                                  x: x_np
-                                              })
+                                              scale).eval(feed_dict={x: x_np})
           self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
 
@@ -400,7 +408,8 @@ class ResizeBilinearTest(XLATestCase):
   def _assertForwardOpMatchesExpected(self,
                                       image_np,
                                       target_shape,
-                                      expected=None):
+                                      expected=None,
+                                      large_tolerance=False):
     if expected is None:
       self.fail("expected must be specified")
     with self.test_session() as sess, self.test_scope():
@@ -408,7 +417,11 @@ class ResizeBilinearTest(XLATestCase):
       resized = gen_image_ops.resize_bilinear(
           image, target_shape, align_corners=True)
       out = sess.run(resized, {image: image_np[np.newaxis, :, :, np.newaxis]})
-      self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
+      if large_tolerance:
+        self.assertAllClose(
+            expected[np.newaxis, :, :, np.newaxis], out, rtol=0.03, atol=0.1)
+      else:
+        self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
 
   def _assertBackwardOpMatchesExpected(self,
                                        grads_np,
@@ -422,12 +435,13 @@ class ResizeBilinearTest(XLATestCase):
     with self.test_session() as sess, self.test_scope():
       dtype = dtype or np.float32
       grads = array_ops.placeholder(np.float32)
-      resized = gen_image_ops._resize_bilinear_grad(
+      resized = gen_image_ops.resize_bilinear_grad(
           grads,
           np.zeros([1, input_shape[0], input_shape[1], 1], dtype=dtype),
           align_corners=True)
       out = sess.run(resized, {grads: grads_np[np.newaxis, :, :, np.newaxis]})
-      self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
+      self.assertAllCloseAccordingToType(expected[np.newaxis, :, :, np.newaxis],
+                                         out)
 
   def testAlignCorners1x2To3x2(self):
     for dtype in self.float_types:
@@ -541,6 +555,28 @@ class ResizeBilinearTest(XLATestCase):
           expected=np.array(
               [[12.5, 27.5, 21.875], [42.5, 80.0, 57.5], [40.625, 72.5, 50]],
               dtype=np.float32))
+
+  def testAlignCorners4x4To8x8(self):
+    self._assertForwardOpMatchesExpected(
+        (np.array([[0, 1, 2, 3]], dtype=np.float32) + np.array(
+            [[0], [1], [2], [3]], dtype=np.float32)) * 7.0, [8, 8],
+        expected=3 *
+        (np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.float32) + np.array(
+            [[0], [1], [2], [3], [4], [5], [6], [7]], dtype=np.float32)),
+        large_tolerance=True)
+
+  def testAlignCorners8x8To16x16(self):
+    self._assertForwardOpMatchesExpected(
+        (np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.float32) + np.array(
+            [[0], [1], [2], [3], [4], [5], [6], [7]], dtype=np.float32)) * 15.0,
+        [16, 16],
+        expected=7 * (np.array(
+            [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]],
+            dtype=np.float32) + np.array(
+                [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11],
+                 [12], [13], [14], [15]],
+                dtype=np.float32)),
+        large_tolerance=True)
 
 
 if __name__ == "__main__":

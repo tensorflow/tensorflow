@@ -33,7 +33,7 @@ class CholeskyOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Cholesky"), CholeskyOp);
+REGISTER_XLA_OP(Name("Cholesky").TypeConstraint("T", kFloatTypes), CholeskyOp);
 
 }  // namespace
 }  // namespace tensorflow

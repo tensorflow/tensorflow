@@ -8,10 +8,10 @@ exports_files(["LICENSE.TXT"])
 
 load(
     "@org_tensorflow//third_party/llvm:llvm.bzl",
-    "gentbl",
-    "expand_cmake_vars",
-    "llvm_target_cmake_vars",
     "cmake_var_string",
+    "expand_cmake_vars",
+    "gentbl",
+    "llvm_target_cmake_vars",
 )
 load(
     "@org_tensorflow//third_party:common.bzl",
@@ -163,13 +163,6 @@ all_cmake_vars = select({
 
 # Performs CMake variable substitutions on configuration header files.
 expand_cmake_vars(
-    name = "datatypes_gen",
-    src = "include/llvm/Support/DataTypes.h.cmake",
-    cmake_vars = all_cmake_vars,
-    dst = "include/llvm/Support/DataTypes.h",
-)
-
-expand_cmake_vars(
     name = "config_gen",
     src = "include/llvm/Config/config.h.cmake",
     cmake_vars = all_cmake_vars,
@@ -271,7 +264,7 @@ genrule(
 # Rules that apply the LLVM tblgen tool.
 gentbl(
     name = "intrinsics_gen",
-    tbl_outs = [("-gen-intrinsic", "include/llvm/IR/Intrinsics.gen")],
+    tbl_outs = [("-gen-intrinsic", "include/llvm/IR/Intrinsics.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/IR/Intrinsics.td",
     td_srcs = glob([
@@ -282,7 +275,7 @@ gentbl(
 
 gentbl(
     name = "attributes_gen",
-    tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.gen")],
+    tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/IR/Attributes.td",
     td_srcs = ["include/llvm/IR/Attributes.td"],
@@ -305,9 +298,7 @@ cc_binary(
     srcs = glob([
         "utils/TableGen/*.cpp",
         "utils/TableGen/*.h",
-    ]) + [
-        "lib/Target/X86/Disassembler/X86DisassemblerDecoderCommon.h",
-    ],
+    ]),
     linkopts = [
         "-lm",
         "-ldl",
@@ -671,6 +662,28 @@ cc_library(
 )
 
 cc_library(
+    name = "aggressive_inst_combine",
+    srcs = glob([
+        "lib/Transforms/AggressiveInstCombine/*.c",
+        "lib/Transforms/AggressiveInstCombine/*.cpp",
+        "lib/Transforms/AggressiveInstCombine/*.inc",
+        "lib/Transforms/AggressiveInstCombine/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/AggressiveInstCombine/*.h",
+        "include/llvm/Transforms/AggressiveInstCombine/*.def",
+        "include/llvm/Transforms/AggressiveInstCombine/*.inc",
+    ]),
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":support",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
     name = "analysis",
     srcs = glob([
         "lib/Analysis/*.c",
@@ -1002,6 +1015,7 @@ cc_library(
     deps = [
         ":arm_desc",
         ":arm_info",
+        ":arm_utils",
         ":config",
         ":mc_disassembler",
         ":support",
@@ -1405,6 +1419,7 @@ cc_library(
         "include/llvm/Transforms/IPO/*.inc",
     ]),
     deps = [
+        ":aggressive_inst_combine",
         ":analysis",
         ":bit_reader",
         ":bit_writer",
@@ -1931,6 +1946,7 @@ cc_library(
         "include/llvm/Transforms/IPO/SCCP.h",
     ]),
     deps = [
+        ":aggressive_inst_combine",
         ":analysis",
         ":config",
         ":core",
@@ -1989,9 +2005,7 @@ cc_library(
         "include/llvm/Support/WasmRelocs/*.def",
     ]) + [
         "include/llvm/BinaryFormat/MachO.def",
-        "include/llvm/Support/DataTypes.h",
         "include/llvm/Support/VCSRevision.h",
-        "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
     ],
     deps = [
         ":config",
@@ -2038,6 +2052,7 @@ cc_library(
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",
         "include/llvm/CodeGen/*.def",
+        "include/llvm/CodeGen/*.inc",
     ]),
     deps = [
         ":analysis",

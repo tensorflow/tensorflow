@@ -35,8 +35,6 @@
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
-
 // The CUDA cublas_api.h API contains const-correctness errors. Instead of
 // casting away constness on our data, we instead reinterpret the CuBLAS
 // functions as what they were clearly meant to be, and thus we can call
@@ -80,10 +78,12 @@ using matinv_Z = cublasStatus_t(cublasContext*, int, const double2* const*, int,
 namespace tensorflow {
 namespace {
 
+using se::cuda::ScopedActivateExecutorContext;
+
 inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
                              const void* src, uint64 bytes) {
   auto stream = context->op_device_context()->stream();
-  perftools::gputools::DeviceMemoryBase wrapped_dst(dst);
+  se::DeviceMemoryBase wrapped_dst(dst);
   return stream->ThenMemcpy(&wrapped_dst, src, bytes).ok();
 }
 

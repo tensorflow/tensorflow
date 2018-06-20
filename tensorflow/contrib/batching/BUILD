@@ -50,6 +50,14 @@ cc_library(
 )
 
 cc_library(
+    name = "serial_device_batch_scheduler",
+    hdrs = ["serial_device_batch_scheduler.h"],
+    deps = [
+        "//tensorflow/core/kernels/batching_util:serial_device_batch_scheduler",
+    ],
+)
+
+cc_library(
     name = "basic_batch_scheduler",
     hdrs = ["basic_batch_scheduler.h"],
     deps = [
@@ -67,48 +75,14 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-tf_custom_op_library(
-    name = "python/ops/_batch_ops.so",
-    srcs = ["ops/batch_ops.cc"],
-    deps = [
-        "//tensorflow/contrib/batching/kernels:batch_kernels",
-    ],
-)
-
-tf_gen_op_libs(
-    op_lib_names = ["batch_ops"],
-)
-
-tf_gen_op_wrapper_py(
-    name = "batch_ops",
-    deps = [":batch_ops_op_lib"],
-)
-
-tf_kernel_library(
-    name = "batch_ops_kernels",
-    deps = [
-        "//tensorflow/contrib/batching/kernels:batch_kernels",
-        "//tensorflow/contrib/batching/util:periodic_function",
-        "//tensorflow/core/kernels:concat_lib",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/kernels:split_lib",
-    ],
-    alwayslink = 1,
-)
-
-tf_custom_op_py_library(
+py_library(
     name = "batch_py",
     srcs = glob(["python/ops/*.py"]) + ["__init__.py"],
-    dso = [":python/ops/_batch_ops.so"],
-    kernels = [
-        ":batch_ops_kernels",
-        ":batch_ops_op_lib",
-    ],
     srcs_version = "PY2AND3",
     deps = [
-        ":batch_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:batch_ops_gen",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
@@ -118,10 +92,19 @@ tf_custom_op_py_library(
     ],
 )
 
+cc_library(
+    name = "batch_ops_kernels",
+    deps = [
+        "//tensorflow/core/kernels:batch_kernels",
+    ],
+    alwayslink = 1,
+)
+
 py_test(
     name = "batch_ops_test",
     size = "small",
     srcs = ["python/ops/batch_ops_test.py"],
+    shard_count = 5,
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -133,18 +116,8 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
         "//tensorflow/python:gradients",
         "//tensorflow/python:script_ops",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

@@ -60,7 +60,7 @@ class HloDataflowAnalysis {
   //     a new HLO value in the analysis. If false then Bitcast forwards the
   //     value of its operand.
   static StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
-      HloModule* module, bool ssa_form = false,
+      const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
@@ -118,8 +118,25 @@ class HloDataflowAnalysis {
 
   string ToString() const;
 
+  // Returns true if 'user' cannot possibly use the buffer at 'index' in
+  // 'operand'. Returns false otherwise.
+  //
+  // REQUIRES: 'operand' is an operand of 'user'.
+  bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                               const ShapeIndex& index,
+                               const HloInstruction* user) const;
+
+  // Returns true if 'user' (at 'user_index') can share a buffer with its
+  // operand 'operand' (at 'operand_index'). Returns false otherwise.
+  //
+  // REQUIRES: 'operand' is an operand of 'user'.
+  bool CanShareOperandBufferWithUser(HloInstruction* operand,
+                                     const ShapeIndex& operand_index,
+                                     HloInstruction* user,
+                                     const ShapeIndex& user_index) const;
+
  protected:
-  HloDataflowAnalysis(HloModule* module, bool ssa_form,
+  HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value = false);
 
   // Returns a new HloValue defined at the given instruction and shape index.
@@ -180,7 +197,7 @@ class HloDataflowAnalysis {
   // Verify various invariants of the dataflow analysis.
   Status Verify() const;
 
-  HloModule* const module_;
+  const HloModule& module_;
   const bool ssa_form_;
   const bool bitcast_defines_value_;
 

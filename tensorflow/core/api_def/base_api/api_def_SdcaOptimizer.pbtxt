@@ -97,8 +97,11 @@ END
   }
   attr {
     name: "adaptative"
+    default_value {
+      b: True
+    }
     description: <<END
-Whether to use Adapative SDCA for the inner loop.
+Whether to use Adaptive SDCA for the inner loop.
 END
   }
   attr {

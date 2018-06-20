@@ -1,8 +1,12 @@
 label_image for TensorFlow Lite inspired by TensorFlow's label_image.
+
+To build label_image for Android, run $TENSORFLOW_ROOT/configure 
+and set Android NDK or configure NDK setting in 
+$TENSORFLOW_ROOT/WORKSPACE first.
  
 To build it for android ARMv8:
 ```
-> bazel build --cxxopt=-std=c++11 \
+> bazel build --config monolithic --cxxopt=-std=c++11 \
   --crosstool_top=//external:android/crosstool \
   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
   --cpu=arm64-v8a \
@@ -10,13 +14,13 @@ To build it for android ARMv8:
 ```
 or
 ```
-> bazel build --config android_arm64 --cxxopt=-std=c++11 \
+> bazel build --config android_arm64 --config monolithic --cxxopt=-std=c++11 \
   //tensorflow/contrib/lite/examples/label_image:label_image
 ```
 
 To build it for android arm-v7a:
 ```
-> bazel build --cxxopt=-std=c++11 \
+> bazel build --config monolithic --cxxopt=-std=c++11 \
   --crosstool_top=//external:android/crosstool \
   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
   --cpu=armeabi-v7a \
@@ -24,7 +28,7 @@ To build it for android arm-v7a:
 ```
 or
 ```
-> bazel build --config android_arm --cxxopt=-std=c++11 \
+> bazel build --config android_arm --config monolithic --cxxopt=-std=c++11 \
   //tensorflow/contrib/lite/examples/label_image:label_image
 ```
 

@@ -299,6 +299,45 @@ class ScipyOptimizerInterfaceTest(TestCase):
       method = optimizer.optimizer_kwargs.get('method')
       self.assertEqual('SLSQP', method)
 
+  def test_callbacks(self):
+    vector_val = np.array([7., -2.], dtype=np.float32)
+    vector = variables.Variable(vector_val, 'vector')
+
+    minimum_location_val = np.arange(2)
+    minimum_location = constant_op.constant(
+        minimum_location_val, dtype=dtypes.float32)
+
+    loss = math_ops.reduce_sum(math_ops.square(vector - minimum_location)) / 2.
+    loss_val_first = ((vector_val - minimum_location_val)**2).sum() / 2.
+
+    optimizer = external_optimizer.ScipyOptimizerInterface(loss, method='SLSQP')
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+
+      initial_vector_val = sess.run(vector)
+
+      extra_fetches = [loss]
+
+      step_callback = test.mock.Mock()
+      loss_callback = test.mock.Mock()
+
+      optimizer.minimize(
+          sess,
+          fetches=extra_fetches,
+          loss_callback=loss_callback,
+          step_callback=step_callback)
+
+      loss_val_last = sess.run(loss)
+
+      call_first = test.mock.call(loss_val_first)
+      call_last = test.mock.call(loss_val_last)
+      loss_calls = [call_first, call_last]
+      loss_callback.assert_has_calls(loss_calls, any_order=True)
+
+      args, _ = step_callback.call_args
+      self.assertAllClose(minimum_location_val, args[0])
+
 
 if __name__ == '__main__':
   test.main()

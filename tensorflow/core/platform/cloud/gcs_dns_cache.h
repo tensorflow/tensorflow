@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_PLATNFORM_CLOUD_DNS_CACHE_H_
-#define THIRD_PARTY_TENSORFLOW_PLATNFORM_CLOUD_DNS_CACHE_H_
+#ifndef TENSORFLOW_PLATNFORM_CLOUD_DNS_CACHE_H_
+#define TENSORFLOW_PLATNFORM_CLOUD_DNS_CACHE_H_
 
 #include <random>
 
@@ -74,4 +74,4 @@ class GcsDnsCache {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PLATNFORM_CLOUD_DNS_CACHE_H_
+#endif  // TENSORFLOW_PLATNFORM_CLOUD_DNS_CACHE_H_

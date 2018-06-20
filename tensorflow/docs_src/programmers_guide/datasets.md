@@ -18,11 +18,11 @@ The `tf.data` API introduces two new abstractions to TensorFlow:
   tensors representing the image data and a label. There are two distinct
   ways to create a dataset:
 
-  * Creating a **source** (e.g. `Dataset.from_tensor_slices()`) constructs a
+    * Creating a **source** (e.g. `Dataset.from_tensor_slices()`) constructs a
     dataset from
     one or more `tf.Tensor` objects.
 
-  * Applying a **transformation** (e.g. `Dataset.batch()`) constructs a dataset
+    * Applying a **transformation** (e.g. `Dataset.batch()`) constructs a dataset
     from one or more `tf.data.Dataset` objects.
 
 * A `tf.data.Iterator` provides the main way to extract elements from a
@@ -322,9 +322,39 @@ sess.run(iterator.initializer)
 next1, (next2, next3) = iterator.get_next()
 ```
 
-Note that evaluating *any* of `next1`, `next2`, or `next3` will advance the
-iterator for all components. A typical consumer of an iterator will include all
-components in a single expression.
+Note that `next1`, `next2`, and `next3` are tensors produced by the
+same op/node (created by `Iterator.get_next()`). Therefore,  evaluating *any* of
+these tensors will advance the iterator for all components. A typical consumer
+of an iterator will include all components in a single expression.
+
+### Saving iterator state
+
+The @{tf.contrib.data.make_saveable_from_iterator} function creates a
+`SaveableObject` from an iterator, which can be used to save and
+restore the current state of the iterator (and, effectively, the whole input
+pipeline). A saveable object thus created can be added to @{tf.train.Saver}
+variables list or the `tf.GraphKeys.SAVEABLE_OBJECTS` collection for saving and
+restoring in the same manner as a @{tf.Variable}. Refer to
+@{$saved_model$Saving and Restoring} for details on how to save and restore
+variables.
+
+```python
+# Create saveable object from iterator.
+saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
+
+# Save the iterator state by adding it to the saveable objects collection.
+tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
+saver = tf.train.Saver()
+
+with tf.Session() as sess:
+
+  if should_checkpoint:
+    saver.save(path_to_checkpoint)
+
+# Restore the iterator state.
+with tf.Session() as sess:
+  saver.restore(sess, path_to_checkpoint)
+```
 
 ## Reading input data
 
@@ -455,6 +485,46 @@ dataset = dataset.flat_map(
         .filter(lambda line: tf.not_equal(tf.substr(line, 0, 1), "#"))))
 ```
 
+### Consuming CSV data
+
+The CSV file format is a popular format for storing tabular data in plain text.
+The @{tf.contrib.data.CsvDataset} class provides a way to extract records from
+one or more CSV files that comply with [RFC 4180](https://tools.ietf.org/html/rfc4180).
+Given one or more filenames and a list of defaults, a `CsvDataset` will produce
+a tuple of elements whose types correspond to the types of the defaults
+provided, per CSV record. Like `TFRecordDataset` and `TextLineDataset`,
+`CsvDataset` accepts `filenames` as a `tf.Tensor`, so you can parameterize it
+by passing a  `tf.placeholder(tf.string)`.
+
+```
+# Creates a dataset that reads all of the records from two CSV files, each with
+# eight float columns
+filenames = ["/var/data/file1.csv", "/var/data/file2.csv"]
+record_defaults = [tf.float32] * 8   # Eight required float columns
+dataset = tf.contrib.data.CsvDataset(filenames, record_defaults)
+```
+
+If some columns are empty, you can provide defaults instead of types.
+
+```
+# Creates a dataset that reads all of the records from two CSV files, each with
+# four float columns which may have missing values
+record_defaults = [[0.0]] * 8
+dataset = tf.contrib.data.CsvDataset(filenames, record_defaults)
+```
+
+By default, a `CsvDataset` yields *every* column of *every* line of the file,
+which may not be desirable, for example if the file starts with a header line
+that should be ignored, or if some columns are not required in the input.
+These lines and fields can be removed with the `header` and `select_cols`
+arguments respectively.
+
+```
+# Creates a dataset that reads all of the records from two CSV files with
+# headers, extracting float data from columns 2 and 4.
+record_defaults = [[0.0]] * 2  # Only provide defaults for the selected columns
+dataset = tf.contrib.data.CsvDataset(filenames, record_defaults, header=True, select_cols=[2,4])
+```
 <!--
 TODO(mrry): Add these sections.
 
@@ -510,7 +580,7 @@ batched into a fixed size.
 # to a fixed shape.
 def _parse_function(filename, label):
   image_string = tf.read_file(filename)
-  image_decoded = tf.image.decode_image(image_string)
+  image_decoded = tf.image.decode_jpeg(image_string)
   image_resized = tf.image.resize_images(image_decoded, [28, 28])
   return image_resized, label
 

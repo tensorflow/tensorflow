@@ -37,6 +37,7 @@ limitations under the License.
 
 using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
+using tensorflow::DT_INT16;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
 using tensorflow::DT_UINT8;
@@ -45,6 +46,32 @@ using tensorflow::TensorProto;
 
 namespace toco {
 namespace {
+
+tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type) {
+  switch (data_type) {
+    case ArrayDataType::kBool:
+      return tensorflow::DT_BOOL;
+    case ArrayDataType::kFloat:
+      return tensorflow::DT_FLOAT;
+    case ArrayDataType::kUint8:
+      return tensorflow::DT_UINT8;
+    case ArrayDataType::kInt32:
+      return tensorflow::DT_INT32;
+    case ArrayDataType::kInt64:
+      return tensorflow::DT_INT64;
+    case ArrayDataType::kString:
+      return tensorflow::DT_STRING;
+    default:
+    case ArrayDataType::kNone:
+      LOG(FATAL) << "Unsupported data type: " << static_cast<int>(data_type);
+      return tensorflow::DT_INVALID;
+  }
+}
+
+tensorflow::DataType GetTensorFlowDataType(const Model& model,
+                                           const string& array_name) {
+  return GetTensorFlowDataType(model.GetArray(array_name).data_type);
+}
 
 // TensorFlow sometimes forbids what it calls "legacy scalars",
 // which are 1-D shapes where the unique shape size is 1.
@@ -156,8 +183,8 @@ void ConvertFloatTensorConst(const Model& model, const string& name,
   const_op->set_name(name);
   (*const_op->mutable_attr())["dtype"].set_type(DT_FLOAT);
   auto* tensor = (*const_op->mutable_attr())["value"].mutable_tensor();
-  CHECK(model.arrays.count(name));
-  const auto& input_array = *model.arrays.at(name);
+  CHECK(model.HasArray(name));
+  const auto& input_array = model.GetArray(name);
   const auto& input_shape = input_array.shape();
   CHECK(input_array.buffer);
   CHECK(input_array.buffer->type == ArrayDataType::kFloat);
@@ -177,8 +204,8 @@ void ConvertFloatTensorConst(const Model& model, const string& name,
   const_op->set_name(name);
   (*const_op->mutable_attr())["dtype"].set_type(DT_FLOAT);
   auto* tensor = (*const_op->mutable_attr())["value"].mutable_tensor();
-  CHECK(model.arrays.count(name));
-  const auto& input_array = *model.arrays.at(name);
+  CHECK(model.HasArray(name));
+  const auto& input_array = model.GetArray(name);
   const auto& input_shape = input_array.shape();
   CHECK(input_array.buffer);
   CHECK(input_array.buffer->type == ArrayDataType::kFloat);
@@ -193,8 +220,8 @@ void ConvertIntTensorConst(const Model& model, const string& name,
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
     return;
   }
-  CHECK(model.arrays.count(name));
-  const auto& array = *model.arrays.at(name);
+  CHECK(model.HasArray(name));
+  const auto& array = model.GetArray(name);
   auto* const_op = tensorflow_graph->add_node();
   const_op->set_op("Const");
   const_op->set_name(name);
@@ -210,6 +237,30 @@ void ConvertIntTensorConst(const Model& model, const string& name,
   for (int i = 0; i < array_shape.dimensions_count(); i++) {
     shape->add_dim()->set_size(array_shape.dims(i));
   }
+}
+
+void CreateIntTensorConst(const string& name, const std::vector<int32>& data,
+                          const std::vector<int32>& shape,
+                          GraphDef* tensorflow_graph) {
+  if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
+    return;
+  }
+  auto* const_op = tensorflow_graph->add_node();
+  const_op->set_op("Const");
+  const_op->set_name(name);
+  (*const_op->mutable_attr())["dtype"].set_type(DT_INT32);
+  auto* tensor = (*const_op->mutable_attr())["value"].mutable_tensor();
+  tensor->set_dtype(DT_INT32);
+  for (auto index : data) {
+    tensor->add_int_val(index);
+  }
+  auto* tensor_shape = tensor->mutable_tensor_shape();
+  int num_elements = 1;
+  for (int size : shape) {
+    tensor_shape->add_dim()->set_size(size);
+    num_elements *= size;
+  }
+  CHECK_EQ(num_elements, data.size());
 }
 
 void CreateMatrixShapeTensorConst(const string& name, int rows, int cols,
@@ -307,6 +358,14 @@ void ConvertConvOperator(const Model& model, const ConvOperator& src_op,
   strides.mutable_list()->add_i(src_op.stride_height);
   strides.mutable_list()->add_i(src_op.stride_width);
   strides.mutable_list()->add_i(1);
+  if ((src_op.dilation_width_factor != 1) ||
+      (src_op.dilation_height_factor != 1)) {
+    auto& dilations = (*conv2d_op->mutable_attr())["dilations"];
+    dilations.mutable_list()->add_i(1);
+    dilations.mutable_list()->add_i(src_op.dilation_height_factor);
+    dilations.mutable_list()->add_i(src_op.dilation_width_factor);
+    dilations.mutable_list()->add_i(1);
+  }
   string padding;
   if (src_op.padding.type == PaddingType::kSame) {
     padding = "SAME";
@@ -324,7 +383,7 @@ void ConvertConvOperator(const Model& model, const ConvOperator& src_op,
     biasadd_op->add_input(conv_output);
     biasadd_op->add_input(src_op.inputs[2]);
     (*biasadd_op->mutable_attr())["T"].set_type(DT_FLOAT);
-    CHECK(model.arrays.count(src_op.inputs[2]));
+    CHECK(model.HasArray(src_op.inputs[2]));
     const string& bias_array_name =
         WalkUpToConstantArray(model, src_op.inputs[2]);
     const auto& bias_array = model.GetArray(bias_array_name);
@@ -361,7 +420,7 @@ void ConvertDepthwiseConvOperator(const Model& model,
   // We need to convert that to H x W x InputDepth x Multiplier.
   // That's only a matter of constructing a Dims object; the actual
   // array layout is the same.
-  CHECK(model.arrays.count(src_op.inputs[1]));
+  CHECK(model.HasArray(src_op.inputs[1]));
   const string& src_weights_name =
       WalkUpToConstantArray(model, src_op.inputs[1]);
   const auto& src_weights_array = model.GetArray(src_weights_name);
@@ -404,7 +463,7 @@ void ConvertDepthwiseConvOperator(const Model& model,
     biasadd_op->add_input(conv_output);
     biasadd_op->add_input(src_op.inputs[2]);
     (*biasadd_op->mutable_attr())["T"].set_type(DT_FLOAT);
-    CHECK(model.arrays.count(src_op.inputs[2]));
+    CHECK(model.HasArray(src_op.inputs[2]));
     const string& bias_name = WalkUpToConstantArray(model, src_op.inputs[2]);
     const auto& bias_array = model.GetArray(bias_name);
     // TODO(b/62904716) Bias arrays should be 1-D, and used directly.
@@ -418,6 +477,38 @@ void ConvertDepthwiseConvOperator(const Model& model,
                             tensorflow_graph,
                             LegacyScalarPolicy::kDoCreateLegacyScalars);
   }
+}
+
+void ConvertTransposeConvOperator(const Model& model,
+                                  const TransposeConvOperator& src_op,
+                                  GraphDef* tensorflow_graph) {
+  auto* conv2d_op = tensorflow_graph->add_node();
+  conv2d_op->set_op("Conv2DBackpropInput");
+  conv2d_op->set_name(src_op.outputs[0]);
+  *conv2d_op->add_input() = src_op.inputs[0];
+  *conv2d_op->add_input() = src_op.inputs[1];
+  *conv2d_op->add_input() = src_op.inputs[2];
+  (*conv2d_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  const string& weights_array_name = WalkUpToConstantArray(
+      model, src_op.inputs[TransposeConvOperator::WEIGHTS]);
+  const auto& weights_array = model.GetArray(weights_array_name);
+  CHECK(weights_array.buffer->type == ArrayDataType::kFloat);
+  ConvertFloatTensorConst(model, weights_array_name, AxesOrder::kOHWI,
+                          AxesOrder::kHWOI, tensorflow_graph);
+  auto& strides = (*conv2d_op->mutable_attr())["strides"];
+  strides.mutable_list()->add_i(1);
+  strides.mutable_list()->add_i(src_op.stride_height);
+  strides.mutable_list()->add_i(src_op.stride_width);
+  strides.mutable_list()->add_i(1);
+  string padding;
+  if (src_op.padding.type == PaddingType::kSame) {
+    padding = "SAME";
+  } else if (src_op.padding.type == PaddingType::kValid) {
+    padding = "VALID";
+  } else {
+    LOG(FATAL) << "Bad padding (only SAME and VALID are supported)";
+  }
+  (*conv2d_op->mutable_attr())["padding"].set_s(padding);
 }
 
 void ConvertDepthToSpaceOperator(const Model& model,
@@ -445,14 +536,23 @@ void ConvertSpaceToDepthOperator(const Model& model,
 void ConvertFullyConnectedOperator(const Model& model,
                                    const FullyConnectedOperator& src_op,
                                    GraphDef* tensorflow_graph) {
-  const string reshape_output = src_op.outputs[0] + "/reshape";
-  const string reshape_shape = src_op.outputs[0] + "/reshape/shape";
+  // Reshape input activations to have the shape expected by the MatMul.
+  const string reshape_output =
+      AvailableArrayName(model, src_op.outputs[0] + "/reshape");
+  const string reshape_shape =
+      AvailableArrayName(model, reshape_output + "/shape");
+  const auto& fc_weights_array = model.GetArray(src_op.inputs[1]);
+  const auto& fc_weights_shape = fc_weights_array.shape();
+  CHECK_EQ(fc_weights_shape.dimensions_count(), 2);
+  CreateMatrixShapeTensorConst(reshape_shape, fc_weights_shape.dims(1), -1,
+                               tensorflow_graph);
   auto* reshape_op = tensorflow_graph->add_node();
   reshape_op->set_op("Reshape");
   reshape_op->set_name(reshape_output);
   reshape_op->add_input(src_op.inputs[0]);
   reshape_op->add_input(reshape_shape);
-  (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*reshape_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
 
   const bool has_bias = src_op.inputs.size() >= 3;
   string matmul_output = src_op.outputs[0];
@@ -460,40 +560,45 @@ void ConvertFullyConnectedOperator(const Model& model,
     matmul_output += "/matmul";
   }
 
+  // Transpose the RHS input from column-major to row-major to match TensorFlow
+  // expectations. This is the inverse of the transpose we do during
+  // ResolveTensorFlowMatMul.
+  const string transpose_output =
+      AvailableArrayName(model, matmul_output + "/transpose_weights");
+  const string transpose_perm =
+      AvailableArrayName(model, transpose_output + "/perm");
+  CreateIntTensorConst(transpose_perm, {1, 0}, {2}, tensorflow_graph);
+  auto transpose_op = tensorflow_graph->add_node();
+  transpose_op->set_op("Transpose");
+  transpose_op->set_name(transpose_output);
+  *transpose_op->add_input() = src_op.inputs[1];
+  *transpose_op->add_input() = transpose_perm;
+  (*transpose_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[1]));
+  (*transpose_op->mutable_attr())["Tperm"].set_type(DT_INT32);
+
   auto* matmul_op = tensorflow_graph->add_node();
   matmul_op->set_op("MatMul");
-
   matmul_op->set_name(matmul_output);
   *matmul_op->add_input() = reshape_output;
-  *matmul_op->add_input() = src_op.inputs[1];
-  (*matmul_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  *matmul_op->add_input() = transpose_op->name();
+  (*matmul_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
   (*matmul_op->mutable_attr())["transpose_a"].set_b(false);
   (*matmul_op->mutable_attr())["transpose_b"].set_b(false);
-  CHECK(model.arrays.count(src_op.inputs[1]));
-  const string& fc_weights_name =
-      WalkUpToConstantArray(model, src_op.inputs[1]);
-  const auto& fc_weights_array = *model.arrays.at(fc_weights_name);
-  const auto& fc_weights_shape = fc_weights_array.shape();
-  CHECK_EQ(fc_weights_shape.dimensions_count(), 2);
-  CreateMatrixShapeTensorConst(reshape_shape, fc_weights_shape.dims(1), -1,
-                               tensorflow_graph);
+  CHECK(model.HasArray(src_op.inputs[1]));
 
-  CHECK(fc_weights_array.buffer);
-  CHECK(fc_weights_array.buffer->type == ArrayDataType::kFloat);
-  const float* fc_weights_data =
-      fc_weights_array.GetBuffer<ArrayDataType::kFloat>().data.data();
-  ConvertFloatTensorConst(fc_weights_name, fc_weights_shape, fc_weights_data,
-                          AxesOrder::kCR, AxesOrder::kRC, tensorflow_graph);
-
+  // Add the bias, if it exists.
   if (has_bias) {
     auto* biasadd_op = tensorflow_graph->add_node();
     biasadd_op->set_op("BiasAdd");
     biasadd_op->set_name(src_op.outputs[0]);
     biasadd_op->add_input(matmul_output);
     biasadd_op->add_input(src_op.inputs[2]);
-    (*biasadd_op->mutable_attr())["T"].set_type(DT_FLOAT);
-    CHECK(model.arrays.count(src_op.inputs[2]));
-    const auto& bias_array = *model.arrays.at(src_op.inputs[2]);
+    (*biasadd_op->mutable_attr())["T"].set_type(
+        GetTensorFlowDataType(model, src_op.inputs[0]));
+    CHECK(model.HasArray(src_op.inputs[2]));
+    const auto& bias_array = model.GetArray(src_op.inputs[2]);
     // TODO(b/62904716) Bias arrays should be 1-D, and used directly.
     Shape bias_shape_1d = bias_array.shape();
     UnextendShape(&bias_shape_1d, 1);
@@ -516,6 +621,18 @@ void ConvertAddOperator(const Model& model, const AddOperator& src_op,
   CHECK_EQ(src_op.inputs.size(), 2);
   *add_op->add_input() = src_op.inputs[0];
   *add_op->add_input() = src_op.inputs[1];
+  (*add_op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
+void ConvertAddNOperator(const Model& model, const AddNOperator& src_op,
+                         GraphDef* tensorflow_graph) {
+  auto* add_op = tensorflow_graph->add_node();
+  add_op->set_op("AddN");
+  add_op->set_name(src_op.outputs[0]);
+  for (const auto& input : src_op.inputs) {
+    *add_op->add_input() = input;
+  }
+  (*add_op->mutable_attr())["N"].set_i(src_op.inputs.size());
   (*add_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
@@ -587,6 +704,15 @@ void ConvertRelu6Operator(const Relu6Operator& src_op,
   (*relu_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
+void ConvertLogOperator(const LogOperator& src_op, GraphDef* tensorflow_graph) {
+  auto* op = tensorflow_graph->add_node();
+  op->set_op("Log");
+  op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *op->add_input() = src_op.inputs[0];
+  (*op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
 void ConvertLogisticOperator(const LogisticOperator& src_op,
                              GraphDef* tensorflow_graph) {
   auto* relu_op = tensorflow_graph->add_node();
@@ -609,7 +735,8 @@ void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
                             GraphDef* tensorflow_graph) {
   string softmax_input;
   Operator* providing_op = GetOpWithOutput(model, src_op.inputs[0]);
-  if (providing_op->type == OperatorType::kTensorFlowReshape) {
+  if (providing_op != nullptr &&
+      providing_op->type == OperatorType::kTensorFlowReshape) {
     softmax_input = src_op.inputs[0];
   } else {
     // Insert a reshape operator that reduces the dimensions down to the 2 that
@@ -625,7 +752,7 @@ void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
     *reshape_op->add_input() = softmax_size;
     (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-    const auto& input_shape = model.arrays.at(src_op.inputs[0])->shape();
+    const auto& input_shape = model.GetArray(src_op.inputs[0]).shape();
     int32 flattened_size = 1;
     for (int i = 0; i < input_shape.dimensions_count() - 1; ++i) {
       flattened_size *= input_shape.dims(i);
@@ -642,6 +769,46 @@ void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
   // TensorFlow's Softmax doesn't seem to admit a 'beta' parameter
   CHECK_EQ(src_op.beta, 1.f);
   (*softmax_op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
+void ConvertLogSoftmaxOperator(const Model& model,
+                               const LogSoftmaxOperator& src_op,
+                               GraphDef* tensorflow_graph) {
+  string softmax_input;
+  Operator* providing_op = GetOpWithOutput(model, src_op.inputs[0]);
+  if (providing_op != nullptr &&
+      providing_op->type == OperatorType::kTensorFlowReshape) {
+    softmax_input = src_op.inputs[0];
+  } else {
+    // Insert a reshape operator that reduces the dimensions down to the 2 that
+    // are required for TensorFlow Logits.
+    const string reshape_output =
+        src_op.outputs[0] + "/log_softmax_insert_reshape";
+    const string softmax_size = src_op.outputs[0] + "/log_softmax_insert_size";
+    softmax_input = reshape_output;
+
+    auto* reshape_op = tensorflow_graph->add_node();
+    reshape_op->set_op("Reshape");
+    reshape_op->set_name(reshape_output);
+    *reshape_op->add_input() = src_op.inputs[0];
+    *reshape_op->add_input() = softmax_size;
+    (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
+
+    const auto& input_shape = model.GetArray(src_op.inputs[0]).shape();
+    int32 flattened_size = 1;
+    for (int i = 0; i < input_shape.dimensions_count() - 1; ++i) {
+      flattened_size *= input_shape.dims(i);
+    }
+    const std::vector<int32> shape_data = {
+        flattened_size, input_shape.dims(input_shape.dimensions_count() - 1)};
+    CreateReshapeShapeTensorConst(softmax_size, shape_data, tensorflow_graph);
+  }
+
+  auto* log_softmax_op = tensorflow_graph->add_node();
+  log_softmax_op->set_op("LogSoftmax");
+  log_softmax_op->set_name(src_op.outputs[0]);
+  *log_softmax_op->add_input() = softmax_input;
+  (*log_softmax_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
 void ConvertL2NormalizationOperator(const L2NormalizationOperator& src_op,
@@ -716,6 +883,9 @@ void ConvertFakeQuantOperator(const FakeQuantOperator& src_op,
   CHECK(src_op.minmax);
   (*fakequant_op->mutable_attr())["min"].set_f(src_op.minmax->min);
   (*fakequant_op->mutable_attr())["max"].set_f(src_op.minmax->max);
+  if (src_op.num_bits) {
+    (*fakequant_op->mutable_attr())["num_bits"].set_i(src_op.num_bits);
+  }
 }
 
 void ConvertMaxPoolOperator(const MaxPoolOperator& src_op,
@@ -786,7 +956,8 @@ void ConvertConcatenationOperator(const Model& model,
     *dc_op->add_input() = input;
   }
   *dc_op->add_input() = dummy_axis;
-  (*dc_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*dc_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
   (*dc_op->mutable_attr())["Tidx"].set_type(DT_INT32);
   (*dc_op->mutable_attr())["N"].set_i(src_op.inputs.size());
 }
@@ -800,7 +971,8 @@ void ConvertTensorFlowReshapeOperator(const Model& model,
   CHECK_EQ(src_op.inputs.size(), 2);
   *reshape_op->add_input() = src_op.inputs[0];
   *reshape_op->add_input() = src_op.inputs[1];
-  (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*reshape_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
   const auto& shape_array = model.GetArray(src_op.inputs[1]);
   QCHECK(shape_array.data_type == ArrayDataType::kInt32)
       << "Only int32 shape is supported.";
@@ -897,24 +1069,6 @@ void ConvertSplitOperator(const Model& model,
                                   tensorflow_graph);
 }
 
-tensorflow::DataType GetTensorFlowDataType(const Model& model,
-                                           const string& array_name) {
-  auto& dtype = model.GetArray(array_name).data_type;
-  CHECK(dtype == ArrayDataType::kFloat || dtype == ArrayDataType::kInt32 ||
-        dtype == ArrayDataType::kUint8 || dtype == ArrayDataType::kInt64);
-  if (dtype == ArrayDataType::kFloat) {
-    return tensorflow::DT_FLOAT;
-  } else if (dtype == ArrayDataType::kInt32) {
-    return tensorflow::DT_INT32;
-  } else if (dtype == ArrayDataType::kUint8) {
-    return tensorflow::DT_UINT8;
-  } else if (dtype == ArrayDataType::kInt64) {
-    return tensorflow::DT_INT64;
-  } else {
-    LOG(FATAL) << "Wrong data type";
-  }
-}
-
 void ConvertCastOperator(const Model& model, const CastOperator& src_op,
                          GraphDef* tensorflow_graph) {
   auto* cast_op = tensorflow_graph->add_node();
@@ -969,6 +1123,113 @@ void ConvertArgMaxOperator(const Model& model, const ArgMaxOperator& src_op,
       GetTensorFlowDataType(model, src_op.outputs[0]));
 }
 
+void ConvertTransposeOperator(const Model& model,
+                              const TransposeOperator& src_op,
+                              GraphDef* tensorflow_graph) {
+  auto* transpose_op = tensorflow_graph->add_node();
+  transpose_op->set_op("Transpose");
+  transpose_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *transpose_op->add_input() = src_op.inputs[0];
+  *transpose_op->add_input() = src_op.inputs[1];
+  (*transpose_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+  (*transpose_op->mutable_attr())["Tperm"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[1]));
+}
+
+void ConvertTensorFlowShapeOperator(const Model& model,
+                                    const TensorFlowShapeOperator& src_op,
+                                    GraphDef* tensorflow_graph) {
+  auto* shape_op = tensorflow_graph->add_node();
+  shape_op->set_op("Shape");
+  shape_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *shape_op->add_input() = src_op.inputs[0];
+  (*shape_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+  (*shape_op->mutable_attr())["out_type"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
+}
+
+void ConvertRankOperator(const Model& model, const RankOperator& src_op,
+                         GraphDef* tensorflow_graph) {
+  auto* rank_op = tensorflow_graph->add_node();
+  rank_op->set_op("Rank");
+  rank_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *rank_op->add_input() = src_op.inputs[0];
+  (*rank_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+}
+
+void ConvertRangeOperator(const Model& model, const RangeOperator& src_op,
+                          GraphDef* tensorflow_graph) {
+  auto* range_op = tensorflow_graph->add_node();
+  range_op->set_op("Range");
+  range_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 3);
+  *range_op->add_input() = src_op.inputs[0];
+  *range_op->add_input() = src_op.inputs[1];
+  *range_op->add_input() = src_op.inputs[2];
+  (*range_op->mutable_attr())["Tidx"].set_type(
+      GetTensorFlowDataType(src_op.dtype));
+}
+
+void ConvertStackOperator(const Model& model, const StackOperator& src_op,
+                          GraphDef* tensorflow_graph) {
+  auto* stack_op = tensorflow_graph->add_node();
+  stack_op->set_op("Stack");
+  stack_op->set_name(src_op.outputs[0]);
+  for (const auto& input : src_op.inputs) {
+    *stack_op->add_input() = input;
+  }
+  (*stack_op->mutable_attr())["elem_type"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
+  (*stack_op->mutable_attr())["axis"].set_i(src_op.axis);
+}
+
+void ConvertFillOperator(const Model& model, const FillOperator& src_op,
+                         GraphDef* tensorflow_graph) {
+  auto* fill_op = tensorflow_graph->add_node();
+  fill_op->set_op("Fill");
+  fill_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *fill_op->add_input() = src_op.inputs[0];
+  *fill_op->add_input() = src_op.inputs[1];
+  (*fill_op->mutable_attr())["index_type"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+  (*fill_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[1]));
+}
+
+void ConvertFloorDivOperator(const Model& model, const FloorDivOperator& src_op,
+                             GraphDef* tensorflow_graph) {
+  auto* floor_div_op = tensorflow_graph->add_node();
+  floor_div_op->set_op("FloorDiv");
+  floor_div_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *floor_div_op->add_input() = src_op.inputs[0];
+  *floor_div_op->add_input() = src_op.inputs[1];
+  (*floor_div_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+}
+
+void ConvertExpandDimsOperator(const Model& model,
+                               const ExpandDimsOperator& src_op,
+                               GraphDef* tensorflow_graph) {
+  auto* expand_dims_op = tensorflow_graph->add_node();
+  expand_dims_op->set_op("ExpandDims");
+  expand_dims_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *expand_dims_op->add_input() = src_op.inputs[0];
+  *expand_dims_op->add_input() = src_op.inputs[1];
+  (*expand_dims_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+  (*expand_dims_op->mutable_attr())["Tdim"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[1]));
+}
+
 void ConvertResizeBilinearOperator(const Model& model,
                                    const ResizeBilinearOperator& src_op,
                                    GraphDef* tensorflow_graph) {
@@ -979,6 +1240,7 @@ void ConvertResizeBilinearOperator(const Model& model,
   *resize_op->add_input() = src_op.inputs[0];
   *resize_op->add_input() = src_op.inputs[1];
   (*resize_op->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*resize_op->mutable_attr())["align_corners"].set_b(src_op.align_corners);
 }
 
 namespace {
@@ -1013,8 +1275,8 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   // Op names have been chosen to match the tf.slim LSTM naming
   // as closely as possible.
   const int axis =
-      model.arrays.at(src_op.inputs[LstmCellOperator::PREV_ACTIV_INPUT])
-          ->shape()
+      model.GetArray(src_op.inputs[LstmCellOperator::PREV_ACTIV_INPUT])
+          .shape()
           .dimensions_count() -
       1;
   // Note that DATA_INPUT may have extra size 1 dimensions, but TF concat
@@ -1033,9 +1295,10 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
 
   // Write weights
   const string weights_output = base + "weights";
-  CHECK(model.arrays.count(src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]));
-  const auto& weights_array =
-      *model.arrays.at(src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]);
+  CHECK(model.HasArray(src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]));
+  const string weights_name = WalkUpToConstantArray(
+      model, src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]);
+  const auto& weights_array = model.GetArray(weights_name);
   // Convert 4D FullyConnected weights into 2D matrix
   const auto& weights_shape = weights_array.shape();
   CHECK_EQ(weights_shape.dimensions_count(), 2);
@@ -1059,9 +1322,10 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
 
   // Write biases
   const string biases_output = base + "biases";
-  CHECK(model.arrays.count(src_op.inputs[LstmCellOperator::BIASES_INPUT]));
-  const auto& bias_array =
-      *model.arrays.at(src_op.inputs[LstmCellOperator::BIASES_INPUT]);
+  CHECK(model.HasArray(src_op.inputs[LstmCellOperator::BIASES_INPUT]));
+  const string bias_name = WalkUpToConstantArray(
+      model, src_op.inputs[LstmCellOperator::BIASES_INPUT]);
+  const auto& bias_array = model.GetArray(bias_name);
   // TODO(b/62904716) Bias arrays should be 1-D, and used directly.
   Shape bias_shape_1d = bias_array.shape();
   UnextendShape(&bias_shape_1d, 1);
@@ -1228,6 +1492,37 @@ void ConvertPadOperator(const Model& model, const PadOperator& src_op,
   shape->add_dim()->set_size(2);
 }
 
+void ConvertPadV2Operator(const Model& model, const PadV2Operator& src_op,
+                          GraphDef* tensorflow_graph) {
+  auto* new_op = tensorflow_graph->add_node();
+  new_op->set_op("PadV2");
+  new_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *new_op->add_input() = src_op.inputs[0];
+  *new_op->add_input() = src_op.inputs[1];
+  *new_op->add_input() = src_op.inputs[2];
+
+  const auto params_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*new_op->mutable_attr())["T"].set_type(params_type);
+
+  // Create the params tensor.
+  auto* params_op = tensorflow_graph->add_node();
+  params_op->set_op("Const");
+  params_op->set_name(src_op.inputs[1]);
+  (*params_op->mutable_attr())["dtype"].set_type(DT_INT32);
+  auto* tensor = (*params_op->mutable_attr())["value"].mutable_tensor();
+  tensor->set_dtype(DT_INT32);
+
+  CHECK_EQ(src_op.left_padding.size(), src_op.right_padding.size());
+  for (int i = 0; i < src_op.left_padding.size(); ++i) {
+    tensor->add_int_val(src_op.left_padding[i]);
+    tensor->add_int_val(src_op.right_padding[i]);
+  }
+  auto* shape = tensor->mutable_tensor_shape();
+  shape->add_dim()->set_size(src_op.left_padding.size());
+  shape->add_dim()->set_size(2);
+}
+
 void CreateSliceInput(const string& input_name, const std::vector<int>& values,
                       GraphDef* tensorflow_graph) {
   auto* params_op = tensorflow_graph->add_node();
@@ -1333,9 +1628,11 @@ void ConvertSqueezeOperator(const Model& model, const SqueezeOperator& src_op,
   const auto params_type = GetTensorFlowDataType(model, src_op.inputs[0]);
   (*new_op->mutable_attr())["T"].set_type(params_type);
 
-  auto& squeeze_dims = (*new_op->mutable_attr())["squeeze_dims"];
-  for (int i : src_op.squeeze_dims) {
-    squeeze_dims.mutable_list()->add_i(i);
+  if (!src_op.squeeze_dims.empty()) {
+    auto& squeeze_dims = (*new_op->mutable_attr())["squeeze_dims"];
+    for (int i : src_op.squeeze_dims) {
+      squeeze_dims.mutable_list()->add_i(i);
+    }
   }
 }
 
@@ -1377,6 +1674,95 @@ void ConvertTensorFlowMaximumOperator(const Model& model,
   (*sub_op->mutable_attr())["T"].set_type(data_type);
 }
 
+void ConvertSelectOperator(const Model& model, const SelectOperator& src_op,
+                           GraphDef* tensorflow_graph) {
+  auto* sub_op = tensorflow_graph->add_node();
+  sub_op->set_op("Select");
+  sub_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 3);
+  *sub_op->add_input() = src_op.inputs[0];
+  *sub_op->add_input() = src_op.inputs[1];
+  *sub_op->add_input() = src_op.inputs[2];
+  const auto data_type = GetTensorFlowDataType(model, src_op.inputs[1]);
+  (*sub_op->mutable_attr())["T"].set_type(data_type);
+}
+
+void ConvertTileOperator(const Model& model,
+                         const TensorFlowTileOperator& src_op,
+                         GraphDef* tensorflow_graph) {
+  auto* tile_op = tensorflow_graph->add_node();
+  tile_op->set_op("Tile");
+  tile_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *tile_op->add_input() = src_op.inputs[0];
+  *tile_op->add_input() = src_op.inputs[1];
+  const auto data_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*tile_op->mutable_attr())["T"].set_type(data_type);
+  const auto multiples_data_type =
+      GetTensorFlowDataType(model, src_op.inputs[1]);
+  (*tile_op->mutable_attr())["Tmultiples"].set_type(multiples_data_type);
+}
+
+void ConvertTopKV2Operator(const Model& model, const TopKV2Operator& src_op,
+                           GraphDef* tensorflow_graph) {
+  auto* topk_op = tensorflow_graph->add_node();
+  topk_op->set_op("TOPKV2");
+  topk_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *topk_op->add_input() = src_op.inputs[0];
+  *topk_op->add_input() = src_op.inputs[1];
+  (*topk_op->mutable_attr())["sorted"].set_b(true);
+}
+
+void ConvertRandomUniformOperator(const Model& model,
+                                  const RandomUniformOperator& src_op,
+                                  GraphDef* tensorflow_graph) {
+  CHECK(tensorflow_graph != nullptr);
+  auto* new_op = tensorflow_graph->add_node();
+  new_op->set_op("RandomUniform");
+  CHECK_EQ(src_op.inputs.size(), 1);
+  new_op->set_name(src_op.outputs[0]);
+  *new_op->add_input() = src_op.inputs[0];
+  const auto shape_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*new_op->mutable_attr())["T"].set_type(shape_type);
+  (*new_op->mutable_attr())["dtype"].set_type(
+      GetTensorFlowDataType(src_op.dtype));
+  (*new_op->mutable_attr())["seed"].set_i(src_op.seed);
+  (*new_op->mutable_attr())["seed2"].set_i(src_op.seed2);
+}
+
+void ConvertComparisonOperator(const Model& model, const Operator& src_op,
+                               const char* op_name,
+                               GraphDef* tensorflow_graph) {
+  auto* comparison_op = tensorflow_graph->add_node();
+  comparison_op->set_op(op_name);
+  comparison_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *comparison_op->add_input() = src_op.inputs[0];
+  *comparison_op->add_input() = src_op.inputs[1];
+  const auto data_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*comparison_op->mutable_attr())["T"].set_type(data_type);
+}
+
+void ConvertSparseToDenseOperator(const Model& model,
+                                  const SparseToDenseOperator& src_op,
+                                  const char* op_name,
+                                  GraphDef* tensorflow_graph) {
+  auto* sparse_to_dense_op = tensorflow_graph->add_node();
+  sparse_to_dense_op->set_op(op_name);
+  sparse_to_dense_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 4);
+  for (int i = 0; i < 4; ++i) {
+    *sparse_to_dense_op->add_input() = src_op.inputs[i];
+  }
+  const auto data_type = GetTensorFlowDataType(model, src_op.inputs[3]);
+  (*sparse_to_dense_op->mutable_attr())["T"].set_type(data_type);
+  const auto index_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*sparse_to_dense_op->mutable_attr())["Tindices"].set_type(index_type);
+  (*sparse_to_dense_op->mutable_attr())["Tindices"].set_b(
+      src_op.validate_indices);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -1406,6 +1792,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kAdd) {
     ConvertAddOperator(model, static_cast<const AddOperator&>(src_op),
                        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kAddN) {
+    ConvertAddNOperator(model, static_cast<const AddNOperator&>(src_op),
+                        tensorflow_graph);
   } else if (src_op.type == OperatorType::kMul) {
     ConvertMulOperator(model, static_cast<const MulOperator&>(src_op),
                        tensorflow_graph);
@@ -1418,6 +1807,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kRelu6) {
     ConvertRelu6Operator(static_cast<const Relu6Operator&>(src_op),
                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kLog) {
+    ConvertLogOperator(static_cast<const LogOperator&>(src_op),
+                       tensorflow_graph);
   } else if (src_op.type == OperatorType::kLogistic) {
     ConvertLogisticOperator(static_cast<const LogisticOperator&>(src_op),
                             tensorflow_graph);
@@ -1430,6 +1822,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kSoftmax) {
     ConvertSoftmaxOperator(model, static_cast<const SoftmaxOperator&>(src_op),
                            tensorflow_graph);
+  } else if (src_op.type == OperatorType::kLogSoftmax) {
+    ConvertLogSoftmaxOperator(model,
+                              static_cast<const LogSoftmaxOperator&>(src_op),
+                              tensorflow_graph);
   } else if (src_op.type == OperatorType::kLocalResponseNormalization) {
     ConvertLocalResponseNormalizationOperator(
         static_cast<const LocalResponseNormalizationOperator&>(src_op),
@@ -1491,6 +1887,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kPad) {
     ConvertPadOperator(model, static_cast<const PadOperator&>(src_op),
                        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kPadV2) {
+    ConvertPadV2Operator(model, static_cast<const PadV2Operator&>(src_op),
+                         tensorflow_graph);
   } else if (src_op.type == OperatorType::kStridedSlice) {
     ConvertStridedSliceOperator(
         model, static_cast<const StridedSliceOperator&>(src_op),
@@ -1518,6 +1917,62 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kArgMax) {
     ConvertArgMaxOperator(model, static_cast<const ArgMaxOperator&>(src_op),
                           tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTopK_V2) {
+    ConvertTopKV2Operator(model, static_cast<const TopKV2Operator&>(src_op),
+                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTranspose) {
+    ConvertTransposeOperator(
+        model, static_cast<const TransposeOperator&>(src_op), tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowShape) {
+    ConvertTensorFlowShapeOperator(
+        model, static_cast<const TensorFlowShapeOperator&>(src_op),
+        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kRank) {
+    ConvertRankOperator(model, static_cast<const RankOperator&>(src_op),
+                        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kRange) {
+    ConvertRangeOperator(model, static_cast<const RangeOperator&>(src_op),
+                         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kStack) {
+    ConvertStackOperator(model, static_cast<const StackOperator&>(src_op),
+                         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kFill) {
+    ConvertFillOperator(model, static_cast<const FillOperator&>(src_op),
+                        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kFloorDiv) {
+    ConvertFloorDivOperator(model, static_cast<const FloorDivOperator&>(src_op),
+                            tensorflow_graph);
+  } else if (src_op.type == OperatorType::kExpandDims) {
+    ConvertExpandDimsOperator(model,
+                              static_cast<const ExpandDimsOperator&>(src_op),
+                              tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTransposeConv) {
+    ConvertTransposeConvOperator(
+        model, static_cast<const TransposeConvOperator&>(src_op),
+        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kRandomUniform) {
+    ConvertRandomUniformOperator(
+        model, static_cast<const RandomUniformOperator&>(src_op),
+        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowEqual) {
+    ConvertComparisonOperator(model, src_op, "Equal", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowNotEqual) {
+    ConvertComparisonOperator(model, src_op, "NotEqual", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowGreater) {
+    ConvertComparisonOperator(model, src_op, "Greater", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowGreaterEqual) {
+    ConvertComparisonOperator(model, src_op, "GreaterEqual", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowLess) {
+    ConvertComparisonOperator(model, src_op, "Less", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowLessEqual) {
+    ConvertComparisonOperator(model, src_op, "LessEqual", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kSelect) {
+    ConvertSelectOperator(model, static_cast<const SelectOperator&>(src_op),
+                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowTile) {
+    ConvertTileOperator(model,
+                        static_cast<const TensorFlowTileOperator&>(src_op),
+                        tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }
@@ -1543,6 +1998,9 @@ void AddPlaceholder(const string& name, ArrayDataType type,
     case ArrayDataType::kInt64:
       (*placeholder->mutable_attr())["dtype"].set_type(DT_INT64);
       break;
+    case ArrayDataType::kInt16:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_INT16);
+      break;
     default:
       LOG(FATAL) << "Unexpected data type in array \"" << name << "\"";
   }
@@ -1557,7 +2015,7 @@ void AddPlaceholderForRNNState(const Model& model, const string& name, int size,
   (*placeholder->mutable_attr())["dtype"].set_type(DT_FLOAT);
 
   auto* shape = (*placeholder->mutable_attr())["shape"].mutable_shape();
-  const auto& state_array = *model.arrays.at(name);
+  const auto& state_array = model.GetArray(name);
   if (state_array.has_shape()) {
     const auto& state_shape = state_array.shape();
     const int kDims = state_shape.dimensions_count();
@@ -1574,7 +2032,7 @@ void ExportTensorFlowGraphDefImplementation(const Model& model,
                                             GraphDef* tensorflow_graph) {
   for (const auto& input_array : model.flags.input_arrays()) {
     AddPlaceholder(input_array.name(),
-                   model.arrays.at(input_array.name())->data_type,
+                   model.GetArray(input_array.name()).data_type,
                    tensorflow_graph);
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
@@ -1588,7 +2046,7 @@ void ExportTensorFlowGraphDefImplementation(const Model& model,
   // by the above operators export. It's important that this comes
   // after, as some operators need to export arrays that they reference
   // in a specific way, rather than in the generic way done below.
-  for (const auto& array_pair : model.arrays) {
+  for (const auto& array_pair : model.GetArrayMap()) {
     const string& array_name = array_pair.first;
     const auto& array = *array_pair.second;
     if (array.buffer) {
@@ -1606,6 +2064,30 @@ void ExportTensorFlowGraphDefImplementation(const Model& model,
   }
 }
 }  // namespace
+
+void EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(Model* model) {
+  for (const auto& array_kv : model->GetArrayMap()) {
+    const string& array_name = array_kv.first;
+    Array& array = *array_kv.second;
+    if (!array.buffer || !array.minmax) {
+      continue;
+    }
+    const string& wrapped_array_name =
+        AvailableArrayName(*model, array_name + "/data");
+    Array& wrapped_array = model->GetOrCreateArray(wrapped_array_name);
+    wrapped_array.data_type = array.data_type;
+    wrapped_array.copy_shape(array.shape());
+    wrapped_array.buffer = std::move(array.buffer);
+    FakeQuantOperator* fakequant_op = new FakeQuantOperator;
+    fakequant_op->inputs = {wrapped_array_name};
+    fakequant_op->outputs = {array_name};
+    fakequant_op->minmax.reset(new MinMax);
+    *fakequant_op->minmax = *array.minmax;
+    const auto& it = FindOpWithInput(*model, array_name);
+    model->operators.emplace(it, fakequant_op);
+  }
+  CheckInvariants(*model);
+}
 
 void ExportTensorFlowGraphDef(const Model& model,
                               string* output_file_contents) {

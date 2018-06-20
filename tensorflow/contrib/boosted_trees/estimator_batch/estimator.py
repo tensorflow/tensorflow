@@ -40,7 +40,9 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
                label_keys=None,
                feature_engineering_fn=None,
                logits_modifier_function=None,
-               center_bias=True):
+               center_bias=True,
+               use_core_libs=False,
+               output_leaf_index=False):
     """Initializes a GradientBoostedDecisionTreeClassifier estimator instance.
 
     Args:
@@ -63,6 +65,17 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
       logits_modifier_function: A modifier function for the logits.
       center_bias: Whether a separate tree should be created for first fitting
         the bias.
+      use_core_libs: Whether feature columns and loss are from the core (as
+        opposed to contrib) version of tensorflow.
+      output_leaf_index: whether to output leaf indices along with predictions
+        during inference. The leaf node indexes are available in predictions
+        dict by the key 'leaf_index'. It is a Tensor of rank 2 and its shape is
+        [batch_size, num_trees].
+        For example,
+        result_iter = classifier.predict(...)
+        for result_dict in result_iter:
+          # access leaf index list by result_dict["leaf_index"]
+          # which contains one leaf index per tree
 
     Raises:
       ValueError: If learner_config is not valid.
@@ -72,7 +85,9 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
       # supports second order derivative.
       def loss_fn(labels, logits, weights=None):
         result = losses.per_example_maxent_loss(
-            labels=labels, logits=logits, weights=weights,
+            labels=labels,
+            logits=logits,
+            weights=weights,
             num_classes=n_classes)
         return math_ops.reduce_mean(result[0])
     else:
@@ -81,7 +96,8 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
         n_classes=n_classes,
         weight_column_name=weight_column_name,
         enable_centered_bias=False,
-        loss_fn=loss_fn)
+        loss_fn=loss_fn,
+        label_keys=label_keys)
     if learner_config.num_classes == 0:
       learner_config.num_classes = n_classes
     elif learner_config.num_classes != n_classes:
@@ -98,6 +114,8 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
             'examples_per_layer': examples_per_layer,
             'center_bias': center_bias,
             'logits_modifier_function': logits_modifier_function,
+            'use_core_libs': use_core_libs,
+            'output_leaf_index': output_leaf_index,
         },
         model_dir=model_dir,
         config=config,
@@ -119,7 +137,9 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
                config=None,
                feature_engineering_fn=None,
                logits_modifier_function=None,
-               center_bias=True):
+               center_bias=True,
+               use_core_libs=False,
+               output_leaf_index=False):
     """Initializes a GradientBoostedDecisionTreeRegressor estimator instance.
 
     Args:
@@ -144,6 +164,15 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
       logits_modifier_function: A modifier function for the logits.
       center_bias: Whether a separate tree should be created for first fitting
         the bias.
+      use_core_libs: Whether feature columns and loss are from the core (as
+        opposed to contrib) version of tensorflow.
+      output_leaf_index: whether to output leaf indices along with predictions
+        during inference. The leaf node indexes are available in predictions
+        dict by the key 'leaf_index'. For example,
+        result_dict = classifier.predict(...)
+        for example_prediction_result in result_dict:
+          # access leaf index list by example_prediction_result["leaf_index"]
+          # which contains one leaf index per tree
     """
     head = head_lib.regression_head(
         label_name=label_name,
@@ -165,6 +194,8 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
             'examples_per_layer': examples_per_layer,
             'logits_modifier_function': logits_modifier_function,
             'center_bias': center_bias,
+            'use_core_libs': use_core_libs,
+            'output_leaf_index': False,
         },
         model_dir=model_dir,
         config=config,
@@ -188,7 +219,9 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
                config=None,
                feature_engineering_fn=None,
                logits_modifier_function=None,
-               center_bias=True):
+               center_bias=True,
+               use_core_libs=False,
+               output_leaf_index=False):
     """Initializes a GradientBoostedDecisionTreeEstimator estimator instance.
 
     Args:
@@ -209,6 +242,15 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
       logits_modifier_function: A modifier function for the logits.
       center_bias: Whether a separate tree should be created for first fitting
         the bias.
+      use_core_libs: Whether feature columns and loss are from the core (as
+        opposed to contrib) version of tensorflow.
+      output_leaf_index: whether to output leaf indices along with predictions
+        during inference. The leaf node indexes are available in predictions
+        dict by the key 'leaf_index'. For example,
+        result_dict = classifier.predict(...)
+        for example_prediction_result in result_dict:
+          # access leaf index list by example_prediction_result["leaf_index"]
+          # which contains one leaf index per tree
     """
     super(GradientBoostedDecisionTreeEstimator, self).__init__(
         model_fn=model.model_builder,
@@ -221,6 +263,8 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
             'examples_per_layer': examples_per_layer,
             'logits_modifier_function': logits_modifier_function,
             'center_bias': center_bias,
+            'use_core_libs': use_core_libs,
+            'output_leaf_index': False,
         },
         model_dir=model_dir,
         config=config,

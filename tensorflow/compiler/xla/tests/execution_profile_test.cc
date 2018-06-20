@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
@@ -24,8 +25,7 @@ namespace {
 
 class ExecutionProfileTest : public ClientLibraryTestBase {};
 
-XLA_TEST_F(ExecutionProfileTest,
-           DISABLED_ON_CPU_PARALLEL(ExecuteWithExecutionProfile)) {
+XLA_TEST_F(ExecutionProfileTest, ExecuteWithExecutionProfile) {
   Shape shape = ShapeUtil::MakeShape(F32, {256, 256});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -33,9 +33,9 @@ XLA_TEST_F(ExecutionProfileTest,
       client_->TransferToServer(
           *Literal::CreateR2F32Linspace(1e0, 1e5, 256, 256)));
 
-  ComputationBuilder b(client_, TestName() + ".add");
+  XlaBuilder b(TestName() + ".add");
   b.Dot(b.Parameter(0, shape, "param_0"), b.Parameter(1, shape, "param_1"));
-  TF_ASSERT_OK_AND_ASSIGN(Computation dot_product, b.Build());
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation dot_product, b.Build());
 
   ExecutionProfile execution_profile;
   TF_ASSERT_OK_AND_ASSIGN(

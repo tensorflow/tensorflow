@@ -30,6 +30,7 @@ limitations under the License.
 #endif
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -62,8 +63,10 @@ limitations under the License.
 // brain namespace because we are defining 'extern "C"' functions.
 using tensorflow::AllocationDescription;
 using tensorflow::DataType;
+using tensorflow::ExtendSessionGraphHelper;
 using tensorflow::Graph;
 using tensorflow::GraphDef;
+using tensorflow::mutex_lock;
 using tensorflow::NameRangeMap;
 using tensorflow::NameRangesForNode;
 using tensorflow::NewSession;
@@ -72,11 +75,13 @@ using tensorflow::NodeBuilder;
 using tensorflow::NodeDef;
 using tensorflow::OpDef;
 using tensorflow::OpRegistry;
+using tensorflow::OutputTensor;
 using tensorflow::PartialTensorShape;
 using tensorflow::RunMetadata;
 using tensorflow::RunOptions;
 using tensorflow::Session;
 using tensorflow::Status;
+using tensorflow::string;
 using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
 using tensorflow::TensorId;
@@ -87,8 +92,6 @@ using tensorflow::error::Code;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::mutex_lock;
-using tensorflow::string;
 using tensorflow::strings::StrCat;
 
 extern "C" {
@@ -109,6 +112,10 @@ TF_Status* TF_NewStatus() { return new TF_Status; }
 void TF_DeleteStatus(TF_Status* s) { delete s; }
 
 void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
+  if (code == TF_OK) {
+    s->status = Status::OK();
+    return;
+  }
   s->status = Status(static_cast<Code>(code), tensorflow::StringPiece(msg));
 }
 
@@ -195,11 +202,11 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
       reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
     // TF_STRING and TF_RESOURCE tensors have a different representation in
     // TF_Tensor than they do in tensorflow::Tensor. So a copy here is a waste
-    // (any alignement requirements will be taken care of by TF_TensorToTensor
+    // (any alignment requirements will be taken care of by TF_TensorToTensor
     // and TF_TensorFromTensor).
     //
-    // Other types have the same represntation, so copy only if it is safe to do
-    // so.
+    // Other types have the same representation, so copy only if it is safe to
+    // do so.
     buf->data_ = allocate_tensor("TF_NewTensor", len);
     std::memcpy(buf->data_, data, len);
     buf->deallocator_ = deallocate_buffer;
@@ -211,7 +218,13 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     buf->deallocator_ = deallocator;
     buf->deallocator_arg_ = deallocator_arg;
   }
-  return new TF_Tensor{dtype, TensorShape(dimvec), buf};
+  TF_Tensor* ret = new TF_Tensor{dtype, TensorShape(dimvec), buf};
+  size_t elem_size = TF_DataTypeSize(dtype);
+  if (elem_size > 0 && len < (elem_size * ret->shape.num_elements())) {
+    delete ret;
+    return nullptr;
+  }
+  return ret;
 }
 
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* tensor) {
@@ -618,7 +631,22 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
         "Failed to allocate memory to serialize message of type '",
         in.GetTypeName(), "' and size ", proto_size);
   }
-  in.SerializeToArray(buf, proto_size);
+  // SerializeToArray takes size as an int.
+  // This next 'if' is a workaround till we update to depend on a version
+  // of protocol buffers that includes
+  // https://github.com/google/protobuf/pull/4739
+  if (proto_size > std::numeric_limits<int>::max()) {
+    return InvalidArgument("Cannot serialize protocol buffer of type ",
+                           in.GetTypeName(), " as the serialized size (",
+                           proto_size,
+                           "bytes) would be larger than the limit (",
+                           std::numeric_limits<int>::max(), " bytes)");
+  }
+  if (!in.SerializeToArray(buf, proto_size)) {
+    return InvalidArgument("Unable to serialize ", in.GetTypeName(),
+                           " protocol buffer, perhaps the serialized size (",
+                           proto_size, " bytes) is too large?");
+  }
   out->data = buf;
   out->length = proto_size;
   out->data_deallocator = [](void* data, size_t length) {
@@ -628,17 +656,17 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
 }
 
 void RecordMutation(TF_Graph* graph, const TF_Operation& op,
-                    const char* mutation_type)
-    EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+                    const char* mutation_type) {
   // If any session has already run this node_id, mark this session as
   // unrunnable.
   for (auto it : graph->sessions) {
+    mutex_lock session_lock(it.first->mu);
     if (it.first->last_num_graph_nodes > op.node.id()) {
-      it.second = FailedPrecondition(
+      it.second = strings::StrCat(
           "Operation '", op.node.DebugString(), "' was changed by ",
           mutation_type,
-          " after it was run by a session. Nodes can be mutated "
-          "only before they are executed by a session. Either don't modify "
+          " after it was run by a session. This mutation will have no effect, "
+          "and will trigger an error in the future. Either don't modify "
           "nodes after running them or create a new session.");
     }
   }
@@ -697,6 +725,61 @@ void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
 // Helpers for loading a TensorFlow plugin (a .so file).
 Status LoadLibrary(const char* library_filename, void** result,
                    const void** buf, size_t* len);
+
+// TODO(josh11b,mrry): Change Session to be able to use a Graph*
+// directly, instead of requiring us to serialize to a GraphDef and
+// call Session::Extend().
+bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
+  if (session->graph != nullptr) {
+    // Take the graph lock before the session lock to avoid deadlock. This is
+    // safe since session->graph does not change.
+    session->graph->mu.lock();
+    mutex_lock session_lock(session->mu);
+    const Graph& graph = session->graph->graph;
+
+    const string& mutation_warning = session->graph->sessions[session];
+    if (!mutation_warning.empty()) {
+      // TODO(b/74949947): turn this back into an error status
+      LOG(WARNING) << mutation_warning;
+      session->graph->sessions[session].clear();
+    }
+
+    const auto num_nodes = graph.num_node_ids();
+    if (session->last_num_graph_nodes < num_nodes) {
+      status->status = tensorflow::ValidateNoCycles(session->graph->graph);
+      if (!status->status.ok()) {
+        session->graph->mu.unlock();
+        return false;
+      }
+
+      GraphDef graph_def;
+      *graph_def.mutable_versions() = graph.versions();
+      // Fill graph_def with nodes with ids in the range
+      // [session->last_num_graph_nodes, num_nodes), that is the nodes
+      // added since the last TF_SessionRun() call.
+      for (auto id = session->last_num_graph_nodes; id < num_nodes; ++id) {
+        Node* const node = graph.FindNodeId(id);
+        if (node != nullptr && node->IsOp()) {
+          NodeDef* const node_def = graph_def.add_node();
+          *node_def = node->def();
+        }
+      }
+      *graph_def.mutable_library() = graph.flib_def().ToProto();
+      session->graph->mu.unlock();
+      status->status = session->session->Extend(graph_def);
+      if (!status->status.ok()) {
+        // Contract is we always delete input_values[i].
+        return false;
+      }
+      // Note: session->session is not modified if Extend() fails, so
+      // we only set last_num_graph_nodes if it succeeds.
+      session->last_num_graph_nodes = num_nodes;
+    } else {
+      session->graph->mu.unlock();
+    }
+  }
+  return true;
+}
 
 }  // namespace tensorflow
 
@@ -927,6 +1010,7 @@ int TF_DeviceListCount(const TF_DeviceList* list) {
       status->status = InvalidArgument("index out of bounds");            \
       return err_val;                                                     \
     }                                                                     \
+    status->status = Status::OK();                                        \
     return list->response[index].accessor;                                \
   }
 
@@ -1469,7 +1553,13 @@ int TF_OperationOutputConsumers(TF_Output oper_out, TF_Input* consumers,
 }
 
 int TF_OperationNumControlInputs(TF_Operation* oper) {
-  return oper->node.in_edges().size() - oper->node.num_inputs();
+  int count = 0;
+  for (const auto* edge : oper->node.in_edges()) {
+    if (edge->IsControlEdge() && !edge->src()->IsSource()) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 int TF_OperationGetControlInputs(TF_Operation* oper,
@@ -1477,7 +1567,7 @@ int TF_OperationGetControlInputs(TF_Operation* oper,
                                  int max_control_inputs) {
   int count = 0;
   for (const auto* edge : oper->node.in_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->src()->IsSource()) {
       if (count < max_control_inputs) {
         control_inputs[count] = ToOperation(edge->src());
       }
@@ -1490,7 +1580,7 @@ int TF_OperationGetControlInputs(TF_Operation* oper,
 int TF_OperationNumControlOutputs(TF_Operation* oper) {
   int count = 0;
   for (const auto* edge : oper->node.out_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->dst()->IsSink()) {
       ++count;
     }
   }
@@ -1502,7 +1592,7 @@ int TF_OperationGetControlOutputs(TF_Operation* oper,
                                   int max_control_outputs) {
   int count = 0;
   for (const auto* edge : oper->node.out_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->dst()->IsSink()) {
       if (count < max_control_outputs) {
         control_outputs[count] = ToOperation(edge->dst());
       }
@@ -2022,7 +2112,7 @@ static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
 
   for (int i = 0; i < size; ++i) {
     TensorId id = results.missing_unused_input_map_keys[i];
-    tf_results->missing_unused_key_names_data.push_back(id.first.ToString());
+    tf_results->missing_unused_key_names_data.push_back(std::string(id.first));
     tf_results->missing_unused_key_names[i] =
         tf_results->missing_unused_key_names_data.back().c_str();
     tf_results->missing_unused_key_indexes[i] = id.second;
@@ -2033,7 +2123,7 @@ TF_ImportGraphDefResults* TF_GraphImportGraphDefWithResults(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status) {
   GraphDef def;
-  if (!def.ParseFromArray(graph_def->data, graph_def->length)) {
+  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data, graph_def->length)) {
     status->status = InvalidArgument("Invalid GraphDef");
     return nullptr;
   }
@@ -2063,7 +2153,7 @@ void TF_GraphImportGraphDefWithReturnOutputs(
     return;
   }
   GraphDef def;
-  if (!def.ParseFromArray(graph_def->data, graph_def->length)) {
+  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data, graph_def->length)) {
     status->status = InvalidArgument("Invalid GraphDef");
     return;
   }
@@ -2137,7 +2227,7 @@ Status CopyGraph(Graph* src_graph, Graph* dst_graph,
     opts.return_tensors.push_back(ToTensorId(nodes_to_return[i]));
   }
 
-  // TOOD(skyewm): change to OutputTensor
+  // TODO(skyewm): change to OutputTensor
   tensorflow::ImportGraphDefResults results;
   TF_RETURN_IF_ERROR(
       ImportGraphDef(opts, gdef, dst_graph, dst_refiner, &results));
@@ -2391,11 +2481,7 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
 // TF_Session functions ----------------------------------------------
 
 TF_Session::TF_Session(tensorflow::Session* s, TF_Graph* g)
-    : session(s), graph(g), last_num_graph_nodes(0), device_mgr(nullptr) {
-  if (s->LocalDeviceManager(&device_mgr).ok()) {
-    devices = device_mgr->ListDevices();
-  }
-}
+    : session(s), graph(g), last_num_graph_nodes(0), extend_before_run(true) {}
 
 TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
                           TF_Status* status) {
@@ -2405,7 +2491,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     TF_Session* new_session = new TF_Session(session, graph);
     if (graph != nullptr) {
       mutex_lock l(graph->mu);
-      graph->sessions[new_session] = Status::OK();
+      graph->sessions[new_session] = "";
     }
     return new_session;
   } else {
@@ -2471,7 +2557,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
 
   TF_Session* session = new TF_Session(bundle.session.release(), graph);
 
-  graph->sessions[session] = Status::OK();
+  graph->sessions[session] = "";
   session->last_num_graph_nodes = graph->graph.num_node_ids();
   return session;
 #endif  // __ANDROID__
@@ -2495,58 +2581,6 @@ void TF_DeleteSession(TF_Session* s, TF_Status* status) {
   delete s;
 }
 
-// TODO(josh11b,mrry): Change Session to be able to use a Graph*
-// directly, instead of requiring us to serialize to a GraphDef and
-// call Session::Extend().
-static bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
-  if (session->graph != nullptr) {
-    mutex_lock session_lock(session->mu);
-    session->graph->mu.lock();
-    const Graph& graph = session->graph->graph;
-
-    status->status = session->graph->sessions[session];
-    if (!status->status.ok()) {
-      session->graph->mu.unlock();
-      return false;
-    }
-
-    const auto num_nodes = graph.num_node_ids();
-    if (session->last_num_graph_nodes < num_nodes) {
-      status->status = tensorflow::ValidateNoCycles(session->graph->graph);
-      if (!status->status.ok()) {
-        session->graph->mu.unlock();
-        return false;
-      }
-
-      GraphDef graph_def;
-      *graph_def.mutable_versions() = graph.versions();
-      // Fill graph_def with nodes with ids in the range
-      // [session->last_num_graph_nodes, num_nodes), that is the nodes
-      // added since the last TF_SessionRun() call.
-      for (auto id = session->last_num_graph_nodes; id < num_nodes; ++id) {
-        Node* const node = graph.FindNodeId(id);
-        if (node != nullptr && node->IsOp()) {
-          NodeDef* const node_def = graph_def.add_node();
-          *node_def = node->def();
-        }
-      }
-      *graph_def.mutable_library() = graph.flib_def().ToProto();
-      session->graph->mu.unlock();
-      status->status = session->session->Extend(graph_def);
-      if (!status->status.ok()) {
-        // Contract is we always delete input_values[i].
-        return false;
-      }
-      // Note: session->session is not modified if Extend() fails, so
-      // we only set last_num_graph_nodes if it succeeds.
-      session->last_num_graph_nodes = num_nodes;
-    } else {
-      session->graph->mu.unlock();
-    }
-  }
-  return true;
-}
-
 void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
                    const TF_Output* inputs, TF_Tensor* const* input_values,
                    int ninputs, const TF_Output* outputs,
@@ -2556,7 +2590,8 @@ void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
   // TODO(josh11b,mrry): Change Session to be able to use a Graph*
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
-  if (!ExtendSessionGraphHelper(session, status)) {
+  if (session->extend_before_run &&
+      !ExtendSessionGraphHelper(session, status)) {
     return;
   }
 
@@ -2593,7 +2628,8 @@ void TF_SessionPRunSetup(TF_Session* session, const TF_Output* inputs,
                          const char** handle, TF_Status* status) {
   *handle = nullptr;
 
-  if (!ExtendSessionGraphHelper(session, status)) {
+  if (session->extend_before_run &&
+      !ExtendSessionGraphHelper(session, status)) {
     return;
   }
 
@@ -2636,7 +2672,8 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
   // TODO(josh11b,mrry): Change Session to be able to use a Graph*
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
-  if (!ExtendSessionGraphHelper(session, status)) {
+  if (session->extend_before_run &&
+      !ExtendSessionGraphHelper(session, status)) {
     return;
   }
 
@@ -2663,6 +2700,24 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
 
   TF_Run_Helper(session->session, handle, nullptr, input_pairs, output_names,
                 output_values, target_names, nullptr, status);
+}
+
+unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
+                                     TF_Tensor** result, TF_Status* status) {
+  *result = nullptr;
+  mutex_lock l(graph->mu);
+  OutputTensor tensor(&output.oper->node, output.index);
+  bool evaluated;
+  Tensor result_tensor;
+  status->status = EvaluateConstantTensor(
+      tensor, graph->refiner, *graph->graph.op_registry(),
+      graph->graph.versions().producer(), &evaluated, &result_tensor);
+  if (evaluated) {
+    DCHECK(status->status.ok());
+    *result = TF_TensorFromTensor(result_tensor, status);
+    if (!status->status.ok()) evaluated = false;
+  }
+  return evaluated;
 }
 
 TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {

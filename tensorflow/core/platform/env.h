@@ -214,6 +214,9 @@ class Env {
   /// replaced.
   Status RenameFile(const string& src, const string& target);
 
+  /// \brief Copy the src to target.
+  Status CopyFile(const string& src, const string& target);
+
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.
   string GetExecutablePath();
@@ -286,12 +289,12 @@ class Env {
   // "version" should be the version of the library or NULL
   // returns the name that LoadLibrary() can use
   virtual string FormatLibraryFileName(const string& name,
-      const string& version) = 0;
+                                       const string& version) = 0;
+
+  // Returns a possible list of local temporary directories.
+  virtual void GetLocalTempDirectories(std::vector<string>* list) = 0;
 
  private:
-  // Returns a possible list of local temporary directories.
-  void GetLocalTempDirectories(std::vector<string>* list);
-
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
   TF_DISALLOW_COPY_AND_ASSIGN(Env);
   EnvTime* envTime = EnvTime::Default();
@@ -353,7 +356,12 @@ class EnvWrapper : public Env {
                                const string& version) override {
     return target_->FormatLibraryFileName(name, version);
   }
+
  private:
+  void GetLocalTempDirectories(std::vector<string>* list) override {
+    target_->GetLocalTempDirectories(list);
+  }
+
   Env* target_;
 };
 
@@ -379,6 +387,11 @@ struct ThreadOptions {
   /// Guard area size to use near thread stacks to use (in bytes)
   size_t guard_size = 0;  // 0: use system default value
 };
+
+/// A utility routine: copy contents of `src` in file system `src_fs`
+/// to `target` in file system `target_fs`.
+Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
+                          FileSystem* target_fs, const string& target);
 
 /// A utility routine: reads contents of named file into `*data`
 Status ReadFileToString(Env* env, const string& fname, string* data);

@@ -31,7 +31,6 @@ from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import run_config
-from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.canned import linear
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.export import export
@@ -48,13 +47,13 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import optimizer as optimizer_lib
@@ -683,7 +682,7 @@ class BaseLinearRegressorTrainingTest(object):
       self.assertEquals(0, loss.shape.ndims)
       if expected_loss is None:
         if global_step is not None:
-          return state_ops.assign_add(global_step, 1).op
+          return distribute_lib.increment_var(global_step)
         return control_flow_ops.no_op()
       assert_loss = assert_close(
           math_ops.to_float(expected_loss, name='expected'),
@@ -691,7 +690,7 @@ class BaseLinearRegressorTrainingTest(object):
           name='assert_loss')
       with ops.control_dependencies((assert_loss,)):
         if global_step is not None:
-          return state_ops.assign_add(global_step, 1).op
+          return distribute_lib.increment_var(global_step)
         return control_flow_ops.no_op()
 
     mock_optimizer = test.mock.NonCallableMock(
@@ -906,13 +905,13 @@ class BaseLinearClassifierTrainingTest(object):
       # Verify loss. We can't check the value directly, so we add an assert op.
       self.assertEquals(0, loss.shape.ndims)
       if expected_loss is None:
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
       assert_loss = assert_close(
           math_ops.to_float(expected_loss, name='expected'),
           loss,
           name='assert_loss')
       with ops.control_dependencies((assert_loss,)):
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
 
     mock_optimizer = test.mock.NonCallableMock(
         spec=optimizer_lib.Optimizer,
@@ -1338,6 +1337,8 @@ class BaseLinearClassifierEvaluationTest(object):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: 41.,
           metric_keys.MetricKeys.ACCURACY: 0.,
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: 0.,
           metric_keys.MetricKeys.LABEL_MEAN: 1.,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 1,
@@ -1407,6 +1408,8 @@ class BaseLinearClassifierEvaluationTest(object):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
           metric_keys.MetricKeys.ACCURACY: 0.,
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: 0.5,
           metric_keys.MetricKeys.LABEL_MEAN: 0.5,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
@@ -1488,6 +1491,8 @@ class BaseLinearClassifierEvaluationTest(object):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: loss_mean,
           metric_keys.MetricKeys.ACCURACY: 0.,
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: predictions_mean,
           metric_keys.MetricKeys.LABEL_MEAN: label_mean,
           metric_keys.MetricKeys.ACCURACY_BASELINE: (
@@ -1855,7 +1860,7 @@ class BaseLinearLogitFnTest(object):
           units=3,
           cols_to_vars=cols_to_vars)
       cols_to_vars.pop('bias')
-      fraction_zero = linear._compute_fraction_of_zero(cols_to_vars, 3)
+      fraction_zero = linear._compute_fraction_of_zero(cols_to_vars)
       age_var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                    'linear_model/age')[0]
       with tf_session.Session() as sess:
@@ -1968,7 +1973,7 @@ class BaseLinearWarmStartingTest(object):
         optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
         # The provided regular expression will only warm-start the age variable
         # and not the bias.
-        warm_start_from=warm_starting_util.WarmStartSettings(
+        warm_start_from=estimator.WarmStartSettings(
             ckpt_to_initialize_from=linear_classifier.model_dir,
             vars_to_warm_start='.*(age).*'))
 
@@ -2003,7 +2008,7 @@ class BaseLinearWarmStartingTest(object):
 
     # Create a second LinearClassifier, warm-started from the first.  Use a
     # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
-    # accumulator values that change).  Use a a new FeatureColumn with a
+    # accumulator values that change).  Use a new FeatureColumn with a
     # different vocabulary for occupation.
     new_vocab_list = ['doctor', 'consultant', 'engineer']
     new_vocab_file = os.path.join(self._ckpt_and_vocab_dir,
@@ -2016,7 +2021,7 @@ class BaseLinearWarmStartingTest(object):
         vocabulary_size=len(new_vocab_list))
     # We can create our VocabInfo object from the new and old occupation
     # FeatureColumn's.
-    occupation_vocab_info = warm_starting_util.VocabInfo(
+    occupation_vocab_info = estimator.VocabInfo(
         new_vocab=new_occupation.vocabulary_file,
         new_vocab_size=new_occupation.vocabulary_size,
         num_oov_buckets=new_occupation.num_oov_buckets,
@@ -2030,7 +2035,7 @@ class BaseLinearWarmStartingTest(object):
         feature_columns=[occupation],
         n_classes=4,
         optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
-        warm_start_from=warm_starting_util.WarmStartSettings(
+        warm_start_from=estimator.WarmStartSettings(
             ckpt_to_initialize_from=linear_classifier.model_dir,
             var_name_to_vocab_info={
                 OCCUPATION_WEIGHT_NAME: occupation_vocab_info
@@ -2082,7 +2087,7 @@ class BaseLinearWarmStartingTest(object):
         optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
         # The 'age' variable correspond to the 'age_in_years' variable in the
         # previous model.
-        warm_start_from=warm_starting_util.WarmStartSettings(
+        warm_start_from=estimator.WarmStartSettings(
             ckpt_to_initialize_from=linear_classifier.model_dir,
             var_name_to_prev_var_name={
                 AGE_WEIGHT_NAME: AGE_WEIGHT_NAME.replace('age', 'age_in_years')

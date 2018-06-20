@@ -77,6 +77,13 @@ bool ResolveConstantStack::Run(Model* model, std::size_t op_index) {
     }
   }
 
+  int axis = op->axis;
+  if (axis < 0) {
+    // Handle negative axis
+    axis += model->GetArray(op->inputs[0]).shape().dims().size();
+  }
+  CHECK_EQ(axis, 0) << "Stacking only supported along 0th axis";
+
   CHECK(!output_array.buffer);
   switch (output_array.data_type) {
     case ArrayDataType::kFloat:
@@ -99,10 +106,7 @@ bool ResolveConstantStack::Run(Model* model, std::size_t op_index) {
 
   // Erase input arrays if no longer used
   for (const auto& input : op->inputs) {
-    if (IsDiscardableArray(*model, input) &&
-        CountOpsWithInput(*model, input) == 1) {
-      model->arrays.erase(input);
-    }
+    toco::DeleteArrayIfUsedOnce(input, model);
   }
 
   // Erase the operator

@@ -20,9 +20,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void BatchToSpace(XlaOpKernelContext* ctx,
-                  const xla::ComputationDataHandle& input, DataType input_dtype,
-                  const TensorShape& input_tensor_shape,
+void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
+                  DataType input_dtype, const TensorShape& input_tensor_shape,
                   gtl::ArraySlice<int64> block_shape,
                   const xla::Literal& crops) {
   const int input_rank = input_tensor_shape.dims();
@@ -46,7 +45,7 @@ void BatchToSpace(XlaOpKernelContext* ctx,
                               ", 2] instead of ",
                               xla::ShapeUtil::HumanString(crops.shape())));
 
-  xla::ComputationBuilder* b = ctx->builder();
+  xla::XlaBuilder* b = ctx->builder();
   const int64 batch_size = input_shape[0];
 
   // Compute the product of the block_shape values.
@@ -73,7 +72,7 @@ void BatchToSpace(XlaOpKernelContext* ctx,
   reshaped_shape[block_rank] = batch_size / block_num_elems;
   std::copy(input_shape.begin() + 1, input_shape.end(),
             reshaped_shape.begin() + block_rank + 1);
-  xla::ComputationDataHandle reshaped = b->Reshape(input, reshaped_shape);
+  xla::XlaOp reshaped = b->Reshape(input, reshaped_shape);
 
   // 2. Permute dimensions of `reshaped` to produce `permuted` of shape
   //      [batch / prod(block_shape),
@@ -91,7 +90,7 @@ void BatchToSpace(XlaOpKernelContext* ctx,
   }
   std::iota(permutation.begin() + 1 + block_rank * 2, permutation.end(),
             1 + block_rank * 2);
-  xla::ComputationDataHandle permuted = b->Transpose(reshaped, permutation);
+  xla::XlaOp permuted = b->Transpose(reshaped, permutation);
 
   // 3. Reshape `permuted` to produce `reshaped_permuted` of shape
   //      [batch / prod(block_shape),
@@ -111,8 +110,7 @@ void BatchToSpace(XlaOpKernelContext* ctx,
   std::copy(remainder_shape.begin(), remainder_shape.end(),
             reshaped_permuted_shape.begin() + 1 + block_rank);
 
-  xla::ComputationDataHandle reshaped_permuted =
-      b->Reshape(permuted, reshaped_permuted_shape);
+  xla::XlaOp reshaped_permuted = b->Reshape(permuted, reshaped_permuted_shape);
 
   // 4. Crop the start and end of dimensions `[1, ..., M]` of
   //    `reshaped_permuted` according to `crops` to produce the output of shape:
@@ -139,7 +137,7 @@ void BatchToSpace(XlaOpKernelContext* ctx,
             "Cropped size must be non-negative: start: ", crop_start,
             " end: ", crop_end, " size ", reshaped_permuted_shape[1 + i]));
   }
-  xla::ComputationDataHandle output =
+  xla::XlaOp output =
       b->Slice(reshaped_permuted, start_indices, end_indices, strides);
   ctx->SetOutput(0, output);
 }
@@ -159,7 +157,9 @@ class BatchToSpaceNDOp : public XlaOpKernel {
                  block_shape, crops);
   }
 };
-REGISTER_XLA_OP(Name("BatchToSpaceND").CompileTimeConstInput("crops"),
+REGISTER_XLA_OP(Name("BatchToSpaceND")
+                    .CompileTimeConstInput("block_shape")
+                    .CompileTimeConstInput("crops"),
                 BatchToSpaceNDOp);
 
 class BatchToSpaceOp : public XlaOpKernel {
@@ -182,9 +182,7 @@ class BatchToSpaceOp : public XlaOpKernel {
  private:
   int block_size_;
 };
-REGISTER_XLA_OP(Name("BatchToSpace")
-                    .CompileTimeConstInput("crops")
-                    .CompileTimeConstInput("block_shape"),
+REGISTER_XLA_OP(Name("BatchToSpace").CompileTimeConstInput("crops"),
                 BatchToSpaceOp);
 
 }  // namespace
