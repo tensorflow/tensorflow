@@ -279,37 +279,42 @@ void ComputeComputationPostOrder(
   }
 }
 
+enum State { kVisiting, kVisited };
+
 void ComputeInstructionPostOrder(
     std::vector<HloInstruction*>* post_order, HloInstruction* root,
-    tensorflow::gtl::FlatSet<HloInstruction*>* visited) {
-  std::vector<std::pair<HloInstruction*, bool>> dfs_stack;
-  dfs_stack.emplace_back(root, false);
+    tensorflow::gtl::FlatMap<HloInstruction*, State>* visited) {
+  std::vector<HloInstruction*> dfs_stack;
+  dfs_stack.push_back(root);
   while (!dfs_stack.empty()) {
     const auto current = dfs_stack.back();
-    if (current.second) {
-      dfs_stack.pop_back();
-      if (!visited->insert(current.first).second) {
-        continue;
-      }
-      post_order->push_back(current.first);
-    } else {
-      if (visited->count(current.first)) {
+    auto it = visited->find(current);
+    if (it != visited->end()) {
+      if (it->second == kVisited) {
+        // Already visited.
         dfs_stack.pop_back();
         continue;
       }
-      dfs_stack.back().second = true;
+      // Visit this node.
+      CHECK_EQ(kVisiting, it->second);
+      dfs_stack.pop_back();
+      post_order->push_back(current);
+      it->second = kVisited;
+      continue;
+    }
 
-      // Add the operands to the stack in reverse order so the first operand is
-      // processed first. This will produce a more natural ordering and a nicer
-      // result for thigns like HLO stringification.
-      const auto& operands = current.first->operands();
-      for (int64 i = operands.size() - 1; i >= 0; --i) {
-        dfs_stack.emplace_back(operands[i], false);
-      }
+    visited->insert({current, kVisiting});
 
-      for (HloInstruction* op : current.first->control_predecessors()) {
-        dfs_stack.emplace_back(op, false);
-      }
+    // Add the operands to the stack in reverse order so the first operand is
+    // processed first. This will produce a more natural ordering and a nicer
+    // result for thigns like HLO stringification.
+    const auto& operands = current->operands();
+    for (int64 i = operands.size() - 1; i >= 0; --i) {
+      dfs_stack.emplace_back(operands[i]);
+    }
+
+    for (HloInstruction* op : current->control_predecessors()) {
+      dfs_stack.emplace_back(op);
     }
   }
 }
@@ -320,7 +325,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
   std::vector<HloInstruction*> trace_instructions;
-  tensorflow::gtl::FlatSet<HloInstruction*> added_instructions;
+  tensorflow::gtl::FlatMap<HloInstruction*, State> visited;
   for (auto& instruction : instructions_) {
     if (instruction->opcode() == HloOpcode::kTrace) {
       // Trace instructions aren't handled by the DFS visitor. Add trace
@@ -328,8 +333,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
       // users).
       trace_instructions.push_back(instruction.get());
     } else if (instruction->users().empty()) {
-      ComputeInstructionPostOrder(&post_order, instruction.get(),
-                                  &added_instructions);
+      ComputeInstructionPostOrder(&post_order, instruction.get(), &visited);
     }
   }
   post_order.insert(post_order.end(), trace_instructions.begin(),

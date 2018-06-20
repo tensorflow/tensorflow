@@ -417,6 +417,9 @@ TEST_F(HloComputationTest, CycleDetection) {
   // Add a control dependency to create a cycle.
   ASSERT_IS_OK(add->AddControlDependencyTo(negate));
 
+  auto instructions = computation->MakeInstructionPostOrder();
+  EXPECT_EQ(3, instructions.size());
+
   const auto visitor = [](HloInstruction* instruction) { return Status::OK(); };
   auto visit_status = computation->Accept(visitor);
   ASSERT_FALSE(visit_status.ok());

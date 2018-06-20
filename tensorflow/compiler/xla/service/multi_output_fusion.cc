@@ -28,7 +28,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
 
   for (auto* computation : module->MakeNonfusionComputations()) {
     computation_ = computation;
-    reachability_ = computation_->ComputeReachability();
+    RecomputeReachability();
     candidates_.clear();
     candidates_index_.clear();
     all_fusion_candidates_.clear();
@@ -277,6 +277,10 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   return true;
 }
 
+void MultiOutputFusion::RecomputeReachability() {
+  reachability_ = computation_->ComputeReachability();
+}
+
 void MultiOutputFusion::UpdateReachability(
     HloInstruction* instr1, HloInstruction* instr2,
     tensorflow::gtl::ArraySlice<HloInstruction*> instrs_to_update,
@@ -345,14 +349,11 @@ bool MultiOutputFusion::Perform() {
       --fuel_;
     }
   }
-  if (DoProducerConsumerMultiOutputFusion(computation_)) {
+  if (DoProducerConsumerMultiOutputFusion()) {
     changed = true;
   }
   return changed;
 }
 
-bool MultiOutputFusion::DoProducerConsumerMultiOutputFusion(
-    HloComputation* /*computation*/) {
-  return false;
-}
+bool MultiOutputFusion::DoProducerConsumerMultiOutputFusion() { return false; }
 }  // namespace xla
