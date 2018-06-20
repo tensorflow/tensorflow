@@ -433,7 +433,7 @@ class Converter {
   OpConverter plugin_converter_;
   nvinfer1::INetworkDefinition* trt_network_;
   std::list<std::vector<uint8_t>> temp_bufs_;
-  tensorflow::tensorrt::TRTWeightStore* weight_store_;
+  TRTWeightStore* weight_store_;
   bool fp16_;
   void register_op_converters();
   tensorflow::Status get_inputs(const tensorflow::NodeDef& node_def,
@@ -475,11 +475,11 @@ class Converter {
 
  public:
   explicit Converter(nvinfer1::INetworkDefinition* trt_network,
-                     tensorflow::tensorrt::TRTWeightStore* ws, bool fp16)
+                     TRTWeightStore* ws, bool fp16)
       : trt_network_(trt_network), weight_store_(ws), fp16_(fp16) {
     this->register_op_converters();
   }
-  tensorflow::tensorrt::TRTWeightStore* weight_store() { return weight_store_; }
+  TRTWeightStore* weight_store() { return weight_store_; }
   TRT_ShapedWeights get_temp_weights(tensorflow::DataType type,
                                      nvinfer1::Dims shape) {
     TRT_ShapedWeights weights(type, nullptr, shape);
@@ -2130,21 +2130,44 @@ void Converter::register_op_converters() {
 }  // namespace
 
 tensorflow::Status ConvertGraphDefToEngine(
-    const tensorflow::GraphDef& gdef, int precision_mode,
+    const tensorflow::GraphDef& gdef,
+    int precision_mode,
+    int max_batch_size,
+    size_t max_workspace_size_bytes,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
-    nvinfer1::IBuilder* builder,
+    Logger* logger,
+    nvinfer1::IGpuAllocator* allocator,
+    TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
     bool* convert_successfully) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
+
+  // Create the builder.
+  TrtUniquePtrType<nvinfer1::IBuilder> builder(
+      nvinfer1::createInferBuilder(*logger));
+  builder->setMaxBatchSize(max_batch_size);
+  // TODO(aaroey): use the allocator to allocate the TRT workspace.
+  builder->setMaxWorkspaceSize(max_workspace_size_bytes);
+#if NV_TENSORRT_MAJOR > 3
+  builder->setGpuAllocator(allocator);
+#endif
+  if (precision_mode == FP16MODE) {
+    builder->setHalf2Mode(true);
+  } else if (precision_mode == INT8MODE) {
+    builder->setInt8Mode(true);
+    builder->setInt8Calibrator(calibrator);
+  }
+
+  // Create the network.
   auto trt_network =
       TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetwork());
   if (!trt_network) {
     return tensorflow::errors::Internal(
         "Failed to create TensorRT network object");
   }
-  auto ws = std::unique_ptr<tensorflow::tensorrt::TRTWeightStore>(
-      new TRTWeightStore());
+  auto ws = std::unique_ptr<TRTWeightStore>(new TRTWeightStore());
+
   // Build the network
   VLOG(1) << "Starting engine conversion ";
   Converter converter(trt_network.get(), ws.get(), precision_mode == FP16MODE);

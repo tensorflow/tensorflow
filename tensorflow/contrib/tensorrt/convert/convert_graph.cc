@@ -424,31 +424,25 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
   string segment_string;
   if (info.engine_type == EngineInfo::EngineType::TRTStatic ||
       info.precision_mode == INT8MODE) {
-    // Create static engine and for int8 test validity of the engine. We can not
-    // allow engine to fail at the calibration time. So we are constructing a
-    // FP32 engine here to check its validity. If it is a valid engine then we
-    // put the serialized graphdef to the op. Otherwise we skip node creation
-    // for this engine.
+    // Create static engine for fp32/fp16 mode, and test validity of the engine
+    // for int8 mode. We don't want engine to fail at the calibration time.
+    // So we are constructing a FP32 engine here to check its validity, and if
+    // it is a valid engine then we put the serialized graphdef to the op.
+    // Otherwise we skip node creation for this engine.
     Logger trt_logger;
-    TrtUniquePtrType<nvinfer1::IBuilder> builder(
-        nvinfer1::createInferBuilder(trt_logger));
-    builder->setMaxBatchSize(max_batch_size);
-    if (info.precision_mode == FP16MODE) builder->setHalf2Mode(true);
-    builder->setMaxWorkspaceSize(info.max_workspace_size_bytes);
-#if NV_TENSORRT_MAJOR > 3
-    builder->setGpuAllocator(alloc);
-#endif
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
-        info.segment_graph_def, info.precision_mode, shapes, builder.get(),
-        &engine, /*convert_successfully=*/nullptr));
+        info.segment_graph_def,
+        info.precision_mode == INT8MODE ? FP32MODE : info.precision_mode,
+        max_batch_size, info.max_workspace_size_bytes, shapes, &trt_logger,
+        alloc, /*calibrator=*/nullptr, &engine,
+        /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string =
         string((const char*)engine_data->data(), engine_data->size());
     if (info.precision_mode == INT8MODE) {
-      // See above comment on the reason why not putting this inside the 'else'
-      // branch.
+      // See above comment about why not putting this inside the 'else' branch.
       segment_string = info.segment_graph_def.SerializeAsString();
     }
   } else {

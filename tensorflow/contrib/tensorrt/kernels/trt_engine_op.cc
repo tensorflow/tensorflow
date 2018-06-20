@@ -36,7 +36,6 @@ namespace tensorflow {
 namespace tensorrt {
 static Logger logger;
 using ::nvinfer1::IRuntime;
-using ::nvinfer1::Dims;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
@@ -441,6 +440,7 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
 #if NV_TENSORRT_MAJOR > 3
     auto allocator = GetAllocator(ctx);
     if (allocator == nullptr) {
+      // GetAllocator already set the Status.
       return null_pair;
     };
     infer->setGpuAllocator(allocator);
@@ -464,39 +464,27 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
   auto engine_it = engine_map_.find(batch_size);
   if (engine_it == engine_map_.end() &&
       engine_map_.size() < (size_t)max_cached_engines_) {
-    TrtUniquePtrType<nvinfer1::IBuilder> builder(
-        nvinfer1::createInferBuilder(logger));
+    nvinfer1::IGpuAllocator* allocator = nullptr;
 #if NV_TENSORRT_MAJOR > 3
-    auto allocator = GetAllocator(ctx);
+    allocator = GetAllocator(ctx);
     if (allocator == nullptr) {
       // GetAllocator already set the Status.
       return null_pair;
     }
-    builder->setGpuAllocator(allocator);
 #endif
-    VLOG(0) << name() << " Constructing a new engine with batch size "
-            << batch_size;
-    builder->setMaxBatchSize(batch_size);
-    if (precision_mode_ == convert::FP16MODE) {
-      builder->setHalf2Mode(true);
-    } else if (precision_mode_ == convert::INT8MODE) {
-      builder->setInt8Mode(true);
-      // Up to this point, calibrator_ can never be empty, since otherwise it
-      // means calibration_mode_ is true and this path won't get executed.
-      builder->setInt8Calibrator(calibrator_.get());
-    }
-    // TODO(aaroey): use the allocator to allocate the TRT workspace.
-    builder->setMaxWorkspaceSize(workspace_size_);
     std::vector<tensorflow::PartialTensorShape> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       shapes.emplace_back(ctx->input(i).shape());
     }
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
-    VLOG(1) << "Calling conversion for " << batch_size << " " << name();
+    VLOG(0) << name() << " Constructing a new engine with batch size "
+            << batch_size;
+    // Up to this point, calibrator_ can never be empty, since otherwise it
+    // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
-        segment_graph_, precision_mode_, shapes, builder.get(), &engine,
-        &convert_successfully);
+        segment_graph_, precision_mode_, batch_size, workspace_size_, shapes,
+        &logger, allocator, calibrator_.get(), &engine, &convert_successfully);
     if (!status.ok()) {
       if (convert_successfully) {
         // This means it fail to build the engine even when the network is built
@@ -522,9 +510,7 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
     TRTCalibrationResource** cr) {
   auto cres = new TRTCalibrationResource();
   *cr = cres;
-  cres->logger_ = new Logger();
-
-#if NV_TENSORRT_MAJOR > 3
+  // Get the allocator.
   auto alloc = ctx->device()->GetAllocator(tensorflow::AllocatorAttributes());
   if (!alloc) {
     LOG(WARNING) << "Can't get device allocator will not be able to "
@@ -533,11 +519,10 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
   } else {
     cres->allocator_.reset(new TRTDeviceAllocator(alloc));
   }
-#endif
-  int batch_size = ctx->input(0).dim_size(0);
+  // Get the input shapes.
+  const int batch_size = ctx->input(0).dim_size(0);
+  const int num_inputs = ctx->num_inputs();
   std::vector<tensorflow::PartialTensorShape> shapes;
-  int num_inputs = ctx->num_inputs();
-  // first run instantiate calibrator
   dev_tensors_.resize(num_inputs);
   VLOG(1) << " Constructing calibrator";
   for (int i = 0; i < num_inputs; i++) {
@@ -557,51 +542,45 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
         StrCat(kInputPHName, i),
         std::pair<void*, size_t>(device_address, device_tensor->TotalBytes()));
   }
-  cres->calibrator_ =
-      new TRTInt8Calibrator(device_buffers_, batch_size, name());
-  string label(name());
+  cres->calibrator_.reset(
+      new TRTInt8Calibrator(device_buffers_, batch_size, name()));
+  const string label(name());
   auto segment_graph = &segment_graph_;
-  int cuda_device = ctx->device()->tensorflow_gpu_device_info()->gpu_id;
-  if (cuda_device < 0) {
+  const int cuda_gpu_id = ctx->device()->tensorflow_gpu_device_info()->gpu_id;
+  if (cuda_gpu_id < 0) {
     LOG(ERROR) << "Can't get gpu_device_info from context->device()";
     return tensorflow::errors::InvalidArgument(
         "Context->device doesn't contain device info!");
   }
-  int workspace_size = workspace_size_;
-  cres->thr_ = new std::thread([cres, label, segment_graph, shapes, cuda_device,
-                                batch_size, workspace_size]() {
-    VLOG(0) << "Starting calibration thread on device " << cuda_device
+  const int64 workspace_size_bytes = workspace_size_;
+  cres->thr_.reset(new std::thread([cres, label, segment_graph, shapes,
+                                    cuda_gpu_id, workspace_size_bytes]() {
+    VLOG(0) << "Starting calibration thread on device " << cuda_gpu_id
             << ", Calibration Resource @ " << cres;
-    auto err = cudaSetDevice(cuda_device);
+    auto err = cudaSetDevice(cuda_gpu_id);
     if (err != cudaSuccess) {
-      VLOG(0) << "Couldn't set cuda device to " << cuda_device
-              << " in calibration thread";
+      // TODO(aaroey): should return error here.
+      LOG(ERROR) << "Couldn't set cuda device to " << cuda_gpu_id
+                 << " in calibration thread";
     }
-    // initialize builder here
-    cres->builder_.reset(nvinfer1::createInferBuilder(*(cres->logger_)));
-    // TODO(aaroey): maybe setting the max batch size using the python
-    // calibration wrapper class.
-    cres->builder_->setMaxBatchSize(batch_size);
-#if NV_TENSORRT_MAJOR > 3
-    cres->builder_->setGpuAllocator(cres->allocator_.get());
-#endif
-    cres->builder_->setInt8Mode(true);
-    cres->builder_->setMaxWorkspaceSize(workspace_size);
-    cres->builder_->setInt8Calibrator(cres->calibrator_);
     // ConvertGraphDefToEngine() will try to build the engine. This thread
     // will loop inside buildCudaEngine() consuming the calibration data
     // that is set by the TF op, and drive the builder until calibrator returns
     // false. Engine is discarded after calibration table is generated
+    //
+    // TODO(aaroey): maybe setting the max batch size using the python
+    // calibration wrapper class.
     auto s = convert::ConvertGraphDefToEngine(
-        *segment_graph, convert::INT8MODE, shapes, cres->builder_.get(),
-        &cres->engine_, /*convert_successfully=*/nullptr);
+        *segment_graph, convert::INT8MODE, cres->calibrator_->getBatchSize(),
+        workspace_size_bytes, shapes, &cres->logger_, cres->allocator_.get(),
+        cres->calibrator_.get(), &cres->engine_,
+        /*convert_successfully=*/nullptr);
     if (!s.ok()) {
-      LOG(ERROR)
-          << "Calibration failed. Engine will not be calibrated! Error is" << s;
-      cres->calibrator_->setDone();  // ignore further pushes
+      LOG(ERROR) << "Calibration failed: " << s;
+      cres->calibrator_->setDone();  // Ignore further pushes
     }
     VLOG(1) << "Calibration loop terminated " << label;
-  });
+  }));
   VLOG(1) << "initialized calibrator resource";
   return tensorflow::Status::OK();
 }
