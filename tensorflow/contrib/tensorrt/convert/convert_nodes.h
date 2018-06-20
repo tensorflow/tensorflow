@@ -103,7 +103,7 @@ struct EngineInfo {
 //   topological order.
 // - segment_def: the output GraphDef, whose non-input/output nodedefs will be
 //   sorted in topological order.
-tensorflow::Status ConvertSegmentToSubGraphDef(
+tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
     const std::vector<int>& subgraph_node_ids,
