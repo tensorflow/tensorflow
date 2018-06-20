@@ -771,6 +771,22 @@ class FunctionTest(test.TestCase):
 
     self.assertAllEqual(f(x=constant_op.constant(1.0)), 2.0)
 
+  def testDecoratingInstanceMethod(self):
+
+    class Foo(object):
+
+      def one(self, tensor):
+        return tensor
+
+      @function.defun
+      def two(self, tensor):
+        return self.one(tensor)
+
+    foo = Foo()
+    t = constant_op.constant(1.0)
+    out = foo.two(t)
+    self.assertEqual(float(out), 1.0)
+
 
 @test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):

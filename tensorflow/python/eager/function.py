@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 
 import numpy as np
 
@@ -743,6 +744,24 @@ class _PolymorphicFunction(object):
     self._compiled = compiled
     self._arguments_to_functions = {}
     self._variables = []
+
+  def __get__(self, instance, owner):
+    """Makes it possible to defun instance methods."""
+    del owner
+    # `instance` here is the instance that this `_PolymorphicFunction` was
+    # accessed through; e.g., for
+    #
+    #   class Foo(object):
+    #
+    #     @function.defun
+    #     def bar(self):
+    #       ...
+    #
+    #   foo = Foo()
+    #   foo.bar()  # `foo.bar` is a `_PolymorphicFunction` instance
+    #
+    # then `instance` will be `foo` (and `owner` will be `Foo`).
+    return functools.partial(self.__call__, instance)
 
   def _maybe_define_function(self, *args, **kwds):
     """Gets a function for these inputs, defining it if necessary.
