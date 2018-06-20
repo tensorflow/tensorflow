@@ -64,6 +64,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/autograph/operators:operators",
     "//tensorflow/contrib/autograph/pyct:pyct",
     "//tensorflow/contrib/autograph/pyct/static_analysis:static_analysis",
+    "//tensorflow/contrib/autograph/pyct/common_transformers:common_transformers",
     "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
     "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
