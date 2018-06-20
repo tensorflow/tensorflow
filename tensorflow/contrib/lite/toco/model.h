@@ -96,38 +96,38 @@ enum class OperatorType : uint8 {
   // Special operators used for importing TensorFlow nodes.
   // The general intent is to have some graph transformation either
   // drop them or rewrite them as general-purpose operators.
-  kTensorFlowAll,
-  kTensorFlowAssert,
-  kTensorFlowConcat,
-  kTensorFlowConcatV2,
-  kTensorFlowGreater,
-  kTensorFlowGreaterEqual,
-  kTensorFlowIdentity,
-  kTensorFlowLess,
-  kTensorFlowLessEqual,
-  kTensorFlowMax,
-  kTensorFlowMaximum,
-  kTensorFlowMin,
-  kTensorFlowMinimum,
-  kTensorFlowMatMul,
-  kTensorFlowMerge,
+  kAll,
+  kAssert,
+  kConcat,
+  kConcatV2,
+  kGreater,
+  kGreaterEqual,
+  kIdentity,
+  kLess,
+  kLessEqual,
+  kMax,      //  Reduction Max
+  kMaximum,  //  Element-wise Maximum
+  kMin,      //  Reduction Min
+  kMinimum,  //  Element-wise Minimum
+  kMatMul,
+  kMerge,
   kNeg,
-  kTensorFlowReshape,
-  kTensorFlowRsqrt,
-  kTensorFlowShape,
-  kTensorFlowSplit,
-  kTensorFlowSqrt,
-  kTensorFlowSquare,
-  kTensorFlowSum,
-  kTensorFlowSwitch,
-  kTensorFlowTile,
+  kReshape,
+  kRsqrt,
+  kShape,
+  kSplit,
+  kSqrt,
+  kSquare,
+  kSum,
+  kSwitch,
+  kTile,
   kTranspose,
   kTopK_V2,
   kDynamicPartition,
   kDynamicStitch,
   // An unsupported TF operation. It's only needed to be able to represent TF
   // graph internally and is expected to be dropped by graph transformations.
-  kTensorFlowUnsupported,
+  kUnsupported,
   // Finally, TensorFlow uses different conventions for axes ordering,
   // see AxesOrder, and this cannot always be resolved at the time of importing
   // nodes, as TensorFlow parameters may be constant-expression subgraphs
@@ -136,8 +136,8 @@ enum class OperatorType : uint8 {
   kReorderAxes,
   kSelect,
   kSparseToDense,
-  kTensorFlowEqual,
-  kTensorFlowNotEqual,
+  kEqual,
+  kNotEqual,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -801,7 +801,7 @@ struct DivOperator : Operator {
 //
 // TensorFlow equivalent: Identity
 struct TensorFlowIdentityOperator : Operator {
-  TensorFlowIdentityOperator() : Operator(OperatorType::kTensorFlowIdentity) {}
+  TensorFlowIdentityOperator() : Operator(OperatorType::kIdentity) {}
 };
 
 // Batch matrix multiplication operator. This comes from the (deprecated)
@@ -827,7 +827,7 @@ struct BatchMatMulOperator : Operator {
 //
 // TensorFlow equivalent: MatMul
 struct TensorFlowMatMulOperator : Operator {
-  TensorFlowMatMulOperator() : Operator(OperatorType::kTensorFlowMatMul) {}
+  TensorFlowMatMulOperator() : Operator(OperatorType::kMatMul) {}
 };
 
 // Padding operator. Pads a tensor with zeros.
@@ -961,7 +961,7 @@ struct StridedSliceOperator : Operator {
 // TensorFlow equivalent: Reshape --- except that we only support a special case
 // here, where the output shape is a matrix (2D) shape.
 struct TensorFlowReshapeOperator : Operator {
-  TensorFlowReshapeOperator() : Operator(OperatorType::kTensorFlowReshape) {}
+  TensorFlowReshapeOperator() : Operator(OperatorType::kReshape) {}
   std::vector<int> shape;
 };
 
@@ -1131,7 +1131,7 @@ struct SelectOperator : Operator {
 //
 // TensorFlow equivalent: Rsqrt
 struct TensorFlowRsqrtOperator : Operator {
-  TensorFlowRsqrtOperator() : Operator(OperatorType::kTensorFlowRsqrt) {}
+  TensorFlowRsqrtOperator() : Operator(OperatorType::kRsqrt) {}
 };
 
 // Stacks a list of rank-R tensors into one rank-(R+1) tensor.
@@ -1159,7 +1159,7 @@ struct StackOperator : Operator {
 //
 // TensorFlow equivalent: Shape.
 struct TensorFlowShapeOperator : Operator {
-  TensorFlowShapeOperator() : Operator(OperatorType::kTensorFlowShape) {}
+  TensorFlowShapeOperator() : Operator(OperatorType::kShape) {}
   ArrayDataType output_data_type = ArrayDataType::kInt32;
 };
 
@@ -1170,7 +1170,7 @@ struct TensorFlowShapeOperator : Operator {
 //
 // TensorFlow equivalent: Sqrt
 struct TensorFlowSqrtOperator : Operator {
-  TensorFlowSqrtOperator() : Operator(OperatorType::kTensorFlowSqrt) {}
+  TensorFlowSqrtOperator() : Operator(OperatorType::kSqrt) {}
 };
 
 // Element-wise square (x*x) operator.
@@ -1180,7 +1180,7 @@ struct TensorFlowSqrtOperator : Operator {
 //
 // TensorFlow equivalent: Square
 struct TensorFlowSquareOperator : Operator {
-  TensorFlowSquareOperator() : Operator(OperatorType::kTensorFlowSquare) {}
+  TensorFlowSquareOperator() : Operator(OperatorType::kSquare) {}
 };
 
 // Transposes a tensor.
@@ -1215,7 +1215,7 @@ struct SubOperator : Operator {
 //
 // TensorFlow equivalent: Sum
 struct TensorFlowSumOperator : Operator {
-  TensorFlowSumOperator() : Operator(OperatorType::kTensorFlowSum) {}
+  TensorFlowSumOperator() : Operator(OperatorType::kSum) {}
   bool keep_dims = false;
 };
 
@@ -1225,7 +1225,7 @@ struct TensorFlowSumOperator : Operator {
 //   inputs[0]: required: the input array
 //   inputs[1]: required: int array with length of rank(input[0])
 struct TensorFlowTileOperator : Operator {
-  TensorFlowTileOperator() : Operator(OperatorType::kTensorFlowTile) {}
+  TensorFlowTileOperator() : Operator(OperatorType::kTile) {}
 };
 
 // TensorFlow Slice equivalent. Refer to TensorFlow documentation for details.
@@ -1240,7 +1240,7 @@ struct SliceOperator : Operator {
 // Not fully supported, just a placeholder to handle TensorFlow graphs and
 // support graph transformations to other operator types by matching sub-graphs.
 struct TensorFlowSplitOperator : Operator {
-  TensorFlowSplitOperator() : Operator(OperatorType::kTensorFlowSplit) {}
+  TensorFlowSplitOperator() : Operator(OperatorType::kSplit) {}
   int num_split = 0;
 };
 
@@ -1251,7 +1251,7 @@ struct TensorFlowSplitOperator : Operator {
 // dimension then we can change this op into a DepthConcatenation op.
 // Otherwise, we hope for some other graph transformation to drop this node.
 struct TensorFlowConcatOperator : Operator {
-  TensorFlowConcatOperator() : Operator(OperatorType::kTensorFlowConcat) {}
+  TensorFlowConcatOperator() : Operator(OperatorType::kConcat) {}
 };
 
 // TensorFlow ConcatV2 equivalent. Refer to TensorFlow documentation for
@@ -1262,7 +1262,7 @@ struct TensorFlowConcatOperator : Operator {
 // dimension then we can change this op into a DepthConcatenation op.
 // Otherwise, we hope for some other graph transformation to drop this node.
 struct TensorFlowConcatV2Operator : Operator {
-  TensorFlowConcatV2Operator() : Operator(OperatorType::kTensorFlowConcatV2) {}
+  TensorFlowConcatV2Operator() : Operator(OperatorType::kConcatV2) {}
 };
 
 // TensorFlow Merge equivalent. Refer to TensorFlow documentation for details.
@@ -1278,7 +1278,7 @@ struct TensorFlowConcatV2Operator : Operator {
 // control flow that can be resolved at tooling time (independently of input
 // activations).
 struct TensorFlowMergeOperator : Operator {
-  TensorFlowMergeOperator() : Operator(OperatorType::kTensorFlowMerge) {}
+  TensorFlowMergeOperator() : Operator(OperatorType::kMerge) {}
 };
 
 // TensorFlow Switch equivalent. Refer to TensorFlow documentation for details.
@@ -1301,7 +1301,7 @@ struct TensorFlowMergeOperator : Operator {
 // control flow that can be resolved at tooling time (independently of input
 // activations).
 struct TensorFlowSwitchOperator : Operator {
-  TensorFlowSwitchOperator() : Operator(OperatorType::kTensorFlowSwitch) {}
+  TensorFlowSwitchOperator() : Operator(OperatorType::kSwitch) {}
 };
 
 // TensorFlow All equivalent. Refer to TensorFlow documentation for details.
@@ -1310,7 +1310,7 @@ struct TensorFlowSwitchOperator : Operator {
 // Typically, this is only used as an input to an Assert node, so can be
 // removed as an unused node as we drop Assert nodes.
 struct TensorFlowAllOperator : Operator {
-  TensorFlowAllOperator() : Operator(OperatorType::kTensorFlowAll) {}
+  TensorFlowAllOperator() : Operator(OperatorType::kAll) {}
 };
 
 // TensorFlow Assert equivalent. Refer to TensorFlow documentation for details.
@@ -1318,7 +1318,7 @@ struct TensorFlowAllOperator : Operator {
 // support graph transformations to other operator types by matching sub-graphs.
 // Typically, we just drop Assert nodes.
 struct TensorFlowAssertOperator : Operator {
-  TensorFlowAssertOperator() : Operator(OperatorType::kTensorFlowAssert) {}
+  TensorFlowAssertOperator() : Operator(OperatorType::kAssert) {}
 };
 
 // TensorFlow Less equivalent. Refer to TensorFlow documentation for details.
@@ -1327,7 +1327,7 @@ struct TensorFlowAssertOperator : Operator {
 // Typically, this is only used as an input to an Assert node, so can be
 // removed as an unused node as we drop Assert nodes.
 struct TensorFlowLessOperator : Operator {
-  TensorFlowLessOperator() : Operator(OperatorType::kTensorFlowLess) {}
+  TensorFlowLessOperator() : Operator(OperatorType::kLess) {}
 };
 
 // TensorFlow LessEqual equivalent. Refer to TensorFlow documentation for
@@ -1337,8 +1337,7 @@ struct TensorFlowLessOperator : Operator {
 // Typically, this is only used as an input to an Assert node, so can be
 // removed as an unused node as we drop Assert nodes.
 struct TensorFlowLessEqualOperator : Operator {
-  TensorFlowLessEqualOperator()
-      : Operator(OperatorType::kTensorFlowLessEqual) {}
+  TensorFlowLessEqualOperator() : Operator(OperatorType::kLessEqual) {}
 };
 
 // TensorFlow Less equivalent. Refer to TensorFlow documentation for details.
@@ -1347,7 +1346,7 @@ struct TensorFlowLessEqualOperator : Operator {
 // Typically, this is only used as an input to an Assert node, so can be
 // removed as an unused node as we drop Assert nodes.
 struct TensorFlowGreaterOperator : Operator {
-  TensorFlowGreaterOperator() : Operator(OperatorType::kTensorFlowGreater) {}
+  TensorFlowGreaterOperator() : Operator(OperatorType::kGreater) {}
 };
 
 // TensorFlow GreaterEqual equivalent. Refer to TensorFlow documentation for
@@ -1357,8 +1356,7 @@ struct TensorFlowGreaterOperator : Operator {
 // Typically, this is only used as an input to an Assert node, so can be
 // removed as an unused node as we drop Assert nodes.
 struct TensorFlowGreaterEqualOperator : Operator {
-  TensorFlowGreaterEqualOperator()
-      : Operator(OperatorType::kTensorFlowGreaterEqual) {}
+  TensorFlowGreaterEqualOperator() : Operator(OperatorType::kGreaterEqual) {}
 };
 
 // TensorFlow Equal equivalent. Refer to TensorFlow documentation for
@@ -1368,13 +1366,13 @@ struct TensorFlowGreaterEqualOperator : Operator {
 // Typically, this is only used as an input to an Assert node, so can be
 // removed as an unused node as we drop Assert nodes.
 struct TensorFlowEqualOperator : Operator {
-  TensorFlowEqualOperator() : Operator(OperatorType::kTensorFlowEqual) {}
+  TensorFlowEqualOperator() : Operator(OperatorType::kEqual) {}
 };
 
 // TensorFlow Not Equal equivalent. Refer to TensorFlow documentation for
 // details.
 struct TensorFlowNotEqualOperator : Operator {
-  TensorFlowNotEqualOperator() : Operator(OperatorType::kTensorFlowNotEqual) {}
+  TensorFlowNotEqualOperator() : Operator(OperatorType::kNotEqual) {}
 };
 
 // Global max reduction: computes the max of all of entries in the input array.
@@ -1386,7 +1384,7 @@ struct TensorFlowNotEqualOperator : Operator {
 // TensorFlow equivalent: Max --- except that we only support the special case
 // of global reduction across all dimensions.
 struct TensorFlowMaxOperator : Operator {
-  TensorFlowMaxOperator() : Operator(OperatorType::kTensorFlowMax) {}
+  TensorFlowMaxOperator() : Operator(OperatorType::kMax) {}
   bool keep_dims = false;
 };
 
@@ -1399,7 +1397,7 @@ struct TensorFlowMaxOperator : Operator {
 // TensorFlow equivalent: Min --- except that we only support the special case
 // of global reduction across all dimensions.
 struct TensorFlowMinOperator : Operator {
-  TensorFlowMinOperator() : Operator(OperatorType::kTensorFlowMin) {}
+  TensorFlowMinOperator() : Operator(OperatorType::kMin) {}
   bool keep_dims = false;
 };
 
@@ -1412,7 +1410,7 @@ struct TensorFlowMinOperator : Operator {
 //
 // TensorFlow equivalent: Maximum
 struct TensorFlowMaximumOperator : Operator {
-  TensorFlowMaximumOperator() : Operator(OperatorType::kTensorFlowMaximum) {}
+  TensorFlowMaximumOperator() : Operator(OperatorType::kMaximum) {}
 };
 
 // Element-wise minimum operator. Currently it only supports scalar as
@@ -1424,14 +1422,13 @@ struct TensorFlowMaximumOperator : Operator {
 //
 // TensorFlow equivalent: Minimum
 struct TensorFlowMinimumOperator : Operator {
-  TensorFlowMinimumOperator() : Operator(OperatorType::kTensorFlowMinimum) {}
+  TensorFlowMinimumOperator() : Operator(OperatorType::kMinimum) {}
 };
 
 // General TF operation, unsupported by tf.mini. Expected to be dropped by
 // graph transformations.
 struct TensorFlowUnsupportedOperator : Operator {
-  TensorFlowUnsupportedOperator()
-      : Operator(OperatorType::kTensorFlowUnsupported) {}
+  TensorFlowUnsupportedOperator() : Operator(OperatorType::kUnsupported) {}
 
   // The original TF operation type. Used for diagnostic purposes.
   string tensorflow_op;

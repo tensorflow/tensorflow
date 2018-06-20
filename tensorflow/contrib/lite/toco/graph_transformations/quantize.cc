@@ -33,7 +33,7 @@ namespace {
 
 bool SupportsQuantization(const Operator& op) {
   auto type = op.type;
-  if (type == OperatorType::kTensorFlowUnsupported) {
+  if (type == OperatorType::kUnsupported) {
     auto* unsupported = static_cast<const TensorFlowUnsupportedOperator*>(&op);
     return unsupported->quantized;
   }
@@ -42,15 +42,13 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kConcatenation ||
          type == OperatorType::kL2Normalization || type == OperatorType::kAdd ||
          type == OperatorType::kAveragePool || type == OperatorType::kMaxPool ||
-         type == OperatorType::kTensorFlowMinimum ||
-         type == OperatorType::kTensorFlowMaximum ||
+         type == OperatorType::kMinimum || type == OperatorType::kMaximum ||
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
          type == OperatorType::kLogSoftmax || type == OperatorType::kSlice ||
          type == OperatorType::kResizeBilinear ||
-         type == OperatorType::kTensorFlowSplit || type == OperatorType::kSub ||
+         type == OperatorType::kSplit || type == OperatorType::kSub ||
          type == OperatorType::kSqueeze || type == OperatorType::kPad ||
-         type == OperatorType::kPadV2 ||
-         type == OperatorType::kTensorFlowReshape ||
+         type == OperatorType::kPadV2 || type == OperatorType::kReshape ||
          type == OperatorType::kTanh || type == OperatorType::kMul ||
          type == OperatorType::kSpaceToBatchND ||
          type == OperatorType::kSpaceToDepth ||
@@ -58,11 +56,10 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kDepthToSpace ||
          type == OperatorType::kLstmCell || type == OperatorType::kGather ||
          type == OperatorType::kTranspose || type == OperatorType::kMean ||
-         type == OperatorType::kTensorFlowGreater ||
-         type == OperatorType::kTensorFlowGreaterEqual ||
-         type == OperatorType::kTensorFlowLess ||
-         type == OperatorType::kTensorFlowLessEqual ||
-         type == OperatorType::kSelect || type == OperatorType::kArgMax;
+         type == OperatorType::kGreater ||
+         type == OperatorType::kGreaterEqual || type == OperatorType::kLess ||
+         type == OperatorType::kLessEqual || type == OperatorType::kSelect ||
+         type == OperatorType::kArgMax;
 }
 
 const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
@@ -330,12 +327,12 @@ bool ChooseQuantizationForOperatorOutput(
   }
   if ((op.type == OperatorType::kDepthToSpace) ||
       (op.type == OperatorType::kSpaceToDepth) ||
-      (op.type == OperatorType::kTensorFlowReshape) ||
-      (op.type == OperatorType::kTensorFlowSplit) ||
+      (op.type == OperatorType::kReshape) ||
+      (op.type == OperatorType::kSplit) ||
       (op.type == OperatorType::kConcatenation &&
        model->flags.change_concat_input_ranges())) {
     int data_input_index = 0;
-    if (op.type == OperatorType::kTensorFlowSplit) {
+    if (op.type == OperatorType::kSplit) {
       data_input_index = 1;
     }
     // Copying and rearrangement ops should preserve the quantization parameters
