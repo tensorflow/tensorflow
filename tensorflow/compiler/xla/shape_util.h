@@ -175,6 +175,9 @@ class ShapeUtil {
   // Precondition: IsArray(shape)
   static int64 ElementsIn(const Shape& shape);
 
+  // As ElementsIn(), but recurses through tuples.
+  static int64 ElementsInRecursive(const Shape& shape);
+
   // Returns true if 'shape' is an array with zero elements.
   static bool IsZeroElementArray(const Shape& shape);
 

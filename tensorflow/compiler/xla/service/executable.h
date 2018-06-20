@@ -135,6 +135,10 @@ class Executable {
     return hlo_module_->config().host_entry_computation_layout().result_shape();
   }
 
+  // Returns the size of the executable in bytes. Returns -1 by default if the
+  // method is not overridden to support this kind of query.
+  virtual int64 SizeInBytes();
+
   // Dumping helpers.
   void set_hlo_snapshot(std::unique_ptr<xla::HloSnapshot> hlo_snapshot) {
     hlo_snapshot_ = std::move(hlo_snapshot);

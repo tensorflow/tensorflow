@@ -422,6 +422,18 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       std::multiplies<int64>());
 }
 
+/* static */ int64 ShapeUtil::ElementsInRecursive(const Shape& shape) {
+  CHECK(IsArray(shape) || IsTuple(shape));
+  if (IsArray(shape)) {
+    return ElementsIn(shape);
+  }
+  int64 count = 0;
+  for (const Shape& element_shape : shape.tuple_shapes()) {
+    count += ElementsInRecursive(element_shape);
+  }
+  return count;
+}
+
 /* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
   return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
 }
