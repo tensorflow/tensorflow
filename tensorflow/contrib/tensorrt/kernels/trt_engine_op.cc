@@ -494,7 +494,7 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
     VLOG(1) << "Calling conversion for " << batch_size << " " << name();
-    auto status = convert::ConvertSubGraphDefToEngine(
+    auto status = convert::ConvertGraphDefToEngine(
         segment_graph_, precision_mode_, shapes, builder.get(), &engine,
         &convert_successfully);
     if (!status.ok()) {
@@ -588,11 +588,11 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
     cres->builder_->setInt8Mode(true);
     cres->builder_->setMaxWorkspaceSize(workspace_size);
     cres->builder_->setInt8Calibrator(cres->calibrator_);
-    // ConvertSubGraphDefToEngine() will try to build the engine. This thread
+    // ConvertGraphDefToEngine() will try to build the engine. This thread
     // will loop inside buildCudaEngine() consuming the calibration data
     // that is set by the TF op, and drive the builder until calibrator returns
     // false. Engine is discarded after calibration table is generated
-    auto s = convert::ConvertSubGraphDefToEngine(
+    auto s = convert::ConvertGraphDefToEngine(
         *segment_graph, convert::INT8MODE, shapes, cres->builder_.get(),
         &cres->engine_, /*convert_successfully=*/nullptr);
     if (!s.ok()) {
