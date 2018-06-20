@@ -124,7 +124,7 @@ class RandomOpsTest(XLATestCase):
         # Department of Scientific Computing website. Florida State University.
         expected_mean = mu + (normal_pdf(alpha) - normal_pdf(beta)) / z * sigma
         actual_mean = np.mean(y)
-        self.assertAllClose(actual_mean, expected_mean, atol=3e-4)
+        self.assertAllClose(actual_mean, expected_mean, atol=2e-4)
 
         expected_median = mu + probit(
             (normal_cdf(alpha) + normal_cdf(beta)) / 2.) * sigma

@@ -62,12 +62,15 @@ xla::XlaOp EvaluatePolynomial(xla::XlaBuilder* b, const xla::XlaOp& x,
                               PrimitiveType data_type);
 
 // Compute an approximation of the error function complement (1 - erf(x)).
-xla::XlaOp ComputeErfc(xla::XlaBuilder* b, const xla::XlaOp& x,
-                       PrimitiveType data_type);
+xla::XlaOp Erfc(xla::XlaBuilder* b, const xla::XlaOp& x,
+                PrimitiveType data_type);
 
 // Compute an approximation of the error function.
-xla::XlaOp ComputeErf(xla::XlaBuilder* b, const xla::XlaOp& x,
-                      PrimitiveType data_type);
+xla::XlaOp Erf(xla::XlaBuilder* b, const xla::XlaOp& x,
+               PrimitiveType data_type);
+
+// Compute an approximation of the inverse of the error function.
+StatusOr<XlaOp> ErfInv(xla::XlaBuilder* b, const xla::XlaOp& x);
 
 }  // namespace xla
 
