@@ -481,7 +481,8 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
       builder->setHalf2Mode(true);
     } else if (precision_mode_ == convert::INT8MODE) {
       builder->setInt8Mode(true);
-      // TODO(aaroey): what if it's empty? I.e. when calibration data is empty?
+      // Up to this point, calibrator_ can never be empty, since otherwise it
+      // means calibration_mode_ is true and this path won't get executed.
       builder->setInt8Calibrator(calibrator_.get());
     }
     // TODO(aaroey): use the allocator to allocate the TRT workspace.
