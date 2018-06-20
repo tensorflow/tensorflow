@@ -532,8 +532,8 @@ XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
   auto param = Literal::MakeTupleOwned(Literal::CreateR1<float>({1, 2, 3}));
   auto result = ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result,
-      *Literal::MakeTupleOwned(Literal::CreateR2<float>({{1, 2, 3}}))));
+      *Literal::MakeTupleOwned(Literal::CreateR2<float>({{1, 2, 3}})),
+      *result));
 }
 
 }  // namespace

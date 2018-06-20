@@ -33,7 +33,6 @@ py_library(
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/autograph",
         "//tensorflow/contrib/constrained_optimization",
-        "//tensorflow/contrib/control_flow",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",

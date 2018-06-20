@@ -22,6 +22,7 @@ namespace custom {
 
 TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
 TfLiteRegistration* Register_MFCC();
+TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 
 }  // namespace custom
 
@@ -88,6 +89,7 @@ TfLiteRegistration* Register_LESS_EQUAL();
 TfLiteRegistration* Register_FLOOR();
 TfLiteRegistration* Register_TILE();
 TfLiteRegistration* Register_NEG();
+TfLiteRegistration* Register_SUM();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SLICE();
 TfLiteRegistration* Register_SIN();
@@ -96,6 +98,9 @@ TfLiteRegistration* Register_EXPAND_DIMS();
 TfLiteRegistration* Register_SPARSE_TO_DENSE();
 TfLiteRegistration* Register_EQUAL();
 TfLiteRegistration* Register_NOT_EQUAL();
+TfLiteRegistration* Register_SQRT();
+TfLiteRegistration* Register_RSQRT();
+TfLiteRegistration* Register_SHAPE();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -170,16 +175,22 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV());
   AddBuiltin(BuiltinOperator_TILE, Register_TILE());
+  AddBuiltin(BuiltinOperator_SUM, Register_SUM());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE());
   AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL());
   AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL());
+  AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
+  AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
+  AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
   AddCustom("AudioSpectrogram",
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
+  AddCustom("TFLite_Detection_PostProcess",
+            tflite::ops::custom::Register_DETECTION_POSTPROCESS());
 }
 
 }  // namespace builtin

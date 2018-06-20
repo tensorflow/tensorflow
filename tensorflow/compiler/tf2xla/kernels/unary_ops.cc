@@ -202,9 +202,9 @@ class ErfOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(input_type(0), &primitive_type));
 
-    auto y = b->Select(b->Gt(abs_x, one),
-                       b->Sub(one, ComputeErfc(b, x, primitive_type)),
-                       ComputeErf(b, x, primitive_type));
+    auto y =
+        b->Select(b->Gt(abs_x, one), b->Sub(one, Erfc(b, x, primitive_type)),
+                  Erf(b, x, primitive_type));
     ctx->SetOutput(0, y);
   }
 };
@@ -223,9 +223,9 @@ class ErfcOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(input_type(0), &primitive_type));
 
-    auto y = b->Select(b->Lt(abs_x, one),
-                       b->Sub(one, ComputeErf(b, x, primitive_type)),
-                       ComputeErfc(b, x, primitive_type));
+    auto y =
+        b->Select(b->Lt(abs_x, one), b->Sub(one, Erf(b, x, primitive_type)),
+                  Erfc(b, x, primitive_type));
     ctx->SetOutput(0, y);
   }
 };

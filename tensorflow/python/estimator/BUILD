@@ -279,6 +279,9 @@ py_test(
     size = "medium",
     srcs = ["canned/boosted_trees_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "optonly",
+    ],
     deps = [
         ":boosted_trees",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
@@ -995,4 +998,36 @@ py_test(
         "//tensorflow/python/keras:engine",
         "//third_party/py/numpy",
     ],
+)
+
+py_library(
+    name = "expect_numpy_installed",
+    # This is a dummy rule used as a numpy dependency in open-source.
+    # We expect numpy to already be installed on the system, e.g. via
+    # `pip install numpy`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_pandas_installed",
+    # This is a dummy rule used as a numpy dependency in open-source.
+    # We expect pandas to already be installed on the system, e.g. via
+    # `pip install pandas`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_six_installed",
+    # This is a dummy rule used as a numpy dependency in open-source.
+    # We expect six to already be installed on the system, e.g. via
+    # `pip install six`
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "expect_tensorflow_installed",
+    # This is a dummy rule used as a numpy dependency in open-source.
+    # We expect tensorflow to already be installed on the system, e.g. via
+    # `pip install tensorflow` or `pip install tensorflow_gpu`
+    visibility = ["//visibility:public"],
 )

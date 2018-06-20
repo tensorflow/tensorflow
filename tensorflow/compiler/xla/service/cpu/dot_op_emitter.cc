@@ -1380,7 +1380,7 @@ Status DotOpEmitter::Emit() {
   // the rhs and lhs indexes with the reduction dimensions removed. The terms
   // from the rhs index are the lower dimensions in the index so we add them
   // first.
-  llvm_ir::IrArray::Index target_index;
+  llvm_ir::IrArray::Index target_index(lhs_index.GetType());
   for (int dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
       target_index.push_back(lhs_index[dimension]);
@@ -1404,10 +1404,13 @@ Status DotOpEmitter::Emit() {
 Status DotOpEmitter::EmitScalarDot() {
   // A scalar dot is just a scalar multiply.
   llvm::Value* result;
+  // Use the same index_type for all tensor accesses in the same kernel.
+  llvm::Type* index_type = ir_builder_->getInt64Ty();
+  llvm_ir::IrArray::Index element_index(index_type);
   llvm::Value* lhs_value =
-      lhs_array_.EmitReadArrayElement(/*index=*/{}, ir_builder_);
+      lhs_array_.EmitReadArrayElement(/*index=*/element_index, ir_builder_);
   llvm::Value* rhs_value =
-      rhs_array_.EmitReadArrayElement(/*index=*/{}, ir_builder_);
+      rhs_array_.EmitReadArrayElement(/*index=*/element_index, ir_builder_);
   if (ShapeUtil::ElementIsComplex(lhs_array_.GetShape())) {
 #define REAL(x) ir_builder_->CreateExtractValue(x, {0})
 #define IMAG(x) ir_builder_->CreateExtractValue(x, {1})
@@ -1425,7 +1428,8 @@ Status DotOpEmitter::EmitScalarDot() {
   } else {
     result = ir_builder_->CreateFMul(lhs_value, rhs_value);
   }
-  target_array_.EmitWriteArrayElement(/*index=*/{}, result, ir_builder_);
+  target_array_.EmitWriteArrayElement(/*index=*/element_index, result,
+                                      ir_builder_);
   return Status::OK();
 }
 

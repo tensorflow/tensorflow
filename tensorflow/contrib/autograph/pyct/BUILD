@@ -23,7 +23,6 @@ py_library(
         "anno.py",
         "ast_util.py",
         "compiler.py",
-        "context.py",
         "inspect_utils.py",
         "parser.py",
         "pretty_printer.py",
@@ -38,6 +37,8 @@ py_library(
         "@gast_archive//:gast",
         "@six_archive//:six",
         "@termcolor_archive//:termcolor",
+        # TODO(mdan): Remove this dependency.
+        "//tensorflow/python:util",
     ],
 )
 

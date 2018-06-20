@@ -97,6 +97,7 @@ Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def,
     *iterable_out = true;
     visited_attrs_.insert(std::make_pair(arg_def.number_attr(), Type::Int()));
   }
+
   Type type = Type::Wildcard();
   if (arg_def.type() != DataType::DT_INVALID) {
     // resolve type from DataType

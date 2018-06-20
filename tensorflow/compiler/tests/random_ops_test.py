@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 import numpy as np
 
 from tensorflow.compiler.tests.xla_test import XLATestCase
@@ -25,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import special_math
 from tensorflow.python.platform import googletest
 
 
@@ -87,15 +90,52 @@ class RandomOpsTest(XLATestCase):
     self._testRngIsNotConstant(rng, dtypes.float32)
 
   def testTruncatedNormalIsInRange(self):
-    count = 10000
+    count = 10000000
     # TODO(b/34339814): implement inverse erf support for non-F32 types.
     for dtype in [dtypes.float32]:
       with self.test_session() as sess:
         with self.test_scope():
           x = random_ops.truncated_normal(shape=[count], dtype=dtype, seed=42)
         y = sess.run(x)
-        self.assertTrue((y >= -2).sum() == count)
-        self.assertTrue((y <= 2).sum() == count)
+
+        def normal_cdf(x):
+          return .5 * math.erfc(-x / math.sqrt(2))
+
+        def normal_pdf(x):
+          return math.exp(-(x**2) / 2.) / math.sqrt(2 * math.pi)
+
+        def probit(x, sess=sess):
+          return sess.run(special_math.ndtri(x))
+
+        a = -2.
+        b = 2.
+        mu = 0.
+        sigma = 1.
+
+        alpha = (a - mu) / sigma
+        beta = (b - mu) / sigma
+        z = normal_cdf(beta) - normal_cdf(alpha)
+
+        self.assertTrue((y >= a).sum() == count)
+        self.assertTrue((y <= b).sum() == count)
+
+        # For more information on these calculations, see:
+        # Burkardt, John. "The Truncated Normal Distribution".
+        # Department of Scientific Computing website. Florida State University.
+        expected_mean = mu + (normal_pdf(alpha) - normal_pdf(beta)) / z * sigma
+        actual_mean = np.mean(y)
+        self.assertAllClose(actual_mean, expected_mean, atol=2e-4)
+
+        expected_median = mu + probit(
+            (normal_cdf(alpha) + normal_cdf(beta)) / 2.) * sigma
+        actual_median = np.median(y)
+        self.assertAllClose(actual_median, expected_median, atol=8e-4)
+
+        expected_variance = sigma**2 * (1 + (
+            (alpha * normal_pdf(alpha) - beta * normal_pdf(beta)) / z) - (
+                (normal_pdf(alpha) - normal_pdf(beta)) / z)**2)
+        actual_variance = np.var(y)
+        self.assertAllClose(actual_variance, expected_variance, rtol=3e-4)
 
   def testShuffle1d(self):
     with self.test_session() as sess:

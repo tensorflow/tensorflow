@@ -22,6 +22,7 @@ Visualization and inspection:
 Managing dependencies:
 @@capture_dependencies
 @@Checkpointable
+@@CheckpointableBase
 @@CheckpointableObjectGraph
 @@NoDependency
 @@split_dependency
@@ -41,6 +42,7 @@ from tensorflow.contrib.checkpoint.python.split_dependency import split_dependen
 from tensorflow.contrib.checkpoint.python.visualize import dot_graph_from_checkpoint
 from tensorflow.core.protobuf.checkpointable_object_graph_pb2 import CheckpointableObjectGraph
 from tensorflow.python.training.checkpointable.base import Checkpointable
+from tensorflow.python.training.checkpointable.base import CheckpointableBase
 from tensorflow.python.training.checkpointable.base import NoDependency
 from tensorflow.python.training.checkpointable.data_structures import List
 from tensorflow.python.training.checkpointable.data_structures import Mapping
@@ -51,4 +53,3 @@ from tensorflow.python.training.checkpointable.util import object_metadata
 from tensorflow.python.util.all_util import remove_undocumented
 
 remove_undocumented(module_name=__name__)
-

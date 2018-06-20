@@ -548,8 +548,11 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
-    # TODO(b/31361304): enable RNG ops on GPU when parallelized.
     disabled_backends = [
+        # TODO(b/110300529): RngNormal doesn't return values with the expected variance
+        "cpu",
+        "cpu_ondemand",
+        # TODO(b/31361304): enable RNG ops on GPU when parallelized.
         "gpu",
     ],
     deps = [
@@ -836,6 +839,18 @@ tf_xla_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "sort_ops_test",
+    size = "small",
+    srcs = ["sort_ops_test.py"],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
     ],
 )
 

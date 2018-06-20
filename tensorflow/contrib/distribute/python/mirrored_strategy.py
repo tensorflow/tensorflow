@@ -109,6 +109,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     if tower_local is not None:
       kwargs["trainable"] = False
 
+    # Ignore user-specified caching device, not needed for mirrored variables.
+    kwargs.pop("caching_device", None)
+
     # TODO(josh11b,apassos): It would be better if variable initialization
     # was never recorded on the tape instead of having to do this manually
     # here.
@@ -320,14 +323,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                                                     value_destination_pairs)
 
   def _update(self, var, fn, *args, **kwargs):
-    # TODO(josh11b): Also support TowerLocalVariables here? If so, args and
-    # kwargs don't need to be mirrored.
-    assert isinstance(var, values.MirroredVariable)
     # TODO(josh11b): In eager mode, use one thread per device.
+    assert isinstance(var, values.DistributedVariable)
     updates = {}
     for d, v in var._index.items():  # pylint: disable=protected-access
       name = "update_%d" % self._device_index.get(d)
       with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+        # If args and kwargs are not mirrored, the value is returned as is.
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))

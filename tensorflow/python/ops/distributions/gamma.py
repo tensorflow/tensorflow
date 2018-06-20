@@ -55,7 +55,7 @@ class Gamma(distribution.Distribution):
 
   ```none
   pdf(x; alpha, beta, x > 0) = x**(alpha - 1) exp(-x beta) / Z
-  Z = Gamma(alpha) beta**alpha
+  Z = Gamma(alpha) beta**(-alpha)
   ```
 
   where:
@@ -85,8 +85,11 @@ class Gamma(distribution.Distribution):
   Distribution parameters are automatically broadcast in all functions; see
   examples for details.
 
-  WARNING: This distribution may draw 0-valued samples for small `concentration`
-  values. See note in `tf.random_gamma` docstring.
+  Warning: The samples of this distribution are always non-negative. However,
+  the samples that are smaller than `np.finfo(dtype).tiny` are rounded
+  to this value, so it appears more often than it should.
+  This should only be noticeable when the `concentration` is very small, or the
+  `rate` is very large. See note in `tf.random_gamma` docstring.
 
   #### Examples
 

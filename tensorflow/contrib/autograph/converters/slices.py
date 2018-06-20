@@ -20,12 +20,12 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 
 
-class SliceTransformer(transformer.Base):
+class SliceTransformer(converter.Base):
   """Converts slicing operations to their TF counterpart.
 
   Currently, relying on the default slice operator that Tensor uses is
@@ -79,5 +79,5 @@ class SliceTransformer(transformer.Base):
         template, target=node.value, key=node.slice, dtype=dtype)
 
 
-def transform(node, context):
-  return SliceTransformer(context).visit(node)
+def transform(node, ctx):
+  return SliceTransformer(ctx).visit(node)

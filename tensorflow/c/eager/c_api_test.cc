@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string.h>
 #include "tensorflow/c/eager/c_api_test_util.h"
-#include "tensorflow/core/distributed_runtime/rpc/eager/eager_grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -132,10 +132,10 @@ void TestRemoteExecute(bool async) {
 
   server_def.set_task_index(1);
 
-  std::unique_ptr<tensorflow::eager::EagerGrpcServer> worker_server;
-  ASSERT_TRUE(
-      tensorflow::eager::EagerGrpcServer::Create(server_def, &worker_server)
-          .ok());
+  std::unique_ptr<tensorflow::GrpcServer> worker_server;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server)
+                  .ok());
   ASSERT_TRUE(worker_server->Start().ok());
 
   TF_Status* status = TF_NewStatus();
@@ -215,10 +215,10 @@ void TestRemoteExecuteSilentCopies(bool async) {
 
   server_def.set_task_index(1);
 
-  std::unique_ptr<tensorflow::eager::EagerGrpcServer> worker_server;
-  ASSERT_TRUE(
-      tensorflow::eager::EagerGrpcServer::Create(server_def, &worker_server)
-          .ok());
+  std::unique_ptr<tensorflow::GrpcServer> worker_server;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server)
+                  .ok());
   ASSERT_TRUE(worker_server->Start().ok());
 
   TF_Status* status = TF_NewStatus();
@@ -1162,8 +1162,8 @@ TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
   if (TF_GetCode(status) != TF_OK) return nullptr;
   TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
   TFE_OpSetAttrShape(op, "shape", {}, 0, status);
-  TFE_OpSetAttrString(op, "container", "");
-  TFE_OpSetAttrString(op, "shared_name", "");
+  TFE_OpSetAttrString(op, "container", "", 0);
+  TFE_OpSetAttrString(op, "shared_name", "", 0);
   if (TF_GetCode(status) != TF_OK) return nullptr;
   TFE_TensorHandle* var_handle = nullptr;
   int num_retvals = 1;

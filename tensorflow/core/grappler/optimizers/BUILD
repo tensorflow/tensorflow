@@ -679,6 +679,7 @@ cc_library(
     deps = [
         ":constant_folding",
         ":graph_optimizer",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",

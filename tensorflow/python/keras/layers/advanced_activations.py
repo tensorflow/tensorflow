@@ -278,3 +278,40 @@ class Softmax(Layer):
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
+
+
+@tf_export('keras.layers.ReLU')
+class ReLU(Layer):
+  """Rectified Linear Unit activation function.
+
+  Input shape:
+      Arbitrary. Use the keyword argument `input_shape`
+      (tuple of integers, does not include the samples axis)
+      when using this layer as the first layer in a model.
+
+  Output shape:
+      Same shape as the input.
+
+  Arguments:
+      max_value: float >= 0. Maximum activation value.
+  """
+
+  def __init__(self, max_value=None, **kwargs):
+    super(ReLU, self).__init__(**kwargs)
+    self.support_masking = True
+    self.max_value = K.cast_to_floatx(max_value)
+    if self.max_value < 0.:
+      raise ValueError('max_value of Relu layer '
+                       'cannot be negative value: ' + str(max_value))
+
+  def call(self, inputs):
+    return activations.relu(inputs, max_value=self.max_value)
+
+  def get_config(self):
+    config = {'max_value': self.max_value}
+    base_config = super(ReLU, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @tf_utils.shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
