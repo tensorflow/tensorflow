@@ -239,6 +239,7 @@ def generated_test_models():
         "reshape",
         "resize_bilinear",
         "rsqrt",
+        "shape",
         "sigmoid",
         "sin",
         "slice",

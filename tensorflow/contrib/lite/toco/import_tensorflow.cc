@@ -1573,6 +1573,22 @@ tensorflow::Status ConvertOperatorSpecialCasedAsRNNBackEdge(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertShapeOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "Shape");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
+  const auto out_type =
+      HasAttr(node, "out_type") ? GetDataTypeAttr(node, "out_type") : DT_INT32;
+  CHECK(out_type == DT_INT64 || out_type == DT_INT32);
+  auto op = absl::make_unique<TensorFlowShapeOperator>();
+  op->output_data_type = ConvertDataType(out_type);
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.push_back(std::move(op));
+  return tensorflow::Status::OK();
+}
+
 void StripCaretFromArrayNames(Model* model) {
   for (auto& op : model->operators) {
     for (auto& input : op->inputs) {
@@ -1877,7 +1893,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"ResizeBilinear", ConvertResizeBilinearOperator},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3>},
-      {"Shape", ConvertSimpleOperator<TensorFlowShapeOperator, 1>},
+      {"Shape", ConvertShapeOperator},
       {"Sigmoid", ConvertSimpleOperator<LogisticOperator, 1>},
       {"Sin", ConvertSimpleOperator<SinOperator, 1>},
       {"Slice", ConvertSimpleOperator<SliceOperator, 3>},

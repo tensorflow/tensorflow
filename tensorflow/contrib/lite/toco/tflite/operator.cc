@@ -918,6 +918,26 @@ class ExpandDims
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class Shape
+    : public BuiltinOperator<TensorFlowShapeOperator, ::tflite::ShapeOptions,
+                             ::tflite::BuiltinOptions_ShapeOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateShapeOptions(
+        *builder, DataType::Serialize(op.output_data_type));
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->output_data_type = DataType::Deserialize(options.out_type());
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class TensorFlowUnsupported : public BaseOperator {
  public:
   using BaseOperator::BaseOperator;
@@ -1132,6 +1152,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                      OperatorType::kTransposeConv));
   ops.emplace_back(new SparseToDense(::tflite::BuiltinOperator_SPARSE_TO_DENSE,
                                      OperatorType::kSparseToDense));
+  ops.emplace_back(new Shape(::tflite::BuiltinOperator_SHAPE,
+                             OperatorType::kTensorFlowShape));
 
   // Custom Operators.
   ops.emplace_back(

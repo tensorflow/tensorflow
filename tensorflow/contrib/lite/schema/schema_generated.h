@@ -193,6 +193,9 @@ struct EqualOptionsT;
 struct NotEqualOptions;
 struct NotEqualOptionsT;
 
+struct ShapeOptions;
+struct ShapeOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -332,11 +335,12 @@ enum BuiltinOperator {
   BuiltinOperator_SUM = 74,
   BuiltinOperator_SQRT = 75,
   BuiltinOperator_RSQRT = 76,
+  BuiltinOperator_SHAPE = 77,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_RSQRT
+  BuiltinOperator_MAX = BuiltinOperator_SHAPE
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[76] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[77] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -413,7 +417,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[76] {
     BuiltinOperator_LOG,
     BuiltinOperator_SUM,
     BuiltinOperator_SQRT,
-    BuiltinOperator_RSQRT
+    BuiltinOperator_RSQRT,
+    BuiltinOperator_SHAPE
   };
   return values;
 }
@@ -497,6 +502,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "SUM",
     "SQRT",
     "RSQRT",
+    "SHAPE",
     nullptr
   };
   return names;
@@ -563,11 +569,12 @@ enum BuiltinOptions {
   BuiltinOptions_ExpandDimsOptions = 52,
   BuiltinOptions_EqualOptions = 53,
   BuiltinOptions_NotEqualOptions = 54,
+  BuiltinOptions_ShapeOptions = 55,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_NotEqualOptions
+  BuiltinOptions_MAX = BuiltinOptions_ShapeOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[55] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[56] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -623,7 +630,8 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[55] {
     BuiltinOptions_TileOptions,
     BuiltinOptions_ExpandDimsOptions,
     BuiltinOptions_EqualOptions,
-    BuiltinOptions_NotEqualOptions
+    BuiltinOptions_NotEqualOptions,
+    BuiltinOptions_ShapeOptions
   };
   return values;
 }
@@ -685,6 +693,7 @@ inline const char **EnumNamesBuiltinOptions() {
     "ExpandDimsOptions",
     "EqualOptions",
     "NotEqualOptions",
+    "ShapeOptions",
     nullptr
   };
   return names;
@@ -913,6 +922,10 @@ template<> struct BuiltinOptionsTraits<EqualOptions> {
 
 template<> struct BuiltinOptionsTraits<NotEqualOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_NotEqualOptions;
+};
+
+template<> struct BuiltinOptionsTraits<ShapeOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ShapeOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1377,6 +1390,14 @@ struct BuiltinOptionsUnion {
   const NotEqualOptionsT *AsNotEqualOptions() const {
     return type == BuiltinOptions_NotEqualOptions ?
       reinterpret_cast<const NotEqualOptionsT *>(value) : nullptr;
+  }
+  ShapeOptionsT *AsShapeOptions() {
+    return type == BuiltinOptions_ShapeOptions ?
+      reinterpret_cast<ShapeOptionsT *>(value) : nullptr;
+  }
+  const ShapeOptionsT *AsShapeOptions() const {
+    return type == BuiltinOptions_ShapeOptions ?
+      reinterpret_cast<const ShapeOptionsT *>(value) : nullptr;
   }
 };
 
@@ -4932,6 +4953,60 @@ inline flatbuffers::Offset<NotEqualOptions> CreateNotEqualOptions(
 
 flatbuffers::Offset<NotEqualOptions> CreateNotEqualOptions(flatbuffers::FlatBufferBuilder &_fbb, const NotEqualOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct ShapeOptionsT : public flatbuffers::NativeTable {
+  typedef ShapeOptions TableType;
+  TensorType out_type;
+  ShapeOptionsT()
+      : out_type(TensorType_FLOAT32) {
+  }
+};
+
+struct ShapeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ShapeOptionsT NativeTableType;
+  enum {
+    VT_OUT_TYPE = 4
+  };
+  TensorType out_type() const {
+    return static_cast<TensorType>(GetField<int8_t>(VT_OUT_TYPE, 0));
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_OUT_TYPE) &&
+           verifier.EndTable();
+  }
+  ShapeOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ShapeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ShapeOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ShapeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ShapeOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_out_type(TensorType out_type) {
+    fbb_.AddElement<int8_t>(ShapeOptions::VT_OUT_TYPE, static_cast<int8_t>(out_type), 0);
+  }
+  explicit ShapeOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ShapeOptionsBuilder &operator=(const ShapeOptionsBuilder &);
+  flatbuffers::Offset<ShapeOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ShapeOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ShapeOptions> CreateShapeOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    TensorType out_type = TensorType_FLOAT32) {
+  ShapeOptionsBuilder builder_(_fbb);
+  builder_.add_out_type(out_type);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ShapeOptions> CreateShapeOptions(flatbuffers::FlatBufferBuilder &_fbb, const ShapeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -5227,6 +5302,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const NotEqualOptions *builtin_options_as_NotEqualOptions() const {
     return builtin_options_type() == BuiltinOptions_NotEqualOptions ? static_cast<const NotEqualOptions *>(builtin_options()) : nullptr;
   }
+  const ShapeOptions *builtin_options_as_ShapeOptions() const {
+    return builtin_options_type() == BuiltinOptions_ShapeOptions ? static_cast<const ShapeOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -5472,6 +5550,10 @@ template<> inline const EqualOptions *Operator::builtin_options_as<EqualOptions>
 
 template<> inline const NotEqualOptions *Operator::builtin_options_as<NotEqualOptions>() const {
   return builtin_options_as_NotEqualOptions();
+}
+
+template<> inline const ShapeOptions *Operator::builtin_options_as<ShapeOptions>() const {
+  return builtin_options_as_ShapeOptions();
 }
 
 struct OperatorBuilder {
@@ -7424,6 +7506,32 @@ inline flatbuffers::Offset<NotEqualOptions> CreateNotEqualOptions(flatbuffers::F
       _fbb);
 }
 
+inline ShapeOptionsT *ShapeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new ShapeOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void ShapeOptions::UnPackTo(ShapeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = out_type(); _o->out_type = _e; };
+}
+
+inline flatbuffers::Offset<ShapeOptions> ShapeOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ShapeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateShapeOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ShapeOptions> CreateShapeOptions(flatbuffers::FlatBufferBuilder &_fbb, const ShapeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ShapeOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _out_type = _o->out_type;
+  return tflite::CreateShapeOptions(
+      _fbb,
+      _out_type);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -7829,6 +7937,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const NotEqualOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_ShapeOptions: {
+      auto ptr = reinterpret_cast<const ShapeOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -8063,6 +8175,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const NotEqualOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_ShapeOptions: {
+      auto ptr = reinterpret_cast<const ShapeOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -8285,6 +8401,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const NotEqualOptionsT *>(value);
       return CreateNotEqualOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_ShapeOptions: {
+      auto ptr = reinterpret_cast<const ShapeOptionsT *>(value);
+      return CreateShapeOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -8505,6 +8625,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_NotEqualOptions: {
       value = new NotEqualOptionsT(*reinterpret_cast<NotEqualOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_ShapeOptions: {
+      value = new ShapeOptionsT(*reinterpret_cast<ShapeOptionsT *>(u.value));
       break;
     }
     default:
@@ -8781,6 +8905,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_NotEqualOptions: {
       auto ptr = reinterpret_cast<NotEqualOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_ShapeOptions: {
+      auto ptr = reinterpret_cast<ShapeOptionsT *>(value);
       delete ptr;
       break;
     }

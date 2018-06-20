@@ -668,6 +668,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_SHAPE: {
+      auto* params = MallocPOD<TfLiteShapeParams>();
+      if (auto* schema_params = op->builtin_options_as_ShapeOptions()) {
+        ConvertTensorType(schema_params->out_type(), &params->out_type,
+                          error_reporter);
+      }
+      *builtin_data = static_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");

@@ -157,6 +157,7 @@ enum BuiltinOperator : byte {
   SUM=74,
   SQRT = 75,
   RSQRT = 76,
+  SHAPE = 77,
 }
 
 // Options for the builtin operators.
@@ -215,6 +216,7 @@ union BuiltinOptions {
   ExpandDimsOptions,
   EqualOptions,
   NotEqualOptions,
+  ShapeOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -493,6 +495,11 @@ table EqualOptions {
 }
 
 table NotEqualOptions {
+}
+
+table ShapeOptions {
+  // Optional output type of the operation (int32 or int64). Defaults to int32.
+  out_type : TensorType;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

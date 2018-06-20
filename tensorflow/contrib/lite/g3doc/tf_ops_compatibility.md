@@ -595,6 +595,20 @@ Outputs {
 }
 ```
 
+**SHAPE**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 1D tensor representing the shape of the input tensor
+}
+Options {
+  out_type: the output type of the op (int32 or int64). Defaults to int32.
+}
+```
+
 **SLICE**
 
 ```

@@ -431,6 +431,14 @@ TEST_F(OperatorTest, BuiltinTransposeConv) {
   EXPECT_EQ(op.padding.type, output_toco_op->padding.type);
 }
 
+TEST_F(OperatorTest, BuiltinShape) {
+  TensorFlowShapeOperator op;
+  op.output_data_type = ArrayDataType::kInt64;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SHAPE", OperatorType::kTensorFlowShape), op);
+  EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
+}
+
 TEST_F(OperatorTest, BuiltinSparseToDense) {
   SparseToDenseOperator op;
   op.validate_indices = false;

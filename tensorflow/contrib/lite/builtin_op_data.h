@@ -250,6 +250,10 @@ typedef struct {
   bool validate_indices;
 } TfLiteSparseToDenseParams;
 
+typedef struct {
+  TfLiteType out_type;
+} TfLiteShapeParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

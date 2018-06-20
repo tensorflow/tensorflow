@@ -1157,10 +1157,10 @@ struct StackOperator : Operator {
 // This operation outputs a 1-D integer tensor representing the shape of
 // the input.
 //
-// TensorFlow equivalent: Shape.  We currently assume that the output is int32
-// and not int64.  The output type could be stored herein.
+// TensorFlow equivalent: Shape.
 struct TensorFlowShapeOperator : Operator {
   TensorFlowShapeOperator() : Operator(OperatorType::kTensorFlowShape) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt32;
 };
 
 // Element-wise square-root (x^0.5) operator.
