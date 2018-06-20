@@ -8,13 +8,16 @@ TENSORFLOW_API_INIT_FILES = [
     "bitwise/__init__.py",
     "compat/__init__.py",
     "data/__init__.py",
+    "debugging/__init__.py",
     "distributions/__init__.py",
     "distributions/bijectors/__init__.py",
+    "dtypes/__init__.py",
     "errors/__init__.py",
     "feature_column/__init__.py",
     "gfile/__init__.py",
     "graph_util/__init__.py",
     "image/__init__.py",
+    "io/__init__.py",
     "initializers/__init__.py",
     "keras/__init__.py",
     "keras/activations/__init__.py",
@@ -65,6 +68,7 @@ TENSORFLOW_API_INIT_FILES = [
     "nn/rnn_cell/__init__.py",
     "profiler/__init__.py",
     "python_io/__init__.py",
+    "quantization/__init__.py",
     "resource_loader/__init__.py",
     "strings/__init__.py",
     "saved_model/__init__.py",
@@ -114,22 +118,24 @@ ESTIMATOR_API_INIT_FILES = [
 #     template will be replaced with root imports collected by this genrule.
 #   srcs: genrule sources. If passing root_init_template, the template file
 #     must be included in sources.
-def gen_api_init_files(name,
-                       output_files=TENSORFLOW_API_INIT_FILES,
-                       root_init_template=None,
-                       srcs=[],
-                       api_name="tensorflow",
-                       package="tensorflow.python"):
-  root_init_template_flag = ""
-  if root_init_template:
-    root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
-  native.genrule(
-      name = name,
-      outs = output_files,
-      cmd = (
-          "$(location //tensorflow/tools/api/generator:create_python_api) " +
-          root_init_template_flag + " --apidir=$(@D) --apiname=" + api_name + " --package=" + package + " $(OUTS)"),
-      srcs = srcs,
-      tools = ["//tensorflow/tools/api/generator:create_python_api"],
-      visibility = ["//tensorflow:__pkg__"],
-  )
+def gen_api_init_files(
+        name,
+        output_files = TENSORFLOW_API_INIT_FILES,
+        root_init_template = None,
+        srcs = [],
+        api_name = "tensorflow",
+        package = "tensorflow.python"):
+    root_init_template_flag = ""
+    if root_init_template:
+        root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
+    native.genrule(
+        name = name,
+        outs = output_files,
+        cmd = (
+            "$(location //tensorflow/tools/api/generator:create_python_api) " +
+            root_init_template_flag + " --apidir=$(@D) --apiname=" + api_name + " --package=" + package + " $(OUTS)"
+        ),
+        srcs = srcs,
+        tools = ["//tensorflow/tools/api/generator:create_python_api"],
+        visibility = ["//tensorflow:__pkg__"],
+    )
