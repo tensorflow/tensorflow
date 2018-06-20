@@ -70,26 +70,13 @@ class HloSharding {
 
   // Creates a new sharding for a tuple type. The given ShapeTree must have
   // elements for every leaf shape contained in the tuple.
-  static HloSharding Tuple(const ShapeTree<HloSharding>& sub_shardings) {
-    std::vector<HloSharding> flattened_list;
-    flattened_list.reserve(
-        std::distance(sub_shardings.leaf_begin(), sub_shardings.leaf_end()));
-    for (const auto& index_to_sharding : sub_shardings.leaves()) {
-      flattened_list.push_back(index_to_sharding.second);
-    }
-    return HloSharding(flattened_list);
-  }
+  static HloSharding Tuple(const ShapeTree<HloSharding>& sub_shardings);
 
-  // Creates a new sharding for a tuple type. The requested tuple shape must not
-  // be nested. For nested tuples, use the ShapeTree overload.
+  // Creates a new sharding for a tuple type. The number of elements in
+  // shardings must match the number of leaf nodes in tuple_shape. For
+  // empty tuples, the shardings array must have one element.
   static HloSharding Tuple(const Shape& tuple_shape,
-                           tensorflow::gtl::ArraySlice<HloSharding> shardings) {
-    CHECK(ShapeUtil::IsTuple(tuple_shape));
-    CHECK(!ShapeUtil::IsNestedTuple(tuple_shape));
-    std::vector<HloSharding> flattened_list(shardings.begin(), shardings.end());
-    CHECK_EQ(flattened_list.size(), ShapeUtil::TupleElementCount(tuple_shape));
-    return HloSharding(flattened_list);
-  }
+                           tensorflow::gtl::ArraySlice<HloSharding> shardings);
 
   // Create a new sharding from a protobuf OpSharding.
   static StatusOr<HloSharding> FromProto(const OpSharding& proto);
@@ -171,6 +158,18 @@ class HloSharding {
   // Retrieves the sub sharding at a given index, out of a tuple sharding.
   // REQUIRES: IsTuple()
   HloSharding GetSubSharding(const Shape& shape, const ShapeIndex& index) const;
+
+  // If the current sharding is a tuple sharding, return itself as result.
+  // Otherwise returns a tuple sharding for the input shape, with all the leaves
+  // having this object sharding.
+  StatusOr<HloSharding> GetTupleSharding(const Shape& shape) const;
+
+  // Extracts the sharding that is common within the current sharding.
+  // If the current sharding is not a tuple sharding, the current sharding will
+  // be returned. If it is a tuple, and all the tuple elements are common, the
+  // common element will be returned. Otherwise the optional will contain no
+  // value.
+  tensorflow::gtl::optional<HloSharding> ExtractSingleSharding() const;
 
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
@@ -260,10 +259,18 @@ class HloSharding {
         tile_assignment_({0}),
         tuple_elements_(tuple_shardings) {}
 
+  // Checks that the number of elements in tuple_elements_ is consistent with
+  // the tuple shape passes as argument.
+  Status CheckLeafCount(const Shape& shape) const;
+
   // Internal helper to validate a tuple sharding.
   Status ValidateTuple(const Shape& shape, int64 num_devices) const;
+
   // Internal helper to validate a non-tuple (leaf) sharding.
   Status ValidateNonTuple(const Shape& shape, int64 num_devices) const;
+
+  // Returns the number of tuple_elements_ entries to fit the shape.
+  static int64 RequiredLeaves(const Shape& shape);
 
   bool replicated_;
   bool maximal_;

@@ -1438,7 +1438,13 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
   // connected to all source nodes in the graph. Many graphs violate this
   // invariant.
   std::vector<ControlFlowInfo> cf_info;
-  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph, &cf_info));
+  std::vector<string> unreachable_nodes;
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph, &cf_info, &unreachable_nodes));
+  if (!unreachable_nodes.empty()) {
+    return errors::InvalidArgument(
+        "The following nodes are unreachable from the source in the graph: ",
+        tensorflow::str_util::Join(unreachable_nodes, ", "));
+  }
 
   // Builds Frames, indexed by name.
   std::unordered_map<string, Frame> frames;

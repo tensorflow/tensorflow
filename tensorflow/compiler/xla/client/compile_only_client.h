@@ -46,13 +46,15 @@ class CompileOnlyClient : public Client {
     const Shape* result_layout;
   };
 
-  // Compiles a list of xla computations for ahead-of-time execution.  This is
-  // intended for use in static compilation. The |options| parameter describes
-  // the target for which the compiler should emit code.
+  // Compiles a list of xla computations for ahead-of-time execution.
+  // This is intended for use in static compilation. The |options|
+  // parameter describes the target for which the compiler should emit
+  // code. |metadata|, if provided, is populated during compilation.
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(
       const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
-      const AotCompilationOptions& options);
+      const AotCompilationOptions& options,
+      std::unique_ptr<AotCompilationMetadata>* metadata = nullptr);
 
   // Returns the size of a pointer in bytes for a given triple.
   static int64 PointerSizeForTriple(tensorflow::StringPiece triple);

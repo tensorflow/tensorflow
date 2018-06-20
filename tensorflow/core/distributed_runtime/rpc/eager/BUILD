@@ -12,7 +12,7 @@ cc_library(
     hdrs = ["grpc_eager_service.h"],
     deps = [
         "//tensorflow/core:eager_service_proto_cc",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -29,7 +29,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_state",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_service",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -48,7 +48,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 

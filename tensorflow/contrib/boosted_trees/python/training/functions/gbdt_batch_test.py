@@ -19,18 +19,15 @@ from __future__ import division
 from __future__ import print_function
 
 from google.protobuf import text_format
-
 from tensorflow.contrib import layers
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.boosted_trees.proto import tree_config_pb2
 from tensorflow.contrib.boosted_trees.python.ops import model_ops
 from tensorflow.contrib.boosted_trees.python.training.functions import gbdt_batch
 from tensorflow.contrib.boosted_trees.python.utils import losses
-
-from tensorflow.python.feature_column import feature_column_lib as core_feature_column
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
-
+from tensorflow.python.feature_column import feature_column_lib as core_feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -781,6 +778,118 @@ class GbdtTest(test_util.TensorFlowTestCase):
       self.assertAllClose(predictions_dict["predictions"],
                           [[0.25], [0.25], [0.25], [0.25]])
       self.assertAllClose(predictions_dict["partition_ids"], [0, 0, 0, 0])
+
+  def testPredictFnWithLeafIndexAdvancedLeft(self):
+    """Tests the predict function with output leaf ids."""
+    with self.test_session() as sess:
+      # Create ensemble with one bias node.
+      ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
+      text_format.Merge(
+          """
+          trees {
+            nodes {
+                dense_float_binary_split {
+                  threshold: 1.0
+                  left_id: 1
+                  right_id: 2
+                }
+                node_metadata {
+                  gain: 0
+                }
+              }
+              nodes {
+                leaf {
+                  vector {
+                    value: 0.25
+                  }
+                }
+              }
+              nodes {
+                leaf {
+                  vector {
+                    value: 0.15
+                  }
+                }
+              }
+          }
+          trees {
+            nodes {
+                dense_float_binary_split {
+                  threshold: 0.99
+                  left_id: 1
+                  right_id: 2
+                }
+                node_metadata {
+                  gain: 00
+                }
+              }
+              nodes {
+                leaf {
+                  vector {
+                    value: 0.25
+                  }
+                }
+              }
+              nodes {
+                leaf {
+                  vector {
+                    value: 0.23
+                  }
+                }
+              }
+          }
+          tree_weights: 1.0
+          tree_weights: 1.0
+          tree_metadata {
+            num_tree_weight_updates: 1
+            num_layers_grown: 1
+            is_finalized: true
+          }
+          tree_metadata {
+            num_tree_weight_updates: 1
+            num_layers_grown: 1
+            is_finalized: true
+          }""", ensemble_config)
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=3,
+          tree_ensemble_config=ensemble_config.SerializeToString(),
+          name="tree_ensemble")
+      resources.initialize_resources(resources.shared_resources()).run()
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+      learner_config.num_classes = 2
+      learner_config.regularization.l1 = 0
+      learner_config.regularization.l2 = 0
+      learner_config.constraints.max_tree_depth = 1
+      learner_config.constraints.min_node_weight = 0
+      features = {}
+      features["dense_float"] = array_ops.constant(
+          [[0.0], [1.0], [1.1], [2.0]], dtype=dtypes.float32)
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=False,
+          num_ps_replicas=0,
+          center_bias=True,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=1,
+          features=features,
+          output_leaf_index=True)
+
+      # Create predict op.
+      mode = model_fn.ModeKeys.INFER
+      predictions_dict = sess.run(gbdt_model.predict(mode))
+      self.assertEquals(predictions_dict["ensemble_stamp"], 3)
+      # here are how the numbers in expected results are calculated,
+      # 0.5 = 0.25 + 0.25
+      # 0.48 = 0.25 + 0.23
+      # 0.38 = 0.15 + 0.23
+      # 0.38 = 0.15 + 0.23
+      self.assertAllClose(predictions_dict["predictions"],
+                          [[0.5], [0.48], [0.38], [0.38]])
+      self.assertAllClose(predictions_dict["partition_ids"], [0, 0, 0, 0])
+      self.assertAllClose(predictions_dict["leaf_index"],
+                          [[1, 1], [1, 2], [2, 2], [2, 2]])
 
   def testTrainFnMulticlassFullHessian(self):
     """Tests the GBDT train for multiclass full hessian."""

@@ -32,7 +32,7 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 # The default learning rate of 0.05 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
@@ -201,7 +201,7 @@ def _dnn_model_fn(features,
           logits=logits)
 
 
-@tf_export('estimator.DNNClassifier')
+@estimator_export('estimator.DNNClassifier')
 class DNNClassifier(estimator.Estimator):
   """A classifier for TensorFlow DNN models.
 
@@ -353,7 +353,7 @@ class DNNClassifier(estimator.Estimator):
         warm_start_from=warm_start_from)
 
 
-@tf_export('estimator.DNNRegressor')
+@estimator_export('estimator.DNNRegressor')
 class DNNRegressor(estimator.Estimator):
   """A regressor for TensorFlow DNN models.
 

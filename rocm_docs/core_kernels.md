@@ -78,7 +78,7 @@ Kernels under tensorflow/core/kernels
 |   O    |        | betainc_op_gpu.cu.cc
 |   O    |        | bias_op.cc
 |   O    |        | bias_op.h
-|   O    |        | bias_op_gpu.cu.cc
+|   O    |rocPRIM | bias_op_gpu.cu.cc
 |   O    |        | bias_op_gpu.h
 |   O    |rocPRIM | bincount_op.cc
 |   O    |rocPRIM | bincount_op.h

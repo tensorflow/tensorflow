@@ -546,14 +546,17 @@ exports_files(
 )
 
 gen_api_init_files(
-    name = "python_api_gen",
+    name = "tensorflow_python_api_gen",
     srcs = ["api_template.__init__.py"],
     root_init_template = "api_template.__init__.py",
 )
 
 py_library(
     name = "tensorflow_py",
-    srcs = [":python_api_gen"],
+    srcs = [
+        ":tensorflow_python_api_gen",
+        "//tensorflow/python/estimator/api:estimator_python_api_gen",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python"],

@@ -72,7 +72,7 @@ ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
 # Add target file to help determine which device(s) to build for
-ADD ./target.lst /opt/rocm/bin
+RUN echo -e "gfx803\ngfx900" >> /opt/rocm/bin/target.lst
 
 # Setup environment variables, and add those environment variables at the end of ~/.bashrc 
 ARG HCC_HOME=/opt/rocm/hcc

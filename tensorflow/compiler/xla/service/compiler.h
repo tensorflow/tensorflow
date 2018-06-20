@@ -94,6 +94,19 @@ class AotCompilationOptions {
   DebugOptions debug_options_;
 };
 
+// Abstract superclass describing metadata produced during ahead-of-time
+// compilation.
+class AotCompilationMetadata {
+ public:
+  AotCompilationMetadata(const AotCompilationMetadata&) = delete;
+  AotCompilationMetadata& operator=(AotCompilationMetadata const&) = delete;
+
+  virtual ~AotCompilationMetadata() = default;
+
+ protected:
+  AotCompilationMetadata() = default;
+};
+
 // Abstract compiler interface that is subclassed for compilation on a
 // particular platform.
 //
@@ -171,6 +184,13 @@ class Compiler {
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                      const AotCompilationOptions& options) = 0;
+
+  // Similar to CompileAheadOfTime above but AotCompilationMetadata
+  // has an argument that can be populated during compilation.
+  virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+                     const AotCompilationOptions& options,
+                     std::unique_ptr<AotCompilationMetadata>* metadata);
 
   /////
   // The Compiler class also serves as a point to register compiler objects

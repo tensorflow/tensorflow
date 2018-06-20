@@ -79,7 +79,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Ensure that weights and inputs have the same channel dimension.
   // Note: TOCO will reorder weights in the following format: OHWI.
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 3),
-                    SizeOfDimension(weights, 0));
+                    SizeOfDimension(weights, 3));
 
   if (!IsConstantTensor(output_shape)) {
     SetTensorToDynamic(output);

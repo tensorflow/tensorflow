@@ -66,14 +66,14 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'self', 'config'])
 
 
-@tf_export('estimator.Estimator')
+@estimator_export('estimator.Estimator')
 class Estimator(object):
   """Estimator class to train and evaluate TensorFlow models.
 
@@ -566,7 +566,8 @@ class Estimator(object):
     allowed_overrides = set([
         '_call_input_fn', '_create_global_step',
         '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
-        '_tf_api_names', '_validate_features_in_predict_input',
+        '_tf_api_names', '_estimator_api_names', '_estimator_api_constants',
+        '_validate_features_in_predict_input',
         '_call_model_fn', '_add_meta_graph_for_mode'
     ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
@@ -893,11 +894,14 @@ class Estimator(object):
             estimator_spec.scaffold.local_init_op or
             monitored_session.Scaffold.default_local_init_op())
 
-        saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
-            sharded=True)
+        # This saver will be used both for restoring variables now,
+        # and in saving out the metagraph below. This ensures that any
+        # Custom Savers stored with the Scaffold are passed through to the
+        # SavedModel for restore later.
+        graph_saver = estimator_spec.scaffold.saver or saver.Saver(sharded=True)
 
         try:
-          saver_for_restore.restore(session, checkpoint_path)
+          graph_saver.restore(session, checkpoint_path)
         except errors.NotFoundError as e:
           msg = ('Could not load all requested variables from the checkpoint. '
                  'Please make sure your model_fn does not expect variables '
@@ -918,7 +922,8 @@ class Estimator(object):
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
             strip_default_attrs=strip_default_attrs,
-            legacy_init_op=local_init_op)
+            legacy_init_op=local_init_op,
+            saver=graph_saver)
 
         if save_variables:
           builder.add_meta_graph_and_variables(
@@ -1630,11 +1635,12 @@ def _has_dataset_or_queue_runner(maybe_tensor):
   # Now, check queue.
   return ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS)
 
+
 VocabInfo = warm_starting_util.VocabInfo  # pylint: disable=invalid-name
-tf_export('estimator.VocabInfo', allow_multiple_exports=True)(VocabInfo)
+estimator_export('estimator.VocabInfo')(VocabInfo)
 
 
-@tf_export('estimator.WarmStartSettings')
+@estimator_export('estimator.WarmStartSettings')
 class WarmStartSettings(
     collections.namedtuple('WarmStartSettings', [
         'ckpt_to_initialize_from',

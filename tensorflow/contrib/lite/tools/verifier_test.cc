@@ -41,7 +41,7 @@ class TfLiteFlatbufferModelBuilder {
   }
 
   TfLiteFlatbufferModelBuilder(const std::vector<BuiltinOperator>& builtin_ops,
-                               const std::vector<string>& custom_ops) {
+                               const std::vector<std::string>& custom_ops) {
     buffers_.push_back(
         CreateBuffer(builder_, builder_.CreateVector(std::vector<uint8_t>{})));
 
@@ -194,8 +194,8 @@ TEST(VerifyModel, TensorBufferIsNotValid) {
                       /*operators=*/0, builder.CreateString("Main"))});
 
   auto buffers = builder.CreateVector(std::vector<Offset<Buffer>>{
-      CreateBuffer(builder,
-                   builder.CreateVector(std::vector<uint8>{1, 2, 3, 4, 5, 6})),
+      CreateBuffer(builder, builder.CreateVector(
+                                std::vector<uint8_t>{1, 2, 3, 4, 5, 6})),
   });
 
   auto model = CreateModel(builder, TFLITE_SCHEMA_VERSION, /*operator_codes=*/0,

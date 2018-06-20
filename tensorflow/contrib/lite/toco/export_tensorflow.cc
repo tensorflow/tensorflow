@@ -494,7 +494,7 @@ void ConvertTransposeConvOperator(const Model& model,
   const auto& weights_array = model.GetArray(weights_array_name);
   CHECK(weights_array.buffer->type == ArrayDataType::kFloat);
   ConvertFloatTensorConst(model, weights_array_name, AxesOrder::kOHWI,
-                          AxesOrder::kHWIO, tensorflow_graph);
+                          AxesOrder::kHWOI, tensorflow_graph);
   auto& strides = (*conv2d_op->mutable_attr())["strides"];
   strides.mutable_list()->add_i(1);
   strides.mutable_list()->add_i(src_op.stride_height);
@@ -1938,6 +1938,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertRandomUniformOperator(
         model, static_cast<const RandomUniformOperator&>(src_op),
         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowEqual) {
+    ConvertComparisonOperator(model, src_op, "Equal", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowNotEqual) {
+    ConvertComparisonOperator(model, src_op, "NotEqual", tensorflow_graph);
   } else if (src_op.type == OperatorType::kTensorFlowGreater) {
     ConvertComparisonOperator(model, src_op, "Greater", tensorflow_graph);
   } else if (src_op.type == OperatorType::kTensorFlowGreaterEqual) {

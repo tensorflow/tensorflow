@@ -242,12 +242,7 @@ v//Fw6ZeY+HmRDFdirjD7wXtIuER4vqCryIqR6Xe9X8oJXz9L/Jhslc=
 -----END PGP PUBLIC KEY BLOCK-----
 ```
 
-### Known vulnerabilities
+### Known Vulnerabilities
 
-| Type               | Versions affected | Reported by           | Additional Information      |
-|--------------------|:-----------------:|-----------------------|-----------------------------|
-| TensorFlow Lite TOCO FlatBuffer Parsing Vulnerability | <= 1.7 | Blade Team of Tencent | [security advisory](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/docs_src/security/advisory/tfsa-2018-003.md) |
-| GIF File Parsing Null Pointer Dereference Error | <= 1.5 | Blade Team of Tencent | [security advisory](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/docs_src/security/advisory/tfsa-2018-002.md) |
-| BMP File Parser Out-of-bounds Read | <= 1.6 | Blade Team of Tencent | [security advisory](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/docs_src/security/advisory/tfsa-2018-001.md) |
-| Out Of Bounds Read |             <=1.4 | Blade Team of Tencent | [issue report](https://github.com/tensorflow/tensorflow/issues/14959) |
-
+For a list of known vulnerabilities and security advisories for TensorFlow,
+(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/index.md)[click here].

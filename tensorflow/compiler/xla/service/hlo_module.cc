@@ -32,15 +32,6 @@ limitations under the License.
 
 namespace xla {
 
-HloModule::HloModule(const string& name,
-                     const VersionedComputationHandle& entry_computation_handle,
-                     const HloModuleConfig& config)
-    : name_(NameUniquer::GetSanitizedName(name)),
-      config_(config),
-      has_entry_computation_handle_(true),
-      entry_computation_handle_(entry_computation_handle),
-      unique_id_(next_unique_module_id_++) {}
-
 HloModule::HloModule(const string& name, const HloModuleConfig& config)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(config),
@@ -234,8 +225,7 @@ HloModuleProto HloModule::ToProto() const {
 
 /* static */
 StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
-    const HloModuleProto& proto, const HloModuleConfig& module_config,
-    const VersionedComputationHandle& entry_computation_handle) {
+    const HloModuleProto& proto, const HloModuleConfig& module_config) {
   // The ProgramShape in the passed in module config must match the shapes of
   // the entry parameters and root.
   TF_RET_CHECK(proto.has_program_shape())
@@ -287,8 +277,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(entry != nullptr);
 
-  auto module = MakeUnique<HloModule>(proto.name(), entry_computation_handle,
-                                      module_config);
+  auto module = MakeUnique<HloModule>(proto.name(), module_config);
 
   // Sort the computations in the proto id's order.
   std::sort(computations.begin(), computations.end(),
@@ -401,7 +390,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
         // as a parameter in the new function.
         arguments.push_back(old_operand);
         *operand_slot = builder.AddInstruction(HloInstruction::CreateParameter(
-            parameter_count, old_operand->shape(), ""));
+            parameter_count, old_operand->shape(), "p"));
         ++parameter_count;
       }
       TF_CHECK_OK(
@@ -525,8 +514,6 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
 std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = MakeUnique<HloModule>(name_ + "-" + suffix, config_);
-  module->entry_computation_handle_ = entry_computation_handle_;
-  module->has_entry_computation_handle_ = has_entry_computation_handle_;
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);

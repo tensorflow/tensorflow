@@ -109,11 +109,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-      	"https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/eigen-upstream/archive/891d9e0785495edba17147ea8a6d6f50e9960ea8.zip",
-	"https://github.com/ROCmSoftwarePlatform/eigen-upstream/archive/891d9e0785495edba17147ea8a6d6f50e9960ea8.zip",	
+      	"https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/eigen-upstream/archive/17e834e1a9df329f304f16c1272286d1b912cc41.zip",
+	"https://github.com/ROCmSoftwarePlatform/eigen-upstream/archive/17e834e1a9df329f304f16c1272286d1b912cc41.zip",	
       ],
-      sha256 = "fa077f7c81f49aab7b7a462456f45985ece801a50c83dafea64c1a1ea3c8a900",
-      strip_prefix = "eigen-upstream-891d9e0785495edba17147ea8a6d6f50e9960ea8",
+      sha256 = "af580642e44f13fca1526f7794dcd657dacc129dac4e26d8e4f228c758eed433",
+      strip_prefix = "eigen-upstream-17e834e1a9df329f304f16c1272286d1b912cc41",
       build_file = clean_dep("//third_party:eigen.BUILD"),
   )
 
@@ -453,11 +453,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/40c66c3d40377cf85640b3a35e6ec5c5b1cbc41f.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/40c66c3d40377cf85640b3a35e6ec5c5b1cbc41f.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/582e5dd5553e3089fef97f9ab5a3f063e0160fa9.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/582e5dd5553e3089fef97f9ab5a3f063e0160fa9.tar.gz",
       ],
-      sha256 = "6f782a0d2e9d7946bdf20807e0fcd8f5eaed8afd93bdd610cdefbe9435ca551f",
-      strip_prefix = "llvm-40c66c3d40377cf85640b3a35e6ec5c5b1cbc41f",
+      sha256 = "9a0e63469ae5a546e0c84b778955f0febabfc8497d312324546ec7d0db68430e",
+      strip_prefix = "llvm-582e5dd5553e3089fef97f9ab5a3f063e0160fa9",
       build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
   )
 
@@ -654,11 +654,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "rocprim_archive",
       urls = [
-          "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rocPRIM/archive/78faf38.zip",
-          "https://github.com/ROCmSoftwarePlatform/rocPRIM/archive/78faf38.zip"
+          "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rocPRIM/archive/v1.0.0.zip",
+          "https://github.com/ROCmSoftwarePlatform/rocPRIM/archive/v1.0.0.zip",
       ],
-      sha256 = "95584fb3b8aaf5ad43e0d271912f6b5c048020e67ba67f32f8a8b8cd67dc2bff",
-      strip_prefix = "rocPRIM-78faf386a45de246e0eb34c2b2e589f29c5eb163",
+      sha256 = "fc1005f56cd7bd6f5f3c48b39c9972dda20d1f9e7ad94dae183fce9120c0d8ce",
+      strip_prefix = "rocPRIM-1.0.0",
       build_file = clean_dep("//third_party:rocprim.BUILD"),
   )
 
@@ -791,11 +791,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@grpc//:grpc_python_plugin",
   )
 
-  # gRPC has three empty C++ functions which it wants the user to define
-  # at build time. https://github.com/grpc/grpc/issues/13590
   native.bind(
       name = "grpc_lib",
-      actual = "@grpc//:grpc++_unsecure",
+      actual = "@grpc//:grpc++",
   )
 
   # Needed by gRPC

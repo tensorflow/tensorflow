@@ -148,6 +148,8 @@ class _ScanDataset(dataset_ops.Dataset):
         self._output_types = nest.pack_sequence_as(
             output_value, [t.dtype for t in nest.flatten(output_value)])
 
+        dataset_ops._warn_if_collections("tf.contrib.data.scan()")  # pylint: disable=protected-access
+
         # Serialize any sparse tensors.
         new_state = nest.pack_sequence_as(new_state, [
             t for t in nest.flatten(sparse.serialize_sparse_tensors(new_state))
@@ -193,10 +195,7 @@ class _ScanDataset(dataset_ops.Dataset):
         nest.flatten(sparse.serialize_sparse_tensors(self._initial_state)),
         self._scan_func.captured_inputs,
         f=self._scan_func,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):

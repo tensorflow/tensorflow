@@ -456,17 +456,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                                     llvm::ConstantFP::get(type, 1.0)));
     }
     case HloOpcode::kIsFinite: {
-      // (x == x) && abs(x) != inf
+      // abs(x) o!= inf, this works because the comparison returns false if
+      // either operand is NaN.
       auto type = operand_value->getType();
-      auto equal_self =
-          ir_builder_->CreateFCmpOEQ(operand_value, operand_value);
       auto abs_value = llvm_ir::EmitCallToIntrinsic(
           llvm::Intrinsic::fabs, {operand_value}, {type}, ir_builder_);
       auto infinity = llvm::ConstantFP::getInfinity(type);
       auto not_infinite = ir_builder_->CreateFCmpONE(abs_value, infinity);
-      auto result_i1 = ir_builder_->CreateAnd(equal_self, not_infinite);
       return ir_builder_->CreateZExt(
-          result_i1, llvm_ir::PrimitiveTypeToIrType(PRED, module_));
+          not_infinite, llvm_ir::PrimitiveTypeToIrType(PRED, module_));
     }
     case HloOpcode::kNegate:
       return ir_builder_->CreateFNeg(operand_value);

@@ -94,10 +94,6 @@
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
-# TODO(jhseu): Temporary for the gRPC pull request due to the
-# protobuf -> protobuf_archive rename. Remove later.
-TF_BUILD_BAZEL_CLEAN=1
-
 # Helper function: Convert to lower case
 to_lower () {
   echo "$1" | tr '[:upper:]' '[:lower:]'

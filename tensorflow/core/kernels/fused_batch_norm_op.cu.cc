@@ -50,7 +50,12 @@ __global__ void InvVarianceToVarianceKernel(int nthreads, double epsilon,
                                             int sample_size, T* variance) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     T inv_var = variance[index];
+#if GOOGLE_CUDA
     T var = __fdividef(1, inv_var * inv_var) - T(epsilon);
+#TODO: fix this in ROCDL or LC
+#elif TENSORFLOW_USE_ROCM
+    T var = 1 / (inv_var * inv_var) - T(epsilon);
+#endif
     // This is for Bessel's correction
     var *= T(sample_size) / T((sample_size > 1) ? sample_size - 1 : 1);
     variance[index] = (var > 0) ? var : 0;

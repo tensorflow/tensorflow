@@ -31,6 +31,7 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import device_util
@@ -342,6 +343,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         updates[d] = fn(*values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
     return values.regroup(updates, values.Mirrored)
+
+  def read_var(self, tower_local_var):
+    """Read the aggregate value of a tower-local variable."""
+    if isinstance(tower_local_var, values.TowerLocalVariable):
+      return math_ops.add_n(self.unwrap(tower_local_var))
+    assert isinstance(tower_local_var, values.Mirrored)
+    return array_ops.identity(tower_local_var.get())
 
   def _fetch(self, val, destination, fn):
     """Return a copy of `val` or `fn(val)` on `destination`."""

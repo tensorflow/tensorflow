@@ -409,7 +409,15 @@ class GraphModeFunction(object):
         backward_outputs, in_gradients, output_shapes, attrs=self._attrs)
 
   def _backprop_call(self, args):
-    """Calls the wrapped function and records the result on a tape."""
+    """Calls the wrapped function and records the result on a tape.
+
+    (Only records results on a tape if the function has outputs)
+
+    Args:
+      args: The tensor inputs to the function.
+    Returns:
+      The call output.
+    """
     all_args = args + self._extra_inputs
     signature = self._forward_fdef.signature
     ctx = context.context()
@@ -420,6 +428,8 @@ class GraphModeFunction(object):
           inputs=all_args,
           attrs=None,
           ctx=ctx)
+      if not outputs:
+        return None
     else:
       g = ops.get_default_graph()
       g._add_function(self._forward_fdef)  # pylint: disable=protected-access
@@ -431,8 +441,9 @@ class GraphModeFunction(object):
           name="FunctionCall",
           compute_shapes=False)
       outputs = op.outputs
-      outputs = [outputs] if isinstance(
-          outputs, (ops.Tensor, type(None))) else list(outputs)
+      if not outputs:
+        return op
+      outputs = [outputs] if isinstance(outputs, ops.Tensor) else list(outputs)
       for i, s in enumerate(self._output_shapes):
         outputs[i].set_shape(s)
     real_outputs = outputs[:len(self._returns)]

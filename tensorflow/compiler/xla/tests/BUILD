@@ -1204,6 +1204,22 @@ xla_test(
 )
 
 xla_test(
+    name = "token_hlo_test",
+    srcs = ["token_hlo_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+    ],
+    deps = [
+        ":client_library_test_base",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
     name = "call_test",
     srcs = ["call_test.cc"],
     tags = [

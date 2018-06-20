@@ -12,6 +12,10 @@ py_library(
     name = "estimator_py",
     srcs = ["estimator_lib.py"],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":baseline",
         ":boosted_trees",
@@ -971,7 +975,10 @@ py_test(
     size = "large",
     srcs = ["keras_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "no_windows",
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/core:protos_all_py",

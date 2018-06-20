@@ -33,8 +33,9 @@ and [`inf`s](https://en.wikipedia.org/wiki/Infinity), a frequently-encountered
 type of bug in TensorFlow model development.
 The following example is for users who use the low-level
 [`Session`](https://www.tensorflow.org/api_docs/python/tf/Session) API of
-TensorFlow. A later section of this document describes how to use **tfdbg**
-with a higher-level API, namely `Estimator`s.
+TensorFlow. Later sections of this document describe how to use **tfdbg**
+with higher-level APIs of TensorFlow, including `tf.estimator`,
+`tf.keras` / `keras` and `tf.contrib.slim`.
 To *observe* such an issue, run the following command without the debugger (the
 source code can be found
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/debug/examples/debug_mnist.py)):
@@ -477,19 +478,30 @@ for more details.
 
 ## Debugging Keras Models with TFDBG
 
-To use TFDBG with [Keras](https://keras.io/), let the Keras backend use
-a TFDBG-wrapped Session object. For example, to use the CLI wrapper:
+To use TFDBG with
+[tf.keras](https://www.tensorflow.org/api_docs/python/tf/keras),
+let the Keras backend use a TFDBG-wrapped Session object. For example, to use
+the CLI wrapper:
 
 ``` python
 import tensorflow as tf
-from keras import backend as keras_backend
 from tensorflow.python import debug as tf_debug
 
-keras_backend.set_session(tf_debug.LocalCLIDebugWrapperSession(tf.Session()))
+tf.keras.backend.set_session(tf_debug.LocalCLIDebugWrapperSession(tf.Session()))
 
 # Define your keras model, called "model".
-model.fit(...)  # This will break into the TFDBG CLI.
+
+# Calls to `fit()`, 'evaluate()` and `predict()` methods will break into the
+# TFDBG CLI.
+model.fit(...)
+model.evaluate(...)
+model.predict(...)
 ```
+
+With minor modification, the preceding code example also works for the
+[non-TensorFlow version of Keras](https://keras.io/) running against a
+TensorFlow backend. You just need to replace `tf.keras.backend` with
+`keras.backend`.
 
 ## Debugging tf-slim with TFDBG
 

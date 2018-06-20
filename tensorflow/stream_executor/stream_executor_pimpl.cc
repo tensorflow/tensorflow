@@ -615,7 +615,7 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
 port::Status StreamExecutor::SynchronousMemcpyH2D(
     const void *host_src, int64 size, DeviceMemoryBase *device_dst) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpyH2D(host_src=" << host_src
-          << ", size=" << size << ", device_dst" << device_dst->opaque() << ")"
+          << ", size=" << size << ", device_dst=" << device_dst->opaque() << ")"
           << StackTraceIfVLOG10();
 
   port::Status result;

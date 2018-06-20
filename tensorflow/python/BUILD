@@ -2530,6 +2530,7 @@ py_library(
         ":check_ops",
         ":confusion_matrix",
         ":control_flow_ops",
+        ":distribute",
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",

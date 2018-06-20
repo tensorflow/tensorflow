@@ -545,7 +545,9 @@ tf_xla_py_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
     ],

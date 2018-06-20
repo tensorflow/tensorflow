@@ -34,8 +34,8 @@ genrule(
     srcs = ["rocprim/include/rocprim/rocprim_version.hpp.in"],
     outs = ["rocprim_version.hpp"],
     cmd = ("sed " +
-           "-e 's/@rocprim_VERSION_MAJOR@/0/g' " +
-           "-e 's/@rocprim_VERSION_MINOR@/3/g' " +
+           "-e 's/@rocprim_VERSION_MAJOR@/1/g' " +
+           "-e 's/@rocprim_VERSION_MINOR@/0/g' " +
            "-e 's/@rocprim_VERSION_PATCH@/0/g' " +
            "$< >$@"),
 )

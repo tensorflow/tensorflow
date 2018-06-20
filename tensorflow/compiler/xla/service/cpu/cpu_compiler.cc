@@ -264,8 +264,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
     pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
-        /*rewrite_grad_op=*/true,
-        /*use_fusion=*/false);
+        /*rewrite_grad_op=*/true);
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
@@ -550,8 +549,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(
       SequentialHloOrdering::HloModuleSequence module_sequence,
-      CreateMemoryMinimizingSequence(*module, BufferSizeBytesFunction(),
-                                     DFSMemoryScheduler));
+      ScheduleComputationsInModule(*module, BufferSizeBytesFunction(),
+                                   DFSMemoryScheduler));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
@@ -730,7 +729,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
-        CreateMemoryMinimizingSequence(*module, BufferSizeBytesFunction()));
+        ScheduleComputationsInModule(*module, BufferSizeBytesFunction()));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.

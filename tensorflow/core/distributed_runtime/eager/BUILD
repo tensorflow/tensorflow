@@ -65,8 +65,8 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
-        "@grpc//:grpc++_unsecure",
-        "@grpc//:grpc_unsecure",
+        "@grpc",
+        "@grpc//:grpc++",
     ],
 )
 
