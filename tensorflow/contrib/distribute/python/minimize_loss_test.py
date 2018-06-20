@@ -88,7 +88,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       for _ in range(10):
         run_step()
 
-        weights.append(self.evaluate(distribution.fetch(layer.kernel)))
+        weights.append(self.evaluate(layer.kernel))
         biases.append(self.evaluate(distribution.fetch(layer.bias)))
 
       if is_tpu:
