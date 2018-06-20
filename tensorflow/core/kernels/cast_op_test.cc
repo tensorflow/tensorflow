@@ -76,7 +76,12 @@ class CastOpTest : public OpsTestBase {
   TEST_CAST(in, half);          \
   TEST_CAST(in, float);         \
   TEST_CAST(in, double);        \
-  TEST_CAST(in, bfloat16);
+  TEST_CAST(in, bfloat16);      \
+  TEST_CAST(in, quint8);        \
+  TEST_CAST(in, qint8);         \
+  TEST_CAST(in, qint32);        \
+  TEST_CAST(in, qint16);        \
+  TEST_CAST(in, quint16);
 
 TEST_ALL_CASTS_FROM(uint8)
 TEST_ALL_CASTS_FROM(uint16)
@@ -87,6 +92,11 @@ TEST_ALL_CASTS_FROM(half)
 TEST_ALL_CASTS_FROM(float)
 TEST_ALL_CASTS_FROM(double)
 TEST_ALL_CASTS_FROM(bfloat16)
+TEST_ALL_CASTS_FROM(quint8)
+TEST_ALL_CASTS_FROM(qint8)
+TEST_ALL_CASTS_FROM(qint32)
+TEST_ALL_CASTS_FROM(qint16)
+TEST_ALL_CASTS_FROM(quint16)
 
 #undef TEST_ALL_CASTS_FROM
 #undef TEST_CAST
