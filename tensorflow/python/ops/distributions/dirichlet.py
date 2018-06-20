@@ -90,6 +90,11 @@ class Dirichlet(distribution.Distribution):
   Distribution parameters are automatically broadcast in all functions; see
   examples for details.
 
+  Warning: Some components of the samples can be zero due to finite precision.
+  This happens more often when some of the concentrations are very small.
+  Make sure to round the samples to `np.finfo(dtype).tiny` before computing the
+  density.
+
   #### Examples
 
   ```python

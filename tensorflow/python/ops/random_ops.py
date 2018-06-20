@@ -422,8 +422,9 @@ def random_gamma(shape,
     name: Optional name for the operation.
 
   Returns:
-    samples: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))`
-      with values of type `dtype`.
+    samples: a `Tensor` of shape
+      `tf.concat([shape, tf.shape(alpha + beta)], axis=0)` with values of type
+      `dtype`.
   """
   with ops.name_scope(name, "random_gamma", [shape, alpha, beta]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
@@ -446,13 +447,15 @@ def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
 
   Example:
 
-    samples = tf.random_poisson([0.5, 1.5], [10])
-    # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
-    # the samples drawn from each distribution
+  ```python
+  samples = tf.random_poisson([0.5, 1.5], [10])
+  # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
+  # the samples drawn from each distribution
 
-    samples = tf.random_poisson([12.2, 3.3], [7, 5])
-    # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
-    # represents the 7x5 samples drawn from each of the two distributions
+  samples = tf.random_poisson([12.2, 3.3], [7, 5])
+  # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
+  # represents the 7x5 samples drawn from each of the two distributions
+  ```
 
   Args:
     lam: A Tensor or Python value or N-D array of type `dtype`.
@@ -469,8 +472,8 @@ def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
     name: Optional name for the operation.
 
   Returns:
-    samples: a `Tensor` of shape `tf.concat(shape, tf.shape(lam))` with
-      values of type `dtype`.
+    samples: a `Tensor` of shape `tf.concat([shape, tf.shape(lam)], axis=0)`
+      with values of type `dtype`.
   """
   with ops.name_scope(name, "random_poisson", [lam, shape]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
