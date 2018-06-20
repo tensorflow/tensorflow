@@ -450,6 +450,13 @@ TEST_F(OperatorTest, TensorFlowUnsupported) {
   (*attr)["str_attr"].set_s("Hello World");
   (*attr)["int_attr"].set_i(17);
   (*attr)["bool_attr"].set_b(true);
+  {
+    auto* list = (*attr)["list_int_attr"].mutable_list();
+    list->add_i(1);
+    list->add_i(20);
+    list->add_i(1LL << 40);
+    list->add_i(-(1LL << 40));
+  }
   node_def.SerializeToString(&op.tensorflow_node_def);
 
   auto output_toco_op =
@@ -464,6 +471,15 @@ TEST_F(OperatorTest, TensorFlowUnsupported) {
   EXPECT_EQ("Hello World", output_attr.at("str_attr").s());
   EXPECT_EQ(17, output_attr.at("int_attr").i());
   EXPECT_EQ(true, output_attr.at("bool_attr").b());
+
+  {
+    const auto& list = output_attr.at("list_int_attr").list();
+    ASSERT_EQ(4, list.i_size());
+    EXPECT_EQ(1, list.i(0));
+    EXPECT_EQ(20, list.i(1));
+    EXPECT_EQ(1LL << 40, list.i(2));
+    EXPECT_EQ(-(1LL << 40), list.i(3));
+  }
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupportedWithoutAttr) {

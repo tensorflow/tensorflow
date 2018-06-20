@@ -978,6 +978,20 @@ class TensorFlowUnsupported : public BaseOperator {
           fbb->Bool(key, attr.b());
           has_valid_attr = true;
           break;
+        case tensorflow::AttrValue::kList:
+          if (attr.list().i_size() > 0) {
+            auto start = fbb->StartVector(key);
+            for (const int64_t v : attr.list().i()) {
+              fbb->Add(v);
+            }
+            fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
+            has_valid_attr = true;
+          } else {
+            LOG(WARNING)
+                << "Ignoring unsupported type in list attribute with key '"
+                << key << "'";
+          }
+          break;
         default:
           LOG(WARNING) << "Ignoring unsupported attribute type with key '"
                        << key << "'";
@@ -1014,6 +1028,14 @@ class TensorFlowUnsupported : public BaseOperator {
         case flexbuffers::TYPE_BOOL:
           (*attr)[key].set_b(value.AsBool());
           break;
+        case flexbuffers::TYPE_VECTOR_INT: {
+          auto* list = (*attr)[key].mutable_list();
+          const auto& vector = value.AsTypedVector();
+          for (size_t i = 0; i < vector.size(); i++) {
+            list->add_i(vector[i].AsInt64());
+          }
+          break;
+        }
         default:
           LOG(WARNING) << "Ignoring unsupported attribute type with key '"
                        << key << "'";
