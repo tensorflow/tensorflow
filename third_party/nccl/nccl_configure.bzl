@@ -69,7 +69,7 @@ cc_library(
 NCCL_LIB_PATHS = [
   "lib64/",
   "lib/powerpc64le-linux-gnu/",
-  "lib/x86-64-linux-gnu/",
+  "lib/x86_64-linux-gnu/",
   "lib/",
   ""
 ]
