@@ -70,14 +70,12 @@ namespace wrap {
   __macro(hipfftMakePlan3d)          \
   __macro(hipfftGetSizeMany)         \
   __macro(hipfftMakePlanMany)        \
-
-  // XXX disable before rocFFT uses proper HIP complex types
-  //__macro(hipfftExecD2Z)             \
-  //__macro(hipfftExecZ2D)             \
-  //__macro(hipfftExecC2C)             \
-  //__macro(hipfftExecC2R)             \
-  //__macro(hipfftExecZ2Z)             \
-  //__macro(hipfftExecR2C)             \
+  __macro(hipfftExecD2Z)             \
+  __macro(hipfftExecZ2D)             \
+  __macro(hipfftExecC2C)             \
+  __macro(hipfftExecC2R)             \
+  __macro(hipfftExecZ2Z)             \
+  __macro(hipfftExecR2C)             \
 
 HIPFFT_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_HIPFFT_WRAP)
 
@@ -536,26 +534,20 @@ bool ROCMFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
   bool ROCMFft::DoFft(Stream *stream, fft::Plan *plan,                       \
                       const DeviceMemory<std::complex<__type>> &input,       \
                       DeviceMemory<std::complex<__type>> *output) {          \
-    /* XXX disable for now until rocFFT properly honors HIP complex types */ \
-    /* return DoFftWithDirectionInternal(                                 */ \
-    /*     stream, plan, wrap::hipfftExec##__fft_type1, input, output);   */ \
-    return false;                                                            \
+    return DoFftWithDirectionInternal(                                       \
+         stream, plan, wrap::hipfftExec##__fft_type1, input, output);        \
   }                                                                          \
   bool ROCMFft::DoFft(Stream *stream, fft::Plan *plan,                       \
                       const DeviceMemory<__type> &input,                     \
                       DeviceMemory<std::complex<__type>> *output) {          \
-    /* XXX disable for now until rocFFT properly honors HIP complex types */ \
-    /* return DoFftInternal(stream, plan, wrap::hipfftExec##__fft_type2, input, */  \
-    /*                     output);                                       */ \
-    return false;                                                            \
+    return DoFftInternal(stream, plan, wrap::hipfftExec##__fft_type2, input, \
+                         output);                                            \
   }                                                                          \
   bool ROCMFft::DoFft(Stream *stream, fft::Plan *plan,                       \
                       const DeviceMemory<std::complex<__type>> &input,       \
                       DeviceMemory<__type> *output) {                        \
-    /* XXX disable for now until rocFFT properly honors HIP complex types */ \
-    /* return DoFftInternal(stream, plan, wrap::hipfftExec##__fft_type3, input, */ \
-    /*                     output);                                       */ \
-    return false;                                                            \
+    return DoFftInternal(stream, plan, wrap::hipfftExec##__fft_type3, input, \
+                         output);                                            \
   }
 
 PERFTOOLS_GPUTOOLS_ROCM_DEFINE_FFT(float, C2C, R2C, C2R)
