@@ -2194,10 +2194,9 @@ tensorflow::Status ConvertSubGraphDefToEngine(
       nvinfer1::ITensor* input_tensor = converter.network()->addInput(
           node_name.c_str(), dtype, input_dim_pseudo_chw);
       if (!input_tensor) {
-        // TODO(aaroey): remove StrCat when constructing errors.
         return tensorflow::errors::InvalidArgument(
-            StrCat("Failed to create Input layer tensor ", node_name,
-                   " rank=", shape.dims() - 1));
+            "Failed to create Input layer tensor ", node_name,
+            " rank=", shape.dims() - 1);
       }
       VLOG(1) << "Input tensor name :" << node_name;
       if (!converter.insert_input_tensor(node_name, input_tensor)) {
@@ -2251,7 +2250,7 @@ tensorflow::Status ConvertSubGraphDefToEngine(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertSegmentToSubGraphDef(
+tensorflow::Status ConvertSegmentToGraphDef(
     const tensorflow::Graph* graph,
     const tensorflow::grappler::GraphProperties& graph_properties,
     const std::vector<int>& subgraph_node_ids,  // In topological order
@@ -2273,8 +2272,8 @@ tensorflow::Status ConvertSegmentToSubGraphDef(
     tensorflow::PartialTensorShape partial_shape;
     if (connection.is_input_edge) {
       if (graph_properties.HasOutputProperties(connection.outside_node_name)) {
-        auto output_params = graph_properties.GetOutputProperties(
-            connection.outside_node_name);
+        auto output_params =
+            graph_properties.GetOutputProperties(connection.outside_node_name);
         auto out_shape = output_params.at(connection.outside_port);
         input_type = out_shape.dtype();
         std::vector<tensorflow::int64> dims;
@@ -2309,26 +2308,25 @@ tensorflow::Status ConvertSegmentToSubGraphDef(
         VLOG(1) << "Reusing input " << node_name << " for the edge "
                 << connection.outside_node_name << ":"
                 << connection.outside_port << " -> "
-                << connection.inside_node_name << ":"
-                << connection.inside_port;
+                << connection.inside_node_name << ":" << connection.inside_port;
         continue;
       }
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
       tensorflow::NodeDefBuilder builder(node_name, "Placeholder");
       auto status = builder.Attr("shape", partial_shape)
-                        .Attr("dtype", input_type).Finalize(seg_node);
+                        .Attr("dtype", input_type)
+                        .Finalize(seg_node);
       VLOG(1) << "Constructing input " << node_name << " for the edge "
-              << connection.outside_node_name << ":"
-              << connection.outside_port << " -> "
-              << connection.inside_node_name << ":" << connection.inside_port;
+              << connection.outside_node_name << ":" << connection.outside_port
+              << " -> " << connection.inside_node_name << ":"
+              << connection.inside_port;
     } else {
       const string node_name = StrCat(kOutputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing output " << node_name << " for the edge "
-                << connection.inside_node_name << ":"
-                << connection.inside_port << " -> "
-                << connection.outside_node_name << ":"
+                << connection.inside_node_name << ":" << connection.inside_port
+                << " -> " << connection.outside_node_name << ":"
                 << connection.outside_port;
         continue;
       }
@@ -2359,8 +2357,8 @@ tensorflow::Status ConvertSegmentToSubGraphDef(
   for (int i = 0; i < connections->size(); ++i) {
     auto& connection = connections->at(i);
     if (!connection.is_input_edge) continue;
-    auto snode = segment_def->mutable_node(
-        old_to_new_id_map[connection.inside_id]);
+    auto snode =
+        segment_def->mutable_node(old_to_new_id_map[connection.inside_id]);
     const string placeholder_name =
         StrCat(kInputPHName, connection.port_number);
     VLOG(1) << "Updating " << snode->name() << ":" << connection.inside_port

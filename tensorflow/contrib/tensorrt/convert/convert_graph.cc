@@ -249,8 +249,9 @@ EngineInfo GetEngineInfo(
   std::set<string> segment_devices;
   int input_port = 0;
   int output_port = 0;
-  // TODO(aaroey): consider using node id and port instead. Also, here we assume
-  // that input edge set and output edge set have no intersection, is this true?
+  // Each input can have only one incoming edge, outputs can have multiple edges
+  // though since we are keeping outside name, this can only fail in case of 2
+  // op loops in the graph.
   std::unordered_map<string, int> created_edges;
   for (auto it = reverse_topo_order.rbegin(); it != reverse_topo_order.rend();
        ++it) {
@@ -292,14 +293,9 @@ EngineInfo GetEngineInfo(
             created_edges.insert({s, port});
             input_port++;
           }
-          EngineConnection ec(input_node->name(), input_node->id(),
-                               edge->src_output(), node_name, node_id,
-                               edge->dst_input(), true, port);
-          // TODO(aaroey): this will be rewritten in
-          // ConvertSegmentToSubGraphDef, fix it.
-          ec.connection_type = input_node->output_type(edge->src_output());
-
-          info.connections.emplace_back(std::move(ec));
+          info.connections.emplace_back(input_node->name(), input_node->id(),
+                                        edge->src_output(), node_name, node_id,
+                                        edge->dst_input(), true, port);
         }
       }
     }
@@ -324,9 +320,9 @@ EngineInfo GetEngineInfo(
     }
   }
 
-  ConvertSegmentToSubGraphDef(g, graph_properties, subgraph_node_ids,
-                              &info.connections, &info.segment_graph_def,
-                              &info.engine_name);
+  ConvertSegmentToGraphDef(g, graph_properties, subgraph_node_ids,
+                           &info.connections, &info.segment_graph_def,
+                           &info.engine_name);
   // TODO(sami): This should not happen once segmenter is updated.
   if (segment_devices.size() == 1) {
     info.device = *segment_devices.begin();
@@ -421,7 +417,11 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
   string segment_string;
   if (info.engine_type == EngineInfo::EngineType::TRTStatic ||
       info.precision_mode == INT8MODE) {
-    // Create static engine and for int8 test validity of the engine.
+    // Create static engine and for int8 test validity of the engine. We can not
+    // allow engine to fail at the calibration time. So we are constructing a
+    // FP32 engine here to check its validity. If it is a valid engine then we
+    // put the serialized graphdef to the op. Otherwise we skip node creation
+    // for this engine.
     Logger trt_logger;
     TrtUniquePtrType<nvinfer1::IBuilder> builder(
         nvinfer1::createInferBuilder(trt_logger));
@@ -440,7 +440,6 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     segment_string =
         string((const char*)engine_data->data(), engine_data->size());
     if (info.precision_mode == INT8MODE) {
-      // TODO(aaroey): why not put this inside the 'else' branch?
       segment_string = info.segment_graph_def.SerializeAsString();
     }
   } else {
@@ -469,7 +468,7 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
   tensorflow::NodeDefBuilder node_builder(info.engine_name, "TRTEngineOp");
   if (!info.device.empty()) node_builder.Device(info.device);
   if (VLOG_IS_ON(1)) {
-    string ins=StrCat(info.engine_name," inputs= ");
+    string ins = StrCat(info.engine_name, " inputs= ");
     for (const auto& ii : inputs) {
       StrAppend(&ins, ii.node, ":", ii.index, " ");
     }
@@ -501,6 +500,9 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     return status;
   }
   VLOG(1) << "Adding TRTEngine " << info.engine_name << " to graph";
+
+  // up until this point, graph is not modified. If we return !status.ok() from
+  // here, this segment will be skipped
   tensorflow::Node* engine_node = graph->AddNode(trt_node, &status);
   if (!status.ok()) {
     LOG(ERROR) << "Adding node failed " << status;
@@ -514,18 +516,21 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
             << conn.port_number << " out_id " << conn.outside_id
             << " name=" << conn.outside_node_name;
     auto dst_node = graph->FindNodeId(conn.outside_id);
-    // TODO(aaroey): node could be removed during construction of other TRT
-    // nodes, but then in that case who is going to update their input nodes?
+    // dst_node can only be removed if it is an input node of another engine.
+    // In this case, other engines input edge is updated in nodedef to point to
+    // this engine. Even though edge doesn't exists in the graph, when it is
+    // deserialized again, correct edges will be constructed. This is a problem
+    // of graph.
     if (!dst_node) continue;
     VLOG(1) << "Updating " << engine_node->name() << ":" << conn.port_number
             << " to " << dst_node->name() << ":" << conn.outside_port;
-    status = graph->UpdateEdge(engine_node, conn.port_number, dst_node,
-                               conn.outside_port);
-    if (!status.ok()) {
-      // TODO(aaroey): should we return the status?
-      LOG(ERROR) << "Edge update failed " << engine_node->name() << ":"
-                 << conn.port_number << " -> " << dst_node->name() << ":"
-                 << conn.outside_port << " status= " << status;
+    auto new_edge = graph->AddEdge(engine_node, conn.port_number, dst_node,
+                                   conn.outside_port);
+    // this should never happen!
+    if (!new_edge) {
+      LOG(WARNING) << "Adding a new edge failed " << engine_node->name() << ":"
+                   << conn.port_number << " -> " << dst_node->name() << ":"
+                   << conn.outside_port;
     }
   }
   return status;
@@ -616,7 +621,7 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     VLOG(7) << name << " Function_Def ";
     VLOG(7) << native_segment->DebugString();
   }
-  VLOG(1)<<"Adding funcdef to graphlib";
+  VLOG(1) << "Adding funcdef to graphlib";
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdeflib));
   return tensorflow::Status::OK();
 }
@@ -638,30 +643,22 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
   };
   tensorflow::Allocator* dev_allocator = nullptr;
   // we need to us PM here since in python path there is no way to get
-  // to allocators
-  // TODO(aaroey): fix this.
+  // to allocators.
+  // TODO(sami): when grappler devices become available else path will not be
+  // necessary
   auto pm = tensorflow::ProcessState::singleton();
   if (params.cluster) {  // get allocator
-    const tensorflow::Device* device = nullptr;
+    tensorflow::Device* device = nullptr;
     if (params.cluster->GetDeviceSet()) {
       device = params.cluster->GetDeviceSet()->FindDeviceByName(engine.device);
     }
     if (device) {
-      cuda_device_id = check_device_id(device->parsed_name().id);
-      if (cuda_device_id < 0) {
-        LOG(ERROR) << "Cuda device identification failed, using device 0.";
-        cuda_device_id = 0;
-      }
-      tensorflow::GPUOptions gpuoptions;
-      // this should be instantiated by now
-      tensorflow::TfGpuId tf_gpu_id(device->parsed_name().id);
-      // TODO(aaroey): why not using device->GetAllocator()?
-      dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
-      VLOG(1) << "Got an allocator for device tf_device=" << tf_gpu_id.value()
-              << " cuda device= " << cuda_device_id << " at " << dev_allocator;
+      tensorflow::AllocatorAttributes alloc_attr;
+      dev_allocator = device->GetAllocator(alloc_attr);
+      VLOG(1) << "Using allocator " << dev_allocator->Name();
     } else {
-      LOG(WARNING) << "Cluster is set but device " << engine.device
-                   << " is not found in the cluster";
+      LOG(WARNING) << "Cluster is set but device '" << engine.device
+                   << "' is not found in the cluster";
     }
   } else {  // cluster not found, possibly a python call
     VLOG(1) << "Cluster is not set, probably called from python";
@@ -735,9 +732,9 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   std::vector<size_t> engine_bytes_size;
   for (size_t t = 0; t < segments.size(); t++) {
     auto& s = segments.at(t);
-    engine_segments.emplace_back(GetEngineInfo(
-        &graph, *params.graph_properties, s.first, node_map,
-        reverse_topo_order));
+    engine_segments.emplace_back(GetEngineInfo(&graph, *params.graph_properties,
+                                               s.first, node_map,
+                                               reverse_topo_order));
     auto& curr_engine = engine_segments.back();
     curr_engine.precision_mode = params.precision_mode;
     curr_engine.engine_type =
@@ -794,18 +791,18 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       LOG(WARNING) << "Can't identify the cuda device. Running on device 0 ";
     }
     cudaSetDevice(cuda_device_id);
-    auto status = CreateTRTNode(
-        &graph, engine_segments, i, alloc.get(), params.max_batch_size);
+    auto status = CreateTRTNode(&graph, engine_segments, i, alloc.get(),
+                                params.max_batch_size);
+    // If status is ok, we successfuly added the node to the graph and can
+    // remove segment ops. Otherwise graph is not modified.
     if (status.ok()) {
       for (auto node_name : segments.at(i).first) {
         graph.RemoveNode(node_map.at(node_name));
       }
     } else {
-      // TODO(aaroey): in this case, the graph is already modified, we should
-      // return the status?
       LOG(WARNING) << "Engine creation for segment " << i << ", composed of "
-                   << segments.at(i).first.size() << " nodes failed: "
-                   << status << ". Skipping...";
+                   << segments.at(i).first.size() << " nodes failed: " << status
+                   << ". Skipping...";
     }
   }
   cudaSetDevice(old_cuda_device);
