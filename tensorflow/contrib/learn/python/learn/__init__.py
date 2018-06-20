@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""High level API for learning with TensorFlow."""
+"""High level API for learning with TensorFlow (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,7 +35,6 @@ from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import ops
 from tensorflow.contrib.learn.python.learn import preprocessing
 from tensorflow.contrib.learn.python.learn import utils
-from tensorflow.contrib.learn.python.learn.dataframe import *
 from tensorflow.contrib.learn.python.learn.estimators import *
 from tensorflow.contrib.learn.python.learn.evaluable import Evaluable
 from tensorflow.contrib.learn.python.learn.experiment import Experiment

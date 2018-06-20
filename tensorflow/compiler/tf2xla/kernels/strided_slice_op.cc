@@ -77,19 +77,20 @@ class StridedSliceOp : public XlaOpKernel {
     for (int i = 0; i < begin.size(); ++i) {
       if (strides[i] > 0) {
         slice_begin.push_back(begin[i]);
-        slice_end.push_back(end[i]);
+        slice_end.push_back(std::max(end[i], begin[i]));
         slice_strides.push_back(strides[i]);
       } else {
         // Negative stride: swap begin and end, add 1 because the interval
         // is semi-open, and mark the dimension to be reversed.
         slice_begin.push_back(input_shape.dim_size(i) - begin[i] - 1);
-        slice_end.push_back(input_shape.dim_size(i) - end[i] - 1);
+        slice_end.push_back(std::max(input_shape.dim_size(i) - end[i] - 1,
+                                     input_shape.dim_size(i) - begin[i] - 1));
         slice_strides.push_back(-strides[i]);
         dimensions_to_reverse.push_back(i);
       }
     }
 
-    xla::ComputationDataHandle slice = ctx->Input(0);
+    xla::XlaOp slice = ctx->Input(0);
     if (!dimensions_to_reverse.empty()) {
       slice = ctx->builder()->Rev(slice, dimensions_to_reverse);
     }
@@ -106,7 +107,11 @@ class StridedSliceOp : public XlaOpKernel {
   DataType index_type_;
 };
 
-REGISTER_XLA_OP(Name("StridedSlice"), StridedSliceOp);
+REGISTER_XLA_OP(Name("StridedSlice")
+                    .CompileTimeConstInput("begin")
+                    .CompileTimeConstInput("end")
+                    .CompileTimeConstInput("strides"),
+                StridedSliceOp);
 
 class StridedSliceGradOp : public XlaOpKernel {
  public:
@@ -163,7 +168,7 @@ class StridedSliceGradOp : public XlaOpKernel {
 
     auto zero = XlaHelpers::Zero(ctx->builder(), ctx->expected_output_dtype(0));
 
-    xla::ComputationDataHandle grad = ctx->Input(4);
+    xla::XlaOp grad = ctx->Input(4);
 
     // Undo any new/shrink axes.
     grad = ctx->builder()->Reshape(grad, processing_shape.dim_sizes());
@@ -211,7 +216,12 @@ class StridedSliceGradOp : public XlaOpKernel {
   DataType index_type_;
 };
 
-REGISTER_XLA_OP(Name("StridedSliceGrad"), StridedSliceGradOp);
+REGISTER_XLA_OP(Name("StridedSliceGrad")
+                    .CompileTimeConstInput("shape")
+                    .CompileTimeConstInput("begin")
+                    .CompileTimeConstInput("end")
+                    .CompileTimeConstInput("strides"),
+                StridedSliceGradOp);
 
 class StridedSliceAssignOp : public XlaOpKernel {
  public:
@@ -222,6 +232,7 @@ class StridedSliceAssignOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("new_axis_mask", &new_axis_mask_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shrink_axis_mask", &shrink_axis_mask_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Index", &index_type_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -243,9 +254,9 @@ class StridedSliceAssignOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, LiteralToHostTensor(strides_literal, index_type_,
                                             &strides_tensor));
 
-    DataType lhs_type;
     TensorShape lhs_shape;
-    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(0, &lhs_type, &lhs_shape));
+    xla::XlaOp lhs;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &lhs_shape, &lhs));
 
     const TensorShape rhs_shape = ctx->InputShape(4);
 
@@ -273,10 +284,7 @@ class StridedSliceAssignOp : public XlaOpKernel {
                     " does not match r-value shape ", rhs_shape.DebugString(),
                     ". Automatic broadcasting not yet implemented."));
 
-    xla::ComputationDataHandle lhs;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &lhs));
-
-    xla::ComputationDataHandle rhs = ctx->Input(4);
+    xla::XlaOp rhs = ctx->Input(4);
 
     gtl::InlinedVector<int64, 4> dimensions_to_reverse;
     gtl::InlinedVector<int64, 4> slice_begin, slice_dims;
@@ -311,16 +319,21 @@ class StridedSliceAssignOp : public XlaOpKernel {
           lhs, rhs, ctx->builder()->ConstantR1<int64>(slice_begin));
     }
 
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, lhs_type, lhs));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, lhs));
   }
 
  private:
   int32 begin_mask_, end_mask_;
   int32 ellipsis_mask_, new_axis_mask_, shrink_axis_mask_;
   DataType index_type_;
+  DataType dtype_;
 };
 
-REGISTER_XLA_OP(Name("ResourceStridedSliceAssign"), StridedSliceAssignOp);
+REGISTER_XLA_OP(Name("ResourceStridedSliceAssign")
+                    .CompileTimeConstInput("begin")
+                    .CompileTimeConstInput("end")
+                    .CompileTimeConstInput("strides"),
+                StridedSliceAssignOp);
 
 }  // namespace
 }  // namespace tensorflow

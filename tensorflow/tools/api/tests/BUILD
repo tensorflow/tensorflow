@@ -11,9 +11,10 @@ exports_files([
     "API_UPDATE_WARNING.txt",
 ])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+
 py_test(
     name = "api_compatibility_test",
-    size = "small",
     srcs = ["api_compatibility_test.py"],
     data = [
         "//tensorflow/tools/api/golden:api_golden",
@@ -32,14 +33,11 @@ py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+tf_cc_binary(
+    name = "convert_from_multiline",
+    srcs = ["convert_from_multiline.cc"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:op_gen_lib",
+    ],
 )

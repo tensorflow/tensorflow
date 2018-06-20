@@ -40,7 +40,12 @@ class ConstOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape shape(proto_.tensor_shape());
 
-    xla::ComputationBuilder* b = ctx->builder();
+    if (proto_.dtype() == DT_STRING) {
+      LOG(WARNING) << "Not computing Const of type DT_STRING";
+      ctx->SetInvalidOutput(0);
+      return;
+    }
+    xla::XlaBuilder* b = ctx->builder();
 
     // To avoid blowups for large constants filled with the same value,
     // recognize that case and emit a scalar broadcast instead.

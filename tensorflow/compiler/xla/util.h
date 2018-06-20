@@ -21,9 +21,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -39,6 +41,13 @@ limitations under the License.
 
 namespace xla {
 
+// Logs the provided status message with a backtrace.
+//
+// For use by Status-factories, logs a backtrace at the point where the status
+// is created, such that we can use --vmodule=util=1 to see all status
+// creation backtraces.
+Status WithLogBacktrace(const Status& status);
+
 // Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
 // the bounds and indices. And for the rare cases of ranks greater than 8,
 // the InlinedVector will just behave like an std::vector<> and allocate the
@@ -49,13 +58,43 @@ using DimensionVector = tensorflow::gtl::InlinedVector<int64, kInlineRank>;
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
 // spits out the human-readable duration form.
+//
+// By default, the timing traces are only printed at VLOG(1) and above:
+//
+//   XLA_SCOPED_LOGGING_TIMER("fooing bar");  // nop if !VLOG_IS_ON(1).
+//
+// but you can control this via:
+//
+//   XLA_SCOPED_LOGGING_TIMER_LEVEL("fooing bar", 2);  // nop if !VLOG_IS_ON(2)
+//
+#define XLA_SCOPED_LOGGING_TIMER(label) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, 1, __COUNTER__)
+#define XLA_SCOPED_LOGGING_TIMER_LEVEL(label, level) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, __COUNTER__)
+
+// Helper for implementing macros above.  Do not use directly.
+//
+// Forces the evaluation of "counter", which we expect is equal to __COUNTER__.
+#define XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, counter) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)
+
+// Helper for macros above.  Don't use directly.
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
+      label, VLOG_IS_ON(level))
+
+// RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
+// macros above.  Recommended usage is via the macros so you don't have to give
+// the timer a name or worry about calling VLOG_IS_ON yourself.
 struct ScopedLoggingTimer {
-  explicit ScopedLoggingTimer(const string& label, int32 vlog_level = 1);
+  // The timer does nothing if enabled is false.  This lets you pass in your
+  // file's VLOG_IS_ON value.
+  ScopedLoggingTimer(const string& label, bool enabled);
   ~ScopedLoggingTimer();
 
-  uint64 start_micros;
+  bool enabled;
   string label;
-  int32 vlog_level;
+  uint64 start_micros;
 };
 
 // Given a vector<T>, returns a MutableArraySlice<char> that points at its
@@ -171,9 +210,37 @@ Status InvalidArgument(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status Unimplemented(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status InternalError(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status FailedPrecondition(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
+Status Cancelled(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status ResourceExhausted(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status NotFound(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
+
+// Passed-varargs variant of the InvalidArgument factory above.
+Status InvalidArgumentV(const char* format, va_list args);
+
+template <typename... Args>
+Status InvalidArgumentStrCat(Args&&... concat) {
+  return InvalidArgument(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
+Status UnimplementedStrCat(Args&&... concat) {
+  return Unimplemented(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
+Status InternalErrorStrCat(Args&&... concat) {
+  return InternalError(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
+Status ResourceExhaustedStrCat(Args&&... concat) {
+  return ResourceExhausted(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
@@ -207,11 +274,14 @@ std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
 
 // Override of the above that works around compile failures with gcc 7.1.1.
 // For details see https://github.com/tensorflow/tensorflow/issues/10843
+// Hide this workaround from MSVC as it causes ambiguous error.
+#ifndef _MSC_VER
 template <typename T>
 std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
                        const std::vector<T>& input) {
   return Permute<std::vector, T>(permutation, input);
 }
+#endif
 
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
 std::vector<int64> InversePermutation(
@@ -273,6 +343,11 @@ string VectorString(const std::initializer_list<T>& c) {
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);
 
+// Returns a PaddingConfig object where 'padding' contains
+// (low edge padding, high edge padding) pairs for each dimension.
+PaddingConfig MakeEdgePaddingConfig(
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
+
 // Returns true if the padding configuration has at least one dimension with
 // non-zero interior padding.
 bool HasInteriorPadding(const PaddingConfig& config);
@@ -292,16 +367,29 @@ T CeilOfRatio(T dividend, T divisor) {
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
-// then multiplying by the divisor. For example: RoundUpToMultiple(13, 8) => 16
+// then multiplying by the divisor. For example: RoundUpToNearest(13, 8) => 16
 template <typename T>
 T RoundUpToNearest(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
+}
+
+// Rounds the value down to a multiple of the divisor by first calling
+// FloorOfRatio then multiplying by the divisor. For example:
+// RoundDownToNearest(13, 8) => 8
+template <typename T>
+T RoundDownToNearest(T value, T divisor) {
+  return FloorOfRatio(value, divisor) * divisor;
 }
 
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
 string HumanReadableNumFlops(double flops, double nanoseconds);
+
+// Given a number of transcendental ops executed in an amount of time, produces
+// a string that represents the throughput;
+// e.g. HumanReadableNumTranscendentalOps(1e9, 1e9) => 1.00GTROP/s.
+string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
@@ -342,20 +430,158 @@ int64 Product(tensorflow::gtl::ArraySlice<int64> xs);
 std::vector<std::pair<int64, int64>> CommonFactors(
     tensorflow::gtl::ArraySlice<int64> a, tensorflow::gtl::ArraySlice<int64> b);
 
+// Removes illegal characters from filenames.
+string SanitizeFileName(string file_name);
+
+template <typename Container, typename Predicate>
+bool c_all_of(const Container& container, Predicate&& predicate) {
+  return std::all_of(std::begin(container), std::end(container),
+                     std::forward<Predicate>(predicate));
+}
+
+template <typename Container, typename Predicate>
+bool c_any_of(const Container& container, Predicate&& predicate) {
+  return std::any_of(std::begin(container), std::end(container),
+                     std::forward<Predicate>(predicate));
+}
+
+template <typename InputContainer, typename OutputIterator,
+          typename UnaryOperation>
+OutputIterator c_transform(const InputContainer& input_container,
+                           OutputIterator output_iterator,
+                           UnaryOperation&& unary_op) {
+  return std::transform(std::begin(input_container), std::end(input_container),
+                        output_iterator,
+                        std::forward<UnaryOperation>(unary_op));
+}
+
+template <class InputContainer, class OutputIterator, class UnaryPredicate>
+OutputIterator c_copy_if(const InputContainer& input_container,
+                         OutputIterator output_iterator,
+                         UnaryPredicate&& predicate) {
+  return std::copy_if(std::begin(input_container), std::end(input_container),
+                      output_iterator, std::forward<UnaryPredicate>(predicate));
+}
+
+template <class InputContainer, class OutputIterator>
+OutputIterator c_copy(const InputContainer& input_container,
+                      OutputIterator output_iterator) {
+  return std::copy(std::begin(input_container), std::end(input_container),
+                   output_iterator);
+}
+
+template <class InputContainer>
+void c_sort(InputContainer& input_container) {
+  std::sort(std::begin(input_container), std::end(input_container));
+}
+
+template <class InputContainer, class Comparator>
+void c_sort(InputContainer& input_container, Comparator&& comparator) {
+  std::sort(std::begin(input_container), std::end(input_container),
+            std::forward<Comparator>(comparator));
+}
+
+template <typename Sequence, typename T>
+bool c_binary_search(const Sequence& sequence, T&& value) {
+  return std::binary_search(std::begin(sequence), std::end(sequence),
+                            std::forward<T>(value));
+}
+
+template <typename C>
+bool c_is_sorted(const C& c) {
+  return std::is_sorted(std::begin(c), std::end(c));
+}
+
+template <typename C, typename Compare>
+bool c_is_sorted(const C& c, Compare&& comp) {
+  return std::is_sorted(std::begin(c), std::end(c),
+                        std::forward<Compare>(comp));
+}
+
+template <typename C>
+auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
+  return std::adjacent_find(std::begin(c), std::end(c));
+}
+
+template <typename C, typename Pred>
+auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
+  return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
+}
+
+template <typename C, typename Value>
+auto c_find(const C& c, Value&& value) -> decltype(std::begin(c)) {
+  return std::find(std::begin(c), std::end(c), std::forward<Value>(value));
+}
+
+template <typename Sequence>
+void c_reverse(Sequence& sequence) {
+  std::reverse(std::begin(sequence), std::end(sequence));
+}
+
+template <typename Sequence, typename T, typename BinaryOp>
+typename std::decay<T>::type c_accumulate(const Sequence& sequence, T&& init,
+                                          BinaryOp&& binary_op) {
+  return std::accumulate(std::begin(sequence), std::end(sequence),
+                         std::forward<T>(init),
+                         std::forward<BinaryOp>(binary_op));
+}
+
+template <typename C, typename Pred>
+typename std::iterator_traits<
+    decltype(std::begin(std::declval<C>()))>::difference_type
+c_count_if(const C& c, Pred&& pred) {
+  return std::count_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
+}
+
+template <typename C, typename Value>
+int64 FindIndex(const C& c, Value&& value) {
+  auto it = c_find(c, std::forward<Value>(value));
+  return std::distance(c.begin(), it);
+}
+
+template <typename C, typename Value>
+void InsertAt(C* c, int64 index, Value&& value) {
+  c->insert(c->begin() + index, std::forward<Value>(value));
+}
+
+template <typename C>
+void EraseAt(C* c, int64 index) {
+  c->erase(c->begin() + index);
+}
+
+// Returns true if `x` fits in 32-bits.
+template <typename T>
+bool IsInt32(T x) {
+  // Following conversion rules: "the value is unchanged if it can be
+  // represented in the destination type (and bit-field width); otherwise, the
+  // value is implementation-defined."
+  return static_cast<int32>(x) == x;
+}
+
+template <typename T>
+Status EraseElementFromVector(std::vector<T>* container, const T& value) {
+  // c_find returns a const_iterator which does not seem to work on gcc 4.8.4,
+  // and this breaks the ubuntu/xla_gpu build bot.
+  auto it = std::find(container->begin(), container->end(), value);
+  TF_RET_CHECK(it != container->end());
+  container->erase(it);
+  return Status::OK();
+}
 }  // namespace xla
 
-#define XLA_LOG_LINES(SEV, STRING) LogLines(SEV, STRING, __FILE__, __LINE__)
+#define XLA_LOG_LINES(SEV, STRING) \
+  ::xla::LogLines(SEV, STRING, __FILE__, __LINE__)
 
-#define XLA_VLOG_LINES(LEVEL, STRING)                               \
-  do {                                                              \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(tensorflow::INFO, STRING); \
+#define XLA_VLOG_LINES(LEVEL, STRING)                                 \
+  do {                                                                \
+    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tensorflow::INFO, STRING); \
   } while (false);
 
 // Utility macro that performs the equivalent of what one would expect
 // LOG_LINES(FATAL, X) to do but can be used at the end of a function that
 // returns a value without getting a compiler warning that no value is returned.
-#define XLA_FATAL_LOG(X)               \
-  XLA_LOG_LINES(tensorflow::ERROR, X); \
+#define XLA_FATAL_LOG(X)                 \
+  XLA_LOG_LINES(::tensorflow::ERROR, X); \
   LOG(FATAL) << "Aborting in " << __FUNCTION__ << " due to previous errors.";
 
 #endif  // TENSORFLOW_COMPILER_XLA_UTIL_H_

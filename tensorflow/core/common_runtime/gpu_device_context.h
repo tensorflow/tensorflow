@@ -19,23 +19,19 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 class Stream;
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 namespace tensorflow {
-
-namespace gpu = ::perftools::gputools;
 
 class GPUDeviceContext : public DeviceContext {
  public:
   // Does not take ownership of streams.
-  GPUDeviceContext(int stream_id, gpu::Stream* stream,
-                   gpu::Stream* host_to_device_stream,
-                   gpu::Stream* device_to_host_stream,
-                   gpu::Stream* device_to_device_stream)
+  GPUDeviceContext(int stream_id, se::Stream* stream,
+                   se::Stream* host_to_device_stream,
+                   se::Stream* device_to_host_stream,
+                   se::Stream* device_to_device_stream)
       : stream_id_(stream_id),
         stream_(stream),
         host_to_device_stream_(host_to_device_stream),
@@ -44,10 +40,10 @@ class GPUDeviceContext : public DeviceContext {
 
   ~GPUDeviceContext() override {}
 
-  gpu::Stream* stream() const override { return stream_; }
-  gpu::Stream* host_to_device_stream() const { return host_to_device_stream_; }
-  gpu::Stream* device_to_host_stream() const { return device_to_host_stream_; }
-  gpu::Stream* device_to_device_stream() const {
+  se::Stream* stream() const override { return stream_; }
+  se::Stream* host_to_device_stream() const { return host_to_device_stream_; }
+  se::Stream* device_to_host_stream() const { return device_to_host_stream_; }
+  se::Stream* device_to_device_stream() const {
     return device_to_device_stream_;
   }
   int stream_id() const { return stream_id_; }
@@ -60,20 +56,20 @@ class GPUDeviceContext : public DeviceContext {
                              Device* device, Tensor* cpu_tensor,
                              StatusCallback done) override;
 
-  void MaintainLifetimeOnStream(
-      const Tensor* t, perftools::gputools::Stream* stream) const override {}
+  void MaintainLifetimeOnStream(const Tensor* t,
+                                se::Stream* stream) const override {}
 
  private:
   int stream_id_;
   // The default primary stream to use for this context.
   // All the memory belongs to this stream.
-  gpu::Stream* stream_;
+  se::Stream* stream_;
   // The stream to use for copy data from host into GPU.
-  gpu::Stream* host_to_device_stream_;
+  se::Stream* host_to_device_stream_;
   // The stream to use for copy data from GPU to host.
-  gpu::Stream* device_to_host_stream_;
+  se::Stream* device_to_host_stream_;
   // The stream to use for copy data between GPU.
-  gpu::Stream* device_to_device_stream_;
+  se::Stream* device_to_device_stream_;
 };
 
 }  // namespace tensorflow

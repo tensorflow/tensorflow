@@ -99,7 +99,7 @@ def fertile_stats_variable(params, stats_config, name,
   """
   with ops.name_scope(name, "FertileStatsVariable") as name:
     resource_handle = gen_stats_ops.fertile_stats_resource_handle_op(
-        container, name, name=name)
+        container, shared_name=name, name=name)
 
     create_op = gen_stats_ops.create_fertile_stats_variable(
         resource_handle, stats_config,
@@ -108,7 +108,7 @@ def fertile_stats_variable(params, stats_config, name,
         resource_handle)
     # Adds the variable to the savable list.
     saveable = FertileStatsVariableSavable(params, resource_handle, create_op,
-                                           "stats_checkpoint_{0}".format(name))
+                                           resource_handle.name)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
     resources.register_resource(resource_handle, create_op, is_initialized_op)
     return resource_handle

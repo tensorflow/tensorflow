@@ -16,8 +16,9 @@
 
 See @{$python/contrib.rnn} guide.
 
-# From core
+<!--From core-->
 @@RNNCell
+@@LayerRNNCell
 @@BasicRNNCell
 @@BasicLSTMCell
 @@GRUCell
@@ -28,16 +29,17 @@ See @{$python/contrib.rnn} guide.
 @@DeviceWrapper
 @@ResidualWrapper
 
-# Used to be in core, but kept in contrib.
+<!--Used to be in core, but kept in contrib.-->
 @@EmbeddingWrapper
 @@InputProjectionWrapper
 @@OutputProjectionWrapper
 
-# Created in contrib, eventual plans to move to core.
+<!--Created in contrib, eventual plans to move to core.-->
 @@LayerNormBasicLSTMCell
 @@LSTMBlockWrapper
 @@LSTMBlockCell
 @@GRUBlockCell
+@@GRUBlockCellV2
 @@FusedRNNCell
 @@FusedRNNCellAdaptor
 @@TimeReversedFusedRNN
@@ -50,19 +52,27 @@ See @{$python/contrib.rnn} guide.
 @@UGRNNCell
 @@IntersectionRNNCell
 @@PhasedLSTMCell
+@@ConvLSTMCell
+@@Conv1DLSTMCell
+@@Conv2DLSTMCell
+@@Conv3DLSTMCell
 @@HighwayWrapper
 @@GLSTMCell
 
-# RNNCell wrappers
+<!--RNNCell wrappers-->
 @@AttentionCellWrapper
 @@CompiledWrapper
 
-# RNN functions
+<!--RNN functions-->
 @@static_rnn
 @@static_state_saving_rnn
 @@static_bidirectional_rnn
 @@stack_bidirectional_dynamic_rnn
 @@stack_bidirectional_rnn
+
+<!--RNN utilities-->
+@@transpose_batch_time
+@@best_effort_input_batch_size
 """
 
 from __future__ import absolute_import
@@ -80,6 +90,8 @@ from tensorflow.contrib.rnn.python.ops.lstm_ops import *
 from tensorflow.contrib.rnn.python.ops.rnn import *
 from tensorflow.contrib.rnn.python.ops.rnn_cell import *
 
+from tensorflow.python.ops.rnn import _best_effort_input_batch_size as best_effort_input_batch_size
+from tensorflow.python.ops.rnn import _transpose_batch_time as transpose_batch_time
 from tensorflow.python.ops.rnn import static_bidirectional_rnn
 from tensorflow.python.ops.rnn import static_rnn
 from tensorflow.python.ops.rnn import static_state_saving_rnn

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
-#include "external/llvm/include/llvm/IR/MDBuilder.h"
+#include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -32,7 +32,8 @@ static const BufferAllocation* kParameterAllocation = new BufferAllocation(
     LogicalBuffer::Color(0));
 
 void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
-                                                    llvm_ir::IrArray* array) {
+                                                    llvm_ir::IrArray* array,
+                                                    const ShapeIndex& index) {
   BufferAllocation::Slice buffer_slice;
   if (hlo.opcode() == HloOpcode::kParameter) {
     // Parameters may alias with each other but may not alias with our temporary
@@ -40,7 +41,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
     buffer_slice = BufferAllocation::Slice(kParameterAllocation, 0, 0);
   } else {
     const std::set<BufferAllocation::Slice> slices =
-        assignment_.GetAllSlices(&hlo, /*index=*/{});
+        assignment_.GetAllSlices(&hlo, index);
     if (slices.empty() || slices.size() > 1) {
       // Skip HLOs which don't have a buffer assigned or for which the
       // buffer can't be determined statically. We cannot determine their
@@ -56,7 +57,9 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       alias_scope_md =
           GetAliasScopeMetadataForBuffer(buffer_slice, GetAliasDomain());
     }
-    array->AddAliasScopeMetadata(alias_scope_md);
+    if (alias_scope_md != nullptr) {
+      array->AddAliasScopeMetadata(alias_scope_md);
+    }
   }
 
   if (module_.config().debug_options().xla_llvm_enable_noalias_metadata()) {
@@ -65,7 +68,9 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       noalias_md = GetNoaliasMetadataForBuffer(buffer_slice, GetAliasDomain(),
                                                assignment_, hlo);
     }
-    array->AddNoaliasMetadata(noalias_md);
+    if (noalias_md != nullptr) {
+      array->AddNoaliasMetadata(noalias_md);
+    }
   }
 
   if (module_.config()
@@ -79,7 +84,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       if (std::find(parameter_instructions.begin(),
                     parameter_instructions.end(),
                     &hlo) != parameter_instructions.end()) {
-        array->AddInvariantLoad(llvm::MDNode::get(*context_, /*MDs=*/{}));
+        array->MarkInvariantOverWholeProgram(context_);
       }
     }
   }
@@ -88,7 +93,16 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
 llvm::MDNode* AliasAnalysis::GetAliasDomain() {
   llvm::MDBuilder metadata_builder(*context_);
   if (alias_domain_ == nullptr) {
-    alias_domain_ = metadata_builder.createAnonymousAliasScopeDomain();
+    // We use createAliasScopeDomain rather than createAnonymousAliasScopeDomain
+    // so that when functions get inlined, we continue using the one domain,
+    // rather than duplicating it (and thus having two AA domains in one
+    // function).
+    //
+    // A side-effect of this is that if you ever compile two HLO modules in the
+    // same LLVM module, they'll have the same alias scope domain.  This isn't a
+    // problem because the two HLO modules will never interact with one another.
+    alias_domain_ =
+        metadata_builder.createAliasScopeDomain("XLA global AA domain");
   }
   return alias_domain_;
 }
@@ -124,16 +138,18 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   // 2. Operands of users of the given hlo.
   // 3. Operands of the given hlo.
   //
-  // This set can be increased as we need. For now only consider top-level
-  // buffers (index = {}) not buffers nested within the instruction's
-  // operands/output which are not typically touched.
+  // This set can be increased as we need.
   std::vector<const LogicalBuffer*> worklist;
   auto add_buffers_to_worklist =
       [&worklist, &assignment](const HloInstruction* instruction) {
-        for (const LogicalBuffer* buffer :
-             assignment.GetSourceBuffers(instruction, /*index=*/{})) {
-          worklist.push_back(buffer);
-        }
+        ShapeUtil::ForEachSubshape(
+            instruction->shape(),
+            [&](const Shape& /*shape*/, const ShapeIndex& index) {
+              for (const LogicalBuffer* buffer :
+                   assignment.GetSourceBuffers(instruction, index)) {
+                worklist.push_back(buffer);
+              }
+            });
       };
 
   for (HloInstruction* user : hlo.users()) {

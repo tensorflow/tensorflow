@@ -26,20 +26,19 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
 
+const char* const kSchemePrefix = "grpc://";
+const size_t kSchemePrefixLength = strlen(kSchemePrefix);
+
 GrpcSession::GrpcSession(const SessionOptions& options)
     : options_(options), current_graph_version_(-1) {}
 
 GrpcSession::~GrpcSession() {}
-
-namespace {
-const char* kSchemePrefix = "grpc://";
-const size_t kSchemePrefixLength = strlen(kSchemePrefix);
-}  // namespace
 
 /* static */
 Status GrpcSession::Create(const SessionOptions& options,
@@ -76,7 +75,7 @@ void ReEncodeConsts(GraphDef* gdef) {
         }
       }
       if (proto != nullptr && proto->tensor_content().empty() &&
-          proto->ByteSize() > 64) {
+          proto->ByteSizeLong() > 64) {
         // If the constant is encoded with repeated proto fields and
         // it is moderate large, we re-encode it in tensor_content as
         // a Cord. This is mildly helpful for reducing the peak memory
@@ -91,6 +90,15 @@ void ReEncodeConsts(GraphDef* gdef) {
   }
 }
 }  // namespace
+
+Status GrpcSession::Handle(string* out_handle) {
+  mutex_lock l(mu_);
+  if (handle_.empty()) {
+    return errors::InvalidArgument("A session is not created yet....");
+  }
+  *out_handle = handle_;
+  return Status::OK();
+}
 
 Status GrpcSession::CreateImpl(CallOptions* call_options,
                                const GraphDef& graph) {
@@ -192,12 +200,17 @@ Status GrpcSession::RunHelper(
     req->add_feed(it.first, it.second);
   }
 
-  // Build an index from fetch tensor name to offset.
+  // Support long error messages by storing the error code in the response body.
+  req->set_store_errors_in_response_body(true);
+
+  // Build an index from fetch tensor name to first index in
+  // output_tensor_names.
   std::unordered_map<string, int> output_name_to_offset;
-  for (const string& output_name : output_tensor_names) {
-    req->add_fetch(output_name);
-    output_name_to_offset.insert(
-        std::make_pair(output_name, output_name_to_offset.size()));
+  for (int i = 0; i < output_tensor_names.size(); ++i) {
+    const string& name = output_tensor_names[i];
+    if (output_name_to_offset.insert(std::make_pair(name, i)).second) {
+      req->add_fetch(name);
+    }
   }
   for (const string& target : target_node_names) {
     req->add_target(target);
@@ -206,6 +219,11 @@ Status GrpcSession::RunHelper(
   CallOptions call_options;
   call_options.SetTimeout(req->options().timeout_in_ms());
   TF_RETURN_IF_ERROR(RunProto(&call_options, req.get(), resp.get()));
+
+  // Look for an extended error returned in the response body.
+  if (resp->status_code() != error::Code::OK) {
+    return Status(resp->status_code(), resp->status_error_message());
+  }
 
   if (!output_tensor_names.empty()) {
     outputs->resize(output_tensor_names.size());
@@ -222,6 +240,17 @@ Status GrpcSession::RunHelper(
     Tensor output;
     TF_RETURN_IF_ERROR(resp->TensorValue(i, &output));
     (*outputs)[fetch_it->second] = output;
+  }
+  // In the unlikely event that output_tensor_names contains duplicates, fill in
+  // the duplicate values.
+  if (output_name_to_offset.size() != output_tensor_names.size()) {
+    for (int i = 0; i < output_tensor_names.size(); ++i) {
+      const string& name = output_tensor_names[i];
+      int offset = output_name_to_offset[name];
+      if (offset != i) {
+        (*outputs)[i] = (*outputs)[offset];
+      }
+    }
   }
 
   if (run_metadata) {
@@ -254,14 +283,9 @@ Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
 Status GrpcSession::RunProto(CallOptions* call_options,
                              MutableRunStepRequestWrapper* req,
                              MutableRunStepResponseWrapper* resp) {
-  {
-    mutex_lock l(mu_);
-    if (handle_.empty()) {
-      return errors::InvalidArgument("A session is not created yet....");
-    }
-
-    req->set_session_handle(handle_);
-  }
+  string handle;
+  TF_RETURN_IF_ERROR(Handle(&handle));
+  req->set_session_handle(handle);
   return master_->RunStep(call_options, req, resp);
 }
 
@@ -273,14 +297,7 @@ Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
   PartialRunSetupRequest req;
   PartialRunSetupResponse resp;
   CallOptions call_options;
-  {
-    mutex_lock l(mu_);
-    if (handle_.empty()) {
-      return errors::InvalidArgument("A session is not created yet....");
-    }
-
-    req.set_session_handle(handle_);
-  }
+  TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
   for (const string& feed : input_names) {
     req.add_feed(feed);
   }
@@ -311,7 +328,7 @@ Status GrpcSession::Close() {
   {
     mutex_lock l(mu_);
     if (handle_.empty()) {
-      return errors::InvalidArgument("A session is not created yet....");
+      return Status::OK();
     }
     req.set_session_handle(handle_);
     handle_.clear();
@@ -380,10 +397,59 @@ Status GrpcSession::Reset(const SessionOptions& options,
   return ret;
 }
 
+Status GrpcSession::MakeCallable(const CallableOptions& callable_options,
+                                 CallableHandle* out_handle) {
+  MakeCallableRequest req;
+  TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
+  *req.mutable_options() = callable_options;
+  MakeCallableResponse resp;
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  TF_RETURN_IF_ERROR(master_->MakeCallable(&call_options, &req, &resp));
+  *out_handle = resp.handle();
+  return Status::OK();
+}
+
+Status GrpcSession::RunCallable(CallableHandle handle,
+                                const std::vector<Tensor>& feed_tensors,
+                                std::vector<Tensor>* fetch_tensors,
+                                RunMetadata* run_metadata) {
+  RunCallableRequest req;
+  TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
+  req.set_handle(handle);
+  for (const Tensor& feed : feed_tensors) {
+    feed.AsProtoTensorContent(req.mutable_feed()->Add());
+  }
+
+  RunCallableResponse resp;
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  TF_RETURN_IF_ERROR(master_->RunCallable(&call_options, &req, &resp));
+  for (const TensorProto& fetch : resp.fetch()) {
+    Tensor fetch_tensor;
+    if (!fetch_tensor.FromProto(cpu_allocator(), fetch)) {
+      return errors::Internal(
+          "Could not parse fetched tensor data in response from master.");
+    }
+    fetch_tensors->push_back(std::move(fetch_tensor));
+  }
+  return Status::OK();
+}
+
+Status GrpcSession::ReleaseCallable(CallableHandle handle) {
+  ReleaseCallableRequest req;
+  TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
+  req.set_handle(handle);
+  ReleaseCallableResponse resp;
+  CallOptions call_options;
+  call_options.SetTimeout(options_.config.operation_timeout_in_ms());
+  return master_->ReleaseCallable(&call_options, &req, &resp);
+}
+
 class GrpcSessionFactory : public SessionFactory {
  public:
   bool AcceptsOptions(const SessionOptions& options) override {
-    return StringPiece(options.target).starts_with(kSchemePrefix);
+    return str_util::StartsWith(options.target, kSchemePrefix);
   }
 
   Session* NewSession(const SessionOptions& options) override {

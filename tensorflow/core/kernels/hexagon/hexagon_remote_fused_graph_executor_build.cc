@@ -27,7 +27,7 @@ Status BuildRemoteFusedGraphExecutor(
 
 static RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar
     k_hexagon_remote_fused_graph_executor_build(
-        "build_hexagon_remote_fused_graph_executor",
+        HexagonControlWrapper::REMOTE_FUSED_GRAPH_EXECUTOR_NAME,
         BuildRemoteFusedGraphExecutor);
 
 }  // namespace hexagon_remote_fused_graph_executor_build

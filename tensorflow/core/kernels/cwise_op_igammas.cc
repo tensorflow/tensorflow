@@ -18,4 +18,8 @@ limitations under the License.
 namespace tensorflow {
 REGISTER2(BinaryOp, CPU, "Igamma", functor::igamma, float, double);
 REGISTER2(BinaryOp, CPU, "Igammac", functor::igammac, float, double);
+#if GOOGLE_CUDA
+REGISTER2(BinaryOp, GPU, "Igamma", functor::igamma, float, double);
+REGISTER2(BinaryOp, GPU, "Igammac", functor::igammac, float, double);
+#endif
 }  // namespace tensorflow

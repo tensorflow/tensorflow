@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "InitializeTableV2"
+  endpoint {
+    name: "InitializeTable"
+  }
+  in_arg {
+    name: "table_handle"
+    description: <<END
+Handle to a table which will be initialized.
+END
+  }
+  in_arg {
+    name: "keys"
+    description: <<END
+Keys of type Tkey.
+END
+  }
+  in_arg {
+    name: "values"
+    description: <<END
+Values of type Tval.
+END
+  }
+  summary: "Table initializer that takes two tensors for keys and values respectively."
+}

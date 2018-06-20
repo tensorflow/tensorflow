@@ -22,6 +22,9 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
+template struct FusedBatchNormFreezeGrad<Eigen::GpuDevice, float, float>;
+template struct FusedBatchNormFreezeGrad<Eigen::GpuDevice, Eigen::half, float>;
+
 template <class T>
 __global__ void VarianceToInvVarianceKernel(int nthreads, const T* input,
                                             double epsilon, T* output) {
@@ -62,8 +65,16 @@ void InvVarianceToVariance<T>::operator()(const Eigen::GpuDevice& d,
                                               epsilon, sample_size, variance);
 }
 
+template <class T>
+void SetNanFunctor<T>::operator()(const Eigen::GpuDevice& d,
+                                  typename TTypes<T>::Flat out) {
+  To32Bit(out).device(d) =
+      To32Bit(out).constant(Eigen::NumTraits<T>::quiet_NaN());
+}
+
 template class VarianceToInvVariance<float>;
 template class InvVarianceToVariance<float>;
+template class SetNanFunctor<float>;
 }  // namespace functor
 }  // namespace tensorflow
 

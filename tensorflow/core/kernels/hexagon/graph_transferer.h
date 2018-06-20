@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
+#define TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
 
 #include <array>
 #include <unordered_map>
@@ -22,17 +22,19 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
+
+class GraphTransferInfo;
+class GraphTransferNodeInfo;
+class GraphTransferNodeInputInfo;
 
 // GraphTransferer transfers graph definitions into SoC memory.
 // This functionality is effective if SoC is capable to run
@@ -47,13 +49,15 @@ class GraphTransferer {
   static constexpr int SHAPE_ARRAY_SIZE = MAX_SUPPORTED_RANK;
   using TensorShapeMap = RemoteFusedGraphExecuteUtils::TensorShapeMap;
 
-  GraphTransferer() = default;
+  GraphTransferer();
+
+  ~GraphTransferer();
 
   // Load graph structure into GraphTransferer
   // TODO(satok): Pass a pair of TensorShape and DataType instead of
   // Tensor as input_node_info_list.
   Status LoadGraphFromProto(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const GraphDef& graph_def,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names,
@@ -63,7 +67,7 @@ class GraphTransferer {
   // TODO(satok): Pass a pair of TensorShape and DataType instead of
   // Tensor as input_node_info_list.
   Status LoadGraphFromProtoFile(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const string& graph_def_path,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names, const bool is_text_proto,
@@ -96,8 +100,8 @@ class GraphTransferer {
    public:
     TransferParamsComparator(
         const std::unordered_map<int, std::unordered_set<int>>& dep_map);
-    bool operator()(const GraphTransferInfo::NodeInfo& obj0,
-                    const GraphTransferInfo::NodeInfo& obj1);
+    bool operator()(const GraphTransferNodeInfo& obj0,
+                    const GraphTransferNodeInfo& obj1);
     const std::unordered_map<int, std::unordered_set<int>>& dependency_map_;
   };
 
@@ -112,7 +116,7 @@ class GraphTransferer {
       Graph* graph, ShapeRefiner* shape_refiner);
 
   Status RegisterNode(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner, const Node& node,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names);
@@ -140,30 +144,29 @@ class GraphTransferer {
                             const ShapeRefiner& shape_refiner);
 
   void RegisterNodeWithPaddingAndStrides(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner, const Node& node);
 
-  void RegisterNodeWithRank(const IGraphTransferOpsDefinitions& ops_definitions,
-                            const ShapeRefiner& shape_refiner,
-                            const Node& node);
+  void RegisterNodeWithRank(
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
+      const ShapeRefiner& shape_refiner, const Node& node);
 
-  void RegisterPadNode(const IGraphTransferOpsDefinitions& ops_definitions,
+  void RegisterPadNode(const IRemoteFusedGraphOpsDefinitions& ops_definitions,
                        const ShapeRefiner& shape_refiner, const Node& node);
 
-  void RegisterInputNode(const IGraphTransferOpsDefinitions& ops_definitions,
-                         const ShapeRefiner& shape_refiner,
-                         const Node& node);
+  void RegisterInputNode(const IRemoteFusedGraphOpsDefinitions& ops_definitions,
+                         const ShapeRefiner& shape_refiner, const Node& node);
 
-  void RegisterFlattenNode(const IGraphTransferOpsDefinitions& ops_definitions,
-                           const ShapeRefiner& shape_refiner,
-                           const Node& node);
+  void RegisterFlattenNode(
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
+      const ShapeRefiner& shape_refiner, const Node& node);
 
-  void RegisterGenericNode(const IGraphTransferOpsDefinitions& ops_definitions,
-                           const ShapeRefiner& shape_refiner,
-                           const Node& node);
+  void RegisterGenericNode(
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
+      const ShapeRefiner& shape_refiner, const Node& node);
 
   Status RegisterNodeIfAllInputsAreCached(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner, const Node& node,
       const bool only_register_const_node,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
@@ -175,15 +178,14 @@ class GraphTransferer {
                         const std::vector<int>& extra_inputs,
                         const int outputs_size);
 
-  void AddNodeInputByInputIndex(
-      const Node& node, const int idx,
-      GraphTransferInfo::NodeInputInfo* node_input_info);
+  void AddNodeInputByInputIndex(const Node& node, const int idx,
+                                GraphTransferNodeInputInfo* node_input_info);
 
   void AppendNodeInputParams(const int id, const Node& node,
                              const std::vector<int>& extra_inputs);
 
-  void AppendNodeOutputParams(const ShapeRefiner& shape_refiner,
-                              const int id, const Node& node);
+  void AppendNodeOutputParams(const ShapeRefiner& shape_refiner, const int id,
+                              const Node& node);
 
   static std::array<int64, SHAPE_ARRAY_SIZE> BuildShapeArray(
       const shape_inference::ShapeHandle& shape_handle,
@@ -212,7 +214,7 @@ class GraphTransferer {
   // Dump pretty print of parameters
   void DumpNodeTransferParams() const;
 
-  GraphTransferInfo graph_transfer_info_{};
+  GraphTransferInfo* graph_transfer_info_;
 
   std::vector<const Node*> node_name_cache_list_{};
   std::unordered_map<string, int> node_name_to_id_cache_map_{};
@@ -226,4 +228,4 @@ class GraphTransferer {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H
+#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H

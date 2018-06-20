@@ -19,24 +19,26 @@ from __future__ import division
 from __future__ import print_function
 
 # Loss functions.
-from tensorflow.contrib.keras.python.keras.losses import binary_crossentropy
-from tensorflow.contrib.keras.python.keras.losses import categorical_crossentropy
-from tensorflow.contrib.keras.python.keras.losses import cosine_proximity
-from tensorflow.contrib.keras.python.keras.losses import hinge
-from tensorflow.contrib.keras.python.keras.losses import kullback_leibler_divergence
-from tensorflow.contrib.keras.python.keras.losses import mean_absolute_error
-from tensorflow.contrib.keras.python.keras.losses import mean_absolute_percentage_error
-from tensorflow.contrib.keras.python.keras.losses import mean_squared_error
-from tensorflow.contrib.keras.python.keras.losses import mean_squared_logarithmic_error
-from tensorflow.contrib.keras.python.keras.losses import poisson
-from tensorflow.contrib.keras.python.keras.losses import sparse_categorical_crossentropy
-from tensorflow.contrib.keras.python.keras.losses import squared_hinge
+from tensorflow.python.keras.losses import binary_crossentropy
+from tensorflow.python.keras.losses import categorical_crossentropy
+from tensorflow.python.keras.losses import categorical_hinge
+from tensorflow.python.keras.losses import cosine_proximity
+from tensorflow.python.keras.losses import hinge
+from tensorflow.python.keras.losses import kullback_leibler_divergence
+from tensorflow.python.keras.losses import logcosh
+from tensorflow.python.keras.losses import mean_absolute_error
+from tensorflow.python.keras.losses import mean_absolute_percentage_error
+from tensorflow.python.keras.losses import mean_squared_error
+from tensorflow.python.keras.losses import mean_squared_logarithmic_error
+from tensorflow.python.keras.losses import poisson
+from tensorflow.python.keras.losses import sparse_categorical_crossentropy
+from tensorflow.python.keras.losses import squared_hinge
 
 # Auxiliary utils.
 # pylint: disable=g-bad-import-order
-from tensorflow.contrib.keras.python.keras.losses import deserialize
-from tensorflow.contrib.keras.python.keras.losses import serialize
-from tensorflow.contrib.keras.python.keras.losses import get
+from tensorflow.python.keras.losses import deserialize
+from tensorflow.python.keras.losses import serialize
+from tensorflow.python.keras.losses import get
 
 del absolute_import
 del division

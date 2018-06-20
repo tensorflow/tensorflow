@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -41,6 +42,7 @@ __all__ = [
 ]
 
 
+@tf_export("distributions.Gamma")
 class Gamma(distribution.Distribution):
   """Gamma distribution.
 
@@ -124,8 +126,8 @@ class Gamma(distribution.Distribution):
     Raises:
       TypeError: if `concentration` and `rate` are different dtypes.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration, rate]) as name:
       with ops.control_dependencies([
           check_ops.assert_positive(concentration),
           check_ops.assert_positive(rate),
@@ -190,12 +192,6 @@ class Gamma(distribution.Distribution):
 
   def _log_prob(self, x):
     return self._log_unnormalized_prob(x) - self._log_normalization()
-
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
-  def _log_cdf(self, x):
-    return math_ops.log(self._cdf(x))
 
   def _cdf(self, x):
     x = self._maybe_assert_valid_sample(x)
@@ -265,8 +261,8 @@ class GammaWithSoftplusConcentrationRate(Gamma):
                validate_args=False,
                allow_nan_stats=True,
                name="GammaWithSoftplusConcentrationRate"):
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration, rate]) as name:
       super(GammaWithSoftplusConcentrationRate, self).__init__(
           concentration=nn.softplus(concentration,
                                     name="softplus_concentration"),

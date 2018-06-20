@@ -42,7 +42,7 @@ def xavier_initializer(uniform=True, seed=None, dtype=dtypes.float32):
   This initializer is designed to keep the scale of the gradients roughly the
   same in all layers. In uniform distribution this ends up being the range:
   `x = sqrt(6. / (in + out)); [-x, x]` and for normal distribution a standard
-  deviation of `sqrt(3. / (in + out))` is used.
+  deviation of `sqrt(2. / (in + out))` is used.
 
   Args:
     uniform: Whether to use uniform or normal distributed random initialization.
@@ -79,7 +79,8 @@ def variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False,
   ```
 
   * To get [Delving Deep into Rectifiers](
-     http://arxiv.org/pdf/1502.01852v1.pdf), use (Default):<br/>
+     http://arxiv.org/pdf/1502.01852v1.pdf) (also know as the "MSRA 
+     initialization"), use (Default):<br/>
     `factor=2.0 mode='FAN_IN' uniform=False`
   * To get [Convolutional Architecture for Fast Feature Embedding](
      http://arxiv.org/abs/1408.5093), use:<br/>

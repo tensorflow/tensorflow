@@ -118,6 +118,9 @@ class PosixEnv : public Env {
                                const string& version) override {
     return tensorflow::internal::FormatLibraryFileName(name, version);
   }
+
+ private:
+  void GetLocalTempDirectories(std::vector<string>* list) override;
 };
 
 }  // namespace
@@ -130,5 +133,44 @@ Env* Env::Default() {
   return default_env;
 }
 #endif
+
+void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
+  list->clear();
+  // Directories, in order of preference. If we find a dir that
+  // exists, we stop adding other less-preferred dirs
+  const char* candidates[] = {
+    // Non-null only during unittest/regtest
+    getenv("TEST_TMPDIR"),
+
+    // Explicitly-supplied temp dirs
+    getenv("TMPDIR"),
+    getenv("TMP"),
+
+#if defined(__ANDROID__)
+    "/data/local/tmp",
+#endif
+
+    // If all else fails
+    "/tmp",
+  };
+
+  for (const char* d : candidates) {
+    if (!d || d[0] == '\0') continue;  // Empty env var
+
+    // Make sure we don't surprise anyone who's expecting a '/'
+    string dstr = d;
+    if (dstr[dstr.size() - 1] != '/') {
+      dstr += "/";
+    }
+
+    struct stat statbuf;
+    if (!stat(d, &statbuf) && S_ISDIR(statbuf.st_mode) &&
+        !access(dstr.c_str(), 0)) {
+      // We found a dir that exists and is accessible - we're done.
+      list->push_back(dstr);
+      return;
+    }
+  }
+}
 
 }  // namespace tensorflow

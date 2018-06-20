@@ -269,6 +269,7 @@ Status ScatterNdNonAliasingAddGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ScatterNdNonAliasingAdd", ScatterNdNonAliasingAddGrad);
 
+template <bool IsPadV2>
 Status PadGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,
                std::vector<Output>* grad_outputs) {
@@ -281,9 +282,14 @@ Status PadGrad(const Scope& scope, const Operation& op,
   auto begin = Reshape(scope, pad_before, {-1});
   grad_outputs->push_back(Slice(scope, grad_inputs[0], begin, Shape(scope, x)));
   grad_outputs->push_back(NoGradient());
+  // PadV2 adds a "constant_values" input.
+  if (IsPadV2) {
+    grad_outputs->push_back(NoGradient());
+  }
   return scope.status();
 }
-REGISTER_GRADIENT_OP("Pad", PadGrad);
+REGISTER_GRADIENT_OP("Pad", PadGrad<false>);
+REGISTER_GRADIENT_OP("PadV2", PadGrad<true>);
 
 Status SpaceToBatchGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,
@@ -378,6 +384,42 @@ Status MirrorPadGradGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("MirrorPadGrad", MirrorPadGradGrad);
+
+Status StridedSliceGradHelper(const Scope& scope, const Operation& op,
+                              const std::vector<Output>& grad_inputs,
+                              std::vector<Output>* grad_outputs) {
+  Input x = Shape(scope, op.input(0));
+  Input begin = op.input(1);
+  Input end = op.input(2);
+  Input strides = op.input(3);
+  int64 begin_mask;
+  int64 end_mask;
+  int64 ellipsis_mask;
+  int64 new_axis_mask;
+  int64 shrink_axis_mask;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "begin_mask", &begin_mask));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "end_mask", &end_mask));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "ellipsis_mask", &ellipsis_mask));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "new_axis_mask", &new_axis_mask));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "shrink_axis_mask", &shrink_axis_mask));
+  grad_outputs->push_back(
+      StridedSliceGrad(scope, x, begin, end, strides, grad_inputs[0],
+                       StridedSliceGrad::BeginMask(begin_mask)
+                           .EndMask(end_mask)
+                           .EllipsisMask(ellipsis_mask)
+                           .NewAxisMask(new_axis_mask)
+                           .ShrinkAxisMask(shrink_axis_mask)));
+  // No gradients returned for begin, end and strides
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("StridedSlice", StridedSliceGradHelper);
 
 }  // anonymous namespace
 }  // namespace ops

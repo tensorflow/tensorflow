@@ -27,28 +27,21 @@ namespace tensorflow {
 DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
     : name_backing_store_(128) {
   for (Device* d : devices) {
+    CHECK(d->device_mgr_ == nullptr);
+    d->device_mgr_ = this;
+
     devices_.push_back(d);
 
-    // Register under the (1) full name, (2) canonical name, and (3) local name.
-    string full_name = d->name();
-    device_map_[CopyToBackingStore(full_name)] = d;
-
-    // TODO(b/62909072): Upgrade device_map_ to a better data structure.
-    DeviceNameUtils::ParsedName parsed_name = d->parsed_name();
-    if (parsed_name.has_job && parsed_name.has_replica &&
-        parsed_name.has_task && parsed_name.has_type && parsed_name.has_id) {
-      string canonical_name = DeviceNameUtils::FullName(
-          parsed_name.job, parsed_name.replica, parsed_name.task,
-          parsed_name.type, parsed_name.id);
-      device_map_[CopyToBackingStore(canonical_name)] = d;
-
-      string legacy_name = DeviceNameUtils::LegacyName(
-          parsed_name.job, parsed_name.replica, parsed_name.task,
-          parsed_name.type, parsed_name.id);
-      device_map_[CopyToBackingStore(legacy_name)] = d;
+    // Register under the (1) full name and (2) canonical name.
+    for (const string& name :
+         DeviceNameUtils::GetNamesForDeviceMappings(d->parsed_name())) {
+      device_map_[CopyToBackingStore(name)] = d;
     }
-    string lname = DeviceNameUtils::LocalName(d->name());
-    device_map_[CopyToBackingStore(lname)] = d;
+    // Register under the (3) local name and (4) legacy local name.
+    for (const string& name :
+         DeviceNameUtils::GetLocalNamesForDeviceMappings(d->parsed_name())) {
+      device_map_[CopyToBackingStore(name)] = d;
+    }
     device_type_counts_[d->device_type()]++;
   }
 }
@@ -104,8 +97,8 @@ Status DeviceMgr::LookupDevice(StringPiece name, Device** device) const {
     for (auto&& itr : device_map_) {
       device_names.push_back(itr.first);
     }
-    LOG(WARNING) << "Unknown device: " << name
-                 << " all devices: " << str_util::Join(device_names, ", ");
+    VLOG(1) << "Unknown device: " << name
+            << " all devices: " << str_util::Join(device_names, ", ");
     return errors::InvalidArgument(name, " unknown device.");
   }
   *device = iter->second;

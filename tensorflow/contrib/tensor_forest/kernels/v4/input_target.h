@@ -12,17 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_TARGET_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_TARGET_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_TARGET_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_TARGET_H_
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
 namespace tensorforest {
 
-typedef Eigen::TensorMap<
-    Eigen::Tensor<const float, 1, 1, long>, 0>  // NOLINT(runtime/int)
-    SingleDimStorageType;
+typedef TTypes<float, 1>::UnalignedConstTensor SingleDimStorageType;
 
 // Base class for classes that hold labels and weights. Mostly for testing
 // purposes, because it's inconvenient to construct nasty Eigen::things.
@@ -41,11 +39,12 @@ class InputTarget {
 template <typename T>
 class StoredInputTarget : public InputTarget {
  protected:
+  // Takes ownership of t and w with a std::unique_ptr.
   StoredInputTarget(const T* t, const T* w, int num_targets)
       : target_(t), weight_(w), num_targets_(num_targets) {}
 
-  const T* target_;
-  const T* weight_;
+  const std::unique_ptr<const T> target_;
+  const std::unique_ptr<const T> weight_;
   int num_targets_;
 };
 
@@ -54,10 +53,12 @@ class StoredInputTarget : public InputTarget {
 // outputs will correctly index the flattened data.
 class TensorInputTarget : public StoredInputTarget<SingleDimStorageType> {
  public:
-  TensorInputTarget(const SingleDimStorageType* t,
-                    const SingleDimStorageType* w, const Tensor& tensor,
-                    int num_targets)
-      : StoredInputTarget(t, w, num_targets), original_tensor_(tensor) {}
+  TensorInputTarget(const Tensor& target, const Tensor& weight, int num_targets)
+      : StoredInputTarget(
+            new SingleDimStorageType(target.unaligned_flat<float>()),
+            new SingleDimStorageType(weight.unaligned_flat<float>()),
+            num_targets),
+        original_tensor_(target) {}
 
   int32 GetTargetAsClassIndex(int example_index,
                               int target_index) const override {
@@ -78,9 +79,7 @@ class TensorInputTarget : public StoredInputTarget<SingleDimStorageType> {
     return (*target_)(example_index * num_targets_ + target_index);
   }
 
-  const Tensor& original_tensor() const {
-    return original_tensor_;
-  }
+  const Tensor& original_tensor() const { return original_tensor_; }
 
  protected:
   Tensor original_tensor_;
@@ -88,4 +87,4 @@ class TensorInputTarget : public StoredInputTarget<SingleDimStorageType> {
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_TARGET_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_INPUT_TARGET_H_

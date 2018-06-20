@@ -1,0 +1,21 @@
+TF type,Builtin,Java type,Creator?,Zero value,Description
+Float,y,float,y,0f,32-bit single precision floating point number
+Double,y,double,y,0.0,64-bit double precision floating point number
+Integer,y,int,y,0,32-bit signed integer
+UInt8,n,byte,n,(byte)0,8-bit unsigned integer
+Short,y,,n,(short)0,16-bit signed integer
+Byte,y,,n,(byte)0,8-bit signed integer
+String,y,byte,y,,arbitrary sequence of bytes
+Complex64,n,,n,,single-precision complex number
+Long,y,long,y,0L,64-bit signed integer
+Boolean,y,boolean,y,false,boolean
+QInt8,n,,n,,quantized int8
+QUInt8,n,,n,,quantized uint8
+QInt32,n,,n,,quantized int32
+BFloat16,n,,n,,float32 truncated to 16 bits. Only for cast ops.
+QInt16,n,,n,,quantized int16
+QUInt16,n,,n,,quantized uint16
+UInt16,n,,n,,16-bit unsigned integer
+Complex128,n,,n,,double-precision complex number
+Half,n,,n,,
+Resource,n,,n,,

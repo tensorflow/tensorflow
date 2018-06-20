@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -91,5 +92,37 @@ namespace tensorflow {
 
   return Status::OK();
 }
+
+TestRemoteFusedGraphExecutor::TestRemoteFusedGraphExecutor(
+    const std::unordered_set<string>& fused_op_types,
+    const string& executor_name)
+    : fused_op_types_(fused_op_types), executor_name_(executor_name) {}
+
+int TestRemoteFusedGraphExecutor::GetVersion() { return 0; }
+bool TestRemoteFusedGraphExecutor::Init(const RemoteFusedGraphExecuteInfo&) {
+  return true;
+}
+bool TestRemoteFusedGraphExecutor::Finalize() { return true; }
+bool TestRemoteFusedGraphExecutor::SetupGraph() { return true; }
+bool TestRemoteFusedGraphExecutor::ExecuteGraph() { return true; }
+bool TestRemoteFusedGraphExecutor::TeardownGraph() { return true; }
+bool TestRemoteFusedGraphExecutor::FillInputNode(const string&, const Tensor&) {
+  return true;
+}
+bool TestRemoteFusedGraphExecutor::ReadOutputNode(const string&,
+                                                  TensorAllocatorFunc) {
+  return true;
+}
+Status TestRemoteFusedGraphExecutor::FuseRemoteGraph(
+    const GraphDef& original_graph_def, const std::vector<string>& inputs,
+    const std::vector<string>& outputs, GraphDef* fused_graph_def) {
+  return RemoteFusedGraphExecuteUtils::FuseRemoteGraphByOpTypes(
+      original_graph_def, inputs, outputs, "remote_fused_graph_node_names",
+      fused_op_types_, executor_name_,
+      /*require_shape_type=*/false, fused_graph_def);
+  return Status::OK();
+}
+
+bool TestRemoteFusedGraphExecutor::IsEnabled() const { return true; }
 
 }  // namespace tensorflow

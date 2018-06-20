@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -39,7 +42,8 @@ class GradientDescentOptimizerTest(test.TestCase):
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-        sgd_op = gradient_descent.GradientDescentOptimizer(3.0).apply_gradients(
+        optimizer = gradient_descent.GradientDescentOptimizer(3.0)
+        sgd_op = optimizer.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
@@ -52,6 +56,7 @@ class GradientDescentOptimizerTest(test.TestCase):
                                            var0.eval())
         self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                            var1.eval())
+        self.assertEqual(0, len(optimizer.variables()))
 
   def testBasicResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -61,6 +66,32 @@ class GradientDescentOptimizerTest(test.TestCase):
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         sgd_op = gradient_descent.GradientDescentOptimizer(3.0).apply_gradients(
+            zip([grads0, grads1], [var0, var1]))
+        # TODO(apassos) calling initialize_resources on all resources here
+        # doesn't work because the sessions and graph are reused across unit
+        # tests and this would mean trying to reinitialize variables. Figure out
+        # a long-term solution for this.
+        resources.initialize_resources([var0, var1]).run()
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([1.0, 2.0], var0.eval())
+        self.assertAllCloseAccordingToType([3.0, 4.0], var1.eval())
+        # Run 1 step of sgd
+        sgd_op.run()
+        # Validate updated params
+        self.assertAllCloseAccordingToType([1.0 - 3.0 * 0.1, 2.0 - 3.0 * 0.1],
+                                           var0.eval())
+        self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
+                                           var1.eval())
+
+  def testBasicCallableParams(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
+        grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
+        lr = lambda: 3.0
+        sgd_op = gradient_descent.GradientDescentOptimizer(lr).apply_gradients(
             zip([grads0, grads1], [var0, var1]))
         # TODO(apassos) calling initialize_resources on all resources here
         # doesn't work because the sessions and graph are reused across unit
@@ -215,6 +246,26 @@ class GradientDescentOptimizerTest(test.TestCase):
                                            var0.eval())
         self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
                                            var1.eval())
+
+  def testCapturingInDefunWhileExecutingEagerly(self):
+    with context.eager_mode():
+      optimizer = gradient_descent.GradientDescentOptimizer(1.0)
+
+      def step():
+        v = resource_variable_ops.ResourceVariable(1.0)
+        with backprop.GradientTape() as tape:
+          loss = v ** 2
+        grad = tape.gradient(loss, v)
+        optimizer.apply_gradients([(grad, v)])
+        return v.read_value()
+
+      compiled_step = function.defun(step)
+
+      self.assertEqual(float(step()), -1.0)
+      self.assertEqual(float(compiled_step()), -1.0)
+      # This shouldn't fail; in particular, the learning rate tensor should
+      # be an EagerTensor once again, not a graph Tensor.
+      self.assertEqual(float(step()), -1.0)
 
 
 if __name__ == "__main__":

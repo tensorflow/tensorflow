@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
-#define THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
+#ifndef TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
+#define TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
 
+#include <functional>
 #include <string>
 #include <vector>
 #include "tensorflow/core/platform/types.h"
@@ -61,11 +62,28 @@ namespace tensorflow {
 // text, and a pointer to the corresponding variable.
 class Flag {
  public:
-  Flag(const char* name, int32* dst1, const string& usage_text);
-  Flag(const char* name, int64* dst1, const string& usage_text);
+  Flag(const char* name, int32* dst, const string& usage_text);
+  Flag(const char* name, int64* dst, const string& usage_text);
   Flag(const char* name, bool* dst, const string& usage_text);
   Flag(const char* name, string* dst, const string& usage_text);
   Flag(const char* name, float* dst, const string& usage_text);
+
+  // These constructors invoke a hook on a match instead of writing to a
+  // specific memory location.  The hook may return false to signal a malformed
+  // or illegal value, which will then fail the command line parse.
+  //
+  // "default_value_for_display" is shown as the default value of this flag in
+  // Flags::Usage().
+  Flag(const char* name, std::function<bool(int32)> int32_hook,
+       int32 default_value_for_display, const string& usage_text);
+  Flag(const char* name, std::function<bool(int64)> int64_hook,
+       int64 default_value_for_display, const string& usage_text);
+  Flag(const char* name, std::function<bool(float)> float_hook,
+       float default_value_for_display, const string& usage_text);
+  Flag(const char* name, std::function<bool(bool)> bool_hook,
+       bool default_value_for_display, const string& usage_text);
+  Flag(const char* name, std::function<bool(string)> string_hook,
+       string default_value_for_display, const string& usage_text);
 
  private:
   friend class Flags;
@@ -73,12 +91,29 @@ class Flag {
   bool Parse(string arg, bool* value_parsing_ok) const;
 
   string name_;
-  enum { TYPE_INT, TYPE_INT64, TYPE_BOOL, TYPE_STRING, TYPE_FLOAT } type_;
-  int* int_value_;
-  int64* int64_value_;
-  bool* bool_value_;
-  string* string_value_;
-  float* float_value_;
+  enum {
+    TYPE_INT32,
+    TYPE_INT64,
+    TYPE_BOOL,
+    TYPE_STRING,
+    TYPE_FLOAT,
+  } type_;
+
+  std::function<bool(int32)> int32_hook_;
+  int32 int32_default_for_display_;
+
+  std::function<bool(int64)> int64_hook_;
+  int64 int64_default_for_display_;
+
+  std::function<bool(float)> float_hook_;
+  float float_default_for_display_;
+
+  std::function<bool(bool)> bool_hook_;
+  bool bool_default_for_display_;
+
+  std::function<bool(string)> string_hook_;
+  string string_default_for_display_;
+
   string usage_text_;
 };
 
@@ -99,4 +134,4 @@ class Flags {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
+#endif  // TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H

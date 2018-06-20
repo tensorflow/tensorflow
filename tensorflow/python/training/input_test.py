@@ -497,6 +497,28 @@ class BatchTest(test_lib.TestCase):
   def testOneThreadDict(self):
     self._testOneThreadHelper(use_dict=True)
 
+  def testUint32DataTypes(self):
+    values = constant_op.constant([0, 1, 2, 3, 4, 5], dtype=dtypes.uint32)
+    batched = inp.batch([values], batch_size=2)
+    with self.test_session() as sess:
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
+      sess.run(batched)
+      coord.request_stop()
+      for thread in threads:
+        thread.join()
+
+  def testUint64DataTypes(self):
+    values = constant_op.constant([0, 1, 2, 3, 4, 5], dtype=dtypes.uint64)
+    batched = inp.batch([values], batch_size=2)
+    with self.test_session() as sess:
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
+      sess.run(batched)
+      coord.request_stop()
+      for thread in threads:
+        thread.join()
+
   def testOneThreadDynamicPad(self):
     with self.test_session() as sess:
       batch_size = 10
@@ -902,6 +924,29 @@ class BatchTest(test_lib.TestCase):
     batched = inp.maybe_batch(
         [sparse], keep_input=[True, False], batch_size=2, enqueue_many=True)
     self.assertIs(None, batched.dense_shape.get_shape().num_elements())
+
+  def testMaybeBatchCorrectValues(self):
+    sparse_t = sparse_tensor.SparseTensor(
+        indices=[[0, 1], [0, 2], [1, 0], [1, 3]],
+        dense_shape=[2, 4],
+        values=[5, 4, 7, 2])
+    keep = constant_op.constant([True, False])
+    batched = inp.maybe_batch(
+        [sparse_t], keep_input=keep, batch_size=1, enqueue_many=True)
+
+    with self.test_session():
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(coord=coord)
+
+      batched_np = batched.eval()
+
+      coord.request_stop()
+      for thread in threads:
+        thread.join()
+
+    self.assertAllEqual([[0, 1], [0, 2]], batched_np.indices)
+    self.assertAllEqual([5, 4], batched_np.values)
+    self.assertAllEqual([1, 4], batched_np.dense_shape)
 
 
 class BatchJoinTest(test_lib.TestCase):
@@ -1456,6 +1501,29 @@ class BatchJoinTest(test_lib.TestCase):
     batched = inp.maybe_batch_join(
         [[sparse]], keep_input=[True, False], batch_size=2, enqueue_many=True)
     self.assertIs(None, batched.dense_shape.get_shape().num_elements())
+
+  def testMaybeBatchCorrectValues(self):
+    sparse = sparse_tensor.SparseTensor(
+        indices=[[0, 1], [0, 2], [1, 0], [1, 3]],
+        dense_shape=[2, 4],
+        values=[5, 4, 7, 2])
+    keep = constant_op.constant([True, False])
+    batched = inp.maybe_batch_join(
+        [[sparse]], keep_input=keep, batch_size=1, enqueue_many=True)
+
+    with self.test_session():
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(coord=coord)
+
+      batched_np = batched.eval()
+
+      coord.request_stop()
+      for thread in threads:
+        thread.join()
+
+    self.assertAllEqual([[0, 1], [0, 2]], batched_np.indices)
+    self.assertAllEqual([5, 4], batched_np.values)
+    self.assertAllEqual([1, 4], batched_np.dense_shape)
 
 
 class ShuffleBatchTest(test_lib.TestCase):

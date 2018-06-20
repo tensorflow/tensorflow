@@ -35,7 +35,7 @@ void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
     workers->ParallelFor(total, cost_per_unit, work);
     return;
   }
-  cost_per_unit = std::max(1LL, cost_per_unit);
+  cost_per_unit = std::max(int64{1}, cost_per_unit);
   // We shard [0, total) into "num_shards" shards.
   //   1 <= num_shards <= num worker threads
   //

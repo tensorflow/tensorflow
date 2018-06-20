@@ -15,14 +15,12 @@
 # ==============================================================================
 
 set -e
-BUILDIFIER_DIR="buildifier"
-mkdir ${BUILDIFIER_DIR}
-curl -Ls https://github.com/bazelbuild/buildifier/archive/0.4.5.tar.gz | \
-    tar -C "${BUILDIFIER_DIR}" --strip-components=1 -xz
-pushd ${BUILDIFIER_DIR}
+# Download buildifier.
+wget https://github.com/bazelbuild/buildtools/releases/download/0.4.5/buildifier
+chmod +x buildifier
+sudo mv buildifier /usr/local/bin/.
 
-bazel build buildifier:buildifier --spawn_strategy=standalone --genrule_strategy=standalone
-sudo cp bazel-bin/buildifier/buildifier /usr/local/bin/
-
-popd
-rm -rf ${BUILDIFIER_DIR}
+# Download buildozer.
+wget https://github.com/bazelbuild/buildtools/releases/download/0.4.5/buildozer
+chmod +x buildozer
+sudo mv buildozer /usr/local/bin/.

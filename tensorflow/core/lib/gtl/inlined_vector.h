@@ -31,19 +31,19 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
 #define TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
 
-#include <cstddef>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <memory>
 #include <type_traits>
 #include <vector>
 
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
@@ -407,7 +407,7 @@ class InlinedVector {
   };
   // 2) Construct a T with args at not-yet-initialized memory pointed by dst.
   struct Construct {
-    template<class... Args>
+    template <class... Args>
     void operator()(T* dst, Args&&... args) const {
       new (dst) T(std::forward<Args>(args)...);
     }

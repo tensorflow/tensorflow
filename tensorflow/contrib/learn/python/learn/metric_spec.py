@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The metric spec class to flexibly connect models and metrics."""
+"""The metric spec class to flexibly connect models and metrics (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +27,7 @@ import six
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _assert_named_args(sentinel):
@@ -42,10 +48,8 @@ def _args(fn):
   """
   if hasattr(fn, 'func') and hasattr(fn, 'keywords'):
     # Handle functools.partial and similar objects.
-    return tuple([
-        arg for arg in tf_inspect.getargspec(fn.func).args
-        if arg not in set(fn.keywords.keys())
-    ])
+    return tuple(
+        [arg for arg in _args(fn.func) if arg not in set(fn.keywords.keys())])
   # Handle function.
   return tuple(tf_inspect.getargspec(fn).args)
 
@@ -225,6 +229,10 @@ def _adapt_metric_fn(
 class MetricSpec(object):
   """MetricSpec connects a model to metric functions.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   The MetricSpec class contains all information necessary to connect the
   output of a `model_fn` to the metrics (usually, streaming metrics) that are
   used in evaluation.
@@ -233,7 +241,7 @@ class MetricSpec(object):
   `Estimator` then knows which predictions, labels, and weight to use to call a
   given metric function.
 
-  When building the ops to run in evaluation, `Estimator` will call
+  When building the ops to run in evaluation, an `Estimator` will call
   `create_metric_ops`, which will connect the given `metric_fn` to the model
   as detailed in the docstring for `create_metric_ops`, and return the metric.
 
@@ -286,6 +294,7 @@ class MetricSpec(object):
 
   """
 
+  @deprecated(None, 'Use tf.estimator.EstimatorSpec.eval_metric_ops.')
   def __init__(self,
                metric_fn,
                prediction_key=None,

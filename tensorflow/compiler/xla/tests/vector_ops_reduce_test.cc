@@ -19,10 +19,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -34,9 +33,9 @@ namespace {
 
 class VecOpsReduceTest : public ClientLibraryTestBase {
  public:
-  VecOpsReduceTest() : builder_(client_, TestName()) {}
+  VecOpsReduceTest() : builder_(TestName()) {}
 
-  ComputationDataHandle BuildSampleConstantCube() {
+  XlaOp BuildSampleConstantCube() {
     // clang-format off
     Array3D<float> x3d({
           {{1.0, 2.0, 3.0},   // | dim 1    // } plane 0 in dim 0
@@ -50,7 +49,7 @@ class VecOpsReduceTest : public ClientLibraryTestBase {
     return builder_.ConstantR3FromArray3D<float>(x3d);
   }
 
-  ComputationBuilder builder_;
+  XlaBuilder builder_;
   ErrorSpec errspec_{1e-3, 0};
 };
 
@@ -216,20 +215,3 @@ TEST_F(VecOpsReduceTest, AddReduceR3F32AllDims) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

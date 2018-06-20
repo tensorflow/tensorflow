@@ -24,19 +24,21 @@
 namespace tensorflow {
 namespace {
 
-using tensorflow::tensorforest::GrowStats;
-using tensorflow::tensorforest::TestableInputTarget;
-using tensorflow::tensorforest::FertileSlot;
+using tensorflow::decision_trees::BinaryNode;
+using tensorflow::decision_trees::FeatureId;
+using tensorflow::decision_trees::InequalityTest;
 using tensorflow::tensorforest::DenseClassificationGrowStats;
-using tensorflow::tensorforest::SparseClassificationGrowStats;
+using tensorflow::tensorforest::FertileSlot;
+using tensorflow::tensorforest::FixedSizeClassStats;
+using tensorflow::tensorforest::FixedSizeSparseClassificationGrowStats;
+using tensorflow::tensorforest::GrowStats;
 using tensorflow::tensorforest::LeastSquaresRegressionGrowStats;
-using tensorflow::tensorforest::TensorForestParams;
+using tensorflow::tensorforest::SparseClassificationGrowStats;
 using tensorflow::tensorforest::SPLIT_FINISH_BASIC;
 using tensorflow::tensorforest::SPLIT_FINISH_DOMINATE_HOEFFDING;
 using tensorflow::tensorforest::SPLIT_PRUNE_HOEFFDING;
-using tensorflow::decision_trees::BinaryNode;
-using tensorflow::decision_trees::InequalityTest;
-using tensorflow::decision_trees::FeatureId;
+using tensorflow::tensorforest::TensorForestParams;
+using tensorflow::tensorforest::TestableInputTarget;
 
 BinaryNode MakeSplit(const string& feat, float val) {
   BinaryNode split;
@@ -50,14 +52,13 @@ BinaryNode MakeSplit(const string& feat, float val) {
   return split;
 }
 
-void RunBatch(GrowStats* stats,
-              const TestableInputTarget* target) {
-  stats->AddSplit(MakeSplit("0", 10.0));
-  stats->AddSplit(MakeSplit("1", 4.0));
-
+void RunBatch(GrowStats* stats, const TestableInputTarget* target) {
   std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
       new tensorflow::tensorforest::TestableDataSet(
           {1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, 2));
+
+  stats->AddSplit(MakeSplit("0", 10.0), dataset, target, 0);
+  stats->AddSplit(MakeSplit("1", 4.0), dataset, target, 0);
 
   for (int i = 0; i < target->NumItems(); ++i) {
     stats->AddExample(dataset, target, i);
@@ -76,7 +77,7 @@ TEST(GrowStatsDenseClassificationTest, Basic) {
   std::vector<float> labels = {1, 0, 1};
   std::vector<float> weights = {2.3, 20.3, 1.1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, &weights, 1));
+      new TestableInputTarget(labels, weights, 1));
 
   RunBatch(stat.get(), target.get());
   CHECK(stat->IsFinished());
@@ -100,18 +101,10 @@ class TestableRunningStats : public DenseClassificationGrowStats {
   TestableRunningStats(const TensorForestParams& params, int32 depth)
       : DenseClassificationGrowStats(params, depth) {}
 
-  float test_left_sum(int split) {
-    return get_left_gini()->sum(split);
-  }
-  float test_left_square(int split) {
-    return get_left_gini()->square(split);
-  }
-  float test_right_sum(int split) {
-    return get_right_gini()->sum(split);
-  }
-  float test_right_square(int split) {
-    return get_right_gini()->square(split);
-  }
+  float test_left_sum(int split) { return get_left_gini()->sum(split); }
+  float test_left_square(int split) { return get_left_gini()->square(split); }
+  float test_right_sum(int split) { return get_right_gini()->sum(split); }
+  float test_right_square(int split) { return get_right_gini()->square(split); }
 };
 
 TEST(GrowStatsDenseClassificationTest, BasicRunningStats) {
@@ -127,7 +120,7 @@ TEST(GrowStatsDenseClassificationTest, BasicRunningStats) {
   std::vector<float> labels = {1, 0, 1};
   std::vector<float> weights = {2.3, 20.3, 1.1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, &weights, 1));
+      new TestableInputTarget(labels, weights, 1));
 
   RunBatch(stat.get(), target.get());
   CHECK(stat->IsFinished());
@@ -164,9 +157,7 @@ class TestableFinishEarly : public DenseClassificationGrowStats {
   int num_times_called_;
 
  protected:
-  void CheckFinishEarlyHoeffding() override {
-    ++num_times_called_;
-  }
+  void CheckFinishEarlyHoeffding() override { ++num_times_called_; }
 };
 
 TEST(GrowStatsDenseClassificationTest, TestFinishEarly) {
@@ -185,7 +176,7 @@ TEST(GrowStatsDenseClassificationTest, TestFinishEarly) {
   std::vector<float> labels = {1, 0, 1};
   std::vector<float> weights = {1, 1, 1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, &weights, 1));
+      new TestableInputTarget(labels, weights, 1));
   std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
       new tensorflow::tensorforest::TestableDataSet(
           {1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, 2));
@@ -210,7 +201,6 @@ TEST(GrowStatsDenseClassificationTest, TestFinishEarly) {
   ASSERT_EQ(stat->num_times_called_, 9);
 }
 
-
 TEST(GrowStatsDenseClassificationTest, TestCheckPruneHoeffding) {
   TensorForestParams params;
   params.set_num_outputs(2);
@@ -222,23 +212,24 @@ TEST(GrowStatsDenseClassificationTest, TestCheckPruneHoeffding) {
   finish->set_type(SPLIT_FINISH_BASIC);
   finish->mutable_check_every_steps()->set_constant_value(100);
   params.mutable_pruning_type()->set_type(SPLIT_PRUNE_HOEFFDING);
-  params.mutable_pruning_type()->mutable_prune_every_samples()
+  params.mutable_pruning_type()
+      ->mutable_prune_every_samples()
       ->set_constant_value(1);
-
-  DenseClassificationGrowStats stats(params, 1);
-  stats.Initialize();
-  stats.AddSplit(MakeSplit("0", 0.0));
-  stats.AddSplit(MakeSplit("1", 0.0));
 
   // On each iteration, we add two examples, one of class 0 and one
   // of class 1.  Split #0 classifies them perfectly, while split #1
   // sends them both to the left.
   std::vector<float> labels = {0, 1};
   std::vector<float> weights = {1, 1};
-  TestableInputTarget target(&labels, &weights, 1);
+  TestableInputTarget target(labels, weights, 1);
   std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
-      new tensorflow::tensorforest::TestableDataSet(
-          {-1.0, -1.0, 1.0, -1.0}, 2));
+      new tensorflow::tensorforest::TestableDataSet({-1.0, -1.0, 1.0, -1.0},
+                                                    2));
+
+  DenseClassificationGrowStats stats(params, 1);
+  stats.Initialize();
+  stats.AddSplit(MakeSplit("0", 0.0), dataset, &target, 0);
+  stats.AddSplit(MakeSplit("1", 0.0), dataset, &target, 0);
 
   // Math time!
   // After 2n samples,
@@ -306,7 +297,7 @@ TEST(GrowStatsLeastSquaresRegressionTest, Basic) {
 
   std::vector<float> labels = {2.3, 5.6, 1.1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, {}, 1));
+      new TestableInputTarget(labels, {}, 1));
   std::vector<int> branches = {1, 0, 1, 1, 0, 0};
 
   RunBatch(stat.get(), target.get());
@@ -327,7 +318,6 @@ TEST(GrowStatsLeastSquaresRegressionTest, Basic) {
   ASSERT_EQ(serialized_again, serialized);
 }
 
-
 TEST(GrowStatsSparseClassificationTest, Basic) {
   TensorForestParams params;
   params.set_num_outputs(2);
@@ -340,7 +330,7 @@ TEST(GrowStatsSparseClassificationTest, Basic) {
   std::vector<float> labels = {100, 1000, 1};
   std::vector<float> weights = {2.3, 20.3, 1.1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, &weights, 1));
+      new TestableInputTarget(labels, weights, 1));
   std::vector<int> branches = {1, 0, 1, 1, 0, 0};
 
   RunBatch(stat.get(), target.get());
@@ -353,6 +343,75 @@ TEST(GrowStatsSparseClassificationTest, Basic) {
 
   std::unique_ptr<SparseClassificationGrowStats> new_stat(
       new SparseClassificationGrowStats(params, 1));
+  new_stat->ExtractFromProto(slot);
+  FertileSlot second_one;
+  new_stat->PackToProto(&second_one);
+  string serialized_again = second_one.DebugString();
+  ASSERT_EQ(serialized_again, serialized);
+}
+
+TEST(FixedSizeClassStats, Exact) {
+  FixedSizeClassStats stats(10, 100);
+
+  stats.accumulate(1, 1.0);
+  stats.accumulate(2, 2.0);
+  stats.accumulate(3, 3.0);
+
+  EXPECT_EQ(stats.get_weight(1), 1.0);
+  EXPECT_EQ(stats.get_weight(2), 2.0);
+  EXPECT_EQ(stats.get_weight(3), 3.0);
+
+  float sum;
+  float square;
+  stats.set_sum_and_square(&sum, &square);
+
+  EXPECT_EQ(sum, 6.0);
+  EXPECT_EQ(square, 14.0);
+}
+
+TEST(FixedSizeClassStats, Approximate) {
+  FixedSizeClassStats stats(5, 10);
+
+  for (int i = 1; i <= 10; i++) {
+    stats.accumulate(i, i * 1.0);
+  }
+
+  // We should be off by no more than *half* of the least weight
+  // in the class_weights_, which is 7.
+  float tolerance = 3.5;
+  for (int i = 1; i <= 10; i++) {
+    float diff = stats.get_weight(i) - i * 1.0;
+    EXPECT_LE(diff, tolerance);
+    EXPECT_GE(diff, -tolerance);
+  }
+}
+
+TEST(GrowStatsFixedSizeSparseClassificationTest, Basic) {
+  TensorForestParams params;
+  params.set_num_outputs(2);
+  params.set_num_classes_to_track(5);
+  params.mutable_split_after_samples()->set_constant_value(2);
+  params.mutable_num_splits_to_consider()->set_constant_value(2);
+  std::unique_ptr<FixedSizeSparseClassificationGrowStats> stat(
+      new FixedSizeSparseClassificationGrowStats(params, 1));
+  stat->Initialize();
+
+  std::vector<float> labels = {100, 1000, 1};
+  std::vector<float> weights = {2.3, 20.3, 1.1};
+  std::unique_ptr<TestableInputTarget> target(
+      new TestableInputTarget(labels, weights, 1));
+  std::vector<int> branches = {1, 0, 1, 1, 0, 0};
+
+  RunBatch(stat.get(), target.get());
+  CHECK(stat->IsFinished());
+
+  FertileSlot slot;
+  stat->PackToProto(&slot);
+
+  string serialized = slot.DebugString();
+
+  std::unique_ptr<FixedSizeSparseClassificationGrowStats> new_stat(
+      new FixedSizeSparseClassificationGrowStats(params, 1));
   new_stat->ExtractFromProto(slot);
   FertileSlot second_one;
   new_stat->PackToProto(&second_one);

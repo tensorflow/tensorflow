@@ -59,9 +59,9 @@ class FixedLengthRecordReader : public ReaderBase {
           encoding_ == "ZLIB" ? io::ZlibCompressionOptions::DEFAULT()
                               : io::ZlibCompressionOptions::GZIP();
       file_stream_.reset(new io::RandomAccessInputStream(file_.get()));
-      buffered_inputstream_.reset(
-          new io::ZlibInputStream(file_stream_.get(), (size_t)kBufferSize,
-                                  (size_t)kBufferSize, zlib_options));
+      buffered_inputstream_.reset(new io::ZlibInputStream(
+          file_stream_.get(), static_cast<size_t>(kBufferSize),
+          static_cast<size_t>(kBufferSize), zlib_options));
     } else {
       buffered_inputstream_.reset(
           new io::BufferedInputStream(file_.get(), kBufferSize));
@@ -183,7 +183,7 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
         errors::InvalidArgument("hop_bytes must be >= 0 not ", hop_bytes));
     Env* env = context->env();
     string encoding;
-    context->GetAttr("encoding", &encoding);
+    OP_REQUIRES_OK(context, context->GetAttr("encoding", &encoding));
     SetReaderFactory([this, header_bytes, record_bytes, footer_bytes, hop_bytes,
                       encoding, env]() {
       return new FixedLengthRecordReader(name(), header_bytes, record_bytes,

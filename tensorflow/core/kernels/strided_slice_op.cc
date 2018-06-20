@@ -22,7 +22,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/strided_slice_op.h"
-#include "tensorflow/core/kernels/dense_update_ops.h"
+#include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/slice_op.h"
 #include "tensorflow/core/kernels/strided_slice_op_impl.h"
 
@@ -109,17 +109,27 @@ class StridedSliceOp : public OpKernel {
     if (is_identity) {
       VLOG(1) << "Strided slice identity ";
       Tensor tmp;
-      CHECK(tmp.CopyFrom(input, final_shape));
+      OP_REQUIRES(context, tmp.CopyFrom(input, final_shape),
+                  errors::Internal("Copy failed"));
       context->set_output(0, tmp);
       return;
     }
 
     // Optimization #2, slice is memory contiguous (only occurs in dim 0)
     if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], end[0])) {
-      CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
+      OP_REQUIRES(context, input.dims() >= 1,
+                  errors::InvalidArgument(
+                      "Input must have rank at least 1, got: ", input.dims()));
+      // Otherwise, is_identity should be true.
       VLOG(1) << "Strided slice dim 0: " << input.shape().DebugString();
+      OP_REQUIRES(
+          context, begin[0] <= end[0],
+          errors::InvalidArgument("begin[0] (", begin[0],
+                                  ") must less or equal to end[0] (", end[0]));
+      Tensor slice = input.Slice(begin[0], end[0]);
       Tensor tmp;
-      CHECK(tmp.CopyFrom(input.Slice(begin[0], end[0]), final_shape));
+      OP_REQUIRES(context, tmp.CopyFrom(slice, final_shape),
+                  errors::Internal("Copy failed"));
       context->set_output(0, tmp);
       return;
     }
@@ -238,7 +248,8 @@ class StridedSliceGradOp : public OpKernel {
 
     if (processing_shape.dims() == 0) {
       auto in = context->input(4);
-      CHECK(result->CopyFrom(in, processing_shape));
+      OP_REQUIRES(context, result->CopyFrom(in, processing_shape),
+                  errors::Internal("Copy failed"));
       return;
     }
 
@@ -294,6 +305,11 @@ class StridedSliceAssignOp : public OpKernel {
       OP_REQUIRES_OK(context,
                      LookupResource(context, HandleFromInput(context, 0), &v));
       old_lhs = *v->tensor();
+      OP_REQUIRES(context, old_lhs.dtype() == DataTypeToEnum<T>::value,
+                  errors::InvalidArgument(
+                      "l-value dtype ", DataTypeString(old_lhs.dtype()),
+                      " does not match r-value dtype ",
+                      DataTypeString(DataTypeToEnum<T>::value)));
     } else {
       context->forward_ref_input_to_ref_output(0, 0);
       old_lhs = context->mutable_input(0, true);
@@ -386,7 +402,6 @@ class StridedSliceAssignOp : public OpKernel {
                           StridedSliceAssignOp<CPUDevice, type>)
 
 TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
-REGISTER_STRIDED_SLICE(bfloat16);
 
 #undef REGISTER_STRIDED_SLICE
 
@@ -398,8 +413,7 @@ REGISTER_STRIDED_SLICE(bfloat16);
                               .TypeConstraint<type>("T")         \
                               .HostMemory("begin")               \
                               .HostMemory("end")                 \
-                              .HostMemory("strides")             \
-                              .TypeConstraint<int32>("Index"),   \
+                              .HostMemory("strides"),            \
                           StridedSliceOp<GPUDevice, type>)       \
   REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")               \
                               .Device(DEVICE_GPU)                \
@@ -407,16 +421,14 @@ REGISTER_STRIDED_SLICE(bfloat16);
                               .HostMemory("shape")               \
                               .HostMemory("begin")               \
                               .HostMemory("end")                 \
-                              .HostMemory("strides")             \
-                              .TypeConstraint<int32>("Index"),   \
+                              .HostMemory("strides"),            \
                           StridedSliceGradOp<GPUDevice, type>)   \
   REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")             \
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
                               .HostMemory("begin")               \
                               .HostMemory("end")                 \
-                              .HostMemory("strides")             \
-                              .TypeConstraint<int32>("Index"),   \
+                              .HostMemory("strides"),            \
                           StridedSliceAssignOp<GPUDevice, type>) \
   REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")     \
                               .Device(DEVICE_GPU)                \
@@ -424,13 +436,13 @@ REGISTER_STRIDED_SLICE(bfloat16);
                               .HostMemory("ref")                 \
                               .HostMemory("begin")               \
                               .HostMemory("end")                 \
-                              .HostMemory("strides")             \
-                              .TypeConstraint<int32>("Index"),   \
+                              .HostMemory("strides"),            \
                           StridedSliceAssignOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -438,7 +450,6 @@ TF_CALL_complex128(REGISTER_GPU);
 REGISTER_KERNEL_BUILDER(Name("StridedSlice")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Index")
                             .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("end")
@@ -448,7 +459,6 @@ REGISTER_KERNEL_BUILDER(Name("StridedSlice")
 REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Index")
                             .HostMemory("shape")
                             .HostMemory("begin")
                             .HostMemory("end")
@@ -459,7 +469,6 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
 REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Index")
                             .HostMemory("ref")
                             .HostMemory("begin")
                             .HostMemory("end")
@@ -468,7 +477,6 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
 REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Index")
                             .HostMemory("ref")
                             .HostMemory("begin")
                             .HostMemory("end")
@@ -485,8 +493,7 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                               .TypeConstraint<type>("T")          \
                               .HostMemory("begin")                \
                               .HostMemory("end")                  \
-                              .HostMemory("strides")              \
-                              .TypeConstraint<int32>("Index"),    \
+                              .HostMemory("strides"),             \
                           StridedSliceOp<SYCLDevice, type>)       \
   REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")                \
                               .Device(DEVICE_SYCL)                \
@@ -494,16 +501,14 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                               .HostMemory("shape")                \
                               .HostMemory("begin")                \
                               .HostMemory("end")                  \
-                              .HostMemory("strides")              \
-                              .TypeConstraint<int32>("Index"),    \
+                              .HostMemory("strides"),             \
                           StridedSliceGradOp<SYCLDevice, type>)   \
   REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")              \
                               .Device(DEVICE_SYCL)                \
                               .TypeConstraint<type>("T")          \
                               .HostMemory("begin")                \
                               .HostMemory("end")                  \
-                              .HostMemory("strides")              \
-                              .TypeConstraint<int32>("Index"),    \
+                              .HostMemory("strides"),             \
                           StridedSliceAssignOp<SYCLDevice, type>) \
   REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")      \
                               .Device(DEVICE_SYCL)                \
@@ -511,8 +516,7 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                               .HostMemory("ref")                  \
                               .HostMemory("begin")                \
                               .HostMemory("end")                  \
-                              .HostMemory("strides")              \
-                              .TypeConstraint<int32>("Index"),    \
+                              .HostMemory("strides"),             \
                           StridedSliceAssignOp<SYCLDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
@@ -520,7 +524,6 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
 REGISTER_KERNEL_BUILDER(Name("StridedSlice")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Index")
                             .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("end")
@@ -530,7 +533,6 @@ REGISTER_KERNEL_BUILDER(Name("StridedSlice")
 REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Index")
                             .HostMemory("shape")
                             .HostMemory("begin")
                             .HostMemory("end")
@@ -541,7 +543,6 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")
 REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Index")
                             .HostMemory("ref")
                             .HostMemory("begin")
                             .HostMemory("end")
@@ -550,12 +551,11 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
 REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Index")
                             .HostMemory("ref")
                             .HostMemory("begin")
                             .HostMemory("end")
                             .HostMemory("strides"),
                         StridedSliceAssignOp<CPUDevice, int32>)
 #undef REGISTER_SYCL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

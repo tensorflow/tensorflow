@@ -34,7 +34,7 @@ Status RemoveAttribute(const GraphDef& input_graph_def,
   if (!context.params.count("attribute_name") ||
       (context.params.at("attribute_name").size() != 1)) {
     return errors::InvalidArgument(
-        "remove_nodes expects exactly one 'attribute_name' "
+        "remove_attribute expects exactly one 'attribute_name' "
         "argument, e.g. remove_attribute(op_name=Mul, attribute_name=foo)");
   }
 

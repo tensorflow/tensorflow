@@ -53,7 +53,9 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
 
-_RNN_NAME_REPLACEMENTS = collections.OrderedDict([
+# Mapping between old <=> new names. Externalized so that user scripts that
+# may need to consume multiple checkpoint formats can use this metadata.
+RNN_NAME_REPLACEMENTS = collections.OrderedDict([
     ############################################################################
     # contrib/rnn/python/ops/core_rnn_cell_impl.py
     # BasicRNNCell
@@ -126,10 +128,8 @@ _RNN_NAME_REPLACEMENTS = collections.OrderedDict([
      'attention_cell_wrapper/attention/bias'),
     ############################################################################
     # contrib/legacy_seq2seq/python/ops/seq2seq.py
-    ('attention_decoder/weights',
-     'attention_decoder/kernel'),
-    ('attention_decoder/biases',
-     'attention_decoder/bias'),
+    ('attention_decoder/weights', 'attention_decoder/kernel'),
+    ('attention_decoder/biases', 'attention_decoder/bias'),
     ('attention_decoder/Attention_0/weights',
      'attention_decoder/Attention_0/kernel'),
     ('attention_decoder/Attention_0/biases',
@@ -138,6 +138,19 @@ _RNN_NAME_REPLACEMENTS = collections.OrderedDict([
      'attention_decoder/AttnOutputProjection/kernel'),
     ('attention_decoder/AttnOutputProjection/biases',
      'attention_decoder/AttnOutputProjection/bias'),
+    # contrib/legacy_seq2seq/python/ops/seq2seq.py before cl/140060366
+    ('attention_decoder/Attention_0/Linear/Bias',
+     'attention_decoder/Attention_0/bias'),
+    ('attention_decoder/Attention_0/Linear/Matrix',
+     'attention_decoder/Attention_0/kernel'),
+    ('attention_decoder/AttnOutputProjection/Linear/Bias',
+     'attention_decoder/AttnOutputProjection/bias'),
+    ('attention_decoder/AttnOutputProjection/Linear/Matrix',
+     'attention_decoder/AttnOutputProjection/kernel'),
+    ('attention_decoder/LSTMCell/B', 'attention_decoder/lstm_cell/bias'),
+    ('attention_decoder/LSTMCell/W_0', 'attention_decoder/lstm_cell/kernel'),
+    ('attention_decoder/Linear/Bias', 'attention_decoder/bias'),
+    ('attention_decoder/Linear/Matrix', 'attention_decoder/kernel')
 ])
 
 _RNN_SHARDED_NAME_REPLACEMENTS = collections.OrderedDict([
@@ -149,10 +162,10 @@ _RNN_SHARDED_NAME_REPLACEMENTS = collections.OrderedDict([
 
 
 def _rnn_name_replacement(var_name):
-  for pattern in _RNN_NAME_REPLACEMENTS:
+  for pattern in RNN_NAME_REPLACEMENTS:
     if pattern in var_name:
       old_var_name = var_name
-      var_name = var_name.replace(pattern, _RNN_NAME_REPLACEMENTS[pattern])
+      var_name = var_name.replace(pattern, RNN_NAME_REPLACEMENTS[pattern])
       logging.info('Converted: %s --> %s' % (old_var_name, var_name))
       break
   return var_name

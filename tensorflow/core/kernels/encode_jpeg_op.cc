@@ -80,10 +80,11 @@ class EncodeJpegOp : public OpKernel {
                 errors::InvalidArgument("image must be 3-dimensional",
                                         image.shape().DebugString()));
 
-    OP_REQUIRES(context, FastBoundsCheck(image.NumElements(),
-                                         std::numeric_limits<int32>::max()),
-                errors::InvalidArgument(
-                    "Cannot encode images with >= max int32 elements"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(image.NumElements(), std::numeric_limits<int32>::max()),
+        errors::InvalidArgument(
+            "Cannot encode images with >= max int32 elements"));
 
     const int32 dim_size0 = static_cast<int32>(image.dim_size(0));
     const int32 dim_size1 = static_cast<int32>(image.dim_size(1));
@@ -100,9 +101,10 @@ class EncodeJpegOp : public OpKernel {
       } else if (channels == 3) {
         adjusted_flags.format = jpeg::FORMAT_RGB;
       } else {
-        OP_REQUIRES(context, false, errors::InvalidArgument(
-                                        "image must have 1 or 3 channels, got ",
-                                        image.shape().DebugString()));
+        OP_REQUIRES(
+            context, false,
+            errors::InvalidArgument("image must have 1 or 3 channels, got ",
+                                    image.shape().DebugString()));
       }
     } else {
       if (flags_.format == jpeg::FORMAT_GRAYSCALE) {

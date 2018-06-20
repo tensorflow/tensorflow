@@ -48,7 +48,7 @@ class BigQueryReader(io_ops.ReaderBase):
                                                 features=features)
 
     # Populate a queue with the BigQuery Table partitions.
-    queue = tf.training.string_input_producer(reader.partitions())
+    queue = tf.train.string_input_producer(reader.partitions())
 
     # Read and parse examples.
     row_id, examples_serialized = reader.read(queue)

@@ -17,8 +17,8 @@ limitations under the License.
 %include "tensorflow/python/platform/base.i"
 
 %{
-#include "tensorflow/tools/tfprof/internal/print_model_analysis.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/profiler/internal/print_model_analysis.h"
 
 using tensorflow::int64;
 %}
@@ -44,10 +44,13 @@ using tensorflow::int64;
 %unignore tensorflow::tfprof;
 %unignore tensorflow::tfprof::PrintModelAnalysis;
 %unignore tensorflow::tfprof::NewProfiler;
+%unignore tensorflow::tfprof::ProfilerFromFile;
 %unignore tensorflow::tfprof::DeleteProfiler;
 %unignore tensorflow::tfprof::AddStep;
+%unignore tensorflow::tfprof::SerializeToString;
+%unignore tensorflow::tfprof::WriteProfile;
 %unignore tensorflow::tfprof::Profile;
 
-%include "tensorflow/tools/tfprof/internal/print_model_analysis.h"
+%include "tensorflow/core/profiler/internal/print_model_analysis.h"
 
 %unignoreall

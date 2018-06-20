@@ -16,38 +16,49 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VALUE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VALUE_H_
 
-#include <ostream>
+#include <stddef.h>
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
 // Abstraction which identifies a specific point in the XLA graph. An
-// HloLocation specifies a ShapeIndex within the output of a specific
+// HloPosition specifies a ShapeIndex within the output of a specific
 // instruction.
-struct HloLocation {
+struct HloPosition {
   HloInstruction* instruction;
   ShapeIndex index;
 
-  // Returns the shape at this location.
+  // Returns the shape at this position.
   const Shape& shape() const;
 
   string ToString() const;
 
-  bool operator==(const HloLocation& other) const {
+  bool operator==(const HloPosition& other) const {
     return instruction == other.instruction && index == other.index;
   }
-  bool operator!=(const HloLocation& other) const { return !(*this == other); }
+  bool operator!=(const HloPosition& other) const { return !(*this == other); }
+
+  // Stable less-than operator using instruction id and index.
+  bool operator<(const HloPosition& other) const {
+    return instruction->unique_id() < other.instruction->unique_id() ||
+           (instruction->unique_id() == other.instruction->unique_id() &&
+            index < other.index);
+  }
 };
 
-std::ostream& operator<<(std::ostream& out, const HloLocation& location);
+std::ostream& operator<<(std::ostream& out, const HloPosition& position);
 
 // Defines a single use of an HLO value.
 struct HloUse {
@@ -73,29 +84,18 @@ struct HloUse {
 
 std::ostream& operator<<(std::ostream& out, const HloUse& use);
 
-// Class describing a value used by the dataflow analysis. XLA arrays are
-// trivially a single HloValue. Tuples are made up of more than one HloValue: an
-// HloValue for the pointer vector, and an HloValue for each child element.
-//
-// Every HloValue is defined by a particular instruction and most instructions
-// define only a single HloValue. Instructions which define a single HloValue
-// include array-shaped instructions such as Add but also includes Tuple-shaped
-// instructions such as Tuple. The Tuple instruction defines a single HloValue
-// which is a vector of pointers to the values containing the Tuple
-// instruction's operands. Though the result of the Tuple instruction includes
-// multiple values only the top-level HloValue (the vector of pointers) is
-// defined by the Tuple instruction. The values containing the tuple elements
-// are defined by earlier instructions, usually the operands of the Tuple
-// instruction.
-//
-// Instructions which construct both the tuple *and* the tuple elements define
-// more than one HloValue. This includes (at least) tuple-shaped Constant,
-// Parameter, Infeed and While instructions. These tuple-shaped instructions do
-// not assemble a tuple from existing HloValues like the Tuple instruction does,
-// but rather define all the HloValues in the tuple.
-class HloValue {
+// HloDataflowAnalysis uses this subclass of BufferValue.
+class HloValue : public BufferValue {
  public:
-  using Id = int64;
+  // Predicate comparing HloValues by increasing id, useful for std::sort.
+  static bool IdLessThan(const HloValue* a, const HloValue* b) {
+    return a->id() < b->id();
+  }
+
+  // Predicate comparing HloValues by equal id, useful for std::unique.
+  static bool IdEqual(const HloValue* a, const HloValue* b) {
+    return a->id() == b->id();
+  }
 
   // Construct an HloValue defined by 'instruction' at shape index 'index'. If
   // is_phi is true, then this value is a phi value, for example, at the
@@ -103,36 +103,40 @@ class HloValue {
   // dataflow analysis (HloDataflowAnalysis::ssa_form_ is true).
   HloValue(Id id, HloInstruction* instruction, const ShapeIndex& index,
            bool is_phi = false);
+  ~HloValue() override {}
 
-  // Return a unique identifier for this HloValue. This value is used for stable
-  // sorting and iteration
-  Id id() const { return id_; }
+  // Sets the positions in the module at which the HloValue appears. Updates
+  // uses. Should be called once and only once. The defining position should not
+  // be included in 'positions' as this is set at construction time.
+  void SetPositionsAndComputeUses(
+      tensorflow::gtl::ArraySlice<HloPosition> positions);
 
   // Returns whether this value is a phi value.
   bool is_phi() const { return is_phi_; }
 
-  // Return the location where this value is defined.
-  const HloLocation& defining_location() const { return locations_[0]; }
+  // Return the position where this value is defined.
+  const HloPosition& defining_position() const { return positions_[0]; }
 
   // Return the instruction which defines this HloValue.
   HloInstruction* defining_instruction() const {
-    return defining_location().instruction;
+    return defining_position().instruction;
+  }
+
+  HloInstruction* instruction() const override {
+    return defining_instruction();
   }
 
   // Return the shape index at which this HloValue is defined in the output of
   // its defining instruction.
-  const ShapeIndex& defining_index() const { return defining_location().index; }
+  const ShapeIndex& defining_index() const { return defining_position().index; }
+
+  const ShapeIndex& index() const override { return defining_index(); }
 
   // Return the shape of this HloValue.
-  const Shape& shape() const { return defining_location().shape(); }
+  const Shape& shape() const override { return defining_position().shape(); }
 
-  // Add or remove a location at which the HloValue appears. The definition
-  // location can not be removed. The uses of the HloValue are updated.
-  void AddLocation(HloInstruction* instruction, const ShapeIndex& index);
-  void RemoveLocation(HloInstruction* instruction, const ShapeIndex& index);
-
-  // Return all locations of the HloValue in the module.
-  const std::vector<HloLocation>& locations() const { return locations_; }
+  // Return all positions of the HloValue in the module.
+  const std::vector<HloPosition>& positions() const { return positions_; }
 
   // Return all uses of the HloValue.
   const std::vector<HloUse>& uses() const { return uses_; }
@@ -140,27 +144,23 @@ class HloValue {
   // Get whether this HloValue is live out of the module.
   bool live_out_of_module() const { return live_out_of_module_; }
 
-  // Get whether this HloValue is live out of the computation it is defined in.
-  bool live_out_of_computation() const { return live_out_of_computation_; }
-
   bool operator==(const HloValue& other) const;
   bool operator!=(const HloValue& other) const;
 
   // Return a single-line string representation of the value.
   string ToShortString() const;
 
-  string ToString(int indent = 0) const;
+  string ToString(int indent) const;
+
+  string ToString() const override { return ToString(0); }
 
  private:
-  // Unique identifier for this HloValue. Used for stable sorting and iteration.
-  const Id id_;
-
   // Whether this instruction is a phi value.
   const bool is_phi_;
 
-  // The set of locations of this HloValue. The first element is always the
-  // location of the definition.
-  std::vector<HloLocation> locations_;
+  // The set of positions of this HloValue. The first element is always the
+  // position of the definition.
+  std::vector<HloPosition> positions_;
 
   // The set of uses of this HloValue.
   std::vector<HloUse> uses_;
@@ -186,28 +186,41 @@ class HloValueSet {
  public:
   HloValueSet() = default;
 
-  explicit HloValueSet(tensorflow::gtl::ArraySlice<HloValue::Id> value_ids)
-      : value_ids_(value_ids.begin(), value_ids.end()) {
+  explicit HloValueSet(tensorflow::gtl::ArraySlice<const HloValue*> values)
+      : values_(values.begin(), values.end()) {
     SortAndUniquifyValues();
   }
 
-  // Return the union of the given HloValueSets.
-  static HloValueSet Union(
-      tensorflow::gtl::ArraySlice<const HloValueSet*> inputs);
+  // Sets this value set to the union of the given value sets. Returns whether
+  // this value set changed.
+  bool AssignUnionOf(tensorflow::gtl::ArraySlice<const HloValueSet*> inputs);
 
-  // Return the vector of the IDs of all HloValues in the set. Values in the
-  // vector are unique and sorted.
-  const std::vector<HloValue::Id>& value_ids() const { return value_ids_; }
+  // Return the vector of HloValues in the set. Values in the vector are unique
+  // and stably sorted by value id.
+  const std::vector<const HloValue*>& values() const { return values_; }
+
+  // Adds the value to the set.  Returns true iff the value was added and didn't
+  // already exist in the set.
+  bool AddValue(const HloValue* value);
+
+  // Clear all values from the set.
+  void Clear() { values_.clear(); }
 
   // Return the unique HLO value in the set. CHECKs if the set does not contain
   // exactly one value.
-  HloValue::Id GetUniqueValueId() const {
-    CHECK_EQ(value_ids().size(), 1);
-    return value_ids()[0];
+  const HloValue& GetUniqueValue() const {
+    CHECK_EQ(values_.size(), 1);
+    return *values_[0];
   }
 
   bool operator==(const HloValueSet& other) const {
-    return value_ids() == other.value_ids();
+    if (values_.size() != other.values_.size()) return false;
+    for (size_t i = 0; i < values_.size(); ++i) {
+      if (values_[i]->id() != other.values_[i]->id()) {
+        return false;
+      }
+    }
+    return true;
   }
   bool operator!=(const HloValueSet& other) const { return !(*this == other); }
 
@@ -219,7 +232,7 @@ class HloValueSet {
   void SortAndUniquifyValues();
 
   // HloValues sorted by HloValue::Id.
-  std::vector<HloValue::Id> value_ids_;
+  std::vector<const HloValue*> values_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloValueSet& hlo_value);
@@ -232,8 +245,9 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
  public:
   InstructionValueSet(const Shape& shape) : ShapeTree<HloValueSet>(shape) {}
 
-  // Return the union of the given InstructionValueSets.
-  static InstructionValueSet Union(
+  // Sets this value set to the union of the given value sets. Returns whether
+  // this value set changed.
+  bool AssignUnionOf(
       tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs);
 
   string ToString() const;

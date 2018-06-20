@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -32,25 +32,33 @@ namespace gpu {
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     BodyEmitter body_emitter, const Shape& shape,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder)
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder,
+    int unroll_factor)
     : LoopEmitter(body_emitter, shape, ir_builder),
-      launch_dimensions_(launch_dimensions) {}
+      launch_dimensions_(launch_dimensions),
+      unroll_factor_(unroll_factor) {}
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
     tensorflow::gtl::ArraySlice<llvm_ir::IrArray> target_arrays,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder)
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder,
+    int unroll_factor)
     : LoopEmitter(target_element_generator, target_arrays, ir_builder),
-      launch_dimensions_(launch_dimensions) {}
+      launch_dimensions_(launch_dimensions),
+      unroll_factor_(unroll_factor) {}
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
     const llvm_ir::IrArray& target_array,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder)
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder,
+    int unroll_factor)
     : LoopEmitter(target_element_generator, target_array, ir_builder),
-      launch_dimensions_(launch_dimensions) {}
+      launch_dimensions_(launch_dimensions),
+      unroll_factor_(unroll_factor) {}
 
-llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock() {
+std::vector<llvm_ir::IrArray::Index>
+ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
+    tensorflow::StringPiece loop_name) {
   // Emit the following code in LLVM IR:
   //   linear_index = blockIdx.x * blockDim.x + threadIdx.x;
   //   if (linear_index < num_elements) {
@@ -62,6 +70,9 @@ llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock() {
   //   "It is guaranteed that [...] 0  <=  %ctaid.x <  %nctaid.x"
   //
   // %nctaid.x is currently specified as 2147483647.
+  VLOG(3) << "EmitIndexAndSetExitBasicBlock unroll_factor " << unroll_factor_;
+  std::vector<llvm_ir::IrArray::Index> array_indices;
+
   llvm::Value* block_id = llvm_ir::EmitCallToIntrinsic(
       llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, ir_builder_);
   llvm_ir::AddRangeMetadata(0, launch_dimensions_.block_count(),
@@ -80,17 +91,49 @@ llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock() {
   thread_id = ir_builder_->CreateZExt(thread_id, ir_builder_->getInt64Ty(),
                                       "thread_id");
 
-  llvm::Value* linear_index = ir_builder_->CreateAdd(
+  llvm::Value* linear_index_base = ir_builder_->CreateAdd(
       ir_builder_->CreateMul(
           block_id,
           ir_builder_->getInt64(launch_dimensions_.threads_per_block()), "",
           /*HasNUW=*/true, /*HasNSW=*/true),
       thread_id, "linear_index", /*HasNUW=*/true, /*HasNSW=*/true);
 
+  // Add an @llvm.assume(linear_index < threads_per_block * num_blocks).
+  //
+  // This might seem obvious from the computation above, but LLVM does not
+  // currently determine the range of linear_index precisely.  InstCombine uses
+  // known-bits, which, when applied to the task of determining a value's range,
+  // is imprecise for everything other than powers of 2.  And
+  // CorrelatedValuePropagation is, as a cost-saving measure, disabled for
+  // conditions in the same basic block as their operands.
+  llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::assume,
+      {ir_builder_->CreateICmpULT(
+          linear_index_base,
+          ir_builder_->getInt64(launch_dimensions_.threads_per_block() *
+                                launch_dimensions_.block_count()),
+          "linear_index_in_range")},
+      {}, ir_builder_);
+
+  if (unroll_factor_ > 1) {
+    linear_index_base = ir_builder_->CreateMul(
+        linear_index_base, ir_builder_->getInt64(unroll_factor_),
+        "linear_index_base", /*HasNUW=*/true, /*HasNSW=*/true);
+  }
+
+  array_indices.emplace_back(linear_index_base, shape_, ir_builder_);
+  for (int i = 1; i < unroll_factor_; ++i) {
+    llvm::Value* linear_index = ir_builder_->CreateAdd(
+        linear_index_base, ir_builder_->getInt64(i), "linear_index",
+        /*HasNUW=*/true, /*HasNSW=*/true);
+    array_indices.emplace_back(linear_index, shape_, ir_builder_);
+  }
+
   auto if_in_bounds = llvm_ir::EmitIfThenElse(
       ir_builder_->CreateICmpULT(
-          linear_index, ir_builder_->getInt64(ShapeUtil::ElementsIn(shape_))),
-      "in_bounds", ir_builder_, false);
+          linear_index_base,
+          ir_builder_->getInt64(ShapeUtil::ElementsIn(shape_))),
+      llvm_ir::IrName(loop_name, "in_bounds"), ir_builder_, false);
 
   // Set exit_bb_ to the exit block of the if structure.
   exit_bb_ = if_in_bounds.after_block;
@@ -98,7 +141,8 @@ llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock() {
 
   // Set IR builder insertion point to the body of the if structure.
   llvm_ir::SetToFirstInsertPoint(if_in_bounds.true_block, ir_builder_);
-  return llvm_ir::IrArray::Index(linear_index, shape_, ir_builder_);
+
+  return array_indices;
 }
 
 }  // namespace gpu

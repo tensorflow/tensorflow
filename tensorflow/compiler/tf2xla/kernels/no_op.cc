@@ -23,4 +23,8 @@ namespace tensorflow {
 // dummy operator using CompilationOnly().
 REGISTER_XLA_OP(Name("NoOp").CompilationOnly(), NoOp);
 
+// We register ControlTrigger as a no-op. This is correct since nodes seen
+// by the XLA compiler are never dead.
+REGISTER_XLA_OP(Name("ControlTrigger").CompilationOnly(), NoOp);
+
 }  // namespace tensorflow

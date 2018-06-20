@@ -18,11 +18,13 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -45,36 +47,38 @@ namespace {
 // the TensorArray with elements of `elem_shape`. For both initialized and
 // uninitialized TensorArrays, checks that the tensor has a type compatible with
 // 'dtype' and shape compatible with 'elem_shape'.
-Status MaybeInitializeTensorArray(xla::ComputationBuilder* builder,
+Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
                                   XlaResource* resource, DataType dtype,
                                   const TensorShape& elem_shape) {
-  if (resource->kind != XlaResource::kTensorArray) {
+  if (resource->kind() != XlaResource::kTensorArray) {
     return errors::InvalidArgument("Unexpected non-TensorArray resource");
   }
 
-  if (resource->type != dtype) {
+  if (resource->type() != dtype) {
     return errors::InvalidArgument(
-        "TensorArray dtype is ", DataTypeString(resource->type),
+        "TensorArray dtype is ", DataTypeString(resource->type()),
         " but op has dtype ", DataTypeString(dtype), ".");
   }
 
-  TF_RET_CHECK(resource->tensor_array_size >= 0)
-      << resource->name << " size " << resource->tensor_array_size;
-  TensorShape ta_shape;
-  ta_shape.AddDim(resource->tensor_array_size);
-  ta_shape.AppendShape(elem_shape);
+  TF_RET_CHECK(resource->tensor_array_size() >= 0)
+      << resource->name() << " size " << resource->tensor_array_size();
 
-  if (resource->value.handle() == 0) {
-    // TensorArray has not been initialized.
-    xla::ComputationDataHandle zero = XlaHelpers::Zero(builder, resource->type);
-    resource->value = builder->Broadcast(zero, ta_shape.dim_sizes());
+  if (!resource->initialized()) {
+    TF_RETURN_IF_ERROR(resource->SetTypeAndShape(dtype, elem_shape));
+    TF_RETURN_IF_ERROR(resource->SetZeroValue(builder));
   } else {
     // Checks the elem_shape matches the TensorArray shape.
-    auto shape_or_status = builder->GetShape(resource->value);
+    auto shape_or_status = builder->GetShape(resource->value());
     if (!shape_or_status.ok()) {
       return shape_or_status.status();
     }
-    TensorShape shape = XLAShapeToTensorShape(*shape_or_status.ValueOrDie());
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(
+        XLAShapeToTensorShape(shape_or_status.ValueOrDie(), &shape));
+
+    TensorShape ta_shape;
+    ta_shape.AddDim(resource->tensor_array_size());
+    ta_shape.AppendShape(elem_shape);
     if (ta_shape != shape) {
       return errors::InvalidArgument(
           "Mismatched TensorArray sizes: ", ta_shape.DebugString(), " vs ",
@@ -89,19 +93,17 @@ Status MaybeInitializeTensorArray(xla::ComputationBuilder* builder,
 Status CheckTensorArrayIsInitialized(const string& op_name,
                                      const XlaResource* resource,
                                      DataType dtype) {
-  if (resource->kind != XlaResource::kTensorArray) {
+  if (resource->kind() != XlaResource::kTensorArray) {
     return errors::InvalidArgument(
-        "Unexpected non-TensorArray resource passed "
-        "to ",
-        op_name);
+        "Unexpected non-TensorArray resource passed to ", op_name);
   }
-  if (resource->value.handle() == 0) {
+  if (!resource->initialized()) {
     return errors::InvalidArgument("Uninitialized TensorArray passed to ",
                                    op_name);
   }
-  if (resource->type != dtype) {
+  if (resource->type() != dtype) {
     return errors::InvalidArgument(
-        "TensorArray dtype is ", DataTypeString(resource->type),
+        "TensorArray dtype is ", DataTypeString(resource->type()),
         " but op has dtype ", DataTypeString(dtype), ".");
   }
 
@@ -109,39 +111,21 @@ Status CheckTensorArrayIsInitialized(const string& op_name,
 }
 
 Status GetTensorArrayShape(const XlaResource* resource,
-                           xla::ComputationBuilder* builder,
-                           TensorShape* shape) {
-  auto shape_or_status = builder->GetShape(resource->value);
-  if (!shape_or_status.ok()) {
-    return shape_or_status.status();
-  }
-  *shape = XLAShapeToTensorShape(*shape_or_status.ValueOrDie());
-  if (shape->dims() < 1) {
-    return errors::InvalidArgument("TensorArray rank must be >= 1");
-  }
+                           xla::XlaBuilder* builder, TensorShape* shape) {
+  *shape = resource->shape();
+  shape->InsertDim(0, resource->tensor_array_size());
   return Status::OK();
 }
 
-// Pads 'x' with 'count' zero indices. 'x' must have 1 element.
-xla::ComputationDataHandle PadIndexWithZeros(
-    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
-    int count) {
-  xla::ComputationDataHandle zero = builder->ConstantR1<int32>({0});
-  std::vector<xla::ComputationDataHandle> xs(count + 1, zero);
-  xs[0] = builder->Reshape(x, {1});
-  return builder->ConcatInDim(xs, 0);
-}
-
-// Like ComputationBuilder::DynamicUpdateSlice, but adds 'update' to the
+// Like XlaBuilder::DynamicUpdateSlice, but adds 'update' to the
 // relevant slice of 'operand'.
-xla::ComputationDataHandle DynamicAddSlice(
-    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& operand,
-    const xla::ComputationDataHandle& update,
-    const gtl::ArraySlice<int64>& update_dims,
-    const xla::ComputationDataHandle& start_indices) {
-  xla::ComputationDataHandle current =
+xla::XlaOp DynamicAddSlice(xla::XlaBuilder* builder, const xla::XlaOp& operand,
+                           const xla::XlaOp& update,
+                           const gtl::ArraySlice<int64>& update_dims,
+                           const xla::XlaOp& start_indices) {
+  xla::XlaOp current =
       builder->DynamicSlice(operand, start_indices, update_dims);
-  xla::ComputationDataHandle sum = builder->Add(current, update);
+  xla::XlaOp sum = builder->Add(current, update);
   return builder->DynamicUpdateSlice(operand, sum, start_indices);
 }
 
@@ -166,18 +150,18 @@ class TensorArrayOp : public XlaOpKernel {
     OP_REQUIRES(ctx, size >= 0,
                 errors::InvalidArgument("TensorArray size must be >= 0"));
 
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
 
     // Initializes the TensorArray value if we know the element shape.
     // Otherwise, defer initialization to the first write.
-    xla::ComputationDataHandle value;
+    xla::XlaOp value;
+    TensorShape shape;
     if (element_shape_.IsFullyDefined()) {
-      TensorShape shape;
       CHECK(element_shape_.AsTensorShape(&shape));
       TensorShape ta_shape;
       ta_shape.AddDim(size);
       ta_shape.AppendShape(shape);
-      xla::ComputationDataHandle zero = XlaHelpers::Zero(b, dtype_);
+      xla::XlaOp zero = XlaHelpers::Zero(b, dtype_);
       value = b->Broadcast(zero, ta_shape.dim_sizes());
     }
 
@@ -186,10 +170,13 @@ class TensorArrayOp : public XlaOpKernel {
     string name = strings::StrCat("TensorArray: ", tensor_array_name_);
     OP_REQUIRES_OK(
         ctx, xc.CreateResource(XlaResource::kTensorArray, -1, std::move(name),
-                               dtype_, value, &var));
-    var->tensor_array_size = size;
+                               dtype_, shape, value, /*tensor_array_size=*/size,
+                               /*tensor_array_gradients=*/{}, &var));
     ctx->SetResourceOutput(0, var);
-    ctx->SetConstantOutput(1, Tensor(DT_FLOAT));
+
+    Tensor flow(DT_FLOAT, TensorShape({}));
+    flow.scalar<float>()() = 0.0f;
+    ctx->SetConstantOutput(1, flow);
   }
 
  private:
@@ -200,7 +187,8 @@ class TensorArrayOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayOp);
 };
 
-REGISTER_XLA_OP(Name("TensorArrayV3"), TensorArrayOp);
+REGISTER_XLA_OP(Name("TensorArrayV3").CompileTimeConstInput("size"),
+                TensorArrayOp);
 
 class TensorArrayWriteOp : public XlaOpKernel {
  public:
@@ -209,7 +197,7 @@ class TensorArrayWriteOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
 
     TensorShape elem_shape = ctx->InputShape(2);
 
@@ -220,22 +208,25 @@ class TensorArrayWriteOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    MaybeInitializeTensorArray(b, resource, dtype_, elem_shape));
 
-    xla::ComputationDataHandle ta = resource->value;
-    xla::ComputationDataHandle index = ctx->Input(1);
-    xla::ComputationDataHandle value = ctx->Input(2);
+    xla::XlaOp ta = resource->value();
+    xla::XlaOp index = ctx->Input(1);
+    xla::XlaOp value = ctx->Input(2);
+    xla::XlaOp flow = ctx->Input(3);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    auto start_indices = PadIndexWithZeros(b, index, elem_shape.dims());
+    auto start_indices =
+        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+               xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
     auto update = b->Reshape(value, slice_shape.dim_sizes());
 
-    xla::ComputationDataHandle written =
+    xla::XlaOp written =
         DynamicAddSlice(b, ta, update, slice_shape.dim_sizes(), start_indices);
 
-    resource->value = written;
-    ctx->SetConstantOutput(0, Tensor(DT_FLOAT));
+    OP_REQUIRES_OK(ctx, resource->SetValue(written));
+    ctx->SetOutput(0, flow);
   }
 
  private:
@@ -253,7 +244,7 @@ class TensorArrayReadOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
 
     XlaResource* resource;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &resource));
@@ -263,17 +254,18 @@ class TensorArrayReadOp : public XlaOpKernel {
     TensorShape ta_shape;
     OP_REQUIRES_OK(ctx, GetTensorArrayShape(resource, b, &ta_shape));
 
-    xla::ComputationDataHandle ta = resource->value;
-    xla::ComputationDataHandle index = ctx->Input(1);
+    xla::XlaOp ta = resource->value();
+    xla::XlaOp index = ctx->Input(1);
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-    auto start_indices = PadIndexWithZeros(b, index, ta_shape.dims() - 1);
+    auto start_indices =
+        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+               xla::MakeEdgePaddingConfig({{0, ta_shape.dims() - 1}}));
 
     auto slice_shape = ta_shape.dim_sizes();
     slice_shape[0] = 1LL;
 
-    xla::ComputationDataHandle read =
-        b->DynamicSlice(ta, start_indices, slice_shape);
+    xla::XlaOp read = b->DynamicSlice(ta, start_indices, slice_shape);
 
     // Remove the leading '1' dimension.
     std::vector<int64> value_shape(slice_shape.begin() + 1, slice_shape.end());
@@ -295,7 +287,7 @@ class TensorArrayGatherOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
 
     XlaResource* resource;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &resource));
@@ -306,37 +298,44 @@ class TensorArrayGatherOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, GetTensorArrayShape(resource, b, &ta_shape));
 
     const TensorShape indices_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, indices_shape.dims() >= 1,
+    OP_REQUIRES(ctx, indices_shape.dims() == 1,
                 errors::InvalidArgument("indices must be rank 1"));
-    const int num_indices = indices_shape.dim_size(0);
     auto indices = ctx->Input(1);
+    DataType index_type = ctx->input_type(1);
 
-    xla::ComputationDataHandle ta = resource->value;
+    xla::XlaOp ta = resource->value();
 
-    // For each index in `indices`, add the corresponding slice to `slices`.
-    std::vector<xla::ComputationDataHandle> slices(num_indices);
-    for (int i = 0; i < num_indices; ++i) {
-      // Slices the i-th index out of `indices`, and pads it with zeros in the
-      // minor dimensions to form an index into the TensorArray storage.
-      auto index = b->Slice(indices, {i}, {i + 1}, {1});
+    // Look for the case where the gather takes a simple slice from the
+    // tensor array (0, 1, 2, 3, 4, ..., N)
+    std::vector<int64> const_indices;
+    Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
+    if (status.ok()) {
+      bool gather_is_dense_slice = true;
+      for (auto i = 0; i < const_indices.size(); i++) {
+        if (const_indices[i] != i) {
+          gather_is_dense_slice = false;
+          break;
+        }
+      }
 
-      // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-      auto start_indices = PadIndexWithZeros(b, index, ta_shape.dims() - 1);
-
-      auto slice_shape = ta_shape.dim_sizes();
-      slice_shape[0] = 1LL;
-
-      slices[i] = b->DynamicSlice(ta, start_indices, slice_shape);
+      if (gather_is_dense_slice) {
+        std::vector<int64> begin(ta_shape.dims(), 0);
+        std::vector<int64> strides(ta_shape.dims(), 1);
+        std::vector<int64> end(ta_shape.dims(), 1);
+        end[0] = const_indices.size();
+        for (auto i = 1; i < ta_shape.dims(); i++) {
+          end[i] = ta_shape.dim_size(i);
+        }
+        ctx->SetOutput(0, b->Slice(ta, begin, end, strides));
+        return;
+      }
     }
 
-    xla::ComputationDataHandle gather;
-    if (slices.empty()) {
-      auto shape = ta_shape.dim_sizes();
-      shape[0] = 0;
-      gather = b->Broadcast(XlaHelpers::Zero(b, dtype_), shape);
-    } else {
-      gather = b->ConcatInDim(slices, 0);
-    }
+    xla::XlaOp gather;
+    OP_REQUIRES_OK(
+        ctx,
+        XlaGather(ta, ta_shape, indices, indices_shape, /*axis=*/0,
+                  /*indices_are_nd=*/false, dtype_, index_type, b, &gather));
     ctx->SetOutput(0, gather);
   }
 
@@ -355,7 +354,7 @@ class TensorArrayScatterOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
 
     const TensorShape value_shape = ctx->InputShape(2);
 
@@ -370,35 +369,57 @@ class TensorArrayScatterOp : public XlaOpKernel {
     OP_REQUIRES(ctx, indices_shape.dims() >= 1,
                 errors::InvalidArgument("indices must be rank 1"));
     const int num_indices = indices_shape.dim_size(0);
-    const xla::ComputationDataHandle indices = ctx->Input(1);
+    const xla::XlaOp indices = ctx->Input(1);
 
-    xla::ComputationDataHandle ta = resource->value;
-    const xla::ComputationDataHandle value = ctx->Input(2);
+    xla::XlaOp ta = resource->value();
+    const xla::XlaOp value = ctx->Input(2);
+    const xla::XlaOp flow = ctx->Input(3);
 
-    auto slice_dims = value_shape.dim_sizes();
-    slice_dims[0] = 1LL;
-
-    std::vector<int64> value_starts(value_shape.dims(), 0);
-    auto value_ends = value_shape.dim_sizes();
-
-    std::vector<int64> value_strides(value_shape.dims(), 1);
-
-    // For every (index, value) pair, update the corresponding TensorArray
-    // storage.
-    for (int i = 0; i < num_indices; ++i) {
-      // Slice out part of the value.
-      value_starts[0] = i;
-      value_ends[0] = i + 1;
-      auto slice = b->Slice(value, value_starts, value_ends, value_strides);
-
-      // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-      auto index = b->Slice(indices, {i}, {i + 1}, {1});
-      auto start_indices = PadIndexWithZeros(b, index, elem_shape.dims());
-      ta = DynamicAddSlice(b, ta, slice, slice_dims, start_indices);
+    // Look for the case where the scatter is for each sub-tensor in order. The
+    // tensor array implementation allows for this to be a straight addition.
+    bool scatter_all_elements_in_order = false;
+    std::vector<int64> const_indices;
+    Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
+    if (status.ok() && num_indices == value_shape.dim_size(0)) {
+      scatter_all_elements_in_order = true;
+      for (auto i = 0; i < num_indices; i++) {
+        if (const_indices[i] != i) {
+          scatter_all_elements_in_order = false;
+          break;
+        }
+      }
     }
 
-    resource->value = ta;
-    ctx->SetConstantOutput(0, Tensor(DT_FLOAT));
+    if (scatter_all_elements_in_order) {
+      ta = b->Add(ta, value);
+    } else {
+      auto slice_dims = value_shape.dim_sizes();
+      slice_dims[0] = 1LL;
+
+      std::vector<int64> value_starts(value_shape.dims(), 0);
+      auto value_ends = value_shape.dim_sizes();
+
+      std::vector<int64> value_strides(value_shape.dims(), 1);
+
+      // For every (index, value) pair, update the corresponding TensorArray
+      // storage.
+      for (int i = 0; i < num_indices; ++i) {
+        // Slice out part of the value.
+        value_starts[0] = i;
+        value_ends[0] = i + 1;
+        auto slice = b->Slice(value, value_starts, value_ends, value_strides);
+
+        // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
+        auto index = b->Slice(indices, {i}, {i + 1}, {1});
+        auto start_indices =
+            b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+                   xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
+        ta = DynamicAddSlice(b, ta, slice, slice_dims, start_indices);
+      }
+    }
+
+    OP_REQUIRES_OK(ctx, resource->SetValue(ta));
+    ctx->SetOutput(0, flow);
   }
 
  private:
@@ -416,7 +437,7 @@ class TensorArrayConcatOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
 
     XlaResource* resource;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &resource));
@@ -426,7 +447,7 @@ class TensorArrayConcatOp : public XlaOpKernel {
     TensorShape ta_shape;
     OP_REQUIRES_OK(ctx, GetTensorArrayShape(resource, b, &ta_shape));
 
-    xla::ComputationDataHandle ta = resource->value;
+    xla::XlaOp ta = resource->value();
 
     auto ta_dims = ta_shape.dim_sizes();
     std::vector<int64> shape(ta_dims.begin() + 1, ta_dims.end());
@@ -476,32 +497,35 @@ class TensorArraySplitOp : public XlaOpKernel {
     TensorShape elem_shape = value_shape;
     elem_shape.set_dim(0, length);
 
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
     XlaResource* resource;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &resource));
     OP_REQUIRES_OK(ctx,
                    MaybeInitializeTensorArray(b, resource, dtype_, elem_shape));
-    xla::ComputationDataHandle ta = resource->value;
+    xla::XlaOp ta = resource->value();
 
     TensorShape ta_shape;
-    ta_shape.AddDim(resource->tensor_array_size);
+    ta_shape.AddDim(resource->tensor_array_size());
     ta_shape.AppendShape(elem_shape);
 
-    OP_REQUIRES(ctx, lengths.size() == resource->tensor_array_size,
-                errors::InvalidArgument(
-                    "TensorArray's size is not equal to the size of lengths (",
-                    lengths.size(), " vs. ", resource->tensor_array_size, ")"));
+    OP_REQUIRES(
+        ctx, lengths.size() == resource->tensor_array_size(),
+        errors::InvalidArgument(
+            "TensorArray's size is not equal to the size of lengths (",
+            lengths.size(), " vs. ", resource->tensor_array_size(), ")"));
 
-    const xla::ComputationDataHandle value = ctx->Input(1);
+    const xla::XlaOp value = ctx->Input(1);
+    const xla::XlaOp flow = ctx->Input(3);
 
     OP_REQUIRES(ctx, value_shape.num_elements() == ta_shape.num_elements(),
                 errors::InvalidArgument("mismatched element count ",
                                         value_shape.DebugString(), " vs. ",
                                         ta_shape.DebugString()));
 
-    resource->value = b->Add(ta, b->Reshape(value, ta_shape.dim_sizes()));
+    OP_REQUIRES_OK(ctx, resource->SetValue(b->Add(
+                            ta, b->Reshape(value, ta_shape.dim_sizes()))));
 
-    ctx->SetConstantOutput(0, Tensor(DT_FLOAT));
+    ctx->SetOutput(0, flow);
   }
 
  private:
@@ -510,7 +534,8 @@ class TensorArraySplitOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArraySplitOp);
 };
 
-REGISTER_XLA_OP(Name("TensorArraySplitV3"), TensorArraySplitOp);
+REGISTER_XLA_OP(Name("TensorArraySplitV3").CompileTimeConstInput("lengths"),
+                TensorArraySplitOp);
 
 class TensorArraySizeOp : public XlaOpKernel {
  public:
@@ -520,7 +545,8 @@ class TensorArraySizeOp : public XlaOpKernel {
     XlaResource* var;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &var));
     Tensor size_tensor(DT_INT32, {});
-    size_tensor.scalar<int32>()() = static_cast<int32>(var->tensor_array_size);
+    size_tensor.scalar<int32>()() =
+        static_cast<int32>(var->tensor_array_size());
     ctx->SetConstantOutput(0, size_tensor);
   }
 
@@ -537,31 +563,21 @@ class TensorArrayGradOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
 
     XlaResource* resource;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &resource));
 
     OP_REQUIRES_OK(
-        ctx, CheckTensorArrayIsInitialized(name(), resource, resource->type));
+        ctx, CheckTensorArrayIsInitialized(name(), resource, resource->type()));
     TensorShape ta_shape;
     OP_REQUIRES_OK(ctx, GetTensorArrayShape(resource, b, &ta_shape));
 
     // Finds or looks up the corresponding gradient TensorArray, which stores
     // gradients computed during backpropagation.
-    XlaResource*& gradient = resource->tensor_array_gradient[source_];
-    if (!gradient) {
-      xla::ComputationDataHandle zero = XlaHelpers::Zero(b, resource->type);
-      xla::ComputationDataHandle value =
-          b->Broadcast(zero, ta_shape.dim_sizes());
-
-      XlaContext& xc = XlaContext::Get(ctx);
-      string name = strings::StrCat("TensorArrayGrad: ", resource->name);
-      OP_REQUIRES_OK(
-          ctx, xc.CreateResource(XlaResource::kTensorArray, -1, std::move(name),
-                                 resource->type, value, &gradient));
-      gradient->tensor_array_size = resource->tensor_array_size;
-    }
+    XlaResource* gradient;
+    OP_REQUIRES_OK(
+        ctx, resource->GetOrCreateTensorArrayGradient(source_, b, &gradient));
 
     ctx->SetResourceOutput(0, gradient);
     ctx->SetConstantOutput(1, Tensor(DT_FLOAT));

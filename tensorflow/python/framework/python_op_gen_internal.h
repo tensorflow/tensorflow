@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_OP_GEN_INTERNAL_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_OP_GEN_INTERNAL_H_
+#ifndef TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_OP_GEN_INTERNAL_H_
+#define TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_OP_GEN_INTERNAL_H_
 
 #include <unordered_map>
 
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -27,6 +28,9 @@ namespace python_op_gen_internal {
 
 // Returns true if s is a Python keyword or built-in.
 bool IsPythonReserved(const string& s);
+
+// Whether the op should be prefixed with underscore.
+bool IsOpWithUnderscorePrefix(const string& s);
 
 // Add a _ to the end of s if necessary to avoid a Python keyword or built-in.
 string AvoidPythonReserved(const string& s);
@@ -38,15 +42,41 @@ string AttrValueToPython(const string& type, const AttrValue& value,
 
 void GenerateLowerCaseOpName(const string& str, string* result);
 
+string DataTypeToPython(DataType dtype, const string& dtype_module);
+
+// Names that corresponds to a single input parameter.
+class ParamNames {
+ public:
+  // Create param based on Arg.
+  ParamNames(const string& name, const string& rename_to) : name_(name) {
+    rename_to_ = AvoidPythonReserved(rename_to);
+  }
+
+  // Get original parameter name.
+  string GetName() const { return name_; }
+
+  // Get the name to rename the parameter to. Note that AvoidPythonReserved
+  // has already been applied.
+  string GetRenameTo() const { return rename_to_; }
+
+ private:
+  // Original parameter name.
+  string name_;
+  // API name for this parameter.
+  string rename_to_;
+};
+
 class GenPythonOp {
  public:
-  GenPythonOp(const OpDef& op_def, const string& function_name);
+  GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
+              const string& function_name);
   virtual ~GenPythonOp();
 
   virtual string Code();
 
  protected:
   // Print: def Function(parameters):
+  void AddDefLine(const string& function_name, const string& parameters);
   void AddDefLine(const string& parameters);
 
   // Format the Op's descriptions so that it can be a Python docstring.
@@ -59,10 +89,13 @@ class GenPythonOp {
   void AddOutputGlobals();
   void AddDocStringOutputs();
   void AddBody(const string& prefix);
+  void AddBodyNoReturn(const string& apply_prefix);
+  void AddExport();
 
   // From constructor arguments
   const OpDef& op_def_;
-  const string& function_name_;
+  const ApiDef& api_def_;
+  const string function_name_;
   const int num_outs_;
 
   // Return value from Code() is prelude_ + result_.
@@ -77,10 +110,10 @@ class GenPythonOp {
 
   // All parameters, including inputs & non-inferred attrs, required and those
   // with defaults, except "name"
-  std::vector<string> param_names_;
+  std::vector<ParamNames> param_names_;
 };
 
 }  // namespace python_op_gen_internal
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_OP_GEN_INTERNAL_H_
+#endif  // TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_OP_GEN_INTERNAL_H_

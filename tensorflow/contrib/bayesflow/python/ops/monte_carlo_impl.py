@@ -32,7 +32,6 @@ from tensorflow.python.ops import nn
 
 __all__ = [
     'expectation',
-    'expectation_v2',
     'expectation_importance_sampler',
     'expectation_importance_sampler_logspace',
 ]
@@ -45,15 +44,13 @@ def expectation_importance_sampler(f,
                                    n=None,
                                    seed=None,
                                    name='expectation_importance_sampler'):
-  r"""Monte Carlo estimate of `E_p[f(Z)] = E_q[f(Z) p(Z) / q(Z)]`.
+  r"""Monte Carlo estimate of \\(E_p[f(Z)] = E_q[f(Z) p(Z) / q(Z)]\\).
 
-  With `p(z) := exp{log_p(z)}`, this `Op` returns
+  With \\(p(z) := exp^{log_p(z)}\\), this `Op` returns
 
-  ```
-  n^{-1} sum_{i=1}^n [ f(z_i) p(z_i) / q(z_i) ],  z_i ~ q,
-  \approx E_q[ f(Z) p(Z) / q(Z) ]
-  =       E_p[f(Z)]
-  ```
+  \\(n^{-1} sum_{i=1}^n [ f(z_i) p(z_i) / q(z_i) ],  z_i ~ q,\\)
+  \\(\approx E_q[ f(Z) p(Z) / q(Z) ]\\)
+  \\(=       E_p[f(Z)]\\)
 
   This integral is done in log-space with max-subtraction to better handle the
   often extreme values that `f(z) p(z) / q(z)` can take on.
@@ -96,9 +93,9 @@ def expectation_importance_sampler(f,
       log_values = log_f_z + log_p_z - q_log_prob_z
       return _logspace_mean(log_values)
 
-    # With f_plus(z) = max(0, f(z)), f_minus(z) = max(0, -f(z)),
-    # E_p[f(Z)] = E_p[f_plus(Z)] - E_p[f_minus(Z)]
-    #           = E_p[f_plus(Z) + 1] - E_p[f_minus(Z) + 1]
+    # With \\(f_{plus}(z) = max(0, f(z)), f_{minus}(z) = max(0, -f(z))\\),
+    # \\(E_p[f(Z)] = E_p[f_{plus}(Z)] - E_p[f_{minus}(Z)]\\)
+    # \\(          = E_p[f_{plus}(Z) + 1] - E_p[f_{minus}(Z) + 1]\\)
     # Without incurring bias, 1 is added to each to prevent zeros in logspace.
     # The logarithm is approximately linear around 1 + epsilon, so this is good
     # for small values of 'z' as well.
@@ -122,14 +119,12 @@ def expectation_importance_sampler_logspace(
     name='expectation_importance_sampler_logspace'):
   r"""Importance sampling with a positive function, in log-space.
 
-  With `p(z) := exp{log_p(z)}`, and `f(z) = exp{log_f(z)}`, this `Op`
-  returns
+  With \\(p(z) := exp^{log_p(z)}\\), and \\(f(z) = exp{log_f(z)}\\),
+  this `Op` returns
 
-  ```
-  Log[ n^{-1} sum_{i=1}^n [ f(z_i) p(z_i) / q(z_i) ] ],  z_i ~ q,
-  \approx Log[ E_q[ f(Z) p(Z) / q(Z) ] ]
-  =       Log[E_p[f(Z)]]
-  ```
+  \\(Log[ n^{-1} sum_{i=1}^n [ f(z_i) p(z_i) / q(z_i) ] ],  z_i ~ q,\\)
+  \\(\approx Log[ E_q[ f(Z) p(Z) / q(Z) ] ]\\)
+  \\(=       Log[E_p[f(Z)]]\\)
 
   This integral is done in log-space with max-subtraction to better handle the
   often extreme values that `f(z) p(z) / q(z)` can take on.
@@ -195,72 +190,13 @@ def _logspace_mean(log_values):
   return log_mean_of_values
 
 
-def expectation(f, p, z=None, n=None, seed=None, name='expectation'):
-  r"""Monte Carlo estimate of an expectation:  `E_p[f(Z)]` with sample mean.
-
-  This `Op` returns
-
-  ```
-  n^{-1} sum_{i=1}^n f(z_i),  where z_i ~ p
-  \approx E_p[f(Z)]
-  ```
-
-  User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
-
-  Args:
-    f: Callable mapping samples from `p` to `Tensors`.
-    p:  `tf.contrib.distributions.Distribution`.
-    z:  `Tensor` of samples from `p`, produced by `p.sample` for some `n`.
-    n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
-    seed:  Python integer to seed the random number generator.
-    name:  A name to give this `Op`.
-
-  Returns:
-    A `Tensor` with the same `dtype` as `p`.
-
-  Example:
-
-  ```python
-  N_samples = 10000
-
-  distributions = tf.contrib.distributions
-
-  dist = distributions.Uniform([0.0, 0.0], [1.0, 2.0])
-  elementwise_mean = lambda x: x
-  mean_sum = lambda x: tf.reduce_sum(x, 1)
-
-  estimate_elementwise_mean_tf = monte_carlo.expectation(elementwise_mean,
-                                                         dist,
-                                                         n=N_samples)
-  estimate_mean_sum_tf = monte_carlo.expectation(mean_sum,
-                                                 dist,
-                                                 n=N_samples)
-
-  with tf.Session() as sess:
-    estimate_elementwise_mean, estimate_mean_sum = (
-        sess.run([estimate_elementwise_mean_tf, estimate_mean_sum_tf]))
-  print estimate_elementwise_mean
-  >>> np.array([ 0.50018013  1.00097895], dtype=np.float32)
-  print estimate_mean_sum
-  >>> 1.49571
-
-  ```
-
-  """
-  with ops.name_scope(name, values=[n, z]):
-    z = _get_samples(p, z, n, seed)
-    return _sample_mean(f(z))
-
-
-def expectation_v2(f, samples, log_prob=None, use_reparametrization=True,
-                   axis=0, keep_dims=False, name=None):
-  """Computes the Monte-Carlo approximation of `E_p[f(X)]`.
+def expectation(f, samples, log_prob=None, use_reparametrization=True,
+                axis=0, keep_dims=False, name=None):
+  """Computes the Monte-Carlo approximation of \\(E_p[f(X)]\\).
 
   This function computes the Monte-Carlo approximation of an expectation, i.e.,
 
-  ```none
-  E_p[f(X)] approx= m**-1 sum_i^m f(x_j),  x_j ~iid p(X)
-  ```
+  \\(E_p[f(X)] \approx= m^{-1} sum_i^m f(x_j),  x_j\  ~iid\ p(X)\\)
 
   where:
 
@@ -274,13 +210,14 @@ def expectation_v2(f, samples, log_prob=None, use_reparametrization=True,
   parameterless distribution (e.g.,
   `Normal(Y; m, s) <=> Y = sX + m, X ~ Normal(0,1)`), we can swap gradient and
   expectation, i.e.,
-  `grad[ Avg{ s_i : i=1...n } ] = Avg{ grad[s_i] : i=1...n }` where
-  `S_n = Avg{s_i}` and `s_i = f(x_i), x_i ~ p`.
+  grad[ Avg{ \\(s_i : i=1...n\\) } ] = Avg{ grad[\\(s_i\\)] : i=1...n } where
+  S_n = Avg{\\(s_i\\)}` and `\\(s_i = f(x_i), x_i ~ p\\).
 
   However, if p is not reparameterized, TensorFlow's gradient will be incorrect
-  since the chain-rule stops at samples of unreparameterized distributions. In
-  this circumstance using the Score-Gradient trick results in an unbiased
-  gradient, i.e.,
+  since the chain-rule stops at samples of non-reparameterized distributions.
+  (The non-differentiated result, `approx_expectation`, is the same regardless
+  of `use_reparametrization`.) In this circumstance using the Score-Gradient
+  trick results in an unbiased gradient, i.e.,
 
   ```none
   grad[ E_p[f(X)] ]
@@ -298,52 +235,115 @@ def expectation_v2(f, samples, log_prob=None, use_reparametrization=True,
   Warning: users are responsible for verifying `p` is a "reparameterized"
   distribution.
 
+  Example Use:
+
+  ```python
+  bf = tf.contrib.bayesflow
+  ds = tf.contrib.distributions
+
+  # Monte-Carlo approximation of a reparameterized distribution, e.g., Normal.
+
+  num_draws = int(1e5)
+  p = ds.Normal(loc=0., scale=1.)
+  q = ds.Normal(loc=1., scale=2.)
+  exact_kl_normal_normal = ds.kl_divergence(p, q)
+  # ==> 0.44314718
+  approx_kl_normal_normal = bf.expectation(
+      f=lambda x: p.log_prob(x) - q.log_prob(x),
+      samples=p.sample(num_draws, seed=42),
+      log_prob=p.log_prob,
+      use_reparametrization=(p.reparameterization_type
+                             == distribution.FULLY_REPARAMETERIZED))
+  # ==> 0.44632751
+  # Relative Error: <1%
+
+  # Monte-Carlo approximation of non-reparameterized distribution, e.g., Gamma.
+
+  num_draws = int(1e5)
+  p = ds.Gamma(concentration=1., rate=1.)
+  q = ds.Gamma(concentration=2., rate=3.)
+  exact_kl_gamma_gamma = ds.kl_divergence(p, q)
+  # ==> 0.37999129
+  approx_kl_gamma_gamma = bf.expectation(
+      f=lambda x: p.log_prob(x) - q.log_prob(x),
+      samples=p.sample(num_draws, seed=42),
+      log_prob=p.log_prob,
+      use_reparametrization=(p.reparameterization_type
+                             == distribution.FULLY_REPARAMETERIZED))
+  # ==> 0.37696719
+  # Relative Error: <1%
+
+  # For comparing the gradients, see `monte_carlo_test.py`.
+  ```
+
+  Note: The above example is for illustration only. To compute approximate
+  KL-divergence, the following is preferred:
+
+  ```python
+  approx_kl_p_q = bf.monte_carlo_csiszar_f_divergence(
+      f=bf.kl_reverse,
+      p_log_prob=q.log_prob,
+      q=p,
+      num_draws=num_draws)
+  ```
+
   Args:
     f: Python callable which can return `f(samples)`.
     samples: `Tensor` of samples used to form the Monte-Carlo approximation of
-      `E_p[f(X)]`.  A batch of samples should be indexed by `axis` dimensions.
+      \\(E_p[f(X)]\\).  A batch of samples should be indexed by `axis`
+      dimensions.
     log_prob: Python callable which can return `log_prob(samples)`. Must
       correspond to the natural-logarithm of the pdf/pmf of each sample. Only
       required/used if `use_reparametrization=False`.
+      Default value: `None`.
     use_reparametrization: Python `bool` indicating that the approximation
-      should use the fact that the gradient of samples is unbiased.
-    axis: The dimensions to average. If `None` (the default), averages all
+      should use the fact that the gradient of samples is unbiased. Whether
+      `True` or `False`, this arg only affects the gradient of the resulting
+      `approx_expectation`.
+      Default value: `True`.
+    axis: The dimensions to average. If `None`, averages all
       dimensions.
-    keep_dims: If true, retains averaged dimensions with length 1.
-    name: A `name_scope` for operations created by this function (optional).
-      Default value: "expectation_v2".
+      Default value: `0` (the left-most dimension).
+    keep_dims: If True, retains averaged dimensions using size `1`.
+      Default value: `False`.
+    name: A `name_scope` for operations created by this function.
+      Default value: `None` (which implies "expectation").
 
   Returns:
     approx_expectation: `Tensor` corresponding to the Monte-Carlo approximation
-      of `E_p[f(X)]`.
+      of \\(E_p[f(X)]\\).
 
   Raises:
-    ValueError: if `f` is not `callable`.
-    ValueError: if `use_reparametrization=False` and `log_prob` is not
+    ValueError: if `f` is not a Python `callable`.
+    ValueError: if `use_reparametrization=False` and `log_prob` is not a Python
       `callable`.
   """
 
-  with ops.name_scope(name, 'expectation_v2', [samples]):
+  with ops.name_scope(name, 'expectation', [samples]):
     if not callable(f):
       raise ValueError('`f` must be a callable function.')
     if use_reparametrization:
-      return math_ops.reduce_mean(f(samples), axis=axis, keep_dims=keep_dims)
+      return math_ops.reduce_mean(f(samples), axis=axis, keepdims=keep_dims)
     else:
       if not callable(log_prob):
         raise ValueError('`log_prob` must be a callable function.')
-      x = array_ops.stop_gradient(samples)
+      stop = array_ops.stop_gradient  # For readability.
+      x = stop(samples)
       logpx = log_prob(x)
-      # Numerically, exp(g(x) - stop[g(x)]) is always 1, even if exp(g(x)) is
-      # unstable. But the gradient is also stable, ie,
-      # d/dx exp(g(x) - stop[g(x)])
-      # = exp(g(x) - stop[g(x)]) d/dx g(x)
-      # = d/dx g(x)   [numerically exact since IEEE754 has the property
-      #                that for any finite floating-point number x:
-      #                x - x == 0.0]
-      return math_ops.reduce_mean(
-          f(x) * math_ops.exp(logpx - array_ops.stop_gradient(logpx)),
-          axis=axis,
-          keep_dims=keep_dims)
+      fx = f(x)  # Call `f` once in case it has side-effects.
+      # We now rewrite f(x) so that:
+      #   `grad[f(x)] := grad[f(x)] + f(x) * grad[logqx]`.
+      # To achieve this, we use a trick that
+      #   `h(x) - stop(h(x)) == zeros_like(h(x))`
+      # but its gradient is grad[h(x)].
+      # Note that IEEE754 specifies that `x - x == 0.` and `x + 0. == x`, hence
+      # this trick loses no precision. For more discussion regarding the
+      # relevant portions of the IEEE754 standard, see the StackOverflow
+      # question,
+      # "Is there a floating point value of x, for which x-x == 0 is false?"
+      # http://stackoverflow.com/q/2686644
+      fx += stop(fx) * (logpx - stop(logpx))  # Add zeros_like(logpx).
+      return math_ops.reduce_mean(fx, axis=axis, keepdims=keep_dims)
 
 
 def _sample_mean(values):

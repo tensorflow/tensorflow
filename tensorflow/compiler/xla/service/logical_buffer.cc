@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 
-#include <ostream>
-#include <vector>
-
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -26,37 +23,22 @@ limitations under the License.
 
 namespace xla {
 
+LogicalBuffer::LogicalBuffer(HloInstruction* instruction,
+                             const ShapeIndex& index, Id id)
+    : BufferValue(instruction, index, id),
+      instruction_(instruction),
+      index_(index) {}
+
+LogicalBuffer::~LogicalBuffer() {}
+
 string LogicalBuffer::ToString() const {
-  return tensorflow::strings::StrCat(instruction_->FullyQualifiedName(), "[",
-                                     tensorflow::str_util::Join(index_, ","),
-                                     "](#", id_, " @", color_.value(), ")");
-}
-
-std::ostream& operator<<(std::ostream& out, const LogicalBuffer& buffer) {
-  out << buffer.ToString();
-  return out;
-}
-
-/*static*/ LogicalBufferProto::Location LogicalBuffer::ToLocationProto(
-    const HloInstruction& instruction, const ShapeIndex& index) {
-  LogicalBufferProto::Location proto;
-  proto.set_computation_name(instruction.parent()->name());
-  proto.set_instruction_name(instruction.name());
-  for (const int64 index_entry : index) {
-    proto.add_shape_index(index_entry);
+  string color_string;
+  if (has_color()) {
+    color_string = tensorflow::strings::StrCat(" @", color().value());
   }
-  return proto;
-}
-
-LogicalBufferProto LogicalBuffer::ToProto(const SizeFunction& size_fn) const {
-  LogicalBufferProto proto;
-  proto.set_id(id_);
-  proto.set_size(size_fn(*this));
-  LogicalBufferProto::Location proto_location =
-      ToLocationProto(*instruction_, index_);
-  proto.mutable_defined_at()->Swap(&proto_location);
-  proto.set_color(color_.value());
-  return proto;
+  return tensorflow::strings::StrCat(instruction_->name(), "[",
+                                     tensorflow::str_util::Join(index_, ","),
+                                     "](#", id(), color_string, ")");
 }
 
 }  // namespace xla

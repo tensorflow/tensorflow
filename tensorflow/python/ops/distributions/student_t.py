@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -41,6 +42,7 @@ __all__ = [
 ]
 
 
+@tf_export("distributions.StudentT")
 class StudentT(distribution.Distribution):
   """Student's t-distribution.
 
@@ -155,8 +157,8 @@ class StudentT(distribution.Distribution):
     Raises:
       TypeError: if loc and scale are different dtypes.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[df, loc, scale]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[df, loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(df)]
                                     if validate_args else []):
         self._df = array_ops.identity(df, name="df")
@@ -245,9 +247,6 @@ class StudentT(distribution.Distribution):
             0.5 * np.log(np.pi) +
             math_ops.lgamma(0.5 * self.df) -
             math_ops.lgamma(0.5 * (self.df + 1.)))
-
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
 
   def _cdf(self, x):
     # Take Abs(scale) to make subsequent where work correctly.
@@ -350,8 +349,8 @@ class StudentTWithAbsDfSoftplusScale(StudentT):
                validate_args=False,
                allow_nan_stats=True,
                name="StudentTWithAbsDfSoftplusScale"):
-    parameters = locals()
-    with ops.name_scope(name, values=[df, scale]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[df, scale]) as name:
       super(StudentTWithAbsDfSoftplusScale, self).__init__(
           df=math_ops.floor(math_ops.abs(df)),
           loc=loc,

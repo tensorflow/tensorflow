@@ -20,26 +20,29 @@ from __future__ import print_function
 
 import glob
 import os
+import shutil
 import time
 
 import numpy as np
 
 from tensorflow.contrib.framework.python.ops import variables as variables_lib
-from tensorflow.contrib.metrics.python.ops import metric_ops
 from tensorflow.contrib.slim.python.slim import evaluation
 from tensorflow.contrib.training.python.training import evaluation as evaluation_lib
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import metrics
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
-from tensorflow.python.training import input
+from tensorflow.python.training import input  # pylint: disable=redefined-builtin
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 
@@ -86,8 +89,8 @@ class EvaluationTest(test.TestCase):
     self._predictions, self._scale = TestModel(self._inputs)
 
   def testFinalOpsOnEvaluationLoop(self):
-    value_op, update_op = metric_ops.streaming_accuracy(self._predictions,
-                                                        self._labels)
+    value_op, update_op = metrics.accuracy(
+        labels=self._labels, predictions=self._predictions)
     init_op = control_flow_ops.group(variables.global_variables_initializer(),
                                      variables.local_variables_initializer())
     # Create checkpoint and log directories:
@@ -133,9 +136,10 @@ class EvaluationTest(test.TestCase):
     self.assertTrue(obj.hook_was_run)
 
   def _create_names_to_metrics(self, predictions, labels):
-    accuracy0, update_op0 = metric_ops.streaming_accuracy(predictions, labels)
-    accuracy1, update_op1 = metric_ops.streaming_accuracy(predictions + 1,
-                                                          labels)
+    accuracy0, update_op0 = metrics.accuracy(
+        labels=labels, predictions=predictions)
+    accuracy1, update_op1 = metrics.accuracy(
+        labels=labels, predictions=predictions + 1)
 
     names_to_values = {'Accuracy': accuracy0, 'Another_accuracy': accuracy1}
     names_to_updates = {'Accuracy': update_op0, 'Another_accuracy': update_op1}
@@ -174,6 +178,17 @@ class EvaluationTest(test.TestCase):
     # The timeout kicked in.
     self.assertLess(end, start + 1.1)
 
+  def testTimeoutFnOnEvaluationLoop(self):
+    # We require a mutable object (e.g. list but not an int) to maintain state
+    # across calls of a nested function.
+    timeout_fn_calls = [0]
+    def _TimeoutFn():
+      timeout_fn_calls[0] += 1
+      return timeout_fn_calls[0] >= 3
+    # Need not do any evaluation, but should just call timeout_fn repeatedly.
+    evaluation.evaluation_loop('', '', '', timeout=0, timeout_fn=_TimeoutFn)
+    self.assertEqual(timeout_fn_calls[0], 3)
+
   def testMonitorCheckpointsLoopTimeout(self):
     ret = list(
         evaluation_lib.checkpoints_iterator(
@@ -184,8 +199,8 @@ class EvaluationTest(test.TestCase):
     predictions_limited = input.limit_epochs(self._predictions, num_epochs=1)
     labels_limited = input.limit_epochs(self._labels, num_epochs=1)
 
-    value_op, update_op = metric_ops.streaming_accuracy(
-        predictions_limited, labels_limited)
+    value_op, update_op = metrics.accuracy(
+        labels=labels_limited, predictions=predictions_limited)
 
     init_op = control_flow_ops.group(variables.global_variables_initializer(),
                                      variables.local_variables_initializer())
@@ -230,11 +245,7 @@ class SingleEvaluationTest(test.TestCase):
     with self.assertRaises(errors.NotFoundError):
       evaluation.evaluate_once('', checkpoint_path, log_dir)
 
-  def testRestoredModelPerformance(self):
-    checkpoint_path = os.path.join(self.get_temp_dir(), 'model.ckpt')
-    log_dir = os.path.join(self.get_temp_dir(), 'log_dir1/')
-
-    # First, save out the current model to a checkpoint:
+  def _prepareCheckpoint(self, checkpoint_path):
     init_op = control_flow_ops.group(variables.global_variables_initializer(),
                                      variables.local_variables_initializer())
     saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
@@ -242,14 +253,51 @@ class SingleEvaluationTest(test.TestCase):
       sess.run(init_op)
       saver.save(sess, checkpoint_path)
 
+  def testRestoredModelPerformance(self):
+    checkpoint_path = os.path.join(self.get_temp_dir(), 'model.ckpt')
+    log_dir = os.path.join(self.get_temp_dir(), 'log_dir1/')
+
+    # First, save out the current model to a checkpoint:
+    self._prepareCheckpoint(checkpoint_path)
+
     # Next, determine the metric to evaluate:
-    value_op, update_op = metric_ops.streaming_accuracy(self._predictions,
-                                                        self._labels)
+    value_op, update_op = metrics.accuracy(
+        labels=self._labels, predictions=self._predictions)
 
     # Run the evaluation and verify the results:
     accuracy_value = evaluation.evaluate_once(
         '', checkpoint_path, log_dir, eval_op=update_op, final_op=value_op)
     self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
+
+  def testAdditionalHooks(self):
+    checkpoint_path = os.path.join(self.get_temp_dir(), 'model.ckpt')
+    log_dir = os.path.join(self.get_temp_dir(), 'log_dir1/')
+
+    # First, save out the current model to a checkpoint:
+    self._prepareCheckpoint(checkpoint_path)
+
+    # Next, determine the metric to evaluate:
+    value_op, update_op = metrics.accuracy(
+        labels=self._labels, predictions=self._predictions)
+
+    dumping_root = os.path.join(self.get_temp_dir(), 'tfdbg_dump_dir')
+    dumping_hook = hooks.DumpingDebugHook(dumping_root, log_usage=False)
+    try:
+      # Run the evaluation and verify the results:
+      accuracy_value = evaluation.evaluate_once(
+          '', checkpoint_path, log_dir, eval_op=update_op, final_op=value_op,
+          hooks=[dumping_hook])
+      self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
+
+      dump = debug_data.DebugDumpDir(
+          glob.glob(os.path.join(dumping_root, 'run_*'))[0])
+      # Here we simply assert that the dumped data has been loaded and is
+      # non-empty. We do not care about the detailed model-internal tensors or
+      # their values.
+      self.assertTrue(dump.dumped_tensor_data)
+    finally:
+      if os.path.isdir(dumping_root):
+        shutil.rmtree(dumping_root)
 
 
 if __name__ == '__main__':

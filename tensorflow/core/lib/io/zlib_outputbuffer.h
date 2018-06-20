@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_COMPRESSED_OUTPUTBUFFER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_COMPRESSED_OUTPUTBUFFER_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_COMPRESSED_OUTPUTBUFFER_H_
+#define TENSORFLOW_CORE_LIB_IO_COMPRESSED_OUTPUTBUFFER_H_
 
 #include <zlib.h>
 
@@ -143,4 +143,4 @@ class ZlibOutputBuffer : public WritableFile {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_COMPRESSED_OUTPUTBUFFER_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_COMPRESSED_OUTPUTBUFFER_H_

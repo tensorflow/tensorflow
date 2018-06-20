@@ -1,0 +1,13 @@
+op {
+  graph_op_name: "Neg"
+  endpoint {
+    name: "Negate"
+  }
+  endpoint {
+    name: "Neg"
+  }
+  summary: "Computes numerical negative value element-wise."
+  description: <<END
+I.e., \\(y = -x\\).
+END
+}

@@ -30,12 +30,11 @@ InfeedThunk::InfeedThunk(
                              tuple_element_buffers.end()),
       destination_buffer_(destination_buffer) {}
 
-tensorflow::Status InfeedThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
+Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                    se::Stream* stream) {
   VLOG(2) << "Infeeding to GPU ";
 
-  perftools::gputools::DeviceMemoryBase destination_address =
+  se::DeviceMemoryBase destination_address =
       buffer_allocations.GetDeviceAddress(destination_buffer_);
 
   InfeedManager* infeed_manager = GetOrCreateInfeedManager();
@@ -46,7 +45,7 @@ tensorflow::Status InfeedThunk::ExecuteOnStream(
     std::vector<void*> tuple_element_addresses;
     for (BufferAllocation::Slice tuple_element_buffer :
          tuple_element_buffers_) {
-      perftools::gputools::DeviceMemoryBase tuple_element_address =
+      se::DeviceMemoryBase tuple_element_address =
           buffer_allocations.GetDeviceAddress(tuple_element_buffer);
 
       InfeedBuffer* buffer = infeed_manager->BlockingDequeueBuffer();
@@ -66,15 +65,16 @@ tensorflow::Status InfeedThunk::ExecuteOnStream(
                        buffer->length());
   }
 
-  if (!stream->BlockHostUntilDone()) {
-    return InternalError("Failed to complete data transfer on stream %p",
-                         stream);
+  Status block_status = stream->BlockHostUntilDone();
+  if (!block_status.ok()) {
+    return InternalError("Failed to complete data transfer on stream %p: %s",
+                         stream, block_status.error_message().c_str());
   }
 
   infeed_manager->ReleaseBuffers(infeed_buffers);
 
   VLOG(2) << "Infeeding to GPU complete";
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace gpu

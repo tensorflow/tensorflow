@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/grpc_verbs_service_impl.h"
 
-#include "grpc++/impl/codegen/async_stream.h"
-#include "grpc++/impl/codegen/async_unary_call.h"
-#include "grpc++/impl/codegen/channel_interface.h"
-#include "grpc++/impl/codegen/client_unary_call.h"
-#include "grpc++/impl/codegen/method_handler_impl.h"
-#include "grpc++/impl/codegen/rpc_service_method.h"
-#include "grpc++/impl/codegen/service_type.h"
-#include "grpc++/impl/codegen/sync_stream.h"
+#include "grpcpp/impl/codegen/async_stream.h"
+#include "grpcpp/impl/codegen/async_unary_call.h"
+#include "grpcpp/impl/codegen/channel_interface.h"
+#include "grpcpp/impl/codegen/client_unary_call.h"
+#include "grpcpp/impl/codegen/method_handler_impl.h"
+#include "grpcpp/impl/codegen/rpc_service_method.h"
+#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/impl/codegen/sync_stream.h"
 
 namespace tensorflow {
 
@@ -43,20 +43,21 @@ VerbsService::Stub::Stub(
     const std::shared_ptr< ::grpc::ChannelInterface>& channel)
     : channel_(channel),
       rpcmethod_GetRemoteAddress_(grpcVerbsService_method_names[0],
-                                  ::grpc::RpcMethod::NORMAL_RPC, channel) {}
+                                  ::grpc::internal::RpcMethod::NORMAL_RPC,
+                                  channel) {}
 
 ::grpc::Status VerbsService::Stub::GetRemoteAddress(
     ::grpc::ClientContext* context, const GetRemoteAddressRequest& request,
     GetRemoteAddressResponse* response) {
-  return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_GetRemoteAddress_,
-                                   context, request, response);
+  return ::grpc::internal::BlockingUnaryCall(
+      channel_.get(), rpcmethod_GetRemoteAddress_, context, request, response);
 }
 
 VerbsService::AsyncService::AsyncService() {
   for (int i = 0; i < 1; ++i) {
-    AddMethod(new ::grpc::RpcServiceMethod(grpcVerbsService_method_names[i],
-                                           ::grpc::RpcMethod::NORMAL_RPC,
-                                           nullptr));
+    AddMethod(new ::grpc::internal::RpcServiceMethod(
+        grpcVerbsService_method_names[i],
+        ::grpc::internal::RpcMethod::NORMAL_RPC, nullptr));
     ::grpc::Service::MarkMethodAsync(i);
   }
 }

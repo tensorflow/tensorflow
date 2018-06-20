@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATSET_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATSET_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_FLATSET_H_
+#define TENSORFLOW_CORE_LIB_GTL_FLATSET_H_
 
 #include <stddef.h>
 #include <functional>
@@ -22,6 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 #include "tensorflow/core/lib/gtl/flatrep.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -33,8 +34,7 @@ namespace gtl {
 // The map is implemented using an open-addressed hash table.  A
 // single array holds entire map contents and collisions are resolved
 // by probing at a sequence of locations in the array.
-template <typename Key, class Hash = std::hash<Key>,
-          class Eq = std::equal_to<Key>>
+template <typename Key, class Hash = hash<Key>, class Eq = std::equal_to<Key>>
 class FlatSet {
  private:
   // Forward declare some internal types needed in public section.
@@ -59,6 +59,10 @@ class FlatSet {
 
   FlatSet(const FlatSet& src) : rep_(src.rep_) {}
 
+  // Move constructor leaves src in a valid but unspecified state (same as
+  // std::unordered_set).
+  FlatSet(FlatSet&& src) : rep_(std::move(src.rep_)) {}
+
   template <typename InputIter>
   FlatSet(InputIter first, InputIter last, size_t N = 1,
           const Hash& hf = Hash(), const Eq& eq = Eq())
@@ -72,6 +76,13 @@ class FlatSet {
 
   FlatSet& operator=(const FlatSet& src) {
     rep_.CopyFrom(src.rep_);
+    return *this;
+  }
+
+  // Move-assignment operator leaves src in a valid but unspecified state (same
+  // as std::unordered_set).
+  FlatSet& operator=(FlatSet&& src) {
+    rep_.MoveFrom(std::move(src.rep_));
     return *this;
   }
 
@@ -108,8 +119,8 @@ class FlatSet {
     const_iterator(Bucket* b, Bucket* end, uint32 i)
         : b_(b), end_(end), i_(i) {}
 
-    reference operator*() { return key(); }
-    pointer operator->() { return &key(); }
+    reference operator*() const { return key(); }
+    pointer operator->() const { return &key(); }
     bool operator==(const const_iterator& x) const {
       return b_ == x.b_ && i_ == x.i_;
     }
@@ -169,6 +180,7 @@ class FlatSet {
   }
 
   std::pair<iterator, bool> insert(const Key& k) { return Insert(k); }
+  std::pair<iterator, bool> insert(Key&& k) { return Insert(std::move(k)); }
   template <typename InputIter>
   void insert(InputIter first, InputIter last) {
     for (; first != last; ++first) {
@@ -265,9 +277,10 @@ class FlatSet {
     }
   };
 
-  std::pair<iterator, bool> Insert(const Key& k) {
+  template <typename K>
+  std::pair<iterator, bool> Insert(K&& k) {
     rep_.MaybeResize();
-    auto r = rep_.FindOrInsert(k);
+    auto r = rep_.FindOrInsert(std::forward<K>(k));
     const bool inserted = !r.found;
     return {iterator(r.b, rep_.limit(), r.index), inserted};
   }
@@ -278,4 +291,4 @@ class FlatSet {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATSET_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_FLATSET_H_

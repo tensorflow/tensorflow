@@ -17,135 +17,221 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import dataset_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.contrib.data.python.ops import iterator_ops as contrib_iterator_ops
+from tensorflow.contrib.data.python.ops import shuffle_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver as saver_lib
 
 
-class ShuffleDatasetTest(test.TestCase):
+class ShuffleDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
 
-  def testShuffleDataset(self):
-    components = (
-        np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
-        np.array([9.0, 10.0, 11.0, 12.0])
-    )
-    count_placeholder = array_ops.placeholder_with_default(
-        constant_op.constant(5, dtypes.int64), shape=[])
-    buffer_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
-    seed_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
+  def _build_shuffle_dataset(
+      self,
+      range_limit=10,
+      num_repeats=5,
+      buffer_size=5,
+      seed=None,
+      reshuffle_each_iteration=None,
+  ):
+    return dataset_ops.Dataset.range(range_limit).shuffle(
+        buffer_size,
+        seed=seed,
+        reshuffle_each_iteration=reshuffle_each_iteration).repeat(num_repeats)
 
-    repeat_dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-                      .repeat(count_placeholder))
+  def testShuffleCore(self):
 
-    shuffle_dataset = repeat_dataset.shuffle(buffer_size_placeholder,
-                                             seed_placeholder)
+    seed = 55
+    range_limit = 5
+    num_repeats = 2
+    num_outputs = range_limit * num_repeats
+    buffer_sizes = [1, 3, 5, 8, 10]
+    # pylint: disable=cell-var-from-loop
+    # pylint: disable=g-long-lambda
+    for reshuffle_each_iteration in [True, False]:
+      for buffer_size in buffer_sizes:
+        self.run_core_tests(
+            lambda: self._build_shuffle_dataset(
+                range_limit=range_limit,
+                num_repeats=num_repeats,
+                buffer_size=buffer_size,
+                seed=seed,
+                reshuffle_each_iteration=reshuffle_each_iteration),
+            lambda: self._build_shuffle_dataset(
+                range_limit=range_limit,
+                num_repeats=num_repeats,
+                buffer_size=buffer_size,
+                seed=10,
+                reshuffle_each_iteration=reshuffle_each_iteration),
+            num_outputs)
+    # pylint: enable=cell-var-from-loop
+    # pylint: enable=g-long-lambda
 
-    self.assertEqual(tuple([c.shape[1:] for c in components]),
-                     shuffle_dataset.output_shapes)
+  def testNonDeterministicSeeding(self):
 
-    # Create initialization ops for iterators without and with
-    # shuffling, respectively.
-    iterator = dataset_ops.Iterator.from_structure(
-        shuffle_dataset.output_types, shuffle_dataset.output_shapes)
-    init_fifo_op = iterator.make_initializer(repeat_dataset)
-    init_shuffle_op = iterator.make_initializer(shuffle_dataset)
+    range_limit = 5
+    num_repeats = 2
+    num_outputs = range_limit * num_repeats
+    buffer_sizes = [1, 3, 5, 8, 10]
+    for reshuffle_each_iteration in [True, False]:
+      for buffer_size in buffer_sizes:
 
-    get_next = iterator.get_next()
+        def ds_fn():
+          # pylint: disable=cell-var-from-loop
+          return self._build_shuffle_dataset(
+              range_limit=range_limit,
+              num_repeats=num_repeats,
+              buffer_size=buffer_size,
+              seed=None,  # Iterator seeds are generated non-deterministically.
+              reshuffle_each_iteration=reshuffle_each_iteration)
+          # pylint: enable=cell-var-from-loop
 
-    with self.test_session() as sess:
-      # First run without shuffling to collect the "ground truth".
-      sess.run(init_fifo_op)
-      unshuffled_elements = []
-      for _ in range(20):
-        unshuffled_elements.append(sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        # We checkpoint the initial state of the Dataset so that we can restore
+        # the seeds in the next run. Since the seeding is non-deterministic
+        # the dataset gets initialized with different seeds each time.
+        expected = self.gen_outputs(
+            ds_fn,
+            break_points=[0],
+            num_outputs=num_outputs,
+            ckpt_saved=False,
+            verify_exhausted=False,
+            save_checkpoint_at_end=False)
+        actual = self.gen_outputs(
+            ds_fn,
+            break_points=self.gen_break_points(num_outputs),
+            num_outputs=num_outputs,
+            ckpt_saved=True,
+            verify_exhausted=False)
+        self.match(expected, actual)
 
-      # Assert that the shuffled dataset has the same elements as the
-      # "ground truth".
-      sess.run(
-          init_shuffle_op,
-          feed_dict={buffer_size_placeholder: 100,
-                     seed_placeholder: 37})
-      shuffled_elements = []
-      for _ in range(20):
-        shuffled_elements.append(sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      self.assertAllEqual(
-          sorted(unshuffled_elements), sorted(shuffled_elements))
+  def testMultipleIterators(self):
+    range_limit = 5
+    num_repeats = 2
+    num_outputs = range_limit * num_repeats
+    buffer_sizes = [1, 3, 5, 8, 10]
 
-      # Assert that shuffling twice with the same seeds gives the same sequence.
-      sess.run(
-          init_shuffle_op,
-          feed_dict={buffer_size_placeholder: 100,
-                     seed_placeholder: 37})
-      reshuffled_elements_same_seed = []
-      for _ in range(20):
-        reshuffled_elements_same_seed.append(sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      self.assertEqual(shuffled_elements, reshuffled_elements_same_seed)
+    for reshuffle_each_iteration in [True, False]:
+      for buffer_size in buffer_sizes:
 
-      # Assert that shuffling twice with a different seed gives a different
-      # permutation of the same elements.
-      sess.run(
-          init_shuffle_op,
-          feed_dict={buffer_size_placeholder: 100,
-                     seed_placeholder: 1037})
-      reshuffled_elements_different_seed = []
-      for _ in range(20):
-        reshuffled_elements_different_seed.append(sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      self.assertNotEqual(shuffled_elements, reshuffled_elements_different_seed)
-      self.assertAllEqual(
-          sorted(shuffled_elements), sorted(reshuffled_elements_different_seed))
+        def ds_fn():
+          # pylint: disable=cell-var-from-loop
+          return self._build_shuffle_dataset(
+              range_limit=range_limit,
+              num_repeats=num_repeats,
+              buffer_size=buffer_size,
+              seed=None,  # Iterator seeds are generated non-deterministically.
+              reshuffle_each_iteration=reshuffle_each_iteration)
+          # pylint: enable=cell-var-from-loop
 
-      # Assert that the shuffled dataset has the same elements as the
-      # "ground truth" when the buffer size is smaller than the input
-      # dataset.
-      sess.run(
-          init_shuffle_op,
-          feed_dict={buffer_size_placeholder: 2,
-                     seed_placeholder: 37})
-      reshuffled_elements_small_buffer = []
-      for _ in range(20):
-        reshuffled_elements_small_buffer.append(sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      self.assertAllEqual(
-          sorted(unshuffled_elements), sorted(reshuffled_elements_small_buffer))
+        with ops.Graph().as_default() as g:
+          ds = ds_fn()
+          iterators = [ds.make_one_shot_iterator(), ds.make_one_shot_iterator()]
+          get_next_ops = [it.get_next() for it in iterators]
+          saveables = [
+              contrib_iterator_ops.make_saveable_from_iterator(it)
+              for it in iterators
+          ]
+          for saveable in saveables:
+            ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+          saver = saver_lib.Saver(allow_empty=True)
+          with self.test_session(graph=g) as sess:
+            self._save(sess, saver)
+            expected = [sess.run(get_next_ops) for _ in range(num_outputs)]
+            self._restore(saver, sess)
+            actual = [sess.run(get_next_ops) for _ in range(num_outputs)]
+            self.match(expected, actual)
 
-      # Test the case of shuffling an empty dataset.
-      sess.run(init_shuffle_op, feed_dict={buffer_size_placeholder: 2,
-                                           seed_placeholder: 37,
-                                           count_placeholder: 0})
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
 
-  def testDefaultArguments(self):
-    components = [0, 1, 2, 3, 4]
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components).shuffle(5)
-                .repeat().make_one_shot_iterator())
+class ShuffleAndRepeatTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
 
-    get_next = iterator.get_next()
+  def _build_ds(self, seed, count=5, num_elements=20):
+    return dataset_ops.Dataset.range(num_elements).apply(
+        shuffle_ops.shuffle_and_repeat(buffer_size=5, count=count, seed=seed))
 
-    with self.test_session() as sess:
-      counts = collections.defaultdict(lambda: 0)
-      for _ in range(10):
-        for _ in range(5):
-          counts[sess.run(get_next)] += 1
-
+  def testCorrectOutput(self):
+    output = self.gen_outputs(lambda: self._build_ds(10), [], 100)
+    self.assertSequenceEqual(
+        sorted(output), sorted(
+            np.array([range(20) for _ in range(5)]).flatten()))
     for i in range(5):
-      self.assertEqual(10, counts[i])
+      self.assertSequenceEqual(sorted(output[i * 20:(i + 1) * 20]), range(20))
+
+  def testReshuffling(self):
+    # Check that the output orders of different epochs are indeed different.
+    output = self.gen_outputs(lambda: self._build_ds(10), [], 100)
+    for i in range(4):
+      epoch1 = output[i * 20:(i + 1) * 20]
+      epoch2 = output[(i + 1) * 20:(i + 2) * 20]
+      self.assertNotEqual(epoch1, epoch2)
+
+  def testSameOrderForSameSeeds(self):
+    output1 = self.gen_outputs(lambda: self._build_ds(10), [], 100)
+    output2 = self.gen_outputs(lambda: self._build_ds(10), [], 100)
+    self.assertEqual(output1, output2)
+
+  def testDifferentOrderForDifferentSeeds(self):
+    output1 = self.gen_outputs(lambda: self._build_ds(10), [], 100)
+    output2 = self.gen_outputs(lambda: self._build_ds(20), [], 100)
+    self.assertNotEqual(output1, output2)
+    self.assertEqual(sorted(output1), sorted(output2))
+
+  def testCountNone(self):
+    output1 = self.gen_outputs(
+        lambda: self._build_ds(10, count=None), [], 100, verify_exhausted=False)
+    output2 = self.gen_outputs(
+        lambda: self._build_ds(20, count=None), [], 100, verify_exhausted=False)
+    self.assertNotEqual(output1, output2)
+    self.assertEqual(sorted(output1), sorted(output2))
+
+  def testCountMinusOne(self):
+    output1 = self.gen_outputs(
+        lambda: self._build_ds(10, count=-1), [], 100, verify_exhausted=False)
+    output2 = self.gen_outputs(
+        lambda: self._build_ds(20, count=-1), [], 100, verify_exhausted=False)
+    self.assertNotEqual(output1, output2)
+    self.assertEqual(sorted(output1), sorted(output2))
+
+  def testInfiniteOutputs(self):
+    # Asserting the iterator is exhausted after producing 100 items should fail.
+    with self.assertRaises(AssertionError):
+      self.gen_outputs(lambda: self._build_ds(10, count=None), [], 100)
+    with self.assertRaises(AssertionError):
+      self.gen_outputs(lambda: self._build_ds(10, count=-1), [], 100)
+
+  def testInfiniteEmpty(self):
+    with self.assertRaises(errors.OutOfRangeError):
+      self.gen_outputs(lambda: self._build_ds(10, count=None, num_elements=0),
+                       [], 100)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.gen_outputs(lambda: self._build_ds(10, count=-1, num_elements=0), [],
+                       100)
+
+  def testLargeBufferSize(self):
+    with ops.Graph().as_default() as g:
+      ds = dataset_ops.Dataset.range(20).apply(
+          shuffle_ops.shuffle_and_repeat(buffer_size=21))
+      get_next_op = ds.make_one_shot_iterator().get_next()
+      with self.test_session(graph=g) as sess:
+        sess.run(get_next_op)
+
+
+class ShuffleAndRepeatSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_ds(self, seed):
+    return dataset_ops.Dataset.range(20).apply(
+        shuffle_ops.shuffle_and_repeat(buffer_size=5, count=5, seed=seed))
+
+  def testCore(self):
+    self.run_core_tests(lambda: self._build_ds(10), lambda: self._build_ds(20),
+                        100)
 
 
 if __name__ == "__main__":

@@ -24,9 +24,13 @@ limitations under the License.
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope_internal.h"
+#include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
 #endif
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -36,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -56,12 +61,9 @@ limitations under the License.
 
 // The implementation below is at the top level instead of the
 // brain namespace because we are defining 'extern "C"' functions.
-using tensorflow::error::Code;
-using tensorflow::errors::InvalidArgument;
-using tensorflow::gtl::ArraySlice;
-using tensorflow::strings::StrCat;
 using tensorflow::AllocationDescription;
 using tensorflow::DataType;
+using tensorflow::ExtendSessionGraphHelper;
 using tensorflow::Graph;
 using tensorflow::GraphDef;
 using tensorflow::mutex_lock;
@@ -69,20 +71,28 @@ using tensorflow::NameRangeMap;
 using tensorflow::NameRangesForNode;
 using tensorflow::NewSession;
 using tensorflow::Node;
-using tensorflow::NodeDef;
 using tensorflow::NodeBuilder;
+using tensorflow::NodeDef;
 using tensorflow::OpDef;
 using tensorflow::OpRegistry;
+using tensorflow::OutputTensor;
 using tensorflow::PartialTensorShape;
 using tensorflow::RunMetadata;
 using tensorflow::RunOptions;
 using tensorflow::Session;
 using tensorflow::Status;
+using tensorflow::string;
 using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
 using tensorflow::TensorId;
 using tensorflow::TensorShape;
 using tensorflow::TensorShapeProto;
+using tensorflow::VersionDef;
+using tensorflow::error::Code;
+using tensorflow::errors::FailedPrecondition;
+using tensorflow::errors::InvalidArgument;
+using tensorflow::gtl::ArraySlice;
+using tensorflow::strings::StrCat;
 
 extern "C" {
 
@@ -102,6 +112,10 @@ TF_Status* TF_NewStatus() { return new TF_Status; }
 void TF_DeleteStatus(TF_Status* s) { delete s; }
 
 void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
+  if (code == TF_OK) {
+    s->status = Status::OK();
+    return;
+  }
   s->status = Status(static_cast<Code>(code), tensorflow::StringPiece(msg));
 }
 
@@ -143,7 +157,7 @@ class TF_ManagedBuffer : public TensorBuffer {
 void* allocate_tensor(const char* operation, size_t len) {
   void* data =
       tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
-  if (tensorflow::LogMemory::IsEnabled()) {
+  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
     tensorflow::LogMemory::RecordRawAllocation(
         operation, tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID,
         len, data, tensorflow::cpu_allocator());
@@ -152,7 +166,7 @@ void* allocate_tensor(const char* operation, size_t len) {
 }
 
 void deallocate_buffer(void* data, size_t len, void* arg) {
-  if (tensorflow::LogMemory::IsEnabled()) {
+  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
     tensorflow::LogMemory::RecordRawDeallocation(
         "TensorFlow C Api",
         tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, data,
@@ -161,23 +175,9 @@ void deallocate_buffer(void* data, size_t len, void* arg) {
   tensorflow::cpu_allocator()->DeallocateRaw(data);
 }
 
-Status MessageToBuffer(const tensorflow::protobuf::Message& in,
-                       TF_Buffer* out) {
-  if (out->data != nullptr) {
-    return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
-  }
-  const auto proto_size = in.ByteSize();
-  void* buf = tensorflow::port::Malloc(proto_size);
-  in.SerializeToArray(buf, proto_size);
-  out->data = buf;
-  out->length = proto_size;
-  out->data_deallocator = [](void* data, size_t length) {
-    tensorflow::port::Free(data);
-  };
-  return Status::OK();
-}
-
 }  // namespace
+
+TF_Tensor::~TF_Tensor() { buffer->Unref(); }
 
 TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
                              int num_dims, size_t len) {
@@ -197,9 +197,16 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
 
   TF_ManagedBuffer* buf = new TF_ManagedBuffer;
   buf->len_ = len;
-  if (reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
-    // Copy the data into a buffer that satisfies Eigen's alignment
-    // requirements.
+  if (dtype != TF_STRING && dtype != TF_RESOURCE &&
+      tensorflow::DataTypeCanUseMemcpy(static_cast<DataType>(dtype)) &&
+      reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
+    // TF_STRING and TF_RESOURCE tensors have a different representation in
+    // TF_Tensor than they do in tensorflow::Tensor. So a copy here is a waste
+    // (any alignment requirements will be taken care of by TF_TensorToTensor
+    // and TF_TensorFromTensor).
+    //
+    // Other types have the same representation, so copy only if it is safe to
+    // do so.
     buf->data_ = allocate_tensor("TF_NewTensor", len);
     std::memcpy(buf->data_, data, len);
     buf->deallocator_ = deallocate_buffer;
@@ -211,25 +218,28 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     buf->deallocator_ = deallocator;
     buf->deallocator_arg_ = deallocator_arg;
   }
-  return new TF_Tensor{dtype, TensorShape(dimvec), buf};
+  TF_Tensor* ret = new TF_Tensor{dtype, TensorShape(dimvec), buf};
+  size_t elem_size = TF_DataTypeSize(dtype);
+  if (elem_size > 0 && len < (elem_size * ret->shape.num_elements())) {
+    delete ret;
+    return nullptr;
+  }
+  return ret;
 }
 
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* tensor) {
   // It is safe to move the Tensor if and only if we own the unique reference to
   // it. In that case, we might as well not delete and reallocate, but a future
   // implementation might need to do so.
-  if (tensor->buffer->RefCountIsOne() &&
-      tensor->buffer->root_buffer()->RefCountIsOne() &&
-      tensor->buffer->OwnsMemory()) {
+  TensorBuffer* buf = tensor->buffer;
+  if (buf->RefCountIsOne() && buf->root_buffer()->RefCountIsOne() &&
+      buf->OwnsMemory()) {
     return tensor;
   }
   return nullptr;
 }
 
-void TF_DeleteTensor(TF_Tensor* t) {
-  t->buffer->Unref();
-  delete t;
-}
+void TF_DeleteTensor(TF_Tensor* t) { delete t; }
 
 TF_DataType TF_TensorType(const TF_Tensor* t) { return t->dtype; }
 int TF_NumDims(const TF_Tensor* t) { return t->shape.dims(); }
@@ -258,24 +268,27 @@ size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
   return sz;
 }
 
-size_t TF_StringDecode(const char* src, size_t src_len, const char** dst,
-                       size_t* dst_len, TF_Status* status) {
+static Status TF_StringDecode_Impl(const char* src, size_t src_len,
+                                   const char** dst, size_t* dst_len) {
   tensorflow::uint64 len64 = 0;
   const char* p = tensorflow::core::GetVarint64Ptr(src, src + src_len, &len64);
   if (p == nullptr) {
-    status->status =
-        InvalidArgument("invalid string encoding or truncated src buffer");
-    return 0;
+    return InvalidArgument("invalid string encoding or truncated src buffer");
   }
   if (len64 > std::numeric_limits<size_t>::max()) {
-    status->status =
-        InvalidArgument("encoded string is ", len64,
-                        "-bytes, which is too large for this architecture");
-    return 0;
+    return InvalidArgument("encoded string is ", len64,
+                           "-bytes, which is too large for this architecture");
   }
   *dst = p;
   *dst_len = static_cast<size_t>(len64);
-  return static_cast<size_t>(p - src) + *dst_len;
+  return Status::OK();
+}
+
+size_t TF_StringDecode(const char* src, size_t src_len, const char** dst,
+                       size_t* dst_len, TF_Status* status) {
+  status->status = TF_StringDecode_Impl(src, src_len, dst, dst_len);
+  if (!status->status.ok()) return 0;
+  return static_cast<size_t>(*dst - src) + *dst_len;
 }
 
 size_t TF_StringEncodedSize(size_t len) {
@@ -369,7 +382,7 @@ namespace {
 // Reset helper for converting character arrays to string vectors.
 void TF_Reset_Helper(const TF_SessionOptions* opt, const char** containers,
                      int ncontainers, TF_Status* status) {
-  std::vector<tensorflow::string> container_names(ncontainers);
+  std::vector<string> container_names(ncontainers);
   for (int i = 0; i < ncontainers; ++i) {
     container_names[i] = containers[i];
   }
@@ -377,6 +390,64 @@ void TF_Reset_Helper(const TF_SessionOptions* opt, const char** containers,
   status->status = Reset(opt->options, container_names);
 }
 
+// This traverses the specified nodes in topological order to verify there are
+// no cycles. Starting with inputless nodes, it visits nodes whose inputs have
+// all been visited, and counts the total number of visited nodes. If there is a
+// cycle, nodes in the cycle will never be visited, and the visited count will
+// be less than the total node count.
+Status ValidateNoCycles(const Graph& g) {
+  // TODO(nolivia): check this on a subset of the graph instead of all of it.
+  // A node is ready when all of its inputs have been visited.
+  std::vector<const Node*> ready;
+  std::vector<int> pending_count(g.num_node_ids(), 0);
+
+  for (int i = 0; i < g.num_node_ids(); ++i) {
+    const Node* n = g.FindNodeId(i);
+    if (n == nullptr) continue;
+    pending_count[i] = n->in_edges().size();
+    if (n->IsMerge()) {
+      // While-loop cycles are legal cycles so we manually adjust the
+      // pending_count to make sure that the loop is visited.
+      for (const Edge* e : n->in_edges()) {
+        if (!e->IsControlEdge() && e->src()->IsNextIteration()) {
+          pending_count[i]--;
+        }
+      }
+    }
+    if (pending_count[i] == 0) {
+      ready.push_back(n);
+    }
+  }
+
+  int processed = 0;
+  while (!ready.empty()) {
+    const Node* node = ready.back();
+    ready.pop_back();
+    ++processed;
+
+    for (const Edge* out : node->out_edges()) {
+      const int output_id = out->dst()->id();
+      pending_count[output_id]--;
+      if (pending_count[output_id] == 0) {
+        ready.push_back(out->dst());
+      }
+    }
+  }
+
+  if (processed < g.num_nodes()) {
+    std::vector<string> nodes_in_cycle;
+    for (int i = 0; i < pending_count.size() && nodes_in_cycle.size() < 3;
+         ++i) {
+      if (pending_count[i] != 0) {
+        nodes_in_cycle.push_back(g.FindNodeId(i)->name());
+      }
+    }
+    return errors::InvalidArgument(
+        "Graph is invalid, contains a cycle with ", g.num_nodes() - processed,
+        " nodes, including: ", str_util::Join(nodes_in_cycle, ", "));
+  }
+  return Status::OK();
+}
 }  // namespace
 }  // namespace tensorflow
 
@@ -391,82 +462,57 @@ void TF_Reset(const TF_SessionOptions* opt, const char** containers,
 
 namespace tensorflow {
 
-// Non-static for testing.
-bool TF_Tensor_DecodeStrings(TF_Tensor* src, Tensor* dst, TF_Status* status) {
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
+  if (src->dtype == TF_RESOURCE) {
+    if (src->shape.dims() != 0) {
+      return InvalidArgument(
+          "Malformed TF_RESOURCE tensor: expected a scalar, got a tensor with "
+          "shape ",
+          src->shape.DebugString());
+    }
+    *dst = Tensor(DT_RESOURCE, src->shape);
+    if (!dst->scalar<ResourceHandle>()().ParseFromString(
+            string(static_cast<const char*>(TF_TensorData(src)),
+                   TF_TensorByteSize(src)))) {
+      return InvalidArgument(
+          "Malformed TF_RESOUCE tensor: unable to parse resource handle");
+    }
+    return Status::OK();
+  }
+  if (src->dtype != TF_STRING) {
+    *dst = TensorCApi::MakeTensor(src->dtype, src->shape, src->buffer);
+    return Status::OK();
+  }
+  // TF_STRING tensors require copying since Tensor class expects a sequence of
+  // string objects.
   const tensorflow::int64 num_elements = src->shape.num_elements();
   const char* input = reinterpret_cast<const char*>(TF_TensorData(src));
   const size_t src_size = TF_TensorByteSize(src);
   if (static_cast<tensorflow::int64>(src_size / sizeof(tensorflow::uint64)) <
       num_elements) {
-    status->status = InvalidArgument(
+    return InvalidArgument(
         "Malformed TF_STRING tensor; too short to hold number of elements");
-    return false;
   }
   const char* data_start = input + sizeof(tensorflow::uint64) * num_elements;
   const char* limit = input + src_size;
 
   *dst = Tensor(static_cast<DataType>(src->dtype), src->shape);
-  auto dstarray = dst->flat<tensorflow::string>();
+  auto dstarray = dst->flat<string>();
   for (tensorflow::int64 i = 0; i < num_elements; ++i) {
     tensorflow::uint64 offset =
         reinterpret_cast<const tensorflow::uint64*>(input)[i];
     if (static_cast<ptrdiff_t>(offset) >= (limit - data_start)) {
-      status->status = InvalidArgument("Malformed TF_STRING tensor; element ",
-                                       i, " out of range");
-      return false;
+      return InvalidArgument("Malformed TF_STRING tensor; element ", i,
+                             " out of range");
     }
     size_t len;
     const char* p;
     const char* srcp = data_start + offset;
-    TF_StringDecode(srcp, limit - srcp, &p, &len, status);
-    if (!status->status.ok()) {
-      return false;
-    }
+    Status status = TF_StringDecode_Impl(srcp, limit - srcp, &p, &len);
+    if (!status.ok()) return status;
     dstarray(i).assign(p, len);
   }
-  return true;
-}
-
-// Non-static for testing.
-TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
-  // Compute bytes needed for encoding.
-  size_t size = 0;
-  const auto& srcarray = src.flat<tensorflow::string>();
-  for (int i = 0; i < srcarray.size(); ++i) {
-    const tensorflow::string& s = srcarray(i);
-    // uint64 starting_offset, TF_StringEncode-d string.
-    size += sizeof(tensorflow::uint64) + TF_StringEncodedSize(s.size());
-  }
-
-  // Encode all strings.
-  char* base = new char[size];
-  char* data_start = base + sizeof(tensorflow::uint64) * srcarray.size();
-  char* dst = data_start;  // Where next string is encoded.
-  size_t dst_len = size - static_cast<size_t>(data_start - base);
-  tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
-  TF_Status status;
-  for (int i = 0; i < srcarray.size(); ++i) {
-    *offsets = (dst - data_start);
-    offsets++;
-    const tensorflow::string& s = srcarray(i);
-    size_t consumed =
-        TF_StringEncode(s.data(), s.size(), dst, dst_len, &status);
-    CHECK(status.status.ok());
-    dst += consumed;
-    dst_len -= consumed;
-  }
-  CHECK_EQ(dst, base + size);
-
-  auto dims = src.shape().dim_sizes();
-  std::vector<tensorflow::int64> dimvec(dims.size());
-  for (size_t i = 0; i < dims.size(); ++i) {
-    dimvec[i] = dims[i];
-  }
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                "64-bit int types should match in size");
-  return TF_NewTensor(TF_STRING,
-                      reinterpret_cast<const int64_t*>(dimvec.data()),
-                      dimvec.size(), base, size, DeleteArray, base);
+  return Status::OK();
 }
 
 // Create an empty tensor of type 'dtype'. 'shape' can be arbitrary, but has to
@@ -487,9 +533,253 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype, const TensorShape& shape) {
                       [](void*, size_t, void*) {}, nullptr);
 }
 
+// Non-static for testing.
+TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
+                               TF_Status* status) {
+  if (!src.IsInitialized()) {
+    status->status = FailedPrecondition(
+        "attempt to use a tensor with an uninitialized value");
+    return nullptr;
+  }
+  if (src.NumElements() == 0) {
+    return EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
+  }
+  if (src.dtype() == DT_RESOURCE) {
+    if (src.shape().dims() != 0) {
+      status->status = InvalidArgument(
+          "Unexpected non-scalar DT_RESOURCE tensor seen (shape: ",
+          src.shape().DebugString(),
+          "). Please file a bug at "
+          "https://github.com/tensorflow/tensorflow/issues/new, "
+          "ideally with a "
+          "short code snippet that reproduces this error.");
+      return nullptr;
+    }
+    const string str = src.scalar<ResourceHandle>()().SerializeAsString();
+    TF_Tensor* t = TF_AllocateTensor(TF_RESOURCE, {}, 0, str.size());
+    std::memcpy(TF_TensorData(t), str.c_str(), str.size());
+    return t;
+  }
+  if (src.dtype() != DT_STRING) {
+    TensorBuffer* buf = TensorCApi::Buffer(src);
+    buf->Ref();
+    return new TF_Tensor{static_cast<TF_DataType>(src.dtype()), src.shape(),
+                         buf};
+  }
+  // DT_STRING tensors require a copying since TF_Tensor.buffer expects a flatly
+  // encoded sequence of strings.
+
+  // Compute bytes needed for encoding.
+  size_t size = 0;
+  const auto& srcarray = src.flat<string>();
+  for (int i = 0; i < srcarray.size(); ++i) {
+    const string& s = srcarray(i);
+    // uint64 starting_offset, TF_StringEncode-d string.
+    size += sizeof(tensorflow::uint64) + TF_StringEncodedSize(s.size());
+  }
+
+  // Encode all strings.
+  char* base = new char[size];
+  char* data_start = base + sizeof(tensorflow::uint64) * srcarray.size();
+  char* dst = data_start;  // Where next string is encoded.
+  size_t dst_len = size - static_cast<size_t>(data_start - base);
+  tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
+  for (int i = 0; i < srcarray.size(); ++i) {
+    *offsets = (dst - data_start);
+    offsets++;
+    const string& s = srcarray(i);
+    size_t consumed = TF_StringEncode(s.data(), s.size(), dst, dst_len, status);
+    if (!status->status.ok()) {
+      status->status = InvalidArgument(
+          "invalid string tensor encoding (string #", i, " of ",
+          srcarray.size(), "): ", status->status.error_message());
+      delete[] base;
+      return nullptr;
+    }
+    dst += consumed;
+    dst_len -= consumed;
+  }
+  if (dst != base + size) {
+    status->status = InvalidArgument(
+        "invalid string tensor encoding (decoded ", (dst - base),
+        " bytes, but the tensor is encoded in ", size, " bytes");
+    delete[] base;
+    return nullptr;
+  }
+
+  auto dims = src.shape().dim_sizes();
+  std::vector<tensorflow::int64> dimvec(dims.size());
+  for (size_t i = 0; i < dims.size(); ++i) {
+    dimvec[i] = dims[i];
+  }
+  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                "64-bit int types should match in size");
+  return TF_NewTensor(TF_STRING,
+                      reinterpret_cast<const int64_t*>(dimvec.data()),
+                      dimvec.size(), base, size, DeleteArray, base);
+}
+
+Status MessageToBuffer(const tensorflow::protobuf::Message& in,
+                       TF_Buffer* out) {
+  if (out->data != nullptr) {
+    return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
+  }
+  const size_t proto_size = in.ByteSizeLong();
+  void* buf = tensorflow::port::Malloc(proto_size);
+  if (buf == nullptr) {
+    return tensorflow::errors::ResourceExhausted(
+        "Failed to allocate memory to serialize message of type '",
+        in.GetTypeName(), "' and size ", proto_size);
+  }
+  // SerializeToArray takes size as an int.
+  // This next 'if' is a workaround till we update to depend on a version
+  // of protocol buffers that includes
+  // https://github.com/google/protobuf/pull/4739
+  if (proto_size > std::numeric_limits<int>::max()) {
+    return InvalidArgument("Cannot serialize protocol buffer of type ",
+                           in.GetTypeName(), " as the serialized size (",
+                           proto_size,
+                           "bytes) would be larger than the limit (",
+                           std::numeric_limits<int>::max(), " bytes)");
+  }
+  if (!in.SerializeToArray(buf, proto_size)) {
+    return InvalidArgument("Unable to serialize ", in.GetTypeName(),
+                           " protocol buffer, perhaps the serialized size (",
+                           proto_size, " bytes) is too large?");
+  }
+  out->data = buf;
+  out->length = proto_size;
+  out->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+  return Status::OK();
+}
+
+void RecordMutation(TF_Graph* graph, const TF_Operation& op,
+                    const char* mutation_type) {
+  // If any session has already run this node_id, mark this session as
+  // unrunnable.
+  for (auto it : graph->sessions) {
+    mutex_lock session_lock(it.first->mu);
+    if (it.first->last_num_graph_nodes > op.node.id()) {
+      it.second = strings::StrCat(
+          "Operation '", op.node.DebugString(), "' was changed by ",
+          mutation_type,
+          " after it was run by a session. This mutation will have no effect, "
+          "and will trigger an error in the future. Either don't modify "
+          "nodes after running them or create a new session.");
+    }
+  }
+}
+
+namespace {
+
+// Helper method that creates a shape handle for a shape described by dims.
+tensorflow::shape_inference::ShapeHandle ShapeHandleFromDims(
+    tensorflow::shape_inference::InferenceContext* ic, int num_dims,
+    const int64_t* dims) {
+  if (num_dims != -1) {
+    std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
+    dim_vec.reserve(num_dims);
+    for (int i = 0; i < num_dims; ++i) {
+      dim_vec.push_back(ic->MakeDim(dims[i]));
+    }
+    return ic->MakeShape(dim_vec);
+  } else {
+    return ic->UnknownShape();
+  }
+}
+
+}  // namespace
+
+void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
+                                           int num_shapes_and_types,
+                                           const int64_t** shapes,
+                                           const int* ranks,
+                                           const TF_DataType* types,
+                                           TF_Status* status) {
+  Node* node = &output.oper->node;
+
+  mutex_lock l(graph->mu);
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(node);
+  if (ic == nullptr) {
+    status->status =
+        InvalidArgument("Node ", node->name(), " was not found in the graph");
+    return;
+  }
+
+  auto shape_and_type_vec =
+      std::vector<tensorflow::shape_inference::ShapeAndType>(
+          num_shapes_and_types);
+  for (int i = 0; i < num_shapes_and_types; ++i) {
+    tensorflow::shape_inference::ShapeHandle shape_handle =
+        ShapeHandleFromDims(ic, ranks[i], shapes[i]);
+    shape_and_type_vec[i] = tensorflow::shape_inference::ShapeAndType(
+        shape_handle, static_cast<DataType>(types[i]));
+  }
+
+  ic->set_output_handle_shapes_and_types(output.index, shape_and_type_vec);
+}
+
 // Helpers for loading a TensorFlow plugin (a .so file).
 Status LoadLibrary(const char* library_filename, void** result,
                    const void** buf, size_t* len);
+
+// TODO(josh11b,mrry): Change Session to be able to use a Graph*
+// directly, instead of requiring us to serialize to a GraphDef and
+// call Session::Extend().
+bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
+  if (session->graph != nullptr) {
+    // Take the graph lock before the session lock to avoid deadlock. This is
+    // safe since session->graph does not change.
+    session->graph->mu.lock();
+    mutex_lock session_lock(session->mu);
+    const Graph& graph = session->graph->graph;
+
+    const string& mutation_warning = session->graph->sessions[session];
+    if (!mutation_warning.empty()) {
+      // TODO(b/74949947): turn this back into an error status
+      LOG(WARNING) << mutation_warning;
+      session->graph->sessions[session].clear();
+    }
+
+    const auto num_nodes = graph.num_node_ids();
+    if (session->last_num_graph_nodes < num_nodes) {
+      status->status = tensorflow::ValidateNoCycles(session->graph->graph);
+      if (!status->status.ok()) {
+        session->graph->mu.unlock();
+        return false;
+      }
+
+      GraphDef graph_def;
+      *graph_def.mutable_versions() = graph.versions();
+      // Fill graph_def with nodes with ids in the range
+      // [session->last_num_graph_nodes, num_nodes), that is the nodes
+      // added since the last TF_SessionRun() call.
+      for (auto id = session->last_num_graph_nodes; id < num_nodes; ++id) {
+        Node* const node = graph.FindNodeId(id);
+        if (node != nullptr && node->IsOp()) {
+          NodeDef* const node_def = graph_def.add_node();
+          *node_def = node->def();
+        }
+      }
+      *graph_def.mutable_library() = graph.flib_def().ToProto();
+      session->graph->mu.unlock();
+      status->status = session->session->Extend(graph_def);
+      if (!status->status.ok()) {
+        // Contract is we always delete input_values[i].
+        return false;
+      }
+      // Note: session->session is not modified if Extend() fails, so
+      // we only set last_num_graph_nodes if it succeeds.
+      session->last_num_graph_nodes = num_nodes;
+    } else {
+      session->graph->mu.unlock();
+    }
+  }
+  return true;
+}
 
 }  // namespace tensorflow
 
@@ -501,22 +791,13 @@ static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
   }
 }
 
-static bool TF_Run_Inputs(
-    TF_Tensor* const* c_inputs,
-    std::vector<std::pair<tensorflow::string, Tensor>>* input_pairs,
-    TF_Status* status) {
+static bool TF_Run_Inputs(TF_Tensor* const* c_inputs,
+                          std::vector<std::pair<string, Tensor>>* input_pairs,
+                          TF_Status* status) {
   const int ninputs = input_pairs->size();
   for (int i = 0; i < ninputs; ++i) {
-    TF_Tensor* src = c_inputs[i];
-    if (c_inputs[i]->dtype != TF_STRING) {
-      (*input_pairs)[i].second = tensorflow::TensorCApi::MakeTensor(
-          src->dtype, src->shape, src->buffer);
-    } else if (!tensorflow::TF_Tensor_DecodeStrings(
-                   src, &(*input_pairs)[i].second, status)) {
-      // TF_STRING tensors require copying since Tensor class expects
-      // a sequence of string objects.
-      return false;
-    }
+    status->status = TF_TensorToTensor(c_inputs[i], &(*input_pairs)[i].second);
+    if (!status->status.ok()) return false;
   }
   return true;
 }
@@ -524,13 +805,12 @@ static bool TF_Run_Inputs(
 static void TF_Run_Helper(
     Session* session, const char* handle, const TF_Buffer* run_options,
     // Input tensors
-    const std::vector<std::pair<tensorflow::string, Tensor>>& input_pairs,
+    const std::vector<std::pair<string, Tensor>>& input_pairs,
     // Output tensors
-    const std::vector<tensorflow::string>& output_tensor_names,
-    TF_Tensor** c_outputs,
+    const std::vector<string>& output_tensor_names, TF_Tensor** c_outputs,
     // Target nodes
-    const std::vector<tensorflow::string>& target_oper_names,
-    TF_Buffer* run_metadata, TF_Status* status) {
+    const std::vector<string>& target_oper_names, TF_Buffer* run_metadata,
+    TF_Status* status) {
   const int noutputs = output_tensor_names.size();
   std::vector<Tensor> outputs(noutputs);
   Status result;
@@ -570,19 +850,12 @@ static void TF_Run_Helper(
   for (int i = 0; i < noutputs; ++i) {
     const Tensor& src = outputs[i];
     if (!src.IsInitialized() || src.NumElements() == 0) {
-      c_outputs[i] = tensorflow::EmptyTensor(
-          static_cast<TF_DataType>(src.dtype()), src.shape());
+      c_outputs[i] =
+          EmptyTensor(static_cast<TF_DataType>(src.dtype()), src.shape());
       continue;
     }
-    if (src.dtype() != tensorflow::DT_STRING) {
-      // Share the underlying buffer.
-      TensorBuffer* buf = tensorflow::TensorCApi::Buffer(src);
-      buf->Ref();
-      c_outputs[i] = new TF_Tensor{static_cast<TF_DataType>(src.dtype()),
-                                   src.shape(), buf};
-    } else {
-      c_outputs[i] = tensorflow::TF_Tensor_EncodeStrings(src);
-    }
+    c_outputs[i] = TF_TensorFromTensor(src, status);
+    if (!status->status.ok()) return;
   }
 }
 
@@ -597,16 +870,16 @@ void TF_Run(TF_DeprecatedSession* s, const TF_Buffer* run_options,
             const char** c_target_oper_names, int ntargets,
             TF_Buffer* run_metadata, TF_Status* status) {
   TF_Run_Setup(noutputs, c_outputs, status);
-  std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
+  std::vector<std::pair<string, Tensor>> input_pairs(ninputs);
   if (!TF_Run_Inputs(c_inputs, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = c_input_names[i];
   }
-  std::vector<tensorflow::string> output_names(noutputs);
+  std::vector<string> output_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
     output_names[i] = c_output_names[i];
   }
-  std::vector<tensorflow::string> target_oper_names(ntargets);
+  std::vector<string> target_oper_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
     target_oper_names[i] = c_target_oper_names[i];
   }
@@ -624,9 +897,9 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
                   const char** handle, TF_Status* status) {
   *handle = nullptr;
 
-  std::vector<tensorflow::string> input_names(ninputs);
-  std::vector<tensorflow::string> output_names(noutputs);
-  std::vector<tensorflow::string> target_oper_names(ntargets);
+  std::vector<string> input_names(ninputs);
+  std::vector<string> output_names(noutputs);
+  std::vector<string> target_oper_names(ntargets);
   for (int i = 0; i < ninputs; ++i) {
     input_names[i] = c_input_names[i];
   }
@@ -636,7 +909,7 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
   for (int i = 0; i < ntargets; ++i) {
     target_oper_names[i] = c_target_oper_names[i];
   }
-  tensorflow::string new_handle;
+  string new_handle;
   status->status = s->session->PRunSetup(input_names, output_names,
                                          target_oper_names, &new_handle);
   if (status->status.ok()) {
@@ -655,17 +928,17 @@ void TF_PRun(TF_DeprecatedSession* s, const char* handle,
              const char** c_target_oper_names, int ntargets,
              TF_Status* status) {
   TF_Run_Setup(noutputs, c_outputs, status);
-  std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
+  std::vector<std::pair<string, Tensor>> input_pairs(ninputs);
   if (!TF_Run_Inputs(c_inputs, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = c_input_names[i];
   }
 
-  std::vector<tensorflow::string> output_names(noutputs);
+  std::vector<string> output_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
     output_names[i] = c_output_names[i];
   }
-  std::vector<tensorflow::string> target_oper_names(ntargets);
+  std::vector<string> target_oper_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
     target_oper_names[i] = c_target_oper_names[i];
   }
@@ -737,6 +1010,7 @@ int TF_DeviceListCount(const TF_DeviceList* list) {
       status->status = InvalidArgument("index out of bounds");            \
       return err_val;                                                     \
     }                                                                     \
+    status->status = Status::OK();                                        \
     return list->response[index].accessor;                                \
   }
 
@@ -760,7 +1034,7 @@ TF_Operation* ToOperation(Node* node) {
   return static_cast<TF_Operation*>(static_cast<void*>(node));
 }
 
-tensorflow::string OutputName(const TF_Output& output) {
+string OutputName(const TF_Output& output) {
   return StrCat(output.oper->node.name(), ":", output.index);
 }
 
@@ -769,11 +1043,35 @@ const tensorflow::AttrValue* GetAttrValue(TF_Operation* oper,
                                           TF_Status* status) {
   const tensorflow::AttrValue* attr = oper->node.attrs().Find(attr_name);
   if (attr == nullptr) {
-    status->status =
-        InvalidArgument("Operation has no attr named '", attr_name, "'.");
+    status->status = InvalidArgument("Operation '", oper->node.name(),
+                                     "' has no attr named '", attr_name, "'.");
   }
   return attr;
 }
+
+TensorId ToTensorId(const TF_Output& output) {
+  return TensorId(output.oper->node.name(), output.index);
+}
+
+#ifndef __ANDROID__
+std::vector<tensorflow::Output> OutputsFromTFOutputs(TF_Output* tf_outputs,
+                                                     int n) {
+  std::vector<tensorflow::Output> outputs(n);
+  for (int i = 0; i < n; ++i) {
+    outputs[i] =
+        tensorflow::Output(&tf_outputs[i].oper->node, tf_outputs[i].index);
+  }
+  return outputs;
+}
+
+void TFOutputsFromOutputs(const std::vector<tensorflow::Output>& outputs,
+                          TF_Output* tf_outputs) {
+  for (int i = 0; i < outputs.size(); i++) {
+    tf_outputs[i].oper = ToOperation(outputs[i].node());
+    tf_outputs[i].index = outputs[i].index();
+  }
+}
+#endif  // __ANDROID__
 
 }  // namespace
 
@@ -785,7 +1083,6 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
   Node* node = &output.oper->node;
 
   mutex_lock l(graph->mu);
-  // Set the shape.
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(node);
   if (ic == nullptr) {
@@ -793,14 +1090,8 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
         InvalidArgument("Node ", node->name(), " was not found in the graph");
     return;
   }
-
-  std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
-  dim_vec.reserve(num_dims);
-  for (int i = 0; i < num_dims; ++i) {
-    dim_vec.push_back(ic->MakeDim(dims[i]));
-  }
-
-  tensorflow::shape_inference::ShapeHandle new_shape = ic->MakeShape(dim_vec);
+  tensorflow::shape_inference::ShapeHandle new_shape =
+      tensorflow::ShapeHandleFromDims(ic, num_dims, dims);
   status->status = graph->refiner.SetShape(node, output.index, new_shape);
 }
 
@@ -910,7 +1201,7 @@ void TF_AddControlInput(TF_OperationDescription* desc, TF_Operation* input) {
 }
 
 void TF_ColocateWith(TF_OperationDescription* desc, TF_Operation* op) {
-  desc->colocation_constraints.emplace_back(
+  desc->colocation_constraints.emplace(
       StrCat(tensorflow::kColocationGroupPrefix, op->node.name()));
 }
 
@@ -923,12 +1214,20 @@ void TF_SetAttrString(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrStringList(TF_OperationDescription* desc, const char* attr_name,
                           const void* const* values, const size_t* lengths,
                           int num_values) {
-  std::vector<tensorflow::StringPiece> v;
-  v.reserve(num_values);
-  for (int i = 0; i < num_values; ++i) {
-    v.emplace_back(static_cast<const char*>(values[i]), lengths[i]);
+  if (strcmp(attr_name, tensorflow::kColocationAttrName) == 0) {
+    desc->colocation_constraints.clear();
+    for (int i = 0; i < num_values; ++i) {
+      desc->colocation_constraints.emplace(static_cast<const char*>(values[i]),
+                                           lengths[i]);
+    }
+  } else {
+    std::vector<tensorflow::StringPiece> v;
+    v.reserve(num_values);
+    for (int i = 0; i < num_values; ++i) {
+      v.emplace_back(static_cast<const char*>(values[i]), lengths[i]);
+    }
+    desc->node_builder.Attr(attr_name, v);
   }
-  desc->node_builder.Attr(attr_name, v);
 }
 
 void TF_SetAttrInt(TF_OperationDescription* desc, const char* attr_name,
@@ -984,6 +1283,13 @@ void TF_SetAttrTypeList(TF_OperationDescription* desc, const char* attr_name,
   desc->node_builder.Attr(
       attr_name, ArraySlice<const DataType>(
                      reinterpret_cast<const DataType*>(values), num_values));
+}
+
+void TF_SetAttrFuncName(TF_OperationDescription* desc, const char* attr_name,
+                        const char* value, size_t length) {
+  tensorflow::NameAttrList func_name;
+  func_name.set_name(std::string(value, value + length));
+  desc->node_builder.Attr(attr_name, func_name);
 }
 
 void TF_SetAttrShape(TF_OperationDescription* desc, const char* attr_name,
@@ -1062,20 +1368,9 @@ void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
 
 void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
                       TF_Tensor* value, TF_Status* status) {
-  status->status = Status::OK();
   Tensor t;
-  bool ok = true;
-
-  if (value->dtype != TF_STRING) {
-    t = tensorflow::TensorCApi::MakeTensor(value->dtype, value->shape,
-                                           value->buffer);
-  } else {
-    // TF_STRING tensors require copying since Tensor class expects
-    // a sequence of string objects.
-    ok = tensorflow::TF_Tensor_DecodeStrings(value, &t, status);
-  }
-
-  if (ok) desc->node_builder.Attr(attr_name, t);
+  status->status = TF_TensorToTensor(value, &t);
+  if (status->status.ok()) desc->node_builder.Attr(attr_name, t);
 }
 
 void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
@@ -1084,33 +1379,42 @@ void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
   status->status = Status::OK();
   std::vector<Tensor> t;
   t.reserve(num_values);
-  bool ok = true;
 
-  for (int i = 0; i < num_values && ok; ++i) {
-    if (values[i]->dtype != TF_STRING) {
-      t.emplace_back(tensorflow::TensorCApi::MakeTensor(
-          values[i]->dtype, values[i]->shape, values[i]->buffer));
-    } else {
-      t.emplace_back(::tensorflow::DT_STRING);
-      // TF_STRING tensors require copying since Tensor class expects
-      // a sequence of string objects.
-      ok = tensorflow::TF_Tensor_DecodeStrings(values[i], &t.back(), status);
-    }
+  for (int i = 0; i < num_values && status->status.ok(); ++i) {
+    Tensor v;
+    status->status = TF_TensorToTensor(values[i], &v);
+    t.emplace_back(v);
   }
 
-  if (ok) desc->node_builder.Attr(attr_name, t);
+  if (status->status.ok()) desc->node_builder.Attr(attr_name, t);
 }
 
 void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
                           const void* proto, size_t proto_len,
                           TF_Status* status) {
   tensorflow::AttrValue attr_value;
-  if (attr_value.ParseFromArray(proto, proto_len)) {
-    desc->node_builder.Attr(attr_name, attr_value);
-    status->status = Status::OK();
-  } else {
+  if (!attr_value.ParseFromArray(proto, proto_len)) {
     status->status = InvalidArgument("Unparseable AttrValue proto");
+    return;
   }
+
+  if (strcmp(attr_name, tensorflow::kColocationAttrName) == 0) {
+    if (attr_value.value_case() != tensorflow::AttrValue::kList &&
+        attr_value.value_case() != tensorflow::AttrValue::VALUE_NOT_SET) {
+      status->status =
+          InvalidArgument("Expected \"list\" field for \"",
+                          tensorflow::kColocationAttrName, "\" attribute");
+      return;
+    }
+    desc->colocation_constraints.clear();
+    for (const string& location : attr_value.list().s()) {
+      desc->colocation_constraints.insert(location);
+    }
+  } else {
+    desc->node_builder.Attr(attr_name, attr_value);
+  }
+
+  status->status = Status::OK();
 }
 
 static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
@@ -1122,10 +1426,12 @@ static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
     status->status = InvalidArgument("Duplicate node name in graph: '",
                                      desc->node_builder.node_name(), "'");
   } else {
-    std::sort(desc->colocation_constraints.begin(),
-              desc->colocation_constraints.end());
-    desc->node_builder.Attr(tensorflow::kColocationAttrName,
-                            desc->colocation_constraints);
+    if (!desc->colocation_constraints.empty()) {
+      desc->node_builder.Attr(
+          tensorflow::kColocationAttrName,
+          std::vector<string>(desc->colocation_constraints.begin(),
+                              desc->colocation_constraints.end()));
+    }
     status->status = desc->node_builder.Finalize(&desc->graph->graph, &ret);
 
     if (status->status.ok()) {
@@ -1247,7 +1553,13 @@ int TF_OperationOutputConsumers(TF_Output oper_out, TF_Input* consumers,
 }
 
 int TF_OperationNumControlInputs(TF_Operation* oper) {
-  return oper->node.in_edges().size() - oper->node.num_inputs();
+  int count = 0;
+  for (const auto* edge : oper->node.in_edges()) {
+    if (edge->IsControlEdge() && !edge->src()->IsSource()) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 int TF_OperationGetControlInputs(TF_Operation* oper,
@@ -1255,7 +1567,7 @@ int TF_OperationGetControlInputs(TF_Operation* oper,
                                  int max_control_inputs) {
   int count = 0;
   for (const auto* edge : oper->node.in_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->src()->IsSource()) {
       if (count < max_control_inputs) {
         control_inputs[count] = ToOperation(edge->src());
       }
@@ -1268,7 +1580,7 @@ int TF_OperationGetControlInputs(TF_Operation* oper,
 int TF_OperationNumControlOutputs(TF_Operation* oper) {
   int count = 0;
   for (const auto* edge : oper->node.out_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->dst()->IsSink()) {
       ++count;
     }
   }
@@ -1280,7 +1592,7 @@ int TF_OperationGetControlOutputs(TF_Operation* oper,
                                   int max_control_outputs) {
   int count = 0;
   for (const auto* edge : oper->node.out_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->dst()->IsSink()) {
       if (count < max_control_outputs) {
         control_outputs[count] = ToOperation(edge->dst());
       }
@@ -1347,7 +1659,7 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
         for (int i = 0; i < oper->node.op_def().attr_size(); ++i) {
           const auto& a = oper->node.op_def().attr(i);
           if (a.name().compare(attr_name) != 0) continue;
-          const tensorflow::string& typestr = a.type();
+          const string& typestr = a.type();
           if (typestr == "list(string)") {
             metadata.type = TF_ATTR_STRING;
           } else if (typestr == "list(int)") {
@@ -1427,7 +1739,7 @@ void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
   const auto len = std::min(max_values, attr->list().s_size());
   char* p = static_cast<char*>(storage);
   for (int i = 0; i < len; ++i) {
-    const tensorflow::string& s = attr->list().s(i);
+    const string& s = attr->list().s(i);
     values[i] = p;
     lengths[i] = s.size();
     if ((p + s.size()) > (static_cast<char*>(storage) + storage_size)) {
@@ -1555,9 +1867,7 @@ void TF_OperationGetAttrTensor(TF_Operation* oper, const char* attr_name,
   Tensor t;
   status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &t);
   if (!status->status.ok()) return;
-  *value = new TF_Tensor{static_cast<TF_DataType>(t.dtype()), t.shape(),
-                         tensorflow::TensorCApi::Buffer(t)};
-  (*value)->buffer->Ref();
+  *value = TF_TensorFromTensor(t, status);
 }
 
 void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
@@ -1568,10 +1878,7 @@ void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
   if (!status->status.ok()) return;
   const auto len = std::min(max_values, static_cast<int>(ts.size()));
   for (int i = 0; i < len; ++i) {
-    const Tensor& t = ts[i];
-    values[i] = new TF_Tensor{static_cast<TF_DataType>(t.dtype()), t.shape(),
-                              tensorflow::TensorCApi::Buffer(t)};
-    values[i]->buffer->Ref();
+    values[i] = TF_TensorFromTensor(ts[i], status);
   }
 }
 
@@ -1593,7 +1900,6 @@ void TF_OperationToNodeDef(TF_Operation* oper, TF_Buffer* output_node_def,
 TF_Graph::TF_Graph()
     : graph(tensorflow::OpRegistry::Global()),
       refiner(graph.versions().producer(), graph.op_registry()),
-      num_sessions(0),
       delete_requested(false),
       parent(nullptr),
       parent_inputs(nullptr) {}
@@ -1603,7 +1909,7 @@ TF_Graph* TF_NewGraph() { return new TF_Graph; }
 void TF_DeleteGraph(TF_Graph* g) {
   g->mu.lock();
   g->delete_requested = true;
-  const bool del = g->num_sessions == 0;
+  const bool del = g->sessions.empty();
   g->mu.unlock();
   if (del) delete g;
 }
@@ -1651,6 +1957,27 @@ void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,
   status->status = MessageToBuffer(def, output_graph_def);
 }
 
+void TF_GraphGetOpDef(TF_Graph* graph, const char* op_name,
+                      TF_Buffer* output_op_def, TF_Status* status) {
+  const OpDef* op_def;
+  {
+    mutex_lock l(graph->mu);
+    status->status = graph->graph.op_registry()->LookUpOpDef(op_name, &op_def);
+    if (!status->status.ok()) return;
+  }
+  status->status = MessageToBuffer(*op_def, output_op_def);
+}
+
+void TF_GraphVersions(TF_Graph* graph, TF_Buffer* output_version_def,
+                      TF_Status* status) {
+  VersionDef versions;
+  {
+    mutex_lock l(graph->mu);
+    versions = graph->graph.versions();
+  }
+  status->status = MessageToBuffer(versions, output_version_def);
+}
+
 TF_ImportGraphDefOptions* TF_NewImportGraphDefOptions() {
   return new TF_ImportGraphDefOptions;
 }
@@ -1662,18 +1989,24 @@ void TF_ImportGraphDefOptionsSetPrefix(TF_ImportGraphDefOptions* opts,
   opts->opts.prefix = prefix;
 }
 
-namespace {
-
-TensorId ToTensorId(const TF_Output& output) {
-  return TensorId(output.oper->node.name(), output.index);
+void TF_ImportGraphDefOptionsSetUniquifyNames(TF_ImportGraphDefOptions* opts,
+                                              unsigned char uniquify_names) {
+  opts->opts.uniquify_names = uniquify_names;
 }
 
-}  // namespace
+void TF_ImportGraphDefOptionsSetUniquifyPrefix(TF_ImportGraphDefOptions* opts,
+                                               unsigned char uniquify_prefix) {
+  opts->opts.uniquify_prefix = uniquify_prefix;
+}
 
 void TF_ImportGraphDefOptionsAddInputMapping(TF_ImportGraphDefOptions* opts,
                                              const char* src_name,
                                              int src_index, TF_Output dst) {
-  opts->opts.input_map[TensorId(src_name, src_index)] = ToTensorId(dst);
+  opts->tensor_id_data.push_back(src_name);
+  const string& src_name_str = opts->tensor_id_data.back();
+  // We don't need to store dst's name in tensor_id_data, since `dst` must
+  // outlive the ImportGraphDef call.
+  opts->opts.input_map[TensorId(src_name_str, src_index)] = ToTensorId(dst);
 }
 
 void TF_ImportGraphDefOptionsRemapControlDependency(
@@ -1689,7 +2022,9 @@ extern void TF_ImportGraphDefOptionsAddControlDependency(
 
 void TF_ImportGraphDefOptionsAddReturnOutput(TF_ImportGraphDefOptions* opts,
                                              const char* oper_name, int index) {
-  opts->opts.return_tensors.push_back({oper_name, index});
+  opts->tensor_id_data.push_back(oper_name);
+  const string& oper_name_str = opts->tensor_id_data.back();
+  opts->opts.return_tensors.emplace_back(oper_name_str, index);
 }
 
 int TF_ImportGraphDefOptionsNumReturnOutputs(
@@ -1697,15 +2032,119 @@ int TF_ImportGraphDefOptionsNumReturnOutputs(
   return opts->opts.return_tensors.size();
 }
 
+void TF_ImportGraphDefOptionsAddReturnOperation(TF_ImportGraphDefOptions* opts,
+                                                const char* oper_name) {
+  opts->opts.return_nodes.push_back(oper_name);
+}
+
+int TF_ImportGraphDefOptionsNumReturnOperations(
+    const TF_ImportGraphDefOptions* opts) {
+  return opts->opts.return_nodes.size();
+}
+
+void TF_ImportGraphDefResultsReturnOutputs(TF_ImportGraphDefResults* results,
+                                           int* num_outputs,
+                                           TF_Output** outputs) {
+  *num_outputs = results->return_tensors.size();
+  *outputs = results->return_tensors.data();
+}
+
+void TF_ImportGraphDefResultsReturnOperations(TF_ImportGraphDefResults* results,
+                                              int* num_opers,
+                                              TF_Operation*** opers) {
+  *num_opers = results->return_nodes.size();
+  *opers = results->return_nodes.data();
+}
+
+void TF_ImportGraphDefResultsMissingUnusedInputMappings(
+    TF_ImportGraphDefResults* results, int* num_missing_unused_input_mappings,
+    const char*** src_names, int** src_indexes) {
+  *num_missing_unused_input_mappings = results->missing_unused_key_names.size();
+  *src_names = results->missing_unused_key_names.data();
+  *src_indexes = results->missing_unused_key_indexes.data();
+}
+
+void TF_DeleteImportGraphDefResults(TF_ImportGraphDefResults* results) {
+  delete results;
+}
+
 static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
                                       const TF_ImportGraphDefOptions* opts,
-                                      TF_Output* return_outputs,
-                                      int num_return_outputs, TF_Status* status)
+                                      TF_ImportGraphDefResults* tf_results,
+                                      TF_Status* status)
     EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
-  if (num_return_outputs != opts->opts.return_tensors.size()) {
+  const int last_node_id = graph->graph.num_node_ids();
+  tensorflow::ImportGraphDefResults results;
+  status->status = tensorflow::ImportGraphDef(opts->opts, def, &graph->graph,
+                                              &graph->refiner, &results);
+  if (!status->status.ok()) return;
+
+  // Add new nodes to name_map
+  for (int i = last_node_id; i < graph->graph.num_node_ids(); ++i) {
+    auto* node = graph->graph.FindNodeId(i);
+    if (node != nullptr) graph->name_map[node->name()] = node;
+  }
+
+  // Populate return_tensors
+  DCHECK(tf_results->return_tensors.empty());
+  tf_results->return_tensors.resize(results.return_tensors.size());
+  for (int i = 0; i < results.return_tensors.size(); ++i) {
+    tf_results->return_tensors[i].oper =
+        ToOperation(results.return_tensors[i].first);
+    tf_results->return_tensors[i].index = results.return_tensors[i].second;
+  }
+
+  // Populate return_nodes
+  DCHECK(tf_results->return_nodes.empty());
+  tf_results->return_nodes.resize(results.return_nodes.size());
+  for (int i = 0; i < results.return_nodes.size(); ++i) {
+    tf_results->return_nodes[i] = ToOperation(results.return_nodes[i]);
+  }
+
+  // Populate missing unused map keys
+  DCHECK(tf_results->missing_unused_key_names.empty());
+  DCHECK(tf_results->missing_unused_key_indexes.empty());
+  DCHECK(tf_results->missing_unused_key_names_data.empty());
+
+  size_t size = results.missing_unused_input_map_keys.size();
+  tf_results->missing_unused_key_names.resize(size);
+  tf_results->missing_unused_key_indexes.resize(size);
+
+  for (int i = 0; i < size; ++i) {
+    TensorId id = results.missing_unused_input_map_keys[i];
+    tf_results->missing_unused_key_names_data.push_back(std::string(id.first));
+    tf_results->missing_unused_key_names[i] =
+        tf_results->missing_unused_key_names_data.back().c_str();
+    tf_results->missing_unused_key_indexes[i] = id.second;
+  }
+}
+
+TF_ImportGraphDefResults* TF_GraphImportGraphDefWithResults(
+    TF_Graph* graph, const TF_Buffer* graph_def,
+    const TF_ImportGraphDefOptions* options, TF_Status* status) {
+  GraphDef def;
+  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data, graph_def->length)) {
+    status->status = InvalidArgument("Invalid GraphDef");
+    return nullptr;
+  }
+  auto results = new TF_ImportGraphDefResults();
+  mutex_lock l(graph->mu);
+  GraphImportGraphDefLocked(graph, def, options, results, status);
+  if (!status->status.ok()) {
+    delete results;
+    return nullptr;
+  }
+  return results;
+}
+
+void TF_GraphImportGraphDefWithReturnOutputs(
+    TF_Graph* graph, const TF_Buffer* graph_def,
+    const TF_ImportGraphDefOptions* options, TF_Output* return_outputs,
+    int num_return_outputs, TF_Status* status) {
+  if (num_return_outputs != options->opts.return_tensors.size()) {
     status->status = InvalidArgument("Expected 'num_return_outputs' to be ",
-                                     opts->opts.return_tensors.size(), ", got ",
-                                     num_return_outputs);
+                                     options->opts.return_tensors.size(),
+                                     ", got ", num_return_outputs);
     return;
   }
   if (num_return_outputs > 0 && return_outputs == nullptr) {
@@ -1713,46 +2152,35 @@ static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
         "'return_outputs' must be preallocated to length ", num_return_outputs);
     return;
   }
-  const int last_node_id = graph->graph.num_node_ids();
-  std::vector<std::pair<Node*, int>> return_outputs_vec;
-  status->status = tensorflow::ImportGraphDef(
-      opts->opts, def, &graph->graph, &graph->refiner, &return_outputs_vec);
-  if (!status->status.ok()) return;
-  for (int i = last_node_id; i < graph->graph.num_node_ids(); ++i) {
-    auto* node = graph->graph.FindNodeId(i);
-    if (node != nullptr) graph->name_map[node->name()] = node;
-  }
-  DCHECK_EQ(return_outputs_vec.size(), num_return_outputs);
-  for (int i = 0; i < num_return_outputs; ++i) {
-    return_outputs[i].oper = ToOperation(return_outputs_vec[i].first);
-    return_outputs[i].index = return_outputs_vec[i].second;
-  }
-}
-
-void TF_GraphImportGraphDefWithReturnOutputs(
-    TF_Graph* graph, const TF_Buffer* graph_def,
-    const TF_ImportGraphDefOptions* opts, TF_Output* return_outputs,
-    int num_return_outputs, TF_Status* status) {
   GraphDef def;
-  if (!def.ParseFromArray(graph_def->data, graph_def->length)) {
+  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data, graph_def->length)) {
     status->status = InvalidArgument("Invalid GraphDef");
     return;
   }
+  TF_ImportGraphDefResults results;
   mutex_lock l(graph->mu);
-  GraphImportGraphDefLocked(graph, def, opts, return_outputs,
-                            num_return_outputs, status);
+  GraphImportGraphDefLocked(graph, def, options, &results, status);
+  DCHECK_EQ(results.return_tensors.size(), num_return_outputs);
+  memcpy(return_outputs, results.return_tensors.data(),
+         num_return_outputs * sizeof(TF_Output));
 }
 
 void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
                             const TF_ImportGraphDefOptions* options,
                             TF_Status* status) {
-  TF_GraphImportGraphDefWithReturnOutputs(graph, graph_def, options, nullptr, 0,
-                                          status);
+  TF_ImportGraphDefResults* results =
+      TF_GraphImportGraphDefWithResults(graph, graph_def, options, status);
+  TF_DeleteImportGraphDefResults(results);
 }
 
 // While loop functions -------------------------------------------------------
 
 namespace {
+
+#ifndef __ANDROID__
+
+// Creates a placeholder representing an input to the cond or body graph.
+// TODO(skyewm): remove these from final graph
 bool CreateInput(const TF_Output& parent_input, TF_Graph* g, const char* name,
                  TF_Output* input, TF_Status* status) {
   TF_OperationDescription* desc = TF_NewOperation(g, "Placeholder", name);
@@ -1764,128 +2192,50 @@ bool CreateInput(const TF_Output& parent_input, TF_Graph* g, const char* name,
   return true;
 }
 
-bool CreateEnter(TF_Graph* g, const char* node_name, const char* frame_name,
-                 const TF_Output& input, TF_Output* enter, TF_Status* status)
-    EXCLUSIVE_LOCKS_REQUIRED(g->mu) {
-  TF_OperationDescription* desc = TF_NewOperationLocked(g, "Enter", node_name);
-  TF_AddInput(desc, input);
-  TF_SetAttrString(desc, "frame_name", frame_name, strlen(frame_name));
-  TF_Operation* oper = TF_FinishOperationLocked(desc, status);
-  if (!status->status.ok()) return false;
-  *enter = {oper, 0};
-  return true;
-}
-
-bool CreateMerge(TF_Graph* g, const char* name, const TF_Output& input,
-                 const char* backedge_name, int backedge_index,
-                 TF_Output* merge, TF_Status* status)
-    EXCLUSIVE_LOCKS_REQUIRED(g->mu) {
-  TF_OperationDescription* desc = TF_NewOperationLocked(g, "Merge", name);
-
-  // The merge nodes accept the while loop's back edges as an input. Use the
-  // underlying NodeBuilder API directly to create an input to the
-  // not-yet-created back edge.
-  std::vector<NodeBuilder::NodeOut> input_list;
-  input_list.push_back(NodeBuilder::NodeOut(&input.oper->node, input.index));
-  // All merge inputs must have same type
-  DataType type = input.oper->node.output_type(input.index);
-  input_list.push_back(
-      NodeBuilder::NodeOut(backedge_name, backedge_index, type));
-
-  desc->node_builder.Input(input_list);
-
-  TF_Operation* oper = TF_FinishOperationLocked(desc, status);
-  if (!status->status.ok()) return false;
-  *merge = {oper, 0};
-  return true;
-}
-
-bool CreateSwitch(TF_Graph* g, const char* name, const TF_Output& input,
-                  const TF_Output& predicate, TF_Output* switch_true,
-                  TF_Output* switch_false, TF_Status* status)
-    EXCLUSIVE_LOCKS_REQUIRED(g->mu) {
-  TF_OperationDescription* desc = TF_NewOperationLocked(g, "Switch", name);
-  TF_AddInput(desc, input);
-  TF_AddInput(desc, predicate);
-  TF_Operation* oper = TF_FinishOperationLocked(desc, status);
-  if (!status->status.ok()) return false;
-  *switch_false = {oper, 0};
-  *switch_true = {oper, 1};
-  return true;
-}
-
-bool CreateNext(TF_Graph* g, const char* name, const TF_Output& input,
-                TF_Output* next, TF_Status* status)
-    EXCLUSIVE_LOCKS_REQUIRED(g->mu) {
-  TF_OperationDescription* desc =
-      TF_NewOperationLocked(g, "NextIteration", name);
-  TF_AddInput(desc, input);
-  TF_Operation* oper = TF_FinishOperationLocked(desc, status);
-  if (!status->status.ok()) return false;
-  *next = {oper, 0};
-  return true;
-}
-
-bool CreateExit(TF_Graph* g, const char* name, const TF_Output& input,
-                TF_Output* exit, TF_Status* status)
-    EXCLUSIVE_LOCKS_REQUIRED(g->mu) {
-  TF_OperationDescription* desc = TF_NewOperationLocked(g, "Exit", name);
-  TF_AddInput(desc, input);
-  TF_Operation* oper = TF_FinishOperationLocked(desc, status);
-  if (!status->status.ok()) return false;
-  *exit = {oper, 0};
-  return true;
-}
-
-class ScopedImportGraphDefOptions {
- public:
-  ScopedImportGraphDefOptions() { opts_ = TF_NewImportGraphDefOptions(); }
-  ~ScopedImportGraphDefOptions() { TF_DeleteImportGraphDefOptions(opts_); }
-
-  TF_ImportGraphDefOptions* get() const { return opts_; }
-
- private:
-  TF_ImportGraphDefOptions* opts_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedImportGraphDefOptions);
-};
-
 // Copies `src_graph` into `dst_graph`. Any node in `src_graph` with input
-// `src_inputs[i]` will have that input replaced with `dst_inputs[i]`.
-// `prefix` will be prepended to copied node names. `return_nodes` are nodes
-// in `src_graph`, and the new corresponding nodes in `dst_graph` will be
-// returned. `return_nodes` should be preallocated to size `nreturn_nodes`.
-bool CopyGraph(TF_Graph* src_graph, TF_Graph* dst_graph,
-               const TF_Output* src_inputs,
-               const std::vector<TF_Output>& dst_inputs, const char* prefix,
-               const TF_Output* nodes_to_return, int nreturn_nodes,
-               TF_Output* return_nodes, TF_Status* s)
-    EXCLUSIVE_LOCKS_REQUIRED(dst_graph->mu) {
+// `src_inputs[i]` will have that input replaced with `dst_inputs[i]`.  `prefix`
+// will be prepended to copied node names. `control_deps` are nodes in
+// `dst_graph` that the copied `src_graph` nodes will have control dependencies
+// on. `return_nodes` are nodes in `src_graph`, and the new corresponding nodes
+// in `dst_graph` will be returned. `return_nodes` must be non-null.
+Status CopyGraph(Graph* src_graph, Graph* dst_graph,
+                 tensorflow::ShapeRefiner* dst_refiner,
+                 const TF_Output* src_inputs,
+                 const std::vector<tensorflow::Output>& dst_inputs,
+                 const string& prefix,
+                 const std::vector<tensorflow::Operation>& control_deps,
+                 const TF_Output* nodes_to_return, int nreturn_nodes,
+                 std::vector<tensorflow::Output>* return_nodes) {
+  DCHECK(return_nodes != nullptr);
   GraphDef gdef;
-  src_graph->graph.ToGraphDef(&gdef);
+  src_graph->ToGraphDef(&gdef);
 
-  ScopedImportGraphDefOptions opts;
-  TF_ImportGraphDefOptionsSetPrefix(opts.get(), prefix);
+  tensorflow::ImportGraphDefOptions opts;
+  opts.prefix = prefix;
 
   for (int i = 0; i < dst_inputs.size(); ++i) {
-    TensorId src = ToTensorId(src_inputs[i]);
-    TF_ImportGraphDefOptionsAddInputMapping(opts.get(), src.first.data(),
-                                            src.second, dst_inputs[i]);
+    opts.input_map[ToTensorId(src_inputs[i])] =
+        TensorId(dst_inputs[i].node()->name(), dst_inputs[i].index());
   }
-  // We use the pivot node to control constants in `src_graph`
-  TF_Operation* pivot = dst_inputs[0].oper;
-  TF_ImportGraphDefOptionsAddControlDependency(opts.get(), pivot);
+  opts.skip_mapped_nodes = true;
+
+  for (const tensorflow::Operation& op : control_deps) {
+    opts.control_dependencies.push_back(op.node()->name());
+  }
 
   for (int i = 0; i < nreturn_nodes; ++i) {
-    TF_ImportGraphDefOptionsAddReturnOutput(
-        opts.get(), nodes_to_return[i].oper->node.name().c_str(),
-        nodes_to_return[i].index);
+    opts.return_tensors.push_back(ToTensorId(nodes_to_return[i]));
   }
 
-  GraphImportGraphDefLocked(dst_graph, gdef, opts.get(), return_nodes,
-                            nreturn_nodes, s);
-  if (TF_GetCode(s) != TF_OK) return false;
-  return true;
+  // TODO(skyewm): change to OutputTensor
+  tensorflow::ImportGraphDefResults results;
+  TF_RETURN_IF_ERROR(
+      ImportGraphDef(opts, gdef, dst_graph, dst_refiner, &results));
+
+  for (const auto& pair : results.return_tensors) {
+    return_nodes->emplace_back(pair.first, pair.second);
+  }
+  return Status::OK();
 }
 
 bool ValidateConstWhileParams(const TF_WhileParams& params, TF_Status* s) {
@@ -1921,6 +2271,8 @@ bool ValidateInputWhileParams(const TF_WhileParams& params, TF_Status* s) {
   return true;
 }
 
+#endif  // __ANDROID__
+
 void FreeWhileResources(const TF_WhileParams* params) {
   TF_DeleteGraph(params->cond_graph);
   TF_DeleteGraph(params->body_graph);
@@ -1938,6 +2290,13 @@ TF_WhileParams EmptyWhileParams() {
 
 TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs, int ninputs,
                            TF_Status* status) {
+#ifdef __ANDROID__
+  status->status = tensorflow::errors::Unimplemented(
+      "Creating while loops is not supported in Android. File a bug at "
+      "https://github.com/tensorflow/tensorflow/issues if this feature is "
+      "important to you");
+  return EmptyWhileParams();
+#else
   if (ninputs == 0) {
     status->status =
         InvalidArgument("TF_NewWhile() must be passed at least one input");
@@ -1978,8 +2337,10 @@ TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs, int ninputs,
     return EmptyWhileParams();
   }
   return params;
+#endif  // __ANDROID__
 }
 
+#ifndef __ANDROID__
 namespace {
 
 // TODO(skyewm): make nodes in while loop unfetchable like in Python version
@@ -1989,112 +2350,89 @@ void TF_FinishWhileHelper(const TF_WhileParams* params, TF_Status* status,
 
   TF_Graph* parent = params->cond_graph->parent;
   TF_Output* parent_inputs = params->cond_graph->parent_inputs;
-  int n = params->ninputs;
+  int num_loop_vars = params->ninputs;
 
   mutex_lock l(parent->mu);
 
-  // Create Enter nodes
-  std::vector<TF_Output> enter_nodes(n);
-  for (int i = 0; i < n; ++i) {
-    if (!CreateEnter(parent, StrCat(params->name, "/enter", i).c_str(),
-                     params->name, parent_inputs[i], &enter_nodes[i], status)) {
-      return;
-    }
+  // 'cond_fn' copies the cond graph into the parent graph.
+  tensorflow::ops::CondGraphBuilderFn cond_fn =
+      [params, parent](const tensorflow::Scope& scope,
+                       const std::vector<tensorflow::Output>& inputs,
+                       tensorflow::Output* output) {
+        DCHECK_EQ(scope.graph(), &parent->graph);
+        std::vector<tensorflow::Output> cond_output;
+        TF_RETURN_IF_ERROR(CopyGraph(
+            &params->cond_graph->graph, &parent->graph, &parent->refiner,
+            params->cond_inputs, inputs, scope.impl()->name(),
+            scope.impl()->control_deps(), &params->cond_output,
+            /* nreturn_nodes */ 1, &cond_output));
+        *output = cond_output[0];
+        return Status::OK();
+      };
+
+  // 'body_fn' copies the body graph into the parent graph.
+  tensorflow::ops::BodyGraphBuilderFn body_fn =
+      [params, parent, num_loop_vars](
+          const tensorflow::Scope& scope,
+          const std::vector<tensorflow::Output>& inputs,
+          std::vector<tensorflow::Output>* outputs) {
+        DCHECK_EQ(scope.graph(), &parent->graph);
+        TF_RETURN_IF_ERROR(
+            CopyGraph(&params->body_graph->graph, &parent->graph,
+                      &parent->refiner, params->body_inputs, inputs,
+                      scope.impl()->name(), scope.impl()->control_deps(),
+                      params->body_outputs, num_loop_vars, outputs));
+        return Status::OK();
+      };
+
+  // Create the while loop using an internal scope.
+  tensorflow::Scope scope =
+      NewInternalScope(&parent->graph, &status->status, &parent->refiner)
+          .NewSubScope(params->name);
+
+  const int first_new_node_id = parent->graph.num_node_ids();
+
+  tensorflow::OutputList loop_outputs;
+  status->status = tensorflow::ops::BuildWhileLoop(
+      scope, OutputsFromTFOutputs(parent_inputs, num_loop_vars), cond_fn,
+      body_fn, params->name, &loop_outputs);
+
+  // Update name_map with newly-created ops.
+  // TODO(skyewm): right now BuildWhileLoop() may alter the graph if it returns
+  // a bad status. Once we fix this, we may want to return early instead of
+  // executing the following code.
+  for (int i = first_new_node_id; i < parent->graph.num_node_ids(); ++i) {
+    Node* new_node = parent->graph.FindNodeId(i);
+    if (new_node == nullptr) continue;
+    parent->name_map[new_node->name()] = new_node;
   }
 
-  // Create Merge nodes
-  std::vector<TF_Output> merge_nodes(n);
-  for (int i = 0; i < n; ++i) {
-    if (!CreateMerge(parent, StrCat(params->name, "/merge", i).c_str(),
-                     enter_nodes[i], StrCat(params->name, "/next", i).c_str(),
-                     0, &merge_nodes[i], status)) {
-      return;
-    }
-  }
-
-  // Copy cond_graph to parent and replace input placeholders with merge node
-  // outputs, and get handle to new cond output
-  tensorflow::string cond_prefix = StrCat(params->name, "/cond");
-  TF_Output cond_output;
-  if (!CopyGraph(params->cond_graph, parent, params->cond_inputs, merge_nodes,
-                 cond_prefix.c_str(), &params->cond_output, 1, &cond_output,
-                 status)) {
-    return;
-  }
-
-  // Create Switch nodes
-  std::vector<TF_Output> switch_trues(n);
-  std::vector<TF_Output> switch_falses(n);
-  for (int i = 0; i < n; ++i) {
-    if (!CreateSwitch(parent, StrCat(params->name, "/switch", i).c_str(),
-                      merge_nodes[i], cond_output, &switch_trues[i],
-                      &switch_falses[i], status)) {
-      return;
-    }
-  }
-
-  // Copy body_graph to parent, replace input placeholders with switch node
-  // true outputs, and get handles to new body outputs
-  tensorflow::string body_prefix = StrCat(params->name, "/body");
-  std::vector<TF_Output> body_outputs(n);
-  if (!CopyGraph(params->body_graph, parent, params->body_inputs, switch_trues,
-                 body_prefix.c_str(), params->body_outputs, n,
-                 body_outputs.data(), status)) {
-    return;
-  }
-
-  // Create Next nodes
-  std::vector<TF_Output> next_nodes(n);
-  for (int i = 0; i < n; ++i) {
-    if (!CreateNext(parent, StrCat(params->name, "/next", i).c_str(),
-                    body_outputs[i], &next_nodes[i], status)) {
-      return;
-    }
-  }
-
-  // Create Exit nodes (which are the outputs of the while loop)
-  for (int i = 0; i < n; ++i) {
-    if (!CreateExit(parent, StrCat(params->name, "/exit", i).c_str(),
-                    switch_falses[i], &outputs[i], status)) {
-      return;
-    }
-  }
-}
-
-}  // namespace
-
-void TF_FinishWhile(const TF_WhileParams* params, TF_Status* status,
-                    TF_Output* outputs) {
-  // If it appears the caller created or modified `params`, don't free resources
-  if (!ValidateConstWhileParams(*params, status)) return;
-  TF_FinishWhileHelper(params, status, outputs);
-  FreeWhileResources(params);
-}
-
-void TF_AbortWhile(const TF_WhileParams* params) { FreeWhileResources(params); }
-
-#ifndef __ANDROID__
-namespace {
-
-void OutputsFromTFOutputs(TF_Output* tf_outputs, int n, TF_Status* status,
-                          std::vector<tensorflow::Output>* outputs) {
-  outputs->resize(n);
-  for (int i = 0; i < n; i++) {
-    const TF_Output& tf_output = tf_outputs[i];
-    (*outputs)[i] = tensorflow::Output(&tf_output.oper->node, tf_output.index);
-  }
-}
-
-void TFOutputsFromOutputs(const std::vector<tensorflow::Output>& outputs,
-                          TF_Output* tf_outputs) {
-  for (int i = 0; i < outputs.size(); i++) {
-    tf_outputs[i].oper = ToOperation(outputs[i].node());
-    tf_outputs[i].index = outputs[i].index();
+  // Populate 'outputs'.
+  DCHECK_LE(loop_outputs.size(), num_loop_vars);
+  for (int i = 0; i < loop_outputs.size(); ++i) {
+    outputs[i] = {ToOperation(loop_outputs[i].node()), loop_outputs[i].index()};
   }
 }
 
 }  // namespace
 #endif  // __ANDROID__
+
+void TF_FinishWhile(const TF_WhileParams* params, TF_Status* status,
+                    TF_Output* outputs) {
+#ifdef __ANDROID__
+  status->status = tensorflow::errors::Unimplemented(
+      "Creating while loops is not supported in Android. File a bug at "
+      "https://github.com/tensorflow/tensorflow/issues if this feature is "
+      "important to you");
+#else
+  // If it appears the caller created or modified `params`, don't free resources
+  if (!ValidateConstWhileParams(*params, status)) return;
+  TF_FinishWhileHelper(params, status, outputs);
+  FreeWhileResources(params);
+#endif  // __ANDROID__
+}
+
+void TF_AbortWhile(const TF_WhileParams* params) { FreeWhileResources(params); }
 
 void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
                      TF_Output* dx, TF_Status* status, TF_Output* dy) {
@@ -2104,24 +2442,22 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
       "https://github.com/tensorflow/tensorflow/issues if this feature is "
       "important to you");
 #else
-  std::vector<tensorflow::Output> y_arg;
-  std::vector<tensorflow::Output> x_arg;
+  std::vector<tensorflow::Output> y_arg = OutputsFromTFOutputs(y, ny);
+  std::vector<tensorflow::Output> x_arg = OutputsFromTFOutputs(x, nx);
   std::vector<tensorflow::Output> dy_arg;
-  OutputsFromTFOutputs(y, ny, status, &y_arg);
-  OutputsFromTFOutputs(x, nx, status, &x_arg);
 
   {
     // We need to hold on to the lock while we have a scope that uses TF_Graph.
     mutex_lock graph_lock(g->mu);
 
-    const int max_node_id_before = g->graph.num_node_ids();
+    const int first_new_node_id = g->graph.num_node_ids();
 
     tensorflow::Scope scope =
-        NewInternalScope(&g->graph, &status->status, &g->refiner);
+        NewInternalScope(&g->graph, &status->status, &g->refiner)
+            .NewSubScope("gradients");
 
     if (dx != nullptr) {
-      std::vector<tensorflow::Output> dx_arg;
-      OutputsFromTFOutputs(dx, ny, status, &dx_arg);
+      std::vector<tensorflow::Output> dx_arg = OutputsFromTFOutputs(dx, ny);
       status->status =
           AddSymbolicGradients(scope, y_arg, x_arg, dx_arg, &dy_arg);
     } else {
@@ -2130,7 +2466,7 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
 
     // Update g->name_map with the name_map from the scope, which will contain
     // the new gradient ops.
-    for (int i = max_node_id_before; i < g->graph.num_node_ids(); ++i) {
+    for (int i = first_new_node_id; i < g->graph.num_node_ids(); ++i) {
       Node* n = g->graph.FindNodeId(i);
       if (n == nullptr) continue;
       g->name_map[n->name()] = n;
@@ -2144,16 +2480,20 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
 
 // TF_Session functions ----------------------------------------------
 
+TF_Session::TF_Session(tensorflow::Session* s, TF_Graph* g)
+    : session(s), graph(g), last_num_graph_nodes(0), extend_before_run(true) {}
+
 TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
                           TF_Status* status) {
   Session* session;
   status->status = NewSession(opt->options, &session);
   if (status->status.ok()) {
+    TF_Session* new_session = new TF_Session(session, graph);
     if (graph != nullptr) {
       mutex_lock l(graph->mu);
-      graph->num_sessions += 1;
+      graph->sessions[new_session] = "";
     }
-    return new TF_Session(session, graph);
+    return new_session;
   } else {
     DCHECK_EQ(nullptr, session);
     return nullptr;
@@ -2174,7 +2514,6 @@ TF_Session* TF_LoadSessionFromSavedModel(
   return nullptr;
 #else
   mutex_lock l(graph->mu);
-
   if (!graph->name_map.empty()) {
     status->status = InvalidArgument("Graph is non-empty.");
     return nullptr;
@@ -2187,9 +2526,9 @@ TF_Session* TF_LoadSessionFromSavedModel(
     return nullptr;
   }
 
-  std::unordered_set<tensorflow::string> tag_set;
+  std::unordered_set<string> tag_set;
   for (int i = 0; i < tags_len; i++) {
-    tag_set.insert(tensorflow::string(tags[i]));
+    tag_set.insert(string(tags[i]));
   }
 
   tensorflow::SavedModelBundle bundle;
@@ -2205,8 +2544,9 @@ TF_Session* TF_LoadSessionFromSavedModel(
   // TODO(jhseu): When Session is modified to take Graphs instead of
   // GraphDefs, return the Graph generated in LoadSavedModel().
   TF_ImportGraphDefOptions* import_opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefResults results;
   GraphImportGraphDefLocked(graph, bundle.meta_graph_def.graph_def(),
-                            import_opts, nullptr, 0, status);
+                            import_opts, &results, status);
   TF_DeleteImportGraphDefOptions(import_opts);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
@@ -2217,7 +2557,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
 
   TF_Session* session = new TF_Session(bundle.session.release(), graph);
 
-  graph->num_sessions += 1;
+  graph->sessions[session] = "";
   session->last_num_graph_nodes = graph->graph.num_node_ids();
   return session;
 #endif  // __ANDROID__
@@ -2232,52 +2572,13 @@ void TF_DeleteSession(TF_Session* s, TF_Status* status) {
   TF_Graph* const graph = s->graph;
   if (graph != nullptr) {
     graph->mu.lock();
-    graph->num_sessions -= 1;
-    const bool del = graph->delete_requested && graph->num_sessions == 0;
+    graph->sessions.erase(s);
+    const bool del = graph->delete_requested && graph->sessions.empty();
     graph->mu.unlock();
     if (del) delete graph;
   }
   delete s->session;
   delete s;
-}
-
-// TODO(josh11b,mrry): Change Session to be able to use a Graph*
-// directly, instead of requiring us to serialize to a GraphDef and
-// call Session::Extend().
-static bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
-  if (session->graph != nullptr) {
-    mutex_lock session_lock(session->mu);
-    session->graph->mu.lock();
-    const Graph& graph = session->graph->graph;
-    const auto num_nodes = graph.num_node_ids();
-    if (session->last_num_graph_nodes < num_nodes) {
-      GraphDef graph_def;
-      *graph_def.mutable_versions() = graph.versions();
-      // Fill graph_def with nodes with ids in the range
-      // [session->last_num_graph_nodes, num_nodes), that is the nodes
-      // added since the last TF_SessionRun() call.
-      for (auto id = session->last_num_graph_nodes; id < num_nodes; ++id) {
-        Node* const node = graph.FindNodeId(id);
-        if (node != nullptr && node->IsOp()) {
-          NodeDef* const node_def = graph_def.add_node();
-          *node_def = node->def();
-        }
-      }
-      session->graph->mu.unlock();
-      // TODO(josh11b): Also send the function library if needed.
-      status->status = session->session->Extend(graph_def);
-      if (!status->status.ok()) {
-        // Contract is we always delete input_values[i].
-        return false;
-      }
-      // Note: session->session is not modified if Extend() fails, so
-      // we only set last_num_graph_nodes if it succeeds.
-      session->last_num_graph_nodes = num_nodes;
-    } else {
-      session->graph->mu.unlock();
-    }
-  }
-  return true;
 }
 
 void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
@@ -2289,27 +2590,28 @@ void TF_SessionRun(TF_Session* session, const TF_Buffer* run_options,
   // TODO(josh11b,mrry): Change Session to be able to use a Graph*
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
-  if (!ExtendSessionGraphHelper(session, status)) {
+  if (session->extend_before_run &&
+      !ExtendSessionGraphHelper(session, status)) {
     return;
   }
 
   TF_Run_Setup(noutputs, output_values, status);
 
   // Convert from TF_Output and TF_Tensor to a string and Tensor.
-  std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
+  std::vector<std::pair<string, Tensor>> input_pairs(ninputs);
   if (!TF_Run_Inputs(input_values, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = OutputName(inputs[i]);
   }
 
   // Convert from TF_Output to string names.
-  std::vector<tensorflow::string> output_names(noutputs);
+  std::vector<string> output_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
     output_names[i] = OutputName(outputs[i]);
   }
 
   // Convert from TF_Operation* to string names.
-  std::vector<tensorflow::string> target_names(ntargets);
+  std::vector<string> target_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
     target_names[i] = target_opers[i]->node.name();
   }
@@ -2326,26 +2628,27 @@ void TF_SessionPRunSetup(TF_Session* session, const TF_Output* inputs,
                          const char** handle, TF_Status* status) {
   *handle = nullptr;
 
-  if (!ExtendSessionGraphHelper(session, status)) {
+  if (session->extend_before_run &&
+      !ExtendSessionGraphHelper(session, status)) {
     return;
   }
 
-  std::vector<tensorflow::string> input_names(ninputs);
+  std::vector<string> input_names(ninputs);
   for (int i = 0; i < ninputs; ++i) {
     input_names[i] = OutputName(inputs[i]);
   }
 
-  std::vector<tensorflow::string> output_names(noutputs);
+  std::vector<string> output_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
     output_names[i] = OutputName(outputs[i]);
   }
 
-  std::vector<tensorflow::string> target_names(ntargets);
+  std::vector<string> target_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
     target_names[i] = target_opers[i]->node.name();
   }
 
-  tensorflow::string new_handle;
+  string new_handle;
   status->status = session->session->PRunSetup(input_names, output_names,
                                                target_names, &new_handle);
   if (status->status.ok()) {
@@ -2369,27 +2672,28 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
   // TODO(josh11b,mrry): Change Session to be able to use a Graph*
   // directly, instead of requiring us to serialize to a GraphDef and
   // call Session::Extend().
-  if (!ExtendSessionGraphHelper(session, status)) {
+  if (session->extend_before_run &&
+      !ExtendSessionGraphHelper(session, status)) {
     return;
   }
 
   TF_Run_Setup(noutputs, output_values, status);
 
   // Convert from TF_Output and TF_Tensor to a string and Tensor.
-  std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
+  std::vector<std::pair<string, Tensor>> input_pairs(ninputs);
   if (!TF_Run_Inputs(input_values, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = OutputName(inputs[i]);
   }
 
   // Convert from TF_Output to string names.
-  std::vector<tensorflow::string> output_names(noutputs);
+  std::vector<string> output_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
     output_names[i] = OutputName(outputs[i]);
   }
 
   // Convert from TF_Operation* to string names.
-  std::vector<tensorflow::string> target_names(ntargets);
+  std::vector<string> target_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
     target_names[i] = target_opers[i]->node.name();
   }
@@ -2398,4 +2702,72 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
                 output_values, target_names, nullptr, status);
 }
 
+unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
+                                     TF_Tensor** result, TF_Status* status) {
+  *result = nullptr;
+  mutex_lock l(graph->mu);
+  OutputTensor tensor(&output.oper->node, output.index);
+  bool evaluated;
+  Tensor result_tensor;
+  status->status = EvaluateConstantTensor(
+      tensor, graph->refiner, *graph->graph.op_registry(),
+      graph->graph.versions().producer(), &evaluated, &result_tensor);
+  if (evaluated) {
+    DCHECK(status->status.ok());
+    *result = TF_TensorFromTensor(result_tensor, status);
+    if (!status->status.ok()) evaluated = false;
+  }
+  return evaluated;
+}
+
+TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {
+  tensorflow::OpList op_list;
+  if (!op_list.ParseFromArray(op_list_buffer->data, op_list_buffer->length)) {
+    status->status = InvalidArgument("Unparseable OpList");
+    return nullptr;
+  }
+  status->status = Status::OK();
+  return new TF_ApiDefMap(op_list);
+}
+
+void TF_DeleteApiDefMap(TF_ApiDefMap* apimap) { delete apimap; }
+
+void TF_ApiDefMapPut(TF_ApiDefMap* api_def_map, const char* text,
+                     size_t text_len, TF_Status* status) {
+#ifdef __ANDROID__
+  status->status = tensorflow::errors::Unimplemented(
+      "ApiDefMap is not supported in Android.");
+#else
+  mutex_lock l(api_def_map->lock);
+  if (api_def_map->update_docs_called) {
+    status->status = FailedPrecondition(
+        "TF_ApiDefMapPut cannot be called after TF_ApiDefMapGet has been "
+        "called.");
+    return;
+  }
+  string api_def_text(text, text_len);
+  status->status = api_def_map->api_def_map.LoadApiDef(api_def_text);
+#endif  // __ANDROID__
+}
+
+TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map, const char* name,
+                           size_t name_len, TF_Status* status) {
+#ifdef __ANDROID__
+  status->status = tensorflow::errors::Unimplemented(
+      "ApiDefMap is not supported in Android.");
+  return nullptr;
+#else
+  mutex_lock l(api_def_map->lock);
+  if (!api_def_map->update_docs_called) {
+    api_def_map->api_def_map.UpdateDocs();
+    api_def_map->update_docs_called = true;
+  }
+  string name_str(name, name_len);
+  const auto* api_def = api_def_map->api_def_map.GetApiDef(name_str);
+
+  TF_Buffer* ret = TF_NewBuffer();
+  status->status = MessageToBuffer(*api_def, ret);
+  return ret;
+#endif  // __ANDROID__
+}
 }  // end extern "C"

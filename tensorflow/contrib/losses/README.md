@@ -1,6 +1,12 @@
 # TensorFlow contrib losses.
 
+## Deprecated
+
+This module is deprecated. Instructions for updating: Use tf.losses instead.
+
 ## losses
+
+Note: By default all the losses are collected into the GraphKeys.LOSSES collection.
 
 Loss operations for use in training models, typically with signature like the
 following:

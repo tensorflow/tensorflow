@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/computation_tracker.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
@@ -30,7 +29,7 @@ class HloMetadataTest : public LocalClientTestBase {
     metadata_.set_op_name("my_sum_op");
   }
 
-  void BuildAddComputation(ComputationBuilder* builder) {
+  void BuildAddComputation(XlaBuilder* builder) {
     auto x = builder->Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
     auto y = builder->Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
     builder->Add(x, y);
@@ -40,13 +39,13 @@ class HloMetadataTest : public LocalClientTestBase {
 };
 
 TEST_F(HloMetadataTest, MetadataPropagation) {
-  ComputationBuilder builder(local_client_, "add");
+  XlaBuilder builder("add");
   builder.SetOpMetadata(metadata_);
   BuildAddComputation(&builder);
   builder.ClearOpMetadata();
 
   Shape argument_layout = ShapeUtil::MakeShape(F32, {});
-  TF_ASSIGN_OR_ASSERT_OK(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> executable,
       local_client_->Compile(builder.Build().ValueOrDie(),
                              {&argument_layout, &argument_layout},
@@ -61,7 +60,7 @@ TEST_F(HloMetadataTest, MetadataPropagation) {
 }
 
 TEST_F(HloMetadataTest, MetadataClearing) {
-  ComputationBuilder builder(local_client_, "add");
+  XlaBuilder builder("add");
   builder.SetOpMetadata(metadata_);
   // Some other pretend computation here.
   builder.ClearOpMetadata();

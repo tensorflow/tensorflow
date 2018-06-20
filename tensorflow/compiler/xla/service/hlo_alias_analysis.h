@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -33,23 +34,22 @@ limitations under the License.
 
 namespace xla {
 
+// Analysis which allocates HloBuffers to HloValues.
 class HloAliasAnalysis {
  public:
+  // The callgraph of the given HloModule must be flattened
+  // (xla::FlattenCallGraph) prior to running the analysis.
   static StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(HloModule* module);
 
   string ToString() const;
 
-  // Return the InstructionBufferSet for the given instruction.
-  const InstructionBufferSet& GetInstructionBufferSet(
-      const HloInstruction* instruction) const;
-  InstructionBufferSet& GetInstructionBufferSet(
-      const HloInstruction* instruction);
-
-  // Return the HloBufferSet for the given location.
-  const HloBufferSet& GetBufferSet(const HloInstruction* instruction,
-                                   const ShapeIndex& index = {}) const;
-  HloBufferSet& GetBufferSet(const HloInstruction* instruction,
-                             const ShapeIndex& index = {});
+  // Return the buffer containing the given value.
+  const HloBuffer& GetBufferContainingValue(const HloValue& value) const {
+    return *value_to_buffer_.at(&value);
+  }
+  HloBuffer& GetBufferContainingValue(const HloValue& value) {
+    return *value_to_buffer_.at(&value);
+  }
 
   // Return the HloBuffer with the given ID.
   const HloBuffer& GetBuffer(HloBuffer::Id buffer_id) const {
@@ -59,63 +59,46 @@ class HloAliasAnalysis {
     return buffers_.at(buffer_id);
   }
 
-  // Returns the unique buffer at the given location. CHECK fails if the buffer
-  // set at that location does not contain exactly one buffer.
+  // Returns the unique buffer at the given position. CHECK fails if the buffer
+  // set at that position does not contain exactly one buffer.
   const HloBuffer& GetUniqueBufferAt(const HloInstruction* instruction,
-                                     const ShapeIndex& index = {}) const {
-    return GetBuffer(GetBufferSet(instruction, index).GetUniqueBufferId());
-  }
+                                     const ShapeIndex& index = {}) const;
   HloBuffer& GetUniqueBufferAt(const HloInstruction* instruction,
-                               const ShapeIndex& index = {}) {
-    return GetBuffer(GetBufferSet(instruction, index).GetUniqueBufferId());
-  }
+                               const ShapeIndex& index = {});
+
+  // Compute the set of buffers at the given instruction and index and return as
+  // a vector. This set is exactly the union of the buffers containing the
+  // HloValues at this position.
+  std::vector<const HloBuffer*> ComputeBuffersAt(
+      const HloInstruction* instruction, const ShapeIndex& index = {}) const;
 
   // Return a vector of all HloBuffers stabily sorted by HloBuffer::Id. This
   // vector is lazily computed. Mutating operations on HloAliasAnalysis may
   // invalidate the underlying vector requiring recomputation.
-  const std::vector<const HloBuffer*>& buffers() const;
+  const std::vector<HloBuffer>& buffers() const { return buffers_; }
 
   // Returns the underlying dataflow analysis used by this alias analysis.
   const HloDataflowAnalysis& dataflow_analysis() const {
     return *dataflow_analysis_;
   }
 
+  // Returns true if any index in the output of the given instruction has more
+  // than one buffer. That is, ComputeBuffersAt returns a vector with more than
+  // one element.
+  bool InstructionBuffersAreAmbiguous(const HloInstruction* instruction) const;
+
+  // Returns true if no HloBuffer appears in more than one shape index in the
+  // output of the given instruction.
+  bool InstructionBuffersAreDistinct(const HloInstruction* instruction) const;
+
+  // Returns true if any HLO values in the module have interfering live ranges
+  // assuming the given ordering.
+  bool HasLiveRangeInterference(const HloOrdering& ordering) const;
+
  protected:
-  HloAliasAnalysis(HloModule* module);
+  explicit HloAliasAnalysis(HloModule* module);
 
-  // Creates a new HloBuffer and returns a reference to it.
-  HloBuffer& NewHloBuffer();
-
-  // Construct the initial set of buffer sets where an HloBuffer is created for
-  // each HloValue in the module.
-  void InitializeBufferSets();
-
-  // Combine the InstructionBufferSets for given instructions. The HloBuffers in
-  // the HloBufferSets at each ShapeIndex are combined via CombineBuffers
-  // into a single HloBuffer. This single HloBuffer then becomes the only member
-  // of these HloBufferSets (ie, they become singletons). The HloBuffers
-  // which are removed from the buffer sets are deleted from the analysis. This
-  // flattening may change InstructionBufferSets of other instructions not in
-  // 'instructions' because the HloBuffers of the InstructionBufferSets of
-  // 'instructions' can be used elsewhere in the module.
-  //
-  // This method is used to enforce the mandatory aliasing of while instructions
-  // where the init operand, body parameter, condition parameter, body root
-  // instruction, and the while itself must have exactly the same HloBuffer at
-  // each ShapeIndex.
-  //
-  // Precondition: The shapes on the given instructions must be compatible.
-  void FlattenInstructionBufferSets(
-      tensorflow::gtl::ArraySlice<const HloInstruction*> instructions);
-
-  // Combines the given HloBuffers into a single buffer. One of the given
-  // HloBuffers is chosen as the unified buffer, and all other references to the
-  // remaining buffers are replaced by this unified buffer. All HloValues
-  // contained in the replaced buffers are moved to the unified buffer, and the
-  // replaced buffers are deleted from the analysis.
-  void CombineBuffers(tensorflow::gtl::ArraySlice<HloBuffer::Id> buffer_ids);
-
-  // Verifies internal state of the analysis.
+  // Verify various invariants of the alias analysis.
   Status Verify() const;
 
   HloModule* module_;
@@ -123,18 +106,12 @@ class HloAliasAnalysis {
   // The underlying dataflow analysis used by this alias analysis.
   std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 
-  // The map of all HloBuffers in the module.
-  std::unordered_map<HloBuffer::Id, HloBuffer> buffers_;
-
-  // A map from instruction to its InstructionBufferSet.
-  std::unordered_map<const HloInstruction*, InstructionBufferSet> buffer_sets_;
+  // A map indicating which buffer a value is contained in.
+  tensorflow::gtl::FlatMap<const HloValue*, HloBuffer*> value_to_buffer_;
 
   // A lazily constructed vector containing all HloBuffers sorted by
   // HloBuffer::Id.
-  mutable std::vector<const HloBuffer*> buffers_vector_;
-
-  // The Id to use for the next HloBuffer.
-  int64 next_buffer_id_ = 0;
+  std::vector<HloBuffer> buffers_;
 };
 
 }  // namespace xla

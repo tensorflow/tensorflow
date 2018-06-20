@@ -48,7 +48,7 @@ class FillOp : public XlaOpKernel {
                             0, {dims_shape.num_elements()}, &dims_literal));
 
     // Convert the dims literal into a vector that we can pass to
-    // ComputationBuilder.
+    // XlaBuilder.
     std::vector<int64> broadcast;
     broadcast.reserve(dims_literal.shape().dimensions(0));
     for (int i = 0; i < dims_literal.shape().dimensions(0); ++i) {
@@ -56,7 +56,7 @@ class FillOp : public XlaOpKernel {
     }
     // Look up the value input, reshaping to a scalar if it was a
     // 'legacy' scalar (secretly a vector).
-    xla::ComputationDataHandle data = ctx->Input(1);
+    xla::XlaOp data = ctx->Input(1);
     if (value_shape.dims() > 0) {
       CHECK_EQ(value_shape.dims(), 1);
       data = ctx->builder()->Reshape(data, {});
@@ -69,7 +69,7 @@ class FillOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Fill"), FillOp);
+REGISTER_XLA_OP(Name("Fill").CompileTimeConstInput("dims"), FillOp);
 
 }  // namespace
 }  // namespace tensorflow

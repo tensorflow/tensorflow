@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "SummaryProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 import "tensorflow/core/framework/tensor.proto";
 
 // Metadata associated with a series of Summary data
@@ -40,17 +40,19 @@ message SummaryMetadata {
     // The name of the plugin this data pertains to.
     string plugin_name = 1;
 
-    // The content to store for the plugin. The best practice is for this JSON
-    // string to be the canonical JSON serialization of a protocol buffer
-    // defined by the plugin. Converting that protobuf to and from JSON is the
-    // responsibility of the plugin code, and is not enforced by
-    // TensorFlow/TensorBoard.
-    string content = 2;
+    // The content to store for the plugin. The best practice is for this to be
+    // a binary serialized protocol buffer.
+    bytes content = 2;
   }
 
-  // A list of plugin data. A single summary value instance may be used by more
-  // than 1 plugin.
-  repeated PluginData plugin_data = 1;
+  // Data that associates a summary with a certain plugin.
+  PluginData plugin_data = 1;
+
+  // Display name for viewing in TensorBoard.
+  string display_name = 2;
+
+  // Longform readable description of the summary sequence. Markdown supported.
+  string summary_description = 3;
 };
 
 // A Summary is a set of named values to be displayed by the

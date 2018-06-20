@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/packed_literal_reader.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -101,7 +100,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   EXPECT_EQ(46.0f, actual->Get<float>({1, 1}));
 
   std::unique_ptr<Literal> round_tripped = RoundTripToServer(*actual);
-  LiteralTestUtil::ExpectEqual(*round_tripped, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*round_tripped, *actual));
 }
 
 TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
@@ -136,25 +135,8 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   EXPECT_EQ(46.0f, actual->Get<float>({1, 1}));
 
   std::unique_ptr<Literal> round_tripped = RoundTripToServer(*actual);
-  LiteralTestUtil::ExpectEqual(*round_tripped, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*round_tripped, *actual));
 }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

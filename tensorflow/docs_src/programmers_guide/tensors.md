@@ -29,8 +29,8 @@ Some types of tensors are special, and these will be covered in other
 units of the Programmer's guide. The main ones are:
 
   * `tf.Variable`
-  * `tf.Constant`
-  * `tf.Placeholder`
+  * `tf.constant`
+  * `tf.placeholder`
   * `tf.SparseTensor`
 
 With the exception of `tf.Variable`, the value of a tensor is immutable, which
@@ -43,8 +43,8 @@ generating a random number.
 
 The **rank** of a `tf.Tensor` object is its number of dimensions. Synonyms for
 rank include **order** or **degree** or **n-dimension**.
-Note that rank in TensorFlow is not the same as matrix rank in mathematics. 
-As the following table shows, each rank in TensorFlow corresponds to a 
+Note that rank in TensorFlow is not the same as matrix rank in mathematics.
+As the following table shows, each rank in TensorFlow corresponds to a
 different mathematical entity:
 
 Rank | Math entity
@@ -56,7 +56,7 @@ Rank | Math entity
 n | n-Tensor (you get the idea)
 
 
-### Rank 0 
+### Rank 0
 
 The following snippet demonstrates creating a few rank 0 variables:
 
@@ -64,7 +64,7 @@ The following snippet demonstrates creating a few rank 0 variables:
 mammal = tf.Variable("Elephant", tf.string)
 ignition = tf.Variable(451, tf.int16)
 floating = tf.Variable(3.14159265359, tf.float64)
-its_complicated = tf.Variable((12.3, -4.85), tf.complex64)
+its_complicated = tf.Variable(12.3 - 4.85j, tf.complex64)
 ```
 
 Note: A string is treated as a single item in TensorFlow, not as a sequence of
@@ -79,7 +79,7 @@ initial value. For example:
 mystr = tf.Variable(["Hello"], tf.string)
 cool_numbers  = tf.Variable([3.14159, 2.71828], tf.float32)
 first_primes = tf.Variable([2, 3, 5, 7, 11], tf.int32)
-its_very_complicated = tf.Variable([(12.3, -4.85), (7.5, -6.23)], tf.complex64)
+its_very_complicated = tf.Variable([12.3 - 4.85j, 7.5 - 6.23j], tf.complex64)
 ```
 
 
@@ -108,12 +108,12 @@ my_image = tf.zeros([10, 299, 299, 3])  # batch x height x width x color
 ### Getting a `tf.Tensor` object's rank
 
 To determine the rank of a `tf.Tensor` object, call the `tf.rank` method.
-For example, the following method programmatically determines the rank 
+For example, the following method programmatically determines the rank
 of the `tf.Tensor` defined in the previous section:
 
 ```python
-r = tf.rank(my3d)
-# After the graph runs, r will hold the value 3.
+r = tf.rank(my_image)
+# After the graph runs, r will hold the value 4.
 ```
 
 ### Referring to `tf.Tensor` slices
@@ -147,7 +147,7 @@ Passing a single number, however, returns a subvector of a matrix, as follows:
 
 
 ```python
-my_row_vetor = my_matrix[2]
+my_row_vector = my_matrix[2]
 my_column_vector = my_matrix[:, 3]
 ```
 
@@ -197,7 +197,7 @@ For example, here is how to make a vector of zeros with the same size as the
 number of columns in a given matrix:
 
 ``` python
-zeros = tf.zeros(tf.shape(my_matrix)[1])
+zeros = tf.zeros(my_matrix.shape[1])
 ```
 
 ### Changing the shape of a `tf.Tensor`
@@ -265,7 +265,7 @@ example:
 ```python
 constant = tf.constant([1, 2, 3])
 tensor = constant * constant
-print tensor.eval()
+print(tensor.eval())
 ```
 
 The `eval` method only works when a default `tf.Session` is active (see
@@ -275,8 +275,8 @@ Graphs and Sessions for more information).
 
 Sometimes it is not possible to evaluate a `tf.Tensor` with no context because
 its value might depend on dynamic information that is not available. For
-example, tensors that depend on `Placeholder`s can't be evaluated without
-providing a value for the `Placeholder`.
+example, tensors that depend on `placeholder`s can't be evaluated without
+providing a value for the `placeholder`.
 
 ``` python
 p = tf.placeholder(tf.float32)
@@ -306,8 +306,8 @@ Note that you rarely want to use the following pattern when printing a
 
 ``` python
 t = <<some tensorflow operation>>
-print t  # This will print the symbolic tensor when the graph is being built.
-         # This tensor does not have a value in this context.
+print(t)  # This will print the symbolic tensor when the graph is being built.
+          # This tensor does not have a value in this context.
 ```
 
 This code prints the `tf.Tensor` object (which represents deferred computation)

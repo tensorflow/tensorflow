@@ -19,21 +19,21 @@ from __future__ import division
 from __future__ import print_function
 
 # Constraints functions / callable classes.
-from tensorflow.contrib.keras.python.keras.constraints import Constraint
-from tensorflow.contrib.keras.python.keras.constraints import max_norm
-from tensorflow.contrib.keras.python.keras.constraints import MaxNorm
-from tensorflow.contrib.keras.python.keras.constraints import min_max_norm
-from tensorflow.contrib.keras.python.keras.constraints import MinMaxNorm
-from tensorflow.contrib.keras.python.keras.constraints import non_neg
-from tensorflow.contrib.keras.python.keras.constraints import NonNeg
-from tensorflow.contrib.keras.python.keras.constraints import unit_norm
-from tensorflow.contrib.keras.python.keras.constraints import UnitNorm
+from tensorflow.python.keras.constraints import Constraint
+from tensorflow.python.keras.constraints import max_norm
+from tensorflow.python.keras.constraints import MaxNorm
+from tensorflow.python.keras.constraints import min_max_norm
+from tensorflow.python.keras.constraints import MinMaxNorm
+from tensorflow.python.keras.constraints import non_neg
+from tensorflow.python.keras.constraints import NonNeg
+from tensorflow.python.keras.constraints import unit_norm
+from tensorflow.python.keras.constraints import UnitNorm
 
 # Auxiliary utils.
 # pylint: disable=g-bad-import-order
-from tensorflow.contrib.keras.python.keras.constraints import deserialize
-from tensorflow.contrib.keras.python.keras.constraints import serialize
-from tensorflow.contrib.keras.python.keras.constraints import get
+from tensorflow.python.keras.constraints import deserialize
+from tensorflow.python.keras.constraints import serialize
+from tensorflow.python.keras.constraints import get
 
 del absolute_import
 del division

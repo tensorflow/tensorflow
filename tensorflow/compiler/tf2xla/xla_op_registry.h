@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
@@ -44,16 +45,19 @@ extern const char* const DEVICE_GPU_XLA_JIT;  // "GPU_XLA_JIT"
 extern const char* const DEVICE_XLA_CPU;
 extern const char* const DEVICE_XLA_GPU;
 
-constexpr std::array<DataType, 2> kIntTypes = {{DT_INT32, DT_INT64}};
-constexpr std::array<DataType, 2> kFloatTypes = {{DT_FLOAT, DT_DOUBLE}};
-constexpr std::array<DataType, 4> kNumericTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE}};
+constexpr std::array<DataType, 4> kFloatTypes = {
+    {DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BFLOAT16}};
+constexpr std::array<DataType, 9> kNumericTypes = {
+    {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
+     DT_COMPLEX64, DT_BFLOAT16}};
 
-constexpr std::array<DataType, 5> kCpuAllTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_BOOL}};
+constexpr std::array<DataType, 9> kCpuAllTypes = {
+    {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
+     DT_COMPLEX64, DT_BOOL}};
 
-constexpr std::array<DataType, 5> kGpuAllTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_BOOL}};
+constexpr std::array<DataType, 10> kGpuAllTypes = {
+    {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
+     DT_COMPLEX64, DT_BOOL, DT_BFLOAT16}};
 
 // Class that manages registrations of operators and devices for the XLA JIT.
 // Not thread-safe.
@@ -93,6 +97,12 @@ class XlaOpRegistry {
                               gtl::ArraySlice<DataType> supported_types,
                               BackendOpFilter op_filter);
 
+  // Returns the names of the registered backends.
+  static std::vector<string> BackendNames();
+
+  // Returns true iff a backend with the given name is registered.
+  static bool IsBackendRegistered(const string& name);
+
   // Registers `device_name` for XLA compilation, using information from
   // `registration`.
   static void RegisterCompilationDevice(const string& device_name,
@@ -112,10 +122,16 @@ class XlaOpRegistry {
   static void RegisterCompilationKernels();
 
   // Returns KernelDefs for compilation ops registered on
-  // 'compilation_device_name'.
-  // Does not include kernels registered as CompilationOnly.
+  // 'compilation_device_name'.  Does not include kernels registered as
+  // CompilationOnly, iff include_compilation_only_kernels=false.
   static std::vector<const KernelDef*> DeviceKernels(
-      const string& compilation_device_name);
+      const string& compilation_device_name,
+      bool include_compilation_only_kernels);
+
+  // Returns the set of compile-time constant inputs to 'op'. Returns nullptr
+  // if the op is not registered.
+  static const std::unordered_set<string>* CompileTimeConstantInputs(
+      const string& op);
 
  private:
   friend class XlaBackendRegistrar;
@@ -170,12 +186,24 @@ class XlaOpRegistry {
     bool has_device_whitelist = false;
     std::unordered_set<string> device_whitelist;
 
+    // Names of arguments that must be compile-time constants.
+    std::unordered_set<string> compile_time_constant_inputs;
+
     // Factory used to build OpKernels that perform symbolic execution.
     Factory factory;
   };
 
+  // Returns true if registrations x and y can both be added to the registry.
+  // This is always the case if they refer to different ops. If they refer to
+  // the same op name, they must: have the same values for compilation_only and
+  // allow_resource_types; use a device_whitelist; and their
+  // whitelists must not intersect.
+  static bool IsCompatible(const OpRegistration& x, const OpRegistration& y);
+
   // Map from operator name to OpRegistrations, populated by REGISTER_XLA_OP.
-  std::unordered_map<string, std::unique_ptr<OpRegistration>> ops_
+  // Registrations present under the same key must satisfy IsCompatible above,
+  // and this is checked during registration.
+  std::unordered_multimap<string, std::unique_ptr<OpRegistration>> ops_
       GUARDED_BY(mutex_);
 
   // Have we already registered the JIT kernels on the JIT devices?
@@ -221,6 +249,9 @@ class XlaOpRegistrationBuilder {
 
   // Allow DT_RESOURCE types for type parameters.
   XlaOpRegistrationBuilder& AllowResourceTypes();
+
+  // Mark 'input_name' as an argument whose value must be known at compile-time.
+  XlaOpRegistrationBuilder& CompileTimeConstInput(StringPiece input_name);
 
   std::unique_ptr<XlaOpRegistry::OpRegistration> Build(
       XlaOpRegistry::Factory factory);

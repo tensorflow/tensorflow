@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_TENSOR_UTIL_H_
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 
 #include <vector>
 namespace tensorflow {
@@ -53,6 +54,108 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors,
 // Split() and Concat() are inverse operations.
 Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
              std::vector<Tensor>* result) TF_MUST_USE_RESULT;
+
+namespace internal {
+void SetTensorProtoShape(std::vector<size_t> shape,
+                         TensorShapeProto* shape_proto);
+
+// Defines value type dependent methods to manipulate `TensorProto`.
+// Class specializations has to define following methods:
+//   static DataType GetDataType()
+//   static void AddValue(Type value, TensorProto* proto)
+template <typename Type>
+class TensorProtoHelper : public std::false_type {};
+
+template <>
+class TensorProtoHelper<string> : public std::true_type {
+ public:
+  static DataType GetDataType() { return DataType::DT_STRING; }
+  static void AddValue(const string& value, TensorProto* proto) {
+    *proto->mutable_string_val()->Add() = value;
+  }
+};
+
+template <>
+class TensorProtoHelper<int32> : public std::true_type {
+ public:
+  static DataType GetDataType() { return DataType::DT_INT32; }
+  static void AddValue(int32 value, TensorProto* proto) {
+    proto->mutable_int_val()->Add(value);
+  }
+};
+
+template <>
+class TensorProtoHelper<int64> : public std::true_type {
+ public:
+  static DataType GetDataType() { return DataType::DT_INT64; }
+  static void AddValue(int64 value, TensorProto* proto) {
+    proto->mutable_int64_val()->Add(value);
+  }
+};
+
+template <>
+class TensorProtoHelper<uint32> : public std::true_type {
+ public:
+  static DataType GetDataType() { return DataType::DT_UINT32; }
+  static void AddValue(uint32 value, TensorProto* proto) {
+    proto->mutable_uint32_val()->Add(value);
+  }
+};
+
+template <>
+class TensorProtoHelper<uint64> : public std::true_type {
+ public:
+  static DataType GetDataType() { return DataType::DT_UINT64; }
+  static void AddValue(uint64 value, TensorProto* proto) {
+    proto->mutable_uint64_val()->Add(value);
+  }
+};
+
+template <>
+class TensorProtoHelper<float> : public std::true_type {
+ public:
+  static DataType GetDataType() { return DataType::DT_FLOAT; }
+  static void AddValue(float value, TensorProto* proto) {
+    proto->mutable_float_val()->Add(value);
+  }
+};
+
+template <>
+class TensorProtoHelper<double> : public std::true_type {
+ public:
+  static DataType GetDataType() { return DataType::DT_DOUBLE; }
+  static void AddValue(double value, TensorProto* proto) {
+    proto->mutable_double_val()->Add(value);
+  }
+};
+
+template <>
+class TensorProtoHelper<bool> : public std::true_type {
+ public:
+  static DataType GetDataType() { return DataType::DT_BOOL; }
+  static void AddValue(bool value, TensorProto* proto) {
+    proto->mutable_bool_val()->Add(value);
+  }
+};
+}  // namespace internal
+
+// Creates a 'TensorProto' with specified shape and values.
+// The dtype and a field to represent data values of the returned 'TensorProto'
+// are determined based on type of the 'values' parameter.
+template <typename Type>
+typename std::enable_if<internal::TensorProtoHelper<Type>::value,
+                        TensorProto>::type
+CreateTensorProto(const std::vector<Type>& values,
+                  const std::vector<size_t>& shape) {
+  TensorProto tensor;
+  using TypeHelper = internal::TensorProtoHelper<Type>;
+  tensor.set_dtype(TypeHelper::GetDataType());
+  internal::SetTensorProtoShape(shape, tensor.mutable_tensor_shape());
+  for (const auto& value : values) {
+    TypeHelper::AddValue(value, &tensor);
+  }
+  return tensor;
+}
 
 }  // namespace tensor
 }  // namespace tensorflow

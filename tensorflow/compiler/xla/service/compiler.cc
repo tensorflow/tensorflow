@@ -23,49 +23,58 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
-/* static */ tensorflow::mutex* Compiler::platform_compiler_mutex_;
+/* static */ tensorflow::mutex Compiler::platform_compiler_mutex_(
+    tensorflow::LINKER_INITIALIZED);
 
-/* static */ void Compiler::LazyInitMutex() {
-  static std::once_flag mutex_init_flag;
-  std::call_once(mutex_init_flag, []() {
-    Compiler::platform_compiler_mutex_ = new tensorflow::mutex;
-  });
+std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
+Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
+                                se::StreamExecutor* executor) const {
+  CHECK(executor != nullptr);
+  return {};
 }
 
-/* static */ std::map<perftools::gputools::Platform::Id,
-                      Compiler::CompilerFactory>*
+// Define a default version where metadata is not used.
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+Compiler::CompileAheadOfTime(
+    std::vector<std::unique_ptr<HloModule>> modules,
+    const AotCompilationOptions& options,
+    std::unique_ptr<AotCompilationMetadata>* metadata) {
+  if (metadata != nullptr) {
+    return Unimplemented(
+        "Populating AotCompilationMetadata is not implemented on this "
+        "compiler.");
+  }
+  return CompileAheadOfTime(std::move(modules), options);
+}
+
+/* static */ std::map<se::Platform::Id, Compiler::CompilerFactory>*
 Compiler::GetPlatformCompilerFactories() {
-  static auto* r =
-      new std::map<perftools::gputools::Platform::Id, CompilerFactory>;
+  static auto* r = new std::map<se::Platform::Id, CompilerFactory>;
   return r;
 }
 
 /* static */
-std::map<perftools::gputools::Platform::Id, std::unique_ptr<Compiler>>*
+std::map<se::Platform::Id, std::unique_ptr<Compiler>>*
 Compiler::GetPlatformCompilers() {
-  static auto* r = new std::map<perftools::gputools::Platform::Id,
-                                std::unique_ptr<Compiler>>;
+  static auto* r = new std::map<se::Platform::Id, std::unique_ptr<Compiler>>;
   return r;
 }
 
 /* static */ void Compiler::RegisterCompilerFactory(
     se::Platform::Id platform_id,
     std::function<std::unique_ptr<Compiler>()> compiler_factory) {
-  LazyInitMutex();
-  tensorflow::mutex_lock lock(*platform_compiler_mutex_);
+  tensorflow::mutex_lock lock(platform_compiler_mutex_);
   auto* factories = GetPlatformCompilerFactories();
-  CHECK(factories->find(platform_id) == factories->end());
+  CHECK(factories->find(platform_id) == factories->end())
+      << "Compiler factory already registered for platform";
   (*factories)[platform_id] = std::move(compiler_factory);
 }
 
 /* static */ StatusOr<Compiler*> Compiler::GetForPlatform(
     const se::Platform* platform) {
-  LazyInitMutex();
-  tensorflow::mutex_lock lock(*platform_compiler_mutex_);
+  tensorflow::mutex_lock lock(platform_compiler_mutex_);
 
   auto* compilers = GetPlatformCompilers();
   // See if we already instantiated a compiler for this platform.
@@ -92,5 +101,8 @@ Compiler::GetPlatformCompilers() {
   compilers->insert(std::make_pair(platform->id(), it->second()));
   return compilers->at(platform->id()).get();
 }
+
+AotCompilationOptions::AotCompilationOptions()
+    : debug_options_(legacy_flags::GetDebugOptionsFromFlags()) {}
 
 }  // namespace xla

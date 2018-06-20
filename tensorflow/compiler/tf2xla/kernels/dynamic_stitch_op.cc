@@ -56,35 +56,40 @@ class DynamicStitchOp : public XlaOpKernel {
     std::vector<xla::Literal> indices_input;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputList("indices", &indices_input));
 
-    std::vector<xla::ComputationDataHandle> data;
+    std::vector<xla::XlaOp> data;
     std::vector<TensorShape> data_shapes;
     OP_REQUIRES_OK(ctx, ctx->InputList("data", &data, &data_shapes));
 
     std::vector<xla::Literal> indices(indices_input.size());
 
     const TensorShape& data0_shape = data_shapes[0];
-    const TensorShape indices0_shape =
-        XLAShapeToTensorShape(indices_input[0].shape());
+    TensorShape indices0_shape;
+    OP_REQUIRES_OK(
+        ctx, XLAShapeToTensorShape(indices_input[0].shape(), &indices0_shape));
     for (int input_num = 0; input_num < indices_input.size(); input_num++) {
-      const TensorShape indices_shape =
-          XLAShapeToTensorShape(indices_input[input_num].shape());
+      TensorShape indices_shape;
+      OP_REQUIRES_OK(ctx,
+                     XLAShapeToTensorShape(indices_input[input_num].shape(),
+                                           &indices_shape));
       const TensorShape& data_shape = data_shapes[input_num];
-      OP_REQUIRES(ctx, TensorShapeUtils::StartsWith(data_shape, indices_shape),
-                  errors::InvalidArgument(
-                      "data[", input_num, "].shape = ",
-                      data_shape.DebugString(), " does not start with indices[",
-                      input_num, "].shape = ", indices_shape.DebugString()));
-      OP_REQUIRES(ctx,
-                  input_num == 0 || SameExtraShape(data0_shape, indices0_shape,
-                                                   data_shape, indices_shape),
-                  errors::InvalidArgument(
-                      "Need data[0].shape[", indices0_shape.dims(),
-                      ":] = data[", input_num, "].shape[", indices_shape.dims(),
-                      ":], got data[0].shape = ", data0_shape.DebugString(),
-                      ", data[", input_num, "].shape = ",
-                      data_shape.DebugString(), ", indices[0].shape = ",
-                      indices0_shape.DebugString(), ", indices[", input_num,
-                      "].shape = ", indices_shape.DebugString()));
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::StartsWith(data_shape, indices_shape),
+          errors::InvalidArgument("data[", input_num,
+                                  "].shape = ", data_shape.DebugString(),
+                                  " does not start with indices[", input_num,
+                                  "].shape = ", indices_shape.DebugString()));
+      OP_REQUIRES(
+          ctx,
+          input_num == 0 || SameExtraShape(data0_shape, indices0_shape,
+                                           data_shape, indices_shape),
+          errors::InvalidArgument(
+              "Need data[0].shape[", indices0_shape.dims(), ":] = data[",
+              input_num, "].shape[", indices_shape.dims(),
+              ":], got data[0].shape = ", data0_shape.DebugString(), ", data[",
+              input_num, "].shape = ", data_shape.DebugString(),
+              ", indices[0].shape = ", indices0_shape.DebugString(),
+              ", indices[", input_num,
+              "].shape = ", indices_shape.DebugString()));
 
       OP_REQUIRES_OK(ctx,
                      XlaHelpers::ReshapeLiteral(indices_input[input_num],
@@ -131,7 +136,7 @@ class DynamicStitchOp : public XlaOpKernel {
 
     // Look up all the children expressions that represent the data
     // inputs.
-    std::vector<xla::ComputationDataHandle> input(indices.size());
+    std::vector<xla::XlaOp> input(indices.size());
     for (int input_num = 0; input_num < indices.size(); input_num++) {
       TensorShape new_shape;
       // first reshaped dimension is the number of indices for this input.
@@ -156,12 +161,12 @@ class DynamicStitchOp : public XlaOpKernel {
                                    indices0_shape.dims());
     std::vector<int64> slice_limit(1 + data0_shape.dims() -
                                    indices0_shape.dims());
-    std::vector<int64> stride(1 + data0_shape.dims() -
-                              indices0_shape.dims(), 1);
+    std::vector<int64> stride(1 + data0_shape.dims() - indices0_shape.dims(),
+                              1);
     for (int d = indices0_shape.dims(); d < data0_shape.dims(); d++) {
       slice_limit[1 + d - indices0_shape.dims()] = data0_shape.dim_size(d);
     }
-    std::vector<xla::ComputationDataHandle> to_concat(number_of_indices);
+    std::vector<xla::XlaOp> to_concat(number_of_indices);
     for (int index_num = 0; index_num < number_of_indices; index_num++) {
       const auto& expression = input[src_input_vector[index_num]];
       // Take the appropriate slice of data.
@@ -195,7 +200,10 @@ class DynamicStitchOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("DynamicStitch"), DynamicStitchOp);
+REGISTER_XLA_OP(Name("DynamicStitch").CompileTimeConstInput("indices"),
+                DynamicStitchOp);
+REGISTER_XLA_OP(Name("ParallelDynamicStitch").CompileTimeConstInput("indices"),
+                DynamicStitchOp);
 
 }  // namespace
 }  // namespace tensorflow

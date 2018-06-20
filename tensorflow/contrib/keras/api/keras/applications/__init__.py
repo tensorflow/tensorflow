@@ -19,11 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.keras.api.keras.applications import inception_v3
+from tensorflow.contrib.keras.api.keras.applications import mobilenet
 from tensorflow.contrib.keras.api.keras.applications import resnet50
 from tensorflow.contrib.keras.api.keras.applications import vgg16
 from tensorflow.contrib.keras.api.keras.applications import vgg19
 from tensorflow.contrib.keras.api.keras.applications import xception
 from tensorflow.contrib.keras.api.keras.applications.inception_v3 import InceptionV3
+from tensorflow.contrib.keras.api.keras.applications.mobilenet import MobileNet
 from tensorflow.contrib.keras.api.keras.applications.resnet50 import ResNet50
 from tensorflow.contrib.keras.api.keras.applications.vgg16 import VGG16
 from tensorflow.contrib.keras.api.keras.applications.vgg19 import VGG19

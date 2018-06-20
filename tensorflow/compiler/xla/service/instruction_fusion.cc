@@ -28,21 +28,42 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
+// These nodes can always be duplicated into consumers, even if
+// InstructionFusion::may_duplicate_ is false.
+//
+// In general these should be nodes that get *cheaper* the more they're
+// duplicated (and fused into consumers).
+//
+// TODO(jlebar): Duplicating instructions when we have a variable called "may
+// duplicate" that's equal to false is not pretty.
+bool IsAlwaysDuplicable(const HloInstruction& instruction) {
+  // We are always willing to duplicate a widening type-conversion instruction
+  // if it means we can fuse the convert into a consumer.  This allows the
+  // consumer to read less memory, which is almost always a performance win.
+  return instruction.opcode() == HloOpcode::kConvert &&
+         ShapeUtil::ByteSizeOf(instruction.operand(0)->shape()) <
+             ShapeUtil::ByteSizeOf(instruction.shape());
+}
+}  // namespace
+
 /*static*/ bool InstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
   switch (instruction.opcode()) {
     // Cheap instructions.
-    case HloOpcode::kAbs:
     case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
     case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kClz:
+    case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConstant:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
-    case HloOpcode::kCos:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kEq:
@@ -50,77 +71,91 @@ namespace xla {
     case HloOpcode::kGe:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kGt:
+    case HloOpcode::kImag:
     case HloOpcode::kInfeed:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalNot:
-    case HloOpcode::kLogicalOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
+    case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
-    case HloOpcode::kSign:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
+    case HloOpcode::kGenerateToken:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
       return false;
 
+    // Cheap instructions for reals, but expensive for complex.
+    case HloOpcode::kAbs:
+    case HloOpcode::kCos:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+      return ShapeUtil::ElementIsComplex(instruction.shape());
+
     // Expensive instructions.
+    case HloOpcode::kAtan2:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kCall:
+    case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDivide:
+    case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kFft:
     case HloOpcode::kFusion:
-    case HloOpcode::kIndex:
+    case HloOpcode::kGather:
+    case HloOpcode::kHostCompute:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
     case HloOpcode::kPower:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
-    case HloOpcode::kUpdate:
     case HloOpcode::kWhile:
-    case HloOpcode::kSend:
-    case HloOpcode::kRecv:
       return true;
   }
 
   return false;
 }
 
-namespace {
-// Returns true if fusing producer into consumer would cause producer to be
-// duplicated. This is the case if producer has uses other than consumer.
-bool FusionWouldDuplicate(const HloInstruction& producer,
-                          const HloInstruction& consumer) {
-  return !(producer.users().size() == 1 && consumer.IsUserOf(&producer));
-}
-
-// An "effectively unary" operation is one that has one "large"
+// An "effectively at most unary" operation is one that has at most one "large"
 // input with the others being negligible in terms of memory usage.
 // We use "has a smaller true rank than the output" as a heuristic
 // for "negligible" memory usage.
-bool EffectivelyUnary(HloInstruction* hlo) {
+bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
   int64 output_rank = 0;
   ShapeUtil::ForEachSubshape(
       hlo->shape(),
@@ -142,75 +177,103 @@ bool EffectivelyUnary(HloInstruction* hlo) {
                                 output_rank;
                        }) <= 1;
 }
-}  // namespace
 
 bool InstructionFusion::CanFuseOnAllPaths(
-    const HloReachabilityMap& reachability_map, HloInstruction* producer,
-    HloInstruction* consumer, DoNotFuseSet* do_not_fuse) {
-  auto could_fuse_on_all_paths = [&] {
-    // First check to see if we have already marked this producer as infeasible
-    // to fuse into consumer.
-    if (do_not_fuse->count(producer) > 0) {
-      return false;
-    }
-    // Make sure it is possible for producer and consumer to exist in a fusion
-    // node.
-    if (!producer->IsFusable() || !consumer->IsFusable()) {
-      return false;
-    }
-    // We do an upward walk of the graph from consumer towards all paths which
-    // lead to producer to find any unfusable paths.
-    for (int64 i = 0, e = consumer->operand_count(); i < e; ++i) {
-      auto* consumer_operand = consumer->mutable_operand(i);
-      if (consumer_operand == producer) {
-        // This is the base case: our upward crawl ends but we need to make sure
-        // that fusion from consumer can happen.
-        if (!ShouldFuse(consumer, i)) {
-          return false;
-        }
-      } else if (reachability_map.IsReachable(producer, consumer_operand)) {
-        // The reachability map told us that consumer_operand is a node on the
-        // path to producer. We need to further investigate from
-        // consumer_operand.
-
-        // First check if we have already ruled out fusing producer into
-        // consumer_operand.
-        if (do_not_fuse->count(consumer_operand) > 0) {
-          return false;
-        }
-        // Make sure it is possible for consumer_operand to exist in a fusion
-        // node.
-        if (!consumer_operand->IsFusable()) {
-          return false;
-        }
-        // The producer is reachable from consumer_operand which means we need
-        // to be able to fuse consumer_operand into consumer in order for
-        // producer to be fusable into consumer on all paths.
-        if (!ShouldFuse(consumer, i)) {
-          return false;
-        }
-        // Perform the recursive step: make sure producer can be fused into
-        // consumer_operand on all paths.
-        if (!CanFuseOnAllPaths(reachability_map, producer, consumer_operand,
-                               do_not_fuse)) {
-          return false;
-        }
-      }
-    }
-    return true;
-  };
-  if (could_fuse_on_all_paths()) {
+    HloInstruction* producer, HloInstruction* consumer,
+    const HloInstructionSet& do_not_duplicate) {
+  if (consumer == producer) {
     return true;
   }
-  // We couldn't fuse on all paths, record this result.
-  do_not_fuse->insert(producer);
-  return false;
+  if (!consumer->IsFusable()) {
+    return false;
+  }
+  for (int64 i = 0, e = consumer->operand_count(); i < e; ++i) {
+    auto* consumer_operand = consumer->mutable_operand(i);
+    // If the operand is not on a path to the producer, it doesn't matter
+    // whether it's fusable.
+    if (!reachability_->IsReachable(producer, consumer_operand)) {
+      continue;
+    }
+    if (do_not_duplicate.count(consumer_operand) > 0 ||
+        !ShouldFuse(consumer, i)) {
+      return false;
+    }
+    // The producer is reachable from consumer_operand which means we need
+    // to be able to fuse consumer_operand into consumer in order for
+    // producer to be fusable into consumer on all paths.
+    // Perform the recursive step: make sure producer can be fused into
+    // consumer_operand on all paths.
+    if (!CanFuseOnAllPaths(producer, consumer_operand, do_not_duplicate)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+InstructionFusion::HloInstructionSet
+InstructionFusion::ComputeGloballyUnfusable(
+    tensorflow::gtl::ArraySlice<HloInstruction*> post_order) {
+  // Forbid fusion of producers that:
+  // a) Need to be duplicated, unless they can be fused into all consumers
+  //    via all paths.
+  // b) Are more than unary, that is, fusing them would likely lead to an
+  //    increase in memory bandwidth use.
+  //
+  // Note that if we allow fusion by these global rules, we may still forbid
+  // fusing operations that require duplication later depending on
+  // is_expensive_().
+  HloInstructionSet do_not_duplicate;
+  for (HloInstruction* consumer : post_order) {
+    for (HloInstruction* producer : consumer->operands()) {
+      if (do_not_duplicate.count(producer) > 0) {
+        continue;
+      }
+
+      // If the producer is effectively not more than unary, duplicating it
+      // will not increase the number of relevant inputs read, as the fusion
+      // node will only need to read at most 1 relevant input (the input of
+      // the producer). In that case, we do not forbid fusion of the operation
+      // here.
+      if (EffectivelyAtMostUnary(producer)) {
+        continue;
+      }
+      // Otherwise we will forbid fusing the op unless we can fuse it into
+      // all of its consumers on all paths.
+      //
+      // That means, that for:
+      // A --> B (fusable)
+      //   \-> C (non-fusable)
+      // A will be not allowed to be fused into B, as it cannot be fused into C.
+      //
+      // Similarly, for:
+      // A -------------> B
+      //   \-> C -> D -/
+      // If:
+      // - A is fusable into B and C, and D is fusable into B
+      // - C is *not* fusable into D
+      // A will be not allowed to be fused into B, as it cannot be fused via
+      // all paths.
+      if (producer->IsFusable() &&
+          CanFuseOnAllPaths(producer, consumer, do_not_duplicate)) {
+        continue;
+      }
+      do_not_duplicate.insert(producer);
+    }
+  }
+
+  return do_not_duplicate;
 }
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
+  VLOG(2) << "Before instruction fusion:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   bool changed = false;
-  for (auto& computation : module->computations()) {
-    computation_ = computation.get();
+  module_ = module;
+  for (auto* computation : module->MakeNonfusionComputations()) {
+    CHECK(!computation->IsFusionComputation());
+    computation_ = computation;
+    reachability_ = computation_->ComputeReachability();
 
     // We want to be able to remove arbitrary instructions from the post order
     // and also compare positions of instructions in the post order. To make
@@ -228,36 +291,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       InsertOrDie(&post_order_index, post_order[i], i);
     }
 
-    DoNotFuseSet do_not_fuse;
-    auto reachability = computation->ComputeReachability();
-
-    auto cheap_to_duplicate = [](HloInstruction* producer) {
-      if (producer->opcode() == HloOpcode::kBroadcast) {
-        return true;
-      }
-      if (producer->opcode() == HloOpcode::kConstant &&
-          ShapeUtil::IsEffectiveScalar(producer->shape())) {
-        return true;
-      }
-      if (EffectivelyUnary(producer)) {
-        return true;
-      }
-      return false;
-    };
-
-    for (HloInstruction* consumer : post_order) {
-      for (HloInstruction* producer : consumer->operands()) {
-        if (cheap_to_duplicate(producer)) {
-          continue;
-        }
-        if (CanFuseOnAllPaths(*reachability, producer, consumer,
-                              &do_not_fuse)) {
-          CHECK_EQ(do_not_fuse.count(producer), 0);
-        } else {
-          CHECK_GT(do_not_fuse.count(producer), 0);
-        }
-      }
-    }
+    HloInstructionSet do_not_duplicate = ComputeGloballyUnfusable(post_order);
 
     // Instruction fusion effectively fuses edges in the computation graph
     // (producer instruction -> consumer instruction) so we iterate over all
@@ -287,7 +321,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
 
       // Consider each operand of this instruction for fusion into this
       // instruction. We want to consider the operands in a particular order to
-      // avoid created duplicate instruction clones in the fusion instruction.
+      // avoid creating duplicate instruction clones in the fusion instruction.
       // For example, consider the following expression:
       //
       //   A = ...
@@ -325,9 +359,20 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       // ensures that B will be considered before A.
       //
       // We store the original indices of the operands to pass to ShouldFuse.
-      std::vector<int64> sorted_operand_numbers(instruction->operands().size());
-      std::iota(std::begin(sorted_operand_numbers),
-                std::end(sorted_operand_numbers), 0);
+      std::vector<int64> sorted_operand_numbers;
+      sorted_operand_numbers.reserve(instruction->operands().size());
+      for (int i = 0; i < instruction->operands().size(); ++i) {
+        // This will happen if we have two possible instructions to fuse the
+        // same operand into; once the operand is fused into one instruction,
+        // the other instruction will get a new get-tuple-element as its
+        // operand, which is not in the post-order index.
+        // TODO(tjoerg): Look into fusing past these multi-output fuse points.
+        if (post_order_index.find(instruction->mutable_operand(i)) ==
+            post_order_index.end()) {
+          continue;
+        }
+        sorted_operand_numbers.push_back(i);
+      }
       std::sort(
           sorted_operand_numbers.begin(), sorted_operand_numbers.end(),
           [&](int64 i, int64 j) {
@@ -344,13 +389,20 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         if (!operand->IsFusable()) {
           continue;
         }
-        if (!ShouldFuse(instruction, i)) {
+
+        HloInstruction* fusion_instruction;
+        // Try "regular" fusion if the operand may be duplicated. Otherwise,
+        // perform multi-output fusion, unless this creates a cycle.
+        // TODO(tjoerg): Consider making multi-output fusion the default.
+        if (ShouldFuse(instruction, i) &&
+            do_not_duplicate.count(operand) == 0) {
+          fusion_instruction = Fuse(operand, instruction);
+        } else if (ShouldFuseIntoMultiOutput(instruction, i) &&
+                   !MultiOutputFusionCreatesCycle(operand, instruction)) {
+          fusion_instruction = FuseIntoMultiOutput(operand, instruction);
+        } else {
           continue;
         }
-        if (do_not_fuse.count(operand) > 0) {
-          continue;
-        }
-        HloInstruction* fusion_instruction = Fuse(operand, instruction);
 
         // Fusing an instruction into a fusion instruction can change the
         // operand set of the fusion instruction. For simplicity just push the
@@ -362,7 +414,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         changed = true;
 
         if (operand->user_count() == 0) {
-          // Operand is now dead. Remove from post order by setting it's
+          // Operand is now dead. Remove from post order by setting its
           // location to nullptr.
           post_order[FindOrDie(post_order_index, operand)] = nullptr;
           post_order_index.erase(operand);
@@ -374,47 +426,76 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       }
     }
   }
+
+  VLOG(2) << "After instruction fusion:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   return changed;
+}
+
+HloInstruction* InstructionFusion::AddFusionInstruction(
+    HloInstruction* producer, HloInstruction* consumer) {
+  HloInstruction* fusion_instruction;
+  auto kind = ChooseKind(producer, consumer);
+  if (consumer->opcode() == HloOpcode::kFusion) {
+    fusion_instruction = consumer;
+    if (kind != fusion_instruction->fusion_kind()) {
+      fusion_instruction->set_fusion_kind(kind);
+    }
+  } else {
+    fusion_instruction = computation_->AddInstruction(
+        HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
+    TF_CHECK_OK(computation_->ReplaceInstruction(consumer, fusion_instruction));
+  }
+  return fusion_instruction;
 }
 
 HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
                                         HloInstruction* consumer) {
-  HloInstruction* fusion_instruction;
-
-  VLOG(2) << "Fusing " << producer << " into " << consumer;
-
-  if (consumer->opcode() == HloOpcode::kFusion) {
-    fusion_instruction = consumer;
-  } else {
-    fusion_instruction =
-        computation_->AddInstruction(HloInstruction::CreateFusion(
-            consumer->shape(), ChooseKind(producer, consumer), consumer));
-    TF_CHECK_OK(computation_->ReplaceInstruction(consumer, fusion_instruction));
-  }
+  VLOG(2) << "Fusing " << producer->ToString() << " into "
+          << consumer->ToString();
+  HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
   fusion_instruction->FuseInstruction(producer);
-
   return fusion_instruction;
+}
+
+HloInstruction* InstructionFusion::FuseIntoMultiOutput(
+    HloInstruction* producer, HloInstruction* consumer) {
+  VLOG(2) << "Multi-output fusing " << producer->ToString() << " into "
+          << consumer->ToString();
+  HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
+  fusion_instruction->FuseInstructionIntoMultiOutput(producer);
+  return fusion_instruction;
+}
+
+bool InstructionFusion::MultiOutputFusionCreatesCycle(
+    HloInstruction* producer, HloInstruction* consumer) {
+  return c_any_of(
+      consumer->operands(), [&](const HloInstruction* consumer_operand) {
+        // The fusion algorithm traverses the HLO graph in reverse post order.
+        // Thus `cosumers` is visited before its operands (including
+        // `producer`). Therefore, consumer operands cannot have been fused yet.
+        // It is thus safe to use the pre-computed reachability map.
+        return consumer_operand != producer &&
+               reachability_->IsReachable(producer, consumer_operand);
+      });
 }
 
 bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                    int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
+
   // Cost condition: don't duplicate expensive instructions.
   if (FusionWouldDuplicate(*producer, *consumer) &&
-      (is_expensive_(*producer) || !may_duplicate_)) {
+      (!may_duplicate_ || is_expensive_(*producer)) &&
+      !IsAlwaysDuplicable(*producer)) {
     return false;
   }
 
   if (consumer->opcode() == HloOpcode::kFusion &&
       consumer->fusion_kind() != HloInstruction::FusionKind::kLoop &&
-      consumer->fusion_kind() != HloInstruction::FusionKind::kInput) {
-    return false;
-  }
-
-  // Cost condition: not fuse (expensive producers) and (consumers who reuse
-  // operand elements).
-  if (consumer->ReusesOperandElements(operand_index) &&
-      is_expensive_(*producer)) {
+      consumer->fusion_kind() != HloInstruction::FusionKind::kInput &&
+      consumer->fusion_kind() != HloInstruction::FusionKind::kOutput) {
     return false;
   }
 

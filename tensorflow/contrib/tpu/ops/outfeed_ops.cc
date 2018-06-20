@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -25,6 +26,7 @@ REGISTER_OP("OutfeedEnqueue")
     .Input("input: dtype")
     .Attr("dtype: type")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 An op which emits a single Tensor value from an XLA computation.
 
@@ -35,10 +37,11 @@ REGISTER_OP("OutfeedEnqueueTuple")
     .Input("inputs: dtypes")
     .Attr("dtypes: list(type)")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 An op which emits multiple Tensor values from an XLA computation.
 
-inputs: A list of tensors that will be inserted into the outfeed queue as an 
+inputs: A list of tensors that will be inserted into the outfeed queue as an
 XLA tuple.
 )doc");
 
@@ -48,14 +51,7 @@ REGISTER_OP("OutfeedDequeue")
     .Attr("shape: shape")
     .Attr("device_ordinal: int = -1")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
-      c->set_output(0, out);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Retrieves a single tensor from the computation outfeed.  This operation will
 block indefinitely until data is available.

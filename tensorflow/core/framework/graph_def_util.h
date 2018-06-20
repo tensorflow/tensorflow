@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_GRAPH_DEF_UTIL_H_
 
 #include <set>
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -56,6 +55,12 @@ Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def);
 Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
                                  const OpRegistryInterface& op_registry,
                                  int node_offset);
+
+// Same as above, except for the fact that it skips nodes that aren't found in
+// op_registry if skip_unknown_ops is true.
+Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
+                                 const OpRegistryInterface& op_registry,
+                                 int node_offset, bool skip_unknown_ops);
 
 // Remove attrs from 'graph_def' that have the default value according
 // to 'producer_op_registry', but don't exist according to

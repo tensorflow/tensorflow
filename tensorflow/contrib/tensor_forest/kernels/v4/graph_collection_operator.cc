@@ -96,8 +96,8 @@ void GraphRunnerSplitCollectionOperator::AddExample(
 
 void GraphRunnerSplitCollectionOperator::
     CreateAndInitializeCandidateWithExample(
-        const std::unique_ptr<TensorDataSet>& input_data, int example,
-        int32 node_id) const {
+        const std::unique_ptr<TensorDataSet>& input_data,
+        const InputTarget* target, int example, int32 node_id) const {
   auto* slot = stats_.at(node_id).get();
   int cand_num = slot->num_splits();
   const int64 unique_id = UniqueId(node_id, cand_num);
@@ -125,7 +125,7 @@ void GraphRunnerSplitCollectionOperator::
     }
   }
 
-  slot->AddSplit(split);
+  slot->AddSplit(split, input_data, target, example);
 
   runners_[unique_id].reset(new CandidateGraphRunner(graph_dir_, split));
   runners_[unique_id]->Init();

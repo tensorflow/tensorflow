@@ -268,13 +268,19 @@ class Im2ColConvFunctor {
     Im2ColBufferResource<T1, chunk_value_count>* im2col_buffer_resource;
     std::function<Status(Im2ColBufferResource<T1, chunk_value_count>**)>
         creator = [](Im2ColBufferResource<T1, chunk_value_count>** resource) {
+#ifdef _MSC_VER
+          // MSVC complains about the capture of chunk_value_count which oddly
+          // works fine in conv_ops_using_gemm.cc for example.
+          // Define chunk_value_count inside the lambda for now.
+          const int64 chunk_value_count =
+              (kMaxChunkSize + (sizeof(T1) - 1)) / sizeof(T1);
+#endif
           *resource = new Im2ColBufferResource<T1, chunk_value_count>();
           return Status::OK();
         };
-    OP_REQUIRES_OK(
-        context,
-        context->resource_manager()->LookupOrCreate(
-            "Conv2d", "im2col_buffer", &im2col_buffer_resource, creator));
+    OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
+                                "Conv2d", "im2col_buffer",
+                                &im2col_buffer_resource, creator));
     // This means that multiple ops can't be run simultaneously on different
     // threads, because we have a single shared resource. The platforms this is
     // aimed at have intra-op parallelism as their focus though, so it shouldn't
@@ -381,7 +387,7 @@ class Im2ColConvFunctor {
       if (meta::IsSupportedAndEnabled() && std::is_same<T1, quint8>() &&
           std::is_same<T2, quint8>() && std::is_same<T3, qint32>() &&
           (output_offset == 0) && (output_mult == 1) && (output_shift == 0) &&
-          (transpose_c == false)) {
+          (transpose_c == false) && (k <= 2048)) {
         meta::QuantizedGemm(context, transpose_a, transpose_b, im2col_buffer,
                             filter_data, chunk_output_data, m, n, k,
                             -input_offset, -filter_offset, lda, ldb, ldc);
@@ -457,6 +463,19 @@ class QuantizedConv2DOp : public OpKernel {
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
+    std::vector<int32> dilations;
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations));
+    OP_REQUIRES(context, dilations.size() == 4,
+                errors::InvalidArgument("Dilations field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, dilations[1] == 1 && dilations[2] == 1,
+                errors::InvalidArgument(
+                    "Current implementation only supports dilated rate as 1 "
+                    "in the row and column dimensions."));
+    OP_REQUIRES(context, (dilations[0] == 1 && dilations[3] == 1),
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "dilations in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 

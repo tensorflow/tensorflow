@@ -30,7 +30,7 @@ tf_module {
   }
   member_method {
     name: "create_local_cluster"
-    argspec: "args=[\'num_workers\', \'num_ps\', \'protocol\'], varargs=None, keywords=None, defaults=[\'grpc\'], "
+    argspec: "args=[\'num_workers\', \'num_ps\', \'protocol\', \'worker_config\', \'ps_config\'], varargs=None, keywords=None, defaults=[\'grpc\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_temp_dir"
@@ -46,7 +46,7 @@ tf_module {
   }
   member_method {
     name: "is_gpu_available"
-    argspec: "args=[\'cuda_only\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'cuda_only\', \'min_cuda_compute_capability\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "main"

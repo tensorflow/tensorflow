@@ -123,7 +123,7 @@ def rejection_sample(tensors,
         batch_size=batch_size,
         num_threads=queue_threads)
 
-    # Queues return a single tensor if the list of enqued tensors is one. Since
+    # Queues return a single tensor if the list of enqueued tensors is one. Since
     # we want the type to always be the same, always return a list.
     if isinstance(minibatch, ops.Tensor):
       minibatch = [minibatch]
@@ -150,7 +150,7 @@ def stratified_sample(tensors,
     tensors: List of tensors for data. All tensors are either one item or a
         batch, according to enqueue_many.
     labels: Tensor for label of data. Label is a single integer or a batch,
-        depending on enqueue_many. It is not a one-hot vector.
+        depending on `enqueue_many`. It is not a one-hot vector.
     target_probs: Target class proportions in batch. An object whose type has a
         registered Tensor conversion function.
     batch_size: Size of batch to be returned.
@@ -164,9 +164,10 @@ def stratified_sample(tensors,
         examples and for the final queue with the proper class proportions.
     name: Optional prefix for ops created by this function.
   Raises:
-    ValueError: enqueue_many is True and labels doesn't have a batch
-        dimension, or if enqueue_many is False and labels isn't a scalar.
-    ValueError: enqueue_many is True, and batch dimension on data and labels
+    ValueError: If `tensors` isn't iterable.
+    ValueError: `enqueue_many` is True and labels doesn't have a batch
+        dimension, or if `enqueue_many` is False and labels isn't a scalar.
+    ValueError: `enqueue_many` is True, and batch dimension on data and labels
         don't match.
     ValueError: if probs don't sum to one.
     ValueError: if a zero initial probability class has a nonzero target
@@ -188,7 +189,7 @@ def stratified_sample(tensors,
     # Run batch through network.
     ...
   """
-  with ops.name_scope(name, 'stratified_sample', tensors + [labels]):
+  with ops.name_scope(name, 'stratified_sample', list(tensors) + [labels]):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
     labels = ops.convert_to_tensor(labels)
     target_probs = ops.convert_to_tensor(target_probs, dtype=dtypes.float32)
@@ -311,7 +312,7 @@ def _verify_input(tensor_list, labels, probs_list):
   """Verify that batched inputs are well-formed."""
   checked_probs_list = []
   for probs in probs_list:
-    # Since number of classes shouldn't change at runtime, probalities shape
+    # Since number of classes shouldn't change at runtime, probabilities shape
     # should be fully defined.
     probs.get_shape().assert_is_fully_defined()
 
@@ -406,7 +407,7 @@ def _calculate_acceptance_probabilities(init_probs, target_probs):
   ```
 
 
-  A solution for a_i in terms of the other variabes is the following:
+  A solution for a_i in terms of the other variables is the following:
     ```a_i = (t_i / p_i) / max_i[t_i / p_i]```
   """
   # Make list of t_i / p_i.

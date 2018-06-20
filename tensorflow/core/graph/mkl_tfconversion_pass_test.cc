@@ -16,7 +16,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/graph/mkl_tfconversion_pass.h"
-#include "tensorflow/core/util/mkl_util.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 
 #include <algorithm>
 #include <string>
@@ -173,13 +173,13 @@ TEST_F(MklToTfConversionPass, Positive) {
     EXPECT_EQ(DoRunMklToTfConversionPass(),
               "A(Input);B(Input);C(_MklConv2D);D(Input);E(Sub);M(_MklInput);"
               "Mkl2Tf/_0(_MklToTf);N(_MklInput)|A->C;B->C:1;C->Mkl2Tf/_0;"
-              "C:1->Mkl2Tf/_0:1;D->E:1;M->C:2;Mkl2Tf/_0->E;N->C:3");
+              "C:2->Mkl2Tf/_0:1;D->E:1;M->C:2;Mkl2Tf/_0->E;N->C:3");
   }
 }
 
 // MklConv2D followed by MklToTf op followed by Non-Mkl layer.
 // C=MklConv2D(A,M,B,N); D=MklToTf(C:0, C:1) F=Sub(D,E) (for interleaved)
-// C=MklConv2D(A,B,M,N); D=MklToTf(C:0, C:1) F=Sub(D,E) (for contiguous)
+// C=MklConv2D(A,B,M,N); D=MklToTf(C:0, C:2) F=Sub(D,E) (for contiguous)
 // MklToTf node should not be inserted again.
 TEST_F(MklToTfConversionPass, Negative_DoubleInsert) {
   if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
@@ -226,7 +226,7 @@ TEST_F(MklToTfConversionPass, Negative_DoubleInsert) {
         "node { name: 'D' op: '_MklToTf'"
         " attr { key: 'T'                value { type: DT_FLOAT } }"
         " attr { key: 'data_format'      value { s: 'NCHW' } }"
-        " input: ['C:0', 'C:1']}"
+        " input: ['C:0', 'C:2']}"
         "node { name: 'E' op: 'Input'}"
         "node { name: 'F' op: 'Sub'"
         " attr {key: 'T'                 value { type: DT_FLOAT } }"
@@ -234,7 +234,7 @@ TEST_F(MklToTfConversionPass, Negative_DoubleInsert) {
     EXPECT_EQ(DoRunMklToTfConversionPass(),
               "A(Input);B(Input);C(_MklConv2D);D(_MklToTf);E(Input);"
               "F(Sub);M(_MklInput);N(_MklInput)|"
-              "A->C;B->C:1;C->D;C:1->D:1;D->F;E->F:1;M->C:2;N->C:3");
+              "A->C;B->C:1;C->D;C:2->D:1;D->F;E->F:1;M->C:2;N->C:3");
   }
 }
 

@@ -367,6 +367,7 @@ class ScipyOptimizerInterface(ExternalOptimizerInterface):
       loss, gradient = loss_grad_func(x)
       return loss, gradient.astype('float64')
 
+    optimizer_kwargs = dict(optimizer_kwargs.items())
     method = optimizer_kwargs.pop('method', self._DEFAULT_METHOD)
 
     constraints = []
@@ -396,19 +397,25 @@ class ScipyOptimizerInterface(ExternalOptimizerInterface):
             'automatically and cannot be injected manually'.format(kwarg))
 
     minimize_kwargs.update(optimizer_kwargs)
-    if method == 'SLSQP':
-      # SLSQP doesn't support step callbacks. Obviate associated warning
-      # message.
-      del minimize_kwargs['callback']
 
     import scipy.optimize  # pylint: disable=g-import-not-at-top
     result = scipy.optimize.minimize(*minimize_args, **minimize_kwargs)
-    logging.info('Optimization terminated with:\n'
-                 '  Message: %s\n'
-                 '  Objective function value: %f\n'
-                 '  Number of iterations: %d\n'
-                 '  Number of functions evaluations: %d', result.message,
-                 result.fun, result.nit, result.nfev)
+
+    message_lines = [
+        'Optimization terminated with:',
+        '  Message: %s',
+        '  Objective function value: %f',
+    ]
+    message_args = [result.message, result.fun]
+    if hasattr(result, 'nit'):
+      # Some optimization methods might not provide information such as nit and
+      # nfev in the return. Logs only available information.
+      message_lines.append('  Number of iterations: %d')
+      message_args.append(result.nit)
+    if hasattr(result, 'nfev'):
+      message_lines.append('  Number of functions evaluations: %d')
+      message_args.append(result.nfev)
+    logging.info('\n'.join(message_lines), *message_args)
 
     return result['x']
 

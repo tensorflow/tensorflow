@@ -1,4 +1,4 @@
-# Variables: persistent state in TensorFlow
+# Variables
 
 A TensorFlow **variable** is the best way to represent shared, persistent state
 manipulated by your program.
@@ -37,7 +37,7 @@ You may optionally specify the `dtype` and initializer to `tf.get_variable`. For
 example:
 
 ``` python
-my_int_variable = tf.get_variable("my_int_variable", [1, 2, 3], dtype=tf.int32, 
+my_int_variable = tf.get_variable("my_int_variable", [1, 2, 3], dtype=tf.int32,
   initializer=tf.zeros_initializer)
 ```
 
@@ -45,13 +45,15 @@ TensorFlow provides many convenient initializers. Alternatively, you may
 initialize a `tf.Variable` to have the value of a `tf.Tensor`. For example:
 
 ``` python
-other_variable = tf.get_variable("other_variable", dtype=tf.int32, 
+other_variable = tf.get_variable("other_variable", dtype=tf.int32,
   initializer=tf.constant([23, 42]))
 ```
 
 Note that when the initializer is a `tf.Tensor` you should not specify the
 variable's shape, as the shape of the initializer tensor will be used.
 
+
+<a name="collections"></a>
 ### Variable collections
 
 Because disconnected parts of a TensorFlow program might want to create
@@ -60,17 +62,18 @@ them. For this reason TensorFlow provides **collections**, which are named lists
 of tensors or other objects, such as `tf.Variable` instances.
 
 By default every `tf.Variable` gets placed in the following two collections:
+
  * `tf.GraphKeys.GLOBAL_VARIABLES` --- variables that can be shared across
-multiple devices,
- * `tf.GraphKeys.TRAINABLE_VARIABLES`--- variables for which TensorFlow will
+   multiple devices,
+ * `tf.GraphKeys.TRAINABLE_VARIABLES` --- variables for which TensorFlow will
    calculate gradients.
- 
+
 If you don't want a variable to be trainable, add it to the
 `tf.GraphKeys.LOCAL_VARIABLES` collection instead. For example, the following
 snippet demonstrates how to add a variable named `my_local` to this collection:
 
 ``` python
-my_local = tf.get_variable("my_local", shape=(), 
+my_local = tf.get_variable("my_local", shape=(),
 collections=[tf.GraphKeys.LOCAL_VARIABLES])
 ```
 
@@ -78,8 +81,8 @@ Alternatively, you can specify `trainable=False` as an argument to
 `tf.get_variable`:
 
 ``` python
-my_non_trainable = tf.get_variable("my_non_trainable", 
-                                   shape=(), 
+my_non_trainable = tf.get_variable("my_non_trainable",
+                                   shape=(),
                                    trainable=False)
 ```
 
@@ -108,7 +111,7 @@ devices. For example, the following snippet creates a variable named `v` and
 places it on the second GPU device:
 
 ``` python
-with tf.device("/gpu:1"):
+with tf.device("/device:GPU:1"):
   v = tf.get_variable("v", [1])
 ```
 
@@ -124,7 +127,7 @@ cluster_spec = {
     "ps": ["ps0:2222", "ps1:2222"],
     "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]}
 with tf.device(tf.train.replica_device_setter(cluster=cluster_spec)):
-  v = tf.get_variable("v", shape=[20, 20])  # this variable is placed 
+  v = tf.get_variable("v", shape=[20, 20])  # this variable is placed
                                             # in the parameter server
                                             # by the replica_device_setter
 ```
@@ -140,7 +143,7 @@ high-level frameworks such as `tf.contrib.slim`, `tf.estimator.Estimator` and
 Explicit initialization is otherwise useful because it allows you not to rerun
 potentially expensive initializers when reloading a model from a checkpoint as
 well as allowing determinism when randomly-initialized variables are shared in a
-distributed setting. 
+distributed setting.
 
 To initialize all trainable variables in one go, before training starts, call
 `tf.global_variables_initializer()`. This function returns a single operation
@@ -203,7 +206,7 @@ methods:
 v = tf.get_variable("v", shape=(), initializer=tf.zeros_initializer())
 assignment = v.assign_add(1)
 tf.global_variables_initializer().run()
-assignment.run()
+sess.run(assignment)  # or assignment.op.run(), or assignment.eval()
 ```
 
 Most TensorFlow optimizers have specialized ops that efficiently update the
@@ -223,152 +226,6 @@ with tf.control_dependencies([assignment]):
                       # assign_add operation.
 ```
 
-## Saving and Restoring
-
-The easiest way to save and restore a model is to use a `tf.train.Saver` object.
-The constructor adds `save` and `restore` ops to the graph for all, or a
-specified list, of the variables in the graph.  The `Saver` object provides
-methods to run these ops, specifying paths for the checkpoint files to write to
-or read from.
-
-To restore a model checkpoint without a graph, you must first import the graph
-from the `MetaGraph` file (typical extension is `.meta`). Do this by calling
-@{tf.train.import_meta_graph}, which in turn returns a `Saver` from which one
-can than perform a `restore`.
-
-### Checkpoint Files
-
-TensorFlow saves variables in binary files that, roughly speaking, map variable
-names to tensor values.
-
-When you create a `Saver` object, you can optionally choose names for the
-variables in the checkpoint files.  By default, `Saver` uses the value of the
-@{tf.Variable.name} property for
-each variable.
-
-To inspect the variables in a checkpoint, you can use
-the
-[`inspect_checkpoint`](https://www.tensorflow.org/code/tensorflow/python/tools/inspect_checkpoint.py) library,
-particularly the `print_tensors_in_checkpoint_file` function.
-
-### Saving Variables
-
-Create a `Saver` with `tf.train.Saver()` to manage all variables in the
-model. For example, the following snippet demonstrates how to call the
-`tf.train.Saver.save` method to save variables to a checkpoint file:
-
-```python
-# Create some variables.
-v1 = tf.get_variable("v1", shape=[3], initializer = tf.zeros_initializer)
-v2 = tf.get_variable("v2", shape=[5], initializer = tf.zeros_initializer)
-
-inc_v1 = v1.assign(v1+1)
-dec_v2 = v2.assign(v2-1)
-
-# Add an op to initialize the variables.
-init_op = tf.global_variables_initializer()
-
-# Add ops to save and restore all the variables.
-saver = tf.train.Saver()
-
-# Later, launch the model, initialize the variables, do some work, and save the
-# variables to disk.
-with tf.Session() as sess:
-  sess.run(init_op)
-  # Do some work with the model.
-  inc_v1.op.run()
-  dec_v2.op.run()
-  # Save the variables to disk.
-  save_path = saver.save(sess, "/tmp/model.ckpt")
-  print("Model saved in file: %s" % save_path)
-```
-
-### Restoring Variables
-
-The `tf.train.Saver` object not only saves variables to checkpoint files, it
-also restores variables.  Note that when you restore variables from a file you
-do not have to initialize them beforehand. For example, the following snippet
-demonstrates how to call the `tf.train.Saver.restore` method to restore
-variables from a checkpoint file:
-
-```python
-tf.reset_default_graph()
-
-# Create some variables.
-v1 = tf.get_variable("v1", shape=[3])
-v2 = tf.get_variable("v2", shape=[5])
-
-# Add ops to save and restore all the variables.
-saver = tf.train.Saver()
-
-# Later, launch the model, use the saver to restore variables from disk, and
-# do some work with the model.
-with tf.Session() as sess:
-  # Restore variables from disk.
-  saver.restore(sess, "/tmp/model.ckpt")
-  print("Model restored.")
-  # Check the values of the variables
-  print("v1 : %s" % v1.eval())
-  print("v2 : %s" % v2.eval())
-```
-
-
-
-### Choosing which Variables to Save and Restore
-
-If you do not pass any argument to `tf.train.Saver()`, the saver handles all
-variables in the graph.  Each variable is saved under the name that was passed
-when the variable was created.
-
-It is sometimes useful to explicitly specify names for variables in the
-checkpoint files.  For example, you may have trained a model with a variable
-named `"weights"` whose value you want to restore into a variable named
-`"params"`.
-
-It is also sometimes useful to only save or restore a subset of the variables
-used by a model.  For example, you may have trained a neural net with five
-layers, and you now want to train a new model with six layers that reuses the
-existing weights of the five trained layers. You can use the saver to restore
-the weights of just the first five layers.
-
-You can easily specify the names and variables to save or load by passing to the
-`tf.train.Saver()` constructor either a list of variables (which will be stored 
-under their own names), or a Python dictionary in which keys are the names to 
-use and values are the variables to manage. 
-
-Continuing from the save/restore examples, above:
-
-```python
-tf.reset_default_graph()
-# Create some variables.
-v1 = tf.get_variable("v1", [3], initializer = tf.zeros_initializer)
-v2 = tf.get_variable("v2", [5], initializer = tf.zeros_initializer)
-
-# Add ops to save and restore only `v2` using the name "v2"
-saver = tf.train.Saver({"v2": v2})
-
-# Use the saver object normally after that.
-with tf.Session() as sess:
-  # Initialize v1 since the saver will not.
-  v1.initializer.run()
-  saver.restore(sess, "/tmp/model.ckpt")
-  
-  print("v1 : %s" % v1.eval())
-  print("v2 : %s" % v2.eval())
-
-```
-
-Notes:
-
-*  You can create as many `Saver` objects as you want if you need to save and
-   restore different subsets of the model variables.  The same variable can be
-   listed in multiple saver objects, its value is only changed when the
-   `Saver.restore()` method is run.
-
-*  If you only restore a subset of the model variables at the start of a
-   session, you have to run an initialize op for the other variables.  See
-   @{tf.variables_initializer} for more information.
-
 
 ## Sharing variables
 
@@ -380,7 +237,7 @@ TensorFlow supports two ways of sharing variables:
 While code which explicitly passes variables around is very clear, it is
 sometimes convenient to write TensorFlow functions that implicitly use
 variables in their implementations. Most of the functional layers from
-`tf.layer` use this approach, as well as all `tf.metrics`, and a few other
+`tf.layers` use this approach, as well as all `tf.metrics`, and a few other
 library utilities.
 
 Variable scopes allow you to control variable reuse when calling functions which
@@ -410,7 +267,7 @@ calling this function repeatedly would not work:
 ``` python
 input1 = tf.random_normal([1,10,10,32])
 input2 = tf.random_normal([1,20,20,32])
-x = conv_relu(input1, kernel_shape=[5, 5, 1, 32], bias_shape=[32])
+x = conv_relu(input1, kernel_shape=[5, 5, 32, 32], bias_shape=[32])
 x = conv_relu(x, kernel_shape=[5, 5, 32, 32], bias_shape = [32])  # This fails.
 ```
 
@@ -422,7 +279,7 @@ however, clarifies that we want to create new variables:
 def my_image_filter(input_images):
     with tf.variable_scope("conv1"):
         # Variables created here will be named "conv1/weights", "conv1/biases".
-        relu1 = conv_relu(input_images, [5, 5, 1, 32], [32])
+        relu1 = conv_relu(input_images, [5, 5, 32, 32], [32])
     with tf.variable_scope("conv2"):
         # Variables created here will be named "conv2/weights", "conv2/biases".
         return conv_relu(relu1, [5, 5, 32, 32], [32])

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -131,7 +132,7 @@ Status AttrSlice::Find(StringPiece attr_name,
   // Skip AttachDef for internal attrs since it is a little bit
   // expensive and it is common for them to correctly not be included
   // in a NodeDef.
-  if (!attr_name.starts_with("_") && ndef_ != nullptr) {
+  if (!str_util::StartsWith(attr_name, "_") && ndef_ != nullptr) {
     s = AttachDef(s, *ndef_);
   }
   return s;
@@ -240,8 +241,12 @@ DEFINE_GET_ATTR(Tensor, tensor, "tensor", emplace_back, t, Tensor t;
                       ProtoShortDebugString(v),
                       " that can't be converted to a Tensor");
                 })
-
+DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
+
+bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name) {
+  return node_def.attr().find(std::string(attr_name)) != node_def.attr().end();
+}
 
 static const string& kEmptyString = *new string();
 
@@ -283,17 +288,6 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
   TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "func"));
   *value = &attr_value->func();
-  return Status::OK();
-}
-
-Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                   std::vector<NameAttrList>* value) {
-  const AttrValue* attr_value;
-  TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
-  TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "list(func)"));
-  for (const auto& v : attr_value->list().func()) {
-    value->emplace_back(v);
-  }
   return Status::OK();
 }
 
@@ -354,15 +348,50 @@ Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
 
 }  // namespace
 
+Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                        int input_port, DataType* input_type) {
+  DataTypeVector input_types;
+  for (const auto& arg : op_def.input_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, &input_types));
+    if (input_types.size() > input_port) {
+      const DataType dtype = input_types[input_port];
+      *input_type = dtype;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Input ", input_port, " not found for node ",
+                                 node_def.name());
+}
+
+Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                         int output_port, DataType* output_type) {
+  DataTypeVector output_types;
+  for (const auto& arg : op_def.output_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, &output_types));
+    if (output_types.size() > output_port) {
+      const DataType dtype = output_types[output_port];
+      *output_type = dtype;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Output ", output_port, " not found for node ",
+                                 node_def.name());
+}
+
+Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
+                          DataTypeVector* outputs) {
+  for (const auto& arg : op_def.output_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, outputs));
+  }
+  return Status::OK();
+}
+
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs) {
   for (const auto& arg : op_def.input_arg()) {
     TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, inputs));
   }
-  for (const auto& arg : op_def.output_arg()) {
-    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, outputs));
-  }
-  return Status::OK();
+  return OutputTypesForNode(node_def, op_def, outputs);
 }
 
 Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
@@ -376,7 +405,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   size_t num_inputs = 0;
   // TODO(josh11b): Unify the input field validation.
   for (const string& input : node_def.input()) {
-    if (StringPiece(input).starts_with("^")) {
+    if (str_util::StartsWith(input, "^")) {
       seen_control = true;
       if (input.find(':') != string::npos) {
         return errors::InvalidArgument(
@@ -402,7 +431,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   }
   for (const auto& attr : node_def.attr()) {
     // Allow internal optional attributes with names starting with "_".
-    if (StringPiece(attr.first).starts_with("_")) {
+    if (str_util::StartsWith(attr.first, "_")) {
       continue;
     }
     auto iter = op_attrs.find(attr.first);
@@ -615,7 +644,7 @@ Status AttachDef(const Status& status, const Node& node) {
 
 void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def) {
   node_def->mutable_attr()->insert(
-      AttrValueMap::value_type(name.ToString(), value));
+      AttrValueMap::value_type(std::string(name), value));
 }
 
 #define ADD_NODE_ATTR(T)                                           \
@@ -653,7 +682,7 @@ ADD_NODE_ATTR(gtl::ArraySlice<NameAttrList>)
 #undef ADD_NODE_ATTR
 
 void AddAttr(StringPiece name, const AttrValue& value, AttrValueMap* map) {
-  map->insert(AttrValueMap::value_type(name.ToString(), value));
+  map->insert(AttrValueMap::value_type(std::string(name), value));
 }
 
 #define ADD_ATTR(T)                                            \

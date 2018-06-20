@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_ROBUST_STATS_H_
-#define TENSORFLOW_GRAPPLER_COSTS_ROBUST_STATS_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_ROBUST_STATS_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_ROBUST_STATS_H_
 
 #include <vector>
 namespace tensorflow {
@@ -39,4 +39,4 @@ class RobustStats {
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_ROBUST_STATS_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_ROBUST_STATS_H_

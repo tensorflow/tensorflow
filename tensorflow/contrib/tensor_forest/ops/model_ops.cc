@@ -90,14 +90,17 @@ REGISTER_OP("TreePredictionsV4")
     .Input("sparse_input_values: float")
     .Input("sparse_input_shape: int64")
     .Output("predictions: float")
+    .Output("tree_paths: string")
     .SetShapeFn([](InferenceContext* c) {
       DimensionHandle num_points = c->UnknownDim();
 
-      if (c->RankKnown(c->input(1)) && c->Rank(c->input(1)) > 0) {
+      if (c->RankKnown(c->input(1)) && c->Rank(c->input(1)) > 0 &&
+          c->Value(c->Dim(c->input(1), 0)) > 0) {
         num_points = c->Dim(c->input(1), 0);
       }
 
       c->set_output(0, c->Matrix(num_points, c->UnknownDim()));
+      c->set_output(1, c->Vector(c->UnknownDim()));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -111,6 +114,59 @@ sparse_input_indices: The indices tensor from the SparseTensor input.
 sparse_input_values: The values tensor from the SparseTensor input.
 sparse_input_shape: The shape tensor from the SparseTensor input.
 predictions: `predictions[i][j]` is the probability that input i is class j.
+tree_paths: `tree_paths[i]` is a serialized TreePath proto for example i.
+)doc");
+
+REGISTER_OP("TraverseTreeV4")
+    .Attr("input_spec: string")
+    .Attr("params: string")
+    .Input("tree_handle: resource")
+    .Input("input_data: float")
+    .Input("sparse_input_indices: int64")
+    .Input("sparse_input_values: float")
+    .Input("sparse_input_shape: int64")
+    .Output("leaf_ids: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      DimensionHandle num_points = c->UnknownDim();
+
+      if (c->RankKnown(c->input(1)) && c->Rank(c->input(1)) > 0 &&
+          c->Value(c->Dim(c->input(1), 0)) > 0) {
+        num_points = c->Dim(c->input(1), 0);
+      }
+
+      c->set_output(0, c->Vector(num_points));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Outputs the leaf ids for the given input data.
+
+params: A serialized TensorForestParams proto.
+tree_handle: The handle to the tree.
+input_data: The training batch's features as a 2-d tensor; `input_data[i][j]`
+   gives the j-th feature of the i-th input.
+sparse_input_indices: The indices tensor from the SparseTensor input.
+sparse_input_values: The values tensor from the SparseTensor input.
+sparse_input_shape: The shape tensor from the SparseTensor input.
+leaf_ids: `leaf_ids[i]` is the leaf id for input i.
+)doc");
+
+REGISTER_OP("UpdateModelV4")
+    .Attr("params: string")
+    .Input("tree_handle: resource")
+    .Input("leaf_ids: int32")
+    .Input("input_labels: float")
+    .Input("input_weights: float")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .Doc(R"doc(
+Updates the given leaves for each example with the new labels.
+
+params: A serialized TensorForestParams proto.
+tree_handle: The handle to the tree.
+leaf_ids: `leaf_ids[i]` is the leaf id for input i.
+input_labels: The training batch's labels as a 1 or 2-d tensor.
+  'input_labels[i][j]' gives the j-th label/target for the i-th input.
+input_weights: The training batch's weights as a 1-d tensor.
+  'input_weights[i]' gives the weight for the i-th input.
 )doc");
 
 REGISTER_OP("FeatureUsageCounts")

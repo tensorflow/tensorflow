@@ -18,7 +18,8 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-namespace gtflow {
+namespace boosted_trees {
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
@@ -38,6 +39,7 @@ REGISTER_OP("CreateQuantileAccumulator")
     .Attr("max_elements: int = 1099511627776")  // 1 << 40
     .Attr("epsilon: float")
     .Attr("num_quantiles: int")
+    .Attr("generate_quantiles: bool=False")
     .Input("quantile_accumulator_handle: resource")
     .Input("stamp_token: int64")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -119,6 +121,21 @@ stamp_token: Stamp token for Read/Write operations.
 next_stamp_token: Stamp token to be used for the next iteration.
 )doc");
 
+REGISTER_OP("QuantileAccumulatorFlushSummary")
+    .Input("quantile_accumulator_handle: resource")
+    .Input("stamp_token: int64")
+    .Input("next_stamp_token: int64")
+    .Output("output: string")
+    .Doc(R"doc(
+Resets quantile summary stream and returns the summary.
+
+quantile_accumulator_handle: The handle to the accumulator.
+stamp_token: Stamp token for Read/Write operations.
+             Any operation with a mismatching token will be dropped.
+next_stamp_token: Stamp token to be used for the next iteration.
+output: A scalar string that is the a summary of the accumulator.
+)doc");
+
 REGISTER_OP("QuantileAccumulatorSerialize")
     .Input("quantile_accumulator_handle: resource")
     .Output("stamp_token: int64")
@@ -172,7 +189,17 @@ REGISTER_OP("MakeQuantileSummaries")
       int num_sparse_features;
       TF_RETURN_IF_ERROR(
           c->GetAttr("num_sparse_features", &num_sparse_features));
+      ShapeHandle example_weights_shape;
+      int example_weights_index = num_dense_features + num_sparse_features * 3;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(example_weights_index), 2,
+                                     &example_weights_shape));
       for (int i = 0; i < num_dense_features; ++i) {
+        ShapeHandle dense_feature_shape;
+        DimensionHandle unused_dim;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &dense_feature_shape));
+        TF_RETURN_IF_ERROR(c->Merge(c->Dim(dense_feature_shape, 0),
+                                    c->Dim(example_weights_shape, 0),
+                                    &unused_dim));
         c->set_output(i, c->Scalar());
       }
       for (int i = 0; i < num_sparse_features; ++i) {
@@ -193,7 +220,8 @@ sparse_float_feature_values: List of rank 1 tensors containing the sparse float
 feature values.
 sparse_float_feature_shapes: List of rank 1 tensors containing the shape of the
 float feature.
-example_weights: Rank 1 tensor containing the example weight tensor.
+example_weights: Rank 2 (N, 1) tensor of per-example weights. Should match
+    dense and sparse features shape.
 dense_summaries: A list of serialized QuantileSummaryState for dense columns.
 sparse_summaries: A list of serialized QuantileSummaryState for sparse columns.
 )doc");
@@ -241,8 +269,23 @@ REGISTER_OP("Quantiles")
     .Input("sparse_values: num_sparse_features * float")
     .Input("dense_buckets: num_dense_features * float")
     .Input("sparse_buckets: num_sparse_features * float")
+    .Input("sparse_indices: num_sparse_features * int64")
     .Output("dense_quantiles: num_dense_features * int32")
     .Output("sparse_quantiles: num_sparse_features * int32")
+    .SetShapeFn([](InferenceContext* c) {
+      int num_dense_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_dense_features", &num_dense_features));
+      int num_sparse_features;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("num_sparse_features", &num_sparse_features));
+      // Set output shapes (dense_quantiles and sparse_quantiles) by the
+      // relevant inputs (dense_values and sparse_values). Note that the output
+      // has an additional dimension for dimension_ids.
+      for (int i = 0; i < num_dense_features + num_sparse_features; ++i) {
+        c->set_output(i, c->MakeShape({c->Dim(c->input(i), 0), 2}));
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes quantile for each a given list of dense and sparse feature values using
 the given buckets.
@@ -253,11 +296,42 @@ dense_values: List of rank 1 tensors containing the dense values.
 sparse_values: List of rank 1 tensors containing the sparse feature values.
 dense_buckets: Quantile summary for each of the dense float tensor.
 sparse_buckets: Quantile summary for each of the sparse feature float tensor.
-dense_quantiles: Rank 1 tensors representing associated quantiles for each of
-dense float tensors.
-sparse_quantiles: Rank 1 tensors representing associated quantiles for each of
-the sparse feature tensors.
+sparse_indices: List of rank 2 tensors with indices for sparse float
+tensors.
+dense_quantiles: Rank 2 tensors representing associated quantiles for each of
+dense float tensors and the dimension.
+sparse_quantiles: Rank 2 tensors representing associated quantiles for each of
+the sparse feature tensors for each of sparse feature dimensions:
+[quantile id, dimension id].
 )doc");
 
-}  // namespace gtflow
+REGISTER_OP("BucketizeWithInputBoundaries")
+    .Input("input: T")
+    .Input("boundaries: float")
+    .Output("output: int32")
+    .Attr("T: {int32, int64, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Bucketizes 'input' based on 'boundaries'. This function is similar to Bucketize
+op in core math_ops, except that boundaries are specified using an input tensor,
+as compared with a fixed attribute in Bucketize().
+
+For example, if the inputs are
+    boundaries = [0, 10, 100]
+    input = [[-5, 10000]
+             [150,   10]
+             [5,    100]]
+
+then the output will be
+    output = [[0, 3]
+              [3, 2]
+              [1, 3]]
+
+input: Any shape of Tensor contains with numeric type.
+boundaries: A vector Tensor of sorted floats specifies the boundaries
+of the buckets.
+output: Same shape as 'input', where each value of input is replaced with its corresponding bucket index.
+)doc");
+
+}  // namespace boosted_trees
 }  // namespace tensorflow

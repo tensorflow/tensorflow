@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GRAPH_COLLECTION_OPERATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GRAPH_COLLECTION_OPERATOR_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GRAPH_COLLECTION_OPERATOR_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GRAPH_COLLECTION_OPERATOR_H_
 
 #include <vector>
 #include "tensorflow/contrib/decision_trees/proto/generic_tree_model.pb.h"
@@ -56,8 +56,8 @@ class GraphRunnerSplitCollectionOperator : public SplitCollectionOperator {
 
   // Create a new candidate and initialize it with the given example.
   void CreateAndInitializeCandidateWithExample(
-      const std::unique_ptr<TensorDataSet>& input_data, int example,
-      int32 node_id) const override;
+      const std::unique_ptr<TensorDataSet>& input_data,
+      const InputTarget* target, int example, int32 node_id) const override;
 
   bool BestSplit(int32 node_id, SplitCandidate* best,
                  int32* depth) const override;
@@ -78,4 +78,4 @@ class GraphRunnerSplitCollectionOperator : public SplitCollectionOperator {
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GRAPH_COLLECTION_OPERATOR_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GRAPH_COLLECTION_OPERATOR_H_

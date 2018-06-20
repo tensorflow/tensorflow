@@ -119,7 +119,7 @@ def l1_l2_regularizer(scale_l1=1.0, scale_l2=1.0, scope=None):
 
   Returns:
     A function with signature `l1_l2(weights)` that applies a weighted sum of
-    L1 L2  regularization.
+    L1 L2 regularization.
 
   Raises:
     ValueError: If scale is negative or if scale is not a float.

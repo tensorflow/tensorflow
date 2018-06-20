@@ -35,14 +35,18 @@ limitations under the License.
 
 namespace tensorflow {
 
+static void StartAbortRendevous(Rendezvous* rendez, const Status& s) {
+  rendez->StartAbort(s);
+  rendez->Unref();
+}
+
 BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* worker_env)
     : worker_env_(worker_env) {}
 
 BaseRendezvousMgr::~BaseRendezvousMgr() {
   for (auto& p : table_) {
-    BaseRemoteRendezvous* rendez = p.second;
-    rendez->StartAbort(errors::Aborted("Shutdown"));
-    rendez->Unref();
+    auto rendez = p.second;
+    StartAbortRendevous(rendez, errors::Aborted("Shutdown"));
   }
 }
 
@@ -52,7 +56,7 @@ RemoteRendezvous* BaseRendezvousMgr::Find(int64 step_id) {
 
 BaseRemoteRendezvous* BaseRendezvousMgr::FindOrCreate(int64 step_id) {
   mutex_lock l(mu_);
-  Table::iterator iter = table_.find(step_id);
+  auto iter = table_.find(step_id);
   if (iter == table_.end()) {
     auto rr = Create(step_id, worker_env_);
     iter = table_.insert({step_id, rr}).first;
@@ -64,7 +68,7 @@ BaseRemoteRendezvous* BaseRendezvousMgr::FindOrCreate(int64 step_id) {
 void BaseRendezvousMgr::RecvLocalAsync(int64 step_id,
                                        const Rendezvous::ParsedKey& parsed,
                                        Rendezvous::DoneCallback done) {
-  BaseRemoteRendezvous* rendez = FindOrCreate(step_id);
+  auto rendez = FindOrCreate(step_id);
   using namespace std::placeholders;
   Rendezvous::DoneCallback done_cb = std::bind(
       [rendez](Rendezvous::DoneCallback done,
@@ -101,15 +105,15 @@ void BaseRendezvousMgr::Cleanup(int64 step_id) {
   Rendezvous* rendez = nullptr;
   {
     mutex_lock l(mu_);
-    Table::iterator iter = table_.find(step_id);
+    auto iter = table_.find(step_id);
     if (iter != table_.end()) {
       rendez = iter->second;
       table_.erase(iter);
     }
   }
-  if (!rendez) return;
-  rendez->StartAbort(errors::Aborted("Cleanup ", step_id));
-  rendez->Unref();
+  if (rendez) {
+    StartAbortRendevous(rendez, errors::Aborted("Cleanup ", step_id));
+  }
 }
 
 void BaseRendezvousMgr::CleanupAll() {
@@ -122,16 +126,14 @@ void BaseRendezvousMgr::CleanupAll() {
     table_.clear();
   }
   for (auto rendez : rendezs) {
-    rendez->StartAbort(errors::Aborted("Shutdown"));
-    rendez->Unref();
+    StartAbortRendevous(rendez, errors::Aborted("Shutdown"));
   }
 }
 
-BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id,
-                                           bool tolerate_dup_recv)
+BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id)
     : env_(env),
       step_id_(step_id),
-      local_(NewLocalRendezvous(tolerate_dup_recv)),
+      local_(NewLocalRendezvous()),
       session_(nullptr) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
@@ -142,9 +144,9 @@ BaseRemoteRendezvous::~BaseRemoteRendezvous() {
 // Returns true if "device_name" is a valid full name of local device
 // of the "worker".  This helper is purely based on the worker name
 // and device name and does no lookups in the worker->device_mgr.
-static bool IsLocalDevice(const string& worker_name,
+static bool IsLocalDevice(const StringPiece worker_name,
                           const StringPiece device_name) {
-  return device_name.starts_with(worker_name);
+  return str_util::StartsWith(device_name, worker_name);
 }
 
 Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
@@ -166,7 +168,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
     session_ = session;
     std::swap(deferred_calls, deferred_calls_);
   }
-  for (DeferredCall& call : deferred_calls) {
+  for (auto& call : deferred_calls) {
     RecvLocalAsyncInternal(call.parsed, std::move(call.done));
   }
   return Status::OK();
@@ -241,21 +243,23 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
   }
 
   // This copy must involve a GPU. Hence, "in" must support DMA
-  // (e.g., string tensors do not work on GPU).
-  if (!DMAHelper::CanUseDMA(&in)) {
+  // (e.g., string tensors do not work on GPU).  Variant copy DMA
+  // checks happen inside CopyTensor::ViaDMA.
+  if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT) {
     done(errors::InvalidArgument("Non-DMA-safe ", DataTypeString(in.dtype()),
                                  " tensor may not be copied from/to a GPU."));
     return;
   }
 
+  WorkerSession* sess = session();
   Device* src_device;
-  Status s = env_->device_mgr->LookupDevice(parsed.src_device, &src_device);
+  Status s = sess->device_mgr()->LookupDevice(parsed.src_device, &src_device);
   if (!s.ok()) {
     done(s);
     return;
   }
   Device* dst_device;
-  s = env_->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
+  s = sess->device_mgr()->LookupDevice(parsed.dst_device, &dst_device);
   if (!s.ok()) {
     done(s);
     return;
@@ -265,15 +269,19 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
   Allocator* out_allocator = dst_device->GetAllocator(attr);
-  Tensor copy(out_allocator, in.dtype(), in.shape());
-  *out = copy;
+
+  if (in.dtype() != DT_VARIANT) {
+    // Variants are handled by CopyTensor::ViaDMA.
+    Tensor copy(out_allocator, in.dtype(), in.shape());
+    *out = copy;
+  }
 
   // The following function takes care of cpu->gpu, gpu->cpu, gpu->gpu copies,
   // etc.
   CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
                      recv_args.device_context, src_device, dst_device,
                      send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
-                     done);
+                     std::move(done));
 }
 
 bool BaseRemoteRendezvous::IsSameWorker(DeviceNameUtils::ParsedName src,

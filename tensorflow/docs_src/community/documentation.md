@@ -1,6 +1,6 @@
 # Writing TensorFlow Documentation
 
-We welcome contributions to the Tensorflow documentation from the community.
+We welcome contributions to the TensorFlow documentation from the community.
 This document explains how you can contribute to that documentation. In
 particular, this document explains the following:
 
@@ -8,34 +8,36 @@ particular, this document explains the following:
 * How to make conformant edits.
 * How to build and test your documentation changes before you submit them.
 
-You can view Tensorflow documentation on https://www.tensorflow.org, and you
-can view and edit the raw files on Github. We're publishing our docs on Github
-so everybody can contribute. Whatever gets checked in tensorflow/docs_src will
-be published soon after on https://www.tensorflow.org. 
+You can view TensorFlow documentation on https://www.tensorflow.org, and you
+can view and edit the raw files on
+[GitHub](https://www.tensorflow.org/code/tensorflow/docs_src/).
+We're publishing our docs on GitHub so everybody can contribute. Whatever gets
+checked in to `tensorflow/docs_src` will be published soon after on
+https://www.tensorflow.org.
 
 Republishing TensorFlow documentation in different forms is absolutely allowed,
 but we are unlikely to accept other documentation formats (or the tooling to
 generate them) into our repository. If you do choose to republish our
 documentation in another form, please be sure to include:
 
-* The version of the API this represents (i.e. r1.0, master, etc.)
+* The version of the API this represents (for example, r1.0, master, etc.)
 * The commit or version from which the documentation was generated
 * Where to get the latest documentation (that is, https://www.tensorflow.org)
 * The Apache 2.0 license.
 
-## A Note on Versions
+## A note on versions
 
 tensorflow.org, at root, shows documentation for the latest stable binary.  This
 is the documentation you should be reading if you are using `pip` to install
 TensorFlow.
 
-However, most developers will contribute documentation into the master Github
+However, most developers will contribute documentation into the master GitHub
 branch, which is published, occasionally,
-at [tensorflow.org/versions/master](https://tensorflow.org/versions/master).
+at [tensorflow.org/versions/master](https://www.tensorflow.org/versions/master).
 
 If you want documentation changes to appear at root, you will need to also
 contribute that change to the current stable binary branch (and/or
-[cherrypick](https://www.google.com/url?sa=D&q=http%3A%2F%2Fstackoverflow.com%2Fquestions%2F9339429%2Fwhat-does-cherry-picking-a-commit-with-git-mean)).
+[cherrypick](https://stackoverflow.com/questions/9339429/what-does-cherry-picking-a-commit-with-git-mean)).
 
 ## Reference vs. non-reference documentation
 
@@ -49,8 +51,9 @@ in the code:
 To modify the reference documentation, you edit the appropriate code comments.
 
 Non-reference documentation (for example, the TensorFlow installation guides) is
-authored by humans. This documentation is located in the `tensorflow/docs_src`
-directory.  Each subdirectory of `docs_src` contains a set of related Tensorflow
+authored by humans. This documentation is located in the
+[`tensorflow/docs_src`](https://www.tensorflow.org/code/tensorflow/docs_src/)
+directory.  Each subdirectory of `docs_src` contains a set of related TensorFlow
 documentation. For example, the TensorFlow installation guides are all in the
 `docs_src/install` directory.
 
@@ -145,19 +148,7 @@ viewing. Do not include url parameters in the source code URL.
 Before building the documentation, you must first set up your environment by
 doing the following:
 
-1. If pip isn't installed on your machine, install it now by issuing the
-following command:
-
-        $ sudo easy_install pip
-
-2. Use pip to install codegen, mock, and pandas by issuing the following
-   command (Note: If you are using
-   a [virtualenv](https://virtualenv.pypa.io/en/stable/) to manage your
-   dependencies, you may not want to use sudo for these installations):
-
-        $ sudo pip install codegen mock pandas
-
-3. If bazel is not installed on your machine, install it now. If you are on
+1. If bazel is not installed on your machine, install it now. If you are on
    Linux, install bazel by issuing the following command:
 
         $ sudo apt-get install bazel  # Linux
@@ -165,10 +156,10 @@ following command:
     If you are on Mac OS, find bazel installation instructions on
     [this page](https://bazel.build/versions/master/docs/install.html#mac-os-x).
 
-4. Change directory to the top-level `tensorflow` directory of the TensorFlow
+2. Change directory to the top-level `tensorflow` directory of the TensorFlow
    source code.
 
-5. Run the `configure` script and answer its prompts appropriately for your
+3. Run the `configure` script and answer its prompts appropriately for your
    system.
 
         $ ./configure
@@ -183,7 +174,7 @@ documentation in the `/tmp/tfdocs` dir:
 
 Note: You must set `src_dir` and `output_dir` to absolute file paths.
 
-## Generating Python API Documentation
+## Generating Python API documentation
 
 Ops, classes, and utility functions are defined in Python modules, such as
 `image_ops.py`. Python modules contain a module docstring. For example:
@@ -216,7 +207,7 @@ the following:
 Only top level modules (currently just `tf` and `tfdbg`) need to be manually
 added to the generate script.
 
-### Sealing Modules
+### Sealing modules
 
 Because the doc generator walks all visible symbols, and descends into anything
 it finds, it will document any accidentally exposed symbols. If a module only
@@ -234,7 +225,7 @@ If a module is accidentally imported, it typically breaks the doc generator
 even if the doc generator succeeds, unwanted symbols may show up in the
 docs. Check the generated docs to make sure that all symbols that are documented
 are expected. If there are symbols that shouldn’t be there, you have the
-following options for dealing with them: 
+following options for dealing with them:
 
 - Private symbols and imports
 - The `remove_undocumented` filter
@@ -242,7 +233,7 @@ following options for dealing with them:
 
 We'll discuss these options in detail below.
 
-#### Private Symbols and Imports
+#### Private symbols and imports
 
 The easiest way to conform to the API sealing expectations is to make non-public
 symbols private (by prepending an underscore _). The doc generator respects
@@ -288,7 +279,7 @@ are public. All `@@`s will eventually be removed. If you see them, however,
 please do not randomly delete them as they are still in use by some of our
 systems.
 
-#### Traversal Blacklist
+#### Traversal blacklist
 
 If all else fails, you may add entries to the traversal blacklist in
 `generate_lib.py.` **Almost all entries in this list are an abuse of its
@@ -311,7 +302,7 @@ flags, ...) included for platform abstraction can be documented without
 documenting their interior. Its use beyond this purpose is a shortcut that may
 be acceptable for contrib, but not for core tensorflow.
 
-## Op Documentation Style Guide
+## Op documentation style guide
 
 Long, descriptive module-level documentation for modules should go in the API
 Guides in `docs_src/api_guides/python`.
@@ -334,7 +325,7 @@ is [here](https://daringfireball.net/projects/markdown/). You are allowed to
 use [MathJax](https://www.mathjax.org) notation for equations (see above for
 restrictions).
 
-### Writing About Code
+### Writing about code
 
 Put backticks around these things when they're used in text:
 
@@ -375,7 +366,7 @@ Two notes about backticks for code samples in Markdown:
    However, do NOT indent four spaces and use backticks simultaneously. Use one
    or the other.
 
-### Tensor Dimensions
+### Tensor dimensions
 
 When you're talking about a tensor in general, don't capitalize the word tensor.
 When you're talking about the specific object that's provided to an op as an
@@ -411,24 +402,24 @@ types and default values.
 
 For example:
 
-    ```c++
-    REGISTER_OP("PngDecode")
-      .Input("contents: string")
-      .Attr("channels: int = 0")
-      .Output("image: uint8")
-      .Doc(R"doc(
-    Decodes the contents of a PNG file into a uint8 tensor.
+```c++
+REGISTER_OP("PngDecode")
+  .Input("contents: string")
+  .Attr("channels: int = 0")
+  .Output("image: uint8")
+  .Doc(R"doc(
+Decodes the contents of a PNG file into a uint8 tensor.
 
-    contents: PNG file contents.
-    channels: Number of color channels, or 0 to autodetect based on the input.
-      Must be 0 for autodetect, 1 for grayscale, 3 for RGB, or 4 for RGBA.
-      If the input has a different number of channels, it will be transformed
-      accordingly.
-    image:= A 3-D uint8 tensor of shape `[height, width, channels]`.
-      If `channels` is 0, the last dimension is determined
-      from the png contents.
-    )doc");
-    ```
+contents: PNG file contents.
+channels: Number of color channels, or 0 to autodetect based on the input.
+  Must be 0 for autodetect, 1 for grayscale, 3 for RGB, or 4 for RGBA.
+  If the input has a different number of channels, it will be transformed
+  accordingly.
+image:= A 3-D uint8 tensor of shape `[height, width, channels]`.
+  If `channels` is 0, the last dimension is determined
+  from the png contents.
+)doc");
+```
 
 Results in this piece of Markdown:
 
@@ -438,12 +429,12 @@ Results in this piece of Markdown:
 
     #### Args:
 
-    *  <b>contents</b>: A string Tensor. PNG file contents.
-    *  <b>channels</b>: An optional int. Defaults to 0.
+    *  **contents**: A string Tensor. PNG file contents.
+    *  **channels**: An optional int. Defaults to 0.
        Number of color channels, or 0 to autodetect based on the input.
        Must be 0 for autodetect, 1 for grayscale, 3 for RGB, or 4 for RGBA.  If the
        input has a different number of channels, it will be transformed accordingly.
-    *  <b>name</b>: A name for the operation (optional).
+    *  **name**: A name for the operation (optional).
 
     #### Returns:
     A 3-D uint8 tensor of shape `[height, width, channels]`.  If `channels` is
@@ -451,7 +442,7 @@ Results in this piece of Markdown:
 
 Much of the argument description is added automatically. In particular, the doc
 generator automatically adds the name and type of all inputs, attrs, and
-outputs. In the above example, `<b>contents</b>: A string Tensor.` was added
+outputs. In the above example, `contents: A string Tensor.` was added
 automatically. You should write your additional text to flow naturally after
 that description.
 
@@ -474,33 +465,31 @@ should use Markdown in the docstring.
 
 Here's a simple example:
 
-```python
-def foo(x, y, name="bar"):
-  """Computes foo.
+    def foo(x, y, name="bar"):
+      """Computes foo.
 
-  Given two 1-D tensors `x` and `y`, this operation computes the foo.
+      Given two 1-D tensors `x` and `y`, this operation computes the foo.
 
-  Example:
+      Example:
 
-  ```
-  # x is [1, 1]
-  # y is [2, 2]
-  tf.foo(x, y) ==> [3, 3]
-  ```
-  Args:
-    x: A `Tensor` of type `int32`.
-    y: A `Tensor` of type `int32`.
-    name: A name for the operation (optional).
+      ```
+      # x is [1, 1]
+      # y is [2, 2]
+      tf.foo(x, y) ==> [3, 3]
+      ```
+      Args:
+        x: A `Tensor` of type `int32`.
+        y: A `Tensor` of type `int32`.
+        name: A name for the operation (optional).
 
-  Returns:
-    A `Tensor` of type `int32` that is the foo of `x` and `y`.
+      Returns:
+        A `Tensor` of type `int32` that is the foo of `x` and `y`.
 
-  Raises:
-    ValueError: If `x` or `y` are not of type `int32`.
-  """
-```
+      Raises:
+        ValueError: If `x` or `y` are not of type `int32`.
+      """
 
-## Description of the Docstring Sections
+## Description of the docstring sections
 
 This section details each of the elements in docstrings.
 
@@ -675,10 +664,10 @@ This generates the following Args section in
 
     #### Args:
 
-    * <b>`contents`</b>: A `Tensor` of type `string`. 0-D.  The PNG-encoded
+    * **`contents`**: A `Tensor` of type `string`. 0-D.  The PNG-encoded
       image.
-    * <b>`channels`</b>: An optional `int`. Defaults to `0`. Number of color
+    * **`channels`**: An optional `int`. Defaults to `0`. Number of color
       channels for the decoded image.
-    * <b>`dtype`</b>: An optional `tf.DType` from: `tf.uint8,
+    * **`dtype`**: An optional `tf.DType` from: `tf.uint8,
       tf.uint16`. Defaults to `tf.uint 8`.
-    * <b>`name`</b>: A name for the operation (optional).
+    * **`name`**: A name for the operation (optional).

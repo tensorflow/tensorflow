@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_
+#define TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_
 
 #include <unordered_map>
 #include <vector>
@@ -35,6 +35,8 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
  public:
   using ByteArray =
       std::tuple<uint8* /* data */, uint64 /* size */, DataType /* type */>;
+  static constexpr const char* const REMOTE_FUSED_GRAPH_EXECUTOR_NAME =
+      "build_hexagon_remote_fused_graph_executor";
 
   HexagonControlWrapper() = default;
   int GetVersion() final;
@@ -46,6 +48,11 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
   bool FillInputNode(const string& node_name, const Tensor& tensor) final;
   bool ReadOutputNode(const string& node_name,
                       TensorAllocatorFunc tensor_allocator) final;
+  Status FuseRemoteGraph(const GraphDef& original_graph_def,
+                         const std::vector<string>& inputs,
+                         const std::vector<string>& outputs,
+                         GraphDef* fused_graph_def) final;
+  bool IsEnabled() const final;
   bool ReadOutputNode(const string& node_name, std::vector<ByteArray>* outputs);
 
  private:
@@ -60,8 +67,8 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
   // CAVEAT: Need offset as HVX library reserves some ids
   static constexpr int NODE_ID_OFFSET = 0x10000;
 
-  static GraphTransferInfo::NodeInfo* FindNodeInfo(
-      const string& node_name, GraphTransferInfo* graph_transfer_info);
+  static GraphTransferNodeInfo* FindNodeInfo(
+      const string& name, GraphTransferInfo* graph_transfer_info);
 
   const RemoteFusedGraphExecuteInfo* execute_info_{};
   GraphTransferer graph_transferer_{};
@@ -81,4 +88,4 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_
+#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_

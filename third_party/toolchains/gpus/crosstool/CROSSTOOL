@@ -53,6 +53,7 @@ toolchain {
     flag_set {
       action: "c++-link-executable"
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       flag_group {
         flag: "-lstdc++"
       }
@@ -79,6 +80,7 @@ toolchain {
     name: "alwayslink"
     flag_set {
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       action: "c++-link-executable"
       flag_group {
         flag: "-Wl,-no-as-needed"
@@ -120,6 +122,7 @@ toolchain {
     }
     flag_set {
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       flag_group {
         flag: "-Wl,-z,relro,-z,now"
       }
@@ -141,8 +144,8 @@ toolchain {
       flag_group {
         # All warnings are enabled. Maybe enable -Werror as well?
         flag: "-Wall"
-        # TODO(ngiraldo): Some parts of the codebase set -Werror and hit this 
-        # warning, so switch it off for now.
+        # Some parts of the codebase set -Werror and hit this warning, so
+        # switch it off for now.
         flag: "-Wno-invalid-partial-specialization"
       }
     }
@@ -165,6 +168,7 @@ toolchain {
     flag_set {
       action: "c++-link-executable"
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       flag_group {
         # Stamp the binary with a unique identifier.
         flag: "-Wl,--build-id=md5"
@@ -180,6 +184,7 @@ toolchain {
       action: "c++-compile"
       action: "c++-link-executable"
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       flag_group {
         flag:"-no-canonical-prefixes"
       }
@@ -203,6 +208,7 @@ toolchain {
     flag_set {
       action: "c++-link-executable"
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       flag_group {
         flag: "-B/usr/bin/"
       }
@@ -250,6 +256,7 @@ toolchain {
     }
     flag_set {
       action: "c++-link-dynamic-library"
+      action: "c++-link-nodeps-dynamic-library"
       action: "c++-link-executable"
       flag_group {
         flag: "-Wl,--gc-sections"
@@ -296,7 +303,7 @@ toolchain {
   cxx_builtin_include_directory: "/usr/include/x86_64-linux-gnu/c++/5.4.0"
   cxx_builtin_include_directory: "/usr/include/c++/5.4.0/backward"
   cxx_builtin_include_directory: "/usr/local/include"
-  cxx_builtin_include_directory: "/usr/local/lib/clang/5.0.0/include"
+  cxx_builtin_include_directory: "/usr/local/lib/clang/7.0.0/include"
   cxx_builtin_include_directory: "/usr/include/x86_64-linux-gnu"
   cxx_builtin_include_directory: "/usr/include"
 }

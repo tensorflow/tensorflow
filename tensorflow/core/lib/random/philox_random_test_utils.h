@@ -35,8 +35,8 @@ void FillRandoms(PhiloxRandom gen, typename Distribution::ResultElementType* p,
                  int64 size) {
   const int granularity = Distribution::kResultElementCount;
 
-  CHECK(size % granularity == 0) << " size: " << size
-                                 << " granularity: " << granularity;
+  CHECK(size % granularity == 0)
+      << " size: " << size << " granularity: " << granularity;
 
   Distribution dist;
   for (int i = 0; i < size; i += granularity) {

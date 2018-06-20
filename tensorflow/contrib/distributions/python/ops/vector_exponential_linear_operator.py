@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
@@ -26,6 +25,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import exponential
 from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.util import deprecation
 
 __all__ = ["VectorExponentialLinearOperator"]
 
@@ -107,16 +108,15 @@ class VectorExponentialLinearOperator(
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
-  la = tf.contrib.linalg
+  tfd = tf.contrib.distributions
 
   # Initialize a single 2-variate VectorExponential, supported on
   # {(x, y) in R^2 : x > 0, y > 0}.
   mat = [[1.0, 0.1],
          [0.1, 1.0]]
 
-  vex = ds.VectorExponentialLinearOperator(
-      scale=la.LinearOperatorFullMatrix(mat))
+  vex = tfd.VectorExponentialLinearOperator(
+      scale=tf.linalg.LinearOperatorFullMatrix(mat))
 
   # Compute the pdf of an`R^2` observation; return a scalar.
   vex.prob([1., 2.]).eval()  # shape: []
@@ -127,9 +127,9 @@ class VectorExponentialLinearOperator(
   scale_diag = [[1., 2, 3],
                 [0.5, 1, 1.5]]     # shape: [2, 3]
 
-  vex = ds.VectorExponentialLinearOperator(
+  vex = tfd.VectorExponentialLinearOperator(
       loc=mu,
-      scale=la.LinearOperatorDiag(scale_diag))
+      scale=tf.linalg.LinearOperatorDiag(scale_diag))
 
   # Compute the pdf of two `R^3` observations; return a length-2 vector.
   x = [[1.9, 2.2, 3.1],
@@ -139,6 +139,14 @@ class VectorExponentialLinearOperator(
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale=None,
@@ -176,13 +184,13 @@ class VectorExponentialLinearOperator(
       ValueError: if `scale` is unspecified.
       TypeError: if not `scale.dtype.is_floating`
     """
-    parameters = locals()
+    parameters = dict(locals())
     if scale is None:
       raise ValueError("Missing required `scale` parameter.")
     if not scale.dtype.is_floating:
       raise TypeError("`scale` parameter must have floating-point dtype.")
 
-    with ops.name_scope(name, values=[loc] + scale.graph_parents):
+    with ops.name_scope(name, values=[loc] + scale.graph_parents) as name:
       # Since expand_dims doesn't preserve constant-ness, we obtain the
       # non-dynamic value if possible.
       loc = ops.convert_to_tensor(loc, name="loc") if loc is not None else loc
@@ -247,7 +255,7 @@ class VectorExponentialLinearOperator(
   def _variance(self):
     if distribution_util.is_diagonal_scale(self.scale):
       return math_ops.square(self.scale.diag_part())
-    elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate) and
+    elif (isinstance(self.scale, linalg.LinearOperatorLowRankUpdate) and
           self.scale.is_self_adjoint):
       return array_ops.matrix_diag_part(
           self.scale.matmul(self.scale.to_dense()))
@@ -258,7 +266,7 @@ class VectorExponentialLinearOperator(
   def _stddev(self):
     if distribution_util.is_diagonal_scale(self.scale):
       return math_ops.abs(self.scale.diag_part())
-    elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate) and
+    elif (isinstance(self.scale, linalg.LinearOperatorLowRankUpdate) and
           self.scale.is_self_adjoint):
       return math_ops.sqrt(
           array_ops.matrix_diag_part(self.scale.matmul(self.scale.to_dense())))

@@ -56,8 +56,8 @@ class ResizeNearestNeighborOp : public OpKernel {
     // Return if the output is empty.
     if (st.output->NumElements() == 0) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
-    typename TTypes<T, 4>::Tensor output_data = st.output->tensor<T, 4>();
+    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
+    typename TTypes<T, 4>::Tensor output_data(st.output->tensor<T, 4>());
 
     bool status;
     if (align_corners_) {
@@ -162,8 +162,8 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     // Return if the output is empty.
     if (output->NumElements() == 0) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
-    typename TTypes<T, 4>::Tensor output_data = output->tensor<T, 4>();
+    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
+    typename TTypes<T, 4>::Tensor output_data(output->tensor<T, 4>());
 
     const float height_scale =
         CalculateResizeScale(out_height, in_height, align_corners_);

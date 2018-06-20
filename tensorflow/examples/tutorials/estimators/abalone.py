@@ -87,10 +87,20 @@ def model_fn(features, labels, mode, params):
 
   # Reshape output layer to 1-dim Tensor to return predictions
   predictions = tf.reshape(output_layer, [-1])
-  predictions_dict = {"ages": predictions}
+
+  # Provide an estimator spec for `ModeKeys.PREDICT`.
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    return tf.estimator.EstimatorSpec(
+        mode=mode,
+        predictions={"ages": predictions})
 
   # Calculate loss using mean squared error
   loss = tf.losses.mean_squared_error(labels, predictions)
+
+  optimizer = tf.train.GradientDescentOptimizer(
+      learning_rate=params["learning_rate"])
+  train_op = optimizer.minimize(
+      loss=loss, global_step=tf.train.get_global_step())
 
   # Calculate root mean squared error as additional eval metric
   eval_metric_ops = {
@@ -98,14 +108,9 @@ def model_fn(features, labels, mode, params):
           tf.cast(labels, tf.float64), predictions)
   }
 
-  optimizer = tf.train.GradientDescentOptimizer(
-      learning_rate=params["learning_rate"])
-  train_op = optimizer.minimize(
-      loss=loss, global_step=tf.train.get_global_step())
-
+  # Provide an estimator spec for `ModeKeys.EVAL` and `ModeKeys.TRAIN` modes.
   return tf.estimator.EstimatorSpec(
       mode=mode,
-      predictions=predictions_dict,
       loss=loss,
       train_op=train_op,
       eval_metric_ops=eval_metric_ops)

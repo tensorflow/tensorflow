@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <cmath>
 #include <functional>
+#include <type_traits>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -26,52 +29,50 @@ limitations under the License.
 namespace Eigen {
 namespace internal {
 
-// TODO(rmlarsen): Get rid of fmod2 once fmod is upstreamed to Eigen.
 template <typename T>
-struct scalar_fmod2_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_fmod2_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
-                                                           const T& b) const {
-    return std::fmod(a, b);
-  }
-};
-template <typename T>
-struct functor_traits<scalar_fmod2_op<T>> {
-  enum {
-    Cost = 13,  // Reciprocal throughput of FPREM on Haswell.
-    PacketAccess = false,
-  };
-};
-
-template<typename T> struct scalar_asinh_op {
+struct scalar_asinh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+#if EIGEN_HAS_CXX11_MATH
+    return numext::asinh(a);
+#else
     return std::asinh(a);
+#endif  // EIGEN_HAS_CXX11_MATH
   }
 };
-template<typename T>
+template <typename T>
 struct functor_traits<scalar_asinh_op<T>> {
   enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
 };
 
-template<typename T> struct scalar_acosh_op {
+template <typename T>
+struct scalar_acosh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_acosh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+#if EIGEN_HAS_CXX11_MATH
+    return numext::acosh(a);
+#else
     return std::acosh(a);
+#endif  // EIGEN_HAS_CXX11_MATH
   }
 };
-template<typename T>
+template <typename T>
 struct functor_traits<scalar_acosh_op<T>> {
   enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
 };
 
-template<typename T> struct scalar_atanh_op {
+template <typename T>
+struct scalar_atanh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_atanh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+#if EIGEN_HAS_CXX11_MATH
+    return numext::atanh(a);
+#else
     return std::atanh(a);
+#endif  // EIGEN_HAS_CXX11_MATH
   }
 };
-template<typename T>
+template <typename T>
 struct functor_traits<scalar_atanh_op<T>> {
   enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
 };
@@ -91,6 +92,35 @@ struct scalar_binary_pow_op_google {
 
 template <typename Scalar, typename Exponent>
 struct functor_traits<scalar_binary_pow_op_google<Scalar, Exponent>> {
+  enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
+};
+
+template <typename Scalar, typename Exponent>
+struct safe_scalar_binary_pow_op {
+  static_assert(std::is_integral<Scalar>::value, "Integer type expected");
+  static_assert(std::is_integral<Exponent>::value &&
+                    std::is_signed<Exponent>::value,
+                "Signed integer type expected");
+
+  bool* const error;
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE safe_scalar_binary_pow_op(bool* error)
+      : error(error) {}
+
+  EIGEN_DEVICE_FUNC inline Scalar operator()(const Scalar& a,
+                                             const Exponent& b) const {
+    const Exponent safe_b = tensorflow::internal::SubtleMustCopy(b);
+    if (TF_PREDICT_TRUE(safe_b >= 0)) {
+      return numext::pow(a, safe_b);
+    } else {
+      *error = true;
+      return 0;
+    }
+  }
+};
+
+template <typename Scalar, typename Exponent>
+struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
   enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
@@ -154,7 +184,7 @@ struct scalar_left : private Binary {
 };
 
 template <typename Tout, typename Tin, typename Binary>
-struct functor_traits<scalar_left<Tout, Tin, Binary> > {
+struct functor_traits<scalar_left<Tout, Tin, Binary>> {
   enum {
     Cost = functor_traits<Binary>::Cost,
     PacketAccess = functor_traits<Binary>::PacketAccess,
@@ -184,7 +214,7 @@ struct scalar_right : private Binary {
 };
 
 template <typename Tout, typename Tin, typename Binary>
-struct functor_traits<scalar_right<Tout, Tin, Binary> > {
+struct functor_traits<scalar_right<Tout, Tin, Binary>> {
   enum {
     Cost = functor_traits<Binary>::Cost,
     PacketAccess = functor_traits<Binary>::PacketAccess,
@@ -401,6 +431,25 @@ struct functor_traits<scalar_round_op_google<Scalar>> {
 #undef ENABLE_FLOAT_EQUALITY_WARNING
 #undef DISABLE_FLOAT_EQUALITY_WARNING
 
+template <typename Scalar>
+struct bitwise_xor_op {
+  EIGEN_EMPTY_STRUCT_CTOR(bitwise_xor_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& x, const Scalar& y) const {
+    return x ^ y;
+  }
+  typedef typename Eigen::internal::packet_traits<Scalar>::type Packet;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return Eigen::internal::pxor(a, b);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<bitwise_xor_op<Scalar>> {
+  enum { Cost = Eigen::NumTraits<Scalar>::AddCost, PacketAccess = true };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -487,22 +536,22 @@ struct abs : base<T, Eigen::internal::scalar_abs_op<T>,
                   typename Eigen::internal::scalar_abs_op<T>::result_type> {};
 
 template <typename T>
-struct neg : base<T, Eigen::internal::scalar_opposite_op<T> > {};
+struct neg : base<T, Eigen::internal::scalar_opposite_op<T>> {};
 
 template <typename T>
-struct inverse : base<T, Eigen::internal::scalar_inverse_op<T> > {};
+struct inverse : base<T, Eigen::internal::scalar_inverse_op<T>> {};
 
 template <typename T>
-struct square : base<T, Eigen::internal::scalar_square_op<T> > {};
+struct square : base<T, Eigen::internal::scalar_square_op<T>> {};
 
 template <typename T>
-struct sqrt : base<T, Eigen::internal::scalar_sqrt_op<T> > {};
+struct sqrt : base<T, Eigen::internal::scalar_sqrt_op<T>> {};
 
 template <typename T>
-struct rsqrt : base<T, Eigen::internal::scalar_rsqrt_op<T> > {};
+struct rsqrt : base<T, Eigen::internal::scalar_rsqrt_op<T>> {};
 
 template <typename T>
-struct exp : base<T, Eigen::internal::scalar_exp_op<T> > {};
+struct exp : base<T, Eigen::internal::scalar_exp_op<T>> {};
 
 template <typename T>
 struct expm1 : base<T, Eigen::internal::scalar_expm1_op<T>> {};
@@ -511,63 +560,69 @@ template <typename T>
 struct log : base<T, Eigen::internal::scalar_log_op<T>> {};
 
 template <typename T>
-struct log1p : base<T, Eigen::internal::scalar_log1p_op<T> > {};
+struct log1p : base<T, Eigen::internal::scalar_log1p_op<T>> {};
 
 template <typename T>
-struct sign : base<T, Eigen::internal::scalar_sign_op<T> > {};
+struct sign : base<T, Eigen::internal::scalar_sign_op<T>> {};
 
 template <typename T>
-struct sinh : base<T, Eigen::internal::scalar_sinh_op<T> > {};
+struct sinh : base<T, Eigen::internal::scalar_sinh_op<T>> {};
 
 template <typename T>
-struct cosh : base<T, Eigen::internal::scalar_cosh_op<T> > {};
+struct cosh : base<T, Eigen::internal::scalar_cosh_op<T>> {};
 
 template <typename T>
-struct tanh : base<T, Eigen::internal::scalar_tanh_op<T> > {};
+struct tanh : base<T, Eigen::internal::scalar_tanh_op<T>> {};
 
 template <typename T>
-struct asinh : base<T, Eigen::internal::scalar_asinh_op<T> > {};
+struct asinh : base<T, Eigen::internal::scalar_asinh_op<T>> {};
 
 template <typename T>
-struct acosh : base<T, Eigen::internal::scalar_acosh_op<T> > {};
+struct acosh : base<T, Eigen::internal::scalar_acosh_op<T>> {};
 
 template <typename T>
-struct atanh : base<T, Eigen::internal::scalar_atanh_op<T> > {};
+struct atanh : base<T, Eigen::internal::scalar_atanh_op<T>> {};
 
 template <typename T>
-struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T> > {};
+struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T>> {};
 
 template <typename T>
 struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
 
 template <typename T>
-struct erf : base<T, Eigen::internal::scalar_erf_op<T> > {};
+struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};
 
 template <typename T>
-struct erfc : base<T, Eigen::internal::scalar_erfc_op<T> > {};
+struct erfc : base<T, Eigen::internal::scalar_erfc_op<T>> {};
 
 template <typename T>
-struct sigmoid : base<T, Eigen::internal::scalar_sigmoid_op<T> > {};
+struct sigmoid : base<T, Eigen::internal::scalar_sigmoid_op<T>> {};
 
 template <typename T>
-struct sin : base<T, Eigen::internal::scalar_sin_op<T> > {};
+struct sin : base<T, Eigen::internal::scalar_sin_op<T>> {};
 
 template <typename T>
-struct cos : base<T, Eigen::internal::scalar_cos_op<T> > {};
+struct cos : base<T, Eigen::internal::scalar_cos_op<T>> {};
 
 template <typename T>
-struct tan : base<T, Eigen::internal::scalar_tan_op<T> > {};
+struct tan : base<T, Eigen::internal::scalar_tan_op<T>> {};
 
 template <typename T>
-struct asin : base<T, Eigen::internal::scalar_asin_op<T> > {};
+struct asin : base<T, Eigen::internal::scalar_asin_op<T>> {};
 
 template <typename T>
-struct acos : base<T, Eigen::internal::scalar_acos_op<T> > {};
+struct acos : base<T, Eigen::internal::scalar_acos_op<T>> {};
 
 template <typename T>
-struct atan : base<T, Eigen::internal::scalar_atan_op<T> > {};
+struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
 
-struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool> > {
+template <typename T>
+struct bessel_i0e : base<T, Eigen::internal::scalar_i0e_op<T>> {};
+
+template <typename T>
+struct bessel_i1e : base<T, Eigen::internal::scalar_i1e_op<T>> {};
+
+struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
 };
 
 // Flip all bits. Named invert to be consistent with numpy.
@@ -604,8 +659,8 @@ template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 
 /** this should go in Eigen
-  * \brief Template functor to compute the round to int value of a scalar
-  */
+ * \brief Template functor to compute the round to int value of a scalar
+ */
 template <typename Scalar>
 struct scalar_rint_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
@@ -642,20 +697,22 @@ struct rint : base<T, scalar_rint_op<T>> {};
 // squared_difference(x, y) = (x - y) * (x - y)
 
 template <typename T>
-struct add : base<T, Eigen::internal::scalar_sum_op<T> > {
+struct add : base<T, Eigen::internal::scalar_sum_op<T>> {
   static const bool use_bcast_optimization = true;
 };
 
 template <typename T>
-struct sub : base<T, Eigen::internal::scalar_difference_op<T> > {
+struct sub : base<T, Eigen::internal::scalar_difference_op<T>> {
   static const bool use_bcast_optimization = true;
 };
 
 template <typename T>
-struct mul : base<T, Eigen::internal::scalar_product_op<T> > {};
+struct mul : base<T, Eigen::internal::scalar_product_op<T>> {
+  static const bool use_bcast_optimization = true;
+};
 
 template <typename T>
-struct div : base<T, Eigen::internal::scalar_quotient_op<T> > {};
+struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};
 
 template <typename T>
 struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
@@ -664,7 +721,7 @@ struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
 };
 
 template <typename T>
-struct fmod : base<T, Eigen::internal::scalar_fmod2_op<T> > {};
+struct fmod : base<T, Eigen::internal::scalar_fmod_op<T>> {};
 
 template <typename T>
 struct mod : base<T, Eigen::internal::scalar_mod2_op<T>> {};
@@ -700,10 +757,15 @@ template <typename T>
 struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>> {};
 
 template <typename T>
-struct maximum : base<T, Eigen::internal::scalar_max_op<T> > {};
+struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
+  static const bool has_errors = true;
+};
 
 template <typename T>
-struct minimum : base<T, Eigen::internal::scalar_min_op<T> > {};
+struct maximum : base<T, Eigen::internal::scalar_max_op<T>> {};
+
+template <typename T>
+struct minimum : base<T, Eigen::internal::scalar_min_op<T>> {};
 
 template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
@@ -780,22 +842,57 @@ struct bitwise_or_op {
 };
 
 template <typename T>
-struct bitwise_xor_op {
-  EIGEN_EMPTY_STRUCT_CTOR(bitwise_xor_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
-                                                           const T& y) const {
-    return x ^ y;
-  }
-};
-
-template <typename T>
 struct bitwise_and : base<T, bitwise_and_op<T>> {};
 
 template <typename T>
 struct bitwise_or : base<T, bitwise_or_op<T>> {};
 
 template <typename T>
-struct bitwise_xor : base<T, bitwise_xor_op<T>> {};
+struct bitwise_xor : base<T, Eigen::internal::bitwise_xor_op<T>> {};
+
+template <typename T>
+struct left_shift_op {
+  EIGEN_EMPTY_STRUCT_CTOR(left_shift_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    // Avoids UB: don't shift by larger than the bitwidth of T, and
+    // performs left shifts as unsigned shifts.
+    T y_clamped = y;
+    if (y_clamped < 0) {
+      y_clamped = 0;
+    } else if (y_clamped > sizeof(T) * CHAR_BIT - 1) {
+      y_clamped = sizeof(T) * CHAR_BIT - 1;
+    }
+    using U = typename std::make_unsigned<T>::type;
+    return static_cast<T>(static_cast<U>(x) << static_cast<U>(y_clamped));
+  }
+};
+
+template <typename T>
+struct right_shift_op {
+  EIGEN_EMPTY_STRUCT_CTOR(right_shift_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    // Avoids UB: don't shift by larger than the bitwidth of T.
+    T y_clamped = y;
+    if (y_clamped < 0) {
+      y_clamped = 0;
+    } else if (y_clamped > sizeof(T) * CHAR_BIT - 1) {
+      y_clamped = sizeof(T) * CHAR_BIT - 1;
+    }
+    // Technically right shifts of signed integers are not necessarily
+    // arithmetic shifts according to the C++ standard. However in practice most
+    // implementations are arithmetic shifts. If this proves to be a problem in
+    // practice, we may need to use an alternative implementation.
+    return x >> y_clamped;
+  }
+};
+
+template <typename T>
+struct left_shift : base<T, left_shift_op<T>> {};
+
+template <typename T>
+struct right_shift : base<T, right_shift_op<T>> {};
 
 template <typename T>
 struct make_complex_func {
@@ -807,7 +904,7 @@ struct make_complex_func {
 };
 
 template <typename T>
-struct make_complex : base<T, make_complex_func<T>, std::complex<T> > {};
+struct make_complex : base<T, make_complex_func<T>, std::complex<T>> {};
 
 template <typename T>
 struct get_real
@@ -818,7 +915,11 @@ struct get_imag
     : base<T, Eigen::internal::scalar_imag_op<T>, typename T::value_type> {};
 
 template <typename T>
-struct conj : base<T, Eigen::internal::scalar_conjugate_op<T> > {};
+struct get_angle
+    : base<T, Eigen::internal::scalar_arg_op<T>, typename T::value_type> {};
+
+template <typename T>
+struct conj : base<T, Eigen::internal::scalar_conjugate_op<T>> {};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Functors takes 1 or 2 tensors, computes the base functor on

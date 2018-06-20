@@ -29,7 +29,7 @@ class AddNOp : public XlaOpKernel {
     OP_REQUIRES(ctx, ctx->num_inputs() >= 1,
                 errors::InvalidArgument("AddN requires at least one argument"));
 
-    xla::ComputationDataHandle sum = ctx->Input(0);
+    xla::XlaOp sum = ctx->Input(0);
     for (int i = 1; i < ctx->num_inputs(); ++i) {
       sum = ctx->builder()->Add(sum, ctx->Input(i));
     }

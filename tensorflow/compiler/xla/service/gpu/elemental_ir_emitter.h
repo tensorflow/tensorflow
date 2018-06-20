@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -60,6 +60,30 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
                                      llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
+                                 llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
+                                   llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
+                                 llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
+                                 llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
+                                 llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
+                                   llvm::Value* value) const override;
+
+  StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type, llvm::Value* lhs,
+                                 llvm::Value* rhs) const override;
+
+  StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
+                                   llvm::Value* rhs) const override;
 
   llvm::Value* EmitThreadId() const override;
 

@@ -28,12 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 
-#if !defined(PLATFORM_GOOGLE)
-#include "cuda/cuda_config.h"
-#endif
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 
 // Permits StreamExecutor code to dynamically load a pre-determined set of
@@ -118,7 +113,6 @@ class CachedDsoLoader {
 };
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_

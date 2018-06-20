@@ -181,7 +181,7 @@ class BasicCPUAllocator : public SubAllocator {
 class CUDAHostAllocator : public SubAllocator {
  public:
   // Note: stream_exec cannot be null.
-  explicit CUDAHostAllocator(perftools::gputools::StreamExecutor* stream_exec)
+  explicit CUDAHostAllocator(se::StreamExecutor* stream_exec)
       : stream_exec_(stream_exec) {
     CHECK(stream_exec_ != nullptr);
   }
@@ -206,7 +206,7 @@ class CUDAHostAllocator : public SubAllocator {
   }
 
  private:
-  perftools::gputools::StreamExecutor* stream_exec_;  // not owned, non-null
+  se::StreamExecutor* stream_exec_;  // not owned, non-null
 
   TF_DISALLOW_COPY_AND_ASSIGN(CUDAHostAllocator);
 };

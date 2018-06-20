@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 
 #include <ctype.h>
+#include <algorithm>
 #include <vector>
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace str_util {
@@ -84,15 +86,32 @@ inline int hex_digit_to_int(char c) {
   return x & 0xf;
 }
 
-bool CUnescapeInternal(StringPiece source, char* dest,
+bool CUnescapeInternal(StringPiece source, string* dest,
                        string::size_type* dest_len, string* error) {
-  char* d = dest;
   const char* p = source.data();
   const char* end = source.end();
   const char* last_byte = end - 1;
 
+  // We are going to write the result to dest with its iterator. If our string
+  // implementation uses copy-on-write, this will trigger a copy-on-write of
+  // dest's buffer; that is, dest will be assigned a new buffer.
+  //
+  // Note that the following way is NOT a legal way to modify a string's
+  // content:
+  //
+  //  char* d = const_cast<char*>(dest->data());
+  //
+  // This won't trigger copy-on-write of the string, and so is dangerous when
+  // the buffer is shared.
+  auto d = dest->begin();
+
   // Small optimization for case where source = dest and there's no escaping
-  while (p == d && p < end && *p != '\\') p++, d++;
+  if (source.data() == dest->data()) {
+    while (p < end && *p != '\\') {
+      p++;
+      d++;
+    }
+  }
 
   while (p < end) {
     if (*p != '\\') {
@@ -192,7 +211,7 @@ bool CUnescapeInternal(StringPiece source, char* dest,
       p++;  // read past letter we escaped
     }
   }
-  *dest_len = d - dest;
+  *dest_len = d - dest->begin();
   return true;
 }
 
@@ -215,8 +234,7 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
 bool CUnescape(StringPiece source, string* dest, string* error) {
   dest->resize(source.size());
   string::size_type dest_size;
-  if (!CUnescapeInternal(source, const_cast<char*>(dest->data()), &dest_size,
-                         error)) {
+  if (!CUnescapeInternal(source, dest, &dest_size, error)) {
     return false;
   }
   dest->erase(dest_size);
@@ -248,6 +266,58 @@ string Uppercase(StringPiece s) {
   return result;
 }
 
+string ArgDefCase(StringPiece s) {
+  const size_t n = s.size();
+
+  // Compute the size of resulting string.
+  // Number of extra underscores we will need to add.
+  size_t extra_us = 0;
+  // Number of non-alpha chars in the beginning to skip.
+  size_t to_skip = 0;
+  for (size_t i = 0; i < n; ++i) {
+    // If we are skipping and current letter is non-alpha, skip it as well
+    if (i == to_skip && !isalpha(s[i])) {
+      ++to_skip;
+      continue;
+    }
+
+    // If we are here, we are not skipping any more.
+    // If this letter is upper case, not the very first char in the
+    // resulting string, and previous letter isn't replaced with an underscore,
+    // we will need to insert an underscore.
+    if (isupper(s[i]) && i != to_skip && i > 0 && isalnum(s[i - 1])) {
+      ++extra_us;
+    }
+  }
+
+  // Initialize result with all '_'s. There is no string
+  // constructor that does not initialize memory.
+  string result(n + extra_us - to_skip, '_');
+  // i - index into s
+  // j - index into result
+  for (size_t i = to_skip, j = 0; i < n; ++i, ++j) {
+    DCHECK_LT(j, result.size());
+    char c = s[i];
+    // If c is not alphanumeric, we don't need to do anything
+    // since there is already an underscore in its place.
+    if (isalnum(c)) {
+      if (isupper(c)) {
+        // If current char is upper case, we might need to insert an
+        // underscore.
+        if (i != to_skip) {
+          DCHECK_GT(j, 0);
+          if (result[j - 1] != '_') ++j;
+        }
+        result[j] = tolower(c);
+      } else {
+        result[j] = c;
+      }
+    }
+  }
+
+  return result;
+}
+
 void TitlecaseString(string* s, StringPiece delimiters) {
   bool upper = true;
   for (string::iterator ss = s->begin(); ss != s->end(); ++ss) {
@@ -262,7 +332,7 @@ string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
                      bool replace_all) {
   // TODO(jlebar): We could avoid having to shift data around in the string if
   // we had a StringPiece::find() overload that searched for a StringPiece.
-  string res = s.ToString();
+  string res = std::string(s);
   size_t pos = 0;
   while ((pos = res.find(oldsub.data(), pos, oldsub.size())) != string::npos) {
     res.replace(pos, oldsub.size(), newsub.data(), newsub.size());
@@ -305,7 +375,7 @@ size_t RemoveWhitespaceContext(StringPiece* text) {
 }
 
 bool ConsumePrefix(StringPiece* s, StringPiece expected) {
-  if (s->starts_with(expected)) {
+  if (StartsWith(*s, expected)) {
     s->remove_prefix(expected.size());
     return true;
   }
@@ -313,7 +383,7 @@ bool ConsumePrefix(StringPiece* s, StringPiece expected) {
 }
 
 bool ConsumeSuffix(StringPiece* s, StringPiece expected) {
-  if (s->ends_with(expected)) {
+  if (EndsWith(*s, expected)) {
     s->remove_suffix(expected.size());
     return true;
   }
@@ -355,11 +425,11 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
   }
   const size_t n = p - s->data();
   if (n > 0) {
-    val->set(s->data(), n);
+    *val = StringPiece(s->data(), n);
     s->remove_prefix(n);
     return true;
   } else {
-    val->clear();
+    *val = StringPiece();
     return false;
   }
 }
@@ -379,9 +449,34 @@ bool SplitAndParseAsFloats(StringPiece text, char delim,
   return SplitAndParseAsInts<float>(text, delim,
                                     [](StringPiece str, float* value) {
                                       return strings::safe_strtof(
-                                          str.ToString().c_str(), value);
+                                          std::string(str).c_str(), value);
                                     },
                                     result);
+}
+
+size_t Strnlen(const char* str, const size_t string_max_len) {
+  size_t len = 0;
+  while (len < string_max_len && str[len] != '\0') {
+    ++len;
+  }
+  return len;
+}
+
+bool StrContains(StringPiece haystack, StringPiece needle) {
+  return std::search(haystack.begin(), haystack.end(), needle.begin(),
+                     needle.end()) != haystack.end();
+}
+
+bool StartsWith(StringPiece text, StringPiece prefix) {
+  return prefix.empty() ||
+         (text.size() >= prefix.size() &&
+          memcmp(text.data(), prefix.data(), prefix.size()) == 0);
+}
+
+bool EndsWith(StringPiece text, StringPiece suffix) {
+  return suffix.empty() || (text.size() >= suffix.size() &&
+                            memcmp(text.data() + (text.size() - suffix.size()),
+                                   suffix.data(), suffix.size()) == 0);
 }
 
 }  // namespace str_util

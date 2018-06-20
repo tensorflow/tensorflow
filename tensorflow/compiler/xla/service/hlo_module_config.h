@@ -41,35 +41,58 @@ class HloModuleConfig {
   explicit HloModuleConfig(const ProgramShape& program_shape);
 
   // Checks if this config has an entry computation layout already.
-  bool has_entry_computation_layout() const {
-    return entry_computation_layout_.has_value();
+  bool has_host_entry_computation_layout() const {
+    return host_entry_computation_layout_.has_value();
+  }
+
+  bool has_device_entry_computation_layout() const {
+    return device_entry_computation_layout_.has_value();
   }
 
   // Sets the entry computation layout for this config. If the entry computation
   // layout already exists, it is silently replaced.
   void SetDefaultComputationLayout(const ProgramShape& program_shape);
 
-  // Returns a constant reference to the layout of the entry computation.
+  // Returns a constant reference to the on-host layout of the entry
+  // computation. Assumes the layout was set.
+  const ComputationLayout& host_entry_computation_layout() const {
+    CHECK(host_entry_computation_layout_.has_value());
+    return *host_entry_computation_layout_;
+  }
+
+  // Returns a mutable pointer to the layout of the on-host entry computation.
   // Assumes the layout was set.
-  const ComputationLayout& entry_computation_layout() const {
-    CHECK(entry_computation_layout_.has_value());
-    return *entry_computation_layout_;
+  ComputationLayout* mutable_host_entry_computation_layout() {
+    CHECK(host_entry_computation_layout_.has_value());
+    return &(*host_entry_computation_layout_);
   }
 
-  // Returns a mutable pointer to the layout of the entry computation. Assumes
-  // the layout was set.
-  ComputationLayout* mutable_entry_computation_layout() {
-    CHECK(entry_computation_layout_.has_value());
-    return &(*entry_computation_layout_);
+  // Returns a constant reference to the on-device layout of the entry
+  // computation. Assumes the layout was set.
+  const ComputationLayout& device_entry_computation_layout() const {
+    CHECK(device_entry_computation_layout_.has_value());
+    return *device_entry_computation_layout_;
   }
 
-  // Sets/returns whether to enable HLO-level profiling.
-  bool hlo_profiling_enabled() const { return hlo_profiling_enabled_; }
-  void enable_hlo_profiling(bool enabled) { hlo_profiling_enabled_ = enabled; }
+  // Returns a mutable pointer to the layout of the on-device entry computation.
+  // Assumes the layout was set.
+  ComputationLayout* mutable_device_entry_computation_layout() {
+    CHECK(device_entry_computation_layout_.has_value());
+    return &(*device_entry_computation_layout_);
+  }
 
-  bool has_hybrid_result() const { return has_hybrid_result_; }
-  void set_has_hybrid_result(bool has_hybrid_result) {
-    has_hybrid_result_ = has_hybrid_result;
+  // Returns whether to enable HLO-level profiling.
+  bool hlo_profiling_enabled() const {
+    return debug_options_.xla_hlo_profile();
+  }
+
+  // Sets/returns whether this is a "host module".  Host modules are used to
+  // record the data- and control-flow dependencies of host side computation
+  // that communicates with compiled code.  They are used for analysis and
+  // scheduling purposes, but no code is generated.
+  bool is_host_module() const { return is_host_module_; }
+  void set_is_host_module(bool is_host_module) {
+    is_host_module_ = is_host_module;
   }
 
   // Sets/returns the module seed set during execution.
@@ -104,20 +127,11 @@ class HloModuleConfig {
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
-  tensorflow::gtl::optional<ComputationLayout> entry_computation_layout_;
+  tensorflow::gtl::optional<ComputationLayout> host_entry_computation_layout_;
+  tensorflow::gtl::optional<ComputationLayout> device_entry_computation_layout_;
 
-  // Whether to enable HLO-level profiling.
-  bool hlo_profiling_enabled_ = false;
-
-  // If this flag is true, the generated executable will return a ShapedBuffer
-  // holding the result of the computation. In a ShapedBuffer, tuples have their
-  // structure held in host memory and the element arrays (leaves of the tuple
-  // structure) stored in device memory. The ShapedBuffer is considered "hybrid"
-  // because its leaves are on device but its structure is stored on
-  // host. Otherwise, if this flag is false, the generated executable will
-  // return a DeviceMemoryBase where the result is held entirely in device
-  // memory.
-  bool has_hybrid_result_ = false;
+  // Whether this is a 'host module'.
+  bool is_host_module_ = false;
 
   // Module/graph-level seed handle.
   uint64 seed_ = 0;

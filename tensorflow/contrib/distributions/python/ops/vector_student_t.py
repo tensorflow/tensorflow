@@ -19,87 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import bijectors
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions import student_t
 from tensorflow.python.ops.distributions import transformed_distribution
-from tensorflow.python.ops.distributions import util as distribution_util
-
-
-# TODO(jvdillon): Add unittests for this once we know where will put this code
-# and how it will generally be used. In the interim this code is tested via the
-# _VectorStudentT tests.
-def _infer_shapes(scale_oppd, shift):
-  """Helper which returns batch_shape, event_shape from `Affine` properties.
-
-  The `Affine` `Bijector` (roughly) computes `Y = scale @ X.T + shift`. This
-  function infers the `batch_shape` and `event_shape` from the `scale` and
-  `shift` terms.
-
-  Args:
-    scale_oppd: Instance of OperatorPDBase subclass representing the `Affine`
-      `Bijector` scale matrix.
-    shift: `Tensor` representing the `shift` vector.
-
-  Returns:
-    batch_shape: 1D, integer `Tensor` representing the shape of batch
-      dimensions.
-    event_shape: 1D, integer `Tensor` representing the shape of event
-      dimensions.
-
-  Raises:
-    ValueError: if we are not able to infer batch/event shapes from the args.
-  """
-  # Collect known static shape.
-  def _has_static_ndims(x):
-    return x is not None and x.get_shape().ndims is not None
-  if _has_static_ndims(scale_oppd) and _has_static_ndims(shift):
-    batch_shape = scale_oppd.get_batch_shape().merge_with(
-        shift.get_shape()[:-1])
-    event_shape = scale_oppd.get_shape()[-1:].merge_with(
-        shift.get_shape()[-1:])
-  elif _has_static_ndims(scale_oppd):
-    batch_shape = scale_oppd.get_batch_shape()
-    event_shape = scale_oppd.get_shape()[-1:]
-  elif _has_static_ndims(shift):
-    batch_shape = shift.get_shape()[:-1]
-    event_shape = shift.get_shape()[-1:]
-  else:
-    batch_shape = tensor_shape.TensorShape(None)
-    event_shape = tensor_shape.TensorShape(None)
-
-  # Convert TensorShape to Tensors and see if we're done.
-  if batch_shape.is_fully_defined():
-    batch_shape = constant_op.constant(batch_shape.as_list(),
-                                       dtype=dtypes.int32)
-  else:
-    batch_shape = None
-  if event_shape.is_fully_defined():
-    event_shape = constant_op.constant(event_shape.as_list(),
-                                       dtype=dtypes.int32)
-  else:
-    event_shape = None
-  if batch_shape is not None and event_shape is not None:
-    return batch_shape, event_shape
-
-  # Collect known dynamic shape.
-  if scale_oppd is not None:
-    shape = scale_oppd.shape()
-  elif shift is not None:
-    shape = array_ops.shape(shift)
-  else:
-    raise ValueError("unable to infer batch_shape, event_shape")
-
-  # Fill in what we don't know.
-  if batch_shape is None:
-    batch_shape = array_ops.identity(shape[:-1], name="batch_shape")
-  if event_shape is None:
-    event_shape = array_ops.identity(shape[-1:], name="event_shape")
-
-  return batch_shape, event_shape
+from tensorflow.python.util import deprecation
 
 
 class _VectorStudentT(transformed_distribution.TransformedDistribution):
@@ -140,7 +67,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   This distribution is an Affine transformation of iid
   [Student's t-distributions](
   https://en.wikipedia.org/wiki/Student%27s_t-distribution)
-  and should not be confused with the [Multivate Student's t-distribution](
+  and should not be confused with the [Multivariate Student's t-distribution](
   https://en.wikipedia.org/wiki/Multivariate_t-distribution). The
   traditional Multivariate Student's t-distribution is type of
   [elliptical distribution](
@@ -165,14 +92,14 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   Extra leading dimensions, if provided, allow for batches.
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Initialize a single 3-variate vector Student's t-distribution.
   mu = [1., 2, 3]
   chol = [[1., 0, 0.],
           [1, 3, 0],
           [1, 2, 3]]
-  vt = ds.VectorStudentT(df=2, loc=mu, scale_tril=chol)
+  vt = tfd.VectorStudentT(df=2, loc=mu, scale_tril=chol)
 
   # Evaluate this on an observation in R^3, returning a scalar.
   vt.prob([-1., 0, 1])
@@ -181,7 +108,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   mu = [[1., 2, 3],
         [11, 22, 33]]
   chol = ...  # shape 2 x 3 x 3, lower triangular, positive diagonal.
-  vt = ds.VectorStudentT(loc=mu, scale_tril=chol)
+  vt = tfd.VectorStudentT(loc=mu, scale_tril=chol)
 
   # Evaluate this on a two observations, each in R^3, returning a length two
   # tensor.
@@ -195,6 +122,14 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                df,
                loc=None,
@@ -249,10 +184,10 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
         if one or more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = dict(locals())
     graph_parents = [df, loc, scale_identity_multiplier, scale_diag,
                      scale_tril, scale_perturb_factor, scale_perturb_diag]
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=graph_parents):
         # The shape of the _VectorStudentT distribution is governed by the
         # relationship between df.batch_shape and affine.batch_shape. In
@@ -282,8 +217,9 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
             df=df,
             loc=array_ops.zeros([], dtype=affine.dtype),
             scale=array_ops.ones([], dtype=affine.dtype))
-        batch_shape, override_event_shape = _infer_shapes(
-            affine.scale, affine.shift)
+        batch_shape, override_event_shape = (
+            distribution_util.shapes_from_loc_and_scale(
+                affine.shift, affine.scale))
         override_batch_shape = distribution_util.pick_vector(
             distribution.is_scalar_batch(),
             batch_shape,

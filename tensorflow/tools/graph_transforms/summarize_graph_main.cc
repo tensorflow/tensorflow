@@ -24,6 +24,7 @@ limitations under the License.
 // --in_graph=my_graph.pb
 
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tools/graph_transforms/file_utils.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -83,11 +85,17 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
         shape = PartialTensorShape(shape_proto);
       }
     }
-    sizes.reserve(shape.dims());
-    for (int i = 0; i < shape.dims(); ++i) {
-      sizes.push_back(shape.dim_size(i));
+    string sizes_string;
+    if (shape.dims() == -1) {
+      // Unknown shapes can have -1 for dims, so leave these blank.
+      sizes_string = "";
+    } else {
+      sizes.reserve(shape.dims());
+      for (int i = 0; i < shape.dims(); ++i) {
+        sizes.push_back(shape.dim_size(i));
+      }
+      sizes_string = str_util::Join(sizes, ",");
     }
-    string sizes_string = str_util::Join(sizes, ",");
     input_layer_shapes.push_back(sizes_string);
   }
   std::vector<string> output_layers;
@@ -118,7 +126,17 @@ Status PrintStructure(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(SortByExecutionOrder(graph, &sorted_graph));
   for (const NodeDef& node : sorted_graph.node()) {
     std::cout << node.name() << " (" << node.op() << "): ["
-              << str_util::Join(node.input(), ", ") << "]" << std::endl;
+              << str_util::Join(node.input(), ", ") << "]";
+    if (node.op() == "Const") {
+      Tensor tensor;
+      if (node.attr().count("value") &&
+          tensor.FromProto(node.attr().at("value").tensor())) {
+        std::cout << ", value=" << tensor.DebugString();
+      } else {
+        LOG(WARNING) << "Decoding Tensor failed for node" << node.name();
+      }
+    }
+    std::cout << std::endl;
   }
   return Status::OK();
 }
@@ -236,6 +254,11 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
   std::map<string, int> op_counts;
   for (const NodeDef& node : graph.node()) {
     ++op_counts[node.op()];
+  }
+  for (const FunctionDef& function : graph.library().function()) {
+    for (const NodeDef& node : function.node_def()) {
+      ++op_counts[node.op()];
+    }
   }
   std::vector<std::pair<string, int>> op_counts_vec(op_counts.begin(),
                                                     op_counts.end());

@@ -22,40 +22,29 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
-std::mutex GSYCLInterface::mutex_;
-GSYCLInterface *GSYCLInterface::s_instance = 0;
-
-void ShutdownSycl() {
-  GSYCLInterface::Reset();
-}
-
-void SYCLDevice::RegisterDevice() {
-    atexit(ShutdownSycl);
-}
 
 SYCLDevice::~SYCLDevice() {}
 
-void SYCLDevice::Compute(OpKernel *op_kernel, OpKernelContext *context) {
+void SYCLDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   assert(context);
-  if (port::Tracing::IsActive()) {
-    // TODO(pbar) We really need a useful identifier of the graph node.
-    const uint64 id = Hash64(op_kernel->name());
-    port::Tracing::ScopedActivity region(port::Tracing::EventCategory::kCompute,
-                                         id);
-  }
+  // When ThreadScape profiling is off (which is the default), constructing the
+  // following code is simple enough that its overhead is negligible.
+  tracing::ScopedRegion region(tracing::EventCategory::kCompute,
+                               op_kernel->name());
+
   op_kernel->Compute(context);
 }
 
-Allocator *SYCLDevice::GetAllocator(AllocatorAttributes attr) {
+Allocator* SYCLDevice::GetAllocator(AllocatorAttributes attr) {
   if (attr.on_host())
     return cpu_allocator_;
   else
     return sycl_allocator_;
 }
 
-Status SYCLDevice::MakeTensorFromProto(const TensorProto &tensor_proto,
+Status SYCLDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                        const AllocatorAttributes alloc_attrs,
-                                       Tensor *tensor) {
+                                       Tensor* tensor) {
   AllocatorAttributes attr;
   attr.set_on_host(true);
   Allocator* host_alloc = GetAllocator(attr);
@@ -79,18 +68,18 @@ Status SYCLDevice::MakeTensorFromProto(const TensorProto &tensor_proto,
     }
 
     device_context_->CopyCPUTensorToDevice(
-        &parsed, this, &copy, [&status](const Status &s) { status = s; });
+        &parsed, this, &copy, [&status](const Status& s) { status = s; });
     *tensor = copy;
   }
   return status;
 }
 
-Status SYCLDevice::FillContextMap(const Graph *graph,
-                                  DeviceContextMap *device_context_map) {
+Status SYCLDevice::FillContextMap(const Graph* graph,
+                                  DeviceContextMap* device_context_map) {
   // Fill in the context map.  It is OK for this map to contain
   // duplicate DeviceContexts so long as we increment the refcount.
   device_context_map->resize(graph->num_node_ids());
-  for (Node *n : graph->nodes()) {
+  for (Node* n : graph->nodes()) {
     device_context_->Ref();
     (*device_context_map)[n->id()] = device_context_;
   }

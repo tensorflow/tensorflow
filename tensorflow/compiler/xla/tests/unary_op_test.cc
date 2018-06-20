@@ -16,10 +16,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -38,16 +37,20 @@ class UnaryOpTest : public ClientLibraryTestBase {
   }
   template <typename T>
   void AbsSize0TestHelper() {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto arg = builder.ConstantR1<T>({});
     auto abs = builder.Abs(arg);
 
-    ComputeAndCompareR1<T>(&builder, {}, {});
+    if (primitive_util::NativeToPrimitiveType<T>() == C64) {
+      ComputeAndCompareR1<float>(&builder, {}, {});
+    } else {
+      ComputeAndCompareR1<T>(&builder, {}, {});
+    }
   }
 
   template <typename T>
   void AbsTestHelper() {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto arg = builder.ConstantR1<T>({-2, 25, 0, -123, inf<T>(), -inf<T>()});
     auto abs = builder.Abs(arg);
 
@@ -56,7 +59,7 @@ class UnaryOpTest : public ClientLibraryTestBase {
 
   template <typename T>
   void SignTestHelper() {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto arg = builder.ConstantR1<T>(
         {-2, 25, 0, static_cast<T>(-0.0), -123, inf<T>(), -inf<T>()});
     auto sign = builder.Sign(arg);
@@ -66,7 +69,7 @@ class UnaryOpTest : public ClientLibraryTestBase {
 
   template <typename T>
   void SignAbsTestHelper() {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto arg = builder.ConstantR1<T>({-2, 25, 0, -123});
     auto sign = builder.Sign(arg);
     auto abs = builder.Abs(arg);
@@ -81,56 +84,116 @@ int UnaryOpTest::inf<int>() {
   return 2147483647;
 }
 
+template <>
+int64 UnaryOpTest::inf<int64>() {
+  return 0x7FFFFFFFFFFFFFFFl;
+}
+
+template <>
+void UnaryOpTest::AbsTestHelper<complex64>() {
+  XlaBuilder builder(TestName());
+  auto arg = builder.ConstantR1<complex64>({{-2, 0},
+                                            {0, 25},
+                                            {0, 0},
+                                            {-0.3f, 0.4f},
+                                            {0, inf<float>()},
+                                            {-inf<float>(), 0}});
+  auto abs = builder.Abs(arg);
+
+  std::unique_ptr<Literal> expected =
+      Literal::CreateR1<float>({2, 25, 0, 0.5, inf<float>(), inf<float>()});
+  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
+}
+
+template <>
+void UnaryOpTest::SignTestHelper<complex64>() {
+  XlaBuilder builder(TestName());
+  auto arg = builder.ConstantR1<complex64>(
+      {{-2, 0}, {0, 25}, {0, 0}, {static_cast<float>(-0.0), 0}, {-1, 1}});
+  auto sign = builder.Sign(arg);
+
+  std::unique_ptr<Literal> expected = Literal::CreateR1<complex64>(
+      {{-1, 0}, {0, 1}, {0, 0}, {0, 0}, {-std::sqrt(0.5f), std::sqrt(0.5f)}});
+  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
+}
+
+template <>
+void UnaryOpTest::SignAbsTestHelper<complex64>() {
+  XlaBuilder builder(TestName());
+  auto arg =
+      builder.ConstantR1<complex64>({{-2, 0}, {0, 25}, {0, 0}, {-0.4, 0.3}});
+  auto sign = builder.Sign(arg);
+  auto abs = builder.Abs(arg);
+  builder.Sub(builder.Mul(sign, builder.ConvertElementType(abs, C64)), arg);
+
+  std::unique_ptr<Literal> expected =
+      Literal::CreateR1<complex64>({0, 0, 0, 0});
+  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
+}
+
 XLA_TEST_F(UnaryOpTest, AbsTestR1Size0) {
   AbsSize0TestHelper<int>();
   AbsSize0TestHelper<float>();
+  AbsSize0TestHelper<complex64>();
 }
 
-TEST_F(UnaryOpTest, AbsTestR1) {
+XLA_TEST_F(UnaryOpTest, AbsTestR1) {
   AbsTestHelper<int>();
   AbsTestHelper<float>();
+  AbsTestHelper<complex64>();
 }
 
-TEST_F(UnaryOpTest, AbsTestR0) {
-  ComputationBuilder builder(client_, TestName());
+XLA_TEST_F(UnaryOpTest, AbsTestR0) {
+  XlaBuilder builder(TestName());
   auto argi = builder.ConstantR0<int>(-5);
   auto absi = builder.Abs(argi);
   auto argf = builder.ConstantR0<float>(-3.0f);
   auto absf = builder.Abs(argf);
   auto argf0 = builder.ConstantR0<float>(-0.0f);
   auto absf0 = builder.Abs(argf0);
-  builder.Add(absf0, builder.Add(absf, builder.ConvertElementType(
-                                           absi, PrimitiveType::F32)));
+  auto argc = builder.ConstantR0<complex64>({-0.3f, 0.4f});
+  auto absc = builder.Abs(argc);
+  builder.Add(builder.Add(absc, absf0),
+              builder.Add(absf, builder.ConvertElementType(absi, F32)));
 
-  ComputeAndCompareR0<float>(&builder, 8.0f, {});
+  ComputeAndCompareR0<float>(&builder, 8.5f, {});
 }
 
-TEST_F(UnaryOpTest, SignTestR0) {
-  ComputationBuilder builder(client_, TestName());
+XLA_TEST_F(UnaryOpTest, SignTestR0) {
+  XlaBuilder builder(TestName());
   auto argi = builder.ConstantR0<int>(-5);
-  auto absi = builder.Sign(argi);
+  auto sgni = builder.Sign(argi);  // -1
   auto argf = builder.ConstantR0<float>(-4.0f);
-  auto absf = builder.Sign(argf);
+  auto sgnf = builder.Sign(argf);  // -1
   auto argf0 = builder.ConstantR0<float>(-0.0f);
-  auto absf0 = builder.Sign(argf0);
-  builder.Add(absf0, builder.Add(absf, builder.ConvertElementType(
-                                           absi, PrimitiveType::F32)));
+  auto sgnf0 = builder.Sign(argf0);  // 0
+  auto argc = builder.ConstantR0<complex64>({-.3, .4});
+  auto sgnc = builder.Sign(argc);  // (-.6, .8)
+  builder.Add(sgnc, builder.ConvertElementType(
+                        builder.Add(builder.Add(sgnf0, sgnf),
+                                    builder.ConvertElementType(sgni, F32)),
+                        C64));
 
-  ComputeAndCompareR0<float>(&builder, -2.0f, {});
+  std::unique_ptr<Literal> expected =
+      Literal::CreateR0<complex64>({-2.6f, 0.8f});
+  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
 }
 
-TEST_F(UnaryOpTest, SignTestR1) {
+XLA_TEST_F(UnaryOpTest, SignTestR1) {
   SignTestHelper<int>();
+  SignTestHelper<int64>();
   SignTestHelper<float>();
+  SignTestHelper<complex64>();
 }
 
-TEST_F(UnaryOpTest, SignAbsTestR1) {
+XLA_TEST_F(UnaryOpTest, SignAbsTestR1) {
   SignAbsTestHelper<int>();
   SignAbsTestHelper<float>();
+  SignAbsTestHelper<complex64>();
 }
 
-TEST_F(UnaryOpTest, UnsignedAbsTestR1) {
-  ComputationBuilder builder(client_, TestName());
+XLA_TEST_F(UnaryOpTest, UnsignedAbsTestR1) {
+  XlaBuilder builder(TestName());
   auto arg = builder.ConstantR1<unsigned int>(
       {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()});
   auto abs = builder.Abs(arg);
@@ -139,8 +202,8 @@ TEST_F(UnaryOpTest, UnsignedAbsTestR1) {
       &builder, {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()}, {});
 }
 
-TEST_F(UnaryOpTest, UnsignedSignTestR1) {
-  ComputationBuilder builder(client_, TestName());
+XLA_TEST_F(UnaryOpTest, UnsignedSignTestR1) {
+  XlaBuilder builder(TestName());
   auto arg = builder.ConstantR1<unsigned int>(
       {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()});
   auto sign = builder.Sign(arg);
@@ -148,8 +211,8 @@ TEST_F(UnaryOpTest, UnsignedSignTestR1) {
   ComputeAndCompareR1<unsigned int>(&builder, {1, 1, 0, 1, 1}, {});
 }
 
-TEST_F(UnaryOpTest, SignAbsTestR2) {
-  ComputationBuilder builder(client_, TestName());
+XLA_TEST_F(UnaryOpTest, SignAbsTestR2) {
+  XlaBuilder builder(TestName());
   auto arg = builder.ConstantR2<float>({{1.0, -2.0}, {-3.0, 4.0}});
   auto sign = builder.Sign(arg);
   auto abs = builder.Abs(arg);
@@ -158,22 +221,23 @@ TEST_F(UnaryOpTest, SignAbsTestR2) {
   ComputeAndCompareR2<float>(&builder, {{0, 0}, {0, 0}}, {});
 }
 
+XLA_TEST_F(UnaryOpTest, ConvertElementTypePredToS32) {
+  XlaBuilder builder(TestName());
+  auto lhs = builder.ConstantR1<int32>({0, 1});
+  auto rhs = builder.ConstantR1<int32>({1, 1});
+  builder.ConvertElementType(builder.Eq(lhs, rhs), S32);
+
+  ComputeAndCompareR1<int32>(&builder, {0, 1}, {});
+}
+
+XLA_TEST_F(UnaryOpTest, ConvertElementTypePredToF32) {
+  XlaBuilder builder(TestName());
+  auto lhs = builder.ConstantR1<int32>({0, 1});
+  auto rhs = builder.ConstantR1<int32>({1, 1});
+  builder.ConvertElementType(builder.Eq(lhs, rhs), F32);
+
+  ComputeAndCompareR1<float>(&builder, {0.0, 1.0}, {});
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

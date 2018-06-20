@@ -15,59 +15,20 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/dense_update_ops.h"
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/assign_op.h"
+#include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-namespace functor {
-
-template <>
-struct DenseUpdate<Eigen::ThreadPoolDevice, string, ASSIGN> {
-  void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<string>::Flat params,
-                  typename TTypes<string>::ConstFlat update) {
-    if (params.dimension(0) == 1) {
-      params.data()->resize(update.data()->size());
-      auto work = [&params, &update](int64 start, int64 end) {
-        memmove(const_cast<char*>(params.data()->data()) + start,
-                update.data()->data() + start, end - start);
-      };
-      d.parallelFor(update.data()->size(),
-                    Eigen::TensorOpCost(.1,  // chosen to force large chunks
-                                        .1, 0),
-                    work);
-    } else {
-      auto work = [&params, &update](int64 start, int64 end) {
-        for (int i = start; i < end; ++i) {
-          params.data()[i].resize(update.data()[i].size());
-          memmove(const_cast<char*>(params.data()[i].data()),
-                  update.data()[i].data(), update.data()[i].size());
-        }
-      };
-      int64 estimated_string_size;
-      if (update.size() > 0) {
-        // first element of the tensor seems as good a guess as any of the sizes
-        // of the strings contained within...
-        estimated_string_size =
-            std::max(update.data()[0].size(), sizeof(string));
-      } else {
-        estimated_string_size = sizeof(string);
-      }
-      d.parallelFor(
-          params.dimension(0),
-          Eigen::TensorOpCost(estimated_string_size, estimated_string_size, 0),
-          work);
-    }
-  }
-};
-
-}  // namespace functor
 
 template <typename Device, typename T>
 class AssignOpT : public AssignOp {
@@ -117,7 +78,7 @@ class DenseUpdateOp : public OpKernel {
         errors::InvalidArgument("Parameters and update must be the same size"));
 
     functor::DenseUpdate<Device, T, OP> update_functor;
-    update_functor(context->eigen_device<Device>(), Tparams.flat<T>(),
+    update_functor(context->template eigen_device<Device>(), Tparams.flat<T>(),
                    Tupdate.flat<T>());
   }
 
@@ -128,7 +89,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(type)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -143,30 +104,24 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 // Only register 'Assign' on GPU for the subset of types also supported by
 // 'Variable' (see variable_ops.cc.)
 #define REGISTER_GPU_KERNELS(type)                                 \
-  namespace functor {                                              \
-  template <>                                                      \
-  void DenseUpdate<GPUDevice, type, ASSIGN>::operator()(           \
-      const GPUDevice& d, typename TTypes<type>::Flat lhs,         \
-      typename TTypes<type>::ConstFlat rhs);                       \
-  extern template struct DenseUpdate<GPUDevice, type, ASSIGN>;     \
-  }                                                                \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("Assign").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       AssignOpT<GPUDevice, type>);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_int64(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                \
-REGISTER_KERNEL_BUILDER(                                           \
-    Name("Assign").Device(DEVICE_SYCL).TypeConstraint<type>("T"),  \
-    AssignOpT<SYCLDevice, type>);
+#define REGISTER_SYCL_KERNELS(type)                                 \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("Assign").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      AssignOpT<SYCLDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(type)                                        \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -180,22 +135,6 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA
-// Forward declarations of the functor specializations for GPU.
-namespace functor {
-#define DECLARE_GPU_SPEC_FOR_OP(T, OP)                     \
-  template <>                                              \
-  void DenseUpdate<GPUDevice, T, OP>::operator()(          \
-      const GPUDevice& d, typename TTypes<T>::Flat params, \
-      typename TTypes<T>::ConstFlat update);               \
-  extern template struct DenseUpdate<GPUDevice, T, OP>;
-#define DECLARE_GPU_SPEC(T)                         \
-  DECLARE_GPU_SPEC_FOR_OP(T, DenseUpdateType::ADD); \
-  DECLARE_GPU_SPEC_FOR_OP(T, DenseUpdateType::SUB)
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-#undef DECLARE_GPU_SPEC
-#undef DECLARE_GPU_SPEC_FOR_OP
-}  // namespace functor
-
 #define REGISTER_GPU_KERNELS(type)                                    \
   REGISTER_KERNEL_BUILDER(                                            \
       Name("AssignAdd").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
@@ -204,11 +143,12 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
       Name("AssignSub").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       DenseUpdateOp<GPUDevice, type, DenseUpdateType::SUB>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_int64(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // end GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                         \
+#define REGISTER_SYCL_KERNELS(type)                                    \
   REGISTER_KERNEL_BUILDER(                                             \
       Name("AssignAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       DenseUpdateOp<SYCLDevice, type, DenseUpdateType::ADD>);          \
@@ -218,5 +158,5 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

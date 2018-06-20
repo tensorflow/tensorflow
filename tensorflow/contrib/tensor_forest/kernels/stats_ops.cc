@@ -22,7 +22,6 @@
 #include "tensorflow/contrib/tensor_forest/kernels/v4/params.h"
 #include "tensorflow/contrib/tensor_forest/proto/fertile_stats.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -142,50 +141,34 @@ class FertileStatsDeserializeOp : public OpKernel {
   TensorForestParams param_proto_;
 };
 
-void TraverseTree(const DecisionTreeResource* tree_resource,
-                  const std::unique_ptr<TensorDataSet>& data, int32 start,
-                  int32 end, std::vector<int32>* leaf_ids,
-                  std::vector<int32>* leaf_depths) {
-  for (int i = start; i < end; ++i) {
-    int32 depth;
-    const int32 leaf_id = tree_resource->TraverseTree(data, i, &depth);
-    (*leaf_ids)[i] = leaf_id;
-    (*leaf_depths)[i] = depth;
-  }
-}
-
 // Try to update a leaf's stats by acquiring its lock.  If it can't be
 // acquired, put it in a waiting queue to come back to later and try the next
 // one.  Once all leaf_ids have been visited, cycle through the waiting ids
 // until they're gone.
 void UpdateStats(FertileStatsResource* fertile_stats_resource,
                  const std::unique_ptr<TensorDataSet>& data,
-                 const Tensor& input_labels, const Tensor& input_weights,
-                 int num_targets, const std::vector<int32>& leaf_ids,
-                 const std::vector<int32>& leaf_depths,
+                 const TensorInputTarget& target, int num_targets,
+                 const Tensor& leaf_ids_tensor,
                  std::unordered_map<int32, std::unique_ptr<mutex>>* locks,
                  mutex* set_lock, int32 start, int32 end,
                  std::unordered_set<int32>* ready_to_split) {
-  const auto labels = input_labels.unaligned_flat<float>();
-  const auto weights = input_weights.unaligned_flat<float>();
+  const auto leaf_ids = leaf_ids_tensor.unaligned_flat<int32>();
+
   // Stores leaf_id, leaf_depth, example_id for examples that are waiting
   // on another to finish.
-  std::queue<std::tuple<int32, int32, int32>> waiting;
+  std::queue<std::tuple<int32, int32>> waiting;
 
   int32 i = start;
-  TensorInputTarget target(&labels, &weights, input_labels, num_targets);
   while (i < end || !waiting.empty()) {
     int32 leaf_id;
-    int32 leaf_depth;
     int32 example_id;
     bool was_waiting = false;
     if (i >= end) {
-      std::tie(leaf_id, leaf_depth, example_id) = waiting.front();
+      std::tie(leaf_id, example_id) = waiting.front();
       waiting.pop();
       was_waiting = true;
     } else {
-      leaf_id = leaf_ids[i];
-      leaf_depth = leaf_depths[i];
+      leaf_id = leaf_ids(i);
       example_id = i;
       ++i;
     }
@@ -194,14 +177,14 @@ void UpdateStats(FertileStatsResource* fertile_stats_resource,
       leaf_lock->lock();
     } else {
       if (!leaf_lock->try_lock()) {
-        waiting.emplace(leaf_id, leaf_depth, example_id);
+        waiting.emplace(leaf_id, example_id);
         continue;
       }
     }
 
     bool is_finished;
     fertile_stats_resource->AddExampleToStatsAndInitialize(
-        data, &target, {example_id}, leaf_id, leaf_depth, &is_finished);
+        data, &target, {example_id}, leaf_id, &is_finished);
     leaf_lock->unlock();
     if (is_finished) {
       set_lock->lock();
@@ -215,15 +198,11 @@ void UpdateStats(FertileStatsResource* fertile_stats_resource,
 void UpdateStatsCollated(
     FertileStatsResource* fertile_stats_resource,
     DecisionTreeResource* tree_resource,
-    const std::unique_ptr<TensorDataSet>& data, const Tensor& input_labels,
-    const Tensor& input_weights, int num_targets,
+    const std::unique_ptr<TensorDataSet>& data, const TensorInputTarget& target,
+    int num_targets,
     const std::unordered_map<int32, std::vector<int>>& leaf_examples,
-    const std::vector<int32>& leaf_depths, mutex* set_lock, int32 start,
-    int32 end, std::unordered_set<int32>* ready_to_split) {
-  const auto labels = input_labels.unaligned_flat<float>();
-  const auto weights = input_weights.unaligned_flat<float>();
-
-  TensorInputTarget target(&labels, &weights, input_labels, num_targets);
+    mutex* set_lock, int32 start, int32 end,
+    std::unordered_set<int32>* ready_to_split) {
   auto it = leaf_examples.begin();
   std::advance(it, start);
   auto end_it = leaf_examples.begin();
@@ -232,8 +211,7 @@ void UpdateStatsCollated(
     int32 leaf_id = it->first;
     bool is_finished;
     fertile_stats_resource->AddExampleToStatsAndInitialize(
-        data, &target, it->second, leaf_id, leaf_depths[it->second[0]],
-        &is_finished);
+        data, &target, it->second, leaf_id, &is_finished);
     if (is_finished) {
       set_lock->lock();
       ready_to_split->insert(leaf_id);
@@ -257,20 +235,20 @@ class ProcessInputOp : public OpKernel {
     string serialized_proto;
     OP_REQUIRES_OK(context, context->GetAttr("input_spec", &serialized_proto));
     input_spec_.ParseFromString(serialized_proto);
-
-    data_set_ = std::unique_ptr<TensorDataSet>(
-        new TensorDataSet(input_spec_, random_seed_));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input_data = context->input(2);
     const Tensor& sparse_input_indices = context->input(3);
     const Tensor& sparse_input_values = context->input(4);
+    const Tensor& sparse_input_shape = context->input(5);
     const Tensor& input_labels = context->input(6);
     const Tensor& input_weights = context->input(7);
+    const Tensor& leaf_ids_tensor = context->input(8);
 
-    data_set_->set_input_tensors(input_data, sparse_input_indices,
-                                 sparse_input_values);
+    std::unique_ptr<TensorDataSet> data_set(new TensorDataSet(input_spec_, 0));
+    data_set->set_input_tensors(input_data, sparse_input_indices,
+                                sparse_input_values, sparse_input_shape);
 
     FertileStatsResource* fertile_stats_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 1),
@@ -284,26 +262,11 @@ class ProcessInputOp : public OpKernel {
     core::ScopedUnref unref_stats(fertile_stats_resource);
     core::ScopedUnref unref_tree(tree_resource);
 
-    const int32 num_data = data_set_->NumItems();
+    const int32 num_data = data_set->NumItems();
     auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
     int num_threads = worker_threads->num_threads;
 
-    // First find the leaf ids for each example.
-    std::vector<int32> leaf_ids(num_data);
-
-    // The depth of the leaf for example i.
-    std::vector<int32> leaf_depths(num_data);
-
-    const int64 costPerTraverse = 500;
-    auto traverse = [this, &leaf_ids, &leaf_depths, tree_resource, num_data](
-                        int64 start, int64 end) {
-      CHECK(start <= end);
-      CHECK(end <= num_data);
-      TraverseTree(tree_resource, data_set_, static_cast<int32>(start),
-                   static_cast<int32>(end), &leaf_ids, &leaf_depths);
-    };
-    Shard(num_threads, worker_threads->workers, num_data, costPerTraverse,
-          traverse);
+    const auto leaf_ids = leaf_ids_tensor.unaligned_flat<int32>();
 
     // Create one mutex per leaf. We need to protect access to leaf pointers,
     // so instead of grouping examples by leaf, we spread examples out among
@@ -313,10 +276,11 @@ class ProcessInputOp : public OpKernel {
     std::unordered_map<int32, std::vector<int>> leaf_examples;
     if (param_proto_.collate_examples()) {
       for (int i = 0; i < num_data; ++i) {
-        leaf_examples[leaf_ids[i]].push_back(i);
+        leaf_examples[leaf_ids(i)].push_back(i);
       }
     } else {
-      for (const int32 id : leaf_ids) {
+      for (int i = 0; i < num_data; ++i) {
+        const int32 id = leaf_ids(i);
         if (FindOrNull(locks, id) == nullptr) {
           // TODO(gilberth): Consider using a memory pool for these.
           locks[id] = std::unique_ptr<mutex>(new mutex);
@@ -336,32 +300,32 @@ class ProcessInputOp : public OpKernel {
     std::unordered_set<int32> ready_to_split;
     mutex set_lock;
 
+    TensorInputTarget target(input_labels, input_weights, num_targets);
+
     // TODO(gilberth): This is a rough approximation based on measurements
     // from a digits run on local desktop.  Heuristics might be necessary
     // if it really matters that much.
     const int64 costPerUpdate = 1000;
-    auto update = [this, &input_labels, &input_weights, &leaf_ids, &leaf_depths,
-                   &num_targets, fertile_stats_resource, &locks, &set_lock,
-                   &ready_to_split, num_data](int64 start, int64 end) {
+    auto update = [this, &target, &leaf_ids_tensor, &num_targets, &data_set,
+                   fertile_stats_resource, &locks, &set_lock, &ready_to_split,
+                   num_data](int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= num_data);
-      UpdateStats(fertile_stats_resource, data_set_, input_labels,
-                  input_weights, num_targets, leaf_ids, leaf_depths, &locks,
-                  &set_lock, static_cast<int32>(start), static_cast<int32>(end),
-                  &ready_to_split);
+      UpdateStats(fertile_stats_resource, data_set, target, num_targets,
+                  leaf_ids_tensor, &locks, &set_lock, static_cast<int32>(start),
+                  static_cast<int32>(end), &ready_to_split);
     };
 
-    auto update_collated = [this, &input_labels, &input_weights, &leaf_ids,
-                            &num_targets, &leaf_depths, fertile_stats_resource,
+    auto update_collated = [this, &target, &num_targets, fertile_stats_resource,
                             tree_resource, &leaf_examples, &set_lock,
-                            &ready_to_split,
+                            &ready_to_split, &data_set,
                             num_leaves](int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= num_leaves);
-      UpdateStatsCollated(
-          fertile_stats_resource, tree_resource, data_set_, input_labels,
-          input_weights, num_targets, leaf_examples, leaf_depths, &set_lock,
-          static_cast<int32>(start), static_cast<int32>(end), &ready_to_split);
+      UpdateStatsCollated(fertile_stats_resource, tree_resource, data_set,
+                          target, num_targets, leaf_examples, &set_lock,
+                          static_cast<int32>(start), static_cast<int32>(end),
+                          &ready_to_split);
     };
 
     if (param_proto_.collate_examples()) {
@@ -384,7 +348,6 @@ class ProcessInputOp : public OpKernel {
  private:
   int32 random_seed_;
   tensorforest::TensorForestDataSpec input_spec_;
-  std::unique_ptr<TensorDataSet> data_set_;
   TensorForestParams param_proto_;
 };
 
@@ -417,7 +380,8 @@ class GrowTreeOp : public OpKernel {
     const int32 num_nodes =
         static_cast<int32>(finished_nodes.shape().dim_size(0));
 
-    // TODO(gilberth): distribute this work over a number of threads.
+    // This op takes so little of the time for one batch that it isn't worth
+    // threading this.
     for (int i = 0;
          i < num_nodes &&
          tree_resource->decision_tree().decision_tree().nodes_size() <
@@ -426,16 +390,14 @@ class GrowTreeOp : public OpKernel {
       const int32 node = finished(i);
       std::unique_ptr<SplitCandidate> best(new SplitCandidate);
       int32 parent_depth;
+      // TODO(gilberth): Pushing these to an output would allow the complete
+      // decoupling of tree from resource.
       bool found =
           fertile_stats_resource->BestSplit(node, best.get(), &parent_depth);
       if (found) {
         std::vector<int32> new_children;
         tree_resource->SplitNode(node, best.get(), &new_children);
         fertile_stats_resource->Allocate(parent_depth, new_children);
-        fertile_stats_resource->set_leaf_stat(best->left_stats(),
-                                              new_children[0]);
-        fertile_stats_resource->set_leaf_stat(best->right_stats(),
-                                              new_children[1]);
         // We are done with best, so it is now safe to clear node.
         fertile_stats_resource->Clear(node);
         CHECK(tree_resource->get_mutable_tree_node(node)->has_leaf() == false);
@@ -450,20 +412,17 @@ class GrowTreeOp : public OpKernel {
   TensorForestParams param_proto_;
 };
 
-void FinalizeLeaf(const LeafStat& leaf_stats, bool is_regression,
-                  bool drop_final_class,
+void FinalizeLeaf(bool is_regression, bool drop_final_class,
                   const std::unique_ptr<LeafModelOperator>& leaf_op,
                   decision_trees::Leaf* leaf) {
-  leaf_op->ExportModel(leaf_stats, leaf);
-
-  // TODO(thomaswc): Move the rest of this into ExportModel.
-
   // regression models are already stored in leaf in normalized form.
   if (is_regression) {
     return;
   }
 
-  float sum = leaf_stats.weight_sum();
+  // TODO(gilberth): Calculate the leaf's sum.
+  float sum = 0;
+  LOG(FATAL) << "FinalizeTreeOp is disabled for now.";
   if (sum <= 0.0) {
     LOG(WARNING) << "Leaf with sum " << sum << " has stats "
                  << leaf->ShortDebugString();
@@ -523,8 +482,7 @@ class FinalizeTreeOp : public OpKernel {
                        ->mutable_decision_tree()
                        ->mutable_nodes(i);
       if (node->has_leaf()) {
-        const auto& leaf_stats = fertile_stats_resource->leaf_stat(i);
-        FinalizeLeaf(leaf_stats, param_proto_.is_regression(),
+        FinalizeLeaf(param_proto_.is_regression(),
                      param_proto_.drop_final_class(), model_op_,
                      node->mutable_leaf());
       }

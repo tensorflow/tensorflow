@@ -23,6 +23,7 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_sharding
 
 from tensorflow.python.framework import dtypes
@@ -298,7 +299,7 @@ class InfeedQueue(object):
     input_tensors is a list of lists of Tensors whose types and shapes are used
     to set the queue configuration. The length of the outer list is the number
     of shards required, and each inner list is the tuple of Tensors to use to
-    determine the types and shapes of the correponding shard. This method
+    determine the types and shapes of the corresponding shard. This method
     depends on the shard dimension, and calling it freezes the shard policy.
 
     Args:
@@ -368,12 +369,19 @@ class InfeedQueue(object):
       policy.freeze()
     self._validate()
 
-  def generate_dequeue_op(self):
+  def generate_dequeue_op(self, tpu_device=0):
     """Generates the device-side Op to dequeue a tuple from the queue.
 
     Implicitly freezes the queue configuration if it is not already
     frozen, which will raise errors if the shapes and types have not
     been fully specified.
+
+    Args:
+      tpu_device: The TPU device ordinal where the infeed instruction should be
+        placed. If None, no explicit placement will be performed, and it is up
+        to the user to call this API from within a proper TPU device scope.
+        The XLA code will fail if the TPU dequeue instruction is not bound to
+        any device.
 
     Returns:
       A list of Outputs corresponding to a shard of infeed dequeued
@@ -392,8 +400,13 @@ class InfeedQueue(object):
         policy.get_sharded_shape(shape)
         for (shape, policy) in zip(self._tuple_shapes, self._sharding_policies)
     ]
-    return tpu_ops.infeed_dequeue_tuple(
-        dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
+    if tpu_device is not None:
+      with ops.device(tpu.core(tpu_device)):
+        return tpu_ops.infeed_dequeue_tuple(
+            dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
+    else:
+      return tpu_ops.infeed_dequeue_tuple(
+          dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
 
   def _generate_enqueue_op(self,
                            inputs,
@@ -513,7 +526,7 @@ class InfeedQueue(object):
   # for automatic placement of input pipelines.
   def split_inputs_and_generate_enqueue_ops(self,
                                             inputs,
-                                            global_tpu_id=None,
+                                            device_assignment=None,
                                             placement_function=None,
                                             tpu_ordinal_function=None):
     """POORLY-PERFORMING ON MULTI-HOST SYSTEMS.
@@ -536,14 +549,12 @@ class InfeedQueue(object):
     Args:
       inputs: a list of Tensors which indicates the types and shapes of the
         queue tuple.
-     global_tpu_id: if not None, a Numpy 2D array indicating the global
-        id of each TPU device in the system. The outer dimension of the
-        array is host task id, and the inner dimension is device ordinal,
-        so e.g., global_tpu_id[x][y] indicates the global id of device
-        /task:x/device:TPU_NODE:y. If global_tpu_id is not None, but
-        placement_function and ordinal_function are None, then global_tpu_id
-        will be used to place infeed on the TPUs with the first k global ids,
-        where k is the number of shards in the queue.
+     device_assignment: if not `None`, a TPU `DeviceAssignment`. If
+        device_assignment is not `None`, but `placement_function` and
+        `ordinal_function` are None, then `device_assignment` will be used to
+        place infeeds on the first k TPU shards, where k is the number of shards
+        in the queue. If all three are `None`, then default placement and
+        ordinal functions are used.
       placement_function: if not None, a function that takes the shard
         index as input and returns a device string indicating which
         device the shard's infeed should be placed on. If placement_function
@@ -567,22 +578,18 @@ class InfeedQueue(object):
         types of the elements of inputs are not compatible with the frozen
         configuration.
     """
-    if global_tpu_id is None:
+    if device_assignment is None:
       if placement_function is None:
         placement_function = self._default_placement_function
       if tpu_ordinal_function is None:
         tpu_ordinal_function = self._default_ordinal_function
     else:
-      global_id_map = {}
-      for host, devices in enumerate(global_tpu_id):
-        for ordinal, global_id in enumerate(devices):
-          global_id_map[global_id] = (host, ordinal)
 
       def _placement_function_from_map(index):
-        return "/task:%d/device:CPU:0" % global_id_map[index][0]
+        return device_assignment.host_device(replica=index)
 
       def _ordinal_function_from_map(index):
-        return global_id_map[index][1]
+        return device_assignment.tpu_ordinal(replica=index)
 
       if placement_function is None:
         placement_function = _placement_function_from_map
@@ -597,8 +604,13 @@ class InfeedQueue(object):
     if self.number_of_shards == 1:
       transposed_sharded_inputs = [[inp] for inp in inputs]
     else:
+
+      def split_fn(inp, num_shards, axis, name):
+        with ops.colocate_with(inp):
+          return array_ops.split(inp, num_shards, axis=axis, name=name)
+
       transposed_sharded_inputs = [
-          array_ops.split(
+          split_fn(
               inp,
               self.number_of_shards,
               axis=policy.shard_dimension,

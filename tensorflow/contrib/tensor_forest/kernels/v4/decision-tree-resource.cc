@@ -18,16 +18,25 @@ namespace tensorflow {
 namespace tensorforest {
 
 using decision_trees::DecisionTree;
+using decision_trees::Leaf;
 using decision_trees::TreeNode;
+
+DecisionTreeResource::DecisionTreeResource(const TensorForestParams& params)
+    : params_(params), decision_tree_(new decision_trees::Model()) {
+  model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(params_);
+}
 
 int32 DecisionTreeResource::TraverseTree(
     const std::unique_ptr<TensorDataSet>& input_data, int example,
-    int32* leaf_depth) const {
+    int32* leaf_depth, TreePath* path) const {
   const DecisionTree& tree = decision_tree_->decision_tree();
   int32 current_id = 0;
   int32 depth = 0;
   while (true) {
     const TreeNode& current = tree.nodes(current_id);
+    if (path != nullptr) {
+      *path->add_nodes_visited() = current;
+    }
     if (current.has_leaf()) {
       if (leaf_depth != nullptr) {
         *leaf_depth = depth;
@@ -51,13 +60,15 @@ void DecisionTreeResource::SplitNode(int32 node_id, SplitCandidate* best,
   new_children->push_back(newid);
   TreeNode* new_left = tree->add_nodes();
   new_left->mutable_node_id()->set_value(newid++);
-  new_left->mutable_leaf();
+  Leaf* left_leaf = new_left->mutable_leaf();
+  model_op_->ExportModel(best->left_stats(), left_leaf);
 
   // right
   new_children->push_back(newid);
   TreeNode* new_right = tree->add_nodes();
   new_right->mutable_node_id()->set_value(newid);
-  new_right->mutable_leaf();
+  Leaf* right_leaf = new_right->mutable_leaf();
+  model_op_->ExportModel(best->right_stats(), right_leaf);
 
   node->clear_leaf();
   node->mutable_binary_node()->Swap(best->mutable_split());
@@ -72,7 +83,7 @@ void DecisionTreeResource::SplitNode(int32 node_id, SplitCandidate* best,
 void DecisionTreeResource::MaybeInitialize() {
   DecisionTree* tree = decision_tree_->mutable_decision_tree();
   if (tree->nodes_size() == 0) {
-    tree->add_nodes()->mutable_leaf();
+    model_op_->InitModel(tree->add_nodes()->mutable_leaf());
   } else if (node_evaluators_.empty()) {  // reconstruct evaluators
     for (const auto& node : tree->nodes()) {
       if (node.has_leaf()) {

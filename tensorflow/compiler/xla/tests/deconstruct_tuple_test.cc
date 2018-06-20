@@ -16,11 +16,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -43,9 +42,8 @@ class DeconstructTupleTest : public ClientLibraryTestBase {
   // Build and execute the given computation then verify the results can be
   // transferred from the device successfully.
   std::unique_ptr<GlobalData> ExecuteAndCheckTransfer(
-      ComputationBuilder* builder,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-    Computation computation = builder->Build().ConsumeValueOrDie();
+      XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+    XlaComputation computation = builder->Build().ConsumeValueOrDie();
     auto global_data =
         client_->Execute(computation, arguments, &execution_options_)
             .ConsumeValueOrDie();
@@ -55,7 +53,7 @@ class DeconstructTupleTest : public ClientLibraryTestBase {
 };
 
 TEST_F(DeconstructTupleTest, DeconstructTuple) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
   builder.Tuple({const1, const2});
@@ -67,14 +65,14 @@ TEST_F(DeconstructTupleTest, DeconstructTuple) {
   // Try copying the elements back and comparing it
   auto handles = result_status.ConsumeValueOrDie();
   std::unique_ptr<Literal> literal;
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[0]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[1]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
   builder.Tuple({const1, const2});
@@ -89,22 +87,22 @@ TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
   auto handles2 = result_status2.ConsumeValueOrDie();
 
   std::unique_ptr<Literal> literal;
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles1[0]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles1[1]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
 
   handles1[0].reset();
   handles1[1].reset();
 
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles2[0]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles2[1]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
   builder.Tuple({const1, const2, const2, const1});
@@ -119,18 +117,18 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
   auto handles = result_status.ConsumeValueOrDie();
 
   std::unique_ptr<Literal> literal;
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[0]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[1]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[2]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[3]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[3]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
   builder.Tuple({const1, const2, const1});
@@ -145,22 +143,22 @@ TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
   global_data.reset();
 
   std::unique_ptr<Literal> literal;
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[0]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[1]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[2]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 
   /// Try deallocating one of the repeated elements, then copy
   handles[0].reset();
 
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[2]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
@@ -171,7 +169,7 @@ TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   std::unique_ptr<Literal> param0_literal =
       Literal::CreateR1<float>({3.14f, -100.25f});
   std::unique_ptr<GlobalData> param0_data =
@@ -187,7 +185,7 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
   auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
   builder.Tuple({builder.Tuple({const1, const2}), const1});
@@ -196,25 +194,8 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().error_message(),
-              HasSubstr("deconstructing nested tuples not yet supported"));
+              HasSubstr("Deconstructing nested tuples is not implemented"));
 }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

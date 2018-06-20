@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/layout_util_flags.h"
+
+#include <sstream>
+
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -29,6 +31,14 @@ class LayoutUtilTest : public ::testing::Test {
                             tensorflow::gtl::ArraySlice<int64> minor_to_major) {
     Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
     *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+    return shape;
+  }
+
+  Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
+                                  tensorflow::gtl::ArraySlice<int64> dimensions,
+                                  int64 max_sparse_elements) {
+    Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
+    *shape.mutable_layout() = LayoutUtil::MakeSparseLayout(max_sparse_elements);
     return shape;
   }
 };
@@ -82,6 +92,29 @@ TEST_F(LayoutUtilTest, CopyLayoutArray) {
   EXPECT_FALSE(dst.has_layout());
 }
 
+TEST_F(LayoutUtilTest, CopyLayoutSparse) {
+  Shape src = MakeShapeWithSparseLayout(F32, {2, 3}, 2);
+  Shape dst = MakeShapeWithLayout(F32, {2, 3}, {1, 0});
+
+  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+
+  // Should work if destination has no layout.
+  dst.clear_layout();
+  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+
+  // If source is cleared, then destination should be cleared.
+  src.clear_layout();
+  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_TRUE(dst.has_layout());
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_FALSE(dst.has_layout());
+}
+
 TEST_F(LayoutUtilTest, CopyLayoutTuple) {
   Shape src = ShapeUtil::MakeTupleShape(
       {MakeShapeWithLayout(F32, {2, 3}, {0, 1}),
@@ -101,8 +134,34 @@ TEST_F(LayoutUtilTest, CopyLayoutTuple) {
   EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
 }
 
+TEST_F(LayoutUtilTest, CopyLayoutTupleSparse) {
+  Shape src = ShapeUtil::MakeTupleShape(
+      {MakeShapeWithSparseLayout(F32, {2, 3}, 4),
+       MakeShapeWithSparseLayout(F32, {42, 123}, 4),
+       ShapeUtil::MakeTupleShape(
+           {MakeShapeWithLayout(F32, {}, {}),
+            MakeShapeWithSparseLayout(F32, {1, 2, 3}, 6)})});
+  Shape dst = ShapeUtil::MakeTupleShape(
+      {MakeShapeWithLayout(F32, {2, 3}, {1, 0}),
+       MakeShapeWithLayout(F32, {42, 123}, {1, 0}),
+       ShapeUtil::MakeTupleShape(
+           {MakeShapeWithLayout(F32, {}, {}),
+            MakeShapeWithLayout(F32, {1, 2, 3}, {1, 2, 0})})});
+
+  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+}
+
 TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleSameRank) {
   Shape src = MakeShapeWithLayout(F32, {123, 42, 7}, {2, 0, 1});
+  Shape dst = MakeShapeWithLayout(F32, {2, 3, 5}, {1, 0});
+  ASSERT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+}
+
+TEST_F(LayoutUtilTest, CopyLayoutSparseNotCompatibleSameRank) {
+  Shape src = MakeShapeWithSparseLayout(F32, {123, 42, 7}, 6);
   Shape dst = MakeShapeWithLayout(F32, {2, 3, 5}, {1, 0});
   ASSERT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
   EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
@@ -111,6 +170,15 @@ TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleSameRank) {
 TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleDifferentRank) {
   Shape src = MakeShapeWithLayout(F32, {123, 42, 7}, {2, 0, 1});
   Shape dst = MakeShapeWithLayout(F32, {2, 3}, {1, 0});
+  auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::ContainsRegex("cannot copy layout from shape"));
+}
+
+TEST_F(LayoutUtilTest, CopyLayoutSparseNotCompatibleDifferentRank) {
+  Shape src = MakeShapeWithLayout(F32, {123, 42, 7}, {2, 0, 1});
+  Shape dst = MakeShapeWithSparseLayout(F32, {2, 3}, 4);
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
@@ -150,6 +218,47 @@ TEST_F(LayoutUtilTest, CopyLayoutBogusLayout) {
                                "elements, but shape is rank"));
 }
 
+TEST_F(LayoutUtilTest, CopyTokenLayout) {
+  Shape src = ShapeUtil::MakeTokenShape();
+  Shape dst = ShapeUtil::MakeTokenShape();
+
+  // Layouts are trivially the same for token types and copying layouts should
+  // be a nop.
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+}
+
+TEST_F(LayoutUtilTest, CopyOpaqueLayout) {
+  Shape src = ShapeUtil::MakeOpaqueShape();
+  Shape dst = ShapeUtil::MakeOpaqueShape();
+
+  // Layouts are trivially the same for opaque types and copying layouts should
+  // be a nop.
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+}
+
+TEST_F(LayoutUtilTest, CopyTupleLayoutWithTokenAndOpaque) {
+  Shape src = ShapeUtil::MakeTupleShape(
+      {MakeShapeWithLayout(F32, {2, 3}, {0, 1}),
+       MakeShapeWithLayout(F32, {42, 123}, {1, 0}), ShapeUtil::MakeTokenShape(),
+       ShapeUtil::MakeTupleShape(
+           {ShapeUtil::MakeOpaqueShape(), MakeShapeWithLayout(F32, {}, {}),
+            MakeShapeWithLayout(F32, {1, 2, 3}, {0, 2, 1})})});
+  Shape dst = ShapeUtil::MakeTupleShape(
+      {MakeShapeWithLayout(F32, {2, 3}, {1, 0}),
+       MakeShapeWithLayout(F32, {42, 123}, {1, 0}), ShapeUtil::MakeTokenShape(),
+       ShapeUtil::MakeTupleShape(
+           {ShapeUtil::MakeOpaqueShape(), MakeShapeWithLayout(F32, {}, {}),
+            MakeShapeWithLayout(F32, {1, 2, 3}, {1, 2, 0})})});
+
+  EXPECT_FALSE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+  EXPECT_IS_OK(LayoutUtil::CopyLayoutBetweenShapes(src, &dst));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(src, dst));
+}
+
 TEST_F(LayoutUtilTest, ClearLayoutTuple) {
   Shape shape = ShapeUtil::MakeTupleShape(
       {MakeShapeWithLayout(F32, {2, 3}, {1, 0}),
@@ -166,6 +275,16 @@ TEST_F(LayoutUtilTest, ClearLayoutTuple) {
   EXPECT_FALSE(LayoutUtil::HasLayout(shape));
   EXPECT_FALSE(shape.tuple_shapes(0).has_layout());
   EXPECT_FALSE(shape.tuple_shapes(2).tuple_shapes(1).has_layout());
+}
+
+TEST_F(LayoutUtilTest, ClearLayoutOpaqueAndToken) {
+  // Opaque and token types trivially have layouts.
+  for (Shape shape :
+       {ShapeUtil::MakeOpaqueShape(), ShapeUtil::MakeTokenShape()}) {
+    EXPECT_TRUE(LayoutUtil::HasLayout(shape));
+    LayoutUtil::ClearLayout(&shape);
+    EXPECT_TRUE(LayoutUtil::HasLayout(shape));
+  }
 }
 
 TEST_F(LayoutUtilTest, SetToDefaultLayoutTuple) {
@@ -210,13 +329,6 @@ TEST_F(LayoutUtilTest, IsPadded) {
 }
 
 TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
-  // Test that LayoutUtil returns expected layouts when the xla_default_layout
-  // flag is set to kMajorToMinor.
-  legacy_flags::LayoutUtilFlags* flags = legacy_flags::GetLayoutUtilFlags();
-  flags->xla_default_layout = xla::legacy_flags::DefaultLayout{
-      .dimension_order =
-          legacy_flags::DefaultLayout::DimensionOrder::kMajorToMinor};
-
   EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({1, 0}),
                                 LayoutUtil::GetDefaultLayoutForR2()));
   EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({2, 1, 0}),
@@ -229,24 +341,15 @@ TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
                             ShapeUtil::MakeShape(F32, {10, 20, 30, 15, 25}))));
 }
 
-TEST_F(LayoutUtilTest, DefaultLayoutGettersMinorToMajor) {
-  // Test that LayoutUtil returns expected layouts when the xla_default_layout
-  // flag is set to kMinorToMajor.
-  legacy_flags::LayoutUtilFlags* flags = legacy_flags::GetLayoutUtilFlags();
-  flags->xla_default_layout = xla::legacy_flags::DefaultLayout{
-      .dimension_order =
-          legacy_flags::DefaultLayout::DimensionOrder::kMinorToMajor};
+TEST_F(LayoutUtilTest, SparseLayoutMaxElements) {
+  EXPECT_EQ(LayoutUtil::MaxSparseElements(LayoutUtil::MakeSparseLayout(101)),
+            101);
+}
 
-  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1}),
-                                LayoutUtil::GetDefaultLayoutForR2()));
-  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1, 2}),
-                                LayoutUtil::GetDefaultLayoutForR3()));
-  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1, 2, 3}),
-                                LayoutUtil::GetDefaultLayoutForR4()));
-  EXPECT_TRUE(
-      LayoutUtil::Equal(LayoutUtil::MakeLayout({0, 1, 2, 3, 4}),
-                        LayoutUtil::GetDefaultLayoutForShape(
-                            ShapeUtil::MakeShape(F32, {10, 20, 30, 15, 25}))));
+TEST_F(LayoutUtilTest, StreamOut) {
+  std::ostringstream oss;
+  oss << LayoutUtil::MakeLayout({0, 1, 2});
+  EXPECT_EQ(oss.str(), "{0,1,2}");
 }
 
 }  // namespace

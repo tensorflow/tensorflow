@@ -17,12 +17,18 @@
 
 set -e
 
+function real_path() {
+  [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+}
+
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
-  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*'`; do
+  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*' ! -name '*local_config_tensorrt*' ! -name '*org_tensorflow*'`; do
     cp -R "$f" "$dest_dir"
   done
+  mkdir -p "${dest_dir}/local_config_cuda/cuda/cuda/"
+  cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
 }
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
@@ -35,28 +41,15 @@ function is_windows() {
   fi
 }
 
-function main() {
+function prepare_src() {
   if [ $# -lt 1 ] ; then
     echo "No destination dir provided"
     exit 1
   fi
 
-  DEST=$1
-  TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
-
-  GPU_FLAG=""
-  while true; do
-    if [[ "$1" == "--gpu" ]]; then
-      GPU_FLAG="--project_name tensorflow_gpu"
-    fi
-    shift
-
-    if [[ -z "$1" ]]; then
-      break
-    fi
-  done
-
-  echo $(date) : "=== Using tmpdir: ${TMPDIR}"
+  TMPDIR="$1"
+  mkdir -p "$TMPDIR"
+  echo $(date) : "=== Preparing sources in dir: ${TMPDIR}"
 
   if [ ! -d bazel-bin/tensorflow ]; then
     echo "Could not find bazel-bin.  Did you run from the root of the build tree?"
@@ -74,29 +67,12 @@ function main() {
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
     mkdir "${TMPDIR}/external"
-    # Note: this makes an extra copy of org_tensorflow.
     cp_external \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${TMPDIR}/external"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
-  elif [ ! -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow ]; then
-    # Really old (0.2.1-) runfiles, without workspace name.
-    cp -R \
-      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/tensorflow \
-      "${TMPDIR}"
-    mkdir "${TMPDIR}/external"
-    cp_external \
-      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/external \
-      "${TMPDIR}/external"
-    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles
-    # Copy MKL libs over so they can be loaded at runtime
-    if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl ]; then
-      mkdir "${TMPDIR}/_solib_k8"
-  		cp -R \
-  			bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl \
-        "${TMPDIR}/_solib_k8"
-    fi
   else
+    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
       cp -R \
@@ -107,11 +83,13 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl ]; then
-        mkdir "${TMPDIR}/_solib_k8"
-        cp -R \
-          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl \
-          "${TMPDIR}/_solib_k8"
+      so_lib_dir=$(ls $RUNFILES | grep solib) || true
+      if [ -n "${so_lib_dir}" ]; then
+        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+        if [ -n "${mkl_so_dir}" ]; then
+          mkdir "${TMPDIR}/${so_lib_dir}"
+          cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
+        fi
       fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
@@ -119,50 +97,161 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       mkdir "${TMPDIR}/external"
-      # Note: this makes an extra copy of org_tensorflow.
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl ]; then
-        mkdir "${TMPDIR}/_solib_k8"
-    		cp -R \
-    			bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl \
-          "${TMPDIR}/_solib_k8"
+      so_lib_dir=$(ls $RUNFILES | grep solib) || true
+      if [ -n "${so_lib_dir}" ]; then
+        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+        if [ -n "${mkl_so_dir}" ]; then
+          mkdir "${TMPDIR}/${so_lib_dir}"
+          cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
+        fi
       fi
     fi
-    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
+    mkdir "${TMPDIR}/tensorflow/aux-bin"
+    # Install toco as a binary in aux-bin.
+    cp bazel-bin/tensorflow/contrib/lite/python/tflite_convert ${TMPDIR}/tensorflow/aux-bin/
   fi
 
   # protobuf pip package doesn't ship with header files. Copy the headers
   # over so user defined ops can be compiled.
   mkdir -p ${TMPDIR}/google
   mkdir -p ${TMPDIR}/third_party
-  pushd ${RUNFILES%org_tensorflow}
-  for header in $(find protobuf -name \*.h); do
+  pushd ${RUNFILES%org_tensorflow} > /dev/null
+  for header in $(find protobuf_archive -name \*.h); do
     mkdir -p "${TMPDIR}/google/$(dirname ${header})"
     cp "$header" "${TMPDIR}/google/$(dirname ${header})/"
   done
-  popd
+  popd > /dev/null
   cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
   cp tensorflow/tools/pip_package/README ${TMPDIR}
   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
+}
+
+function build_wheel() {
+  if [ $# -lt 2 ] ; then
+    echo "No src and dest dir provided"
+    exit 1
+  fi
+
+  TMPDIR="$1"
+  DEST="$2"
+  PKG_NAME_FLAG="$3"
 
   # Before we leave the top-level directory, make sure we know how to
   # call python.
-  source tools/python_bin_path.sh
+  if [[ -e tools/python_bin_path.sh ]]; then
+    source tools/python_bin_path.sh
+  fi
 
-  pushd ${TMPDIR}
+  pushd ${TMPDIR} > /dev/null
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${GPU_FLAG} >/dev/null
+  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
-  popd
-  rm -rf ${TMPDIR}
+  popd > /dev/null
   echo $(date) : "=== Output wheel file is in: ${DEST}"
+}
+
+function usage() {
+  echo "Usage:"
+  echo "$0 [--src srcdir] [--dst dstdir] [options]"
+  echo "$0 dstdir [options]"
+  echo ""
+  echo "    --src                 prepare sources in srcdir"
+  echo "                              will use temporary dir if not specified"
+  echo ""
+  echo "    --dst                 build wheel in dstdir"
+  echo "                              if dstdir is not set do not build, only prepare sources"
+  echo ""
+  echo "  Options:"
+  echo "    --project_name <name> set project name to name"
+  echo "    --gpu                 build tensorflow_gpu"
+  echo "    --gpudirect           build tensorflow_gpudirect"
+  echo "    --nightly_flag        build tensorflow nightly"
+  echo ""
+  exit 1
+}
+
+function main() {
+  PKG_NAME_FLAG=""
+  PROJECT_NAME=""
+  GPU_BUILD=0
+  NIGHTLY_BUILD=0
+  SRCDIR=""
+  DSTDIR=""
+  CLEANSRC=1
+  while true; do
+    if [[ "$1" == "--help" ]]; then
+      usage
+      exit 1
+    elif [[ "$1" == "--nightly_flag" ]]; then
+      NIGHTLY_BUILD=1
+    elif [[ "$1" == "--gpu" ]]; then
+      GPU_BUILD=1
+    elif [[ "$1" == "--gpudirect" ]]; then
+      PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
+    elif [[ "$1" == "--project_name" ]]; then
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      PROJECT_NAME="$1"
+    elif [[ "$1" == "--src" ]]; then
+      shift
+      SRCDIR="$(real_path $1)"
+      CLEANSRC=0
+    elif [[ "$1" == "--dst" ]]; then
+      shift
+      DSTDIR="$(real_path $1)"
+    else
+      DSTDIR="$(real_path $1)"
+    fi
+    shift
+
+    if [[ -z "$1" ]]; then
+      break
+    fi
+  done
+
+  if [[ -z "$DSTDIR" ]] && [[ -z "$SRCDIR" ]]; then
+    echo "No destination dir provided"
+    usage
+    exit 1
+  fi
+
+  if [[ -z "$SRCDIR" ]]; then
+    # make temp srcdir if none set
+    SRCDIR="$(mktemp -d -t tmp.XXXXXXXXXX)"
+  fi
+
+  prepare_src "$SRCDIR"
+
+  if [[ -z "$DSTDIR" ]]; then
+      # only want to prepare sources
+      exit
+  fi
+
+  if [[ -n ${PROJECT_NAME} ]]; then
+    PKG_NAME_FLAG="--project_name ${PROJECT_NAME}"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${GPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_gpu"
+  elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly"
+  elif [[ ${GPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_gpu"
+  fi
+
+  build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG"
+
+  if [[ $CLEANSRC -ne 0 ]]; then
+    rm -rf "${TMPDIR}"
+  fi
 }
 
 main "$@"

@@ -30,21 +30,27 @@ namespace grappler {
 static Costs::NanoSeconds PredictExecutionTime(
     const GraphProperties& properties, const OpLevelCostEstimator& estimator,
     const VirtualPlacer& placer, const NodeDef& node) {
-  OpInfo op_features;
-  op_features.set_op(node.op());
-  *op_features.mutable_attr() = node.attr();
+  OpContext op_context;
+  op_context.op_info.set_op(node.op());
+  *op_context.op_info.mutable_attr() = node.attr();
 
   std::vector<OpInfo::TensorProperties> inputs =
       properties.GetInputProperties(node.name());
   for (auto& input : inputs) {
-    op_features.add_inputs()->Swap(&input);
+    op_context.op_info.add_inputs()->Swap(&input);
+  }
+
+  std::vector<OpInfo::TensorProperties> outputs =
+      properties.GetOutputProperties(node.name());
+  for (auto& output : outputs) {
+    op_context.op_info.add_outputs()->Swap(&output);
   }
 
   DeviceProperties device = placer.get_device(node);
-  op_features.mutable_device()->Swap(&device);
+  op_context.op_info.mutable_device()->Swap(&device);
 
   Costs::NanoSeconds estimate =
-      estimator.PredictCosts(op_features).execution_time;
+      estimator.PredictCosts(op_context).execution_time;
 
   // Make sure our estimates are at least one nanosecond per node.
   return std::max(estimate, Costs::NanoSeconds(1));
@@ -86,7 +92,7 @@ Status EstimateEarliestExecutionTimes(
   name_map.clear();
 
   GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically());
+  TF_RETURN_IF_ERROR(properties.InferStatically(true));
   OpLevelCostEstimator estimator;
   VirtualPlacer placer(cluster);
 
@@ -113,6 +119,72 @@ Status EstimateEarliestExecutionTimes(
       Costs::NanoSeconds ready_time =
           std::max(completion_time, (*completion_times)[fanout]);
       (*completion_times)[fanout] = ready_time;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status EstimateRequiredTimes(
+    const GrapplerItem& item, const Cluster* cluster,
+    const std::unordered_map<const NodeDef*, Costs::NanoSeconds>&
+        execution_times,
+    std::unordered_map<const NodeDef*, Costs::NanoSeconds>* required_times) {
+  std::unordered_map<string, const NodeDef*> name_map;
+  for (const NodeDef& node : item.graph.node()) {
+    name_map[node.name()] = &node;
+    (*required_times)[&node] = Costs::NanoSeconds::max();
+  }
+
+  std::unordered_map<const NodeDef*, int> pending_fanouts;
+  for (const NodeDef& node : item.graph.node()) {
+    for (const string& input : node.input()) {
+      string node_name = NodeName(input);
+      auto it = name_map.find(node_name);
+      if (it == name_map.end()) {
+        return errors::InvalidArgument(
+            strings::StrCat("Unknown input node ", input));
+      }
+      const NodeDef* fanin = it->second;
+      pending_fanouts[fanin] += 1;
+    }
+  }
+  std::deque<const NodeDef*> ready_nodes;
+  for (const NodeDef& node : item.graph.node()) {
+    if (pending_fanouts[&node] == 0) {
+      auto it = execution_times.find(&node);
+      if (it != execution_times.end()) {
+        (*required_times)[&node] = it->second;
+      }
+      ready_nodes.push_back(&node);
+    }
+  }
+  GraphProperties properties(item);
+  TF_RETURN_IF_ERROR(properties.InferStatically(true));
+  OpLevelCostEstimator estimator;
+  VirtualPlacer placer(cluster);
+
+  while (!ready_nodes.empty()) {
+    const NodeDef* node = ready_nodes.front();
+    ready_nodes.pop_front();
+
+    Costs::NanoSeconds execution_time =
+        PredictExecutionTime(properties, estimator, placer, *node);
+    Costs::NanoSeconds required_time = (*required_times)[node] - execution_time;
+
+    for (const string& fanin_name : node->input()) {
+      const NodeDef* fanin = name_map[NodeName(fanin_name)];
+      (*required_times)[fanin] =
+          std::min((*required_times)[fanin], required_time);
+
+      int pending = pending_fanouts[fanin];
+      if (pending == 0) {
+        // Already processed. Avoid going through loops more than once.
+        continue;
+      } else if (pending == 1) {
+        ready_nodes.push_back(fanin);
+      }
+      pending_fanouts[fanin]--;
     }
   }
 

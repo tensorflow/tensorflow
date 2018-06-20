@@ -15,9 +15,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -28,7 +27,7 @@ namespace {
 class FmaxSimpleTest : public ClientLibraryTestBase {};
 
 TEST_F(FmaxSimpleTest, FmaxTenValues) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto x = builder.ConstantR1<float>(
       {-0.0, 1.0, 2.0, -3.0, -4.0, 5.0, 6.0, -7.0, -8.0, 9.0});
   auto y = builder.ConstantR1<float>(
@@ -42,20 +41,3 @@ TEST_F(FmaxSimpleTest, FmaxTenValues) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

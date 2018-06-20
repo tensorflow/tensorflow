@@ -55,6 +55,10 @@ tf_class {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "METRIC_VARIABLES"
+    mtype: "<type \'str\'>"
+  }
+  member {
     name: "MODEL_VARIABLES"
     mtype: "<type \'str\'>"
   }

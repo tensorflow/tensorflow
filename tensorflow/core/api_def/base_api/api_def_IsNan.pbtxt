@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "IsNan"
+  summary: "Returns which elements of x are NaN."
+  description: <<END
+@compatibility(numpy)
+Equivalent to np.isnan
+@end_compatibility
+END
+}

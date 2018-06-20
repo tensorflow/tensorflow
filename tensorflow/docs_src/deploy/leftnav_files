@@ -1,4 +1,5 @@
 index.md
 distributed.md
-tfserve.md
 hadoop.md
+s3.md
+deploy_to_js.md

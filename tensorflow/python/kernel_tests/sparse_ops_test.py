@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import unittest
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -29,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -325,6 +325,13 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
         constant_op.constant(self._VAL_2_5_6, dtypes.int32),
         constant_op.constant(self._SHP_2_5_6, dtypes.int64))
 
+  def _SparseTensor_2x5x6_Empty(self):
+    return sparse_tensor.SparseTensor(
+        constant_op.constant(
+            np.empty(shape=[0, 3], dtype=np.int64), dtypes.int64),
+        constant_op.constant(np.empty(shape=[0], dtype=np.int32), dtypes.int32),
+        constant_op.constant(self._SHP_2_5_6, dtypes.int64))
+
   def _SparseTensorValue_2x5x6(self):
     return sparse_tensor.SparseTensorValue(self._IND_2_5_6, self._VAL_2_5_6,
                                            self._SHP_2_5_6)
@@ -386,6 +393,17 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
                                            [1, 1, 4], [1, 3, 2], [1, 3, 3]])
       self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
       self.assertAllEqual(output.dense_shape, [2, 4, 5])
+
+  def testTightBoundingBoxEmpty(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensor_2x5x6_Empty()
+      sp_output = sparse_ops.sparse_reset_shape(sp_input)
+
+      output = sess.run(sp_output)
+
+      self.assertAllEqual(output.indices.shape, [0, 3])
+      self.assertAllEqual(output.values.shape, [0])
+      self.assertAllEqual(output.dense_shape, [0, 0, 0])
 
   def testInvalidRank(self):
     with self.test_session(use_gpu=False):
@@ -545,11 +563,27 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
 
 
+class SparseAddTest(test_util.TensorFlowTestCase):
+
+  def testValuesInVariable(self):
+    indices = constant_op.constant([[1]], dtype=dtypes.int64)
+    values = variables.Variable([1], trainable=False, dtype=dtypes.float32)
+    shape = constant_op.constant([1], dtype=dtypes.int64)
+
+    sp_input = sparse_tensor.SparseTensor(indices, values, shape)
+    sp_output = sparse_ops.sparse_add(sp_input, sp_input)
+
+    with self.test_session(use_gpu=False) as sess:
+      sess.run(variables.global_variables_initializer())
+      output = sess.run(sp_output)
+      self.assertAllEqual(output.values, [2])
+
+
 class SparseReduceTest(test_util.TensorFlowTestCase):
 
   # [[1, ?, 2]
   #  [?, 3, ?]]
-  # where ? is implictly-zero.
+  # where ? is implicitly-zero.
   ind = np.array([[0, 0], [0, 2], [1, 1]]).astype(np.int64)
   vals = np.array([1, 1, 1]).astype(np.int32)
   dense_shape = np.array([2, 3]).astype(np.int64)
@@ -606,7 +640,6 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
     self._compare(sp_t, reduction_axes, ndims, True, False)
     self._compare(sp_t, reduction_axes, ndims, True, True)
 
-  @unittest.skipIf(np.__version__ == "1.13.0", "numpy 1.13 bug")
   def testSimpleAndRandomInputs(self):
     if np.__version__ == "1.13.0":
       self.skipTest("numpy 1.13.0 bug")
@@ -646,7 +679,6 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError("Invalid reduction dimension 2"):
         sparse_ops.sparse_reduce_max(sp_t, 2).eval()
 
-  @unittest.skipIf(np.__version__ == "1.13.0", "numpy 1.13 bug")
   def testGradient(self):
     if np.__version__ == "1.13.0":
       self.skipTest("numpy 1.13.0 bug")
@@ -906,7 +938,26 @@ class SparseTransposeTest(test.TestCase):
           sp_trans = sparse_ops.sparse_transpose(sp_input, perm=perm)
           dn_trans = sparse_ops.sparse_tensor_to_dense(sp_trans).eval()
           expected_trans = array_ops.transpose(dn_input, perm=perm).eval()
+          self.assertAllEqual(expected_trans.shape, sp_trans.get_shape())
           self.assertAllEqual(dn_trans, expected_trans)
+
+
+class SparsePlaceholderTest(test.TestCase):
+
+  def testPlaceholder(self):
+    foo = array_ops.sparse_placeholder(dtypes.float32, shape=(10, 47))
+    self.assertAllEqual([10, 47], foo.get_shape())
+    self.assertAllEqual([None, 2], foo.indices.get_shape().as_list())
+
+  def testPartialShapePlaceholder(self):
+    foo = array_ops.sparse_placeholder(dtypes.float32, shape=(None, 47))
+    self.assertAllEqual([None, None], foo.get_shape().as_list())
+    self.assertAllEqual([None, 2], foo.indices.get_shape().as_list())
+
+  def testNoShapePlaceholder(self):
+    foo = array_ops.sparse_placeholder(dtypes.float32, shape=None)
+    self.assertAllEqual(None, foo.get_shape())
+    self.assertAllEqual([None, None], foo.indices.get_shape().as_list())
 
 
 if __name__ == "__main__":

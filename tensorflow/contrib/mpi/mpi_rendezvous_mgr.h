@@ -18,22 +18,24 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_MPI
 
-#include <queue>
-#include <thread>
 #include <list>
-#include <string>
-#include <memory>
 #include <map>
+#include <memory>
+#include <queue>
+#include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include <iostream>
 
+#include "tensorflow/contrib/mpi/mpi_msg.pb.h"
 #include "tensorflow/contrib/mpi/mpi_utils.h"
 #include "tensorflow/core/distributed_runtime/base_rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/recent_request_ids.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
-#include "tensorflow/contrib/mpi/mpi_msg.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
 #define TAG_REQTENSOR 1010
@@ -104,6 +106,7 @@ class MPIRequestTensorCall {
   void Init(const Rendezvous::ParsedKey& parsed, const int64 step_id) {
     req_.set_step_id(step_id);
     req_.set_rendezvous_key(parsed.FullKey().data(), parsed.FullKey().size());
+    req_.set_request_id(GetUniqueRequestId());
     request_buffer_size_ = req_.ByteSize();
     //   request_buffer_ = new char[request_buffer_size_];
     //  req_.SerializeToArray(request_buffer_, request_buffer_size_);
@@ -114,7 +117,7 @@ class MPIRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   MPIRemoteRendezvous(const WorkerEnv* env, int64 step_id, const MPIUtils* util,
                       BaseRendezvousMgr* mgr_)
-      : BaseRemoteRendezvous(env, step_id, false),
+      : BaseRemoteRendezvous(env, step_id),
         mpiutils_(util),
         rendezvous_mgr_(mgr_) {}
 
@@ -147,15 +150,8 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
                     MPIRequestTensorCall* rCall) {
     mutex_lock l(mrq_);
     request_queue_.push(RequestQueueEntry(key, std::move(request_call)));
-    recv_tensor_map_[step_id][key] =
-        std::shared_ptr<MPIRequestTensorCall>(rCall);
-  }
-
-  void RemoveStepID(const int64 step_id) {
-    mutex_lock l(mrq_);
-    CHECK(recv_tensor_map_[step_id].size() == 0) << "Removing unfinished step";
-    recv_tensor_map_.erase(step_id);
-    // TODO(jbedorf) Should we verify that the step_id is clear before remove?
+    const std::string key_id = strings::StrCat(key, "_", step_id);
+    recv_tensor_map_[key_id] = std::shared_ptr<MPIRequestTensorCall>(rCall);
   }
 
  protected:
@@ -165,7 +161,8 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
  private:
   typedef std::function<MPISendTensorCall*(
       const Status&, const Rendezvous::Args&, const Rendezvous::Args&,
-      const Tensor&, const bool, MPISendTensorCall*)> MPIRecvTensorCallBack;
+      const Tensor&, const bool, MPISendTensorCall*)>
+      MPIRecvTensorCallBack;
 
   typedef std::pair<std::string, std::function<void()>> RequestQueueEntry;
   typedef std::pair<std::string, std::function<MPISendTensorCall*()>>
@@ -181,9 +178,10 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
 
   std::queue<SendQueueEntry> send_queue_ GUARDED_BY(msq_);
   std::queue<RequestQueueEntry> request_queue_ GUARDED_BY(mrq_);
-  std::map<int64, std::unordered_map<std::string,
-                                     std::shared_ptr<MPIRequestTensorCall>>>
-      recv_tensor_map_ GUARDED_BY(mrq_);
+  std::map<std::string, std::shared_ptr<MPIRequestTensorCall>> recv_tensor_map_
+      GUARDED_BY(mrq_);
+
+  RecentRequestIds recv_tensor_recent_request_ids_;
 
   void AddRequest(RecvTensorRequest, const int);
   void MPIBackgroundThread();
@@ -196,22 +194,19 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
   void GetRecvCall(const int64 step_id, const std::string& key,
                    std::shared_ptr<MPIRequestTensorCall>* call) {
     mutex_lock l(mrq_);
-    if (recv_tensor_map_.find(step_id) == recv_tensor_map_.end()) {
-      LOG(FATAL) << "Step not found in recv_tensor_map_, step: " << step_id
+
+    const std::string key_id = strings::StrCat(key, "_", step_id);
+    if (recv_tensor_map_.find(key_id) == recv_tensor_map_.end()) {
+      LOG(FATAL) << "Key/step not found in recv_tensor_map_, step: " << step_id
                  << " key:  " << key << std::endl;
     }
-    if (recv_tensor_map_[step_id].find(key) !=
-        recv_tensor_map_[step_id].end()) {
-      *call = recv_tensor_map_[step_id][key];
-    } else {
-      LOG(FATAL) << "Key not found in recv_tensor_map_, step: " << step_id
-                 << " key:  " << key << std::endl;
-    }
+    *call = recv_tensor_map_[key_id];
   }
 
   void RemoveRecvCall(const int64 step_id, const std::string& key) {
     mutex_lock l(mrq_);
-    recv_tensor_map_[step_id].erase(key);
+    const std::string key_id = strings::StrCat(key, "_", step_id);
+    recv_tensor_map_.erase(key_id);
   }
 
   bool GetRequest(RequestQueueEntry* req) {

@@ -21,6 +21,7 @@ wrapper.  An instance of an `AttentionMechanism` is constructed with a
 ### Attention Mechanisms
 
 The two basic attention mechanisms are:
+
 *   @{tf.contrib.seq2seq.BahdanauAttention} (additive attention,
     [ref.](https://arxiv.org/abs/1409.0473))
 *   @{tf.contrib.seq2seq.LuongAttention} (multiplicative attention,
@@ -40,7 +41,7 @@ depth.
 
 ### Attention Wrappers
 
-The basic attention wrapper is @{tf.contrib.seq2seq.DynamicAttentionWrapper}.
+The basic attention wrapper is @{tf.contrib.seq2seq.AttentionWrapper}.
 This wrapper accepts an `RNNCell` instance, an instance of `AttentionMechanism`,
 and an attention depth parameter (`attention_size`); as well as several
 optional arguments that allow one to customize intermediate calculations.
@@ -54,7 +55,7 @@ score = attention_mechanism(cell_output)
 alignments = softmax(score)
 context = matmul(alignments, attention_mechanism.values)
 attention = tf.layers.Dense(attention_size)(concat([cell_output, context], 1))
-next_state = DynamicAttentionWrapperState(
+next_state = AttentionWrapperState(
   cell_state=next_cell_state,
   attention=attention)
 output = attention
@@ -68,17 +69,17 @@ be replaced with alternative options when calculating `alignments` from the
 `score`.  Finally, the outputs returned by the wrapper can be configured to
 be the value `cell_output` instead of `attention`.
 
-The benefit of using a `DynamicAttentionWrapper` is that it plays nicely with
+The benefit of using a `AttentionWrapper` is that it plays nicely with
 other wrappers and the dynamic decoder described below.  For example, one can
 write:
 
 ```python
-cell = tf.contrib.rnn.DeviceWrapper(LSTMCell(512), "/gpu:0")
+cell = tf.contrib.rnn.DeviceWrapper(LSTMCell(512), "/device:GPU:0")
 attention_mechanism = tf.contrib.seq2seq.LuongAttention(512, encoder_outputs)
-attn_cell = tf.contrib.seq2seq.DynamicAttentionWrapper(
+attn_cell = tf.contrib.seq2seq.AttentionWrapper(
   cell, attention_mechanism, attention_size=256)
-attn_cell = tf.contrib.rnn.DeviceWrapper(attn_cell, "/gpu:1")
-top_cell = tf.contrib.rnn.DeviceWrapper(LSTMCell(512), "/gpu:1")
+attn_cell = tf.contrib.rnn.DeviceWrapper(attn_cell, "/device:GPU:1")
+top_cell = tf.contrib.rnn.DeviceWrapper(LSTMCell(512), "/device:GPU:1")
 multi_cell = MultiRNNCell([attn_cell, top_cell])
 ```
 
@@ -118,14 +119,17 @@ outputs, _ = tf.contrib.seq2seq.dynamic_decode(
 ```
 
 ### Decoder base class and functions
+
 *   @{tf.contrib.seq2seq.Decoder}
 *   @{tf.contrib.seq2seq.dynamic_decode}
 
 ### Basic Decoder
+
 *   @{tf.contrib.seq2seq.BasicDecoderOutput}
 *   @{tf.contrib.seq2seq.BasicDecoder}
 
 ### Decoder Helpers
+
 *   @{tf.contrib.seq2seq.Helper}
 *   @{tf.contrib.seq2seq.CustomHelper}
 *   @{tf.contrib.seq2seq.GreedyEmbeddingHelper}

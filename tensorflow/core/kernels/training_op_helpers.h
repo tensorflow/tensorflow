@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_TRAINING_OP_HELPERS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/kernels/dense_update_functor.h"
+#include "tensorflow/core/kernels/variable_ops.h"
 
 namespace tensorflow {
 
@@ -25,11 +28,75 @@ mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input);
 std::vector<mutex_lock> MaybeLockVariableInputMutexesInOrder(
     OpKernelContext* ctx, bool do_lock, const std::vector<int>& input_ids);
 
-Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
-                                  bool lock_held, Tensor* out);
-
 void MaybeForwardRefInputToRefOutput(OpKernelContext* ctx, int input,
                                      int output);
+
+// This is for use with ResourceVariables to ensure *tensor has a
+// reference count of 1 before you update it.
+// REQUIRES: If you pass in variable->tensor(), *variable->mu() must be held.
+template <typename Device, typename T>
+Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor) {
+  if (!tensor->RefCountIsOne()) {
+    // Tensor's buffer is in use by some read, so we need to copy before
+    // updating.
+    PersistentTensor unused;
+    Tensor* tmp;
+    if (std::is_same<T, Variant>::value) {
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
+      TF_RETURN_IF_ERROR(ctx->allocate_persistent(
+          tensor->dtype(), tensor->shape(), &unused, &tmp, attr));
+
+      const auto elements_in = tensor->flat<Variant>();
+      auto elements_out = tmp->flat<Variant>();
+      for (int64 i = 0; i < elements_in.size(); ++i) {
+        elements_out(i) = elements_in(i);
+      }
+    } else {
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+      TF_RETURN_IF_ERROR(ctx->allocate_persistent(
+          tensor->dtype(), tensor->shape(), &unused, &tmp, attr));
+      functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
+      copy_functor(ctx->eigen_device<Device>(), tmp->flat<T>(),
+                   const_cast<const Tensor*>(tensor)->flat<T>());
+    }
+    *tensor = *tmp;
+  }
+  return Status::OK();
+}
+
+// This gives you `*out`, a tensor you can update, corresponding to a
+// variable passed as input index `input`.  This handles the
+// differences between reference and resource variables.  For resource
+// variables, we ensure `*out` has a reference count of 1 (using
+// PrepareToUpdateVariable() to copy if necessary) unless
+// sparse && !lock_held, in which case it never copies.
+template <typename Device, typename T>
+Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
+                                  bool lock_held, bool sparse, Tensor* out) {
+  if (ctx->input_dtype(input) == DT_RESOURCE) {
+    Var* var;
+    TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, input), &var));
+    core::ScopedUnref unref_var(var);
+    if (lock_held) {
+      TF_RETURN_IF_ERROR(
+          PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
+      *out = *var->tensor();
+    } else {
+      mutex_lock ml(*var->mu());
+      if (!sparse) {
+        TF_RETURN_IF_ERROR(
+            PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
+      }
+      *out = *var->tensor();
+    }
+    return Status::OK();
+  }
+  *out = ctx->mutable_input(input, lock_held);
+  return Status::OK();
+}
 
 }  // end namespace tensorflow
 

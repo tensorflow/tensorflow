@@ -30,13 +30,10 @@ import numpy as np
 
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.boosted_trees.proto import tree_config_pb2
-from tensorflow.contrib.boosted_trees.python.ops import ensemble_optimizer_ops
 from tensorflow.contrib.boosted_trees.python.ops import model_ops
 from tensorflow.contrib.boosted_trees.python.ops import prediction_ops
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -117,7 +114,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
           name="create_tree")
       resources.initialize_resources(resources.shared_resources()).run()
 
-      result, _, _ = prediction_ops.gradient_trees_prediction(
+      result, _ = prediction_ops.gradient_trees_prediction(
           tree_ensemble_handle,
           self._seed, [self._dense_float_tensor], [
               self._sparse_float_indices1, self._sparse_float_indices2
@@ -128,7 +125,8 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
           learner_config=learner_config.SerializeToString(),
           apply_dropout=False,
           apply_averaging=False,
-          center_bias=False)
+          center_bias=False,
+          reduce_dim=True)
       self.assertAllClose(result.eval(), [[-0.4], [-0.4]])
       stamp_token = model_ops.tree_ensemble_stamp_token(tree_ensemble_handle)
       self.assertEqual(stamp_token.eval(), 3)
@@ -154,6 +152,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         _append_to_leaf(tree2.nodes.add().leaf, 0, 0.5)
         _append_to_leaf(tree2.nodes.add().leaf, 1, 1.2)
         _append_to_leaf(tree2.nodes.add().leaf, 0, -0.9)
+
         tree_ensemble_handle = model_ops.tree_ensemble_variable(
             stamp_token=7,
             tree_ensemble_config=tree_ensemble_config.SerializeToString(),
@@ -176,7 +175,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         learner_config = learner_pb2.LearnerConfig()
         learner_config.num_classes = 3
 
-        result, _, _ = prediction_ops.gradient_trees_prediction(
+        result, _ = prediction_ops.gradient_trees_prediction(
             tree_ensemble_handle2,
             self._seed, [self._dense_float_tensor], [
                 self._sparse_float_indices1, self._sparse_float_indices2
@@ -187,7 +186,8 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
             learner_config=learner_config.SerializeToString(),
             apply_dropout=False,
             apply_averaging=False,
-            center_bias=False)
+            center_bias=False,
+            reduce_dim=True)
 
         # Re-serialize tree.
         stamp_token2, serialized_config2 = model_ops.tree_ensemble_serialize(
@@ -198,6 +198,8 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         # the second example will get the same bias class 1 -0.2 and leaf 3
         # payload of class 1 1.2 hence [0.0, 1.0].
         self.assertEqual(stamp_token2.eval(), 9)
+
+        # Class 2 does have scores in the leaf => it gets score 0.
         self.assertEqual(serialized_config2.eval(), serialized_config)
         self.assertAllClose(result.eval(), [[0.5, -0.2], [0, 1.0]])
 
@@ -210,53 +212,36 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
     save_path = os.path.join(self.get_temp_dir(), "restore-test")
     with ops.Graph().as_default() as graph:
       with self.test_session(graph) as sess:
-        tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
-
-        tree = tree_ensemble_config.trees.add()
-        tree_ensemble_config.tree_metadata.add().is_finalized = True
-        tree_ensemble_config.tree_weights.append(1.0)
-        _append_to_leaf(tree.nodes.add().leaf, 0, -0.1)
-
-        tree_ensemble_config2 = tree_config_pb2.DecisionTreeEnsembleConfig()
-        tree2 = tree_ensemble_config2.trees.add()
-        tree_ensemble_config.tree_weights.append(1.0)
-        _append_to_leaf(tree2.nodes.add().leaf, 0, -1.0)
-
-        tree_ensemble_config3 = tree_config_pb2.DecisionTreeEnsembleConfig()
-        tree3 = tree_ensemble_config3.trees.add()
-        tree_ensemble_config.tree_weights.append(1.0)
-        _append_to_leaf(tree3.nodes.add().leaf, 0, -10.0)
-
         # Prepare learner config.
         learner_config = learner_pb2.LearnerConfig()
         learner_config.num_classes = 2
 
+        # Add the first tree and save.
+        tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
+        tree = tree_ensemble_config.trees.add()
+        tree_ensemble_config.tree_metadata.add().is_finalized = True
+        tree_ensemble_config.tree_weights.append(1.0)
+        _append_to_leaf(tree.nodes.add().leaf, 0, -0.1)
         tree_ensemble_handle = model_ops.tree_ensemble_variable(
             stamp_token=3,
             tree_ensemble_config=tree_ensemble_config.SerializeToString(),
             name="restore_tree")
-        feature_usage_counts = variables.Variable(
-            initial_value=array_ops.zeros([1], dtypes.int64),
-            name="feature_usage_counts",
-            trainable=False)
-        feature_gains = variables.Variable(
-            initial_value=array_ops.zeros([1], dtypes.float32),
-            name="feature_gains",
-            trainable=False)
-
         resources.initialize_resources(resources.shared_resources()).run()
         variables.initialize_all_variables().run()
         my_saver = saver.Saver()
 
+        # Add the second tree and replace the ensemble of the handle.
+        tree2 = tree_ensemble_config.trees.add()
+        tree_ensemble_config.tree_weights.append(1.0)
+        _append_to_leaf(tree2.nodes.add().leaf, 0, -1.0)
+        # Predict to confirm.
         with ops.control_dependencies([
-            ensemble_optimizer_ops.add_trees_to_ensemble(
+            model_ops.tree_ensemble_deserialize(
                 tree_ensemble_handle,
-                tree_ensemble_config2.SerializeToString(),
-                feature_usage_counts, [0],
-                feature_gains, [0], [[]],
-                learning_rate=1)
+                stamp_token=3,
+                tree_ensemble_config=tree_ensemble_config.SerializeToString())
         ]):
-          result, _, _ = prediction_ops.gradient_trees_prediction(
+          result, _ = prediction_ops.gradient_trees_prediction(
               tree_ensemble_handle,
               self._seed, [self._dense_float_tensor], [
                   self._sparse_float_indices1, self._sparse_float_indices2
@@ -267,22 +252,25 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False)
+              center_bias=False,
+              reduce_dim=True)
         self.assertAllClose([[-1.1], [-1.1]], result.eval())
         # Save before adding other trees.
         val = my_saver.save(sess, save_path)
         self.assertEqual(save_path, val)
 
         # Add more trees after saving.
+        tree3 = tree_ensemble_config.trees.add()
+        tree_ensemble_config.tree_weights.append(1.0)
+        _append_to_leaf(tree3.nodes.add().leaf, 0, -10.0)
+        # Predict to confirm.
         with ops.control_dependencies([
-            ensemble_optimizer_ops.add_trees_to_ensemble(
+            model_ops.tree_ensemble_deserialize(
                 tree_ensemble_handle,
-                tree_ensemble_config3.SerializeToString(),
-                feature_usage_counts, [0],
-                feature_gains, [0], [[]],
-                learning_rate=1)
+                stamp_token=3,
+                tree_ensemble_config=tree_ensemble_config.SerializeToString())
         ]):
-          result, _, _ = prediction_ops.gradient_trees_prediction(
+          result, _ = prediction_ops.gradient_trees_prediction(
               tree_ensemble_handle,
               self._seed, [self._dense_float_tensor], [
                   self._sparse_float_indices1, self._sparse_float_indices2
@@ -293,7 +281,8 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False)
+              center_bias=False,
+              reduce_dim=True)
         self.assertAllClose(result.eval(), [[-11.1], [-11.1]])
 
     # Start a second session.  In that session the parameter nodes
@@ -304,7 +293,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
             stamp_token=0, tree_ensemble_config="", name="restore_tree")
         my_saver = saver.Saver()
         my_saver.restore(sess, save_path)
-        result, _, _ = prediction_ops.gradient_trees_prediction(
+        result, _ = prediction_ops.gradient_trees_prediction(
             tree_ensemble_handle,
             self._seed, [self._dense_float_tensor], [
                 self._sparse_float_indices1, self._sparse_float_indices2
@@ -315,10 +304,27 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
             learner_config=learner_config.SerializeToString(),
             apply_dropout=False,
             apply_averaging=False,
-            center_bias=False)
+            center_bias=False,
+            reduce_dim=True)
         # Make sure we only have the first and second tree.
         # The third tree was added after the save.
         self.assertAllClose(result.eval(), [[-1.1], [-1.1]])
+
+  def testUsedHandlers(self):
+    with self.test_session():
+      tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
+      tree_ensemble_config.growing_metadata.used_handler_ids.append(1)
+      tree_ensemble_config.growing_metadata.used_handler_ids.append(5)
+      stamp_token = 3
+      tree_ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=stamp_token,
+          tree_ensemble_config=tree_ensemble_config.SerializeToString(),
+          name="create_tree")
+      resources.initialize_resources(resources.shared_resources()).run()
+      result = model_ops.tree_ensemble_used_handlers(
+          tree_ensemble_handle, stamp_token, num_all_handlers=6)
+      self.assertAllEqual([0, 1, 0, 0, 0, 1], result.used_handlers_mask.eval())
+      self.assertEqual(2, result.num_used_handlers.eval())
 
 
 if __name__ == "__main__":

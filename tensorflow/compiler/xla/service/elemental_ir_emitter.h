@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
@@ -39,7 +39,7 @@ class ElementalIrEmitter {
         module_(module),
         hlo_module_config_(hlo_module_config) {}
 
-  virtual ~ElementalIrEmitter() {}
+  virtual ~ElementalIrEmitter() = default;
 
   virtual StatusOr<llvm::Value*> EmitUnaryOp(const HloInstruction* op,
                                              llvm::Value* operand_value) const;
@@ -55,12 +55,16 @@ class ElementalIrEmitter {
       const HloToElementGeneratorMap& operand_to_generator) const;
 
   llvm::IRBuilder<>* ir_builder() const { return ir_builder_; }
+  llvm::Module* module() const { return module_; }
 
  protected:
   virtual StatusOr<llvm::Value*> EmitIntegerUnaryOp(
       const HloInstruction* op, llvm::Value* operand_value) const;
 
   virtual StatusOr<llvm::Value*> EmitFloatUnaryOp(
+      const HloInstruction* op, llvm::Value* operand_value) const;
+
+  virtual StatusOr<llvm::Value*> EmitComplexUnaryOp(
       const HloInstruction* op, llvm::Value* operand_value) const;
 
   virtual StatusOr<llvm::Value*> EmitIntegerBinaryOp(const HloInstruction* op,
@@ -72,11 +76,21 @@ class ElementalIrEmitter {
       const HloInstruction* op, llvm::Value* lhs_value,
       llvm::Value* rhs_value) const;
 
+  virtual StatusOr<llvm::Value*> EmitComplexBinaryOp(
+      const HloInstruction* op, llvm::Value* lhs_value,
+      llvm::Value* rhs_value) const;
+
   virtual llvm::Value* EmitFloatMax(llvm::Value* lhs_value,
                                     llvm::Value* rhs_value) const;
 
   virtual llvm::Value* EmitFloatMin(llvm::Value* lhs_value,
                                     llvm::Value* rhs_value) const;
+
+  llvm::Value* EmitIntegralMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                               bool is_signed) const;
+
+  llvm::Value* EmitIntegralMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                               bool is_signed) const;
 
   virtual StatusOr<llvm::Value*> EmitErfInv(PrimitiveType prim_type,
                                             llvm::Value* value) const;
@@ -84,8 +98,41 @@ class ElementalIrEmitter {
   virtual StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
                                              llvm::Value* value) const;
 
+  virtual StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
+                                           llvm::Value* lhs,
+                                           llvm::Value* rhs) const;
+
+  virtual StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
+                                         llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
+                                           llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
+                                         llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
+                                         llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
+                                         llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
+                                           llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type,
+                                         llvm::Value* lhs,
+                                         llvm::Value* rhs) const;
+
   virtual StatusOr<llvm::Value*> EmitReducePrecision(const HloInstruction* hlo,
                                                      llvm::Value* x) const;
+
+  virtual llvm::Value* EmitExtractReal(llvm::Value* value) const;
+  virtual llvm::Value* EmitExtractImag(llvm::Value* value) const;
+
+  // Composes a complex struct. imag may be nullptr for simple cast operations.
+  llvm::Value* EmitComposeComplex(const HloInstruction* op, llvm::Value* real,
+                                  llvm::Value* imag) const;
 
   // A helper method for MakeElementGenerator. Given an elementwise op `hlo` and
   // the target array index, computes the source array index of its
@@ -100,6 +147,46 @@ class ElementalIrEmitter {
   virtual llvm::Value* EmitThreadId() const {
     return ir_builder_->getIntN(128, 0);
   }
+
+  StatusOr<llvm::Value*> EmitElementalSelect(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) const;
+
+  StatusOr<llvm::Value*> EmitElementalClamp(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) const;
+
+  StatusOr<llvm::Value*> EmitElementalConcatenate(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& target_index) const;
+
+  StatusOr<llvm::Value*> EmitElementalDynamicSlice(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) const;
+
+  StatusOr<llvm::Value*> EmitElementalGather(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) const;
+
+  StatusOr<llvm::Value*> EmitElementalDynamicUpdateSlice(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) const;
+
+  StatusOr<llvm::Value*> EmitElementalPad(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& padded_index) const;
+
+  StatusOr<llvm::Value*> EmitElementalDot(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& dot_result_index) const;
 
   llvm::IRBuilder<>* const ir_builder_;
 

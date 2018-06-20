@@ -48,9 +48,6 @@ file(GLOB_RECURSE tf_tools_transform_graph_lib_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/tools/graph_transforms/compare_graphs.cc"
     "${tensorflow_source_dir}/tensorflow/tools/graph_transforms/summarize_graph_main.cc"
     "${tensorflow_source_dir}/tensorflow/tools/graph_transforms/transform_graph_main.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/graph_transforms/quantize_nodes.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/graph_transforms/quantize_weights.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/graph_transforms/round_weights.cc"
 )
 list(REMOVE_ITEM tf_tools_transform_graph_lib_srcs ${tf_tools_transform_graph_lib_exclude_srcs})
 
@@ -73,7 +70,7 @@ add_executable(${transform_graph}
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<TARGET_OBJECTS:tf_core_kernels>
-    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<$<BOOL:${BOOL_WIN32}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
 )
 
@@ -95,7 +92,7 @@ add_executable(${summarize_graph}
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<TARGET_OBJECTS:tf_core_kernels>
-    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<$<BOOL:${BOOL_WIN32}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
 )
 
@@ -117,7 +114,7 @@ add_executable(${compare_graphs}
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<TARGET_OBJECTS:tf_core_kernels>
-    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<$<BOOL:${BOOL_WIN32}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
 )
 
@@ -138,7 +135,7 @@ add_executable(${benchmark_model}
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_core_kernels>
-    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<$<BOOL:${BOOL_WIN32}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
 )
 
@@ -148,22 +145,7 @@ target_link_libraries(${benchmark_model} PUBLIC
   ${tensorflow_EXTERNAL_LIBRARIES}
 )
 
-file(GLOB_RECURSE tf_tools_tfprof_srcs
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/*.proto"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/*.h"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/*.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/advisor/*.h"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/advisor/*.cc"
-    "${tensorflow_source_dir}/tensorflow/core/platform/regexp.h"
-)
-
-file(GLOB_RECURSE tf_tools_tfprof_exclude_srcs
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/*test.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/advisor/*test.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/print_model_analysis.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/print_model_analysis.h"
-)
-list(REMOVE_ITEM tf_tools_tfprof_srcs ${tf_tools_tfprof_exclude_srcs})
-
-add_library(tf_tools_tfprof OBJECT ${tf_tools_tfprof_srcs})
-add_dependencies(tf_tools_tfprof tf_core_lib)
+install(TARGETS ${transform_graph} ${summarize_graph} ${compare_graphs} ${benchmark_model}
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)

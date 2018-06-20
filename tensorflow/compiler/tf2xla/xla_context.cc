@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -58,50 +58,37 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   return Get(ctx->op_kernel_context());
 }
 
-void XlaContext::set_args(std::vector<Argument> args) {
+void XlaContext::set_args(std::vector<XlaExpression> args) {
   args_ = std::move(args);
 }
 
-XlaContext::XlaContext(XlaCompiler* compiler, xla::ComputationBuilder* builder,
-                       bool allow_cpu_custom_calls,
-                       bool resolve_compile_time_constants)
+XlaContext::XlaContext(
+    XlaCompiler* compiler, xla::XlaBuilder* builder,
+    bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
+    bool is_entry_computation,
+    const std::function<TensorShape(const TensorShape&, DataType)>*
+        shape_representation_fn)
     : compiler_(compiler),
       builder_(builder),
       allow_cpu_custom_calls_(allow_cpu_custom_calls),
-      resolve_compile_time_constants_(resolve_compile_time_constants) {}
-
-const xla::ComputationDataHandle&
-XlaContext::GetOrCreateRuntimeContextParameter() {
-  CHECK(allow_cpu_custom_calls_);
-  if (has_context_parameter_) return context_parameter_;
-  has_context_parameter_ = true;
-
-  // Allocate the next available parameter for the context parameter.
-  int num_parameters = 0;
-  for (const Argument& arg : args_) {
-    if (!arg.value.is_constant) {
-      ++num_parameters;
-    }
-  }
-  context_parameter_ = builder_->Parameter(
-      num_parameters, xla::ShapeUtil::MakeOpaqueShape(), "tf_context");
-  return context_parameter_;
-}
+      resolve_compile_time_constants_(resolve_compile_time_constants),
+      is_entry_computation_(is_entry_computation),
+      shape_representation_fn_(shape_representation_fn) {}
 
 string XlaContext::DebugString() { return "TLA JIT context"; }
 
 // This is called by the Retval Op to associate a computed value
 // with a specific return value of the subgraph.
 void XlaContext::AddRetval(int retval_index, DataType type,
-                           const xla::ComputationDataHandle& handle) {
+                           const TensorShape& shape, const xla::XlaOp& handle) {
   VLOG(1) << "Added retval index " << retval_index << " to XLA computation";
   // Add the return value to the list being built up.
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
-  retvals_[retval_index].is_constant = false;
-  retvals_[retval_index].type = type;
-  retvals_[retval_index].handle = handle;
+  XlaExpression e;
+  e.set_handle(handle);
+  retvals_[retval_index] = Retval{type, shape, e};
 }
 
 Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
@@ -111,44 +98,37 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
-  retvals_[retval_index].type = dtype;
-  if (resolve_compile_time_constants_) {
-    retvals_[retval_index].is_constant = true;
-    TF_RETURN_IF_ERROR(LiteralToHostTensor(
-        literal, dtype, &retvals_[retval_index].constant_value));
-  } else {
-    retvals_[retval_index].is_constant = false;
-    retvals_[retval_index].handle = builder_->ConstantLiteral(literal);
-  }
+  Tensor value;
+  TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value));
+  XlaExpression e;
+  e.set_constant_value(value);
+  retvals_[retval_index] = Retval{dtype, value.shape(), e};
   return Status::OK();
 }
 
-void XlaContext::AddSideEffects() {
-  has_side_effects_ = true;
-}
+xla::XlaBuilder* XlaContext::builder() { return builder_; }
 
-xla::ComputationBuilder* XlaContext::builder() { return builder_; }
-
-Status XlaContext::CreateResource(XlaResource::Kind kind, int arg_num,
-                                  string name, DataType type,
-                                  const xla::ComputationDataHandle& handle,
-                                  XlaResource** resource) {
-  resources_.emplace_back(new XlaResource);
+Status XlaContext::CreateResource(
+    XlaResource::Kind kind, int arg_num, string name, DataType type,
+    TensorShape shape, const xla::XlaOp& handle, int64 tensor_array_size,
+    const std::set<string>& tensor_array_gradients, XlaResource** resource) {
+  resources_.emplace_back(
+      new XlaResource(kind, arg_num, std::move(name), type, std::move(shape),
+                      handle, tensor_array_size, tensor_array_gradients));
   *resource = resources_.back().get();
-  XlaResource& r = **resource;
-  r.kind = kind;
-  r.arg_num = arg_num;
-  r.name = std::move(name);
-  r.type = type;
-  r.initial_value = r.value = handle;
   return Status::OK();
 }
 
-const xla::Computation* XlaContext::GetOrCreateMax(const DataType type) {
+TensorShape XlaContext::RepresentationShape(const TensorShape& shape,
+                                            DataType type) const {
+  return (*shape_representation_fn_)(shape, type);
+}
+
+const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {
   return LookupOrCreate(type, &max_func_, [this, type] {
     const string type_string = DataTypeString(type);
     VLOG(1) << "Building Max() for " << type_string;
-    xla::ComputationBuilder b(builder()->client(), "max<" + type_string + ">");
+    xla::XlaBuilder b("max<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
     auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
@@ -158,11 +138,25 @@ const xla::Computation* XlaContext::GetOrCreateMax(const DataType type) {
   });
 }
 
-const xla::Computation* XlaContext::GetOrCreateAdd(const DataType type) {
+const xla::XlaComputation* XlaContext::GetOrCreateMin(const DataType type) {
+  return LookupOrCreate(type, &min_func_, [this, type] {
+    const string type_string = DataTypeString(type);
+    VLOG(1) << "Building Min() for " << type_string;
+    xla::XlaBuilder b("min<" + type_string + ">");
+    xla::PrimitiveType xla_type;
+    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    b.Min(x, y);
+    return b.Build().ConsumeValueOrDie();
+  });
+}
+
+const xla::XlaComputation* XlaContext::GetOrCreateAdd(const DataType type) {
   return LookupOrCreate(type, &add_func_, [this, type] {
     const string type_string = DataTypeString(type);
     VLOG(1) << "Building Add() for " << type_string;
-    xla::ComputationBuilder b(builder()->client(), "add<" + type_string + ">");
+    xla::XlaBuilder b("add<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
     auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
@@ -172,9 +166,23 @@ const xla::Computation* XlaContext::GetOrCreateAdd(const DataType type) {
   });
 }
 
-const xla::Computation* XlaContext::LookupOrCreate(
+const xla::XlaComputation* XlaContext::GetOrCreateMul(const DataType type) {
+  return LookupOrCreate(type, &mul_func_, [this, type] {
+    const string type_string = DataTypeString(type);
+    VLOG(1) << "Building Mul() for " << type_string;
+    xla::XlaBuilder b("mul<" + type_string + ">");
+    xla::PrimitiveType xla_type;
+    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    b.Mul(x, y);
+    return b.Build().ConsumeValueOrDie();
+  });
+}
+
+const xla::XlaComputation* XlaContext::LookupOrCreate(
     DataType type, ComputationMap* out,
-    const std::function<xla::Computation()>& create) {
+    const std::function<xla::XlaComputation()>& create) {
   {
     const auto& entry = (*out)[type];
     if (!entry.IsNull()) {

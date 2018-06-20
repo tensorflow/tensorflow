@@ -15,7 +15,11 @@ limitations under the License.
 
 package org.tensorflow;
 
-/** Type of elements in a {@link Tensor}. */
+import java.util.HashMap;
+import java.util.Map;
+import org.tensorflow.types.UInt8;
+
+/** Represents the type of elements in a {@link Tensor} as an enum. */
 public enum DataType {
   /** 32-bit single precision floating point. */
   FLOAT(1),
@@ -54,13 +58,45 @@ public enum DataType {
     return value;
   }
 
+  // Cached to avoid copying it
+  private static final DataType[] values = values();
+
   static DataType fromC(int c) {
-    for (DataType t : DataType.values()) {
-      if (t.c() == c) {
+    for (DataType t : values) {
+      if (t.value == c) {
         return t;
       }
     }
     throw new IllegalArgumentException(
         "DataType " + c + " is not recognized in Java (version " + TensorFlow.version() + ")");
+  }
+
+  /**
+   * Returns the DataType of a Tensor whose elements have the type specified by class {@code c}.
+   *
+   * @param c The class describing the TensorFlow type of interest.
+   * @return The {@code DataType} enum corresponding to {@code c}.
+   * @throws IllegalArgumentException if objects of {@code c} do not correspond to a TensorFlow
+   *     datatype.
+   */
+  public static DataType fromClass(Class<?> c) {
+    DataType dtype = typeCodes.get(c);
+    if (dtype == null) {
+      throw new IllegalArgumentException(
+          c.getName() + " objects cannot be used as elements in a TensorFlow Tensor");
+    }
+    return dtype;
+  }
+
+  private static final Map<Class<?>, DataType> typeCodes = new HashMap<>();
+
+  static {
+    typeCodes.put(Float.class, DataType.FLOAT);
+    typeCodes.put(Double.class, DataType.DOUBLE);
+    typeCodes.put(Integer.class, DataType.INT32);
+    typeCodes.put(UInt8.class, DataType.UINT8);
+    typeCodes.put(Long.class, DataType.INT64);
+    typeCodes.put(Boolean.class, DataType.BOOL);
+    typeCodes.put(String.class, DataType.STRING);
   }
 }

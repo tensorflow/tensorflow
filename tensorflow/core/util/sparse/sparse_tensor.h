@@ -20,6 +20,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/dim_comparator.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace sparse {
@@ -59,14 +59,29 @@ class SparseTensor {
         shape_(shape.begin(), shape.end()),
         order_(order.begin(), order.end()),
         dims_(GetDimsFromIx(ix)) {
-    CHECK_EQ(ix.dtype(), DT_INT64) << "indices must be type int64 but got: "
-                                   << ix.dtype();
+    CHECK_EQ(ix.dtype(), DT_INT64)
+        << "indices must be type int64 but got: " << ix.dtype();
     CHECK(TensorShapeUtils::IsVector(vals.shape()))
         << "vals must be a vec, but got: " << vals.shape().DebugString();
     CHECK_EQ(ix.shape().dim_size(0), vals.shape().dim_size(0))
         << "indices and values rows (indexing dimension) must match.";
     CHECK_EQ(order.size(), dims_) << "Order length must be SparseTensor rank.";
     CHECK_EQ(shape.size(), dims_) << "Shape rank must be SparseTensor rank.";
+  }
+
+  SparseTensor(const SparseTensor& other)
+      : SparseTensor(other.ix_, other.vals_, other.shape_, other.order_) {}
+
+  SparseTensor(SparseTensor&& other)
+      : SparseTensor(std::move(other.ix_), std::move(other.vals_),
+                     std::move(other.shape_), std::move(other.order_)) {}
+
+  SparseTensor& operator=(const SparseTensor& other) {
+    ix_ = other.ix_;
+    vals_ = other.vals_;
+    shape_ = other.shape_;
+    order_ = other.order_;
+    return *this;
   }
 
   std::size_t num_entries() const { return ix_.dim_size(0); }
@@ -601,7 +616,7 @@ SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
   int index = 0;
   for (int i = 0; i < input_tensor.indices().dim_size(0) && index < count;
        i++) {
-    // The logic here is similiar as the above except that the above
+    // The logic here is similar as the above except that the above
     // only count the number of indices while here we actually generate
     // the output.
     bool hit = true;

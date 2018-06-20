@@ -50,7 +50,7 @@ tf_module {
   }
   member_method {
     name: "merge_all"
-    argspec: "args=[\'key\'], varargs=None, keywords=None, defaults=[\'summaries\'], "
+    argspec: "args=[\'key\', \'scope\'], varargs=None, keywords=None, defaults=[\'summaries\', \'None\'], "
   }
   member_method {
     name: "scalar"
@@ -58,7 +58,7 @@ tf_module {
   }
   member_method {
     name: "tensor_summary"
-    argspec: "args=[\'name\', \'tensor\', \'summary_description\', \'collections\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'name\', \'tensor\', \'summary_description\', \'collections\', \'summary_metadata\', \'family\', \'display_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "text"

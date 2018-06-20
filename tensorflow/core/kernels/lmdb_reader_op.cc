@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/framework/reader_base.h"
+#include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 #include <sys/stat.h>
@@ -26,9 +26,8 @@ namespace tensorflow {
 
 class LMDBReader : public ReaderBase {
  public:
-  LMDBReader(const string& node_name, Env* env)
+  LMDBReader(const string& node_name, Env* /*unused*/)
       : ReaderBase(strings::StrCat("LMDBReader '", node_name, "'")),
-        env_(env),
         mdb_env_(nullptr),
         mdb_dbi_(0),
         mdb_txn_(nullptr),
@@ -36,7 +35,7 @@ class LMDBReader : public ReaderBase {
 
   Status OnWorkStartedLocked() override {
     MDB_CHECK(mdb_env_create(&mdb_env_));
-    int flags = MDB_RDONLY | MDB_NOTLS;
+    int flags = MDB_RDONLY | MDB_NOTLS | MDB_NOLOCK;
 
     // Check if the LMDB filename is actually a file instead of a directory.
     // If so, set appropriate flags so we can open it.
@@ -57,10 +56,13 @@ class LMDBReader : public ReaderBase {
     if (mdb_env_ != nullptr) {
       if (mdb_cursor_) {
         mdb_cursor_close(mdb_cursor_);
+        mdb_cursor_ = nullptr;
       }
-      mdb_txn_abort(mdb_txn_);
       mdb_dbi_close(mdb_env_, mdb_dbi_);
+      mdb_txn_abort(mdb_txn_);
       mdb_env_close(mdb_env_);
+      mdb_txn_ = nullptr;
+      mdb_dbi_ = 0;
       mdb_env_ = nullptr;
     }
     return Status::OK();
@@ -74,15 +76,13 @@ class LMDBReader : public ReaderBase {
         *at_end = true;
         return Status::OK();
       }
-    }
-    else {
+    } else {
       if (Seek(MDB_NEXT) == false) {
         *at_end = true;
         return Status::OK();
       }
     }
-    *key = string(static_cast<const char*>(mdb_key_.mv_data),
-                  mdb_key_.mv_size);
+    *key = string(static_cast<const char*>(mdb_key_.mv_data), mdb_key_.mv_size);
     *value = string(static_cast<const char*>(mdb_value_.mv_data),
                     mdb_value_.mv_size);
     *produced = true;
@@ -106,7 +106,6 @@ class LMDBReader : public ReaderBase {
     }
   }
 
-  Env* const env_;
   MDB_env* mdb_env_;
   MDB_dbi mdb_dbi_;
 
@@ -120,13 +119,10 @@ class LMDBReaderOp : public ReaderOpKernel {
   explicit LMDBReaderOp(OpKernelConstruction* context)
       : ReaderOpKernel(context) {
     Env* env = context->env();
-    SetReaderFactory([this, env]() {
-      return new LMDBReader(name(), env);
-    });
+    SetReaderFactory([this, env]() { return new LMDBReader(name(), env); });
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("LMDBReader").Device(DEVICE_CPU),
-                        LMDBReaderOp);
+REGISTER_KERNEL_BUILDER(Name("LMDBReader").Device(DEVICE_CPU), LMDBReaderOp);
 
 }  // namespace tensorflow

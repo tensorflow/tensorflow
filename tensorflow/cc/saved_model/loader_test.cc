@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -133,9 +134,9 @@ TEST_F(LoaderTest, NoTagMatch) {
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {"missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
-  EXPECT_TRUE(StringPiece(st.error_message())
-                  .contains("Could not find meta graph def matching supplied "
-                            "tags: { missing-tag }"))
+  EXPECT_TRUE(str_util::StrContains(
+      st.error_message(),
+      "Could not find meta graph def matching supplied tags: { missing-tag }"))
       << st.error_message();
 }
 
@@ -149,9 +150,27 @@ TEST_F(LoaderTest, NoTagMatchMultiple) {
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {kSavedModelTagServe, "missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
-  EXPECT_TRUE(
-      StringPiece(st.error_message())
-          .contains("Could not find meta graph def matching supplied tags: "))
+  EXPECT_TRUE(str_util::StrContains(
+      st.error_message(),
+      "Could not find meta graph def matching supplied tags: "))
+      << st.error_message();
+}
+
+TEST_F(LoaderTest, SessionCreationFailure) {
+  SavedModelBundle bundle;
+  // Use invalid SessionOptions to cause session creation to fail.  Default
+  // options work, so provide an invalid value for the target field.
+  SessionOptions session_options;
+  constexpr char kInvalidTarget[] = "invalid target";
+  session_options.target = kInvalidTarget;
+  RunOptions run_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
+  Status st = LoadSavedModel(session_options, run_options, export_dir,
+                             {kSavedModelTagServe}, &bundle);
+  EXPECT_FALSE(st.ok());
+  EXPECT_TRUE(str_util::StrContains(st.error_message(), kInvalidTarget))
       << st.error_message();
 }
 

@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "ConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
@@ -14,11 +14,28 @@ import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
 
 message GPUOptions {
-  // A value between 0 and 1 that indicates what fraction of the
-  // available GPU memory to pre-allocate for each process.  1 means
-  // to pre-allocate all of the GPU memory, 0.5 means the process
-  // allocates ~50% of the available GPU memory.
+  // Fraction of the available GPU memory to allocate for each process.
+  // 1 means to allocate all of the GPU memory, 0.5 means the process
+  // allocates up to ~50% of the available GPU memory.
+  //
+  // GPU memory is pre-allocated unless the allow_growth option is enabled.
+  //
+  // If greater than 1.0, uses CUDA unified memory to potentially oversubscribe
+  // the amount of memory available on the GPU device by using host memory as a
+  // swap space. Accessing memory not available on the device will be
+  // significantly slower as that would require memory transfer between the host
+  // and the device. Options to reduce the memory requirement should be
+  // considered before enabling this option as this may come with a negative
+  // performance impact. Oversubscription using the unified memory requires
+  // Pascal class or newer GPUs and it is currently only supported on the Linux
+  // operating system. See
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-requirements
+  // for the detailed requirements.
   double per_process_gpu_memory_fraction = 1;
+
+  // If true, the allocator does not pre-allocate the entire specified
+  // GPU memory region, instead starting small and growing as needed.
+  bool allow_growth = 4;
 
   // The type of GPU allocation strategy to use.
   //
@@ -35,25 +52,27 @@ message GPUOptions {
   // a reasonable default (several MBs).
   int64 deferred_deletion_bytes = 3;
 
-  // If true, the allocator does not pre-allocate the entire specified
-  // GPU memory region, instead starting small and growing as needed.
-  bool allow_growth = 4;
-
   // A comma-separated list of GPU ids that determines the 'visible'
   // to 'virtual' mapping of GPU devices.  For example, if TensorFlow
   // can see 8 GPU devices in the process, and one wanted to map
-  // visible GPU devices 5 and 3 as "/gpu:0", and "/gpu:1", then one
-  // would specify this field as "5,3".  This field is similar in
+  // visible GPU devices 5 and 3 as "/device:GPU:0", and "/device:GPU:1",
+  // then one would specify this field as "5,3".  This field is similar in
   // spirit to the CUDA_VISIBLE_DEVICES environment variable, except
   // it applies to the visible GPU devices in the process.
   //
-  // NOTE: The GPU driver provides the process with the visible GPUs
-  // in an order which is not guaranteed to have any correlation to
-  // the *physical* GPU id in the machine.  This field is used for
-  // remapping "visible" to "virtual", which means this operates only
-  // after the process starts.  Users are required to use vendor
-  // specific mechanisms (e.g., CUDA_VISIBLE_DEVICES) to control the
-  // physical to visible device mapping prior to invoking TensorFlow.
+  // NOTE:
+  // 1. The GPU driver provides the process with the visible GPUs
+  //    in an order which is not guaranteed to have any correlation to
+  //    the *physical* GPU id in the machine.  This field is used for
+  //    remapping "visible" to "virtual", which means this operates only
+  //    after the process starts.  Users are required to use vendor
+  //    specific mechanisms (e.g., CUDA_VISIBLE_DEVICES) to control the
+  //    physical to visible device mapping prior to invoking TensorFlow.
+  // 2. In the code, the ids in this list are also called "CUDA GPU id"s,
+  //    and the 'virtual' ids of GPU devices (i.e. the ids in the device
+  //    name "/device:GPU:<id>") are also called "TF GPU id"s. Please
+  //    refer to third_party/tensorflow/core/common_runtime/gpu/gpu_id.h
+  //    for more information.
   string visible_device_list = 5;
 
   // In the event polling loop sleep this many microseconds between
@@ -61,9 +80,7 @@ message GPUOptions {
   // set or set to 0, gets set to a non-zero default.
   int32 polling_active_delay_usecs = 6;
 
-  // In the event polling loop sleep this many millisconds between
-  // PollEvents calls, when the queue is empty.  If value is not
-  // set or set to 0, gets set to a non-zero default.
+  // This field is deprecated and ignored.
   int32 polling_inactive_delay_msecs = 7;
 
   // Force all tensors to be gpu_compatible. On a GPU-enabled TensorFlow,
@@ -77,6 +94,61 @@ message GPUOptions {
   // memory is unpageable, having too much pinned memory might negatively impact
   // the overall host system performance.
   bool force_gpu_compatible = 8;
+
+  message Experimental {
+    // Configuration for breaking down a visible GPU into multiple "virtual"
+    // devices.
+    message VirtualDevices {
+      // Per "virtual" device memory limit, in MB. The number of elements in
+      // the list is the number of virtual devices to create on the
+      // corresponding visible GPU (see "virtual_devices" below).
+      // If empty, it will create single virtual device taking all available
+      // memory from the device.
+      //
+      // For the concept of "visible" and "virtual" GPU, see the comments for
+      // "visible_device_list" above for more information.
+      repeated float memory_limit_mb = 1;
+    }
+
+    // The multi virtual device settings. If empty (not set), it will create
+    // single virtual device on each visible GPU, according to the settings
+    // in "visible_device_list" above. Otherwise, the number of elements in the
+    // list must be the same as the number of visible GPUs (after
+    // "visible_device_list" filtering if it is set), and the string represented
+    // device names (e.g. /device:GPU:<id>) will refer to the virtual
+    // devices and have the <id> field assigned sequentially starting from 0,
+    // according to the order they appear in this list and the "memory_limit"
+    // list inside each element. For example,
+    //   visible_device_list = "1,0"
+    //   virtual_devices { memory_limit: 1GB memory_limit: 2GB }
+    //   virtual_devices {}
+    // will create three virtual devices as:
+    //   /device:GPU:0 -> visible GPU 1 with 1GB memory
+    //   /device:GPU:1 -> visible GPU 1 with 2GB memory
+    //   /device:GPU:2 -> visible GPU 0 with all available memory
+    //
+    // NOTE:
+    // 1. It's invalid to set both this and "per_process_gpu_memory_fraction"
+    //    at the same time.
+    // 2. Currently this setting is per-process, not per-session. Using
+    //    different settings in different sessions within same process will
+    //    result in undefined behavior.
+    repeated VirtualDevices virtual_devices = 1;
+
+    // If true, uses CUDA unified memory for memory allocations. If
+    // per_process_gpu_memory_fraction option is greater than 1.0, then unified
+    // memory is used regardless of the value for this field. See comments for
+    // per_process_gpu_memory_fraction field for more details and requirements
+    // of the unified memory. This option is useful to oversubscribe memory if
+    // multiple processes are sharing a single GPU while individually using less
+    // than 1.0 per process memory fraction.
+    bool use_unified_memory = 2;
+  }
+
+  // Everything inside experimental is subject to change and is not subject
+  // to API stability guarantees in
+  // https://www.tensorflow.org/programmers_guide/version_compat.
+  Experimental experimental = 9;
 };
 
 // Options passed to the graph optimizer
@@ -86,6 +158,13 @@ message OptimizerOptions {
 
   // If true, perform constant folding optimization on the graph.
   bool do_constant_folding = 2;
+
+  // Constant folding optimization replaces tensors whose values can be
+  // predetermined, with constant nodes. To avoid inserting too large constants,
+  // the size of each constant created can be limited. If this value is zero, a
+  // default limit of 10 MiB will be applied. If constant folding optimization
+  // is disabled, this value is ignored.
+  int64 max_folded_constant_in_bytes = 6;
 
   // If true, perform function inlining on the graph.
   bool do_function_inlining = 4;
@@ -102,6 +181,8 @@ message OptimizerOptions {
     L0 = -1;
   }
 
+  // Overall optimization level. The actual optimizations applied will be the
+  // logical OR of the flags that this level implies and any flags already set.
   Level opt_level = 3;
 
   // Control the use of the compiler/jit.  Experimental.
@@ -294,7 +375,21 @@ message ConfigProto {
   // Optional list of all workers to use in this session.
   ClusterDef cluster_def = 14;
 
-  // Next: 15
+  // If true, any resources such as Variables used in the session will not be
+  // shared with other sessions.
+  bool isolate_session_state = 15;
+
+  // Everything inside Experimental is subject to change and is not subject
+  // to API stability guarantees in
+  // https://www.tensorflow.org/programmers_guide/version_compat.
+  message Experimental {
+    // Task name for group resolution.
+    string collective_group_leader = 1;
+  };
+
+  Experimental experimental = 16;
+
+  // Next: 17
 };
 
 // Options for a single Run() call.
@@ -322,6 +417,26 @@ message RunOptions {
   // EXPERIMENTAL.  Options used to initialize DebuggerState, if enabled.
   DebugOptions debug_options = 6;
 
+  // When enabled, causes tensor allocation information to be included in
+  // the error message when the Run() call fails because the allocator ran
+  // out of memory (OOM).
+  //
+  // Enabling this option can slow down the Run() call.
+  bool report_tensor_allocations_upon_oom = 7;
+
+  // Everything inside Experimental is subject to change and is not subject
+  // to API stability guarantees in
+  // https://www.tensorflow.org/programmers_guide/version_compat.
+  message Experimental {
+    // If non-zero, declares that this graph is going to use collective
+    // ops and must synchronize step_ids with any other graph with this
+    // same group_key value (in a distributed computation where tasks
+    // run disjoint graphs).
+    int64 collective_graph_key = 1;
+  };
+
+  Experimental experimental = 8;
+
   reserved 4;
 }
 
@@ -337,4 +452,43 @@ message RunMetadata {
 
   // Graphs of the partitions executed by executors.
   repeated GraphDef partition_graphs = 3;
+}
+
+// Defines a connection between two tensors in a `GraphDef`.
+message TensorConnection {
+  // A tensor name. The value of this tensor will be substituted for
+  // the tensor named in `to_tensor`.
+  string from_tensor = 1;
+
+  // A tensor name. The value of this tensor will be bound to the
+  // value of the tensor named in `from_tensor`.
+  string to_tensor = 2;
+}
+
+// Defines a subgraph in another `GraphDef` as a set of feed points and nodes
+// to be fetched or executed.
+//
+// Compare with the arguments to `Session::Run()`.
+message CallableOptions {
+  // Tensors to be fed in the callable. Each feed is the name of a tensor.
+  repeated string feed = 1;
+
+  // Fetches. A list of tensor names. The caller of the callable expects a
+  // tensor to be returned for each fetch[i] (see RunStepResponse.tensor). The
+  // order of specified fetches does not change the execution order.
+  repeated string fetch = 2;
+
+  // Target Nodes. A list of node names. The named nodes will be run by the
+  // callable but their outputs will not be returned.
+  repeated string target = 3;
+
+  // Options that will be applied to each run.
+  RunOptions run_options = 4;
+
+  // Tensors to be connected in the callable. Each TensorConnection denotes
+  // a pair of tensors in the graph, between which an edge will be created
+  // in the callable.
+  repeated TensorConnection tensor_connection = 5;
+
+  // Next: 6
 }

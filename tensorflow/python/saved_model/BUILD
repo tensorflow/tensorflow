@@ -25,8 +25,10 @@ py_library(
         ":main_op",
         ":signature_constants",
         ":signature_def_utils",
+        ":simple_save",
         ":tag_constants",
         ":utils",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -34,18 +36,21 @@ py_library(
     name = "constants",
     srcs = ["constants.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:util"],
 )
 
 py_library(
     name = "signature_constants",
     srcs = ["signature_constants.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:util"],
 )
 
 py_library(
     name = "tag_constants",
     srcs = ["tag_constants.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:util"],
 )
 
 py_library(
@@ -79,7 +84,25 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "simple_save",
+    srcs = [
+        "simple_save.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":builder",
+        ":signature_constants",
+        ":signature_def_utils",
+        ":tag_constants",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:lib",
         "//tensorflow/python:util",
     ],
 )
@@ -93,8 +116,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
 )
@@ -114,7 +138,6 @@ py_test(
         ":main_op",
         ":signature_def_utils",
         ":tag_constants",
-        ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -125,6 +148,8 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:test_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
@@ -140,6 +165,8 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -151,9 +178,11 @@ py_test(
     visibility = ["//visibility:private"],
     deps = [
         ":utils",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_tensor",
     ],
 )
 
@@ -168,6 +197,7 @@ py_library(
         ":signature_constants",
         ":utils",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -181,23 +211,28 @@ py_test(
         ":signature_constants",
         ":signature_def_utils",
         ":utils",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 
+py_test(
+    name = "simple_save_test",
+    size = "small",
+    srcs = ["simple_save_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loader",
+        ":signature_constants",
+        ":simple_save",
+        ":tag_constants",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

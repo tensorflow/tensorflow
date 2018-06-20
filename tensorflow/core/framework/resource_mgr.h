@@ -22,7 +22,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -132,6 +131,10 @@ class ResourceMgr {
   // "*resource". Otherwise, invokes creator() to create the resource.
   // The caller takes the ownership of one ref on "*resource".
   //
+  // WARNING: creator() must not call any methods on ResourceMgr during its
+  // execution, because a non-reentrant lock is held during the creator() call
+  // in order to guarantee atomicity of LookupOrCreate().
+  //
   // REQUIRES: std::is_base_of<ResourceBase, T>
   // REQUIRES: resource != nullptr
   template <typename T>
@@ -175,10 +178,19 @@ class ResourceMgr {
   mutable mutex mu_;
   std::unordered_map<string, Container*> containers_ GUARDED_BY(mu_);
 
+  template <typename T>
+  Status LookupInternal(const string& container, const string& name,
+                        T** resource) const
+      SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+
   Status DoCreate(const string& container, TypeIndex type, const string& name,
-                  ResourceBase* resource) TF_MUST_USE_RESULT;
+                  ResourceBase* resource)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+
   Status DoLookup(const string& container, TypeIndex type, const string& name,
-                  ResourceBase** resource) const TF_MUST_USE_RESULT;
+                  ResourceBase** resource) const
+      SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+
   Status DoDelete(const string& container, uint64 type_hash_code,
                   const string& resource_name,
                   const string& type_name) TF_MUST_USE_RESULT;
@@ -320,14 +332,13 @@ class IsResourceInitialized : public OpKernel {
 // specified type. The type will be a part of the generated op name.
 // TODO(apassos): figure out how to get non-cpu-allocated tensors to work
 // through constant folding so this doesn't have to be marked as stateful.
-#define REGISTER_RESOURCE_HANDLE_OP(Type)                   \
-  REGISTER_OP(#Type "HandleOp")                             \
-      .Attr("container: string = ''")                       \
-      .Attr("shared_name: string = ''")                     \
-      .Output("resource: resource")                         \
-      .SetIsStateful()                                      \
-      .SetShapeFn(tensorflow::shape_inference::ScalarShape) \
-      .Doc("Creates a handle to a " #Type)
+#define REGISTER_RESOURCE_HANDLE_OP(Type) \
+  REGISTER_OP(#Type "HandleOp")           \
+      .Attr("container: string = ''")     \
+      .Attr("shared_name: string = ''")   \
+      .Output("resource: resource")       \
+      .SetIsStateful()                    \
+      .SetShapeFn(tensorflow::shape_inference::ScalarShape)
 
 // Utility op kernel to produce a handle to a resource of type T.
 template <typename T>
@@ -340,6 +351,9 @@ class ResourceHandleOp : public OpKernel {
  private:
   string container_;
   string name_;
+  mutex mutex_;
+  Tensor resource_;
+  std::atomic<bool> initialized_{false};
 };
 
 // Registers a kernel for an op which produces a handle to a resource of the
@@ -361,6 +375,7 @@ Status ResourceMgr::Create(const string& container, const string& name,
                            T* resource) {
   CheckDeriveFromResourceBase<T>();
   CHECK(resource != nullptr);
+  mutex_lock l(mu_);
   return DoCreate(container, MakeTypeIndex<T>(), name, resource);
 }
 
@@ -368,6 +383,13 @@ template <typename T>
 Status ResourceMgr::Lookup(const string& container, const string& name,
                            T** resource) const {
   CheckDeriveFromResourceBase<T>();
+  tf_shared_lock l(mu_);
+  return LookupInternal(container, name, resource);
+}
+
+template <typename T>
+Status ResourceMgr::LookupInternal(const string& container, const string& name,
+                                   T** resource) const {
   ResourceBase* found = nullptr;
   Status s = DoLookup(container, MakeTypeIndex<T>(), name, &found);
   if (s.ok()) {
@@ -382,21 +404,23 @@ template <typename T>
 Status ResourceMgr::LookupOrCreate(const string& container, const string& name,
                                    T** resource,
                                    std::function<Status(T**)> creator) {
-  Status s;
+  CheckDeriveFromResourceBase<T>();
   *resource = nullptr;
-  while (*resource == nullptr) {
-    s = Lookup(container, name, resource);
-    if (s.ok()) break;
-    s = creator(resource);
-    if (!s.ok()) break;
-    s = Create(container, name, *resource);
-    if (s.ok()) {
-      (*resource)->Ref();
-      break;
-    }
-    // Rare event. Concurrent racy creation. Redo the lookup.
-    *resource = nullptr;
+  Status s;
+  {
+    tf_shared_lock l(mu_);
+    s = LookupInternal(container, name, resource);
+    if (s.ok()) return s;
   }
+  mutex_lock l(mu_);
+  s = LookupInternal(container, name, resource);
+  if (s.ok()) return s;
+  TF_RETURN_IF_ERROR(creator(resource));
+  s = DoCreate(container, MakeTypeIndex<T>(), name, *resource);
+  if (!s.ok()) {
+    return errors::Internal("LookupOrCreate failed unexpectedly");
+  }
+  (*resource)->Ref();
   return s;
 }
 
@@ -492,9 +516,16 @@ template <typename T>
 void IsResourceInitialized<T>::Compute(OpKernelContext* ctx) {
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
-  T* unused;
-  output->flat<bool>()(0) =
-      LookupResource(ctx, HandleFromInput(ctx, 0), &unused).ok();
+  T* object;
+  bool found;
+  if (LookupResource(ctx, HandleFromInput(ctx, 0), &object).ok()) {
+    found = true;
+    object->Unref();
+  } else {
+    found = false;
+  }
+
+  output->flat<bool>()(0) = found;
 }
 
 template <typename T>
@@ -506,10 +537,20 @@ ResourceHandleOp<T>::ResourceHandleOp(OpKernelConstruction* context)
 
 template <typename T>
 void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
-  Tensor* output = nullptr;
-  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-  output->scalar<ResourceHandle>()() =
-      MakeResourceHandle<T>(ctx, container_, name_);
+  if (!initialized_.load()) {
+    mutex_lock ml(mutex_);
+    // Checking again to see if another thread has initialized the resource.
+    if (!initialized_.load()) {
+      AllocatorAttributes attr;
+      attr.set_on_host(true);
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                             &resource_, attr));
+      resource_.scalar<ResourceHandle>()() =
+          MakeResourceHandle<T>(ctx, container_, name_);
+      initialized_.store(true);
+    }
+  }
+  ctx->set_output(0, resource_);
 }
 
 }  //  end namespace tensorflow

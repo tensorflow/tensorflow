@@ -23,6 +23,9 @@
 
 set -e
 
+# Filter out LOG(INFO)
+export TF_CPP_MIN_LOG_LEVEL=1
+
 IS_VIRTUALENV=0
 PYTHON_BIN_PATH=""
 while true; do
@@ -63,6 +66,12 @@ EOF
 
 cat << EOF | ${DEBUG_ERRORS_BIN} --error=no_error --ui_type=readline
 run
+exit
+EOF
+
+cat << EOF | ${DEBUG_ERRORS_BIN} --error=uninitialized_variable --debug --ui_type=readline
+run
+ni -a -d -t v/read
 exit
 EOF
 

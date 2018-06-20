@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 namespace tensorflow {
@@ -49,11 +50,14 @@ void DelayedNumpyDecref(void* data, size_t len, void* obj) {
 // Actually dereferences cached numpy arrays. REQUIRES being called while
 // holding the GIL.
 void ClearDecrefCache() {
-  mutex_lock ml(*DelayedDecrefLock());
-  for (void* obj : *DecrefCache()) {
+  std::vector<void*> cache_copy;
+  {
+    mutex_lock ml(*DelayedDecrefLock());
+    cache_copy.swap(*DecrefCache());
+  }
+  for (void* obj : cache_copy) {
     Py_DECREF(reinterpret_cast<PyObject*>(obj));
   }
-  DecrefCache()->clear();
 }
 
 // Structure which keeps a reference to a Tensor alive while numpy has a pointer
@@ -68,10 +72,11 @@ struct TensorReleaser {
 
 extern PyTypeObject TensorReleaserType;
 
-static void TensorReleaser_dealloc(TensorReleaser* self) {
+static void TensorReleaser_dealloc(PyObject* pself) {
+  TensorReleaser* self = reinterpret_cast<TensorReleaser*>(pself);
   (*self->destructor)();
   delete self->destructor;
-  TensorReleaserType.tp_free(self);
+  TensorReleaserType.tp_free(pself);
 }
 
 PyTypeObject TensorReleaserType = {
@@ -80,26 +85,26 @@ PyTypeObject TensorReleaserType = {
     sizeof(TensorReleaser),           /* tp_basicsize */
     0,                                /* tp_itemsize */
     /* methods */
-    (destructor)TensorReleaser_dealloc, /* tp_dealloc */
-    nullptr,                            /* tp_print */
-    nullptr,                            /* tp_getattr */
-    nullptr,                            /* tp_setattr */
-    nullptr,                            /* tp_compare */
-    nullptr,                            /* tp_repr */
-    nullptr,                            /* tp_as_number */
-    nullptr,                            /* tp_as_sequence */
-    nullptr,                            /* tp_as_mapping */
-    nullptr,                            /* tp_hash */
-    nullptr,                            /* tp_call */
-    nullptr,                            /* tp_str */
-    nullptr,                            /* tp_getattro */
-    nullptr,                            /* tp_setattro */
-    nullptr,                            /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "Wrapped TensorFlow Tensor",        /* tp_doc */
-    nullptr,                            /* tp_traverse */
-    nullptr,                            /* tp_clear */
-    nullptr,                            /* tp_richcompare */
+    TensorReleaser_dealloc,      /* tp_dealloc */
+    nullptr,                     /* tp_print */
+    nullptr,                     /* tp_getattr */
+    nullptr,                     /* tp_setattr */
+    nullptr,                     /* tp_compare */
+    nullptr,                     /* tp_repr */
+    nullptr,                     /* tp_as_number */
+    nullptr,                     /* tp_as_sequence */
+    nullptr,                     /* tp_as_mapping */
+    nullptr,                     /* tp_hash */
+    nullptr,                     /* tp_call */
+    nullptr,                     /* tp_str */
+    nullptr,                     /* tp_getattro */
+    nullptr,                     /* tp_setattro */
+    nullptr,                     /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,          /* tp_flags */
+    "Wrapped TensorFlow Tensor", /* tp_doc */
+    nullptr,                     /* tp_traverse */
+    nullptr,                     /* tp_clear */
+    nullptr,                     /* tp_richcompare */
 };
 
 Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
@@ -117,6 +122,9 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
     case TF_INT32:
       *out_pyarray_type = NPY_INT32;
       break;
+    case TF_UINT32:
+      *out_pyarray_type = NPY_UINT32;
+      break;
     case TF_UINT8:
       *out_pyarray_type = NPY_UINT8;
       break;
@@ -131,6 +139,9 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       break;
     case TF_INT64:
       *out_pyarray_type = NPY_INT64;
+      break;
+    case TF_UINT64:
+      *out_pyarray_type = NPY_UINT64;
       break;
     case TF_BOOL:
       *out_pyarray_type = NPY_BOOL;
@@ -166,7 +177,7 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       *out_pyarray_type = NPY_INT32;
       break;
     case TF_BFLOAT16:
-      *out_pyarray_type = NPY_UINT16;
+      *out_pyarray_type = Bfloat16NumpyType();
       break;
     default:
       return errors::Internal("Tensorflow type ", tf_datatype,

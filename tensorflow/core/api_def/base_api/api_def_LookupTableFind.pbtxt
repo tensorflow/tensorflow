@@ -1,0 +1,31 @@
+op {
+  graph_op_name: "LookupTableFind"
+  visibility: SKIP
+  in_arg {
+    name: "table_handle"
+    description: <<END
+Handle to the table.
+END
+  }
+  in_arg {
+    name: "keys"
+    description: <<END
+Any shape.  Keys to look up.
+END
+  }
+  out_arg {
+    name: "values"
+    description: <<END
+Same shape as `keys`.  Values found in the table, or `default_values`
+for missing keys.
+END
+  }
+  summary: "Looks up keys in a table, outputs the corresponding values."
+  description: <<END
+The tensor `keys` must of the same type as the keys of the table.
+The output `values` is of the type of the table values.
+
+The scalar `default_value` is the value output for keys not present in the
+table. It must also be of the same type as the table values.
+END
+}

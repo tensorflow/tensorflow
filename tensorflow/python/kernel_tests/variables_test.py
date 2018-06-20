@@ -22,6 +22,7 @@ import operator
 
 import numpy as np
 
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -44,12 +45,14 @@ class VariablesTestCase(test.TestCase):
     with self.test_session():
       var0 = variables.Variable(0.0)
       self.assertEqual("Variable:0", var0.name)
+      self.assertEqual("Variable", var0._shared_name)
       self.assertEqual([], var0.get_shape())
       self.assertEqual([], var0.get_shape())
       self.assertEqual([], var0.shape)
 
       var1 = variables.Variable(1.1)
       self.assertEqual("Variable_1:0", var1.name)
+      self.assertEqual("Variable_1", var1._shared_name)
       self.assertEqual([], var1.get_shape())
       self.assertEqual([], var1.get_shape())
       self.assertEqual([], var1.shape)
@@ -290,6 +293,21 @@ class VariablesTestCase(test.TestCase):
                        variables.global_variables())
       self.assertEqual([var_x, var_z, var_t], variables.trainable_variables())
 
+  def testCollectionsWithScope(self):
+    with self.test_session():
+      with ops.name_scope("scope_1"):
+        var_x = variables.Variable(2.0)
+      with ops.name_scope("scope_2"):
+        var_y = variables.Variable(2.0)
+
+      self.assertEqual([var_x, var_y], variables.global_variables())
+      self.assertEqual([var_x], variables.global_variables("scope_1"))
+      self.assertEqual([var_y], variables.global_variables("scope_2"))
+
+      self.assertEqual([var_x, var_y], variables.trainable_variables())
+      self.assertEqual([var_x], variables.trainable_variables("scope_1"))
+      self.assertEqual([var_y], variables.trainable_variables("scope_2"))
+
   def testOperators(self):
     with self.test_session():
       var_f = variables.Variable([2.0])
@@ -411,6 +429,19 @@ class VariablesTestCase(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllClose(np.negative(value), v2.eval())
 
+  def testConstraintArg(self):
+    constraint = lambda x: x
+    v = variables.Variable(
+        lambda: constant_op.constant(1.),
+        constraint=constraint)
+    self.assertEqual(v.constraint, constraint)
+
+    constraint = 0
+    with self.assertRaises(ValueError):
+      v = variables.Variable(
+          lambda: constant_op.constant(1.),
+          constraint=constraint)
+
   def testNoRefDataRace(self):
     with self.test_session():
       a = variables.Variable([1, 2, 3], dtype=dtypes.float32)
@@ -439,6 +470,49 @@ class VariablesTestCase(test.TestCase):
       for i in v2.initializer.inputs:
         self.assertEqual(expected_group_v2, i.op.colocation_groups())
 
+  def testVariableDefInitializedInstances(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      v_def = variables.Variable(
+          initial_value=constant_op.constant(3.0)).to_proto()
+
+    with ops.Graph().as_default(), self.test_session() as sess:
+      # v describes a VariableDef-based variable without an initial value.
+      v = variables.Variable(variable_def=v_def)
+      self.assertEqual(3.0, sess.run(v.initialized_value()))
+
+      # initialized_value should not rerun the initializer_op if the variable
+      # has already been initialized elsewhere.
+      sess.run(v.assign(1.0))
+      self.assertEqual(1.0, v.initialized_value().eval())
+
+    v_def.ClearField("initial_value_name")
+    with ops.Graph().as_default(), self.test_session() as sess:
+      # Restoring a legacy VariableDef proto that does not have
+      # initial_value_name set should still work.
+      v = variables.Variable(variable_def=v_def)
+      # We should also be able to re-export the variable to a new meta graph.
+      self.assertProtoEquals(v_def, v.to_proto())
+      # But attempts to use initialized_value will result in errors.
+      with self.assertRaises(ValueError):
+        sess.run(v.initialized_value())
+
+  def testTrainableInProto(self):
+    with ops.Graph().as_default():
+      non_trainable_variable = variables.Variable(
+          trainable=False,
+          initial_value=constant_op.constant(10.0))
+      self.assertEqual(
+          False,
+          variables.Variable(variable_def=non_trainable_variable.to_proto())
+          .trainable)
+      trainable_variable = variables.Variable(
+          trainable=True,
+          initial_value=constant_op.constant(10.0))
+      self.assertEqual(
+          True,
+          variables.Variable(variable_def=trainable_variable.to_proto())
+          .trainable)
+
   def testLoad(self):
     with self.test_session():
       var = variables.Variable(np.zeros((5, 5), np.float32))
@@ -448,10 +522,19 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(np.ones((5, 5), np.float32), var.eval())
 
   def testRepr(self):
-    var = variables.Variable(np.zeros((5, 5), np.float32), name='noop')
+    var = variables.Variable(np.zeros((5, 5), np.float32), name="noop")
     self.assertEqual(
         "<tf.Variable 'noop:0' shape=(5, 5) dtype=float32_ref>",
         repr(var))
+
+  def testVariableNamesPreserveNameScopesWithDefun(self):
+    @function.defun
+    def create_variable():
+      with ops.name_scope("foo"):
+        v = variables.Variable(0.0, name="bar")
+      self.assertEqual(v.name, "foo/bar:0")
+    with ops.get_default_graph().as_default():
+      create_variable()
 
 
 class IsInitializedTest(test.TestCase):
@@ -621,7 +704,7 @@ class VariableContainerTest(test.TestCase):
         v1 = variables.Variable([1])
         with ops.container("l2"):
           v2 = variables.Variable([2])
-          special_v = gen_state_ops._variable(
+          special_v = gen_state_ops.variable(
               shape=[1],
               dtype=dtypes.float32,
               name="VariableInL3",

@@ -27,50 +27,56 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class _DistributionShape(object):
   """Manage and manipulate `Distribution` shape.
 
-  Terminology:
-    Recall that a `Tensor` has:
-      - `shape`: size of `Tensor` dimensions,
-      - `ndims`: size of `shape`; number of `Tensor` dimensions,
-      - `dims`: indexes into `shape`; useful for transpose, reduce.
+  #### Terminology
 
-    `Tensor`s sampled from a `Distribution` can be partitioned by `sample_dims`,
-    `batch_dims`, and `event_dims`. To understand the semantics of these
-    dimensions, consider when two of the three are fixed and the remaining
-    is varied:
-      - `sample_dims`: indexes independent draws from identical
-                       parameterizations of the `Distribution`.
-      - `batch_dims`:  indexes independent draws from non-identical
-                       parameterizations of the `Distribution`.
-      - `event_dims`:  indexes event coordinates from one sample.
+  Recall that a `Tensor` has:
+    - `shape`: size of `Tensor` dimensions,
+    - `ndims`: size of `shape`; number of `Tensor` dimensions,
+    - `dims`: indexes into `shape`; useful for transpose, reduce.
 
-    The `sample`, `batch`, and `event` dimensions constitute the entirety of a
-    `Distribution` `Tensor`'s shape.
+  `Tensor`s sampled from a `Distribution` can be partitioned by `sample_dims`,
+  `batch_dims`, and `event_dims`. To understand the semantics of these
+  dimensions, consider when two of the three are fixed and the remaining
+  is varied:
+    - `sample_dims`: indexes independent draws from identical
+                     parameterizations of the `Distribution`.
+    - `batch_dims`:  indexes independent draws from non-identical
+                     parameterizations of the `Distribution`.
+    - `event_dims`:  indexes event coordinates from one sample.
 
-    The dimensions are always in `sample`, `batch`, `event` order.
+  The `sample`, `batch`, and `event` dimensions constitute the entirety of a
+  `Distribution` `Tensor`'s shape.
 
-  Purpose:
-    This class partitions `Tensor` notions of `shape`, `ndims`, and `dims` into
-    `Distribution` notions of `sample,` `batch,` and `event` dimensions. That
-    is, it computes any of:
+  The dimensions are always in `sample`, `batch`, `event` order.
 
-    ```
-    sample_shape     batch_shape     event_shape
-    sample_dims      batch_dims      event_dims
-    sample_ndims     batch_ndims     event_ndims
-    ```
+  #### Purpose
 
-    for a given `Tensor`, e.g., the result of
-    `Distribution.sample(sample_shape=...)`.
+  This class partitions `Tensor` notions of `shape`, `ndims`, and `dims` into
+  `Distribution` notions of `sample,` `batch,` and `event` dimensions. That
+  is, it computes any of:
 
-    For a given `Tensor`, this class computes the above table using minimal
-    information: `batch_ndims` and `event_ndims`.
+  ```
+  sample_shape     batch_shape     event_shape
+  sample_dims      batch_dims      event_dims
+  sample_ndims     batch_ndims     event_ndims
+  ```
 
-  Examples of `Distribution` `shape` semantics:
+  for a given `Tensor`, e.g., the result of
+  `Distribution.sample(sample_shape=...)`.
+
+  For a given `Tensor`, this class computes the above table using minimal
+  information: `batch_ndims` and `event_ndims`.
+
+  #### Examples
+
+  We show examples of distribution shape semantics.
+
     - Sample dimensions:
       Computing summary statistics, i.e., the average is a reduction over sample
       dimensions.
@@ -111,54 +117,64 @@ class _DistributionShape(object):
       tf.div(1., tf.reduce_prod(x, event_dims))
       ```
 
-  Examples using this class:
-    Write `S, B, E` for `sample_shape`, `batch_shape`, and `event_shape`.
+  We show examples using this class.
 
-    ```python
-    # 150 iid samples from one multivariate Normal with two degrees of freedom.
-    mu = [0., 0]
-    sigma = [[1., 0],
-             [0,  1]]
-    mvn = MultivariateNormal(mu, sigma)
-    rand_mvn = mvn.sample(sample_shape=[3, 50])
-    shaper = DistributionShape(batch_ndims=0, event_ndims=1)
-    S, B, E = shaper.get_shape(rand_mvn)
-    # S = [3, 50]
-    # B = []
-    # E = [2]
+  Write `S, B, E` for `sample_shape`, `batch_shape`, and `event_shape`.
 
-    # 12 iid samples from one Wishart with 2x2 events.
-    sigma = [[1., 0],
-             [2,  1]]
-    wishart = Wishart(df=5, scale=sigma)
-    rand_wishart = wishart.sample(sample_shape=[3, 4])
-    shaper = DistributionShape(batch_ndims=0, event_ndims=2)
-    S, B, E = shaper.get_shape(rand_wishart)
-    # S = [3, 4]
-    # B = []
-    # E = [2, 2]
+  ```python
+  # 150 iid samples from one multivariate Normal with two degrees of freedom.
+  mu = [0., 0]
+  sigma = [[1., 0],
+           [0,  1]]
+  mvn = MultivariateNormal(mu, sigma)
+  rand_mvn = mvn.sample(sample_shape=[3, 50])
+  shaper = DistributionShape(batch_ndims=0, event_ndims=1)
+  S, B, E = shaper.get_shape(rand_mvn)
+  # S = [3, 50]
+  # B = []
+  # E = [2]
 
-    # 100 iid samples from two, non-identical trivariate Normal distributions.
-    mu    = ...  # shape(2, 3)
-    sigma = ...  # shape(2, 3, 3)
-    X = MultivariateNormal(mu, sigma).sample(shape=[4, 25])
-    # S = [4, 25]
-    # B = [2]
-    # E = [3]
-    ```
+  # 12 iid samples from one Wishart with 2x2 events.
+  sigma = [[1., 0],
+           [2,  1]]
+  wishart = Wishart(df=5, scale=sigma)
+  rand_wishart = wishart.sample(sample_shape=[3, 4])
+  shaper = DistributionShape(batch_ndims=0, event_ndims=2)
+  S, B, E = shaper.get_shape(rand_wishart)
+  # S = [3, 4]
+  # B = []
+  # E = [2, 2]
 
-  Argument Validation:
-    When `validate_args=False`, checks that cannot be done during
-    graph construction are performed at graph execution. This may result in a
-    performance degradation because data must be switched from GPU to CPU.
+  # 100 iid samples from two, non-identical trivariate Normal distributions.
+  mu    = ...  # shape(2, 3)
+  sigma = ...  # shape(2, 3, 3)
+  X = MultivariateNormal(mu, sigma).sample(shape=[4, 25])
+  # S = [4, 25]
+  # B = [2]
+  # E = [3]
+  ```
 
-    For example, when `validate_args=False` and `event_ndims` is a
-    non-constant `Tensor`, it is checked to be a non-negative integer at graph
-    execution. (Same for `batch_ndims`). Constant `Tensor`s and non-`Tensor`
-    arguments are always checked for correctness since this can be done for
-    "free," i.e., during graph construction.
+  #### Argument Validation
+
+  When `validate_args=False`, checks that cannot be done during
+  graph construction are performed at graph execution. This may result in a
+  performance degradation because data must be switched from GPU to CPU.
+
+  For example, when `validate_args=False` and `event_ndims` is a
+  non-constant `Tensor`, it is checked to be a non-negative integer at graph
+  execution. (Same for `batch_ndims`). Constant `Tensor`s and non-`Tensor`
+  arguments are always checked for correctness since this can be done for
+  "free," i.e., during graph construction.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                batch_ndims=None,
                event_ndims=None,
@@ -364,7 +380,7 @@ class _DistributionShape(object):
     """Reshapes/transposes `Distribution` `Tensor` from S+B+E to B_+E_+S_.
 
     Where:
-      - `B_ = B if B or not expand_batch_dim  else [1]`,
+      - `B_ = B if B or not expand_batch_dim else [1]`,
       - `E_ = E if E else [1]`,
       - `S_ = [tf.reduce_prod(S)]`.
 
@@ -402,7 +418,7 @@ class _DistributionShape(object):
     """Reshapes/transposes `Distribution` `Tensor` from B_+E_+S_ to S+B+E.
 
     Where:
-      - `B_ = B if B or not expand_batch_dim  else [1]`,
+      - `B_ = B if B or not expand_batch_dim else [1]`,
       - `E_ = E if E else [1]`,
       - `S_ = [tf.reduce_prod(S)]`.
 
@@ -432,7 +448,7 @@ class _DistributionShape(object):
           if self._batch_ndims_is_0 and expand_batch_dim:
             squeeze_dims += [1]
           if squeeze_dims:
-            x = array_ops.squeeze(x, squeeze_dims=squeeze_dims)
+            x = array_ops.squeeze(x, axis=squeeze_dims)
             # x.shape: [prod(S)]+B+E
         _, batch_shape, event_shape = self.get_shape(x)
       else:

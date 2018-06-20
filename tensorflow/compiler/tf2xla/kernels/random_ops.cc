@@ -17,6 +17,9 @@ limitations under the License.
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 // TODO(misard,phawkins): add tests.
 
+#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/util.h"
+#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -41,9 +44,9 @@ class RandomUniformOp : public XlaOpKernel {
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
 
-    xla::ComputationBuilder* b = ctx->builder();
-    xla::ComputationDataHandle result = b->RngUniform(
-        XlaHelpers::Zero(b, dtype), XlaHelpers::One(b, dtype), xla_shape);
+    xla::XlaBuilder* b = ctx->builder();
+    xla::XlaOp result = b->RngUniform(XlaHelpers::Zero(b, dtype),
+                                      XlaHelpers::One(b, dtype), xla_shape);
 
     ctx->SetOutput(0, result);
   }
@@ -52,7 +55,80 @@ class RandomUniformOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformOp);
 };
 
-REGISTER_XLA_OP(Name("RandomUniform"), RandomUniformOp);
+REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstInput("shape"),
+                RandomUniformOp);
+
+class RandomShuffleOp : public XlaOpKernel {
+ public:
+  explicit RandomShuffleOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    auto builder = ctx->builder();
+    xla::XlaOp input = ctx->Input(0);
+    TensorShape input_shape = ctx->InputShape(0);
+    const int64 n = input_shape.dim_size(0);
+    int64 num_elements = 1;
+    for (tensorflow::TensorShapeDim dimension : input_shape) {
+      num_elements *= dimension.size;
+    }
+    if (num_elements <= 1 || n <= 1) {
+      // No shuffling is required, so copy input directly to output
+      ctx->SetOutput(0, input);
+    } else {
+      // Generate the random swaps for the indices.
+      auto swaps_shape = xla::ShapeUtil::MakeShape(xla::S32, {n});
+      auto swaps =
+          builder->RngUniform(builder->ConstantR0<int32>(0),
+                              builder->ConstantR0<int32>(n), swaps_shape);
+
+      // Generate range(n) as the initial value for the indices to be swapped.
+      xla::XlaOp indices;
+      TF_CHECK_OK(XlaHelpers::Iota(builder, DataType::DT_INT32, n, &indices));
+
+      // Swap the indices at i and swaps[i].
+      auto swap_body_fn = [&](xla::XlaOp i,
+                              gtl::ArraySlice<xla::XlaOp> loop_vars,
+                              xla::XlaBuilder* builder)
+          -> xla::StatusOr<std::vector<xla::XlaOp>> {
+        auto swaps = loop_vars[0];
+        auto indices = loop_vars[1];
+        i = builder->Reshape(i, {1});
+        // temp = indices[i]
+        auto temp = builder->DynamicSlice(indices, i, {1});
+        // swap_index = swaps[i]
+        auto swap_index = builder->DynamicSlice(swaps, i, {1});
+        // swap_value = indices[swaps[i]]
+        auto swap_value = builder->DynamicSlice(indices, swap_index, {1});
+        // indices[i] = indices[swaps[i]]
+        indices = builder->DynamicUpdateSlice(indices, swap_value, i);
+        // indices[swaps[i]] = temp
+        indices = builder->DynamicUpdateSlice(indices, temp, swap_index);
+        return std::vector<xla::XlaOp>{swaps, indices};
+      };
+      // for i in range(n):
+      auto swap_loop_result =
+          XlaForEachIndex(n, xla::S32, swap_body_fn, {swaps, indices},
+                          "indices_swap_loop", builder)
+              .ValueOrDie();
+      auto swapped_indices = swap_loop_result[1];
+
+      // Gather the data using the swapped indices as the shuffled order.
+      auto indices_tensor_shape = TensorShape({n});
+      DataType type = ctx->expected_output_dtype(0);
+      xla::XlaOp gather;
+      OP_REQUIRES_OK(ctx, XlaGather(input, input_shape, swapped_indices,
+                                    indices_tensor_shape,
+                                    /*axis=*/0, /*indices_are_nd=*/false, type,
+                                    DT_INT32, builder, &gather));
+      ctx->SetOutput(0, gather);
+    }
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(RandomShuffleOp);
+};
+
+REGISTER_XLA_OP(Name("RandomShuffle"), RandomShuffleOp);
 
 class RandomUniformIntOp : public XlaOpKernel {
  public:
@@ -83,7 +159,8 @@ class RandomUniformIntOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformIntOp);
 };
 
-REGISTER_XLA_OP(Name("RandomUniformInt"), RandomUniformIntOp);
+REGISTER_XLA_OP(Name("RandomUniformInt").CompileTimeConstInput("shape"),
+                RandomUniformIntOp);
 
 class RandomStandardNormalOp : public XlaOpKernel {
  public:
@@ -98,11 +175,11 @@ class RandomStandardNormalOp : public XlaOpKernel {
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
 
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
 
     // Normal distribution with a mean of 0 and a standard deviation of 1:
-    xla::ComputationDataHandle result = b->RngNormal(
-        XlaHelpers::Zero(b, dtype), XlaHelpers::One(b, dtype), xla_shape);
+    xla::XlaOp result = b->RngNormal(XlaHelpers::Zero(b, dtype),
+                                     XlaHelpers::One(b, dtype), xla_shape);
 
     ctx->SetOutput(0, result);
   }
@@ -111,7 +188,8 @@ class RandomStandardNormalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomStandardNormalOp);
 };
 
-REGISTER_XLA_OP(Name("RandomStandardNormal"), RandomStandardNormalOp);
+REGISTER_XLA_OP(Name("RandomStandardNormal").CompileTimeConstInput("shape"),
+                RandomStandardNormalOp);
 
 class TruncatedNormalOp : public XlaOpKernel {
  public:
@@ -124,23 +202,17 @@ class TruncatedNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
-    xla::Shape xla_element_shape =
-        xla::ShapeUtil::MakeShape(xla_shape.element_type(), {});
 
-    xla::ComputationBuilder* b = ctx->builder();
-    xla::ComputationDataHandle mean = XlaHelpers::Zero(b, dtype);
-    xla::ComputationDataHandle stddev = XlaHelpers::One(b, dtype);
-    xla::ComputationDataHandle candidate =
-        b->RngNormal(mean, stddev, xla_shape);
+    xla::XlaBuilder* b = ctx->builder();
 
-    auto two_sd = [dtype](bool negate, xla::ComputationBuilder* b) {
+    auto two_sd = [dtype](bool negate, xla::XlaBuilder* b) {
       return XlaHelpers::FloatLiteral(b, dtype, negate ? -2.0 : 2.0);
     };
-    auto out_of_range_mask = [two_sd](xla::ComputationDataHandle candidate,
-                                      xla::ComputationBuilder* b) {
-      xla::ComputationDataHandle too_large = b->Gt(candidate, two_sd(false, b));
-      xla::ComputationDataHandle too_small = b->Lt(candidate, two_sd(true, b));
-      return b->LogicalOr(too_large, too_small);
+    auto out_of_range_mask = [two_sd](xla::XlaOp candidate,
+                                      xla::XlaBuilder* b) {
+      xla::XlaOp too_large = b->Gt(candidate, two_sd(false, b));
+      xla::XlaOp too_small = b->Lt(candidate, two_sd(true, b));
+      return b->Or(too_large, too_small);
     };
 
     // The algorithm we're using is roughly:
@@ -149,41 +221,43 @@ class TruncatedNormalOp : public XlaOpKernel {
     //   out_of_range_mask := candidate < mean-2*sd || candidate > mean+2*sd
     //   candidate = select(out_of_range_mask, rng_normal(), candidate)
     // }
-    std::unique_ptr<xla::ComputationBuilder> test_builder =
-        b->CreateSubBuilder("truncated_normal_test");
-    {
-      auto* b = test_builder.get();
-      xla::ComputationDataHandle candidate =
-          b->Parameter(0, xla_shape, "candidate");
-      xla::ComputationDataHandle oor_mask = out_of_range_mask(candidate, b);
-      OP_REQUIRES_OK(ctx, Any(out_of_range_mask(candidate, b), b).status());
-    }
-
-    std::unique_ptr<xla::ComputationBuilder> body_builder =
-        b->CreateSubBuilder("truncated_normal_body");
-    {
-      auto* b = body_builder.get();
-      xla::ComputationDataHandle candidate =
-          b->Parameter(0, xla_shape, "candidate");
-      xla::ComputationDataHandle to_resample = out_of_range_mask(candidate, b);
-      xla::ComputationDataHandle mean = XlaHelpers::Zero(b, dtype);
-      xla::ComputationDataHandle stddev = XlaHelpers::One(b, dtype);
-      b->Select(to_resample, b->RngNormal(mean, stddev, xla_shape), candidate);
-    }
-
-    xla::StatusOr<xla::Computation> test_computation = test_builder->Build();
-    OP_REQUIRES_OK(ctx, test_computation.status());
-    xla::StatusOr<xla::Computation> body_computation = body_builder->Build();
-    OP_REQUIRES_OK(ctx, body_computation.status());
-    xla::ComputationDataHandle result =
-        b->While(test_computation.ValueOrDie(), body_computation.ValueOrDie(),
-                 candidate);
-
-    ctx->SetOutput(0, result);
+    std::vector<xla::XlaOp> initial_values = {
+        // The current candidate.
+        b->Broadcast(XlaHelpers::Zero(b, dtype), shape.dim_sizes()),
+        // The to_resample mask, where 'true' identifies a location in the
+        // current candidate that is out of range and must be regenerated.
+        b->Broadcast(b->ConstantR0<bool>(true), shape.dim_sizes()),
+        // Is any element in the mask true?
+        b->ConstantR0<bool>(true)};
+    auto condition = [&](gtl::ArraySlice<xla::XlaOp> values,
+                         xla::XlaBuilder* b) -> xla::StatusOr<xla::XlaOp> {
+      // Continue while any element in the mask is true.
+      return values[2];
+    };
+    auto body =
+        [&](gtl::ArraySlice<xla::XlaOp> values,
+            xla::XlaBuilder* b) -> xla::StatusOr<std::vector<xla::XlaOp>> {
+      xla::XlaOp candidate = values[0];
+      xla::XlaOp to_resample = values[1];
+      xla::XlaOp mean = XlaHelpers::Zero(b, dtype);
+      xla::XlaOp stddev = XlaHelpers::One(b, dtype);
+      candidate = b->Select(to_resample, b->RngNormal(mean, stddev, xla_shape),
+                            candidate);
+      // Compute a new to_resample mask, and determine whether any value is
+      // still out of range.
+      to_resample = out_of_range_mask(candidate, b);
+      TF_ASSIGN_OR_RETURN(xla::XlaOp done, Any(to_resample, b));
+      return std::vector<xla::XlaOp>{candidate, to_resample, done};
+    };
+    auto result =
+        XlaWhileLoop(condition, body, initial_values, "truncated_normal", b);
+    OP_REQUIRES_OK(ctx, result.status());
+    ctx->SetOutput(0, result.ValueOrDie()[0]);
   }
 };
 
-REGISTER_XLA_OP(Name("TruncatedNormal"), TruncatedNormalOp);
+REGISTER_XLA_OP(Name("TruncatedNormal").CompileTimeConstInput("shape"),
+                TruncatedNormalOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

@@ -20,11 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -33,12 +34,71 @@ limitations under the License.
 namespace xla {
 namespace {
 
+class MinimumMemoryForSequenceTest : public HloTestBase {};
+
+TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
+  auto module = CreateNewModule();
+  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  const Shape tuple_shape =
+      ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  // Tuple param: 24 bytes (each elem has 8 byte pointer, 4 byte element)
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "cond_param"));
+  HloInstruction* cond_iter = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 0));
+  HloInstruction* cond_data = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
+  // Free cond_param[] (16 bytes), Alloc PRED[] (1 byte)
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
+                                   HloOpcode::kLt, cond_iter, cond_data));
+  HloComputation* cond_computation =
+      module->AddEmbeddedComputation(cond_builder.Build());
+
+  auto body_builder = HloComputation::Builder("WhileBody");
+  // Tuple param: 24 bytes (each elem has 8 byte pointer, 4 byte element)
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "body_param"));
+  HloComputation* body_computation =
+      module->AddEmbeddedComputation(body_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  // Entry params: 8 bytes (4 bytes per param), TOTAL=8
+  HloInstruction* iter = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param_iter"));
+  HloInstruction* data = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "param_data"));
+  // Tuple: 16 bytes (8 bytes per pointer), TOTAL=24
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({iter, data}));
+  // While: 8 bytes (4 bytes per element), TOTAL=32
+  // Both cond and body use a max of 24 bytes, TOTAL=56
+  HloInstruction* while_op = builder.AddInstruction(HloInstruction::CreateWhile(
+      tuple_shape, cond_computation, body_computation, tuple));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+
+  SequentialHloOrdering::HloModuleSequence module_sequence;
+  module_sequence[cond_computation] = {cond_param, cond_iter, cond_data,
+                                       cond_lt};
+  module_sequence[body_computation] = {body_param};
+  module_sequence[entry_computation] = {iter, data, tuple, while_op};
+  EXPECT_EQ(56, HeapSimulator::MinimumMemoryForModule(module_sequence, size_fn)
+                    .ValueOrDie());
+}
+
 const char kAlloc[] = "Alloc";
 const char kFree[] = "Free";
 const char kFinish[] = "Finish";
 
 // CallSequence records a sequence of Alloc/Free/Finish calls.
-using CallSequence = std::vector<std::pair<string, const LogicalBuffer*>>;
+using CallSequence = std::vector<std::pair<string, const BufferValue*>>;
 
 // HeapCallRecorder is a dummy heap algorithm that simply records its calls.
 class HeapCallRecorder : public HeapAlgorithm {
@@ -46,7 +106,7 @@ class HeapCallRecorder : public HeapAlgorithm {
   explicit HeapCallRecorder(CallSequence* calls) : calls_(calls) {}
   ~HeapCallRecorder() override {}
 
-  void Alloc(const LogicalBuffer* buffer, int64 size) override {
+  void Alloc(const BufferValue* buffer, int64 size) override {
     calls_->emplace_back(kAlloc, buffer);
     // Instead of assigning a real offset, we set the cardinality of the Alloc
     // call.  This isn't a valid assignment, but allows us to easily test for
@@ -54,7 +114,7 @@ class HeapCallRecorder : public HeapAlgorithm {
     const int64 offset = result_.chunk_map.size();
     result_.chunk_map.emplace(buffer, Chunk{offset, size});
   }
-  void Free(const LogicalBuffer* buffer, int64 size) override {
+  void Free(const BufferValue* buffer, int64 size) override {
     calls_->emplace_back(kFree, buffer);
   }
   Result Finish() override {
@@ -76,7 +136,8 @@ class HeapSimulatorTracker {
   HeapSimulatorTracker(
       const string& name, std::unique_ptr<HloComputation> computation,
       const std::vector<const HloInstruction*>& instruction_sequence) {
-    module_ = MakeUnique<HloModule>(name);
+    HloModuleConfig config;
+    module_ = MakeUnique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(computation));
     points_to_analysis_ =
         TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
@@ -84,7 +145,7 @@ class HeapSimulatorTracker {
     // size of the buffers doesn't matter, so we always return 0.  We rely on
     // the secondary sorting criteria of DecreasingSizeRunsHeap to sort calls by
     // buffer id, for determinism in the tests.
-    auto zero_size = [](const LogicalBuffer& buffer) { return 0; };
+    auto zero_size = [](const BufferValue& buffer) { return 0; };
     auto algorithm = MakeUnique<DecreasingSizeRunsHeap>(
         MakeUnique<HeapCallRecorder>(&actual_calls_));
     result_ = HeapSimulator::Run(
@@ -94,7 +155,8 @@ class HeapSimulatorTracker {
   }
 
   explicit HeapSimulatorTracker(const string& name) {
-    module_ = MakeUnique<HloModule>(name);
+    HloModuleConfig config;
+    module_ = MakeUnique<HloModule>(name, config);
   }
 
   // Similar to the single entry computation constructor above, but runs the
@@ -115,9 +177,9 @@ class HeapSimulatorTracker {
 
     // Hack the size_fn so that it returns a decreasing value as we step through
     // the sequence. This lets us ensure the Alloc calls are in the sequence
-    // order. The Free calls are sorted by LogicalBuffer.id, which is at least
+    // order. The Free calls are sorted by BufferValue.id, which is at least
     // deterministic.
-    auto size_fn = [&reverse_position](const LogicalBuffer& buffer) {
+    auto size_fn = [&reverse_position](const BufferValue& buffer) {
       return reverse_position[buffer.instruction()];
     };
     auto algorithm = MakeUnique<DecreasingSizeRunsHeap>(
@@ -130,8 +192,8 @@ class HeapSimulatorTracker {
   HloModule* module() { return module_.get(); }
 
   // Returns the buffer defined at the given instruction and index.
-  const LogicalBuffer* BufferAt(const HloInstruction* instruction,
-                                const ShapeIndex& index) const {
+  const BufferValue* BufferAt(const HloInstruction* instruction,
+                              const ShapeIndex& index) const {
     return points_to_analysis_->GetBufferDefinedAt(instruction, index)
         .ConsumeValueOrDie();
   }
@@ -147,8 +209,8 @@ class HeapSimulatorTracker {
                            const ShapeIndex& index_a,
                            const HloInstruction* instruction_b,
                            const ShapeIndex& index_b) {
-    const LogicalBuffer* a = BufferAt(instruction_a, index_a);
-    const LogicalBuffer* b = BufferAt(instruction_b, index_b);
+    const BufferValue* a = BufferAt(instruction_a, index_a);
+    const BufferValue* b = BufferAt(instruction_b, index_b);
     EXPECT_EQ(result_.chunk_map[a].offset, result_.chunk_map[b].offset)
         << *a << ", " << *b;
   }
@@ -259,8 +321,11 @@ TEST_F(HeapSimulatorTest, MultiplyDot) {
       HloInstruction::CreateParameter(2, f32scalar_, "paramY"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec4_, HloOpcode::kMultiply, paramA, paramX));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, mul, paramY));
+      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
 
   // The buffer for dot is the output, and it cannot be shared with the buffer
   // for mul, since dot isn't elementwise.
@@ -292,8 +357,11 @@ TEST_F(HeapSimulatorTest, MultiplyDotAdd) {
       HloInstruction::CreateParameter(2, f32scalar_, "paramY"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec4_, HloOpcode::kMultiply, paramA, paramX));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, mul, paramY));
+      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, dot, paramA));
 
@@ -327,10 +395,13 @@ TEST_F(HeapSimulatorTest, MultiplyDotDot) {
       HloInstruction::CreateParameter(2, f32scalar_, "paramY"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec4_, HloOpcode::kMultiply, paramA, paramX));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, mul, paramY));
+      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
   auto dot1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, dot0, paramY));
+      HloInstruction::CreateDot(f32vec4_, dot0, paramY, dot_dnums));
 
   // The buffer for dot1 is the output.  No buffers can be shared.  The buffer
   // for mul is freed before the end, since it's no longer used after dot0
@@ -365,10 +436,13 @@ TEST_F(HeapSimulatorTest, MultiplyDotDotTuple) {
       HloInstruction::CreateParameter(2, f32scalar_, "paramY"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec4_, HloOpcode::kMultiply, paramA, paramX));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, mul, paramY));
+      HloInstruction::CreateDot(f32vec4_, mul, paramY, dot_dnums));
   auto dot1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, dot0, paramY));
+      HloInstruction::CreateDot(f32vec4_, dot0, paramY, dot_dnums));
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({dot0, dot1}));
 
@@ -394,6 +468,56 @@ TEST_F(HeapSimulatorTest, MultiplyDotDotTuple) {
       {kFree, tracker.BufferAt(dot0, {})},
       {kFree, tracker.BufferAt(dot1, {})},
       {kFree, tracker.BufferAt(tuple, {})},
+      {kFinish, nullptr},
+  });
+}
+
+TEST_F(HeapSimulatorTest, IndependentTupleElements) {
+  auto builder = HloComputation::Builder(TestName());
+  auto paramA = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32scalar_, "paramA"));
+  auto paramB = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32scalar_, "paramB"));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32scalar_, HloOpcode::kMultiply, paramA, paramB));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32scalar_, HloOpcode::kAdd, paramA, paramB));
+  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({mul, add}));
+  auto element0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32scalar_, tuple, 0));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec4_, element0, {0}));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32scalar_, HloOpcode::kSubtract, paramA, paramB));
+  auto element1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32scalar_, tuple, 1));
+  auto output = builder.AddInstruction(
+      HloInstruction::CreateTuple({broadcast, sub, element1}));
+
+  HeapSimulatorTracker tracker(TestName(), builder.Build(),
+                               {paramA, paramB, mul, add, tuple, element0,
+                                broadcast, sub, element1, output});
+  tracker.ExpectCallSequence({
+      {kAlloc, tracker.BufferAt(paramA, {})},
+      {kAlloc, tracker.BufferAt(paramB, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
+      {kAlloc, tracker.BufferAt(add, {})},
+      {kAlloc, tracker.BufferAt(tuple, {})},
+      {kAlloc, tracker.BufferAt(broadcast, {})},
+      // The mul can be freed right after the broadcast happens, even though
+      // The other GetTupleElement is still alive.
+      {kFree, tracker.BufferAt(mul, {})},
+      {kAlloc, tracker.BufferAt(sub, {})},
+      // The temporary tuple is now dead.
+      {kFree, tracker.BufferAt(tuple, {})},
+      {kAlloc, tracker.BufferAt(output, {})},
+      // All params and outputs are freed at the end.
+      {kFree, tracker.BufferAt(paramA, {})},
+      {kFree, tracker.BufferAt(paramB, {})},
+      {kFree, tracker.BufferAt(add, {})},
+      {kFree, tracker.BufferAt(broadcast, {})},
+      {kFree, tracker.BufferAt(sub, {})},
+      {kFree, tracker.BufferAt(output, {})},
       {kFinish, nullptr},
   });
 }
@@ -460,7 +584,7 @@ TEST_F(HeapSimulatorTest, WholeModule) {
       // Now the final cond less-than buffer is allocated.
       {kAlloc, tracker.BufferAt(cond_lt, {})},
 
-      // The order of the remaining Free calls is based on the LogicalBuffer.id,
+      // The order of the remaining Free calls is based on the BufferValue.id,
       // which is deterministic, but not obvious.
       {kFree, tracker.BufferAt(param, {})},
       {kFree, tracker.BufferAt(param, {0})},
@@ -481,40 +605,41 @@ TEST_F(HeapSimulatorTest, WholeModule) {
 // Base class for heap algorithm tests.
 class HeapAlgorithmTestBase : public ::testing::Test {
  protected:
-  HeapAlgorithmTestBase() {
-    buffer_a_ = DummyLogicalBuffer();
-    buffer_b_ = DummyLogicalBuffer();
-    buffer_c_ = DummyLogicalBuffer();
-    buffer_d_ = DummyLogicalBuffer();
-    buffer_e_ = DummyLogicalBuffer();
-    buffer_f_ = DummyLogicalBuffer();
-    buffer_g_ = DummyLogicalBuffer();
-    buffer_h_ = DummyLogicalBuffer();
-    buffer_i_ = DummyLogicalBuffer();
+  HeapAlgorithmTestBase() : builder_("heap_simulator_test") {
+    buffer_a_ = DummyBufferValue();
+    buffer_b_ = DummyBufferValue();
+    buffer_c_ = DummyBufferValue();
+    buffer_d_ = DummyBufferValue();
+    buffer_e_ = DummyBufferValue();
+    buffer_f_ = DummyBufferValue();
+    buffer_g_ = DummyBufferValue();
+    buffer_h_ = DummyBufferValue();
+    buffer_i_ = DummyBufferValue();
   }
   ~HeapAlgorithmTestBase() override {}
 
-  const LogicalBuffer* buffer_a_;
-  const LogicalBuffer* buffer_b_;
-  const LogicalBuffer* buffer_c_;
-  const LogicalBuffer* buffer_d_;
-  const LogicalBuffer* buffer_e_;
-  const LogicalBuffer* buffer_f_;
-  const LogicalBuffer* buffer_g_;
-  const LogicalBuffer* buffer_h_;
-  const LogicalBuffer* buffer_i_;
+  const BufferValue* buffer_a_;
+  const BufferValue* buffer_b_;
+  const BufferValue* buffer_c_;
+  const BufferValue* buffer_d_;
+  const BufferValue* buffer_e_;
+  const BufferValue* buffer_f_;
+  const BufferValue* buffer_g_;
+  const BufferValue* buffer_h_;
+  const BufferValue* buffer_i_;
 
  private:
-  // Create a dummy LogicalBuffer to pass to the heap algorithm.  Since the
-  // algorithms only use the buffer as a handle, we don't need to fill in much
-  // other than the id and color.
-  const LogicalBuffer* DummyLogicalBuffer() {
-    const LogicalBuffer::Id id = buffers_.size();
-    buffers_.emplace_back(MakeUnique<LogicalBuffer>(nullptr, ShapeIndex{}, id));
+  // Create a dummy BufferValue to pass to the heap algorithm.
+  const BufferValue* DummyBufferValue() {
+    const BufferValue::Id id = buffers_.size();
+    auto const0 = builder_.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+    buffers_.emplace_back(MakeUnique<HloValue>(id, const0, ShapeIndex{}));
     return buffers_.back().get();
   }
 
-  std::vector<std::unique_ptr<LogicalBuffer>> buffers_;
+  HloComputation::Builder builder_;
+  std::vector<std::unique_ptr<BufferValue>> buffers_;
 };
 
 class NoFragmentationStatsHeapTest : public HeapAlgorithmTestBase {};

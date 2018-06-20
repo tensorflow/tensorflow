@@ -36,7 +36,7 @@ typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // --------------------------------------------------------------------------
 template <typename Device, typename T>
@@ -123,7 +123,7 @@ class PackOp : public OpKernel {
         ConcatSYCL<T>(c->eigen_sycl_device(), inputs_flat, &output_flat);
         return;
       }
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
       ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
     }
   }
@@ -139,7 +139,6 @@ class PackOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_PACK);
 TF_CALL_QUANTIZED_TYPES(REGISTER_PACK);
-TF_CALL_bfloat16(REGISTER_PACK);
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION)
 // Primarily used for SavedModel support on mobile.
@@ -157,6 +156,9 @@ REGISTER_PACK(string);
       PackOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
+REGISTER_GPU(bool);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.

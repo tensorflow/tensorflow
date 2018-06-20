@@ -71,7 +71,9 @@ class EstimatorSpecTrainTest(test.TestCase):
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
-          scaffold=monitored_session.Scaffold())
+          scaffold=monitored_session.Scaffold(),
+          evaluation_hooks=[_FakeHook()],
+          prediction_hooks=[_FakeHook()])
 
   def testLossNumber(self):
     """Tests that error is raised when loss is a number (not Tensor)."""
@@ -221,7 +223,17 @@ class EstimatorSpecEvalTest(test.TestCase):
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
-          scaffold=monitored_session.Scaffold())
+          scaffold=monitored_session.Scaffold(),
+          evaluation_hooks=[_FakeHook()])
+
+  def testEvaluationHookInvalid(self):
+    with ops.Graph().as_default(), self.test_session():
+      with self.assertRaisesRegexp(
+          TypeError, 'All hooks must be SessionRunHook instances'):
+        model_fn.EstimatorSpec(
+            mode=model_fn.ModeKeys.EVAL,
+            loss=constant_op.constant(1.),
+            evaluation_hooks=[_InvalidHook()])
 
   def testTupleMetric(self):
     """Tests that no errors are raised when a metric is tuple-valued."""
@@ -291,6 +303,32 @@ class EstimatorSpecEvalTest(test.TestCase):
             mode=model_fn.ModeKeys.EVAL,
             predictions={'prediction': constant_op.constant(1.)},
             loss=loss)
+
+  def testReplaceRaisesConstructorChecks(self):
+    with ops.Graph().as_default(), self.test_session():
+      loss = constant_op.constant(1.)
+      spec = model_fn.EstimatorSpec(
+          mode=model_fn.ModeKeys.EVAL, predictions={'loss': loss}, loss=loss)
+      with self.assertRaisesRegexp(ValueError, 'Loss must be scalar'):
+        spec._replace(loss=constant_op.constant([1., 2.]))
+
+  def testReplaceDoesReplace(self):
+    with ops.Graph().as_default(), self.test_session():
+      loss = constant_op.constant(1.)
+      spec = model_fn.EstimatorSpec(
+          mode=model_fn.ModeKeys.EVAL, predictions={'loss': loss}, loss=loss)
+      new_spec = spec._replace(predictions={'m': loss})
+      self.assertEqual(['m'], list(new_spec.predictions.keys()))
+
+  def testReplaceNotAllowModeChange(self):
+    with ops.Graph().as_default(), self.test_session():
+      loss = constant_op.constant(1.)
+      spec = model_fn.EstimatorSpec(
+          mode=model_fn.ModeKeys.EVAL, predictions={'loss': loss}, loss=loss)
+      spec._replace(mode=model_fn.ModeKeys.EVAL)
+      with self.assertRaisesRegexp(ValueError,
+                                   'mode of EstimatorSpec cannot be changed'):
+        spec._replace(mode=model_fn.ModeKeys.TRAIN)
 
   def testPredictionsMissingIsOkay(self):
     with ops.Graph().as_default(), self.test_session():
@@ -427,7 +465,18 @@ class EstimatorSpecInferTest(test.TestCase):
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
-          scaffold=monitored_session.Scaffold())
+          scaffold=monitored_session.Scaffold(),
+          evaluation_hooks=[_FakeHook()],
+          prediction_hooks=[_FakeHook()])
+
+  def testPredictionHookInvalid(self):
+    with ops.Graph().as_default(), self.test_session():
+      with self.assertRaisesRegexp(
+          TypeError, 'All hooks must be SessionRunHook instances'):
+        model_fn.EstimatorSpec(
+            mode=model_fn.ModeKeys.PREDICT,
+            predictions=constant_op.constant(1.),
+            prediction_hooks=[_InvalidHook()])
 
   def testPredictionsMissing(self):
     with ops.Graph().as_default(), self.test_session():

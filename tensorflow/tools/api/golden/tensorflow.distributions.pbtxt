@@ -1,0 +1,75 @@
+path: "tensorflow.distributions"
+tf_module {
+  member {
+    name: "Bernoulli"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "Beta"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "Categorical"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "Dirichlet"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "DirichletMultinomial"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "Distribution"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "Exponential"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "FULLY_REPARAMETERIZED"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution.ReparameterizationType\'>"
+  }
+  member {
+    name: "Gamma"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "Laplace"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "Multinomial"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "NOT_REPARAMETERIZED"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution.ReparameterizationType\'>"
+  }
+  member {
+    name: "Normal"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "RegisterKL"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ReparameterizationType"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StudentT"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member {
+    name: "Uniform"
+    mtype: "<class \'tensorflow.python.ops.distributions.distribution._DistributionMeta\'>"
+  }
+  member_method {
+    name: "kl_divergence"
+    argspec: "args=[\'distribution_a\', \'distribution_b\', \'allow_nan_stats\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+}

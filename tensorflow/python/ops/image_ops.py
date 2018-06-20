@@ -17,52 +17,6 @@
 """Image processing and decoding ops.
 
 See the @{$python/image} guide.
-
-@@decode_bmp
-@@decode_gif
-@@decode_jpeg
-@@encode_jpeg
-@@decode_png
-@@encode_png
-@@decode_image
-@@resize_images
-@@resize_area
-@@resize_bicubic
-@@resize_bilinear
-@@resize_nearest_neighbor
-@@resize_image_with_crop_or_pad
-@@central_crop
-@@pad_to_bounding_box
-@@crop_to_bounding_box
-@@extract_glimpse
-@@crop_and_resize
-@@flip_up_down
-@@random_flip_up_down
-@@flip_left_right
-@@random_flip_left_right
-@@transpose_image
-@@rot90
-
-@@rgb_to_grayscale
-@@grayscale_to_rgb
-@@hsv_to_rgb
-@@rgb_to_hsv
-@@convert_image_dtype
-@@adjust_brightness
-@@random_brightness
-@@adjust_contrast
-@@random_contrast
-@@adjust_hue
-@@random_hue
-@@adjust_gamma
-@@adjust_saturation
-@@random_saturation
-@@per_image_standardization
-@@draw_bounding_boxes
-@@non_max_suppression
-@@non_max_suppression_v2
-@@sample_distorted_bounding_box
-@@total_variation
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -80,13 +34,3 @@ from tensorflow.python.ops.image_ops_impl import *
 from tensorflow.python.ops.image_ops_impl import _Check3DImage
 from tensorflow.python.ops.image_ops_impl import _ImageDimensions
 # pylint: enable=unused-import
-
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = [
-    # ResizeMethod is not documented, but is documented in functions
-    # that use it.
-    'ResizeMethod',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

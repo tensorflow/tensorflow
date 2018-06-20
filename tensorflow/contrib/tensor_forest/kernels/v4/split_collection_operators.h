@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_
 
 #include <vector>
 #include "tensorflow/contrib/decision_trees/proto/generic_tree_model.pb.h"
@@ -56,16 +56,22 @@ class SplitCollectionOperator {
 
   // Create a new candidate and initialize it with the given example.
   virtual void CreateAndInitializeCandidateWithExample(
-      const std::unique_ptr<TensorDataSet>& input_data, int example,
-      int32 node_id) const;
+      const std::unique_ptr<TensorDataSet>& input_data,
+      const InputTarget* target, int example, int32 node_id) const;
 
   // Create a new GrowStats for the given node id and initialize it.
   virtual void InitializeSlot(int32 node_id, int32 depth);
 
-  // Perform any necessary cleanup for any tracked state for the slot.
-  virtual void ClearSlot(int32 node_id) {
-    stats_.erase(node_id);
+  // Called when the resource is deserialized, possibly needing an
+  // initialization.
+  virtual void MaybeInitialize() {
+    if (stats_.empty()) {
+      InitializeSlot(0, 0);
+    }
   }
+
+  // Perform any necessary cleanup for any tracked state for the slot.
+  virtual void ClearSlot(int32 node_id) { stats_.erase(node_id); }
 
   // Return true if slot is fully initialized.
   virtual bool IsInitialized(int32 node_id) const;
@@ -120,6 +126,4 @@ class AnyCollectionCreator : public CollectionCreator {
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-
-
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_SPLIT_COLLECTION_OPERATORS_H_

@@ -114,20 +114,18 @@ class SparseFillEmptyRowsOp : public OpKernel {
                                           &scratch_t));
     auto scratch = scratch_t.vec<int64>();
     scratch.device(d) = scratch.constant(0);
-    int64 prev_row = -1;
     for (int i = 0; i < N; ++i) {
       const int64 row = indices(i, 0);
-      OP_REQUIRES(context, indices(i, 0) >= 0 && indices(i, 0) < dense_rows,
+      OP_REQUIRES(context, row >= 0 && row < dense_rows,
                   errors::InvalidArgument("indices(", i, ", 0) is invalid: ",
-                                          indices(i, 0), " >= ", dense_rows));
-      prev_row = row;
+                                          row, " >= ", dense_rows));
       ++scratch(indices(i, 0));
     }
     for (int row = 0; row < dense_rows; ++row) {
       // Scratch here describes the number of elements in this dense row
       empty_row_indicator(row) = (scratch(row) == 0);
       // In filled version, each row has at least one element.
-      scratch(row) = std::max(scratch(row), 1LL);
+      scratch(row) = std::max(scratch(row), int64{1});
       // Update scratch to represent the number of elements up to and
       // including dense_row + 1:
       //  scratch(0) == #{elements of row 0}

@@ -22,22 +22,11 @@ from __future__ import print_function
 from tensorflow.python.estimator.export.export import build_parsing_serving_input_receiver_fn
 from tensorflow.python.estimator.export.export import build_raw_serving_input_receiver_fn
 from tensorflow.python.estimator.export.export import ServingInputReceiver
+from tensorflow.python.estimator.export.export import TensorServingInputReceiver
 from tensorflow.python.estimator.export.export_output import ClassificationOutput
 from tensorflow.python.estimator.export.export_output import ExportOutput
 from tensorflow.python.estimator.export.export_output import PredictOutput
 from tensorflow.python.estimator.export.export_output import RegressionOutput
 
-from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long
 
-_allowed_symbols = [
-    'build_parsing_serving_input_receiver_fn',
-    'build_raw_serving_input_receiver_fn',
-    'ServingInputReceiver',
-    'ClassificationOutput',
-    'ExportOutput',
-    'PredictOutput',
-    'RegressionOutput',
-]
-
-remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

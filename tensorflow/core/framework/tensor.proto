@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "TensorProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 import "tensorflow/core/framework/resource_handle.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
@@ -40,8 +40,8 @@ message TensorProto {
   // be set.  The values hold the flattened representation of the tensor in
   // row major order.
 
-  // DT_HALF. Note that since protobuf has no int16 type, we'll have some
-  // pointless zero padding for each value here.
+  // DT_HALF, DT_BFLOAT16. Note that since protobuf has no int16 type, we'll
+  // have some pointless zero padding for each value here.
   repeated int32 half_val = 13 [packed = true];
 
   // DT_FLOAT.
@@ -72,4 +72,23 @@ message TensorProto {
 
   // DT_RESOURCE
   repeated ResourceHandleProto resource_handle_val = 14;
+
+  // DT_VARIANT
+  repeated VariantTensorDataProto variant_val = 15;
+
+  // DT_UINT32
+  repeated uint32 uint32_val = 16 [packed = true];
+
+  // DT_UINT64
+  repeated uint64 uint64_val = 17 [packed = true];
 };
+
+// Protocol buffer representing the serialization format of DT_VARIANT tensors.
+message VariantTensorDataProto {
+  // Name of the type of objects being serialized.
+  string type_name = 1;
+  // Portions of the object that are not Tensors.
+  bytes metadata = 2;
+  // Tensors contained within objects being serialized.
+  repeated TensorProto tensors = 3;
+}

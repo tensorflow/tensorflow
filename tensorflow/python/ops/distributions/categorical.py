@@ -29,8 +29,36 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
+def _broadcast_cat_event_and_params(event, params, base_dtype):
+  """Broadcasts the event or distribution parameters."""
+  if event.dtype.is_integer:
+    pass
+  elif event.dtype.is_floating:
+    # When `validate_args=True` we've already ensured int/float casting
+    # is closed.
+    event = math_ops.cast(event, dtype=dtypes.int32)
+  else:
+    raise TypeError("`value` should have integer `dtype` or "
+                    "`self.dtype` ({})".format(base_dtype))
+  shape_known_statically = (
+      params.shape.ndims is not None and
+      params.shape[:-1].is_fully_defined() and
+      event.shape.is_fully_defined())
+  if not shape_known_statically or params.shape[:-1] != event.shape:
+    params *= array_ops.ones_like(event[..., array_ops.newaxis],
+                                  dtype=params.dtype)
+    params_shape = array_ops.shape(params)[:-1]
+    event *= array_ops.ones(params_shape, dtype=event.dtype)
+    if params.shape.ndims is not None:
+      event.set_shape(tensor_shape.TensorShape(params.shape[:-1]))
+
+  return event, params
+
+
+@tf_export("distributions.Categorical")
 class Categorical(distribution.Distribution):
   """Categorical distribution.
 
@@ -153,8 +181,8 @@ class Categorical(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[logits, probs]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[logits, probs]) as name:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,
           probs=probs,
@@ -236,7 +264,9 @@ class Categorical(distribution.Distribution):
       logits_2d = self.logits
     else:
       logits_2d = array_ops.reshape(self.logits, [-1, self.event_size])
-    draws = random_ops.multinomial(logits_2d, n, seed=seed)
+    sample_dtype = dtypes.int64 if self.dtype.size > 4 else dtypes.int32
+    draws = random_ops.multinomial(
+        logits_2d, n, seed=seed, output_dtype=sample_dtype)
     draws = array_ops.reshape(
         array_ops.transpose(draws),
         array_ops.concat([[n], self.batch_shape_tensor()], 0))
@@ -248,43 +278,30 @@ class Categorical(distribution.Distribution):
       k = distribution_util.embed_check_integer_casting_closed(
           k, target_dtype=dtypes.int32)
 
-    # If there are multiple batch dimension, flatten them into one.
-    batch_flattened_probs = array_ops.reshape(self._probs,
-                                              [-1, self._event_size])
+    k, probs = _broadcast_cat_event_and_params(
+        k, self.probs, base_dtype=self.dtype.base_dtype)
+
+    # batch-flatten everything in order to use `sequence_mask()`.
+    batch_flattened_probs = array_ops.reshape(probs,
+                                              (-1, self._event_size))
     batch_flattened_k = array_ops.reshape(k, [-1])
 
-    # Form a tensor to sum over.
-    # We don't need to cast k to integer since `sequence_mask` does this for us.
-    mask_tensor = array_ops.sequence_mask(batch_flattened_k, self._event_size)
-    to_sum_over = array_ops.where(mask_tensor,
-                                  batch_flattened_probs,
-                                  array_ops.zeros_like(batch_flattened_probs))
-    batch_flat_cdf = math_ops.reduce_sum(to_sum_over, axis=-1)
-    return array_ops.reshape(batch_flat_cdf, self._batch_shape())
+    to_sum_over = array_ops.where(
+        array_ops.sequence_mask(batch_flattened_k, self._event_size),
+        batch_flattened_probs,
+        array_ops.zeros_like(batch_flattened_probs))
+    batch_flattened_cdf = math_ops.reduce_sum(to_sum_over, axis=-1)
+    # Reshape back to the shape of the argument.
+    return array_ops.reshape(batch_flattened_cdf, array_ops.shape(k))
 
   def _log_prob(self, k):
     k = ops.convert_to_tensor(k, name="k")
     if self.validate_args:
       k = distribution_util.embed_check_integer_casting_closed(
           k, target_dtype=dtypes.int32)
+    k, logits = _broadcast_cat_event_and_params(
+        k, self.logits, base_dtype=self.dtype.base_dtype)
 
-    if self.logits.get_shape()[:-1] == k.get_shape():
-      logits = self.logits
-    else:
-      logits = self.logits * array_ops.ones_like(
-          array_ops.expand_dims(k, -1), dtype=self.logits.dtype)
-      logits_shape = array_ops.shape(logits)[:-1]
-      k *= array_ops.ones(logits_shape, dtype=k.dtype)
-      k.set_shape(tensor_shape.TensorShape(logits.get_shape()[:-1]))
-      if k.dtype.is_integer:
-        pass
-      elif k.dtype.is_floating:
-        # When `validate_args=True` we've already ensured int/float casting
-        # is closed.
-        return ops.cast(k, dtype=dtypes.int32)
-      else:
-        raise TypeError("`value` should have integer `dtype` or "
-                        "`self.dtype` ({})".format(self.dtype.base_dtype))
     return -nn_ops.sparse_softmax_cross_entropy_with_logits(labels=k,
                                                             logits=logits)
 
@@ -293,7 +310,7 @@ class Categorical(distribution.Distribution):
         nn_ops.log_softmax(self.logits) * self.probs, axis=-1)
 
   def _mode(self):
-    ret = math_ops.argmax(self.logits, dimension=self._batch_rank)
+    ret = math_ops.argmax(self.logits, axis=self._batch_rank)
     ret = math_ops.cast(ret, self.dtype)
     ret.set_shape(self.batch_shape)
     return ret

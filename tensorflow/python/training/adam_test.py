@@ -21,9 +21,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -148,9 +150,9 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllClose(aggregated_update_var.eval(),
                               repeated_index_update_var.eval())
 
-  def doTestBasic(self, use_resource=False):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+  def doTestBasic(self, use_resource=False, use_callable_params=False):
+    for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
+      with self.test_session(graph=ops.Graph()):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -159,41 +161,79 @@ class AdamOptimizerTest(test.TestCase):
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
         if use_resource:
-          var0 = resource_variable_ops.ResourceVariable(var0_np)
-          var1 = resource_variable_ops.ResourceVariable(var1_np)
+          var0 = resource_variable_ops.ResourceVariable(
+              var0_np, name="var0_%d" % i)
+          var1 = resource_variable_ops.ResourceVariable(
+              var1_np, name="var1_%d" % i)
         else:
           var0 = variables.Variable(var0_np)
           var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
-        opt = adam.AdamOptimizer()
-        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
 
-        # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        learning_rate = lambda: 0.001
+        beta1 = lambda: 0.9
+        beta2 = lambda: 0.999
+        epsilon = lambda: 1e-8
+        if not use_callable_params:
+          learning_rate = learning_rate()
+          beta1 = beta1()
+          beta2 = beta2()
+          epsilon = epsilon()
+
+        opt = adam.AdamOptimizer(learning_rate=learning_rate)
+        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        opt_variables = opt.variables()
+        beta1_power, beta2_power = opt._get_beta_accumulators()
+        self.assertTrue(beta1_power is not None)
+        self.assertTrue(beta2_power is not None)
+        self.assertIn(beta1_power, opt_variables)
+        self.assertIn(beta2_power, opt_variables)
+
+        if not context.executing_eagerly():
+          with ops.Graph().as_default():
+            # Shouldn't return non-slot variables from other graphs.
+            self.assertEqual(0, len(opt.variables()))
+          self.evaluate(variables.global_variables_initializer())
+          # Fetch params to validate initial values
+          self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+          self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         beta1_power, beta2_power = opt._get_beta_accumulators()
 
         # Run 3 steps of Adam
         for t in range(1, 4):
-          self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
-          update.run()
+          if not context.executing_eagerly():
+            self.evaluate(update)
+          elif t > 1:
+            opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+
+          self.assertAllCloseAccordingToType(0.9**(t + 1),
+                                             self.evaluate(beta1_power))
+          self.assertAllCloseAccordingToType(0.999**(t + 1),
+                                             self.evaluate(beta2_power))
 
           var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
           var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+          if use_resource:
+            self.assertEqual("var0_%d/Adam:0" % (i,),
+                             opt.get_slot(var=var0, name="m").name)
 
   def testBasic(self):
-    self.doTestBasic(use_resource=False)
+    with self.test_session():
+      self.doTestBasic(use_resource=False)
 
+  @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
+
+  def testBasicCallableParams(self):
+    with context.eager_mode():
+      self.doTestBasic(use_resource=True, use_callable_params=True)
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -292,6 +332,15 @@ class AdamOptimizerTest(test.TestCase):
         # fails.
         optimizer.apply_gradients([(grads0, var0)])
 
+  def testSlotsUniqueEager(self):
+    with context.eager_mode():
+      v1 = resource_variable_ops.ResourceVariable(1.)
+      v2 = resource_variable_ops.ResourceVariable(1.)
+      opt = adam.AdamOptimizer(1.)
+      opt.minimize(lambda: v1 + v2)
+      # There should be two non-slot variables, and two unique slot variables
+      # for v1 and v2 respectively.
+      self.assertEqual(6, len(set(opt.variables())))
 
 if __name__ == "__main__":
   test.main()

@@ -26,9 +26,15 @@ tf_custom_op_py_library(
     deps = [
         ":resampler_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -78,15 +84,4 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:array_ops",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

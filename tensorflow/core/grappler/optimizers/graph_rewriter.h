@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_GRAPH_REWRITER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_GRAPH_REWRITER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_REWRITER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_REWRITER_H_
 
 #include <unordered_map>
 #include <unordered_set>
@@ -47,12 +47,56 @@ class GraphRewriter {
   // edge.
   bool IsDrivenByControlDependency(const NodeDef& node) const;
 
+  // Returns true if at least one of the nodes in the direct fanin or the direct
+  // fanout (excluding control dependencies) of 'node' is a function.
+  bool IsConnectedToFunction(const NodeDef& node) const;
+
+  // Returns true if the node is driven by at least one node placed on another
+  // device.
+  bool IsDrivenByAnotherDevice(const NodeDef& node) const;
+
+  // Returns true if the node has input from a stateful op.
+  bool ReceivesRefValue(const NodeDef& node) const;
+
+  // Returns true if the node is driven by a Switch node.
+  bool IsDrivenBySwitch(const NodeDef& node) const;
+
+  // Returns true if the node feeds a Merge node.
+  bool FeedsMerge(const NodeDef& node) const;
+
+  // Returns true if removal of this degree would increase edge count, i.e. if
+  // in-degree * out-degree > in-degree + out-degree or if the condition could
+  // not be verified.
+  bool RemovalIncreasesEdgeCount(const NodeDef& node) const;
+
  private:
-  std::unordered_map<string, const NodeDef*> nodes_;
+  void RecordConnectivity(const NodeDef& node,
+                          const std::unordered_set<string>& function_names);
+  void ForwardInputsInternal(
+      const NodeDef& original_node,
+      const std::unordered_set<const NodeDef*>& nodes_to_delete,
+      bool add_as_control, NodeDef* new_node);
+
+  struct NodeInfo {
+    int out_degree = 0;
+    const NodeDef* def;
+
+    // These are filled in when the NodeInfo is built, but not that they
+    // may be empty - if the op could not be loaded from the registry.
+    DataTypeVector outputs;
+  };
+
+  std::unordered_map<string, std::unique_ptr<NodeInfo>> nodes_;
+  std::unordered_map<string, const NodeDef*> optimized_nodes_;
   std::unordered_set<const NodeDef*> control_dependency_drivers_;
+  std::unordered_set<const NodeDef*> function_neighbors_;
+  std::unordered_set<const NodeDef*> cross_device_receivers_;
+  std::unordered_set<const NodeDef*> ref_receivers_;
+  std::unordered_set<const NodeDef*> switch_receivers_;
+  std::unordered_set<const NodeDef*> merge_feeders_;
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_GRAPH_REWRITER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_REWRITER_H_

@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -89,7 +90,6 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
 
 static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
                              Tensor* output) {
-
   tensorflow::uint64 file_size = 0;
   TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
 
@@ -124,29 +124,29 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
 
   // read file_name into a tensor named input
   Tensor input(tensorflow::DT_STRING, tensorflow::TensorShape());
-  TF_RETURN_IF_ERROR(ReadEntireFile(tensorflow::Env::Default(), file_name,
-                                    &input));
+  TF_RETURN_IF_ERROR(
+      ReadEntireFile(tensorflow::Env::Default(), file_name, &input));
 
   // use a placeholder to read input data
-  auto file_reader = Placeholder(root.WithOpName("input"),
-                                 tensorflow::DataType::DT_STRING);
+  auto file_reader =
+      Placeholder(root.WithOpName("input"), tensorflow::DataType::DT_STRING);
 
   std::vector<std::pair<string, tensorflow::Tensor>> inputs = {
-    {"input", input},
+      {"input", input},
   };
 
   // Now try to figure out what kind of file it is and decode it.
   const int wanted_channels = 3;
   tensorflow::Output image_reader;
-  if (tensorflow::StringPiece(file_name).ends_with(".png")) {
+  if (tensorflow::str_util::EndsWith(file_name, ".png")) {
     image_reader = DecodePng(root.WithOpName("png_reader"), file_reader,
                              DecodePng::Channels(wanted_channels));
-  } else if (tensorflow::StringPiece(file_name).ends_with(".gif")) {
+  } else if (tensorflow::str_util::EndsWith(file_name, ".gif")) {
     // gif decoder returns 4-D tensor, remove the first dim
     image_reader =
         Squeeze(root.WithOpName("squeeze_first_dim"),
                 DecodeGif(root.WithOpName("gif_reader"), file_reader));
-  } else if (tensorflow::StringPiece(file_name).ends_with(".bmp")) {
+  } else if (tensorflow::str_util::EndsWith(file_name, ".bmp")) {
     image_reader = DecodeBmp(root.WithOpName("bmp_reader"), file_reader);
   } else {
     // Assume if it's neither a PNG nor a GIF then it must be a JPEG.
@@ -285,8 +285,8 @@ int main(int argc, char* argv[]) {
       "tensorflow/examples/label_image/data/imagenet_slim_labels.txt";
   int32 input_width = 299;
   int32 input_height = 299;
-  int32 input_mean = 0;
-  int32 input_std = 255;
+  float input_mean = 0;
+  float input_std = 255;
   string input_layer = "input";
   string output_layer = "InceptionV3/Predictions/Reshape_1";
   bool self_test = false;

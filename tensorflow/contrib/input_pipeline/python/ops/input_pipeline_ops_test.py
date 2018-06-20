@@ -73,16 +73,16 @@ class InputPipelineOpsTest(test.TestCase):
       ])
       self._assert_output([b"a", b"b", b"c"], session, elem)
 
-  def testSeekNextLimitEpochsTwo(self):
+  def testSeekNextLimitEpochsThree(self):
     string_list = ["a", "b", "c"]
     with self.test_session() as session:
-      elem = input_pipeline_ops.seek_next(string_list, num_epochs=2)
+      elem = input_pipeline_ops.seek_next(string_list, num_epochs=3)
       session.run([
           variables.local_variables_initializer(),
           variables.global_variables_initializer()
       ])
-      # Expect to see [a, b, c] two times.
-      self._assert_output([b"a", b"b", b"c"] * 2, session, elem)
+      # Expect to see [a, b, c] three times.
+      self._assert_output([b"a", b"b", b"c"] * 3, session, elem)
 
 
 if __name__ == "__main__":

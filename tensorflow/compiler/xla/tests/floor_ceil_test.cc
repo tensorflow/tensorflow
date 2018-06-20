@@ -16,9 +16,8 @@ limitations under the License.
 #include <limits>
 #include <string>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -42,7 +41,7 @@ class FloorCeilTest : public ClientLibraryTestBase {
                  tensorflow::gtl::ArraySlice<float> expected, Function f) {
     LOG(INFO) << "input: {" << tensorflow::str_util::Join(expected, ", ")
               << "}";
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto c = builder.ConstantR1<float>(input);
     if (f == kCeil) {
       builder.Ceil(c);
@@ -55,7 +54,7 @@ class FloorCeilTest : public ClientLibraryTestBase {
 
   void TestR0F32(float input, float expected, Function f) {
     LOG(INFO) << "input: " << expected;
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto c = builder.ConstantR0<float>(input);
     if (f == kCeil) {
       builder.Ceil(c);
@@ -109,20 +108,3 @@ TEST_F(FloorCeilTest, R0Ceil) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

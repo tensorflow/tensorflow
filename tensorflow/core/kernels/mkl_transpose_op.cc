@@ -15,10 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(DO_NOT_USE_ML)
 #define EIGEN_USE_THREADS
 
-#include "third_party/mkl/include/mkl_trans.h"
+#include "mkl_trans.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/kernels/transpose_op.h"
 
@@ -39,28 +39,116 @@ namespace tensorflow {
 // REQUIRES: input.dims() == perm.size().
 // REQUIRES: perm is a permutation.
 
+namespace {
+template <typename T>
+Status MKLTranspose2D(const char trans, const Tensor& in, Tensor* out);
+
+// Documentation here: https://software.intel.com/en-us/node/520863
+// Parameters: (ordering:row-major, operation:transpose, num_rows, num_cols,
+//              alpha (for scaling), array, dist_bet_adjacent_cols/rows
+//              (source), array, dist_bet_adjacent_cols/rows (dest))
+
+#define INSTANTIATE(T, PREFIX)                                                \
+  template <>                                                                 \
+  Status MKLTranspose2D<T>(const char trans, const Tensor& in, Tensor* out) { \
+    mkl_##PREFIX##omatcopy('R', trans, in.dim_size(0), in.dim_size(1), 1,     \
+                           in.flat<T>().data(), in.dim_size(1),               \
+                           out->flat<T>().data(), in.dim_size(0));            \
+    return Status::OK();                                                      \
+  }
+
+INSTANTIATE(float, s)
+INSTANTIATE(double, d)
+
+#undef INSTANTIATE
+
+template <>
+Status MKLTranspose2D<complex64>(const char trans, const Tensor& in,
+                                 Tensor* out) {
+  const MKL_Complex8 alpha = {1.0f, 0.0f};
+  mkl_comatcopy(
+      'R', trans, in.dim_size(0), in.dim_size(1), alpha,
+      reinterpret_cast<const MKL_Complex8*>(in.flat<complex64>().data()),
+      in.dim_size(1),
+      reinterpret_cast<MKL_Complex8*>(
+          const_cast<complex64*>(out->flat<complex64>().data())),
+      in.dim_size(0));
+  return Status::OK();
+}
+
+template <>
+Status MKLTranspose2D<complex128>(const char trans, const Tensor& in,
+                                  Tensor* out) {
+  const MKL_Complex16 alpha = {1.0, 0.0};
+  mkl_zomatcopy(
+      'R', trans, in.dim_size(0), in.dim_size(1), alpha,
+      reinterpret_cast<const MKL_Complex16*>(in.flat<complex128>().data()),
+      in.dim_size(1),
+      reinterpret_cast<MKL_Complex16*>(
+          const_cast<complex128*>(out->flat<complex128>().data())),
+      in.dim_size(0));
+  return Status::OK();
+}
+
+static const char kMKLTranspose = 'T';
+static const char kMKLConjugateTranspose = 'C';
+
+}  // namespace
+
 Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                       gtl::ArraySlice<int32> perm,
                                       Tensor* out) {
-  if (in.dims() == 2 && in.dtype() == DT_FLOAT) {
-    float* user_o = out->flat<float>().data();
-    const float* user_i = in.flat<float>().data();
-
-    // Documentation here: https://software.intel.com/en-us/node/520863
-    // Parameters: (ordering:row-major, operation:transpose, num_rows, num_cols,
-    //              alpha (for scaling), array, dist_bet_adjacent_cols/rows
-    //              (source), array, dist_bet_adjacent_cols/rows (dest))
-    mkl_somatcopy('R', 'T', in.dim_size(0), in.dim_size(1), 1, user_i,
-                  in.dim_size(1), user_o, in.dim_size(0));
-
-    return Status::OK();
+  if (in.dims() == 2) {
+    if (perm[0] == 0 && perm[1] == 1) {
+      return Status::OK();
+    }
+    switch (in.dtype()) {
+      case DT_FLOAT:
+        return MKLTranspose2D<float>(kMKLTranspose, in, out);
+      case DT_DOUBLE:
+        return MKLTranspose2D<double>(kMKLTranspose, in, out);
+      case DT_COMPLEX64:
+        return MKLTranspose2D<complex64>(kMKLTranspose, in, out);
+      case DT_COMPLEX128:
+        return MKLTranspose2D<complex128>(kMKLTranspose, in, out);
+      default:
+        break;
+    }
   }
-
   // Fallback to eigen if transpose parameters not supported by MKL
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
                                    out);
-}  // MklTransposeCpuOp::DoTranspose
+}
+
+Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
+                                               const Tensor& in,
+                                               gtl::ArraySlice<int32> perm,
+                                               Tensor* out) {
+  if (in.dims() == 2 && perm[0] == 1 && perm[1] == 0) {
+    // TODO(rmlarsen): By setting lda and ldb, we could use the MKL kernels
+    // for any transpose that can be reduced to swapping the last two
+    // dimensions in a rank-3 tensor. We can even run each outer dimension in
+    // a separate thread.
+    switch (in.dtype()) {
+      case DT_FLOAT:
+        return MKLTranspose2D<float>(kMKLTranspose, in, out);
+      case DT_DOUBLE:
+        return MKLTranspose2D<double>(kMKLTranspose, in, out);
+      case DT_COMPLEX64:
+        return MKLTranspose2D<complex64>(kMKLConjugateTranspose, in, out);
+      case DT_COMPLEX128:
+        return MKLTranspose2D<complex128>(kMKLConjugateTranspose, in, out);
+      default:
+        break;
+    }
+  }
+  // Fallback to eigen if transpose parameters not supported by MKL
+  typedef Eigen::ThreadPoolDevice CPUDevice;
+  return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<CPUDevice>(), in,
+                                            perm, out);
+}
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

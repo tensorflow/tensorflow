@@ -16,8 +16,9 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
-#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradients.h"
+#include "tensorflow/cc/framework/while_gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -65,7 +67,7 @@ class SymbolicGradientBuilder {
   // gradients for the node associated with `src`.
   Status BackpropAlongEdge(const Output& dst_grad, const Output& src);
 
-  // Adds a node to the graph (returned in`grad`) that sums the in-bound
+  // Adds a node to the graph (returned in `grad`) that sums the in-bound
   // gradients to `src` (if there are more than one).
   Status SumGradients(const Output& src, Output* grad);
 
@@ -78,6 +80,24 @@ class SymbolicGradientBuilder {
                           const std::vector<Output>& grad_inputs,
                           std::vector<Output>* grad_outputs);
 
+  // Returns a list mapping whether each node in the graph is reachable
+  // from outputs_. Keyed by node id.
+  std::vector<bool> GetReachableNodes();
+
+  // Creates the gradient subgraph for a while loop (or just stores
+  // `summed_grads` if not all incoming gradients are available yet). All exit
+  // nodes (which are the first nodes of a loop encountered in the backwards
+  // pass) are passed to this function rather than processed normally.
+  // `summed_grads` is the sum of `exit_node`s gradients.
+  Status ProcessWhileLoop(Node* exit_node, const Output& summed_grads);
+
+  // Gets the set of node ids at which to stop backprop. These are all elements
+  // of `outputs_` that do not get transitively consumed by other `outputs_`.
+  // Used to identify nodes at which to stop backprop.
+  std::unordered_set<int> GetStopBackpropNodes(
+      const std::vector<bool>& reachable_nodes,
+      std::unordered_set<int> output_nodes);
+
   const Scope& scope_;
   const ops::GradOpRegistry* registry_;
   const std::vector<Output>& outputs_;
@@ -85,14 +105,13 @@ class SymbolicGradientBuilder {
   const std::vector<Output>& grad_inputs_;
   std::vector<Output>* grad_outputs_;
 
-  // A vector of output endpoints which represents backpropagated
-  // gradients
-  typedef std::vector<Output> BackpropedGradients;
+  // A vector of output endpoints which represents backpropagated gradients.
+  typedef std::vector<Output> BackproppedGradients;
 
   // backprops_ is a map from a node output to its accumulated
   // gradients.  When a node output has accumulated all its
   // gradients, we add a node which sums them up.
-  std::unordered_map<Output, BackpropedGradients, OutputHash, OutputEq>
+  std::unordered_map<Output, BackproppedGradients, OutputHash, OutputEq>
       backprops_;
 
   // pending[i] is count-down counter for i-th node's expected
@@ -105,13 +124,15 @@ class SymbolicGradientBuilder {
   // gradients from `grad_inputs_`.
   std::deque<Node*> ready_;
 
-  // The set of node ids in `outputs_`. Used to identify nodes at which to stop
-  // backprop.
-  std::unordered_set<int> output_nodes_;
-
   // The set of node ids in `inputs_`. Used to identify nodes at backprop
   // frontier. Maps from Output -> index into `grad_outputs_`.
   std::unordered_map<Output, int, OutputHash, OutputEq> input_nodes_;
+
+  // For each while loop in the graph, collects the summed gradients for each of
+  // the loop's exit nodes. Note that unlike backprops_, this map contains the
+  // output of SumGradients(), not the input (i.e. each exit node may have
+  // multiple incoming gradients, but we only store the combined Output here).
+  std::map<WhileContext*, std::map<Node*, Output>> while_backprops_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientBuilder);
 };
@@ -143,18 +164,114 @@ Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
   return Status::OK();
 }
 
+std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
+  std::vector<bool> reachable_nodes(scope_.graph()->num_node_ids(), false);
+  std::deque<Node*> queue;
+  std::vector<bool> visited(scope_.graph()->num_node_ids(), false);
+  for (const Output& out : outputs_) {
+    if (!reachable_nodes[out.node()->id()]) {
+      queue.push_back(out.node());
+      reachable_nodes[out.node()->id()] = true;
+    }
+  }
+
+  while (!queue.empty()) {
+    Node* n = queue.front();
+    queue.pop_front();
+    for (const Edge* e : n->in_edges()) {
+      if (e->IsControlEdge()) continue;
+      if (visited[e->src()->id()]) continue;
+      queue.push_back(e->src());
+      reachable_nodes[e->src()->id()] = true;
+      visited[e->src()->id()] = true;
+    }
+  }
+  return reachable_nodes;
+}
+
+std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
+    const std::vector<bool>& reachable_nodes,
+    std::unordered_set<int> output_nodes) {
+  // Output nodes that get transitively consumed by other `outputs_` are stored
+  // in `internal_outputs`.
+  std::unordered_set<int> internal_outputs;
+  std::unordered_set<Node*> visited;
+  // Initialize `queue` for BFS traversal. Nodes in `queue` hold upcoming nodes
+  // along with the last Node in `output_` encountered along that path. If no
+  // `output_` node was encountered, pair.second will be nullptr.
+  std::deque<std::pair<Node*, Node*>> queue;
+  for (const Output& nout : inputs_) {
+    if (visited.find(nout.node()) == visited.end()) {
+      queue.push_back(std::make_pair(nout.node(), static_cast<Node*>(nullptr)));
+      visited.insert(nout.node());
+    }
+  }
+  // BFS from nodes in 'inputs_' along out edges for the entire graph. Internal
+  // output nodes are recorded during the traversal. All nodes that are output
+  // nodes but not internal output nodes are considered the frontier of the
+  // output nodes, and thus our stop backprop nodes.
+  while (!queue.empty()) {
+    std::pair<Node*, Node*> p = queue.front();
+    Node* n = p.first;
+    queue.pop_front();
+    for (const Edge* e : n->out_edges()) {
+      // If a node is not reachable from outputs_, we can stop.
+      if (e->IsControlEdge() || !reachable_nodes[e->dst()->id()]) continue;
+      if (visited.find(e->dst()) != visited.end()) continue;
+
+      int node_id = e->dst()->id();
+      Node* last_output_node = p.second;
+      if (output_nodes.find(node_id) != output_nodes.end()) {
+        // We reached an output node.
+        if (last_output_node != nullptr) {
+          // If we had already found an output node on this path so we mark
+          // it as an internal output.
+          internal_outputs.insert(last_output_node->id());
+        }
+        // Mark this newly found output node to insert in the queue.
+        last_output_node = e->dst();
+      }
+      queue.push_back(std::make_pair(e->dst(), last_output_node));
+      visited.insert(e->dst());
+    }
+  }
+  // Finally, we set stop_backprop_nodes to all output_nodes that aren't also
+  // internal_outputs.
+  std::unordered_set<int> stop_backprop_nodes;
+  for (int output_node : output_nodes) {
+    if (internal_outputs.find(output_node) == internal_outputs.end()) {
+      stop_backprop_nodes.insert(output_node);
+    }
+  }
+  return stop_backprop_nodes;
+}
+
 Status SymbolicGradientBuilder::Initialize() {
   if (outputs_.size() != grad_inputs_.size()) {
     return errors::InvalidArgument(
         "Must specify a gradient input for each output.");
   }
+  std::vector<bool> reachable_nodes = GetReachableNodes();
+  for (const Output& input : inputs_) {
+    if (!reachable_nodes[input.node()->id()]) {
+      return errors::InvalidArgument(
+          "Cannot compute the partial derivative for node '",
+          input.node()->name(),
+          "' as it's unreachable from the output node(s).");
+    }
+  }
   grad_outputs_->clear();
   grad_outputs_->resize(inputs_.size());
-  // Populate `output_nodes_` from node ids in `outputs_`.
-  output_nodes_.reserve(outputs_.size());
+
+  std::unordered_set<int> output_nodes;
+  output_nodes.reserve(outputs_.size());
   for (size_t i = 0; i < outputs_.size(); ++i) {
-    output_nodes_.insert(outputs_[i].node()->id());
+    output_nodes.insert(outputs_[i].node()->id());
   }
+
+  std::unordered_set<int> stop_backprop_nodes =
+      GetStopBackpropNodes(reachable_nodes, output_nodes);
+
   // Populate `input_nodes_` from Outputs in `inputs_`.
   input_nodes_.reserve(inputs_.size());
   for (size_t i = 0; i < inputs_.size(); ++i) {
@@ -185,19 +302,23 @@ Status SymbolicGradientBuilder::Initialize() {
         backprops_[{n, i}].clear();
       }
       int num_expected_backprops = 0;
-      if (output_nodes_.find(n->id()) == output_nodes_.end()) {
+      if (stop_backprop_nodes.find(n->id()) == stop_backprop_nodes.end()) {
         // Internal node: continue BFS along connected outputs.
         for (const Edge* e : n->out_edges()) {
-          if (e->IsControlEdge()) continue;
-          ++num_expected_backprops;
+          // If a node is not reachable from outputs_,
+          // we don't expect it to receive a backpropagated gradient.
+          // It will not be counted in num_expected_backprops.
+          if (e->IsControlEdge() || !reachable_nodes[e->dst()->id()]) continue;
           if (visited.find(e->dst()) == visited.end()) {
             queue.push_back(e->dst());
             visited.insert(e->dst());
           }
+          ++num_expected_backprops;
         }
-      } else {
-        // Output node: stop BFS and update `num_expected_backprops` for
-        // each Output in `outputs_` that references `n`.
+      }
+      if (output_nodes.find(n->id()) != output_nodes.end()) {
+        // Output node: update `num_expected_backprops` for each Output in
+        // `outputs_` that references `n`.
         for (const Output& output : outputs_) {
           if (output.node() == n) {
             ++num_expected_backprops;
@@ -266,6 +387,53 @@ Status SymbolicGradientBuilder::CallGradFunction(
   return Status::OK();
 }
 
+Status SymbolicGradientBuilder::ProcessWhileLoop(Node* exit_node,
+                                                 const Output& summed_grads) {
+  // TODO(skyewm): detect second-order gradient and return bad status
+  // TODO(skyewm): handle (or at least detect) nested while loops
+
+  // TODO(skyewm): handle NoGradient in while loop
+  if (summed_grads == NoGradient()) {
+    return errors::Unimplemented(
+        "Missing gradient into while loop not yet implemented");
+  }
+
+  DCHECK(exit_node->IsExit());
+  WhileContext* while_ctx = exit_node->while_ctx();
+  DCHECK(while_ctx != nullptr);
+
+  // Record 'summed_grads' as the backprop input associated with 'exit_node'
+  std::map<Node*, Output>& backprops = while_backprops_[while_ctx];
+  DCHECK(backprops.find(exit_node) == backprops.end());
+  backprops[exit_node] = summed_grads;
+
+  // Wait until we have all exit nodes' backprops collected before processing
+  // the while loop.
+  // TODO(skyewm): what if not all the exit nodes are reachable?
+  if (backprops.size() < while_ctx->exit_nodes().size()) return Status::OK();
+
+  // We've seen all the exit nodes for this loop and have collected all the
+  // backprops. Create the gradient graph for the while loop.
+  Scope while_scope =
+      scope_.NewSubScope(strings::StrCat(while_ctx->frame_name(), "_grad"));
+  std::vector<Output> dy;
+  for (Node* n : while_ctx->exit_nodes()) dy.push_back(backprops[n]);
+  std::vector<Output> dx;
+  TF_RETURN_IF_ERROR(AddWhileLoopGradient(while_ctx, while_scope, dy, &dx));
+
+  // Backprop along the in edges to the while loop (i.e. the inputs to the enter
+  // nodes)
+  DCHECK_EQ(dx.size(), while_ctx->enter_nodes().size());
+  for (int i = 0; i < dx.size(); ++i) {
+    Node* enter_node = while_ctx->enter_nodes()[i];
+    for (const Edge* e : enter_node->in_edges()) {
+      if (e->IsControlEdge()) continue;
+      TF_RETURN_IF_ERROR(BackpropAlongEdge(dx[i], {e->src(), e->src_output()}));
+    }
+  }
+  return Status::OK();
+}
+
 Status SymbolicGradientBuilder::AddGradients() {
   // Initialize backprops.
   TF_RETURN_IF_ERROR(Initialize());
@@ -307,6 +475,18 @@ Status SymbolicGradientBuilder::AddGradients() {
     if (stop_node) {
       continue;
     }
+
+    // Special case: if we find an exit node, process the associated while loop.
+    // Note that ProcessWhileLoop() calls BackpropAlongEdge() if necessary
+    // (which updates ready_), and we skip all the regular processing below
+    // after calling it.
+    if (n->IsExit()) {
+      DCHECK_EQ(dy.size(), 1);
+      TF_RETURN_IF_ERROR(ProcessWhileLoop(n, dy[0]));
+      continue;
+    }
+    // All loop-specific control flow ops should have been handled above
+    DCHECK(!n->IsEnter() && !n->IsNextIteration()) << n->DebugString();
 
     const size_t num_no_grad = no_grad_dy_indices.size();
     if (IsPrimitiveOpWithNoGrad(n->type_string()) || num_no_grad == num_y) {
@@ -351,6 +531,23 @@ Status SymbolicGradientBuilder::AddGradients() {
       TF_RETURN_IF_ERROR(
           BackpropAlongEdge(dx[dx_index++], {e->src(), e->src_output()}));
     }
+  }
+
+  // Check if any input nodes still have pending gradients and have not been
+  // processed yet. This happens if not all outputs of a node are in 'inputs_'.
+  std::unordered_map<Node*, int> requested_grads;
+  for (const Output& nout : inputs_) {
+    if (pending_[nout.node()->id()] > 0) {
+      DCHECK_GT(nout.node()->num_outputs(), 1);
+      int idx = input_nodes_[nout];
+      DCHECK(((*grad_outputs_)[idx].node() == nullptr));
+      TF_RETURN_IF_ERROR(SumGradients(nout, &(*grad_outputs_)[idx]));
+      ++requested_grads[nout.node()];
+    }
+  }
+  for (const auto& p : requested_grads) {
+    int num_requested_inputs = p.first->num_outputs() - pending_[p.first->id()];
+    CHECK_EQ(num_requested_inputs, p.second);
   }
   return Status::OK();
 }

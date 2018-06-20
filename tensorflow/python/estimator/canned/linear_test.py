@@ -118,5 +118,24 @@ class LinearClassifierIntegrationTest(
         self, linear_classifier_fn=_linear_classifier_fn)
 
 
+# Tests for Linear logit_fn.
+class LinearLogitFnTest(linear_testing_utils.BaseLinearLogitFnTest,
+                        test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearLogitFnTest.__init__(self)
+
+
+# Tests for warm-starting with Linear logit_fn.
+class LinearWarmStartingTest(linear_testing_utils.BaseLinearWarmStartingTest,
+                             test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearWarmStartingTest.__init__(
+        self, _linear_classifier_fn, _linear_regressor_fn)
+
+
 if __name__ == '__main__':
   test.main()

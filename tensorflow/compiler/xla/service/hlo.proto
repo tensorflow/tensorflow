@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// DO NOT USE THESE PROTO MESSAGES FOR ANYTHING OTHER THAN DEBUGGING.
-//
-// Don't use these protos in the real compilation or execution codepaths. The
-// data format is meant for debugging only, and may change without notice.
+// This proto file defines messages which represent the HLO module. This is a
+// full fidelity serialization of the c++ HLO constructs.
 //
 // Many of the protos below are simple 1-to-1 serializations of the
-// corresponding C++ classes.
+// corresponding C++ classes, e.g., HloModule, HloComputation, and
+// HloInstruction.
 //
 // FIELD NAMES ARE IMPORTANT
 //
@@ -36,47 +35,160 @@ option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
 message HloInstructionProto {
+  reserved 10;
+  reserved "parameter_name";
+  reserved 12;
+  reserved "fused_instructions_computation";
+  reserved 4;
+  reserved "operand_names";
+  reserved 5;
+  reserved "control_predecessor_names";
+  reserved 6;
+  reserved "called_computation_names";
+
   string name = 1;
   string opcode = 2;
   xla.Shape shape = 3;
-  repeated string operand_names = 4;
-  repeated string control_predecessor_names = 5;
-  repeated string called_computation_names = 6;
 
   xla.OpMetadata metadata = 7;
 
   // Literal, only present for kConstant.
   xla.LiteralProto literal = 8;
 
-  // Parameter info, only present for kParameter.
+  // Parameter number is only present for kParameter.
   int64 parameter_number = 9;
-  string parameter_name = 10;
 
   // Fusion state, only present for kFusion.
   string fusion_kind = 11;
-  HloComputationProto fused_instructions_computation = 12;
 
   // Index for kGetTupleElement.
   int64 tuple_index = 13;
+
+  // Dimensions present for some operations that require reshaping or
+  // broadcasting, including Reshape, Reduce, ReduceWindow, and Reverse.
+  repeated int64 dimensions = 14;
+
+  // Describes the window in a windowed operation such as convolution.
+  xla.Window window = 15;
+
+  // Describes the dimension numbers used for a convolution.
+  xla.ConvolutionDimensionNumbers convolution_dimension_numbers = 16;
+
+  // Describes the [begin, end) index range and stride for slices.
+  message SliceDimensions {
+    int64 start = 1;
+    int64 limit = 2;
+    int64 stride = 3;
+  }
+  repeated SliceDimensions slice_dimensions = 17;
+
+  // The bit sizes for a reduce-precision operation.
+  int32 exponent_bits = 18;
+  int32 mantissa_bits = 19;
+
+  // Describes the [start, start + size) range size for a dynamic slice
+  // ('start' is specified dynamically in the second operand of the operation).
+  repeated int64 dynamic_slice_sizes = 20;
+
+  // The padding configuration that describes the edge padding and interior
+  // padding of this pad instruction. Only set for pad instructions.
+  xla.PaddingConfig padding_config = 21;
+
+  // Outfeed configuration information, only present for kOutfeed.
+  bytes outfeed_config = 22;
+
+  // The distribution requested for random number generation.
+  // Only present for kRng.
+  xla.RandomDistribution distribution = 23;
+
+  // A small float number added to the variance to avoid divide-by-zero error.
+  // Only present for kBatchNormTraining.
+  float epsilon = 24;
+
+  // An integer value representing the index of the feature dimension.
+  // Only present for kBatchNormTraining.
+  int64 feature_index = 25;
+
+  // Represents a unique identifier for each Send/Recv instruction pair.
+  // Only present for kSend or kRecv.
+  int64 channel_id = 26;
+
+  // The string representation of the infeed configuration.
+  bytes infeed_config = 27;
+
+  // Name of a global symbol to call, only present for kCustomCall.
+  string custom_call_target = 28;
+
+  // Shape of outfeed request.
+  xla.Shape outfeed_shape = 29;
+
+  // Describes the dimension numbers used for a dot operation
+  xla.DotDimensionNumbers dot_dimension_numbers = 30;
+
+  // FFT type (FFT, IFFT, etc).
+  xla.FftType fft_type = 31;
+
+  // FFT length.
+  repeated int64 fft_length = 32;
+
+  // Gather dimension numbers.
+  xla.GatherDimensionNumbers gather_dimension_numbers = 33;
+  repeated int64 gather_window_bounds = 34;
+
+  // Compute Host.
+  string channel_name = 41;
+  int64 cost_estimate_ns = 42;
+
+  // The id of this instruction.
+  int64 id = 35;
+
+  repeated int64 operand_ids = 36;
+  repeated int64 control_predecessor_ids = 37;
+  repeated int64 called_computation_ids = 38;
+  repeated int64 replica_group_ids = 44;
+
+  xla.OpSharding sharding = 40;
+
+  // Backend configuration for the instruction. Has backend-specific meaning.
+  string backend_config = 43;
 }
 
 // Serialization of HloComputation.
 message HloComputationProto {
+  reserved 3;
+  reserved "root_name";
+
   string name = 1;
 
   // The array of instructions is always in a valid dependency order, where
   // operands appear before their users.
   repeated HloInstructionProto instructions = 2;
+
+  // The program shape (with layout) of this computation.
+  xla.ProgramShape program_shape = 4;
+
+  // The id of this computation.
+  int64 id = 5;
+
+  // The id of the root of the computation.
+  int64 root_id = 6;
 }
 
 // Serialization of HloModule.
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
+  int64 entry_computation_id = 6;
 
   // The array of computations is always in a valid dependency order, where
   // callees appear before their callers.
   repeated HloComputationProto computations = 3;
+
+  // The program shape (with layout) of the entry computation.
+  xla.ProgramShape program_shape = 4;
+
+  // The id of this module.
+  int64 id = 5;
 }
 
 // Serialization of HloOrdering.
@@ -126,6 +238,7 @@ message BufferAllocationProto {
   bool is_reusable = 4;
   bool is_entry_computation_parameter = 5;
   int64 parameter_number = 6;
+  repeated int64 parameter_shape_index = 10;
   bool maybe_live_out = 7;
   int64 color = 8;
   repeated Assigned assigned = 9;
@@ -186,4 +299,21 @@ message HloProto {
   HloModuleProto hlo_module = 1;
   HloOrderingProto hlo_ordering = 2;
   BufferAssignmentProto buffer_assignment = 3;
+}
+
+// Encapsulates HloProto together with the arguments, result, and
+// execution_platform. This message is used for purposes such as
+// analysis/replay/file-storage.
+message HloSnapshot {
+  // The hlo graph.
+  HloProto hlo = 1;
+
+  // The arguments passed to the graph.
+  repeated LiteralProto arguments = 2;
+
+  // The result of the graph.
+  LiteralProto result = 3;
+
+  // The name of the platform used to run the graph.
+  string execution_platform = 4;
 }

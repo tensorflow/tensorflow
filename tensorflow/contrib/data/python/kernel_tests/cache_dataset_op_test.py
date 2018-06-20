@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,288 +12,179 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for the experimental features of CacheDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from os import path
-import shutil
-import tempfile
+import os
 
-import numpy as np
-
-from tensorflow.contrib.data.python.ops import dataset_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class FilesystemCacheDatasetTest(test.TestCase):
+class CacheToFileDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
 
   def setUp(self):
-    self.tmp_dir = tempfile.mkdtemp()
-    self.cache_prefix = path.join(self.tmp_dir, "cache")
+    self.range_size = 10
+    self.num_repeats = 3
+    self.num_outputs = self.range_size * self.num_repeats
+    self.cache_file_prefix = 'test'
 
-  def tearDown(self):
-    if self.tmp_dir:
-      shutil.rmtree(self.tmp_dir, ignore_errors=True)
+  def ds_fn(self):
+    return dataset_ops.Dataset.range(self.range_size).cache(
+        os.path.join(self.get_temp_dir(),
+                     self.cache_file_prefix)).repeat(self.num_repeats)
 
-  def testCacheDatasetPassthrough(self):
-    components = (np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
-                  np.array([9.0, 10.0, 11.0, 12.0]))
-    count_placeholder = array_ops.placeholder_with_default(
-        constant_op.constant(5, dtypes.int64), shape=[])
-    filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+  def expected_outputs(self):
+    return list(range(self.range_size)) * self.num_repeats
 
-    repeat_dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-                      .repeat(count_placeholder))
+  def testCheckpointBeforeOneEpoch(self):
+    # Generate 5 entries from iterator and save checkpoint.
+    outputs = self.gen_outputs(self.ds_fn, [], 5, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, range(5))
 
-    cache_dataset = repeat_dataset.cache(filename_placeholder)
+    # Restore from checkpoint and produce the rest of the elements from the
+    # iterator.
+    outputs.extend(
+        self.gen_outputs(
+            self.ds_fn, [],
+            self.num_outputs - 5,
+            ckpt_saved=True,
+            verify_exhausted=False))
+    self.assertSequenceEqual(outputs, self.expected_outputs())
 
-    self.assertEqual(
-        tuple([c.shape[1:] for c in components]), cache_dataset.output_shapes)
+  def testCheckpointBeforeOneEpochThenRunFewSteps(self):
+    # Generate 8 entries from iterator but save checkpoint after producing
+    # 5.
+    outputs = self.gen_outputs(
+        self.ds_fn, [5],
+        8,
+        verify_exhausted=False,
+        save_checkpoint_at_end=False)
+    self.assertSequenceEqual(outputs, range(8))
 
-    # Create initialization ops for iterators without and with
-    # caching, respectively.
-    iterator = dataset_ops.Iterator.from_structure(cache_dataset.output_types,
-                                                   cache_dataset.output_shapes)
-    init_fifo_op = iterator.make_initializer(repeat_dataset)
-    init_cache_op = iterator.make_initializer(cache_dataset)
+    # Restoring from checkpoint and running GetNext should return a
+    # `AlreadExistsError` now because the lockfile already exists.
+    with self.assertRaises(errors.AlreadyExistsError):
+      self.gen_outputs(
+          self.ds_fn, [],
+          self.num_outputs - 5,
+          ckpt_saved=True,
+          verify_exhausted=False)
 
-    get_next = iterator.get_next()
+  def testCheckpointAfterOneEpoch(self):
+    # Generate 15 entries from iterator and save checkpoint.
+    outputs = self.gen_outputs(self.ds_fn, [], 15, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) + list(range(5)))
 
-    with self.test_session() as sess:
-      # First run without caching to collect the "ground truth".
-      sess.run(init_fifo_op)
-      elements = []
-      for _ in range(20):
-        elements.append(sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    # Restore from checkpoint and produce the rest of the elements from the
+    # iterator.
+    outputs.extend(
+        self.gen_outputs(
+            self.ds_fn, [],
+            self.num_outputs - 15,
+            ckpt_saved=True,
+            verify_exhausted=False))
+    self.assertSequenceEqual(outputs, self.expected_outputs())
 
-      # Assert that the cached dataset has the same elements as the
-      # "ground truth".
-      sess.run(
-          init_cache_op, feed_dict={filename_placeholder: self.cache_prefix})
-      cached_elements = []
-      for _ in range(20):
-        cached_elements.append(sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      self.assertAllEqual(elements, cached_elements)
+  def testCheckpointAfterOneEpochThenRunFewSteps(self):
+    # Generate 18 entries from iterator but save checkpoint after producing
+    # 15.
+    outputs = self.gen_outputs(
+        self.ds_fn, [15],
+        18,
+        verify_exhausted=False,
+        save_checkpoint_at_end=False)
+    self.assertSequenceEqual(outputs, list(range(10)) + list(range(8)))
 
-      # Re-initialize with an empty upstream (to throw errors.OutOfRangeError
-      # if we didn't use the cache).
-      sess.run(
-          init_cache_op,
-          feed_dict={
-              count_placeholder: 0,
-              filename_placeholder: self.cache_prefix
-          })
-      replayed_elements = []
-      for _ in range(20):
-        replayed_elements.append(sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      self.assertEqual(cached_elements, replayed_elements)
+    outputs = list(range(10)) + list(range(5)) + self.gen_outputs(
+        self.ds_fn, [],
+        self.num_outputs - 15,
+        ckpt_saved=True,
+        verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
-      # Re-initialize with an empty upstream and a missing cache file (should
-      # throw errors.OutOfRangeError immediately).
-      sess.run(
-          init_cache_op,
-          feed_dict={
-              count_placeholder: 0,
-              filename_placeholder: self.cache_prefix + "nonsense"
-          })
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+  def testCheckpointBeforeOneEpochButRunCompleteEpoch(self):
+    # Generate 13 entries from iterator but save checkpoint after producing
+    # 5.
+    outputs = self.gen_outputs(
+        self.ds_fn, [5],
+        13,
+        verify_exhausted=False,
+        save_checkpoint_at_end=False)
+    self.assertSequenceEqual(outputs, list(range(10)) + list(range(3)))
 
-  def testConcurrentWriters(self):
-    components = (np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
-                  np.array([9.0, 10.0, 11.0, 12.0]))
-    filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+    # Since we ran for more than one epoch, the cache was completely written.
+    # The ckpt was saved when the iterator was in cache-write mode. Test that
+    # the iterator falls back to read mode after restoring if the cache has
+    # been completely written.
 
-    cache_dataset1 = (dataset_ops.Dataset.from_tensor_slices(components)
-                      .cache(filename_placeholder))
-    cache_dataset2 = (dataset_ops.Dataset.from_tensor_slices(components)
-                      .cache(filename_placeholder))
+    outputs = list(range(5)) + self.gen_outputs(
+        self.ds_fn, [],
+        self.num_outputs - 5,
+        ckpt_saved=True,
+        verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
-    iterator1 = cache_dataset1.make_initializable_iterator()
-    iterator2 = cache_dataset2.make_initializable_iterator()
-    init_cache_op1 = iterator1.initializer
-    init_cache_op2 = iterator2.initializer
+  def testCheckpointUnusedWriterIterator(self):
+    # Checkpoint before get_next is called even once.
+    outputs = self.gen_outputs(self.ds_fn, [], 0, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, [])
 
-    get_next1 = iterator1.get_next()
-    get_next2 = iterator2.get_next()
+    outputs = self.gen_outputs(
+        self.ds_fn, [],
+        self.num_outputs,
+        ckpt_saved=True,
+        verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
-    with self.test_session() as sess:
-      sess.run(
-          init_cache_op1, feed_dict={filename_placeholder: self.cache_prefix})
-      sess.run(get_next1)  # this should succeed
+  def testCheckpointUnusedMidwayWriterIterator(self):
+    # Produce 5 elements and checkpoint.
+    outputs = self.gen_outputs(self.ds_fn, [], 5, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, range(5))
 
-      sess.run(
-          init_cache_op2, feed_dict={filename_placeholder: self.cache_prefix})
-      with self.assertRaises(errors.AlreadyExistsError):
-        sess.run(get_next2)
+    # Restore from checkpoint, then produce no elements and checkpoint.
+    outputs.extend(
+        self.gen_outputs(
+            self.ds_fn, [], 0, ckpt_saved=True, verify_exhausted=False))
+    self.assertSequenceEqual(outputs, range(5))
 
-      sess.run(get_next1)  # this should continue to succeed
+    # Restore from checkpoint and produce rest of the elements.
+    outputs.extend(
+        self.gen_outputs(
+            self.ds_fn, [],
+            self.num_outputs - 5,
+            ckpt_saved=True,
+            verify_exhausted=False))
+    self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
-  def testConcurrentReaders(self):
-    components = (np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
-                  np.array([9.0, 10.0, 11.0, 12.0]))
-    filename_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+  def testUnusedCheckpointError(self):
+    # Produce 5 elements and save ckpt.
+    outputs = self.gen_outputs(self.ds_fn, [], 5, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, range(5))
 
-    cache_dataset1 = (dataset_ops.Dataset.from_tensor_slices(components)
-                      .cache(filename_placeholder))
-    cache_dataset2 = (dataset_ops.Dataset.from_tensor_slices(components)
-                      .cache(filename_placeholder))
+    # Since the complete cache has not been written, a new iterator which does
+    # not restore the checkpoint will throw an error since there is a partial
+    # cache shard.
+    with self.assertRaises(errors.AlreadyExistsError):
+      outputs = self.gen_outputs(
+          self.ds_fn, [], self.num_outputs, verify_exhausted=False)
 
-    iterator1 = cache_dataset1.make_initializable_iterator()
-    iterator2 = cache_dataset2.make_initializable_iterator()
-    init_cache_op1 = iterator1.initializer
-    init_cache_op2 = iterator2.initializer
+  def testIgnoreCheckpointIfCacheWritten(self):
+    # Produce 15 elements and save ckpt. This will write the complete cache.
+    outputs = self.gen_outputs(self.ds_fn, [], 15, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) + list(range(5)))
 
-    get_next1 = iterator1.get_next()
-    get_next2 = iterator2.get_next()
-
-    with self.test_session() as sess:
-      sess.run(
-          init_cache_op1, feed_dict={filename_placeholder: self.cache_prefix})
-      elements = []
-      for _ in range(4):
-        elements.append(sess.run(get_next1))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next1)
-
-      # Re-initialize
-      sess.run(
-          init_cache_op1, feed_dict={filename_placeholder: self.cache_prefix})
-      sess.run(
-          init_cache_op2, feed_dict={filename_placeholder: self.cache_prefix})
-
-      # Reading concurrently should succeed.
-      elements_itr1 = []
-      elements_itr2 = []
-      elements_itr2.append(sess.run(get_next2))
-      elements_itr1.append(sess.run(get_next1))
-      elements_itr2.append(sess.run(get_next2))
-      elements_itr1.append(sess.run(get_next1))
-      # Intentionally reversing the order
-      elements_itr1.append(sess.run(get_next1))
-      elements_itr2.append(sess.run(get_next2))
-      elements_itr1.append(sess.run(get_next1))
-      elements_itr2.append(sess.run(get_next2))
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next2)
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next1)
-
-      self.assertAllEqual(elements, elements_itr1)
-      self.assertAllEqual(elements, elements_itr2)
+    # Build the iterator again but do not restore from ckpt. Since the cache
+    # has already been written we should be able to use it.
+    outputs = self.gen_outputs(
+        self.ds_fn, [], self.num_outputs, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
 
-class MemoryCacheDatasetTest(test.TestCase):
-
-  def testCacheDatasetPassthrough(self):
-    repeat_count = variables.Variable(constant_op.constant(10, dtypes.int64))
-    dataset = dataset_ops.Dataset.range(3).flat_map(
-        lambda x: dataset_ops.Dataset.from_tensors(x).repeat(repeat_count))
-
-    cached_dataset = dataset.cache().repeat(2)
-    uncached_dataset = dataset.repeat(2)
-
-    # Needs to be initializable to capture the variable.
-    cached_iterator = cached_dataset.make_initializable_iterator()
-    cached_next = cached_iterator.get_next()
-    uncached_iterator = uncached_dataset.make_initializable_iterator()
-    uncached_next = uncached_iterator.get_next()
-
-    with self.test_session() as sess:
-
-      sess.run(repeat_count.initializer)
-      sess.run(cached_iterator.initializer)
-      sess.run(uncached_iterator.initializer)
-
-      for i in range(3):
-        for _ in range(10):
-          self.assertEqual(sess.run(cached_next), i)
-          self.assertEqual(sess.run(uncached_next), i)
-
-      sess.run(repeat_count.assign(0))
-
-      # The uncached iterator should now be empty.
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(uncached_next)
-
-      # The cached iterator replays from cache.
-      for i in range(3):
-        for _ in range(10):
-          self.assertEqual(sess.run(cached_next), i)
-
-      # The cached iterator should now be empty.
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(cached_next)
-
-  def testEmptyCacheReading(self):
-    components = (np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
-                  np.array([9.0, 10.0, 11.0, 12.0]))
-    count_placeholder = array_ops.placeholder_with_default(
-        constant_op.constant(5, dtypes.int64), shape=[])
-
-    repeat_dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-                      .repeat(count_placeholder))
-
-    cache_dataset = repeat_dataset.cache()
-
-    # Create initialization ops for iterators without and with
-    # caching, respectively.
-    iterator = cache_dataset.make_initializable_iterator()
-    init_cache_op = iterator.initializer
-
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      # Initialize with an empty upstream and a missing cache file (should
-      # throw errors.OutOfRangeError immediately).
-      sess.run(init_cache_op, feed_dict={count_placeholder: 0})
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testConcurrentReaders(self):
-    count_placeholder = array_ops.placeholder_with_default(
-        constant_op.constant(5, dtypes.int64), shape=[])
-    dataset = dataset_ops.Dataset.range(count_placeholder).cache()
-    d1 = dataset.map(lambda x: x + 1)
-    d2 = dataset.map(lambda x: x + 6)
-
-    i1 = d1.make_initializable_iterator()
-    i2 = d2.make_initializable_iterator()
-
-    with self.test_session() as sess:
-      sess.run(i1.initializer)
-
-      self.assertEqual(1, sess.run(i1.get_next()))
-      self.assertEqual(2, sess.run(i1.get_next()))
-      self.assertEqual(3, sess.run(i1.get_next()))
-
-      sess.run(i2.initializer, feed_dict={count_placeholder: 3})
-
-      self.assertEqual(6, sess.run(i2.get_next()))
-      self.assertEqual(7, sess.run(i2.get_next()))
-      self.assertEqual(4, sess.run(i1.get_next()))  # interleave execution
-      self.assertEqual([8, 5], sess.run([i2.get_next(), i1.get_next()]))
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(i1.get_next())
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(i2.get_next())
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

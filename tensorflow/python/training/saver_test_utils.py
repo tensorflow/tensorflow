@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.ops import gen_lookup_ops
@@ -34,14 +35,15 @@ class CheckpointedOp(object):
   # pylint: disable=protected-access
   def __init__(self, name, table_ref=None):
     if table_ref is None:
-      self.table_ref = gen_lookup_ops._mutable_hash_table_v2(
+      self.table_ref = gen_lookup_ops.mutable_hash_table_v2(
           key_dtype=dtypes.string, value_dtype=dtypes.float32, name=name)
     else:
       self.table_ref = table_ref
     self._name = name
-    self._saveable = CheckpointedOp.CustomSaveable(self, name)
-    ops_lib.add_to_collection(ops_lib.GraphKeys.SAVEABLE_OBJECTS,
-                              self._saveable)
+    if not context.executing_eagerly():
+      self._saveable = CheckpointedOp.CustomSaveable(self, name)
+      ops_lib.add_to_collection(ops_lib.GraphKeys.SAVEABLE_OBJECTS,
+                                self._saveable)
 
   @property
   def name(self):
@@ -49,13 +51,16 @@ class CheckpointedOp(object):
 
   @property
   def saveable(self):
-    return self._saveable
+    if context.executing_eagerly():
+      return CheckpointedOp.CustomSaveable(self, self.name)
+    else:
+      return self._saveable
 
   def insert(self, keys, values):
-    return gen_lookup_ops._lookup_table_insert_v2(self.table_ref, keys, values)
+    return gen_lookup_ops.lookup_table_insert_v2(self.table_ref, keys, values)
 
   def lookup(self, keys, default):
-    return gen_lookup_ops._lookup_table_find_v2(self.table_ref, keys, default)
+    return gen_lookup_ops.lookup_table_find_v2(self.table_ref, keys, default)
 
   def keys(self):
     return self._export()[0]
@@ -64,8 +69,8 @@ class CheckpointedOp(object):
     return self._export()[1]
 
   def _export(self):
-    return gen_lookup_ops._lookup_table_export_v2(self.table_ref, dtypes.string,
-                                                  dtypes.float32)
+    return gen_lookup_ops.lookup_table_export_v2(self.table_ref, dtypes.string,
+                                                 dtypes.float32)
 
   class CustomSaveable(saver_module.BaseSaverBuilder.SaveableObject):
     """A custom saveable for CheckpointedOp."""
@@ -81,6 +86,6 @@ class CheckpointedOp(object):
       super(CheckpointedOp.CustomSaveable, self).__init__(table, specs, name)
 
     def restore(self, restore_tensors, shapes):
-      return gen_lookup_ops._lookup_table_import_v2(
+      return gen_lookup_ops.lookup_table_import_v2(
           self.op.table_ref, restore_tensors[0], restore_tensors[1])
   # pylint: enable=protected-access

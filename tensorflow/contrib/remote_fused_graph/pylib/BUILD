@@ -24,7 +24,12 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_remote_fused_graph_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -33,25 +38,12 @@ py_test(
     size = "small",
     srcs = ["python/ops/remote_fused_graph_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":remote_fused_graph_ops_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

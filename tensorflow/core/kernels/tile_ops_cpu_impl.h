@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_CPU_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_CPU_IMPL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TILE_OPS_CPU_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_TILE_OPS_CPU_IMPL_H_
 
 #define EIGEN_USE_THREADS
 
@@ -63,9 +63,9 @@ TF_CALL_int64(DEFINE_TYPE);
 
 #undef DEFINE_DIM
 #undef DEFINE_TYPE
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_CPU_IMPL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TILE_OPS_CPU_IMPL_H_

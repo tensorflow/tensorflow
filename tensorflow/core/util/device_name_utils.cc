@@ -85,36 +85,37 @@ static bool ConsumeNumber(StringPiece* in, int* val) {
   }
 }
 
-/* static */
-string DeviceNameUtils::FullName(const string& job, int replica, int task,
-                                 const string& type, int id) {
+// Returns a fully qualified device name given the parameters.
+static string DeviceName(const string& job, int replica, int task,
+                         const string& device_prefix, const string& device_type,
+                         int id) {
   CHECK(IsJobName(job)) << job;
   CHECK_LE(0, replica);
   CHECK_LE(0, task);
-  CHECK(!type.empty());
+  CHECK(!device_type.empty());
   CHECK_LE(0, id);
   return strings::StrCat("/job:", job, "/replica:", replica, "/task:", task,
-                         "/device:", type, ":", id);
+                         device_prefix, device_type, ":", id);
 }
 
 /* static */
-string DeviceNameUtils::LegacyName(const string& job, int replica, int task,
-                                   const string& type, int id) {
-  CHECK(IsJobName(job)) << job;
-  CHECK_LE(0, replica);
-  CHECK_LE(0, task);
-  CHECK(!type.empty());
-  CHECK_LE(0, id);
-  return strings::StrCat("/job:", job, "/replica:", replica, "/task:", task,
-                         "/", str_util::Lowercase(type), ":", id);
+string DeviceNameUtils::FullName(const string& job, int replica, int task,
+                                 const string& type, int id) {
+  return DeviceName(job, replica, task, "/device:", type, id);
 }
+
+namespace {
+string LegacyName(const string& job, int replica, int task, const string& type,
+                  int id) {
+  return DeviceName(job, replica, task, "/", str_util::Lowercase(type), id);
+}
+}  // anonymous namespace
 
 bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
   p->Clear();
   if (fullname == "/") {
     return true;
   }
-  StringPiece tmp;
   while (!fullname.empty()) {
     bool progress = false;
     if (str_util::ConsumePrefix(&fullname, "/job:")) {
@@ -181,6 +182,18 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
     }
   }
   return true;
+}
+
+/* static */
+string DeviceNameUtils::CanonicalizeDeviceName(StringPiece fullname) {
+  ParsedName parsed_name;
+  if (ParseLocalName(fullname, &parsed_name)) {
+    return ParsedNameToString(parsed_name);
+  }
+  if (ParseFullName(fullname, &parsed_name)) {
+    return ParsedNameToString(parsed_name);
+  }
+  return "";
 }
 
 /* static */
@@ -337,8 +350,16 @@ bool DeviceNameUtils::IsSameAddressSpace(StringPiece src, StringPiece dst) {
 
 /* static */
 string DeviceNameUtils::LocalName(StringPiece type, int id) {
+  return strings::StrCat("/device:", type, ":", id);
+}
+
+namespace {
+// Returns the legacy local device name given its "type" and "id" (which is
+// '/device:type:id').
+string LegacyLocalName(StringPiece type, int id) {
   return strings::StrCat(type, ":", id);
 }
+}  // anonymous namespace
 
 /* static */
 string DeviceNameUtils::LocalName(StringPiece fullname) {
@@ -352,12 +373,14 @@ bool DeviceNameUtils::ParseLocalName(StringPiece name, ParsedName* p) {
   if (!ConsumeDeviceType(&name, &p->type)) {
     return false;
   }
+  p->has_type = true;
   if (!str_util::ConsumePrefix(&name, ":")) {
     return false;
   }
   if (!ConsumeNumber(&name, &p->id)) {
     return false;
   }
+  p->has_id = true;
   return name.empty();
 }
 
@@ -385,6 +408,27 @@ bool DeviceNameUtils::SplitDeviceName(StringPiece name, string* task,
     return true;
   }
   return false;
+}
+
+std::vector<string> DeviceNameUtils::GetNamesForDeviceMappings(
+    const ParsedName& pn) {
+  if (pn.has_job && pn.has_replica && pn.has_task && pn.has_type && pn.has_id) {
+    return {
+        DeviceNameUtils::FullName(pn.job, pn.replica, pn.task, pn.type, pn.id),
+        LegacyName(pn.job, pn.replica, pn.task, pn.type, pn.id)};
+  } else {
+    return {};
+  }
+}
+
+std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
+    const ParsedName& pn) {
+  if (pn.has_type && pn.has_id) {
+    return {DeviceNameUtils::LocalName(pn.type, pn.id),
+            LegacyLocalName(pn.type, pn.id)};
+  } else {
+    return {};
+  }
 }
 
 }  // namespace tensorflow

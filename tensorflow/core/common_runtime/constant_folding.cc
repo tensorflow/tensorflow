@@ -43,9 +43,181 @@ namespace tensorflow {
 
 namespace {
 
-bool IsConstantFoldable(const Node* n,
-                        const std::function<bool(const Node*)>& consider) {
+// Test to see if the Op is one that turns into a constant when its
+// inputs' shapes are known.
+bool IsShapeOp(const Node* n) {
+  const auto& ts = n->type_string();
+  return ts == "Shape" || ts == "ShapeN" || ts == "Rank" || ts == "Size";
+}
+
+// Reads the partially-known shape of each of n's inputs from shape_map, and
+// stores it to input_shapes. Returns false if any input does not have a shape
+// in shape_map.
+bool ReadPartialShapesFromShapeMap(
+    const Node* n,
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
+        shape_map,
+    std::vector<PartialTensorShape>* input_shapes) {
+  CHECK(shape_map != nullptr);
+  for (const Edge* in : n->in_edges()) {
+    // Don't need to check if incoming control edges have known shapes.
+    if (in->IsControlEdge()) continue;
+    const auto known_shape_iter = shape_map->find(in->src()->name());
+    if (known_shape_iter == shape_map->end()) {
+      // One of n's inputs doesn't have known shapes, so don't replace n.
+      return false;
+    }
+    const auto& known_shape = known_shape_iter->second;
+    CHECK_GT(known_shape.size(), in->src_output()) << known_shape_iter->first;
+    input_shapes->push_back(known_shape[in->src_output()]);
+  }
+  return true;
+}
+
+// If all of n's inputs have fully-defined shapes, inserts those shapes as a
+// vector of Tensors in the shape_replacement_map.
+bool MaybeReplaceShapeOrShapeNOp(
+    const Node* n, const std::vector<PartialTensorShape>& input_shapes,
+    std::unordered_map<const Node*, std::vector<Tensor>>*
+        shape_replacement_map) {
+  std::vector<Tensor> defined_shape;
+  for (const auto& shape : input_shapes) {
+    if (!shape.IsFullyDefined()) {
+      return false;
+    }
+    const int rank = shape.dims();
+    DataType op_type = n->output_type(0);
+    Tensor t(op_type, TensorShape({rank}));
+    if (op_type == DT_INT64) {
+      auto vec = t.vec<int64>();
+      for (int i = 0; i < rank; ++i) {
+        vec(i) = shape.dim_size(i);
+      }
+    } else {
+      CHECK(op_type == DT_INT32);
+      auto vec = t.vec<int32>();
+      for (int i = 0; i < rank; ++i) {
+        if (shape.dim_size(i) > INT_MAX) {
+          VLOG(1) << "Node " << n->name() << " has input shape dimension " << i
+                  << " of " << shape.dim_size(i) << " but type INT32 "
+                  << " so not replacing as constant: this will trigger a "
+                     "runtime error later.";
+          return false;
+        }
+        vec(i) = static_cast<int32>(shape.dim_size(i));
+      }
+    }
+    defined_shape.push_back(t);
+  }
+  // All the inputs had known shapes so we can replace the node by constants
+  // later in the rewrite.
+  shape_replacement_map->insert({n, defined_shape});
+  return true;
+}
+
+// If n's input has defined rank, inserts that rank as a Tensor in the
+//  shape_replacement_map.
+bool MaybeReplaceRankOp(const Node* n,
+                        const std::vector<PartialTensorShape>& input_shapes,
+                        std::unordered_map<const Node*, std::vector<Tensor>>*
+                            shape_replacement_map) {
+  CHECK_EQ(input_shapes.size(), 1);
+  if (input_shapes[0].unknown_rank()) {
+    return false;
+  }
+  Tensor t(DT_INT32, TensorShape({}));
+  t.scalar<int32>()() = input_shapes[0].dims();
+  shape_replacement_map->insert({n, {t}});
+  return true;
+}
+
+// If n's input has defined size, inserts that size as a Tensor in the
+//  shape_replacement_map.
+bool MaybeReplaceSizeOp(const Node* n,
+                        const std::vector<PartialTensorShape>& input_shapes,
+                        std::unordered_map<const Node*, std::vector<Tensor>>*
+                            shape_replacement_map) {
+  CHECK_EQ(input_shapes.size(), 1);
+  if (!input_shapes[0].IsFullyDefined()) {
+    return false;
+  }
+  DataType op_type = n->output_type(0);
+  Tensor t(op_type, TensorShape({}));
+  int64 size = input_shapes[0].num_elements();
+  if (op_type == DT_INT64) {
+    t.scalar<int64>()() = size;
+  } else {
+    CHECK(op_type == DT_INT32);
+    if (size > INT_MAX) {
+      VLOG(1) << "Node " << n->name() << " has input shape size " << size
+              << " but type INT32 "
+              << " so not replacing as constant: this will trigger a runtime "
+                 "error later.";
+      return false;
+    }
+    t.scalar<int32>()() = static_cast<int32>(size);
+  }
+  shape_replacement_map->insert({n, {t}});
+  return true;
+}
+
+// If n is a shape Op (Shape, ShapeN, Rank, or Size) and its inputs have their
+// shapes specified in shape_map, then adds to shape_replacement_map a mapping
+// from n to a vector of Tensors, where Tensor k is the (statically known) value
+// on n's kth output edge. shape_replacement_map has an entry for n iff
+// MaybeReplaceShapeOp returns true, so it's valid to use
+// shape_replacement_map->count(n) as a test to see if n is a shape op that can
+// be replaced.
+bool MaybeReplaceShapeOp(
+    const Node* n,
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
+        shape_map,
+    std::unordered_map<const Node*, std::vector<Tensor>>*
+        shape_replacement_map) {
+  if (shape_map == nullptr || !IsShapeOp(n)) {
+    return false;
+  }
+  // input_shapes will contain the shapes of each of n's inputs.
+  std::vector<PartialTensorShape> input_shapes;
+  if (!ReadPartialShapesFromShapeMap(n, shape_map, &input_shapes)) {
+    return false;
+  }
+  const auto& ts = n->type_string();
+  if (ts == "Shape" || ts == "ShapeN") {
+    if (!MaybeReplaceShapeOrShapeNOp(n, input_shapes, shape_replacement_map)) {
+      return false;
+    }
+  } else if (ts == "Rank") {
+    if (!MaybeReplaceRankOp(n, input_shapes, shape_replacement_map)) {
+      return false;
+    }
+  } else {
+    CHECK_EQ(ts, "Size");
+    if (!MaybeReplaceSizeOp(n, input_shapes, shape_replacement_map)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Returns true if n can be evaluated as constant. shape_map maps from
+// nodes to the partially-known shapes of their outputs. consider if
+// non-null returns a bool indicating whether a given (non-Const,
+// non-Shape) node is eligible to be
+// constant-propagated. shape_replacement_map is filled in with a
+// vector of constant output tensors for constant-foldable shape nodes
+// (Shape, ShapeN, Size, or Rank).
+bool IsConstantFoldable(
+    const Node* n,
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
+        shape_map,
+    const std::function<bool(const Node*)>& consider,
+    std::unordered_map<const Node*, std::vector<Tensor>>*
+        shape_replacement_map) {
   if (n->IsConstant()) {
+    return true;
+  }
+  if (MaybeReplaceShapeOp(n, shape_map, shape_replacement_map)) {
     return true;
   }
   if (n->op_def().is_stateful()) {
@@ -82,56 +254,82 @@ bool IsConstantFoldable(const Node* n,
   return true;
 }
 
+// If n is eligible for constant-folding, adds it to nodes, and places its
+// control dependencies and those transitively of its constant-foldable inputs
+// into constant_control_deps. If n is a constant-foldable shape node (Shape,
+// ShapeN, Rank, or Size), also puts its outputs into shape_replacement_map.
+void ConsiderConstantFoldableNode(
+    Node* n, const ConstantFoldingOptions& opts, std::vector<Node*>* nodes,
+    std::unordered_map<const Node*, gtl::FlatSet<Node*>>* constant_control_deps,
+    std::unordered_map<const Node*, std::vector<Tensor>>* shape_replacement_map,
+    bool* internal_node_inserted) {
+  if (IsConstantFoldable(n, opts.shape_map, opts.consider,
+                         shape_replacement_map)) {
+    // A node is constant provided all of its non-control incoming Tensors come
+    // from constant nodes, or it's a shape Op with statically known inputs in
+    // which case it is placed in shape_replacement_map.
+    //
+    // We allow control dependencies from non-constant nodes to constant nodes,
+    // but to preserve the graph structure we must transfer the control
+    // dependency onto any constant replacement.
+    bool all_parents_constant = true;
+    for (const Edge* in : n->in_edges()) {
+      // Allows non-constant -> constant control edges.
+      if (!in->IsControlEdge() &&
+          constant_control_deps->count(in->src()) == 0) {
+        all_parents_constant = false;
+        break;
+      }
+    }
+    if (all_parents_constant || shape_replacement_map->count(n) != 0) {
+      gtl::FlatSet<Node*>& control_deps = (*constant_control_deps)[n];
+      for (const Edge* e : n->in_edges()) {
+        if (constant_control_deps->count(e->src()) == 0) {
+          // This branch is taken if the incoming edge is a control dependency,
+          // in which case we want to add it to the dependencies being
+          // accumulated for this node, or the incoming edge is not
+          // constant. The latter may happen when n is a shape node and the
+          // source has known shape. In that case add a control dependency from
+          // the source node, since there was previously a data dependency and
+          // we want to preserve sequencing constraints.
+          if (!e->src()->IsSource()) {
+            control_deps.insert(e->src());
+          }
+        } else {
+          // If the parent has been accumulating control dependencies, add all
+          // of its transitive control deps.
+          const gtl::FlatSet<Node*>& parent_deps =
+              (*constant_control_deps)[e->src()];
+          control_deps.insert(parent_deps.begin(), parent_deps.end());
+        }
+      }
+      nodes->push_back(n);
+      if (!n->IsConstant()) {
+        *internal_node_inserted = true;
+      }
+    }
+  }
+}
+
 // Returns the constant foldable nodes in `nodes` in topological order.
 // Populates `constant_control_deps` with the non-constant control dependencies
 // of each constant node.
 void FindConstantFoldableNodes(
-    const Graph* graph, ConstantFoldingOptions opts, std::vector<Node*>* nodes,
-    std::unordered_map<const Node*, gtl::FlatSet<Node*>>*
-        constant_control_deps) {
+    const Graph* graph, const ConstantFoldingOptions& opts,
+    std::vector<Node*>* nodes,
+    std::unordered_map<const Node*, gtl::FlatSet<Node*>>* constant_control_deps,
+    std::unordered_map<const Node*, std::vector<Tensor>>*
+        shape_replacement_map) {
   bool internal_node_inserted = false;
-  // Walk the nodes in data flow order
-  ReverseDFS(
-      *graph, nullptr,
-      [nodes, constant_control_deps, &internal_node_inserted, opts](Node* n) {
-        if (IsConstantFoldable(n, opts.consider)) {
-          // A node is constant provided all of its non-control
-          // incoming Tensors come from constant nodes.
-          //
-          // We allow control dependencies from non-constant nodes to constant
-          // nodes, but to preserve the graph structure we must transfer the
-          // control dependency onto any constant replacement.
-          bool all_parents_constant = true;
-          for (const Edge* in : n->in_edges()) {
-            // Allows non-constant -> constant control edges.
-            if (!in->IsControlEdge() &&
-                constant_control_deps->count(in->src()) == 0) {
-              all_parents_constant = false;
-              break;
-            }
-          }
-          if (all_parents_constant) {
-            gtl::FlatSet<Node*>& control_deps = (*constant_control_deps)[n];
-            for (const Edge* e : n->in_edges()) {
-              if (constant_control_deps->count(e->src()) == 0) {
-                if (!e->src()->IsSource()) {
-                  control_deps.insert(e->src());
-                }
-              } else {
-                // If the parent is constant, add all of its transitive control
-                // deps.
-                const gtl::FlatSet<Node*>& parent_deps =
-                    (*constant_control_deps)[e->src()];
-                control_deps.insert(parent_deps.begin(), parent_deps.end());
-              }
-            }
-            nodes->push_back(n);
-            if (!n->IsConstant()) {
-              internal_node_inserted = true;
-            }
-          }
-        }
-      });
+  // Walk the nodes in data flow order.
+  ReverseDFS(*graph, nullptr,
+             [nodes, constant_control_deps, shape_replacement_map,
+              &internal_node_inserted, &opts](Node* n) {
+               ConsiderConstantFoldableNode(
+                   n, opts, nodes, constant_control_deps, shape_replacement_map,
+                   &internal_node_inserted);
+             },
+             NodeComparatorName());
   // If we have inserted just leaf level nodes, then there is nothing to fold.
   if (!internal_node_inserted) {
     nodes->clear();
@@ -141,31 +339,92 @@ void FindConstantFoldableNodes(
 
 typedef std::pair<Node*, int> NodeAndOutput;
 
+int64 UniqueConstantId() {
+  static std::atomic_int_fast64_t unique_constant_id;
+  return unique_constant_id.fetch_add(1);
+}
+
+// Adds n to constant_graph which is being built up for subsequent evaluation of
+// constant propagation. node_map is the mapping of nodes in the original graph
+// to nodes in the constant graph. The value of an entry in node_map is a vector
+// of nodes because a ShapeN node in the original graph is replaced by a vector
+// of Constant nodes in the constant graph.
+void AddNodeToConstantGraph(
+    Node* n, std::unordered_map<Node*, std::vector<Node*>>* node_map,
+    Graph* constant_graph) {
+  std::vector<Node*>& added = (*node_map)[n];
+  added.push_back(constant_graph->CopyNode(n));
+  for (const Edge* in_edge : n->in_edges()) {
+    // Don't copy control edges to the constant graph.
+    if (!in_edge->IsControlEdge()) {
+      Node* in = in_edge->src();
+      auto it = node_map->find(in);
+      CHECK(it != node_map->end())
+          << n->DebugString() << " <-" << in->DebugString();
+      if (it->second.size() == 1) {
+        constant_graph->AddEdge(it->second[0], in_edge->src_output(), added[0],
+                                in_edge->dst_input());
+      } else {
+        // The original source node had multiple outputs and was replaced by a
+        // vector of constants, so the edge comes from the 0th output of the kth
+        // added constant, rather than the kth output of the added node as in
+        // the standard case above.
+        constant_graph->AddEdge(it->second[in_edge->src_output()], 0, added[0],
+                                in_edge->dst_input());
+      }
+    }
+  }
+}
+
+// Replaces constant-foldable shape node n by a vector of constants in
+// constant_graph, which is being built up for subsequent evaluation of constant
+// propagation. node_map is the mapping of nodes in the original graph to nodes
+// in the constant graph. The value of an entry in node_map is a vector of nodes
+// because a ShapeN node in the original graph is replaced by a vector of
+// Constant nodes in the constant graph.
+void AddShapeNodeToConstantGraph(
+    Node* n,
+    const std::unordered_map<const Node*, std::vector<Tensor>>&
+        shape_replacement_map,
+    std::unordered_map<Node*, std::vector<Node*>>* node_map,
+    const ConstantFoldNameGenerator& generate_new_name, Graph* constant_graph) {
+  std::vector<Node*>& added = (*node_map)[n];
+  const string& node_name = n->name();
+  for (const Tensor& t : shape_replacement_map.at(n)) {
+    auto builder =
+        NodeDefBuilder(generate_new_name(constant_graph, node_name), "Const")
+            .Attr("dtype", t.dtype())
+            .Attr("value", t);
+    NodeDef def;
+    CHECK(builder.Finalize(&def).ok());
+    Node* constant_node;
+    CHECK(NodeBuilder(builder).Finalize(constant_graph, &constant_node).ok());
+    added.push_back(constant_node);
+  }
+  // Don't copy incoming edges to shape nodes that are being replaced.
+}
+
 // Given the constant foldable nodes in 'nodes', returns a new graph 'g'. 'g'
 // will contain copies of the nodes in 'nodes'. In addition, if there is an edge
 // going from a node 'n' in 'nodes' to another node in 'orig_graph' but not in
 // 'nodes', then 'tensors_to_fetch' will contain the mapping from the
 // corresponding copy of 'n' and the edge number in 'g' to 'n'.
-Graph* GetConstantGraph(const Graph* orig_graph,
-                        const std::vector<Node*>& nodes,
-                        std::map<NodeAndOutput, Node*>* tensors_to_fetch) {
+Graph* GetConstantGraph(
+    const Graph* orig_graph, const std::vector<Node*>& nodes,
+    const std::unordered_map<const Node*, std::vector<Tensor>>&
+        shape_replacement_map,
+    std::map<NodeAndOutput, Node*>* tensors_to_fetch,
+    const ConstantFoldNameGenerator& generate_new_name) {
   Graph* constant_graph = new Graph(orig_graph->op_registry());
-  std::unordered_map<Node*, Node*> node_map;
-  node_map[orig_graph->source_node()] = constant_graph->source_node();
-  node_map[orig_graph->sink_node()] = constant_graph->sink_node();
+  std::unordered_map<Node*, std::vector<Node*>> node_map;
+  node_map[orig_graph->source_node()] = {constant_graph->source_node()};
+  node_map[orig_graph->sink_node()] = {constant_graph->sink_node()};
   for (Node* n : nodes) {
-    Node* added = constant_graph->CopyNode(n);
-    node_map[n] = added;
-    for (const Edge* in_edge : n->in_edges()) {
-      // Don't copy control edges to the constant graph.
-      if (!in_edge->IsControlEdge()) {
-        Node* in = in_edge->src();
-        auto it = node_map.find(in);
-        CHECK(it != node_map.end())
-            << n->DebugString() << " <-" << in->DebugString();
-        constant_graph->AddEdge(it->second, in_edge->src_output(), added,
-                                in_edge->dst_input());
-      }
+    if (shape_replacement_map.count(n) == 0) {
+      AddNodeToConstantGraph(n, &node_map, constant_graph);
+    } else {
+      AddShapeNodeToConstantGraph(n, shape_replacement_map, &node_map,
+                                  generate_new_name, constant_graph);
     }
   }
 
@@ -173,18 +432,24 @@ Graph* GetConstantGraph(const Graph* orig_graph,
     for (const Edge* out_edge : added_nodes.first->out_edges()) {
       if (node_map.count(out_edge->dst()) == 0) {
         if (out_edge->IsControlEdge()) continue;
-        tensors_to_fetch->insert(
-            {{added_nodes.second, out_edge->src_output()}, added_nodes.first});
+        if (added_nodes.second.size() == 1) {
+          tensors_to_fetch->insert(
+              {{added_nodes.second[0], out_edge->src_output()},
+               added_nodes.first});
+        } else {
+          // The node had multiple outputs and was replaced by a
+          // vector of constants, so the NodeAndOutput is the 0th
+          // output of the kth added constant, rather than the kth
+          // output of the added node as in the standard case above.
+          tensors_to_fetch->insert(
+              {{added_nodes.second[out_edge->src_output()], 0},
+               added_nodes.first});
+        }
       }
     }
   }
 
   return constant_graph;
-}
-
-int64 UniqueConstantId() {
-  static std::atomic_int_fast64_t id;
-  return id.fetch_add(1);
 }
 
 // Replaces the identified Tensor in 'graph' by a 'Const' node with
@@ -193,9 +458,11 @@ int64 UniqueConstantId() {
 // replacement was successful, false otherwise.
 // 'control_deps' is the set of nodes that should be control predecessors of the
 // new constant node.
-bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
-                               NodeAndOutput tensor, const Tensor& constant,
-                               const gtl::FlatSet<Node*>& control_deps) {
+bool ReplaceTensorWithConstant(
+    Graph* graph, Device* partition_device, NodeAndOutput tensor,
+    const Tensor& constant, const gtl::FlatSet<Node*>& control_deps,
+    int64 max_constant_size_in_bytes,
+    const ConstantFoldNameGenerator& generate_new_name) {
   // Be conservative when replacing a tensor with a constant, when not
   // running on CPU.
   // 1) If the destination tensor is not an int32 tensor, and has HOST_MEMORY
@@ -204,8 +471,9 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
   // constraint, do not replace it.
   // 3) If the constant op created does not have a kernel implementation
   // for the device, do not use it.
-  // 4) If the size of the constant in bytes is too large (> 10M), do not
-  // replace it. This prevents the size of the Graph from growing too large.
+  // 4) If the size of the constant in bytes is too large (>
+  // max_constant_in_bytes), do not replace it. This prevents the size of the
+  // Graph from growing too large.
   // TODO(keveman): Consider adding a new constant op that has a kernel
   // implementation for all types, but with HostMemory constraint on it's
   // output.
@@ -229,7 +497,7 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
       return false;
     }
   }
-  if (constant.TotalBytes() > 10 * 1024 * 1024) {
+  if (constant.TotalBytes() > max_constant_size_in_bytes) {
     return false;
   }
 
@@ -242,9 +510,7 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
   }
   const string& node_name = n->name();
   Node* constant_node;
-  auto builder = NodeDefBuilder(strings::StrCat(graph->NewName(node_name),
-                                                "__cf__", UniqueConstantId()),
-                                "Const")
+  auto builder = NodeDefBuilder(generate_new_name(graph, node_name), "Const")
                      .Attr("dtype", constant.dtype())
                      .Attr("value", constant);
   if (partition_device) {
@@ -288,11 +554,19 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
                     FunctionLibraryRuntime* function_library, Env* env,
                     Device* partition_device, Graph* graph, bool* was_mutated) {
   DumpGraph("Before", graph);
+  ConstantFoldNameGenerator generate_new_name = opts.generate_new_name;
+  if (generate_new_name == nullptr) {
+    generate_new_name = [](Graph* graph, string old_name) {
+      return strings::StrCat(graph->NewName(old_name), "__cf__",
+                             UniqueConstantId());
+    };
+  }
 
   std::vector<Node*> constant_foldable_nodes;
   std::unordered_map<const Node*, gtl::FlatSet<Node*>> constant_control_deps;
+  std::unordered_map<const Node*, std::vector<Tensor>> shape_replacement_map;
   FindConstantFoldableNodes(graph, opts, &constant_foldable_nodes,
-                            &constant_control_deps);
+                            &constant_control_deps, &shape_replacement_map);
   if (constant_foldable_nodes.empty()) {
     VLOG(1) << "No constant foldable nodes found";
     *was_mutated = false;
@@ -302,7 +576,8 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
 
   std::map<NodeAndOutput, Node*> tensors_to_fetch;
   std::unique_ptr<Graph> constant_graph(
-      GetConstantGraph(graph, constant_foldable_nodes, &tensors_to_fetch));
+      GetConstantGraph(graph, constant_foldable_nodes, shape_replacement_map,
+                       &tensors_to_fetch, generate_new_name));
   DumpGraph("Constant graph", constant_graph.get());
 
   if (tensors_to_fetch.empty()) {
@@ -316,7 +591,16 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
 
   std::vector<string> tensors_to_fetch_names;
   std::vector<NodeAndOutput> tensors_to_replace;
-  for (auto n : tensors_to_fetch) {
+  // Sorting the nodes based on the name gives us a stable ordering between runs
+  // for the same graph.
+  std::vector<std::pair<NodeAndOutput, Node*>> tensors_to_fetch_sorted(
+      tensors_to_fetch.begin(), tensors_to_fetch.end());
+  std::sort(tensors_to_fetch_sorted.begin(), tensors_to_fetch_sorted.end(),
+            [](const std::pair<NodeAndOutput, Node*>& n1,
+               const std::pair<NodeAndOutput, Node*>& n2) {
+              return n1.first.first->name() < n2.first.first->name();
+            });
+  for (auto n : tensors_to_fetch_sorted) {
     tensors_to_fetch_names.push_back(
         strings::StrCat(n.first.first->name(), ":", n.first.second));
     tensors_to_replace.push_back({n.second, n.first.second});
@@ -337,7 +621,6 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
   if (!s.ok()) {
     VLOG(1) << "Could not fetch constants: " << s;
     *was_mutated = false;
-    // This is not an error, so return the status as OK.
     return s;
   }
 
@@ -347,9 +630,9 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
   for (size_t c = 0; c < outputs.size(); ++c) {
     const gtl::FlatSet<Node*>& control_deps =
         constant_control_deps[tensors_to_replace[c].first];
-    if (ReplaceTensorWithConstant(graph, partition_device,
-                                  tensors_to_replace[c], outputs[c],
-                                  control_deps)) {
+    if (ReplaceTensorWithConstant(
+            graph, partition_device, tensors_to_replace[c], outputs[c],
+            control_deps, opts.max_constant_size_in_bytes, generate_new_name)) {
       ++num_nodes_replaced;
     }
   }

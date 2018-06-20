@@ -37,10 +37,18 @@ limitations under the License.
 #include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/kernels/pooling_ops_3d_sycl.h"
+#endif  // TENSORFLOW_USE_SYCL
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 Pool3dParameters::Pool3dParameters(OpKernelContext* context,
                                    const std::vector<int32>& ksize,
@@ -88,11 +96,6 @@ TensorShape Pool3dParameters::forward_output_shape() {
   return ShapeFromFormat(data_format, tensor_in_batch,
                          {{out_plane, out_height, out_width}}, depth);
 }
-
-enum PoolingType { MAX, AVG };
-
-template <typename Device, typename T, PoolingType Type>
-struct LaunchPoolingOp;
 
 template <typename T>
 struct LaunchPoolingOp<CPUDevice, T, AVG> {
@@ -200,9 +203,6 @@ class Pooling3DOp : public UnaryOp<T> {
   TensorFormat data_format_;
 };
 
-template <typename Device, typename T>
-struct LaunchMaxPooling3dGradOp;
-
 template <typename T>
 struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
@@ -258,7 +258,7 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
           Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
 #else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
-                           Eigen::type2index<1> >
+                           Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
@@ -377,9 +377,6 @@ class MaxPooling3dGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-template <typename Device, typename T>
-struct LaunchAvgPooling3dGradOp;
-
 template <typename T>
 struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
   static void launch(OpKernelContext* context,
@@ -434,7 +431,7 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
           Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
 #else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
-                           Eigen::type2index<1> >
+                           Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
@@ -540,9 +537,6 @@ class AvgPooling3dGradOp : public OpKernel {
   Padding padding_;
   TensorFormat data_format_;
 };
-
-template <typename Device, typename T>
-struct LaunchMaxPooling3dGradGradOp;
 
 template <typename T>
 struct LaunchMaxPooling3dGradGradOp<CPUDevice, T> {
@@ -754,9 +748,8 @@ struct LaunchPoolingOp<GPUDevice, T, AVG> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    DnnPooling3dOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kAverage, window,
-        stride, padding, data_format, tensor_in, output);
+    DnnPooling3dOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, window,
+                               stride, padding, data_format, tensor_in, output);
   }
 };
 
@@ -768,9 +761,8 @@ struct LaunchPoolingOp<GPUDevice, T, MAX> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    DnnPooling3dOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kMaximum, window,
-        stride, padding, data_format, tensor_in, output);
+    DnnPooling3dOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, window,
+                               stride, padding, data_format, tensor_in, output);
   }
 };
 
@@ -784,10 +776,10 @@ struct LaunchMaxPooling3dGradOp<GPUDevice, T> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* input_backprop) {
     const TensorShape output_shape = tensor_in.shape();
-    DnnPooling3dGradOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kMaximum, window,
-        stride, padding, out, data_format, out_backprop, output_shape,
-        &tensor_in, &tensor_out, input_backprop);
+    DnnPooling3dGradOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum,
+                                   window, stride, padding, out, data_format,
+                                   out_backprop, output_shape, &tensor_in,
+                                   &tensor_out, input_backprop);
   }
 };
 
@@ -802,9 +794,8 @@ struct LaunchAvgPooling3dGradOp<GPUDevice, T> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
     DnnPooling3dGradOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kAverage, window,
-        stride, padding, out, data_format, out_backprop, tensor_in_shape,
-        nullptr, nullptr, output);
+        context, se::dnn::PoolingMode::kAverage, window, stride, padding, out,
+        data_format, out_backprop, tensor_in_shape, nullptr, nullptr, output);
   }
 };
 
@@ -836,6 +827,12 @@ TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T)
+    TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_KERNELS
 

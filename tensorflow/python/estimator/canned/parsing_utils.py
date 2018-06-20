@@ -23,8 +23,10 @@ import six
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.util.tf_export import estimator_export
 
 
+@estimator_export('estimator.classifier_parse_example_spec')
 def classifier_parse_example_spec(feature_columns,
                                   label_key,
                                   label_dtype=dtypes.int64,
@@ -164,6 +166,7 @@ def classifier_parse_example_spec(feature_columns,
   return parsing_spec
 
 
+@estimator_export('estimator.regressor_parse_example_spec')
 def regressor_parse_example_spec(feature_columns,
                                  label_key,
                                  label_dtype=dtypes.float32,

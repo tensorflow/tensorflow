@@ -34,8 +34,7 @@ MAX_LABEL = 15
 WORDS_FEATURE = 'words'  # Name of the input words feature.
 
 
-def estimator_spec_for_softmax_classification(
-    logits, labels, mode):
+def estimator_spec_for_softmax_classification(logits, labels, mode):
   """Returns EstimatorSpec instance for softmax classification."""
   predicted_classes = tf.argmax(logits, 1)
   if mode == tf.estimator.ModeKeys.PREDICT:
@@ -46,17 +45,15 @@ def estimator_spec_for_softmax_classification(
             'prob': tf.nn.softmax(logits)
         })
 
-  onehot_labels = tf.one_hot(labels, MAX_LABEL, 1, 0)
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
   if mode == tf.estimator.ModeKeys.TRAIN:
     optimizer = tf.train.AdamOptimizer(learning_rate=0.01)
     train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
     return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
 
   eval_metric_ops = {
-      'accuracy': tf.metrics.accuracy(
-          labels=labels, predictions=predicted_classes)
+      'accuracy':
+          tf.metrics.accuracy(labels=labels, predictions=predicted_classes)
   }
   return tf.estimator.EstimatorSpec(
       mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
@@ -69,8 +66,7 @@ def bag_of_words_model(features, labels, mode):
   bow_embedding_column = tf.feature_column.embedding_column(
       bow_column, dimension=EMBEDDING_SIZE)
   bow = tf.feature_column.input_layer(
-      features,
-      feature_columns=[bow_embedding_column])
+      features, feature_columns=[bow_embedding_column])
   logits = tf.layers.dense(bow, MAX_LABEL, activation=None)
 
   return estimator_spec_for_softmax_classification(
@@ -91,11 +87,11 @@ def rnn_model(features, labels, mode):
   word_list = tf.unstack(word_vectors, axis=1)
 
   # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
-  cell = tf.contrib.rnn.GRUCell(EMBEDDING_SIZE)
+  cell = tf.nn.rnn_cell.GRUCell(EMBEDDING_SIZE)
 
   # Create an unrolled Recurrent Neural Networks to length of
   # MAX_DOCUMENT_LENGTH and passes word_list as inputs for each unit.
-  _, encoding = tf.contrib.rnn.static_rnn(cell, word_list, dtype=tf.float32)
+  _, encoding = tf.nn.static_rnn(cell, word_list, dtype=tf.float32)
 
   # Given encoding of RNN, take encoding of last step (e.g hidden size of the
   # neural network of last step) and pass it as features for softmax
@@ -107,12 +103,14 @@ def rnn_model(features, labels, mode):
 
 def main(unused_argv):
   global n_words
+  tf.logging.set_verbosity(tf.logging.INFO)
+
   # Prepare training and testing data
   dbpedia = tf.contrib.learn.datasets.load_dataset(
       'dbpedia', test_with_fake_data=FLAGS.test_with_fake_data)
-  x_train = pandas.DataFrame(dbpedia.train.data)[1]
+  x_train = pandas.Series(dbpedia.train.data[:, 1])
   y_train = pandas.Series(dbpedia.train.target)
-  x_test = pandas.DataFrame(dbpedia.test.data)[1]
+  x_test = pandas.Series(dbpedia.test.data[:, 1])
   y_test = pandas.Series(dbpedia.test.target)
 
   # Process vocabulary
@@ -152,10 +150,7 @@ def main(unused_argv):
 
   # Predict.
   test_input_fn = tf.estimator.inputs.numpy_input_fn(
-      x={WORDS_FEATURE: x_test},
-      y=y_test,
-      num_epochs=1,
-      shuffle=False)
+      x={WORDS_FEATURE: x_test}, y=y_test, num_epochs=1, shuffle=False)
   predictions = classifier.predict(input_fn=test_input_fn)
   y_predicted = np.array(list(p['class'] for p in predictions))
   y_predicted = y_predicted.reshape(np.array(y_test).shape)

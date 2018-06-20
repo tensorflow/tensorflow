@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "ConcatV2"
+  endpoint {
+    name: "Concat"
+  }
+  in_arg {
+    name: "values"
+    description: <<END
+List of `N` Tensors to concatenate. Their ranks and types must match,
+and their sizes must match in all dimensions except `concat_dim`.
+END
+  }
+  in_arg {
+    name: "axis"
+    description: <<END
+0-D.  The dimension along which to concatenate.  Must be in the
+range [-rank(values), rank(values)).
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A `Tensor` with the concatenation of values stacked along the
+`concat_dim` dimension.  This tensor's shape matches that of `values` except
+in `concat_dim` where it has the sum of the sizes.
+END
+  }
+  summary: "Concatenates tensors along one dimension."
+}

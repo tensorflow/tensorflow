@@ -85,18 +85,20 @@ def report_uninitialized_resources(resource_list=None,
   if resource_list is None:
     resource_list = shared_resources() + local_resources()
   with ops.name_scope(name):
-    if not resource_list:
-      # Return an empty tensor so we only need to check for returned tensor
-      # size being 0 as an indication of model ready.
-      return array_ops.constant([], dtype=dtypes.string)
-    # Get a 1-D boolean tensor listing whether each resource is initialized.
-    variables_mask = math_ops.logical_not(
-        array_ops.stack([r.is_initialized for r in resource_list]))
-    # Get a 1-D string tensor containing all the resource names.
-    variable_names_tensor = array_ops.constant(
-        [s.handle.name for s in resource_list])
-    # Return a 1-D tensor containing all the names of uninitialized resources.
-    return array_ops.boolean_mask(variable_names_tensor, variables_mask)
+    # Run all operations on CPU
+    with ops.device("/cpu:0"):
+      if not resource_list:
+        # Return an empty tensor so we only need to check for returned tensor
+        # size being 0 as an indication of model ready.
+        return array_ops.constant([], dtype=dtypes.string)
+      # Get a 1-D boolean tensor listing whether each resource is initialized.
+      variables_mask = math_ops.logical_not(
+          array_ops.stack([r.is_initialized for r in resource_list]))
+      # Get a 1-D string tensor containing all the resource names.
+      variable_names_tensor = array_ops.constant(
+          [s.handle.name for s in resource_list])
+      # Return a 1-D tensor containing all the names of uninitialized resources.
+      return array_ops.boolean_mask(variable_names_tensor, variables_mask)
 
 
 @tf_should_use.should_use_result

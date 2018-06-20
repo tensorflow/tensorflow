@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_TEST_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_TEST_UTILS_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_TEST_UTILS_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_TEST_UTILS_H_
 #include "tensorflow/contrib/tensor_forest/kernels/v4/input_data.h"
 #include "tensorflow/contrib/tensor_forest/kernels/v4/input_target.h"
 
@@ -22,13 +22,12 @@ namespace tensorforest {
 
 class TestableInputTarget : public StoredInputTarget<std::vector<float>> {
  public:
-  TestableInputTarget(const std::vector<float>* t, const std::vector<float>* w,
+  TestableInputTarget(const std::vector<float>& t, const std::vector<float>& w,
                       int num_t)
-      : StoredInputTarget(t, w, num_t) {}
+      : StoredInputTarget(new std::vector<float>(t), new std::vector<float>(w),
+                          num_t) {}
 
-  int NumItems() const {
-    return target_->size();
-  }
+  int NumItems() const { return target_->size(); }
 
   int32 GetTargetAsClassIndex(int example_index,
                               int target_index) const override {
@@ -50,7 +49,6 @@ class TestableInputTarget : public StoredInputTarget<std::vector<float>> {
   }
 };
 
-
 class TestableDataSet : public TensorDataSet {
  public:
   TestableDataSet(const std::vector<float>& data, int num_features)
@@ -70,4 +68,4 @@ class TestableDataSet : public TensorDataSet {
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_TEST_UTILS_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_TEST_UTILS_H_

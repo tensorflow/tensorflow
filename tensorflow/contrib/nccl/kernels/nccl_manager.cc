@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+using se::cuda::ScopedActivateExecutorContext;
 
 // Contains data for a single stream used for nccl communication; this includes
 // a background thread that calls NcclManager::LoopKernelLaunches.
@@ -37,11 +37,11 @@ struct NcclManager::NcclStream {
     cv.notify_all();
   }
 
-  perftools::gputools::StreamExecutor* executor = nullptr;
+  se::StreamExecutor* executor = nullptr;
 
   // The stream on which to run the nccl collective.
   // This is a different stream than the tensorflow compute stream.
-  std::unique_ptr<perftools::gputools::Stream> stream;
+  std::unique_ptr<se::Stream> stream;
 
   // See NcclManager::LoopKernelLaunches for information on these.
   std::unique_ptr<Thread> thread;
@@ -76,6 +76,8 @@ struct NcclManager::Communicator {
 namespace {
 ncclDataType_t ToNcclType(DataType t) {
   switch (t) {
+    case DT_HALF:
+      return ncclHalf;
     case DT_FLOAT:
       return ncclFloat;
     case DT_DOUBLE:
@@ -93,9 +95,8 @@ ncclDataType_t ToNcclType(DataType t) {
 // A participant in a Collective.  See <Collective> below.
 struct NcclManager::Participant {
   Participant(const Tensor* in_t, Tensor* out_t, EventMgr* event_mgr,
-              perftools::gputools::Stream* tensor_stream,
-              perftools::gputools::StreamExecutor* executor, int gpu_device_id,
-              NcclManager::DoneCallback done_callback)
+              se::Stream* tensor_stream, se::StreamExecutor* executor,
+              int gpu_device_id, NcclManager::DoneCallback done_callback)
       : in_t(in_t),
         out_t(out_t),
         event_mgr(event_mgr),
@@ -119,11 +120,11 @@ struct NcclManager::Participant {
   EventMgr* const event_mgr;
 
   // Owned by the caller, who must keep it live until <done_callback> is called.
-  perftools::gputools::Stream* const tensor_stream;
+  se::Stream* const tensor_stream;
 
   // Matches the executor in CommunicatorMember::stream. Expected to be live for
   // process lifetime.
-  perftools::gputools::StreamExecutor* const executor = nullptr;
+  se::StreamExecutor* const executor = nullptr;
 
   const int gpu_device_id;
 
@@ -243,7 +244,7 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
     if (nccl_stream == nullptr) {
       nccl_stream = new NcclStream();
       nccl_stream->executor = executor;
-      nccl_stream->stream.reset(new perftools::gputools::Stream(executor));
+      nccl_stream->stream.reset(new se::Stream(executor));
       nccl_stream->stream->Init();
 
       streams.emplace_back(nccl_stream);
@@ -258,9 +259,37 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
     devices[i] = collective->participants[i]->gpu_device_id;
   }
 
+  int device_count = num_devices;
+#if NCCL_MAJOR >= 2
+  // NCCL2 prevents InitAll for more communicators than devices (but doesn't
+  // check that device ids are unique). Work around it by initializing each
+  // rank individually.
+  cudaGetDeviceCount(&device_count);
+#endif
   std::vector<ncclComm_t> nccl_comms(num_devices);
-  auto result = ncclCommInitAll(nccl_comms.data(), num_devices, devices.data());
-  CHECK_EQ(result, ncclSuccess);
+  if (num_devices <= device_count) {
+    auto result =
+        ncclCommInitAll(nccl_comms.data(), num_devices, devices.data());
+    CHECK_EQ(result, ncclSuccess) << ncclGetErrorString(result);
+  } else {
+    int savedDevice = 0;
+    CHECK_EQ(cudaGetDevice(&savedDevice), cudaSuccess);
+    ncclUniqueId commId;
+    ncclGetUniqueId(&commId);
+#if NCCL_MAJOR >= 2
+    CHECK_EQ(ncclGroupStart(), ncclSuccess);
+#endif
+    for (int rank = 0; rank < num_devices; ++rank) {
+      cudaSetDevice(devices[rank]);
+      auto result =
+          ncclCommInitRank(nccl_comms.data() + rank, num_devices, commId, rank);
+      CHECK_EQ(result, ncclSuccess) << ncclGetErrorString(result);
+    }
+#if NCCL_MAJOR >= 2
+    CHECK_EQ(ncclGroupEnd(), ncclSuccess);
+#endif
+    cudaSetDevice(savedDevice);
+  }
   for (int rank = 0; rank < num_devices; ++rank) {
     members[rank].nccl_comm = nccl_comms[rank];
   }
@@ -270,10 +299,10 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
 
 void NcclManager::AddToAllReduce(int num_devices, const string& key,
                                  ncclRedOp_t reduction_op,
-                                 perftools::gputools::StreamExecutor* executor,
+                                 se::StreamExecutor* executor,
                                  int gpu_device_id, EventMgr* event_mgr,
-                                 perftools::gputools::Stream* tensor_stream,
-                                 const Tensor* in_t, Tensor* out_t,
+                                 se::Stream* tensor_stream, const Tensor* in_t,
+                                 Tensor* out_t,
                                  const DoneCallback& done_callback) {
   std::unique_ptr<Participant> participant(
       new Participant(in_t, out_t, event_mgr, tensor_stream, executor,
@@ -282,11 +311,12 @@ void NcclManager::AddToAllReduce(int num_devices, const string& key,
                  kAllReduce, reduction_op);
 }
 
-void NcclManager::AddBroadcastSend(
-    int num_devices, const string& key,
-    perftools::gputools::StreamExecutor* executor, int gpu_device_id,
-    EventMgr* event_mgr, perftools::gputools::Stream* tensor_stream,
-    const Tensor* in_t, DoneCallback done_callback) {
+void NcclManager::AddBroadcastSend(int num_devices, const string& key,
+                                   se::StreamExecutor* executor,
+                                   int gpu_device_id, EventMgr* event_mgr,
+                                   se::Stream* tensor_stream,
+                                   const Tensor* in_t,
+                                   DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
       new Participant(in_t, nullptr /* out_t */, event_mgr, tensor_stream,
                       executor, gpu_device_id, std::move(done_callback)));
@@ -295,16 +325,43 @@ void NcclManager::AddBroadcastSend(
                  kBroadcast, ncclSum /* unused */);
 }
 
-void NcclManager::AddBroadcastRecv(
-    int num_devices, const string& key,
-    perftools::gputools::StreamExecutor* executor, int gpu_device_id,
-    EventMgr* event_mgr, perftools::gputools::Stream* tensor_stream,
-    Tensor* out_t, DoneCallback done_callback) {
+void NcclManager::AddBroadcastRecv(int num_devices, const string& key,
+                                   se::StreamExecutor* executor,
+                                   int gpu_device_id, EventMgr* event_mgr,
+                                   se::Stream* tensor_stream, Tensor* out_t,
+                                   DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
       new Participant(nullptr /* in_t */, out_t, event_mgr, tensor_stream,
                       executor, gpu_device_id, std::move(done_callback)));
   AddParticipant(num_devices, key, std::move(participant), out_t->dtype(),
                  kBroadcast, ncclSum /* unused */);
+}
+
+void NcclManager::AddReduceSend(int num_devices, const string& key,
+                                ncclRedOp_t reduction_op,
+                                se::StreamExecutor* executor, int gpu_device_id,
+                                EventMgr* event_mgr, se::Stream* tensor_stream,
+                                const Tensor* in_t,
+                                DoneCallback done_callback) {
+  std::unique_ptr<Participant> participant(
+      new Participant(in_t, nullptr /* out_t */, event_mgr, tensor_stream,
+                      executor, gpu_device_id, std::move(done_callback)));
+  AddParticipant(num_devices, key, std::move(participant), in_t->dtype(),
+                 kReduce, reduction_op);
+}
+
+void NcclManager::AddReduceRecv(int num_devices, const string& key,
+                                ncclRedOp_t reduction_op,
+                                se::StreamExecutor* executor, int gpu_device_id,
+                                EventMgr* event_mgr, se::Stream* tensor_stream,
+                                const Tensor* in_t, Tensor* out_t,
+                                DoneCallback done_callback) {
+  std::unique_ptr<Participant> participant(
+      new Participant(in_t, out_t, event_mgr, tensor_stream, executor,
+                      gpu_device_id, std::move(done_callback)));
+  participant->root = true;
+  AddParticipant(num_devices, key, std::move(participant), in_t->dtype(),
+                 kReduce, reduction_op);
 }
 
 void NcclManager::AddParticipant(int num_devices, const string& key,
@@ -341,7 +398,7 @@ void NcclManager::AddParticipant(int num_devices, const string& key,
 }
 
 void NcclManager::RunCollective(const string& key, Collective* collective) {
-  static mutex collective_mu;
+  static mutex collective_mu(LINKER_INITIALIZED);
 
   auto* communicator = GetCommunicator(collective);
   collective->communicator = communicator;
@@ -385,7 +442,7 @@ void NcclManager::RunCollective(const string& key, Collective* collective) {
 }
 
 void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
-  perftools::gputools::Stream* comm_stream = nccl_stream->stream.get();
+  se::Stream* comm_stream = nccl_stream->stream.get();
   ScopedActivateExecutorContext scoped_context(nccl_stream->executor);
   const cudaStream_t* cu_stream = reinterpret_cast<const cudaStream_t*>(
       comm_stream->implementation()->CudaStreamMemberHack());
@@ -431,6 +488,16 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                                 collective->root_rank, nccl_comm, *cu_stream);
         break;
       }
+      case kReduce: {
+        const void* sendbuff = p->in_t->tensor_data().data();
+        void* recvbuff = p->out_t
+                             ? const_cast<char*>(p->out_t->tensor_data().data())
+                             : nullptr;
+        nccl_result = ncclReduce(sendbuff, recvbuff, p->in_t->NumElements(),
+                                 data_type, collective->reduction_op,
+                                 collective->root_rank, nccl_comm, *cu_stream);
+        break;
+      }
     }
 
     // Run the done_callback when the nccl kernel finishes running.
@@ -441,7 +508,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         // Propagate the error, but note that if other members of the collective
         // did launch their kernels, then they are hanging.
         collective->participants[rank]->done_callback(errors::Unknown(
-            "Error invoking AllReduce: ", ncclGetErrorString(nccl_result)));
+            "Error invoking NCCL: ", ncclGetErrorString(nccl_result)));
       }
 
       // TODO(cwhipkey): use RefCounted after figuring out how to use in a

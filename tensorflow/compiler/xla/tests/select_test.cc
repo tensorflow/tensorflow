@@ -16,14 +16,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -36,7 +34,7 @@ class SelectTest : public ClientLibraryTestBase {
 };
 
 TEST_F(SelectTest, SelectScalarF32True) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto pred = builder.ConstantR0<bool>(true);
   auto on_true = builder.ConstantR0<float>(123.0f);
   auto on_false = builder.ConstantR0<float>(42.0f);
@@ -46,7 +44,7 @@ TEST_F(SelectTest, SelectScalarF32True) {
 }
 
 TEST_F(SelectTest, SelectScalarS32True) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto pred = builder.ConstantR0<bool>(true);
   auto on_true = builder.ConstantR0<int32>(-42);
   auto on_false = builder.ConstantR0<int32>(42);
@@ -56,7 +54,7 @@ TEST_F(SelectTest, SelectScalarS32True) {
 }
 
 TEST_F(SelectTest, SelectScalarF32False) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto pred = builder.ConstantR0<bool>(false);
   auto on_true = builder.ConstantR0<float>(123.0f);
   auto on_false = builder.ConstantR0<float>(42.0f);
@@ -66,7 +64,7 @@ TEST_F(SelectTest, SelectScalarF32False) {
 }
 
 XLA_TEST_F(SelectTest, SelectR1S0F32WithConstantR1S0PRED) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto pred = builder.ConstantR1<bool>({});
   auto on_true = builder.ConstantR1<float>({});
   auto on_false = builder.ConstantR1<float>({});
@@ -76,7 +74,7 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithConstantR1S0PRED) {
 }
 
 TEST_F(SelectTest, SelectR1F32WithConstantR1PRED) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto pred = builder.ConstantR1<bool>({false, true, false, true, false});
   auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
   auto on_false = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, -6.0f});
@@ -89,7 +87,7 @@ TEST_F(SelectTest, SelectR1F32WithConstantR1PRED) {
 XLA_TEST_F(SelectTest, SelectR1S0F32WithCmpR1S0S32s) {
   // Similar to SelectR1S0F32WithConstantR1S0PRED, except that the pred vector
   // is not a constant, but rather the result of comparing two other vectors.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v1 = builder.ConstantR1<int32>({});
   auto v2 = builder.ConstantR1<int32>({});
   auto cmp = builder.Eq(v1, v2);
@@ -103,7 +101,7 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithCmpR1S0S32s) {
 TEST_F(SelectTest, SelectR1F32WithCmpR1S32s) {
   // Similar to SelectR1F32WithConstantR1PRED, except that the pred vector is
   // not a constant, but rather the result of comparing two other vectors.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v1 = builder.ConstantR1<int32>({1, 2, 3, 4, 5});
   auto v2 = builder.ConstantR1<int32>({9, 2, 9, 4, 9});
   auto cmp = builder.Eq(v1, v2);
@@ -117,7 +115,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32s) {
 
 TEST_F(SelectTest, SelectR1F32WithCmpR1F32s) {
   // Similar to SelectR1F32WithCmpR1S32s, except "gt"-comparing two R1F32s.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v1 = builder.ConstantR1<float>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   auto v2 = builder.ConstantR1<float>({-1.0f, -2.0f, 13.0f, 14.0f, 4.4f});
   auto cmp = builder.Gt(v1, v2);
@@ -132,9 +130,9 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32s) {
 TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsSmall) {
   // Selects among two R1F32s, which come from parameters. v1 and v2 are
   // compared, and selection between them happens based on a gt-comparison mask.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
-  ComputationDataHandle v1, v2;
+  XlaOp v1, v2;
   std::unique_ptr<GlobalData> param0_data = CreateR1Parameter<float>(
       {41.0f, 2.0f, 3.0f, 84.0f}, /*parameter_number=*/0, /*name=*/"v1",
       /*builder=*/&builder, /*data_handle=*/&v1);
@@ -152,7 +150,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsSmall) {
 TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsLarge) {
   // Similar to SelectR1F32WithCmpR1F32sFromParamsSmall, except that the
   // data size passed in and out is large.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   // Number of floats in the data passed into and out of the computation.
   constexpr int datalen = 15 * 1000;
@@ -175,7 +173,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsLarge) {
     expected_vec.push_back(larger);
   }
 
-  ComputationDataHandle v1, v2;
+  XlaOp v1, v2;
   std::unique_ptr<GlobalData> param0_data =
       CreateR1Parameter<float>(v1vec, /*parameter_number=*/0, /*name=*/"v1",
                                /*builder=*/&builder, /*data_handle=*/&v1);
@@ -193,7 +191,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsLarge) {
 TEST_F(SelectTest, SelectR1F32WithCmpR1S32ToScalar) {
   // "gt"-compares a R1S32 with a S32 scalar, and uses the resulting R1PRED to
   // select between two R1F32s.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v = builder.ConstantR1<int32>({1, -1, 2, -2});
   auto s = builder.ConstantR0<int32>(0);
   auto cmp = builder.Gt(v, s);
@@ -210,7 +208,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32ToScalar) {
 TEST_F(SelectTest, SelectR1F32WithCmpR1F32ToScalar) {
   // "gt"-compares a R1F32 with a F32 scalar, and uses the resulting R1PRED to
   // select between two R1F32s.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto v = builder.ConstantR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
   auto s = builder.ConstantR0<float>(2.5f);
   auto cmp = builder.Gt(v, s);
@@ -226,7 +224,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32ToScalar) {
 
 XLA_TEST_F(SelectTest, SelectR1S0F32WithScalarPredicate) {
   for (bool which : {false, true}) {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     auto pred = builder.ConstantR0<bool>(which);
     auto on_true = builder.ConstantR1<float>({});
     auto on_false = builder.ConstantR1<float>({});
@@ -237,7 +235,7 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithScalarPredicate) {
 }
 
 TEST_F(SelectTest, SelectR1F32WithScalarPredicateTrue) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto pred = builder.ConstantR0<bool>(true);
   auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f});
   auto on_false = builder.ConstantR1<float>({10.0f, 5.0f});
@@ -247,7 +245,7 @@ TEST_F(SelectTest, SelectR1F32WithScalarPredicateTrue) {
 }
 
 TEST_F(SelectTest, SelectR1F32WithScalarPredicateFalse) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto pred = builder.ConstantR0<bool>(false);
   auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f});
   auto on_false = builder.ConstantR1<float>({10.0f, 5.0f});
@@ -257,20 +255,3 @@ TEST_F(SelectTest, SelectR1F32WithScalarPredicateFalse) {
 }
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

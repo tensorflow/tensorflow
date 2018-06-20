@@ -607,6 +607,31 @@ class CreateInputLayersForDNNsTest(test.TestCase):
       # Verify cross compatibility: Core builder output should equal to contrib.
       self.assertAllEqual(output.eval().shape, output_core.eval().shape)
 
+  def testAllDNNColumnsWithColumnwiseOutputs(self):
+    sparse_column = feature_column.sparse_column_with_keys(
+        "ids", ["a", "b", "c", "unseen"])
+    real_valued_column = feature_column.real_valued_column("income", 2)
+    one_hot_column = feature_column.one_hot_column(sparse_column)
+    embedding_column = feature_column.embedding_column(sparse_column, 10)
+    features = {
+        "ids":
+            sparse_tensor.SparseTensor(
+                values=["c", "b", "a"],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+        "income":
+            constant_op.constant([[20.3, 10], [110.3, 0.4], [-3.0, 30.4]]),
+    }
+    columns = [one_hot_column, embedding_column, real_valued_column]
+    cols_to_outs = {}
+    feature_column_ops.input_from_feature_columns(
+        features, columns, cols_to_outs=cols_to_outs)
+    with self.test_session():
+      variables_lib.global_variables_initializer().run()
+      lookup_ops.tables_initializer().run()
+      for column in columns:
+        self.assertTrue(column in cols_to_outs)
+
   def testRealValuedColumn(self):
     real_valued = feature_column.real_valued_column("price")
     features = {"price": constant_op.constant([[20.], [110], [-3]])}
@@ -1173,7 +1198,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         features, [real_valued, bucket, embeded_sparse],
         weight_collections=["my_collection"],
         trainable=True)
-    # There should  one trainable variable for embeded sparse
+    # There should one trainable variable for embeded sparse
     self.assertEqual(1, len(variables_lib.trainable_variables()))
 
   def testInputLayerWithNonTrainableEmbeddingForDNN(self):

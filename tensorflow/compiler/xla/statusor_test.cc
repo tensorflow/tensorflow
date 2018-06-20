@@ -29,35 +29,41 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using tensorflow::Status;
-
 class Base1 {
  public:
   virtual ~Base1() {}
-  int pad;
+  int pad_;
 };
 
 class Base2 {
  public:
   virtual ~Base2() {}
-  int yetotherpad;
+  int yetotherpad_;
 };
 
 class Derived : public Base1, public Base2 {
  public:
   ~Derived() override {}
-  int evenmorepad;
+  int evenmorepad_;
 };
 
 class CopyNoAssign {
  public:
-  explicit CopyNoAssign(int value) : foo(value) {}
-  CopyNoAssign(const CopyNoAssign& other) : foo(other.foo) {}
-  int foo;
+  explicit CopyNoAssign(int value) : foo_(value) {}
+  CopyNoAssign(const CopyNoAssign& other) : foo_(other.foo_) {}
+  int foo_;
 
  private:
   const CopyNoAssign& operator=(const CopyNoAssign&);
 };
+
+class NoDefaultConstructor {
+ public:
+  explicit NoDefaultConstructor(int foo);
+};
+
+static_assert(!std::is_default_constructible<NoDefaultConstructor>(),
+              "Should not be default-constructible.");
 
 StatusOr<std::unique_ptr<int>> ReturnUniquePtr() {
   // Uses implicit constructor from T&&
@@ -67,6 +73,26 @@ StatusOr<std::unique_ptr<int>> ReturnUniquePtr() {
 TEST(StatusOr, ElementType) {
   static_assert(std::is_same<StatusOr<int>::element_type, int>(), "");
   static_assert(std::is_same<StatusOr<char>::element_type, char>(), "");
+}
+
+TEST(StatusOr, NullPointerStatusOr) {
+  // As a very special case, null-plain-pointer StatusOr used to be an
+  // error. Test that it no longer is.
+  StatusOr<int*> null_status(nullptr);
+  EXPECT_TRUE(null_status.ok());
+  EXPECT_EQ(null_status.ValueOrDie(), nullptr);
+}
+
+TEST(StatusOr, TestNoDefaultConstructorInitialization) {
+  // Explicitly initialize it with an error code.
+  StatusOr<NoDefaultConstructor> statusor(tensorflow::errors::Cancelled(""));
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_EQ(statusor.status().code(), tensorflow::error::CANCELLED);
+
+  // Default construction of StatusOr initializes it with an UNKNOWN error code.
+  StatusOr<NoDefaultConstructor> statusor2;
+  EXPECT_FALSE(statusor2.ok());
+  EXPECT_EQ(statusor2.status().code(), tensorflow::error::UNKNOWN);
 }
 
 TEST(StatusOr, TestMoveOnlyInitialization) {
@@ -235,7 +261,7 @@ TEST(StatusOr, TestCopyCtorNonAssignable) {
   StatusOr<CopyNoAssign> original(value);
   StatusOr<CopyNoAssign> copy(original);
   EXPECT_EQ(copy.status(), original.status());
-  EXPECT_EQ(original.ValueOrDie().foo, copy.ValueOrDie().foo);
+  EXPECT_EQ(original.ValueOrDie().foo_, copy.ValueOrDie().foo_);
 }
 
 TEST(StatusOr, TestCopyCtorStatusOKConverting) {
@@ -387,7 +413,7 @@ TEST(StatusOr, TestPointerValueConst) {
   EXPECT_EQ(&kI, thing.ValueOrDie());
 }
 
-// NOTE(tucker): tensorflow::StatusOr does not support this kind
+// NOTE(tucker): StatusOr does not support this kind
 // of resize op.
 // TEST(StatusOr, StatusOrVectorOfUniquePointerCanResize) {
 //   using EvilType = std::vector<std::unique_ptr<int>>;

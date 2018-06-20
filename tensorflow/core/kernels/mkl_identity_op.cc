@@ -24,12 +24,21 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
+#ifdef INTEL_MKL_ML
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
+#endif
 #include "tensorflow/core/util/mkl_util.h"
+
+#ifndef INTEL_MKL_ML
+#include "mkldnn.hpp"
+#endif
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
+
+#ifdef INTEL_MKL_ML
+
 template <typename Device, typename T>
 class MklIdentityOp : public OpKernel {
  public:
@@ -41,14 +50,40 @@ class MklIdentityOp : public OpKernel {
     bool input_in_mkl_format = mkl_shape_input.IsMklTensor();
 
     if (input_in_mkl_format) {
-      ForwarMklTensorInToOut(context, 0, 0);
+      ForwardMklTensorInToOut(context, 0, 0);
     } else {
-      FowardTfTensorInToOut(context, 0, 0);
+      ForwardTfTensorInToOut(context, 0, 0);
     }
   }
 
   bool IsExpensive() override { return false; }
 };
+
+#else
+
+template <typename Device, typename T>
+class MklIdentityOp : public OpKernel {
+ public:
+  explicit MklIdentityOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    MklDnnShape dnn_shape_input;
+    const int kInputIdx = 0, kOutputIdx = 0;
+    GetMklShape(context, kInputIdx, &dnn_shape_input);
+
+    if (dnn_shape_input.IsMklTensor()) {
+      ForwardMklTensorInToOut(context, kInputIdx, kOutputIdx);
+    } else {
+      ForwardTfTensorInToOut(context, kInputIdx, kOutputIdx);
+    }
+  }
+
+  // TensorFlow's IdentityOp has the following member function, so kept it
+  // as it is.
+  bool IsExpensive() override { return false; }
+};
+
+#endif
 
 #define REGISTER_MKL_CPU(T)                                         \
   REGISTER_KERNEL_BUILDER(Name("_MklIdentity")                      \

@@ -15,41 +15,41 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 
-#include "external/llvm/include/llvm/ADT/Triple.h"
+#include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyClient::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AotComputationInstance> computations,
-    const AotCompilationOptions& options) {
-  std::vector<CompileOnlyService::AotComputationInstance> service_instances;
+    const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+    const AotCompilationOptions& options,
+    std::unique_ptr<AotCompilationMetadata>* metadata) {
+  std::vector<CompileOnlyService::AotXlaComputationInstance> service_instances;
   service_instances.reserve(computations.size());
-  for (const AotComputationInstance& instance : computations) {
-    service_instances.push_back({});
-    CompileOnlyService::AotComputationInstance& service_instance =
+  for (const AotXlaComputationInstance& instance : computations) {
+    service_instances.emplace_back();
+    CompileOnlyService::AotXlaComputationInstance& service_instance =
         service_instances.back();
     TF_RET_CHECK(instance.computation != nullptr);
-    service_instance.computation = instance.computation->handle();
+    service_instance.computation = instance.computation->proto();
     service_instance.argument_layouts = instance.argument_layouts;
     service_instance.result_layout = instance.result_layout;
   }
-  return compiler_service_->CompileAheadOfTime(service_instances, options);
+  return compiler_service_->CompileAheadOfTime(service_instances, options,
+                                               metadata);
 }
 
-int64 CompileOnlyClient::PointerSizeForTriple(
-    tensorflow::StringPiece target_triple) {
-  llvm::Triple triple(
-      llvm::Triple::normalize(llvm_ir::AsStringRef(target_triple)));
-  if (triple.isArch64Bit()) {
+int64 CompileOnlyClient::PointerSizeForTriple(tensorflow::StringPiece triple) {
+  llvm::Triple llvm_triple(
+      llvm::Triple::normalize(llvm::StringRef(triple.data(), triple.size())));
+  if (llvm_triple.isArch64Bit()) {
     return 8;
-  } else if (triple.isArch32Bit()) {
+  } else if (llvm_triple.isArch32Bit()) {
     return 4;
   } else {
-    CHECK(triple.isArch16Bit());
+    CHECK(llvm_triple.isArch16Bit());
     return 2;
   }
 }

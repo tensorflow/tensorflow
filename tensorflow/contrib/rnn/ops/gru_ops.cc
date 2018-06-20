@@ -69,7 +69,7 @@ Element-wise dot product of a and b is represented by ab
 Element-wise dot product is represented by \circ
 Matrix multiplication is represented by *
 
-Baises are initialized with :
+Biases are initialized with :
 `b_ru` - constant_initializer(1.0)
 `b_c` - constant_initializer(0.0)
 

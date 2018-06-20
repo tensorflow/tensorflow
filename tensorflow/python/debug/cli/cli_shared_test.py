@@ -166,6 +166,17 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
                      menu.caption_to_item("invoke_stepper").content)
     self.assertEqual("exit", menu.caption_to_item("exit").content)
 
+  def testSparseTensorAsFeedShouldHandleNoNameAttribute(self):
+    sparse_feed_val = ([[0, 0], [1, 1]], [10.0, 20.0])
+    run_start_intro = cli_shared.get_run_start_intro(
+        1, self.sparse_d, {self.sparse_d: sparse_feed_val}, {})
+    self.assertEqual(str(self.sparse_d), run_start_intro.lines[7].strip())
+
+    short_description = cli_shared.get_run_short_description(
+        1, self.sparse_d, {self.sparse_d: sparse_feed_val})
+    self.assertEqual(
+        "run #1: 1 fetch; 1 feed (%s)" % self.sparse_d, short_description)
+
   def testSparseTensorAsFetchShouldHandleNoNameAttribute(self):
     run_start_intro = cli_shared.get_run_start_intro(1, self.sparse_d, None, {})
     self.assertEqual(str(self.sparse_d), run_start_intro.lines[4].strip())
@@ -360,6 +371,11 @@ class GetErrorIntroTest(test_util.TensorFlowTestCase):
 
     self.assertEqual("Details:", error_intro.lines[14])
     self.assertStartsWith(error_intro.lines[15], "foo description")
+
+  def testGetErrorIntroForNoOpName(self):
+    tf_error = errors.OpError(None, None, "Fake OpError", -1)
+    error_intro = cli_shared.get_error_intro(tf_error)
+    self.assertIn("Cannot determine the name of the op", error_intro.lines[3])
 
 
 if __name__ == "__main__":

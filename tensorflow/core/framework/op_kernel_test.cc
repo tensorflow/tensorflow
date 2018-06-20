@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/version.h"
 
 class DummyKernel : public tensorflow::OpKernel {
@@ -509,10 +510,9 @@ TEST_F(OpKernelBuilderTest, BuilderBoth) {
 }
 
 REGISTER_OP("BuildTypeAttr").Attr("T: type");
-REGISTER_KERNEL_BUILDER(Name("BuildTypeAttr")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("BuildTypeAttr").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DummyKernel);
 
 TEST_F(OpKernelBuilderTest, BuilderTypeAttr) {
   ExpectSuccess("BuildTypeAttr", DEVICE_CPU, {"T|type|DT_FLOAT"});
@@ -524,10 +524,9 @@ TEST_F(OpKernelBuilderTest, BuilderTypeAttr) {
 }
 
 REGISTER_OP("BuildTypeListAttr").Attr("T: list(type)");
-REGISTER_KERNEL_BUILDER(Name("BuildTypeListAttr")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<bool>("T"),
-                        DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("BuildTypeListAttr").Device(DEVICE_CPU).TypeConstraint<bool>("T"),
+    DummyKernel);
 
 TEST_F(OpKernelBuilderTest, BuilderTypeListAttr) {
   ExpectSuccess("BuildTypeListAttr", DEVICE_CPU, {"T|list(type)|[]"});
@@ -547,9 +546,9 @@ TEST_F(OpKernelBuilderTest, BuilderTypeListAttr) {
                                             {"T|list(type)|[DT_FLOAT]"}));
 
   ExpectFailure("BuildTypeListAttr", DEVICE_CPU, {}, error::INVALID_ARGUMENT);
-  EXPECT_TRUE(
-      StringPiece(GetKernelClassName("BuildTypeListAttr", DEVICE_CPU, {}))
-          .contains("Invalid argument: "));
+  EXPECT_TRUE(str_util::StrContains(
+      GetKernelClassName("BuildTypeListAttr", DEVICE_CPU, {}),
+      "Invalid argument: "));
 
   ExpectFailure("BuildTypeListAttr", DEVICE_CPU, {"T|int|7"},
                 error::INVALID_ARGUMENT);
@@ -566,21 +565,19 @@ TEST_F(OpKernelBuilderTest, DuplicateKernel) {
   DeviceTypeVector devs;
   Status status = SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Multiple OpKernel registrations match NodeDef"));
+  EXPECT_TRUE(str_util::StrContains(
+      status.error_message(), "Multiple OpKernel registrations match NodeDef"));
 
   ExpectFailure("DuplicateKernel", DEVICE_CPU, {}, error::INVALID_ARGUMENT);
 }
 
 REGISTER_OP("DuplicateKernelForT").Attr("T: type");
-REGISTER_KERNEL_BUILDER(Name("DuplicateKernelForT")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DummyKernel);
-REGISTER_KERNEL_BUILDER(Name("DuplicateKernelForT")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("DuplicateKernelForT").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DummyKernel);
+REGISTER_KERNEL_BUILDER(
+    Name("DuplicateKernelForT").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    DummyKernel);
 
 TEST_F(OpKernelBuilderTest, DuplicateKernelForT) {
   const NodeDef ndef =
@@ -588,8 +585,8 @@ TEST_F(OpKernelBuilderTest, DuplicateKernelForT) {
   DeviceTypeVector devs;
   Status status = SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Multiple OpKernel registrations match NodeDef"));
+  EXPECT_TRUE(str_util::StrContains(
+      status.error_message(), "Multiple OpKernel registrations match NodeDef"));
 
   ExpectFailure("DuplicateKernelForT", DEVICE_CPU, {"T|type|DT_FLOAT"},
                 error::INVALID_ARGUMENT);
@@ -609,8 +606,9 @@ TEST_F(OpKernelBuilderTest, BadConstraint) {
   DeviceTypeVector devs;
   Status status = SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("OpKernel 'BadConstraint' has constraint on attr "
+  EXPECT_TRUE(
+      str_util::StrContains(status.error_message(),
+                            "OpKernel 'BadConstraint' has constraint on attr "
                             "'T' not in NodeDef"));
 
   ExpectFailure("BadConstraint", DEVICE_CPU, {"dtype|type|DT_FLOAT"},
@@ -896,6 +894,96 @@ TEST_F(LabelTest, Specified) {
 TEST_F(LabelTest, Duplicate) {
   ExpectFailure("LabeledKernel", DEVICE_CPU, {"_kernel|string|'dupe'"},
                 error::INVALID_ARGUMENT);
+}
+
+void BM_InputRangeHelper(int iters, const NodeDef& node_def,
+                         const char* input_name, int expected_start,
+                         int expected_stop) {
+  Status status;
+  std::unique_ptr<DummyDevice> device(new DummyDevice(Env::Default(), false));
+
+  std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
+                                              cpu_allocator(), node_def,
+                                              TF_GRAPH_DEF_VERSION, &status));
+  TF_CHECK_OK(status);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    int start;
+    int stop;
+    TF_CHECK_OK(op->InputRange(input_name, &start, &stop));
+    EXPECT_EQ(expected_start, start);
+    EXPECT_EQ(expected_stop, stop);
+  }
+  testing::StopTiming();
+}
+
+REGISTER_KERNEL_BUILDER(Name("ConcatV2").Device(DEVICE_CPU), DummyKernel);
+REGISTER_KERNEL_BUILDER(Name("Select").Device(DEVICE_CPU), DummyKernel);
+
+void BM_ConcatInputRange(int iters) {
+  testing::StopTiming();
+
+  // Create a ConcatV2 NodeDef with 4 inputs (plus the axis).
+  NodeDef node_def;
+  node_def.set_name("concat-op");
+  node_def.set_op("ConcatV2");
+  AttrValue attr_N;
+  attr_N.set_i(4);
+  AttrValue attr_T;
+  attr_T.set_type(DT_FLOAT);
+  AttrValue attr_Tidx;
+  attr_Tidx.set_type(DT_INT32);
+  node_def.mutable_attr()->insert({"N", attr_N});
+  node_def.mutable_attr()->insert({"T", attr_T});
+  node_def.mutable_attr()->insert({"Tidx", attr_Tidx});
+  for (size_t i = 0; i < 5; ++i) {
+    node_def.add_input(strings::StrCat("a:", i));
+  }
+
+  BM_InputRangeHelper(iters, node_def, "values", 0, 4);
+}
+
+void BM_SelectInputRange(int iters) {
+  testing::StopTiming();
+
+  // Create a Select NodeDef with 3 inputs.
+  NodeDef node_def;
+  node_def.set_name("select-op");
+  node_def.set_op("Select");
+  AttrValue attr_T;
+  attr_T.set_type(DT_FLOAT);
+  node_def.mutable_attr()->insert({"T", attr_T});
+  for (size_t i = 0; i < 3; ++i) {
+    node_def.add_input(strings::StrCat("a:", i));
+  }
+
+  BM_InputRangeHelper(iters, node_def, "condition", 0, 1);
+}
+
+BENCHMARK(BM_ConcatInputRange);
+BENCHMARK(BM_SelectInputRange);
+
+TEST(RegisteredKernels, CanCallGetAllRegisteredKernels) {
+  auto all_registered_kernels = GetAllRegisteredKernels();
+  auto has_name_test1 = [](const KernelDef& k) { return k.op() == "Test1"; };
+
+  // Verify we can find the "Test1" op registered above
+  auto test1_it = std::find_if(all_registered_kernels.begin(),
+                               all_registered_kernels.end(), has_name_test1);
+  ASSERT_NE(test1_it, all_registered_kernels.end());
+  EXPECT_EQ(test1_it->device_type(), "CPU");
+
+  // Verify there was just one kernel
+  ++test1_it;
+  EXPECT_EQ(
+      std::find_if(test1_it, all_registered_kernels.end(), has_name_test1),
+      all_registered_kernels.end());
+}
+
+// Simple test just to check we can call LogAllRegisteredKernels
+TEST(RegisteredKernels, CanLogAllRegisteredKernels) {
+  tensorflow::LogAllRegisteredKernels();
 }
 
 }  // namespace

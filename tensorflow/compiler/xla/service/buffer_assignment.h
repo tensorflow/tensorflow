@@ -91,6 +91,13 @@ class BufferAllocation {
     return parameter_number_;
   }
 
+  // If this allocation is for a parameter of the entry computation, this
+  // function returns which subshape of the parameter the allocation is for.
+  const ShapeIndex& param_shape_index() const {
+    CHECK(is_entry_computation_parameter_);
+    return param_shape_index_;
+  }
+
   // Returns whether this allocation is assigned a LogicalBuffer which may
   // be live out of the entry computation.
   bool maybe_live_out() const { return maybe_live_out_; }
@@ -185,6 +192,35 @@ class BufferAllocation {
            !is_thread_local();
   }
 
+  // Add a heap trace which was used to assign slices to logical buffers in this
+  // allocation. A single BufferAllocation may include multiple heap traces
+  // in the case of the temporary block where there is a heap trace per
+  // computation.
+  void AddHeapTrace(const HeapSimulatorTrace& heap_trace) {
+    heap_traces_.push_back(heap_trace);
+  }
+
+  // Return the set of heap traces used to assign slices to logical buffers in
+  // this allocation.
+  const std::vector<HeapSimulatorTrace> HeapTraces() const {
+    return heap_traces_;
+  }
+
+  // Returns the LogicalBuffers which are live at the point of peak memory usage
+  // for this allocation. The point of peak memory usage is the point at which
+  // the total size of all live logical buffers is maximal. If peak memory is
+  // reached at multiple points, the set of logical buffers live at the earliest
+  // maximal point is returned. The vector is stabily sorted by
+  // LogicalBuffer::Index.
+  const std::vector<const LogicalBuffer*>& PeakMemoryLogicalBuffers() const {
+    return peak_buffers_;
+  }
+
+  // Get the number of bytes lost to fragmentation. This is equal to the
+  // difference between the size of the allocation and the size of the maximal
+  // live set.
+  int64 fragmentation_bytes() const { return fragmentation_bytes_; }
+
   bool operator==(const BufferAllocation& other) const {
     return index_ == other.index_;
   }
@@ -203,9 +239,11 @@ class BufferAllocation {
   // Adds a LogicalBuffer to the set assigned to this buffer.
   void AddAssignment(const LogicalBuffer& buffer, int64 offset, int64 size);
 
-  void set_entry_computation_parameter(int64 parameter_number) {
+  void set_entry_computation_parameter(int64 parameter_number,
+                                       ShapeIndex param_shape_index) {
     is_entry_computation_parameter_ = true;
     parameter_number_ = parameter_number;
+    param_shape_index_ = std::move(param_shape_index);
   }
   void set_maybe_live_out(bool value) { maybe_live_out_ = value; }
   void set_index(Index index) { index_ = index; }
@@ -235,6 +273,10 @@ class BufferAllocation {
   // indicates the index (starting from 0) of the parameter.
   int64 parameter_number_ = 0;
 
+  // If this buffer is for an entry computation parameter, which subshape of the
+  // parameter is it for?
+  ShapeIndex param_shape_index_;
+
   // Whether the allocation contains a LogicalBuffer which may be live-out of
   // the entry computation. Note that this flag is conservatively computed by
   // TuplePointsToAnalysis.  That is, an allocation marked `maybe_live_out_`
@@ -244,6 +286,12 @@ class BufferAllocation {
   // Mapping from the set of buffers assigned to this allocation to their
   // logical offsets and sizes.
   tensorflow::gtl::FlatMap<const LogicalBuffer*, OffsetSize> assigned_buffers_;
+
+  int64 fragmentation_bytes_ = 0;
+  std::vector<HeapSimulatorTrace> heap_traces_;
+
+  // Set of buffers live at the point of peak memory usage for this allocation.
+  std::vector<const LogicalBuffer*> peak_buffers_;
 };
 
 // Add stream operators for nicer output of CHECK/RET_CHECK failures.
@@ -281,6 +329,11 @@ class BufferAssignment {
   std::set<BufferAllocation::Slice> GetAllSlices(
       const HloInstruction* instruction, const ShapeIndex& index) const;
 
+  // Convenience function which returns whether the buffer of the
+  // instruction at the given index is assigned an allocation.
+  bool HasAllocationAt(const HloInstruction* instruction,
+                       const ShapeIndex& index) const;
+
   // Convenience function which returns whether the top-level buffer of the
   // instruction (index == {}) is assigned an allocation.
   bool HasTopLevelAllocation(const HloInstruction* instruction) const;
@@ -301,7 +354,7 @@ class BufferAssignment {
 
   // Returns the set LogicalBuffers which may be the source of the value at the
   // given index and instruction.
-  const std::vector<const LogicalBuffer*>& GetSourceBuffers(
+  const PointsToSet::BufferList& GetSourceBuffers(
       const HloInstruction* instruction, const ShapeIndex& index) const {
     return GetPointsToSet(instruction).element(index);
   }
@@ -315,13 +368,22 @@ class BufferAssignment {
                           const HloInstruction* hlo_b,
                           const ShapeIndex& shape_index_b) const;
 
+  // Returns true if the top-level buffers of hlo_a and hlo_b are the same.
+  // REQUIRES: HasTopLevelAllocation(hlo_a) && HasTopLevelAllocation(hlo_b).
+  bool SharesTopLevelSlice(const HloInstruction* hlo_a,
+                           const HloInstruction* hlo_b) const {
+    return SharesSliceAtIndex(hlo_a, {}, hlo_b, {});
+  }
+
+  // Returns true if hlo_a and hlo_b both have at least one buffer assigned for
+  // their top-level and each of their nested shape indices, and if hlo_a's
+  // buffers are all different from hlo_b's buffers.
+  bool HaveDisjointSlices(const HloInstruction* hlo_a,
+                          const HloInstruction* hlo_b) const;
+
   // Returns the underlying points-to analysis used for this assignment.
   const TuplePointsToAnalysis& points_to_analysis() const {
     return liveness_->points_to_analysis();
-  }
-
-  TuplePointsToAnalysis& mutable_points_to_analysis() const {
-    return liveness_->mutable_points_to_analysis();
   }
 
   // Returns the BufferLiveness object used to construct this assignment.
@@ -353,10 +415,10 @@ class BufferAssignment {
   // Only BufferAssigner can build or modify BufferAssignments.
   friend class BufferAssigner;
 
-  explicit BufferAssignment(const HloModule* module,
-                            std::unique_ptr<BufferLiveness> liveness,
-                            LogicalBuffer::SizeFunction buffer_size,
-                            LogicalBuffer::AlignmentFunction color_alignment)
+  BufferAssignment(const HloModule* module,
+                   std::unique_ptr<BufferLiveness> liveness,
+                   LogicalBuffer::SizeFunction buffer_size,
+                   LogicalBuffer::AlignmentFunction color_alignment)
       : module_(module),
         liveness_(std::move(liveness)),
         buffer_size_(std::move(buffer_size)),
@@ -414,7 +476,6 @@ class BufferAssignment {
   LogicalBuffer::AlignmentFunction color_alignment_;
 
   Stats stats_;
-  std::vector<HeapSimulatorTrace> heap_simulator_traces_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssignment);
 };
@@ -432,12 +493,11 @@ class BufferAssigner {
       LogicalBuffer::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
       bool allow_input_output_aliasing = false,
-      TuplePointsToAnalysis::Colorer colorer =
-          TuplePointsToAnalysis::DefaultColorer());
+      BufferLiveness::Colorer colorer = BufferLiveness::DefaultColorer());
 
  private:
   BufferAssigner(bool allow_input_output_aliasing,
-                 TuplePointsToAnalysis::Colorer colorer)
+                 BufferLiveness::Colorer colorer)
       : allow_input_output_aliasing_(allow_input_output_aliasing),
         colorer_(colorer) {}
   virtual ~BufferAssigner() = default;
@@ -515,15 +575,13 @@ class BufferAssigner {
       const std::vector<const LogicalBuffer*>& colocated_set,
       std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
-  // Conceptually the same as AddSetToColocatedBufferSets, but specific to the
-  // colocated buffers for while instructions.
-  void AddWhileSetToColocatedBufferSets(
-      const std::vector<const LogicalBuffer*>& colocated_set,
-      const LogicalBuffer* while_init_buffer,
-      const LogicalBuffer* while_result_buffer, const HloInstruction* while_hlo,
-      const HloComputation& computation, const BufferLiveness& buffer_liveness,
-      const LogicalBuffer::SizeFunction& buffer_size,
-      std::vector<ColocatedBufferSet>* colocated_buffer_sets);
+  // Given a list of colocated buffer sets (each colocated buffer set represents
+  // the logical buffers that would be assigned to the same physical buffer),
+  // try to merge the sets if the buffers can be shared. Returns the merged set.
+  std::vector<ColocatedBufferSet> MergeColocatedBufferSets(
+      const std::vector<ColocatedBufferSet>& colocated_buffer_sets,
+      const BufferLiveness& buffer_liveness,
+      const LogicalBuffer::SizeFunction& buffer_size);
 
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.
@@ -538,7 +596,7 @@ class BufferAssigner {
   bool allow_input_output_aliasing_;
 
   // Functor used to assign colors to newly allocated logical buffers.
-  TuplePointsToAnalysis::Colorer colorer_;
+  BufferLiveness::Colorer colorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };

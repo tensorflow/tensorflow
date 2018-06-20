@@ -17,42 +17,90 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
-port::Status ExecutorCache::Insert(const StreamExecutorConfig& config,
-                                   std::unique_ptr<StreamExecutor> entry) {
-  if (Get(config).ok()) {
-    return port::Status(port::error::ALREADY_EXISTS,
-                        "An executor with a matching config already exists.");
+port::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
+    const StreamExecutorConfig& config,
+    const std::function<ExecutorFactory>& factory) {
+  // In the fast path case, the cache already has an entry and we can just
+  // return after Get() which only takes a shared lock and not a unique lock.
+  // If we need to create, we take a unique lock on cache_.
+  auto fast_result = Get(config);
+  if (fast_result.ok()) {
+    return fast_result;
   }
 
-  cache_[config.ordinal].emplace_back(Entry(config, std::move(entry)));
-
-  return port::Status::OK();
-}
-
-port::StatusOr<StreamExecutor*> ExecutorCache::Get(
-    const StreamExecutorConfig& config) {
-  auto entries = cache_.find(config.ordinal);
-  if (entries == cache_.end()) {
-    return port::Status(
-        port::error::NOT_FOUND,
-        port::Printf("No executors registered for ordinal %d", config.ordinal));
+  Entry* entry = nullptr;
+  {
+    mutex_lock lock{mutex_};
+    entry = &cache_[config.ordinal];
+    // Release the map lock; the address of 'entry' is stable because
+    // std::map guarantees reference stability.
   }
 
-  for (const auto& iter : entries->second) {
+  // Acquire the per-Entry mutex without holding the map mutex. Initializing
+  // an Executor may be expensive, so we want to allow concurrent
+  // initialization of different entries.
+  mutex_lock lock{entry->configurations_mutex};
+  for (const auto& iter : entry->configurations) {
     if (iter.first.plugin_config == config.plugin_config &&
         iter.first.device_options == config.device_options) {
+      VLOG(2) << "hit in cache";
       return iter.second.get();
     }
   }
 
+  VLOG(2) << "building executor";
+  port::StatusOr<std::unique_ptr<StreamExecutor>> result = factory();
+  if (!result.ok()) {
+    VLOG(2) << "failed to get build executor: " << result.status();
+    // If construction failed, leave the cache Entry around, but with a null
+    // executor.
+    return result.status();
+  }
+  entry->configurations.emplace_back(config, std::move(result.ValueOrDie()));
+  return entry->configurations.back().second.get();
+}
+
+port::StatusOr<StreamExecutor*> ExecutorCache::Get(
+    const StreamExecutorConfig& config) {
+  Entry* entry = nullptr;
+  {
+    tf_shared_lock lock{mutex_};
+    auto it = cache_.find(config.ordinal);
+    if (it != cache_.end()) {
+      entry = &it->second;
+    } else {
+      return port::Status(port::error::NOT_FOUND,
+                          port::Printf("No executors registered for ordinal %d",
+                                       config.ordinal));
+    }
+  }
+  tf_shared_lock lock{entry->configurations_mutex};
+  if (entry->configurations.empty()) {
+    return port::Status(
+        port::error::NOT_FOUND,
+        port::Printf("No executors registered for ordinal %d", config.ordinal));
+  }
+  for (const auto& iter : entry->configurations) {
+    if (iter.first.plugin_config == config.plugin_config &&
+        iter.first.device_options == config.device_options) {
+      VLOG(2) << "hit in cache for device ordinal " << config.ordinal;
+      return iter.second.get();
+    }
+  }
   return port::Status(port::error::NOT_FOUND,
                       "No executor found with a matching config.");
 }
 
-void ExecutorCache::DestroyAllExecutors() { cache_.clear(); }
+void ExecutorCache::DestroyAllExecutors() {
+  mutex_lock lock{mutex_};
+  cache_.clear();
+}
 
-}  // namespace gputools
-}  // namespace perftools
+ExecutorCache::Entry::~Entry() {
+  mutex_lock lock{configurations_mutex};
+  configurations.clear();
+}
+
+}  // namespace stream_executor

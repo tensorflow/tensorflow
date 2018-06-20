@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
 import sys
 
 from tensorflow.core.protobuf import saver_pb2
@@ -28,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import app
@@ -53,7 +55,7 @@ def tfadd_with_ckpt(out_dir):
     sess.run(init_op)
     sess.run(y.assign(y + 42))
     # Without the checkpoint, the variable won't be set to 42.
-    ckpt = '%s/test_graph_tfadd_with_ckpt.ckpt' % out_dir
+    ckpt = os.path.join(out_dir, 'test_graph_tfadd_with_ckpt.ckpt')
     saver.save(sess, ckpt)
 
 
@@ -68,12 +70,28 @@ def tfadd_with_ckpt_saver(out_dir):
     sess.run(init_op)
     sess.run(y.assign(y + 42))
     # Without the checkpoint, the variable won't be set to 42.
-    ckpt_file = '%s/test_graph_tfadd_with_ckpt_saver.ckpt' % out_dir
+    ckpt_file = os.path.join(out_dir, 'test_graph_tfadd_with_ckpt_saver.ckpt')
     saver.save(sess, ckpt_file)
     # Without the SaverDef, the restore op won't be named correctly.
-    saver_file = '%s/test_graph_tfadd_with_ckpt_saver.saver' % out_dir
+    saver_file = os.path.join(out_dir, 'test_graph_tfadd_with_ckpt_saver.saver')
     with open(saver_file, 'wb') as f:
       f.write(saver.as_saver_def().SerializeToString())
+
+
+def tfassert_eq(_):
+  x = array_ops.placeholder(dtypes.int32, name='x_hold')
+  y = array_ops.placeholder(dtypes.int32, name='y_hold')
+  control_flow_ops.Assert(
+      math_ops.equal(x, y), ['Expected x == y.'], name='assert_eq')
+  math_ops.add(x, math_ops.negative(y), name='x_y_diff')
+
+
+def tfcond(_):
+  p = array_ops.placeholder(dtypes.bool, name='p_hold')
+  x = array_ops.placeholder(dtypes.int32, name='x_hold')
+  y = array_ops.placeholder(dtypes.int32, name='y_hold')
+  z = control_flow_ops.cond(p, lambda: x, lambda: y)
+  array_ops.identity(z, name='result')
 
 
 def tfgather(_):
@@ -129,7 +147,7 @@ def write_graph(build_graph, out_dir):
   g = ops.Graph()
   with g.as_default():
     build_graph(out_dir)
-    filename = '%s/test_graph_%s.pb' % (out_dir, build_graph.__name__)
+    filename = os.path.join(out_dir, 'test_graph_%s.pb' % build_graph.__name__)
     with open(filename, 'wb') as f:
       f.write(g.as_graph_def().SerializeToString())
 
@@ -138,10 +156,12 @@ def main(_):
   write_graph(tfadd, FLAGS.out_dir)
   write_graph(tfadd_with_ckpt, FLAGS.out_dir)
   write_graph(tfadd_with_ckpt_saver, FLAGS.out_dir)
+  write_graph(tfassert_eq, FLAGS.out_dir)
+  write_graph(tfcond, FLAGS.out_dir)
+  write_graph(tffunction, FLAGS.out_dir)
   write_graph(tfgather, FLAGS.out_dir)
   write_graph(tfmatmul, FLAGS.out_dir)
   write_graph(tfmatmulandadd, FLAGS.out_dir)
-  write_graph(tffunction, FLAGS.out_dir)
   write_graph(tfsplits, FLAGS.out_dir)
 
 

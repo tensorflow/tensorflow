@@ -24,31 +24,31 @@ limitations under the License.
 namespace tensorflow {
 
 DebugGateway::DebugGateway(DirectSession* session) : session_(session) {
-  session_->node_outputs_callback_ = [this](
-      const string& node_name, const int output_slot, const Tensor* tensor,
-      const bool is_ref, OpKernelContext* ctx) {
-    if (comp_cb_ != nullptr && output_slot <= 0) {
-      // The node completion callback is invoked once for a node regardless
-      // of whether the node has zero, one or more outputs.
-      // The output_slot can be negative (-1, or kControlSlot) if
-      // node_outputs_callback_ is invoked for a node with no output. If that
-      // is the case, notify the callback that the node in question has no
-      // output.
-      comp_cb_(node_name, output_slot == 0);
-    }
+  session_->node_outputs_callback_ =
+      [this](const string& node_name, const int output_slot,
+             const Tensor* tensor, const bool is_ref, OpKernelContext* ctx) {
+        if (comp_cb_ != nullptr && output_slot <= 0) {
+          // The node completion callback is invoked once for a node regardless
+          // of whether the node has zero, one or more outputs.
+          // The output_slot can be negative (-1, or kControlSlot) if
+          // node_outputs_callback_ is invoked for a node with no output. If
+          // that is the case, notify the callback that the node in question has
+          // no output.
+          comp_cb_(node_name, output_slot == 0);
+        }
 
-    // Copy tensor values (e.g., from GPU to host) only if the
-    // value callback is not nullptr.
-    if (val_cb_ != nullptr && output_slot >= 0) {
-      CopyTensor(
-          node_name, output_slot, tensor, ctx,
-          [this, node_name, output_slot, is_ref](const Tensor* copied_tensor) {
-            val_cb_(node_name, output_slot, *copied_tensor, is_ref);
-          });
-    }
+        // Copy tensor values (e.g., from GPU to host) only if the
+        // value callback is not nullptr.
+        if (val_cb_ != nullptr && output_slot >= 0) {
+          CopyTensor(node_name, output_slot, tensor, ctx,
+                     [this, node_name, output_slot,
+                      is_ref](const Tensor* copied_tensor) {
+                       val_cb_(node_name, output_slot, *copied_tensor, is_ref);
+                     });
+        }
 
-    return Status::OK();
-  };
+        return Status::OK();
+      };
 }
 
 DebugGateway::~DebugGateway() {
@@ -86,7 +86,8 @@ void DebugGateway::CopyTensor(const string& node_name, const int output_slot,
     // Determine if the tensor is on device (GPU) or host (CPU).
     // The second part of the check is necessary because even an OpKernel on
     // may have output tensors allocated on CPU.
-    if ((device->name().find("gpu:") != string::npos || device->name().find("SYCL:") != string::npos) &&
+    if ((device->name().find("GPU:") != string::npos ||
+         device->name().find("SYCL:") != string::npos) &&
         !ctx->output_alloc_attr(output_slot).on_host()) {
       // GPU tensors: Copy it to host (CPU).
       DeviceContext* device_ctxt = ctx->op_device_context();

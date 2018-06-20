@@ -33,7 +33,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
-class SessionDebugTest(session_debug_testlib.SessionDebugTestBase):
+class SessionDebugFileTest(session_debug_testlib.SessionDebugTestBase):
 
   def _debug_urls(self, run_number=None):
     return ["file://%s" % self._debug_dump_dir(run_number=run_number)]
@@ -47,7 +47,8 @@ class SessionDebugTest(session_debug_testlib.SessionDebugTestBase):
   def testAllowsDifferentWatchesOnDifferentRuns(self):
     """Test watching different tensors on different runs of the same graph."""
 
-    with session.Session() as sess:
+    with session.Session(
+        config=session_debug_testlib.no_rewrite_session_config()) as sess:
       u_init_val = [[5.0, 3.0], [-1.0, 0.0]]
       v_init_val = [[2.0], [-1.0]]
 

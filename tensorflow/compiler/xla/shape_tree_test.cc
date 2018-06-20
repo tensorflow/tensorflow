@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -113,6 +114,11 @@ TEST_F(ShapeTreeTest, InitValueConstructor) {
   TestInitValueConstructor(array_shape_, 1);
   TestInitValueConstructor(tuple_shape_, 4);
   TestInitValueConstructor(nested_tuple_shape_, 10);
+}
+
+TEST_F(ShapeTreeTest, EmptyTupleMustHaveNoLeaves) {
+  ShapeTree<int> shape_tree{ShapeUtil::MakeTupleShape({})};
+  EXPECT_EQ(0, shape_tree.leaf_count());
 }
 
 TEST_F(ShapeTreeTest, ArrayShape) {
@@ -390,6 +396,218 @@ TEST_F(ShapeTreeTest, CopyAssignWithPointerToShape) {
   dest = source;
   EXPECT_EQ(&dest.shape(), &nested_tuple_shape_);
 }
+
+TEST_F(ShapeTreeTest, IterateSimple) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  int num_nodes = 0;
+  for (auto index_to_data : t) {
+    EXPECT_EQ(42, index_to_data.second);
+    ++num_nodes;
+  }
+  EXPECT_EQ(10, num_nodes);
+}
+
+TEST_F(ShapeTreeTest, ConstIterate) {
+  const ShapeTree<int> t(nested_tuple_shape_, 42);
+  int num_nodes = 0;
+  for (const auto& index_to_data : t) {
+    EXPECT_EQ(42, index_to_data.second);
+    ++num_nodes;
+  }
+  EXPECT_EQ(10, num_nodes);
+}
+
+TEST_F(ShapeTreeTest, IterateAndMutate) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  int i = 0;
+  for (auto& index_to_data : t) {
+    EXPECT_EQ(42, index_to_data.second);
+    if (i == 1) {
+      index_to_data.second = 98;
+    }
+    ++i;
+  }
+  (*t.begin()).second = 78;
+  EXPECT_EQ(78, (*t.begin()).second);
+  i = 0;
+  for (auto& index_to_data : t) {
+    if (i == 0) {
+      EXPECT_EQ(78, index_to_data.second);
+    } else if (i == 1) {
+      EXPECT_EQ(98, index_to_data.second);
+    } else {
+      EXPECT_EQ(42, index_to_data.second);
+    }
+    ++i;
+  }
+  EXPECT_EQ(78, (*t.begin()).second);
+  EXPECT_EQ(98, (*std::next(t.begin())).second);
+}
+
+TEST_F(ShapeTreeTest, IterateOrder) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  std::vector<ShapeIndex> v;
+  for (auto index_to_data : t) {
+    v.push_back(index_to_data.first);
+  }
+  EXPECT_EQ(v, (std::vector<ShapeIndex>{{},
+                                        {0},
+                                        {1},
+                                        {1, 0},
+                                        {1, 1},
+                                        {2},
+                                        {2, 0},
+                                        {2, 0, 0},
+                                        {2, 0, 1},
+                                        {2, 1}}));
+}
+
+TEST_F(ShapeTreeTest, ReverseIterateOrder) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  std::vector<ShapeIndex> v;
+  for (auto it = t.rbegin(); it != t.rend(); ++it) {
+    v.push_back(it->first);
+  }
+  EXPECT_EQ(v, (std::vector<ShapeIndex>{
+                   {2, 1},
+                   {2, 0, 1},
+                   {2, 0, 0},
+                   {2, 0},
+                   {2},
+                   {1, 1},
+                   {1, 0},
+                   {1},
+                   {0},
+                   {},
+               }));
+}
+
+TEST_F(ShapeTreeTest, IterateOrderLeaves) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  std::vector<ShapeIndex> v;
+  for (auto index_to_data : t.leaves()) {
+    v.push_back(index_to_data.first);
+  }
+  EXPECT_EQ(v, (std::vector<ShapeIndex>{
+                   {0}, {1, 0}, {1, 1}, {2, 0, 0}, {2, 0, 1}, {2, 1}}));
+}
+
+TEST_F(ShapeTreeTest, ReverseIterateOrderLeaves) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  std::vector<ShapeIndex> v;
+  for (auto it = t.leaf_rbegin(); it != t.leaf_rend(); ++it) {
+    v.push_back(it->first);
+  }
+  EXPECT_EQ(v, (std::vector<ShapeIndex>{
+                   {2, 1},
+                   {2, 0, 1},
+                   {2, 0, 0},
+                   {1, 1},
+                   {1, 0},
+                   {0},
+               }));
+}
+
+void BM_Construct(int iters, int depth, int fan_out) {
+  tensorflow::testing::StopTiming();
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  for (int i = 0; i < depth; ++i) {
+    std::vector<xla::Shape> shapes(fan_out, shape);
+    shape = ShapeUtil::MakeTupleShape(shapes);
+  }
+  tensorflow::testing::StartTiming();
+
+  for (int i = 0; i < iters; ++i) {
+    ShapeTree<int> shape_tree(shape);
+  }
+}
+
+void BM_ConstructUnowned(int iters, int depth, int fan_out) {
+  tensorflow::testing::StopTiming();
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  for (int i = 0; i < depth; ++i) {
+    std::vector<xla::Shape> shapes(fan_out, shape);
+    shape = ShapeUtil::MakeTupleShape(shapes);
+  }
+  tensorflow::testing::StartTiming();
+
+  for (int i = 0; i < iters; ++i) {
+    ShapeTree<int> shape_tree(&shape);
+  }
+}
+
+void BM_Copy(int iters, int depth, int fan_out) {
+  tensorflow::testing::StopTiming();
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  for (int i = 0; i < depth; ++i) {
+    std::vector<xla::Shape> shapes(fan_out, shape);
+    shape = ShapeUtil::MakeTupleShape(shapes);
+  }
+  tensorflow::testing::StartTiming();
+
+  ShapeTree<int> shape_tree(shape);
+  for (int i = 0; i < iters; ++i) {
+    ShapeTree<int> copy = shape_tree;
+    tensorflow::testing::DoNotOptimize(copy);
+  }
+}
+
+void BM_Move(int iters, int depth, int fan_out) {
+  tensorflow::testing::StopTiming();
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  for (int i = 0; i < depth; ++i) {
+    std::vector<xla::Shape> shapes(fan_out, shape);
+    shape = ShapeUtil::MakeTupleShape(shapes);
+  }
+  tensorflow::testing::StartTiming();
+
+  ShapeTree<int> shape_tree(shape);
+  for (int i = 0; i < iters; ++i) {
+    ShapeTree<int> copy = std::move(shape_tree);
+    shape_tree = std::move(copy);
+  }
+}
+
+void BM_ForEach(int iters, int depth, int fan_out) {
+  tensorflow::testing::StopTiming();
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  for (int i = 0; i < depth; ++i) {
+    std::vector<xla::Shape> shapes(fan_out, shape);
+    shape = ShapeUtil::MakeTupleShape(shapes);
+  }
+  tensorflow::testing::StartTiming();
+
+  ShapeTree<int> shape_tree(shape);
+  for (int i = 0; i < iters; ++i) {
+    shape_tree.ForEachMutableElement([](const ShapeIndex& index, int* data) {
+      tensorflow::testing::DoNotOptimize(index);
+    });
+  }
+}
+
+void BM_Iterate(int iters, int depth, int fan_out) {
+  tensorflow::testing::StopTiming();
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  for (int i = 0; i < depth; ++i) {
+    std::vector<xla::Shape> shapes(fan_out, shape);
+    shape = ShapeUtil::MakeTupleShape(shapes);
+  }
+  tensorflow::testing::StartTiming();
+
+  ShapeTree<int> shape_tree(shape);
+  for (int i = 0; i < iters; ++i) {
+    for (auto& iter : shape_tree) {
+      tensorflow::testing::DoNotOptimize(iter.second);
+    }
+  }
+}
+
+BENCHMARK(BM_Construct)->ArgPair(2, 8);
+BENCHMARK(BM_ConstructUnowned)->ArgPair(2, 8);
+BENCHMARK(BM_Copy)->ArgPair(2, 8);
+BENCHMARK(BM_Move)->ArgPair(2, 8);
+BENCHMARK(BM_ForEach)->ArgPair(2, 8);
+BENCHMARK(BM_Iterate)->ArgPair(2, 8);
 
 }  // namespace
 }  // namespace xla

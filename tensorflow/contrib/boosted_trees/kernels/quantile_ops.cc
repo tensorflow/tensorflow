@@ -36,21 +36,21 @@
 namespace tensorflow {
 
 using ::boosted_trees::QuantileConfig;
-using boosted_trees::utils::TensorUtils;
 using boosted_trees::QuantileStreamResource;
+using boosted_trees::utils::TensorUtils;
 
 namespace {
 const char* const kExampleWeightsName = "example_weights";
 const char* const kMaxElementsName = "max_elements";
-const char* const kHandleName = "handle";
 const char* const kNextStampTokenName = "next_stamp_token";
 const char* const kStampTokenName = "stamp_token";
 const char* const kAreBucketsReadyName = "are_buckets_ready";
+const char* const kGenerateQuantiles = "generate_quantiles";
 // Names for sparse arguments.
 const char* const kNumSparseFeaturesName = "num_sparse_features";
 const char* const kSparseBucketsName = "sparse_buckets";
 const char* const kSparseValuesName = "sparse_values";
-const char* const kSparseStreamsStateName = "sparse_streams_state";
+const char* const kSparseIndicesName = "sparse_indices";
 const char* const kSparseSummariesName = "sparse_summaries";
 const char* const kSparseConfigName = "sparse_config";
 const char* const kSparseOutputTensorName = "sparse_quantiles";
@@ -58,7 +58,6 @@ const char* const kSparseOutputTensorName = "sparse_quantiles";
 const char* const kDenseBucketsName = "dense_buckets";
 const char* const kDenseConfigName = "dense_config";
 const char* const kDenseOutputTensorName = "dense_quantiles";
-const char* const kDenseStreamsStateName = "dense_streams_state";
 const char* const kDenseSummariesName = "dense_summaries";
 const char* const kDenseValuesName = "dense_values";
 const char* const kNumDenseFeaturesName = "num_dense_features";
@@ -85,9 +84,23 @@ std::vector<float> GetBuckets(const int32 feature,
   return buckets_vector;
 }
 
-void QuantizeFeatures(const string& output_name, const OpInputList& values_list,
-                      const OpInputList& buckets_list,
-                      OpKernelContext* const context) {
+int32 GetFeatureDimension(const int32 feature_index, const int64 instance,
+                          const OpInputList* const indices_list) {
+  if (indices_list != nullptr) {
+    // Sparse multidimensional.
+    return (*indices_list)[feature_index].matrix<int64>()(instance, 1);
+  }
+  // No indices, assume one-dimensional tensor.
+  return 0;
+}
+
+// Allows quantization for each of multiple dimensions of a sparse feature.
+void QuantizeFeatures(
+    const string& output_name, const OpInputList& values_list,
+    const OpInputList& buckets_list,
+    const OpInputList* const
+        indices_list /** Optional, provide for sparse features **/,
+    OpKernelContext* const context) {
   if (values_list.size() == 0) {
     return;
   }
@@ -100,10 +113,13 @@ void QuantizeFeatures(const string& output_name, const OpInputList& values_list,
     const int64 num_values = values_tensor.dim_size(0);
 
     Tensor* output_t = nullptr;
+    // Output will have bucket id and dimension of the features for that bucket.
     OP_REQUIRES_OK(
-        context, output_list.allocate(feature_index, TensorShape({num_values}),
-                                      &output_t));
-    TTypes<int32>::Vec output = output_t->vec<int32>();
+        context, output_list.allocate(feature_index,
+                                      TensorShape({num_values, 2}), &output_t));
+
+    auto output = output_t->matrix<int32>();
+
     const std::vector<float>& buckets_vector =
         GetBuckets(feature_index, buckets_list);
     auto flat_values = values_tensor.flat<float>();
@@ -116,7 +132,11 @@ void QuantizeFeatures(const string& output_name, const OpInputList& values_list,
       }
       const int32 bucket =
           static_cast<int32>(bucket_iter - buckets_vector.begin());
-      output(instance) = bucket;
+      // Bucket id.
+      output(instance, 0) = bucket;
+      // Dimension.
+      output(instance, 1) =
+          GetFeatureDimension(feature_index, instance, indices_list);
     }
   }
 }
@@ -157,6 +177,16 @@ std::vector<float> GenerateBoundaries(const QuantileStream& stream,
   // Uniquify elements as we may get dupes.
   auto end_it = std::unique(boundaries.begin(), boundaries.end());
   boundaries.resize(std::distance(boundaries.begin(), end_it));
+  return boundaries;
+}
+
+// Generates quantiles on a finalized QuantileStream.
+std::vector<float> GenerateQuantiles(const QuantileStream& stream,
+                                     int num_quantiles) {
+  // Do not de-dup boundaries. Exactly num_quantiles+1 boundary values
+  // will be returned.
+  std::vector<float> boundaries = stream.GenerateQuantiles(num_quantiles);
+  CHECK_EQ(boundaries.size(), num_quantiles + 1);
   return boundaries;
 }
 
@@ -202,6 +232,8 @@ class CreateQuantileAccumulatorOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->GetAttr(kNumQuantilesName, &num_quantiles_));
     OP_REQUIRES_OK(context, context->GetAttr(kMaxElementsName, &max_elements_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr(kGenerateQuantiles, &generate_quantiles_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -209,9 +241,9 @@ class CreateQuantileAccumulatorOp : public OpKernel {
     // other exceptions. If one already exists, it unrefs the new one.
     const Tensor* stamp_token_t;
     OP_REQUIRES_OK(context, context->input(kStampTokenName, &stamp_token_t));
-    auto result =
-        new QuantileStreamResource(epsilon_, num_quantiles_, max_elements_,
-                                   stamp_token_t->scalar<int64>()());
+    auto result = new QuantileStreamResource(epsilon_, num_quantiles_,
+                                             max_elements_, generate_quantiles_,
+                                             stamp_token_t->scalar<int64>()());
     auto status = CreateResource(context, HandleFromInput(context, 0), result);
     if (!status.ok() && status.code() != tensorflow::error::ALREADY_EXISTS) {
       OP_REQUIRES(context, false, status);
@@ -221,9 +253,10 @@ class CreateQuantileAccumulatorOp : public OpKernel {
  private:
   float epsilon_;
   int32 num_quantiles_;
-  // An upperbound on the number of enteries that the summaries might have
+  // An upper bound on the number of entries that the summaries might have
   // for a feature.
   int64 max_elements_;
+  bool generate_quantiles_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CreateQuantileAccumulator").Device(DEVICE_CPU),
@@ -351,7 +384,7 @@ class MakeQuantileSummariesOp : public OpKernel {
         protobuf::Arena arena;
         ::boosted_trees::QuantileSummaryState* summary_proto =
             protobuf::Arena::CreateMessage<
-            ::boosted_trees::QuantileSummaryState>(&arena);
+                ::boosted_trees::QuantileSummaryState>(&arena);
         const auto& summary = stream.GetFinalSummary();
         CopySummaryToProto(summary, summary_proto);
         // Output to tensor.
@@ -382,6 +415,11 @@ class MakeQuantileSummariesOp : public OpKernel {
               sparse_float_feature_values_list[sparse_index].flat<float>();
           const auto sparse_indices =
               sparse_float_feature_indices_list[sparse_index].matrix<int64>();
+          const auto dense_shape =
+              sparse_float_feature_shapes_list[sparse_index].flat<int64>();
+          OP_REQUIRES(context, batch_size == dense_shape(0),
+                      errors::InvalidArgument(
+                          "Sparse column shape doesn't match the batch size."));
           QuantileStream stream(epsilon_, batch_size + 1);
           // Run quantile summary generation.
           const int64 num_sparse_rows =
@@ -542,7 +580,7 @@ REGISTER_KERNEL_BUILDER(
     Name("QuantileAccumulatorDeserialize").Device(DEVICE_CPU),
     QuantileAccumulatorDeserializeOp);
 
-// Adds a summary to the quantile summary stream.
+// Flushes the quantile summary stream resource.
 class QuantileAccumulatorFlushOp : public OpKernel {
  public:
   explicit QuantileAccumulatorFlushOp(OpKernelConstruction* const context)
@@ -570,16 +608,71 @@ class QuantileAccumulatorFlushOp : public OpKernel {
         << "Passed stamp token: " << stamp_token << " "
         << "Current token: " << streams_resource->stamp();
     QuantileStream* stream = streams_resource->stream(stamp_token);
+    bool generate_quantiles = streams_resource->generate_quantiles();
     stream->Finalize();
+
     streams_resource->set_boundaries(
         stamp_token,
-        GenerateBoundaries(*stream, streams_resource->num_quantiles()));
+        generate_quantiles
+            ? GenerateQuantiles(*stream, streams_resource->num_quantiles())
+            : GenerateBoundaries(*stream, streams_resource->num_quantiles()));
+
     streams_resource->Reset(next_stamp_token);
   }
 };
 
 REGISTER_KERNEL_BUILDER(Name("QuantileAccumulatorFlush").Device(DEVICE_CPU),
                         QuantileAccumulatorFlushOp);
+
+// Flushes the quantile summary stream resource. This version computes the
+// summary.
+class QuantileAccumulatorFlushSummaryOp : public OpKernel {
+ public:
+  explicit QuantileAccumulatorFlushSummaryOp(
+      OpKernelConstruction* const context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    QuantileStreamResource* streams_resource;
+    // Create a reference to the underlying resource using the handle.
+    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
+                                           &streams_resource));
+    // Remove the reference at the end of this scope.
+    mutex_lock l(*streams_resource->mutex());
+    core::ScopedUnref unref_me(streams_resource);
+
+    const Tensor* next_stamp_token_t;
+    OP_REQUIRES_OK(context,
+                   context->input(kNextStampTokenName, &next_stamp_token_t));
+    int64 next_stamp_token = next_stamp_token_t->scalar<int64>()();
+
+    const Tensor* stamp_token_t;
+    OP_REQUIRES_OK(context, context->input(kStampTokenName, &stamp_token_t));
+    int64 stamp_token = stamp_token_t->scalar<int64>()();
+    CHECK(streams_resource->is_stamp_valid(stamp_token))
+        << "Invalid stamp token in QuantileAccumulatorFlushSummaryOp. "
+        << "Passed stamp token: " << stamp_token << " "
+        << "Current token: " << streams_resource->stamp();
+    QuantileStream* stream = streams_resource->stream(stamp_token);
+    stream->Finalize();
+    protobuf::Arena arena;
+    ::boosted_trees::QuantileSummaryState* summary_proto =
+        protobuf::Arena::CreateMessage<::boosted_trees::QuantileSummaryState>(
+            &arena);
+    const auto& summary = stream->GetFinalSummary();
+    CopySummaryToProto(summary, summary_proto);
+    // Output to tensor.
+    Tensor* output_t = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &output_t));
+    summary_proto->SerializeToString(&output_t->scalar<string>()());
+    streams_resource->Reset(next_stamp_token);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("QuantileAccumulatorFlushSummary").Device(DEVICE_CPU),
+    QuantileAccumulatorFlushSummaryOp);
 
 // Get bucket boundaries from summaries.
 class QuantileAccumulatorGetBucketsOp : public OpKernel {
@@ -796,6 +889,11 @@ class QuantilesOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list(kSparseValuesName,
                                        &sparse_float_feature_values_list));
+
+    OpInputList sparse_float_indices_list;
+    OP_REQUIRES_OK(context, context->input_list(kSparseIndicesName,
+                                                &sparse_float_indices_list));
+
     OpInputList sparse_buckets_list;
     OP_REQUIRES_OK(
         context, context->input_list(kSparseBucketsName, &sparse_buckets_list));
@@ -810,13 +908,74 @@ class QuantilesOp : public OpKernel {
 
     // Quantize the feature values
     QuantizeFeatures(kDenseOutputTensorName, dense_float_features_list,
-                     dense_buckets_list, context);
+                     dense_buckets_list, nullptr, context);
 
     QuantizeFeatures(kSparseOutputTensorName, sparse_float_feature_values_list,
-                     sparse_buckets_list, context);
+                     sparse_buckets_list, &sparse_float_indices_list, context);
   }
 };
 
 REGISTER_KERNEL_BUILDER(Name("Quantiles").Device(DEVICE_CPU), QuantilesOp);
+
+template <typename T>
+class BucketizeWithInputBoundariesOp : public OpKernel {
+ public:
+  explicit BucketizeWithInputBoundariesOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& boundaries_tensor = context->input(1);
+    VLOG(1) << "boundaries has shape: "
+            << boundaries_tensor.shape().DebugString();
+    auto boundaries = boundaries_tensor.flat<float>();
+    std::vector<T> boundaries_vector;
+    boundaries_vector.reserve(boundaries.size());
+    for (size_t i = 0; i < boundaries.size(); i++) {
+      boundaries_vector.push_back(boundaries(i));
+      VLOG(1) << "boundaries(" << i << ") : " << boundaries(i);
+    }
+    OP_REQUIRES(
+        context,
+        std::is_sorted(boundaries_vector.begin(), boundaries_vector.end()),
+        errors::InvalidArgument("Expected sorted boundaries"));
+
+    const Tensor& input_tensor = context->input(0);
+    VLOG(1) << "Inputs has shape: " << input_tensor.shape().DebugString()
+            << " Dtype: " << tensorflow::DataTypeString(input_tensor.dtype());
+    auto input = input_tensor.flat<T>();
+
+    Tensor* output_tensor = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
+                                                     &output_tensor));
+    auto output = output_tensor->template flat<int32>();
+
+    for (size_t i = 0; i < input.size(); i++) {
+      output(i) = CalculateBucketIndex(input(i), boundaries_vector);
+    }
+  }
+
+ private:
+  int32 CalculateBucketIndex(const T value, std::vector<T>& boundaries_vector) {
+    auto first_bigger_it = std::upper_bound(boundaries_vector.begin(),
+                                            boundaries_vector.end(), value);
+    int32 index = first_bigger_it - boundaries_vector.begin();
+    CHECK(index >= 0 && index <= boundaries_vector.size())
+        << "Invalid bucket index: " << index
+        << " boundaries_vector.size(): " << boundaries_vector.size();
+    return index;
+  }
+};
+
+#define REGISTER_KERNEL(T)                                     \
+  REGISTER_KERNEL_BUILDER(Name("BucketizeWithInputBoundaries") \
+                              .Device(DEVICE_CPU)              \
+                              .TypeConstraint<T>("T"),         \
+                          BucketizeWithInputBoundariesOp<T>);
+
+REGISTER_KERNEL(int32);
+REGISTER_KERNEL(int64);
+REGISTER_KERNEL(float);
+REGISTER_KERNEL(double);
+#undef REGISTER_KERNEL
 
 }  // namespace tensorflow

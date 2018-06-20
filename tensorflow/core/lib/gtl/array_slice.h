@@ -191,7 +191,7 @@ class ArraySlice {
   void pop_front() { remove_prefix(1); }
 
   // These relational operators have the same semantics as the
-  // std::vector<T> relational operators: they do deep (elementwise)
+  // std::vector<T> relational operators: they do deep (element-wise)
   // comparisons.  Array slices are equal iff their size is the same
   // and all their elements are equal.
   bool operator==(ArraySlice<T> other) const { return impl_ == other.impl_; }

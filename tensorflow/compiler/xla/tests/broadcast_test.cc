@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -47,8 +46,8 @@ XLA_TEST_F(BroadcastTest, BroadcastScalarToScalar) {
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(*Literal::CreateR0<float>(42.0), *result,
-                              error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(*Literal::CreateR0<float>(42.0), *result,
+                                    error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, BroadcastScalarTo2D) {
@@ -63,9 +62,9 @@ XLA_TEST_F(BroadcastTest, BroadcastScalarTo2D) {
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(
+  EXPECT_TRUE(LiteralTestUtil::Near(
       *Literal::CreateR2<float>({{42.0, 42.0}, {42.0, 42.0}}), *result,
-      error_spec_);
+      error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
@@ -86,13 +85,13 @@ XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(
+  EXPECT_TRUE(LiteralTestUtil::Near(
       *Literal::CreateR2<float>({{1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}}),
-      result->tuple_literals(0), error_spec_);
+      LiteralSlice(*result, {0}), error_spec_));
 
-  LiteralTestUtil::ExpectNear(
+  EXPECT_TRUE(LiteralTestUtil::Near(
       *Literal::CreateR2<float>({{1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}}),
-      result->tuple_literals(1), error_spec_);
+      LiteralSlice(*result, {1}), error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, Broadcast2DTo2D) {
@@ -107,9 +106,9 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo2D) {
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(
-      *Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}), *result,
-      error_spec_);
+  EXPECT_TRUE(
+      LiteralTestUtil::Near(*Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}),
+                            *result, error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
@@ -126,9 +125,9 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(
-      *Literal::CreateR2<float>({{1.0, 3.0}, {2.0, 4.0}}), *result,
-      error_spec_);
+  EXPECT_TRUE(
+      LiteralTestUtil::Near(*Literal::CreateR2<float>({{1.0, 3.0}, {2.0, 4.0}}),
+                            *result, error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, Broadcast2DTo3D) {
@@ -143,10 +142,10 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo3D) {
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(
+  EXPECT_TRUE(LiteralTestUtil::Near(
       *Literal::CreateR3<float>({{{1.0, 2.0}, {1.0, 2.0}, {1.0, 2.0}},
                                  {{3.0, 4.0}, {3.0, 4.0}, {3.0, 4.0}}}),
-      *result, error_spec_);
+      *result, error_spec_));
 }
 
 TEST_F(BroadcastTest, Broadcast_R1_2_To_R4_2x2x3x3) {
@@ -167,8 +166,8 @@ TEST_F(BroadcastTest, Broadcast_R1_2_To_R4_2x2x3x3) {
   Array2D<float> pz({{1, 2}, {1, 2}});
   expected.FillWithPZ(pz);
 
-  LiteralTestUtil::ExpectNear(*Literal::CreateR4FromArray4D<float>(expected),
-                              *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      *Literal::CreateR4FromArray4D<float>(expected), *result, error_spec_));
 }
 
 TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
@@ -197,8 +196,8 @@ TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
   }
   expected.FillWithYX(yx);
 
-  LiteralTestUtil::ExpectNear(*Literal::CreateR4FromArray4D<float>(expected),
-                              *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      *Literal::CreateR4FromArray4D<float>(expected), *result, error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
@@ -219,8 +218,8 @@ XLA_TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(*Literal::CreateR4FromArray4D(r4_array), *result,
-                              error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(*Literal::CreateR4FromArray4D(r4_array),
+                                    *result, error_spec_));
 }
 
 TEST_F(BroadcastTest, Broadcast_R0_to_R4_64x64x3x3) {
@@ -239,8 +238,8 @@ TEST_F(BroadcastTest, Broadcast_R0_to_R4_64x64x3x3) {
   Array4D<float> expected(64, 64, 3, 3);
   expected.Fill(1.0f);
 
-  LiteralTestUtil::ExpectNear(*Literal::CreateR4FromArray4D<float>(expected),
-                              *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      *Literal::CreateR4FromArray4D<float>(expected), *result, error_spec_));
 }
 
 TEST_F(BroadcastTest, Broadcast_R2_2x2_To_R4_3x3x2x2) {
@@ -261,8 +260,8 @@ TEST_F(BroadcastTest, Broadcast_R2_2x2_To_R4_3x3x2x2) {
   Array4D<float> expected(3, 3, 2, 2);
   expected.FillWithYX(to_broadcast);
 
-  LiteralTestUtil::ExpectNear(*Literal::CreateR4FromArray4D<float>(expected),
-                              *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      *Literal::CreateR4FromArray4D<float>(expected), *result, error_spec_));
 }
 
 TEST_F(BroadcastTest, Broadcast_R3_2x3x4_to_R4_2x3x4x5) {
@@ -292,26 +291,9 @@ TEST_F(BroadcastTest, Broadcast_R3_2x3x4_to_R4_2x3x4x5) {
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(*Literal::CreateR4FromArray4D<float>(expected),
-                              *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      *Literal::CreateR4FromArray4D<float>(expected), *result, error_spec_));
 }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

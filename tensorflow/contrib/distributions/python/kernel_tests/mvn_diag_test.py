@@ -24,7 +24,12 @@ from tensorflow.contrib import distributions
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -63,7 +68,7 @@ class MultivariateNormalDiagTest(test.TestCase):
       dist = ds.TransformedDistribution(
           base_dist,
           validate_args=True,
-          bijector=bijectors.Softplus(event_ndims=1))
+          bijector=bijectors.Softplus())
       samps = dist.sample(5)  # Shape [5, 1, 3].
       self.assertAllEqual([5, 1], dist.log_prob(samps).get_shape())
 
@@ -232,6 +237,69 @@ class MultivariateNormalDiagTest(test.TestCase):
 
       self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
       self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
+
+  def testMultivariateNormalDiagNegLogLikelihood(self):
+    num_draws = 50
+    dims = 3
+    with self.test_session() as sess:
+      x_pl = array_ops.placeholder(dtype=dtypes.float32,
+                                   shape=[None, dims],
+                                   name="x")
+      mu_var = variable_scope.get_variable(
+          name="mu",
+          shape=[dims],
+          dtype=dtypes.float32,
+          initializer=init_ops.constant_initializer(1.))
+      sess.run([variables.global_variables_initializer()])
+
+      mvn = ds.MultivariateNormalDiag(
+          loc=mu_var,
+          scale_diag=array_ops.ones(shape=[dims], dtype=dtypes.float32))
+
+      # Typically you'd use `mvn.log_prob(x_pl)` which is always at least as
+      # numerically stable as `tf.log(mvn.prob(x_pl))`. However in this test
+      # we're testing a bug specific to `prob` and not `log_prob`;
+      # http://stackoverflow.com/q/45109305. (The underlying issue was not
+      # related to `Distributions` but that `reduce_prod` didn't correctly
+      # handle negative indexes.)
+      neg_log_likelihood = -math_ops.reduce_sum(math_ops.log(mvn.prob(x_pl)))
+      grad_neg_log_likelihood = gradients_impl.gradients(
+          neg_log_likelihood, variables.trainable_variables())
+
+      x = np.zeros([num_draws, dims], dtype=np.float32)
+      grad_neg_log_likelihood_ = sess.run(
+          grad_neg_log_likelihood,
+          feed_dict={x_pl: x})
+      self.assertEqual(1, len(grad_neg_log_likelihood_))
+      self.assertAllClose(grad_neg_log_likelihood_[0],
+                          np.tile(num_draws, dims),
+                          rtol=1e-6, atol=0.)
+
+  def testDynamicBatchShape(self):
+    mvn = ds.MultivariateNormalDiag(
+        loc=array_ops.placeholder(dtypes.float32, shape=[None, None, 2]),
+        scale_diag=array_ops.placeholder(dtypes.float32, shape=[None, None, 2]))
+    self.assertListEqual(mvn.batch_shape.as_list(), [None, None])
+    self.assertListEqual(mvn.event_shape.as_list(), [2])
+
+  def testDynamicEventShape(self):
+    mvn = ds.MultivariateNormalDiag(
+        loc=array_ops.placeholder(dtypes.float32, shape=[2, 3, None]),
+        scale_diag=array_ops.placeholder(dtypes.float32, shape=[2, 3, None]))
+    self.assertListEqual(mvn.batch_shape.as_list(), [2, 3])
+    self.assertListEqual(mvn.event_shape.as_list(), [None])
+
+  def testKLDivIdenticalGradientDefined(self):
+    dims = 3
+    with self.test_session() as sess:
+      loc = array_ops.zeros([dims], dtype=dtypes.float32)
+      mvn = ds.MultivariateNormalDiag(
+          loc=loc,
+          scale_diag=np.ones([dims], dtype=np.float32))
+      g = gradients_impl.gradients(ds.kl_divergence(mvn, mvn), loc)
+      g_ = sess.run(g)
+      self.assertAllEqual(np.ones_like(g_, dtype=np.bool),
+                          np.isfinite(g_))
 
 
 if __name__ == "__main__":

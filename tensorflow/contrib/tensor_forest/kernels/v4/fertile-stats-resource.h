@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_FERTILE_STATS_RESOURCE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_FERTILE_STATS_RESOURCE_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_FERTILE_STATS_RESOURCE_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_FERTILE_STATS_RESOURCE_H_
 
 #include <vector>
 
@@ -40,9 +40,7 @@ class FertileStatsResource : public ResourceBase {
     model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(params_);
   }
 
-  string DebugString() override {
-    return "FertileStats";
-  }
+  string DebugString() override { return "FertileStats"; }
 
   void ExtractFromProto(const FertileStats& stats);
 
@@ -50,9 +48,7 @@ class FertileStatsResource : public ResourceBase {
 
   // Resets the resource and frees the proto.
   // Caller needs to hold the mutex lock while calling this.
-  void Reset() {
-    leaf_stats_.clear();
-  }
+  void Reset() {}
 
   // Reset the stats for a node, but leave the leaf_stats intact.
   void ResetSplitStats(int32 node_id, int32 depth) {
@@ -71,7 +67,7 @@ class FertileStatsResource : public ResourceBase {
   void AddExampleToStatsAndInitialize(
       const std::unique_ptr<TensorDataSet>& input_data,
       const InputTarget* target, const std::vector<int>& examples,
-      int32 node_id, int32 node_depth, bool* is_finished);
+      int32 node_id, bool* is_finished);
 
   // Allocate a fertile slot for each ready node, then new children up to
   // max_fertile_nodes_.
@@ -85,26 +81,16 @@ class FertileStatsResource : public ResourceBase {
   // was found.
   bool BestSplit(int32 node_id, SplitCandidate* best, int32* depth);
 
-  const LeafStat& leaf_stat(int32 node_id) {
-    return leaf_stats_[node_id];
-  }
-
-  void set_leaf_stat(const LeafStat& stat, int32 node_id) {
-    leaf_stats_[node_id] = stat;
-  }
-
  private:
   mutex mu_;
   std::shared_ptr<LeafModelOperator> model_op_;
   std::unique_ptr<SplitCollectionOperator> collection_op_;
-  std::unordered_map<int32, LeafStat> leaf_stats_;
   const TensorForestParams params_;
 
   void AllocateNode(int32 node_id, int32 depth);
 };
 
-
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_FERTILE_STATS_RESOURCE_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_FERTILE_STATS_RESOURCE_H_

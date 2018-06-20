@@ -43,13 +43,16 @@ namespace xla {
 // Options to configure the local client when it is created.
 class LocalClientOptions {
  public:
+  LocalClientOptions(se::Platform* platform = nullptr,
+                     int number_of_replicas = 1,
+                     int intra_op_parallelism_threads = -1);
+
   // Set the platform backing the service, or nullptr for the default platform.
-  LocalClientOptions& set_platform(perftools::gputools::Platform* platform);
-  perftools::gputools::Platform* platform() const;
+  LocalClientOptions& set_platform(se::Platform* platform);
+  se::Platform* platform() const;
 
   // Set the number of replicas to use when compiling replicated
-  // programs. The default is -1 meaning that the value is read from
-  // the xla_replicas flag.
+  // programs.
   LocalClientOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
 
@@ -58,9 +61,9 @@ class LocalClientOptions {
   int intra_op_parallelism_threads() const;
 
  private:
-  perftools::gputools::Platform* platform_ = nullptr;
-  int number_of_replicas_ = -1;
-  int intra_op_parallelism_threads_ = -1;
+  se::Platform* platform_;
+  int number_of_replicas_;
+  int intra_op_parallelism_threads_;
 };
 
 class ClientLibrary {
@@ -71,7 +74,7 @@ class ClientLibrary {
   //   platform : The platform the underlying XLA service should target. If
   //     null then default platform is used.
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
-      perftools::gputools::Platform* platform = nullptr);
+      se::Platform* platform = nullptr);
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       const LocalClientOptions& options);
 
@@ -81,14 +84,19 @@ class ClientLibrary {
 
   // Returns the service from the service thread. Only used in unit tests to
   // access user computations from client.
-  static LocalService* GetXlaService(perftools::gputools::Platform* platform);
+  static LocalService* GetXlaService(se::Platform* platform);
 
   // Singleton constructor-or-accessor for compile-only clients. Arguments:
   //
   //   platform : The platform the underlying XLA service should target. If
   //     null then default platform is used.
   static StatusOr<CompileOnlyClient*> GetOrCreateCompileOnlyClient(
-      perftools::gputools::Platform* platform = nullptr);
+      se::Platform* platform = nullptr);
+
+  // Clears the local instance and compile only instance caches. The client
+  // pointers returned by the previous GetOrCreateLocalClient() or
+  // GetOrCreateCompileOnlyClient() invocations are not valid anymore.
+  static void DestroyLocalInstances();
 
  private:
   // Returns the singleton instance of ClientLibrary.
@@ -112,12 +120,10 @@ class ClientLibrary {
   };
 
   tensorflow::mutex service_mutex_;  // Guards the singleton creation state.
-  std::unordered_map<perftools::gputools::Platform::Id,
-                     std::unique_ptr<LocalInstance>>
+  std::unordered_map<se::Platform::Id, std::unique_ptr<LocalInstance>>
       local_instances_ GUARDED_BY(service_mutex_);
 
-  std::unordered_map<perftools::gputools::Platform::Id,
-                     std::unique_ptr<CompileOnlyInstance>>
+  std::unordered_map<se::Platform::Id, std::unique_ptr<CompileOnlyInstance>>
       compile_only_instances_ GUARDED_BY(service_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ClientLibrary);

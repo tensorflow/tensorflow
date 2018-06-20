@@ -34,7 +34,7 @@ def scalar_shape(unused_op):
 
 
 def unchanged_shape(op):
-  """Shape function for ops that output an tensor like their first input."""
+  """Shape function for ops that output a tensor like their first input."""
   return [op.inputs[0].get_shape()]
 
 
@@ -499,22 +499,17 @@ def unknown_shape(op):
   return [tensor_shape.unknown_shape() for _ in op.outputs]
 
 
-def broadcast_shape(shape_x, shape_y):
-  """Returns the broadcasted shape between `shape_x` and `shape_y`.
+def _broadcast_shape_helper(shape_x, shape_y):
+  """Helper functions for is_broadcast_compatible and broadcast_shape.
 
   Args:
     shape_x: A `TensorShape`
     shape_y: A `TensorShape`
 
   Returns:
-    A `TensorShape` representing the broadcasted shape.
-
-  Raises:
-    ValueError: If the two shapes can not be broadcasted.
+    Returns None if the shapes are not broadcast compatible,
+    a list of the broadcast dimensions otherwise.
   """
-  if shape_x.ndims is None or shape_y.ndims is None:
-    return tensor_shape.unknown_shape()
-
   # To compute the broadcasted dimensions, we zip together shape_x and shape_y,
   # and pad with 1 to make them the same length.
   broadcasted_dims = reversed(list(six.moves.zip_longest(
@@ -548,8 +543,45 @@ def broadcast_shape(shape_x, shape_y):
       # dimension.
       return_dims.append(dim_x.merge_with(dim_y))
     else:
-      raise ValueError("Incompatible shapes for broadcasting: %s and %s"
-                       % (shape_x, shape_y))
+      return None
+  return return_dims
+
+
+def is_broadcast_compatible(shape_x, shape_y):
+  """Returns True if `shape_x` and `shape_y` are broadcast compatible.
+
+  Args:
+    shape_x: A `TensorShape`
+    shape_y: A `TensorShape`
+
+  Returns:
+    True if a shape exists that both `shape_x` and `shape_y` can be broadcasted
+    to.  False otherwise.
+  """
+  if shape_x.ndims is None or shape_y.ndims is None:
+    return False
+  return _broadcast_shape_helper(shape_x, shape_y) is not None
+
+
+def broadcast_shape(shape_x, shape_y):
+  """Returns the broadcasted shape between `shape_x` and `shape_y`.
+
+  Args:
+    shape_x: A `TensorShape`
+    shape_y: A `TensorShape`
+
+  Returns:
+    A `TensorShape` representing the broadcasted shape.
+
+  Raises:
+    ValueError: If the two shapes can not be broadcasted.
+  """
+  if shape_x.ndims is None or shape_y.ndims is None:
+    return tensor_shape.unknown_shape()
+  return_dims = _broadcast_shape_helper(shape_x, shape_y)
+  if return_dims is None:
+    raise ValueError("Incompatible shapes for broadcasting: %s and %s"
+                     % (shape_x, shape_y))
   return tensor_shape.TensorShape(return_dims)
 
 
@@ -617,7 +649,7 @@ def call_cpp_shape_fn(op, require_shape_fn=True):
 
 def _call_cpp_shape_fn_impl(
     op, input_tensors_needed, input_tensors_as_shapes_needed, require_shape_fn):
-  """Core implementaton of call_cpp_shape_fn."""
+  """Core implementation of call_cpp_shape_fn."""
   graph_def_version = op.graph.graph_def_versions.producer
   node_def_str = op.node_def.SerializeToString()
 

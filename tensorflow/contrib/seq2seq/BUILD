@@ -3,9 +3,12 @@
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
+package(default_visibility = [
+    "//learning/brain/google/xla/tests:__subpackages__",
+    "//tensorflow:__subpackages__",
+])
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -33,18 +36,32 @@ tf_custom_op_py_library(
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:clip_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:rnn",
         "//tensorflow/python:rnn_cell",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -197,16 +214,4 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -52,8 +52,12 @@ std::unique_ptr<GrowStats> SplitCollectionOperator::CreateGrowStats(
           new SparseClassificationGrowStats(params_, depth));
 
     case STATS_LEAST_SQUARES_REGRESSION:
-      return std::unique_ptr<GrowStats>(new LeastSquaresRegressionGrowStats(
-          params_, depth));
+      return std::unique_ptr<GrowStats>(
+          new LeastSquaresRegressionGrowStats(params_, depth));
+
+    case STATS_FIXED_SIZE_SPARSE_GINI:
+      return std::unique_ptr<GrowStats>(
+          new FixedSizeSparseClassificationGrowStats(params_, depth));
 
     default:
       LOG(ERROR) << "Unknown grow stats type: " << params_.stats_type();
@@ -71,13 +75,13 @@ void SplitCollectionOperator::ExtractFromProto(
 }
 
 void SplitCollectionOperator::PackToProto(FertileStats* stats_proto) const {
-  for (int i = 0; i < stats_proto->node_to_slot_size(); ++i) {
-    auto* new_slot = stats_proto->mutable_node_to_slot(i);
-    const auto& stats = stats_.at(new_slot->node_id());
+  for (const auto& pair : stats_) {
+    auto* new_slot = stats_proto->add_node_to_slot();
+    new_slot->set_node_id(pair.first);
     if (params_.checkpoint_stats()) {
-      stats->PackToProto(new_slot);
+      pair.second->PackToProto(new_slot);
     }
-    new_slot->set_depth(stats->depth());
+    new_slot->set_depth(pair.second->depth());
   }
 }
 
@@ -96,12 +100,17 @@ void SplitCollectionOperator::AddExample(
 }
 
 bool SplitCollectionOperator::IsInitialized(int32 node_id) const {
-  return stats_.at(node_id)->IsInitialized();
+  auto it = stats_.find(node_id);
+  if (it == stats_.end()) {
+    LOG(WARNING) << "IsInitialized called with unknown node_id = " << node_id;
+    return false;
+  }
+  return it->second->IsInitialized();
 }
 
 void SplitCollectionOperator::CreateAndInitializeCandidateWithExample(
-    const std::unique_ptr<TensorDataSet>& input_data, int example,
-    int32 node_id) const {
+    const std::unique_ptr<TensorDataSet>& input_data, const InputTarget* target,
+    int example, int32 node_id) const {
   // Assumes split_initializations_per_input == 1.
   decision_trees::BinaryNode split;
   float bias;
@@ -124,16 +133,14 @@ void SplitCollectionOperator::CreateAndInitializeCandidateWithExample(
     LOG(ERROR) << "Unknown feature type " << type << ", not sure which "
                << "node type to use.";
   }
-  stats_.at(node_id)->AddSplit(split);
+  stats_.at(node_id)->AddSplit(split, input_data, target, example);
 }
 
-bool SplitCollectionOperator::BestSplit(int32 node_id,
-                                        SplitCandidate* best,
+bool SplitCollectionOperator::BestSplit(int32 node_id, SplitCandidate* best,
                                         int32* depth) const {
   auto* slot = stats_.at(node_id).get();
   *depth = slot->depth();
   return slot->BestSplit(best);
 }
-
 }  // namespace tensorforest
 }  // namespace tensorflow

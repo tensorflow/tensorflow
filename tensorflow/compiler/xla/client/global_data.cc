@@ -31,7 +31,7 @@ GlobalData::~GlobalData() {
   *request.mutable_data() = handle_;
   UnregisterResponse response;
   VLOG(1) << "requesting to unregister " << handle_.ShortDebugString();
-  tensorflow::Status s = parent_->Unregister(&request, &response);
+  Status s = parent_->Unregister(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {

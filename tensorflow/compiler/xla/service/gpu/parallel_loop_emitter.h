@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PARALLEL_LOOP_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PARALLEL_LOOP_EMITTER_H_
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
+#include "llvm/IR/IRBuilder.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
@@ -34,28 +34,36 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
   // The meanings of other parameters are the same as LoopEmitter.
   ParallelLoopEmitter(BodyEmitter body_emitter, const Shape& shape,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilder<>* ir_builder);
+                      llvm::IRBuilder<>* ir_builder, int unroll_factor = 1);
   // Constructs a ParallelLoopEmitter from an element generator that generates
   // each element of the given target array.
   ParallelLoopEmitter(const llvm_ir::ElementGenerator& target_element_generator,
                       const llvm_ir::IrArray& target_array,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilder<>* ir_builder);
+                      llvm::IRBuilder<>* ir_builder, int unroll_factor = 1);
 
+  // Constructs a loop emitter for a loop that generates on element of each of N
+  // arrays on each iteration.
+  //
+  // This is used in multi-output fusion.  target_element_generator should
+  // produce a struct with N elements, one for each of target_arrays.
   ParallelLoopEmitter(
       const llvm_ir::ElementGenerator& target_element_generator,
       tensorflow::gtl::ArraySlice<llvm_ir::IrArray> target_arrays,
-      const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder);
+      const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder,
+      int unroll_factor = 1);
 
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;
   ParallelLoopEmitter& operator=(const ParallelLoopEmitter&) = delete;
   ~ParallelLoopEmitter() override = default;
 
-  llvm_ir::IrArray::Index EmitIndexAndSetExitBasicBlock() override;
+  std::vector<llvm_ir::IrArray::Index> EmitIndexAndSetExitBasicBlock(
+      tensorflow::StringPiece loop_name) override;
 
  private:
   // The thread and block dimension to parallelize the loop on.
   const LaunchDimensions launch_dimensions_;
+  const int unroll_factor_;
 };
 
 }  // namespace gpu

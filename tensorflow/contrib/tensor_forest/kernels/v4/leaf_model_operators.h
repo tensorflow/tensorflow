@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_LEAF_MODEL_OPERATORS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_LEAF_MODEL_OPERATORS_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_LEAF_MODEL_OPERATORS_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_LEAF_MODEL_OPERATORS_H_
 
 #include "tensorflow/contrib/decision_trees/proto/generic_tree_model.pb.h"
 #include "tensorflow/contrib/tensor_forest/kernels/v4/input_target.h"
@@ -42,12 +42,11 @@ class LeafModelOperator {
                                int32 o) const = 0;
 
   // Update the given Leaf's model with the given example.
-  virtual void UpdateModel(LeafStat* leaf,
-                           const InputTarget* target,
-                           int example) const = 0;
+  virtual void UpdateModel(decision_trees::Leaf* leaf,
+                           const InputTarget* target, int example) const = 0;
 
   // Initialize an empty Leaf model.
-  virtual void InitModel(LeafStat* leaf) const = 0;
+  virtual void InitModel(decision_trees::Leaf* leaf) const = 0;
 
   virtual void ExportModel(const LeafStat& stat,
                            decision_trees::Leaf* leaf) const = 0;
@@ -65,10 +64,10 @@ class DenseClassificationLeafModelOperator : public LeafModelOperator {
   float GetOutputValue(const decision_trees::Leaf& leaf,
                        int32 o) const override;
 
-  void UpdateModel(LeafStat* leaf, const InputTarget* target,
+  void UpdateModel(decision_trees::Leaf* leaf, const InputTarget* target,
                    int example) const override;
 
-  void InitModel(LeafStat* leaf) const override;
+  void InitModel(decision_trees::Leaf* leaf) const override;
 
   void ExportModel(const LeafStat& stat,
                    decision_trees::Leaf* leaf) const override;
@@ -84,10 +83,10 @@ class SparseClassificationLeafModelOperator : public LeafModelOperator {
   float GetOutputValue(const decision_trees::Leaf& leaf,
                        int32 o) const override;
 
-  void UpdateModel(LeafStat* leaf, const InputTarget* target,
+  void UpdateModel(decision_trees::Leaf* leaf, const InputTarget* target,
                    int example) const override;
 
-  void InitModel(LeafStat* leaf) const override {}
+  void InitModel(decision_trees::Leaf* leaf) const override {}
 
   void ExportModel(const LeafStat& stat,
                    decision_trees::Leaf* leaf) const override;
@@ -103,10 +102,10 @@ class SparseOrDenseClassificationLeafModelOperator : public LeafModelOperator {
   float GetOutputValue(const decision_trees::Leaf& leaf,
                        int32 o) const override;
 
-  void UpdateModel(LeafStat* leaf, const InputTarget* target,
+  void UpdateModel(decision_trees::Leaf* leaf, const InputTarget* target,
                    int example) const override;
 
-  void InitModel(LeafStat* leaf) const override {}
+  void InitModel(decision_trees::Leaf* leaf) const override {}
 
   void ExportModel(const LeafStat& stat,
                    decision_trees::Leaf* leaf) const override;
@@ -129,10 +128,10 @@ class RegressionLeafModelOperator : public LeafModelOperator {
   // updating model and just using the seeded values.  Can add this in
   // with additional_data, though protobuf::Any is slow.  Maybe make it
   // optional.  Maybe make any update optional.
-  void UpdateModel(LeafStat* leaf, const InputTarget* target,
+  void UpdateModel(decision_trees::Leaf* leaf, const InputTarget* target,
                    int example) const override {}
 
-  void InitModel(LeafStat* leaf) const override;
+  void InitModel(decision_trees::Leaf* leaf) const override;
 
   void ExportModel(const LeafStat& stat,
                    decision_trees::Leaf* leaf) const override;
@@ -147,4 +146,4 @@ class LeafModelOperatorFactory {
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_LEAF_MODEL_OPERATORS_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_LEAF_MODEL_OPERATORS_H_

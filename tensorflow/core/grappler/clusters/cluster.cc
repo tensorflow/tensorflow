@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -22,8 +23,7 @@ Cluster::Cluster(int timeout_s) : timeout_s_(timeout_s) {
   DisableDetailedStats(false);
 }
 
-Cluster::~Cluster() {
-}
+Cluster::~Cluster() {}
 
 void Cluster::AllowSoftPlacement(bool soft_placement_state) {
   options_.config.set_allow_soft_placement(soft_placement_state);
@@ -32,6 +32,10 @@ void Cluster::AllowSoftPlacement(bool soft_placement_state) {
 void Cluster::SetNumWarmupSteps(int num_steps) {
   options_.config.mutable_graph_options()->set_build_cost_model_after(
       num_steps);
+}
+
+int Cluster::NumWarmupSteps() const {
+  return options_.config.graph_options().build_cost_model_after();
 }
 
 void Cluster::DisableDetailedStats(bool disable) {
@@ -44,13 +48,34 @@ void Cluster::DisableDetailedStats(bool disable) {
   }
 }
 
+bool Cluster::DetailedStatsEnabled() const {
+  return options_.config.graph_options().build_cost_model() != 0;
+}
+
 void Cluster::DisableOptimizer(bool disable) {
   OptimizerOptions* options =
       options_.config.mutable_graph_options()->mutable_optimizer_options();
   if (disable) {
     options->set_opt_level(OptimizerOptions::L0);
+    // Disable Grappler optimizations.
+    auto rewriter_config =
+        options_.config.mutable_graph_options()->mutable_rewrite_options();
+    rewriter_config->set_layout_optimizer(RewriterConfig::OFF);
+    rewriter_config->set_disable_model_pruning(true);
+    rewriter_config->set_function_optimization(RewriterConfig::OFF);
+    rewriter_config->set_arithmetic_optimization(RewriterConfig::OFF);
+    rewriter_config->set_loop_optimization(RewriterConfig::OFF);
+    rewriter_config->set_dependency_optimization(RewriterConfig::OFF);
+    rewriter_config->set_constant_folding(RewriterConfig::OFF);
+    rewriter_config->set_memory_optimization(RewriterConfig::NO_MEM_OPT);
+    rewriter_config->mutable_auto_parallel()->set_enable(false);
+    rewriter_config->clear_optimizers();
   } else {
     options->set_opt_level(OptimizerOptions::L1);
+    auto rewriter_config =
+        options_.config.mutable_graph_options()->mutable_rewrite_options();
+    rewriter_config->set_constant_folding(RewriterConfig::DEFAULT);
+    rewriter_config->set_memory_optimization(RewriterConfig::DEFAULT_MEM_OPT);
   }
 }
 

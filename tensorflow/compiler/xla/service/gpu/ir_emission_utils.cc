@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -49,13 +49,34 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   // The inputs and the output must
   // 1) be matrices with no padding and a non-zero number of elements,
   // 2) have an allowed element type.
-  bool type_is_allowed = (output_shape.element_type() == F32 ||
-                          output_shape.element_type() == F64);
+  PrimitiveType output_primitive_type = output_shape.element_type();
+  bool type_is_allowed =
+      (output_primitive_type == F16 || output_primitive_type == F32 ||
+       output_primitive_type == F64);
   return type_is_allowed && IsRank2WithNoPadding(lhs_shape) &&
          IsRank2WithNoPadding(rhs_shape) &&
          IsRank2WithNoPadding(output_shape) &&
-         !ShapeUtil::HasZeroElements(lhs_shape) &&
-         !ShapeUtil::HasZeroElements(rhs_shape);
+         !ShapeUtil::IsZeroElementArray(lhs_shape) &&
+         !ShapeUtil::IsZeroElementArray(rhs_shape);
+}
+
+bool DotImplementedAsGemm(const HloInstruction& dot) {
+  CHECK_EQ(dot.opcode(), HloOpcode::kDot);
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+
+  // If gemm can accept the operand shapes, use it rather than a custom
+  // kernel.
+  if (AreValidGemmShapes(lhs_shape, rhs_shape, dot.shape())) {
+    // The size of the reduction dimension should match. The shape inference
+    // guarantees this invariant, so the check here is for programming
+    // errors.
+    const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+    CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
+             rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
+    return true;
+  }
+  return false;
 }
 }  // namespace
 
@@ -67,64 +88,106 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
 
   // For certain types of Dot, we can call pre-canned BLAS gemm.
   if (hlo.opcode() == HloOpcode::kDot) {
-    const Shape& lhs_shape = hlo.operand(0)->shape();
-    const Shape& rhs_shape = hlo.operand(1)->shape();
-
-    // If gemm can accept the operand shapes, use it rather than a custom
-    // kernel.
-    if (AreValidGemmShapes(lhs_shape, rhs_shape, hlo.shape())) {
-      // The size of the reduction dimension should match. The shape inference
-      // guarantees this invariant, so the check here is for programming
-      // errors.
-      CHECK_EQ(lhs_shape.dimensions(1), rhs_shape.dimensions(0));
-      return true;
-    }
+    return DotImplementedAsGemm(hlo);
   }
 
   if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kTransposeDot &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kDot) {
-    return true;
+      hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
+      hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply) {
+    // Try to find the dot inside the output fusion node.
+    const HloInstruction* dot = hlo.fused_expression_root()->operand(0);
+    if (dot->opcode() != HloOpcode::kDot) {
+      dot = hlo.fused_expression_root()->operand(1);
+    }
+    if (dot->opcode() == HloOpcode::kDot) {
+      return DotImplementedAsGemm(*dot);
+    }
   }
 
   return false;
 }
 
-bool ImplementedAsDnnConvolution(const HloInstruction& hlo) {
-  // We can only do this if the HLO is unnested.
-  if (hlo.parent() != hlo.GetModule()->entry_computation()) {
+const char* const kCudnnBatchNormForwardInferenceCallTarget =
+    "__cudnn$batchNormalizationForwardInference";
+const char* const kCudnnBatchNormForwardTrainingCallTarget =
+    "__cudnn$batchNormalizationForwardTraining";
+const char* const kCudnnBatchNormBackwardCallTarget =
+    "__cudnn$batchNormalizationBackward";
+
+bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
     return false;
   }
+  const auto& target = hlo.custom_call_target();
+  return target == kCudnnBatchNormForwardInferenceCallTarget ||
+         target == kCudnnBatchNormForwardTrainingCallTarget ||
+         target == kCudnnBatchNormBackwardCallTarget;
+}
 
-  // Forward convolution.
-  if (hlo.opcode() == HloOpcode::kConvolution) {
-    const ConvolutionDimensionNumbers& dnums =
-        hlo.convolution_dimension_numbers();
-    if (dnums.spatial_dimensions_size() > 3) {
-      return false;
-    }
+const char* const kCudnnConvForwardCallTarget = "__cudnn$convForward";
+const char* const kCudnnConvBackwardInputCallTarget =
+    "__cudnn$convBackwardInput";
+const char* const kCudnnConvBackwardFilterCallTarget =
+    "__cudnn$convBackwardFilter";
 
-    // CuDNN does not accept zero-element arguments
-    if (ShapeUtil::HasZeroElements(hlo.operand(0)->shape()) ||
-        ShapeUtil::HasZeroElements(hlo.operand(1)->shape())) {
-      return false;
-    }
-
-    return true;
+bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
   }
-
-  // Backward convolution.
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      (hlo.fusion_kind() == HloInstruction::FusionKind::kConvBackwardFilter ||
-       hlo.fusion_kind() == HloInstruction::FusionKind::kConvBackwardInput)) {
-    return true;
-  }
-
-  return false;
+  const auto& target = hlo.custom_call_target();
+  return target == kCudnnConvForwardCallTarget ||
+         target == kCudnnConvBackwardInputCallTarget ||
+         target == kCudnnConvBackwardFilterCallTarget;
 }
 
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
-  return ImplementedAsGemm(hlo) || ImplementedAsDnnConvolution(hlo);
+  return ImplementedAsGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
+         IsCustomCallToDnnConvolution(hlo);
+}
+
+static HloInstruction* CreateCudnnConv(
+    const char* call_target, const Shape& shape, HloInstruction* lhs,
+    HloInstruction* rhs, const Window& window,
+    const ConvolutionDimensionNumbers& dnums) {
+  HloComputation* computation = lhs->parent();
+
+  // This call returns a tuple of (conv_result, scratch_memory), where
+  // conv_result is the actual result of the convolution, and scratch_memory is
+  // temporary memory used by cudnn.
+  //
+  // At the moment, we don't know how much scratch memory this conv is going to
+  // use, so we put u8[0] in this place.  Later on another pass will choose
+  // which conv algorithm to use, and at that point we'll modify the shape of
+  // this second tuple element.
+  Shape call_shape =
+      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
+
+  HloInstruction* custom_call = computation->AddInstruction(
+      HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
+  custom_call->set_window(window);
+  custom_call->set_convolution_dimension_numbers(dnums);
+  return custom_call;
+}
+
+HloInstruction* CreateCudnnConvForward(
+    const Shape& shape, HloInstruction* input, HloInstruction* kernel,
+    const Window& window, const ConvolutionDimensionNumbers& dnums) {
+  return CreateCudnnConv(kCudnnConvForwardCallTarget, shape, input, kernel,
+                         window, dnums);
+}
+
+HloInstruction* CreateCudnnConvBackwardInput(
+    const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
+    const Window& window, const ConvolutionDimensionNumbers& dnums) {
+  return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, shape, output,
+                         reverse_filter, window, dnums);
+}
+
+HloInstruction* CreateCudnnConvBackwardFilter(
+    const Shape& shape, HloInstruction* input, HloInstruction* output,
+    const Window& window, const ConvolutionDimensionNumbers& dnums) {
+  return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, shape, input,
+                         output, window, dnums);
 }
 
 bool IsReductionToVector(const HloInstruction& reduce) {
@@ -212,13 +275,6 @@ llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
           builder->CreateBitCast(x, builder->getIntNTy(32 * num_segments)),
           builder->getIntNTy(bit_width)),
       value->getType());
-}
-
-const HloInstruction* LatestNonGteAncestor(const HloInstruction* hlo) {
-  while (hlo->opcode() == HloOpcode::kGetTupleElement) {
-    hlo = hlo->operand(0);
-  }
-  return hlo;
 }
 
 }  // namespace gpu

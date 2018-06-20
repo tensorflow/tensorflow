@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.contrib import stateless
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
@@ -68,13 +69,75 @@ class StatelessOpsTest(test.TestCase):
   def testDeterminism(self):
     # Stateless values should be equal iff the seeds are equal (roughly)
     with self.test_session(use_gpu=True):
-      seed_t = array_ops.placeholder(dtypes.int64, shape=[2])
-      seeds = [(x, y) for x in range(5) for y in range(5)] * 3
-      for stateless_op, _ in CASES:
-        for shape in (), (3,), (2, 5):
-          pure = stateless_op(shape, seed=seed_t)
-          values = [(seed, pure.eval(feed_dict={seed_t: seed}))
-                    for seed in seeds]
+      for seed_type in [dtypes.int32, dtypes.int64]:
+        seed_t = array_ops.placeholder(seed_type, shape=[2])
+        seeds = [(x, y) for x in range(5) for y in range(5)] * 3
+        for stateless_op, _ in CASES:
+          for shape in (), (3,), (2, 5):
+            pure = stateless_op(shape, seed=seed_t)
+            values = [(seed, pure.eval(feed_dict={seed_t: seed}))
+                      for seed in seeds]
+            for s0, v0 in values:
+              for s1, v1 in values:
+                self.assertEqual(s0 == s1, np.all(v0 == v1))
+
+  def testShapeType(self):
+    with self.test_session(use_gpu=True):
+      for shape_dtype in [dtypes.int32, dtypes.int64]:
+        seed_t = array_ops.placeholder(dtypes.int64, shape=[2])
+        seeds = [(x, y) for x in range(5) for y in range(5)] * 3
+        for stateless_op, _ in CASES:
+          for shape in (), (3,), (2, 5):
+            pure = stateless_op(constant_op.constant(shape, dtype=shape_dtype),
+                                seed=seed_t)
+            values = [(seed, pure.eval(feed_dict={seed_t: seed}))
+                      for seed in seeds]
+            for s0, v0 in values:
+              for s1, v1 in values:
+                self.assertEqual(s0 == s1, np.all(v0 == v1))
+
+  def testMatchStatefulMultinomial(self):
+    # Stateless ops should be the same as stateful ops on the first call
+    # after seed scrambling.
+    key = 0x3ec8f720, 0x02461e29
+    num_samples = 4
+    for logits_dtype in np.float16, np.float32, np.float64:
+      for output_dtype in dtypes.int32, dtypes.int64:
+        for seed in (7, 17), (11, 5), (2, 3):
+          preseed = invert_philox(key,
+                                  (seed[0], 0, seed[1], 0)).astype(np.uint64)
+          preseed = preseed[::2] | preseed[1::2] << 32
+          random_seed.set_random_seed(seed[0])
+          with self.test_session(use_gpu=True):
+            for logits in ([[0.1, 0.25, 0.5, 0.15]], [[0.5, 0.5], [0.8, 0.2],
+                                                      [0.25, 0.75]]):
+              logits_t = constant_op.constant(logits, dtype=logits_dtype)
+              stateful = random_ops.multinomial(
+                  logits_t,
+                  num_samples,
+                  seed=seed[1],
+                  output_dtype=output_dtype)
+              pure = stateless.stateless_multinomial(
+                  logits_t,
+                  num_samples,
+                  seed=preseed,
+                  output_dtype=output_dtype)
+              self.assertAllEqual(stateful.eval(), pure.eval())
+
+  def testDeterminismMultinomial(self):
+    # Stateless values should be equal iff the seeds are equal (roughly)
+    num_samples = 10
+    with self.test_session(use_gpu=True):
+      for seed_type in [dtypes.int32, dtypes.int64]:
+        seed_t = array_ops.placeholder(seed_type, shape=[2])
+        seeds = [(x, y) for x in range(5) for y in range(5)] * 3
+        for logits in ([[0.1, 0.25, 0.5, 0.15]], [[0.5, 0.5], [0.8, 0.2],
+                                                  [0.25, 0.75]]):
+          pure = stateless.stateless_multinomial(
+              logits, num_samples, seed=seed_t)
+          values = [
+              (seed, pure.eval(feed_dict={seed_t: seed})) for seed in seeds
+          ]
           for s0, v0 in values:
             for s1, v1 in values:
               self.assertEqual(s0 == s1, np.all(v0 == v1))

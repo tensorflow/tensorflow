@@ -19,46 +19,77 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
 
 // Kahn's algorithm is implemented.
 // For details, see https://en.wikipedia.org/wiki/Topological_sorting
-void TopologicalSort(GraphDef* graph) {
-  NodeMap node_map(graph);
-  std::deque<const NodeDef*> ready_nodes;
-  std::unordered_map<const NodeDef*, int> ready_inputs;
-  for (const NodeDef& node : graph->node()) {
-    if (node.input_size() == 0) {
-      ready_nodes.push_back(&node);
+Status ComputeTopologicalOrder(
+    const GraphDef& graph, std::vector<int>* ready_nodes,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies) {
+  SimpleGraphView graph_view;
+  TF_RETURN_IF_ERROR(graph_view.Initialize(graph, extra_dependencies));
+
+  ready_nodes->reserve(graph_view.num_nodes());
+
+  int front = 0;
+  int back = 0;
+  std::vector<int> num_ready_inputs(graph_view.num_nodes(), 0);
+  for (int i = 0; i < graph_view.num_nodes(); i++) {
+    if (graph_view.inputs(i).empty()) {
+      ready_nodes->push_back(i);
+      back++;
     }
-    if (node.op() == "Merge") {
-      ready_inputs[&node] = 0;
-      for (const auto& input : node.input()) {
-        if (IsNextIteration(*node_map.GetNode(input))) {
-          ready_inputs[&node]++;
+    if (IsMerge(graph.node(i))) {
+      for (int input : graph_view.inputs(i)) {
+        if (IsNextIteration(graph.node(input))) {
+          num_ready_inputs[i]++;
         }
       }
-    } else {
-      ready_inputs[&node] = 0;
     }
   }
-  GraphDef sorted_graph;
-  while (!ready_nodes.empty()) {
-    auto ready_node = ready_nodes.front();
-    *sorted_graph.add_node() = *ready_node;
-    for (const auto& fanout : node_map.GetOutputs(ready_node->name())) {
-      ready_inputs[fanout]++;
-      if (ready_inputs[fanout] == fanout->input_size()) {
-        ready_nodes.push_back(fanout);
+
+  while (front != back) {
+    int ready_node = (*ready_nodes)[front];
+    for (int fanout : graph_view.outputs(ready_node)) {
+      ++num_ready_inputs[fanout];
+      if (num_ready_inputs[fanout] == graph_view.inputs(fanout).size()) {
+        ready_nodes->push_back(fanout);
+        ++back;
       }
     }
-    ready_nodes.pop_front();
+    ++front;
   }
-  if (sorted_graph.node_size() == graph->node_size()) {
-    graph->mutable_node()->Swap(sorted_graph.mutable_node());
+
+  if (back != graph_view.num_nodes()) {
+    return errors::InvalidArgument(
+        "The graph couldn't be sorted in topological order.");
   }
+  return Status::OK();
+}
+
+Status ComputeTopologicalOrder(
+    const GraphDef& graph, std::unordered_map<const NodeDef*, int>* topo_order,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies) {
+  std::vector<int> ready_nodes;
+  TF_RETURN_IF_ERROR(
+      ComputeTopologicalOrder(graph, &ready_nodes, extra_dependencies));
+  topo_order->reserve(graph.node_size());
+  for (int i = 0; i < ready_nodes.size(); ++i) {
+    (*topo_order)[&graph.node(ready_nodes[i])] = i;
+  }
+  return Status::OK();
+}
+
+Status TopologicalSort(GraphDef* graph) {
+  std::vector<int> ready_nodes;
+  TF_RETURN_IF_ERROR(ComputeTopologicalOrder(*graph, &ready_nodes, nullptr));
+  PermuteNodesInPlace(graph, &ready_nodes, /*invert_permutation=*/true);
+  return Status::OK();
 }
 
 }  // namespace grappler

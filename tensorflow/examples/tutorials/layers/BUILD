@@ -16,19 +16,6 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/learn",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

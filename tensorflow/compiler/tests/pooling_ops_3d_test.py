@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 # MaxPoolGrad.
 def _AvgPoolGrad(inputs, outputs, output_gradients, ksize, strides, padding):
   del outputs  # Unused by average-pooling gradients.
-  return gen_nn_ops._avg_pool3d_grad(
+  return gen_nn_ops.avg_pool3d_grad(
       inputs.get_shape().as_list(),
       output_gradients,
       ksize=ksize,
@@ -263,7 +263,7 @@ class Pooling3DTest(XLATestCase):
   def testMaxPoolGradValidPadding1_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[1, 3, 3, 3, 1],
         ksize=[1, 1, 1],
         strides=[1, 1, 1],
@@ -272,7 +272,7 @@ class Pooling3DTest(XLATestCase):
   def testMaxPoolGradValidPadding2_1_6_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 3, 3, 6, 3],
         ksize=[2, 2, 2],
         strides=[1, 1, 1],
@@ -281,7 +281,7 @@ class Pooling3DTest(XLATestCase):
   def testMaxPoolGradValidPadding2_1_7_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 3, 5, 7, 3],
         ksize=[2, 2, 2],
         strides=[1, 1, 1],
@@ -290,7 +290,7 @@ class Pooling3DTest(XLATestCase):
   def testMaxPoolGradValidPadding2_2_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 2, 2, 2, 3],
         ksize=[2, 2, 2],
         strides=[2, 2, 2],
@@ -299,7 +299,7 @@ class Pooling3DTest(XLATestCase):
   def testMaxPoolGradSamePadding1_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 3, 2, 4, 1],
         ksize=[1, 1, 1],
         strides=[1, 1, 1],
@@ -308,7 +308,7 @@ class Pooling3DTest(XLATestCase):
   def testMaxPoolGradSamePadding2_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 3, 2, 4, 1],
         ksize=[2, 2, 2],
         strides=[1, 1, 1],
@@ -317,7 +317,7 @@ class Pooling3DTest(XLATestCase):
   def testMaxPoolGradSamePadding2_2_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[2, 5, 2, 4, 3],
         ksize=[2, 2, 2],
         strides=[2, 2, 2],
@@ -326,7 +326,7 @@ class Pooling3DTest(XLATestCase):
   def testMaxPoolGradSamePadding3_1_3d(self):
     self._VerifyGradient(
         nn_ops.max_pool3d,
-        gen_nn_ops._max_pool3d_grad,
+        gen_nn_ops.max_pool3d_grad,
         input_sizes=[1, 3, 3, 7, 1],
         ksize=[3, 3, 3],
         strides=[1, 1, 1],

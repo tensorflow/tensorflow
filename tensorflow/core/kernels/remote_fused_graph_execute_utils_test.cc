@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_op_test_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -33,6 +34,10 @@ constexpr const char* const NAME_A_PLUS_B = "A_PLUS_B";
 constexpr float NODE_A_VAL = 2.0f;
 constexpr float NODE_B_VAL = 3.0f;
 constexpr float VALUE_TOLERANCE_FLOAT = 1e-8f;
+constexpr const char* const REMOTE_FUSED_EXECUTOR_NAME0 =
+    "fuse_test_remote_fused_graph_executor0";
+constexpr const char* const REMOTE_FUSED_EXECUTOR_NAME1 =
+    "fuse_test_remote_fused_graph_executor1";
 
 static NodeDef* GetNodeDef(const string& name, GraphDef* def) {
   CHECK_NE(def, nullptr);
@@ -44,17 +49,38 @@ static NodeDef* GetNodeDef(const string& name, GraphDef* def) {
   return nullptr;
 }
 
+Status BuildRemoteFusedGraphExecutor0(
+    std::unique_ptr<IRemoteFusedGraphExecutor>* executor) {
+  executor->reset(
+      new TestRemoteFusedGraphExecutor({"Mul"}, REMOTE_FUSED_EXECUTOR_NAME0));
+  return Status::OK();
+}
+
+Status BuildRemoteFusedGraphExecutor1(
+    std::unique_ptr<IRemoteFusedGraphExecutor>* executor) {
+  executor->reset(new TestRemoteFusedGraphExecutor(
+      {"Const", "Mul"}, REMOTE_FUSED_EXECUTOR_NAME1));
+  return Status::OK();
+}
+
 class FuseRemoteGraphMultipleAddOpsTest : public ::testing::Test {
  protected:
   void SetUp() final {
     TF_ASSERT_OK(
         RemoteFusedGraphExecuteOpTestUtils::BuildMultipleAddGraph(&graph_def_));
     RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar
-        k_hexagon_remote_fused_graph_executor_build(
+        hexagon_remote_fused_graph_executor_build(
             "remote_graph_executor_name",
             [](std::unique_ptr<IRemoteFusedGraphExecutor>* executor) -> Status {
               return Status::OK();
             });
+    RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar
+        test_remote_fused_graph_executor_build0(REMOTE_FUSED_EXECUTOR_NAME0,
+                                                BuildRemoteFusedGraphExecutor0);
+
+    RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar
+        test_remote_fused_graph_executor_build1(REMOTE_FUSED_EXECUTOR_NAME1,
+                                                BuildRemoteFusedGraphExecutor1);
   }
 
   void TearDown() final {}
@@ -85,6 +111,18 @@ class FuseRemoteGraphMultipleAddOpsTest : public ::testing::Test {
         graph_def_, inputs_, outputs_, "remote_fused_graph_node_names",
         subgraph_op_types_, "remote_graph_executor_name",
         /*require_shape_type=*/false, &result_graph_def_);
+  }
+
+  Status FuseByExecutor0() {
+    return RemoteFusedGraphExecuteUtils::FuseRemoteGraphByExecutor(
+        graph_def_, inputs_, outputs_, REMOTE_FUSED_EXECUTOR_NAME0,
+        &result_graph_def_);
+  }
+
+  Status FuseByExecutor1() {
+    return RemoteFusedGraphExecuteUtils::FuseRemoteGraphByExecutor(
+        graph_def_, inputs_, outputs_, REMOTE_FUSED_EXECUTOR_NAME1,
+        &result_graph_def_);
   }
 
   Status BuildAndAddTensorShape() {
@@ -686,6 +724,30 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByOpTypes_FGHIJ) {
   ReplaceOpType({"F", "G", "H", "I", "J"}, "Mul");
 
   TF_ASSERT_OK(FuseByOpTypes());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+  EXPECT_EQ(3, result_graph_def_.node_size())
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByExecutor_HIJ) {
+  ReplaceOpType({"H", "I", "J"}, "Mul");
+
+  TF_ASSERT_OK(FuseByExecutor0());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+  EXPECT_EQ(9, result_graph_def_.node_size())
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByExecutor_FGHIJ) {
+  ReplaceOpType({"F", "G", "H", "I", "J"}, "Mul");
+
+  TF_ASSERT_OK(FuseByExecutor1());
 
   EXPECT_EQ(11, graph_def_.node_size());
   EXPECT_EQ(3, result_graph_def_.node_size())

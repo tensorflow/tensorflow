@@ -1,8 +1,12 @@
 # Losses (contrib)
 
+## Deprecated
+
+This module is deprecated. Instructions for updating: Use @{tf.losses} instead.
+
 ## Loss operations for use in neural networks.
 
-Note: By default all the losses are collected into the `GraphKeys.LOSSES`
+Note: By default, all the losses are collected into the `GraphKeys.LOSSES`
 collection.
 
 All of the loss functions take a pair of predictions and ground truth labels,
@@ -103,19 +107,19 @@ weighted average over the individual prediction errors:
   loss = tf.contrib.losses.mean_squared_error(predictions, depths, weight)
 ```
 
-@{tf.contrib.losses.absolute_difference}
-@{tf.contrib.losses.add_loss}
-@{tf.contrib.losses.hinge_loss}
-@{tf.contrib.losses.compute_weighted_loss}
-@{tf.contrib.losses.cosine_distance}
-@{tf.contrib.losses.get_losses}
-@{tf.contrib.losses.get_regularization_losses}
-@{tf.contrib.losses.get_total_loss}
-@{tf.contrib.losses.log_loss}
-@{tf.contrib.losses.mean_pairwise_squared_error}
-@{tf.contrib.losses.mean_squared_error}
-@{tf.contrib.losses.sigmoid_cross_entropy}
-@{tf.contrib.losses.softmax_cross_entropy}
-@{tf.contrib.losses.sparse_softmax_cross_entropy}
+* @{tf.contrib.losses.absolute_difference}
+* @{tf.contrib.losses.add_loss}
+* @{tf.contrib.losses.hinge_loss}
+* @{tf.contrib.losses.compute_weighted_loss}
+* @{tf.contrib.losses.cosine_distance}
+* @{tf.contrib.losses.get_losses}
+* @{tf.contrib.losses.get_regularization_losses}
+* @{tf.contrib.losses.get_total_loss}
+* @{tf.contrib.losses.log_loss}
+* @{tf.contrib.losses.mean_pairwise_squared_error}
+* @{tf.contrib.losses.mean_squared_error}
+* @{tf.contrib.losses.sigmoid_cross_entropy}
+* @{tf.contrib.losses.softmax_cross_entropy}
+* @{tf.contrib.losses.sparse_softmax_cross_entropy}
 
 

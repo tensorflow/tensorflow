@@ -351,6 +351,13 @@ class WishartCholeskyTest(test.TestCase):
                          (3, 3), dtype=np.float32)
                  })
 
+      with self.assertRaisesOpError("scale must be square"):
+        chol_w = distributions.WishartCholesky(
+            df=4.,
+            scale=np.array([[2., 3., 4.], [1., 2., 3.]], dtype=np.float32),
+            validate_args=True)
+        sess.run(chol_w.scale().eval())
+
       # Ensure no assertions.
       chol_w = distributions.WishartCholesky(
           df=df_deferred,
@@ -366,17 +373,42 @@ class WishartCholeskyTest(test.TestCase):
                feed_dict={df_deferred: 4,
                           chol_scale_deferred: np.ones((3, 3))})
 
+  def testStaticAsserts(self):
+    with self.test_session():
+      x = make_pd(1., 3)
+      chol_scale = chol(x)
+
       # Still has these assertions because they're resolveable at graph
       # construction
       with self.assertRaisesRegexp(ValueError, "cannot be less than"):
-        chol_w = distributions.WishartCholesky(
+        distributions.WishartCholesky(
             df=2, scale=chol_scale, validate_args=False)
-      with self.assertRaisesRegexp(TypeError, "not a floating-point type"):
-        chol_w = distributions.WishartCholesky(
+      with self.assertRaisesRegexp(TypeError, "Argument tril must have dtype"):
+        distributions.WishartCholesky(
             df=4.,
             scale=np.asarray(
                 chol_scale, dtype=np.int32),
             validate_args=False)
+
+  def testSampleBroadcasts(self):
+    dims = 2
+    batch_shape = [2, 3]
+    sample_shape = [2, 1]
+    scale = np.float32([
+        [[1., 0.5],
+         [0.5, 1.]],
+        [[0.5, 0.25],
+         [0.25, 0.75]],
+    ])
+    scale = np.reshape(np.concatenate([scale, scale, scale], axis=0),
+                       batch_shape + [dims, dims])
+    wishart = distributions.WishartFull(df=5, scale=scale)
+    x = wishart.sample(sample_shape, seed=42)
+    with self.test_session() as sess:
+      x_ = sess.run(x)
+    expected_shape = sample_shape + batch_shape + [dims, dims]
+    self.assertAllEqual(expected_shape, x.shape)
+    self.assertAllEqual(expected_shape, x_.shape)
 
 
 if __name__ == "__main__":

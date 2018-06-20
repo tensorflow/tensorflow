@@ -18,12 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.tensor_forest.python.ops import gen_model_ops
-from tensorflow.contrib.tensor_forest.python.ops import stats_ops
 
 # pylint: disable=unused-import
 from tensorflow.contrib.tensor_forest.python.ops.gen_model_ops import feature_usage_counts
+from tensorflow.contrib.tensor_forest.python.ops.gen_model_ops import traverse_tree_v4
 from tensorflow.contrib.tensor_forest.python.ops.gen_model_ops import tree_predictions_v4
 from tensorflow.contrib.tensor_forest.python.ops.gen_model_ops import tree_size
+from tensorflow.contrib.tensor_forest.python.ops.gen_model_ops import update_model_v4
 # pylint: enable=unused-import
 
 from tensorflow.contrib.util import loader
@@ -59,13 +60,7 @@ class TreeVariableSavable(saver.BaseSaverBuilder.SaveableObject):
       name: the name to save the tree variable under.
     """
     self.params = params
-    deps = []
-    if stats_handle is not None:
-      deps.append(stats_ops.finalize_tree(
-          tree_handle, stats_handle,
-          params=params.serialized_params_proto))
-    with ops.control_dependencies(deps):
-      tensor = gen_model_ops.tree_serialize(tree_handle)
+    tensor = gen_model_ops.tree_serialize(tree_handle)
     # slice_spec is useful for saving a slice from a variable.
     # It's not meaningful the tree variable. So we just pass an empty value.
     slice_spec = ""
@@ -108,7 +103,7 @@ def tree_variable(params, tree_config, stats_handle, name, container=None):
   """
   with ops.name_scope(name, "TreeVariable") as name:
     resource_handle = gen_model_ops.decision_tree_resource_handle_op(
-        container, name, name=name)
+        container, shared_name=name, name=name)
 
     create_op = gen_model_ops.create_tree_variable(
         resource_handle,
@@ -118,7 +113,7 @@ def tree_variable(params, tree_config, stats_handle, name, container=None):
     # Adds the variable to the savable list.
     saveable = TreeVariableSavable(params, resource_handle, stats_handle,
                                    create_op,
-                                   "tree_checkpoint_{0}".format(name))
+                                   resource_handle.name)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
     resources.register_resource(resource_handle, create_op, is_initialized_op)
     return resource_handle

@@ -54,12 +54,13 @@ patch versions.  The public APIs consist of
     * [`event`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/event.proto)
     * [`graph`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/graph.proto)
     * [`op_def`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op_def.proto)
-    * [`reader_base`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/kernels/reader_base.proto)
+    * [`reader_base`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/reader_base.proto)
     * [`summary`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto)
     * [`tensor`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/tensor.proto)
     * [`tensor_shape`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/tensor_shape.proto)
     * [`types`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/types.proto)
 
+<a name="not_covered"></a>
 ## What is *not* covered
 
 Some API functions are explicitly marked as "experimental" and can change in
@@ -67,7 +68,9 @@ backward incompatible ways between minor releases. These include:
 
 *   **Experimental APIs**: The @{tf.contrib} module and its submodules in Python
     and any functions in the C API or fields in protocol buffers that are
-    explicitly commented as being experimental.
+    explicitly commented as being experimental. In particular, any field in a
+    protocol buffer which is called "experimental" and all its fields and
+    submessages can change at any time.
 
 *   **Other languages**: TensorFlow APIs in languages other than Python and C,
     such as:
@@ -180,7 +183,7 @@ Our versioning scheme has three requirements:
 *   **Forward compatibility** to support scenarios where the producer of a
     graph or checkpoint is upgraded to a newer version of TensorFlow before
     the consumer.
-*   Enable evolving TensorFlow in incompatible ways. For example, removing Ops,
+*   Enable evolving TensorFlow in incompatible ways. For example, removing ops,
     adding attributes, and removing attributes.
 
 Note that while the `GraphDef` version mechanism is separate from the TensorFlow
@@ -242,32 +245,51 @@ contains a main data version which is treated as either `producer` or
     `TF_CHECKPOINT_VERSION_MIN_CONSUMER`, and
     `TF_CHECKPOINT_VERSION_MIN_PRODUCER`.
 
+### Add a new attribute with default to an existing op
+
+Following the guidance below gives you forward compatibility only if the set of
+ops has not changed:
+
+1. If forward compatibility is desired,  set `strip_default_attrs` to `True`
+   while exporting the model using either the
+   @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph_and_variables$`add_meta_graph_and_variables`}
+   and @{tf.saved_model.builder.SavedModelBuilder.add_meta_graph$`add_meta_graph`}
+   methods of the `SavedModelBuilder` class, or
+   @{tf.estimator.Estimator.export_savedmodel$`Estimator.export_savedmodel`}
+2. This strips off the default valued attributes at the time of
+   producing/exporting the models. This makes sure that the exported
+   @{tf.MetaGraphDef} does not contain the new op-attribute when the default
+   value is used.
+3. Having this control could allow out-of-date consumers (for example, serving
+   binaries that lag behind training binaries) to continue loading the models
+   and prevent interruptions in model serving.
+
 ### Evolving GraphDef versions
 
 This section explains how to use this versioning mechanism to make different
 types of changes to the `GraphDef` format.
 
-#### Add an Op
+#### Add an op
 
-Add the new Op to both consumers and producers at the same time, and do not
+Add the new op to both consumers and producers at the same time, and do not
 change any `GraphDef` versions. This type of change is automatically
 backward compatible, and does not impact forward compatibility plan since
 existing producer scripts will not suddenly use the new functionality.
 
-#### Add an Op and switch existing Python wrappers to use it
+#### Add an op and switch existing Python wrappers to use it
 
 1.  Implement new consumer functionality and increment the `GraphDef` version.
 2.  If it is possible to make the wrappers use the new functionality only in
     cases that did not work before, the wrappers can be updated now.
 3.  Change Python wrappers to use the new functionality. Do not increment
-    `min_consumer`, since models that do not use this Op should not break.
+    `min_consumer`, since models that do not use this op should not break.
 
-#### Remove or restrict an Op's functionality
+#### Remove or restrict an op's functionality
 
-1.  Fix all producer scripts (not TensorFlow itself) to not use the banned Op or
+1.  Fix all producer scripts (not TensorFlow itself) to not use the banned op or
     functionality.
 2.  Increment the `GraphDef` version and implement new consumer functionality
-    that bans the removed Op or functionality for GraphDefs at the new version
+    that bans the removed op or functionality for GraphDefs at the new version
     and above. If possible, make TensorFlow stop producing `GraphDefs` with the
     banned functionality. To do so, add the
     [`REGISTER_OP(...).Deprecated(deprecated_at_version,
@@ -276,15 +298,15 @@ existing producer scripts will not suddenly use the new functionality.
 4.  Increase `min_producer` to the GraphDef version from (2) and remove the
     functionality entirely.
 
-#### Change an Op's functionality
+#### Change an op's functionality
 
-1.  Add a new similar Op named `SomethingV2` or similar and go through the
+1.  Add a new similar op named `SomethingV2` or similar and go through the
     process of adding it and switching existing Python wrappers to use it, which
     may take three weeks if forward compatibility is desired.
-2.  Remove the old Op (Can only take place with a major version change due to
+2.  Remove the old op (Can only take place with a major version change due to
     backward compatibility).
-3.  Increase `min_consumer` to rule out consumers with the old Op, add back the
-    old Op as an alias for `SomethingV2`, and go through the process to switch
+3.  Increase `min_consumer` to rule out consumers with the old op, add back the
+    old op as an alias for `SomethingV2`, and go through the process to switch
     existing Python wrappers to use it.
 4.  Go through the process to remove `SomethingV2`.
 
@@ -292,6 +314,6 @@ existing producer scripts will not suddenly use the new functionality.
 
 1.  Bump the `GraphDef` version and add the bad version to `bad_consumers` for
     all new GraphDefs. If possible, add to `bad_consumers` only for GraphDefs
-    which contain a certain Op or similar.
+    which contain a certain op or similar.
 2.  If existing consumers have the bad version, push them out as soon as
     possible.

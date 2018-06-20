@@ -23,8 +23,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.AdagradDAOptimizer")
 class AdagradDAOptimizer(optimizer.Optimizer):
   """Adagrad Dual Averaging algorithm for sparse linear models.
 
@@ -68,7 +70,7 @@ class AdagradDAOptimizer(optimizer.Optimizer):
       invalid.
     """
     if initial_gradient_squared_accumulator_value <= 0.0:
-      raise ValueError("initial_gradient_squared_accumulator_value must be"
+      raise ValueError("initial_gradient_squared_accumulator_value must be "
                        "positive: %s" %
                        initial_gradient_squared_accumulator_value)
     super(AdagradDAOptimizer, self).__init__(use_locking, name)

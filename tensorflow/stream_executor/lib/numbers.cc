@@ -17,8 +17,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 bool safe_strto32(const char* str, int32* value) {
@@ -38,5 +37,4 @@ bool safe_strto32(const string& str, int32* value) {
 }
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

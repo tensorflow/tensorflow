@@ -7,21 +7,20 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_cc")
 
 tf_gen_op_wrapper_cc(
-    name = "functional_ops_gen",
-    include_internal_ops = 1,
-    out_ops_file = "ops/functional_ops",
-    deps = ["//tensorflow/compiler/tf2xla/ops:functional_ops"],
+    name = "xla_ops_gen",
+    out_ops_file = "ops/xla_ops",
+    deps = ["//tensorflow/compiler/tf2xla/ops:xla_ops"],
 )
 
 cc_library(
-    name = "functional_ops",
-    srcs = ["ops/functional_ops.cc"],
-    hdrs = ["ops/functional_ops.h"],
+    name = "xla_ops",
+    srcs = ["ops/xla_ops.cc"],
+    hdrs = ["ops/xla_ops.h"],
     deps = [
         "//tensorflow/cc:const_op",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
-        "//tensorflow/compiler/tf2xla/ops:functional_ops",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -29,16 +28,24 @@ cc_library(
     ],
 )
 
-# -----------------------------------------------------------------------------
+tf_gen_op_wrapper_cc(
+    name = "xla_jit_op_gen",
+    out_ops_file = "ops/xla_jit_op",
+    deps = ["//tensorflow/compiler/jit/ops:xla_ops"],
+)
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+cc_library(
+    name = "xla_jit_ops",
+    srcs = ["ops/xla_jit_op.cc"],
+    hdrs = ["ops/xla_jit_op.h"],
+    deps = [
+        "//tensorflow/cc:const_op",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/compiler/jit/ops:xla_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )

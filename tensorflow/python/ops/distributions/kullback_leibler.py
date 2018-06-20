@@ -23,9 +23,16 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 _DIVERGENCES = {}
+
+
+__all__ = [
+    "RegisterKL",
+    "kl_divergence",
+]
 
 
 def _registered_kl(type_a, type_b):
@@ -44,6 +51,7 @@ def _registered_kl(type_a, type_b):
   return kl_fn
 
 
+@tf_export("distributions.kl_divergence")
 def kl_divergence(distribution_a, distribution_b,
                   allow_nan_stats=True, name=None):
   """Get the KL-divergence KL(distribution_a || distribution_b).
@@ -104,6 +112,39 @@ def kl_divergence(distribution_a, distribution_b,
       return array_ops.identity(kl_t, name="checked_kl")
 
 
+def cross_entropy(ref, other,
+                  allow_nan_stats=True, name=None):
+  """Computes the (Shannon) cross entropy.
+
+  Denote two distributions by `P` (`ref`) and `Q` (`other`). Assuming `P, Q`
+  are absolutely continuous with respect to one another and permit densities
+  `p(x) dr(x)` and `q(x) dr(x)`, (Shanon) cross entropy is defined as:
+
+  ```none
+  H[P, Q] = E_p[-log q(X)] = -int_F p(x) log q(x) dr(x)
+  ```
+
+  where `F` denotes the support of the random variable `X ~ P`.
+
+  Args:
+    ref: `tf.distributions.Distribution` instance.
+    other: `tf.distributions.Distribution` instance.
+    allow_nan_stats: Python `bool`, default `True`. When `True`,
+      statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+      indicate the result is undefined. When `False`, an exception is raised
+      if one or more of the statistic's batch members are undefined.
+    name: Python `str` prepended to names of ops created by this function.
+
+  Returns:
+    cross_entropy: `ref.dtype` `Tensor` with shape `[B1, ..., Bn]`
+      representing `n` different calculations of (Shanon) cross entropy.
+  """
+  with ops.name_scope(name, "cross_entropy"):
+    return ref.entropy() + kl_divergence(
+        ref, other, allow_nan_stats=allow_nan_stats)
+
+
+@tf_export("distributions.RegisterKL")
 class RegisterKL(object):
   """Decorator to register a KL divergence implementation function.
 

@@ -19,14 +19,13 @@ limitations under the License.
 #include <string>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/tensor_shape.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -192,9 +191,6 @@ class TensorShapeBase : public TensorShapeRep {
   /// Appends all the dimensions from `shape`.
   void AppendShape(const TensorShapeBase& shape);
 
-  // Maximum number of dimensions in a tensor.
-  static constexpr int MaxDimensions() { return 254; }
-
   /// \brief Insert a dimension somewhere in the `TensorShape`.
   /// REQUIRES: `0 <= d <= dims()`
   /// REQUIRES: `size >= 0`
@@ -207,7 +203,23 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// \brief Removes dimension `d` from the `TensorShape`.
   /// REQUIRES: `0 <= d < dims()`
-  void RemoveDim(int d);
+  void RemoveDim(int d) {
+    CHECK_GE(d, 0);
+    RemoveDimRange(d, d + 1);
+  }
+
+  /// \brief Removes last `n` dimensions from the `TensorShape`.
+  /// REQUIRES: `0 <= n <= dims()`
+  void RemoveLastDims(int n) {
+    CHECK_LE(n, dims());
+    RemoveDimRange(dims() - n, dims());
+  }
+
+  /// \brief Removes the dimensions in range `[begin:end)` from `TensorShape`.
+  /// Negative values of `end` are interpreted as `dims() + end + 1` (as in
+  /// Python). The same is true for negative values of `begin`. REQUIRES:
+  /// `-(dims()+1) <= begin <= dims()` REQUIRES: `-(dims()+1) <= end <= dims()`
+  void RemoveDimRange(int begin, int end);
 
   /// Return whether the rank is unknown
   bool unknown_rank() const {
@@ -258,6 +270,12 @@ class TensorShapeBase : public TensorShapeRep {
   template <class T, class S>
   friend Status MakeShapeHelper(const T*, int64, S*);
 };
+
+/// Outputs `TensorShapeBase` to `std::ostream`.
+template <typename Shape>
+std::ostream& operator<<(std::ostream& os, const TensorShapeBase<Shape>& tsb) {
+  return os << tsb.DebugString();
+}
 
 /// Represents the shape of a Tensor.
 ///

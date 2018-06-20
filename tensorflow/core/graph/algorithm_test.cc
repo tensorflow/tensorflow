@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -81,7 +82,7 @@ TEST(AlgorithmTest, ReversePostOrder) {
   BinaryOp("TestMul", w2, {input, 1}, b.opts().WithName("t3"));
 
   Graph g(OpRegistry::Global());
-  TF_ASSERT_OK(b.ToGraph(&g));
+  TF_ASSERT_OK(GraphDefBuilderToGraph(b, &g));
   std::vector<Node*> order;
 
   // Test reverse post order:
@@ -112,5 +113,40 @@ TEST(AlgorithmTest, ReversePostOrder) {
   EXPECT_FALSE(ExpectBefore(orders, order, &error));
 }
 
+TEST(AlgorithmTest, ReversePostOrderStable) {
+  int64 run_count = 100;
+  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+  for (int64 i = 0; i < run_count; ++i) {
+    // One source of nondeterminism comes from unordered set with key of a
+    // pointer type, for example the order of FlatSet<Node*> depends on the
+    // raw pointer value of Node. Stable post order suppose to remove this
+    // nondeterminism by enforcing an ordering based on node ids.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    string error;
+    Node* w1 = SourceOp("TestParams", b.opts().WithName("W1"));
+    Node* input =
+        SourceOp("TestInput", b.opts().WithName("input").WithControlInput(w1));
+    BinaryOp("TestMul", w1, {input, 1}, b.opts().WithName("t2"));
+    // Insert different number of nodes between the allocation of t2 and t3,
+    // this creates enough entropy in the memory distance between t2 and t3 thus
+    // forces them to have randomized ordering had stable DFS was not
+    // implemented correctly.
+    for (int64 j = 0; j < i; ++j) {
+      BinaryOp("TestMul", w1, {input, 1},
+               b.opts().WithName(strings::StrCat("internal", j)));
+    }
+
+    BinaryOp("TestMul", w1, {input, 1}, b.opts().WithName("t3"));
+
+    Graph g(OpRegistry::Global());
+    TF_ASSERT_OK(GraphDefBuilderToGraph(b, &g));
+    std::vector<Node*> order;
+
+    // Test reverse post order generates expected ordering.
+    GetReversePostOrder(g, &order, /*stable_comparator=*/NodeComparatorName());
+    EXPECT_TRUE(ExpectBefore({{"t2", "t3"}}, order, &error));
+  }
+}
 }  // namespace
 }  // namespace tensorflow

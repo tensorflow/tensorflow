@@ -19,12 +19,9 @@ from __future__ import print_function
 
 import numpy as np
 
-# Bijectors must be directly imported because `remove_undocumented` prevents
-# individual file imports.
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -198,8 +195,7 @@ class TransformedDistribution(distribution_lib.Distribution):
     distribution=ds.Normal(loc=0., scale=1.),
     bijector=ds.bijectors.Affine(
       shift=-1.,
-      scale_identity_multiplier=2.,
-      event_ndims=0),
+      scale_identity_multiplier=2.)
     name="NormalTransformedDistribution")
   ```
 
@@ -256,10 +252,10 @@ class TransformedDistribution(distribution_lib.Distribution):
       name: Python `str` name prefixed to Ops created by this class. Default:
         `bijector.name + distribution.name`.
     """
-    parameters = locals()
+    parameters = dict(locals())
     name = name or (("" if bijector is None else bijector.name) +
                     distribution.name)
-    with ops.name_scope(name, values=[event_shape, batch_shape]):
+    with ops.name_scope(name, values=[event_shape, batch_shape]) as name:
       # For convenience we define some handy constants.
       self._zero = constant_op.constant(0, dtype=dtypes.int32, name="zero")
       self._empty = constant_op.constant([], dtype=dtypes.int32, name="empty")
@@ -347,9 +343,10 @@ class TransformedDistribution(distribution_lib.Distribution):
     # Since the `bijector` may change the `event_shape`, we then forward what we
     # know to the bijector. This allows the `bijector` to have final say in the
     # `event_shape`.
-    static_override = tensor_util.constant_value(self._override_event_shape)
+    static_override = tensor_util.constant_value_as_shape(
+        self._override_event_shape)
     return self.bijector.forward_event_shape(
-        tensor_shape.TensorShape(static_override)
+        static_override
         if self._is_maybe_event_override
         else self.distribution.event_shape)
 
@@ -369,8 +366,9 @@ class TransformedDistribution(distribution_lib.Distribution):
     # the `bijector` doesn't get to alter the `batch_shape`. Recall that
     # `batch_shape` is a property of a distribution while `event_shape` is
     # shared between both the `distribution` instance and the `bijector`.
-    static_override = tensor_util.constant_value(self._override_batch_shape)
-    return (tensor_shape.TensorShape(static_override)
+    static_override = tensor_util.constant_value_as_shape(
+        self._override_batch_shape)
+    return (static_override
             if self._is_maybe_batch_override
             else self.distribution.batch_shape)
 
@@ -382,38 +380,100 @@ class TransformedDistribution(distribution_lib.Distribution):
         distribution_util.pick_vector(self._needs_rotation, [n], self._empty))
     x = self.distribution.sample(sample_shape=sample_shape, seed=seed)
     x = self._maybe_rotate_dims(x)
-    return self.bijector.forward(x)
+    # We'll apply the bijector in the `_call_sample_n` function.
+    return x
+
+  def _call_sample_n(self, sample_shape, seed, name, **kwargs):
+    # We override `_call_sample_n` rather than `_sample_n` so we can ensure that
+    # the result of `self.bijector.forward` is not modified (and thus caching
+    # works).
+    with self._name_scope(name, values=[sample_shape]):
+      sample_shape = ops.convert_to_tensor(
+          sample_shape, dtype=dtypes.int32, name="sample_shape")
+      sample_shape, n = self._expand_sample_shape_to_vector(
+          sample_shape, "sample_shape")
+
+      # First, generate samples. We will possibly generate extra samples in the
+      # event that we need to reinterpret the samples as part of the
+      # event_shape.
+      x = self._sample_n(n, seed, **kwargs)
+
+      # Next, we reshape `x` into its final form. We do this prior to the call
+      # to the bijector to ensure that the bijector caching works.
+      batch_event_shape = array_ops.shape(x)[1:]
+      final_shape = array_ops.concat([sample_shape, batch_event_shape], 0)
+      x = array_ops.reshape(x, final_shape)
+
+      # Finally, we apply the bijector's forward transformation. For caching to
+      # work, it is imperative that this is the last modification to the
+      # returned result.
+      y = self.bijector.forward(x, **kwargs)
+      y = self._set_sample_static_shape(y, sample_shape)
+
+      return y
 
   def _log_prob(self, y):
+    # For caching to work, it is imperative that the bijector is the first to
+    # modify the input.
     x = self.bijector.inverse(y)
-    ildj = self.bijector.inverse_log_det_jacobian(y)
+    event_ndims = self._maybe_get_static_event_ndims()
+
+    ildj = self.bijector.inverse_log_det_jacobian(y, event_ndims=event_ndims)
+    if self.bijector._is_injective:  # pylint: disable=protected-access
+      return self._finish_log_prob_for_one_fiber(y, x, ildj, event_ndims)
+
+    lp_on_fibers = [
+        self._finish_log_prob_for_one_fiber(y, x_i, ildj_i, event_ndims)
+        for x_i, ildj_i in zip(x, ildj)]
+    return math_ops.reduce_logsumexp(array_ops.stack(lp_on_fibers), axis=0)
+
+  def _finish_log_prob_for_one_fiber(self, y, x, ildj, event_ndims):
+    """Finish computation of log_prob on one element of the inverse image."""
     x = self._maybe_rotate_dims(x, rotate_right=True)
     log_prob = self.distribution.log_prob(x)
     if self._is_maybe_event_override:
       log_prob = math_ops.reduce_sum(log_prob, self._reduce_event_indices)
-    log_prob = ildj + log_prob
-    if self._is_maybe_event_override:
-      log_prob.set_shape(array_ops.broadcast_static_shape(
-          y.get_shape().with_rank_at_least(1)[:-1], self.batch_shape))
+    log_prob += math_ops.cast(ildj, log_prob.dtype)
+    if self._is_maybe_event_override and isinstance(event_ndims, int):
+      log_prob.set_shape(
+          array_ops.broadcast_static_shape(
+              y.get_shape().with_rank_at_least(1)[:-event_ndims],
+              self.batch_shape))
     return log_prob
 
   def _prob(self, y):
     x = self.bijector.inverse(y)
-    ildj = self.bijector.inverse_log_det_jacobian(y)
+    event_ndims = self._maybe_get_static_event_ndims()
+    ildj = self.bijector.inverse_log_det_jacobian(y, event_ndims=event_ndims)
+    if self.bijector._is_injective:  # pylint: disable=protected-access
+      return self._finish_prob_for_one_fiber(y, x, ildj, event_ndims)
+
+    prob_on_fibers = [
+        self._finish_prob_for_one_fiber(y, x_i, ildj_i, event_ndims)
+        for x_i, ildj_i in zip(x, ildj)]
+    return sum(prob_on_fibers)
+
+  def _finish_prob_for_one_fiber(self, y, x, ildj, event_ndims):
+    """Finish computation of prob on one element of the inverse image."""
     x = self._maybe_rotate_dims(x, rotate_right=True)
     prob = self.distribution.prob(x)
     if self._is_maybe_event_override:
       prob = math_ops.reduce_prod(prob, self._reduce_event_indices)
-    prob *= math_ops.exp(ildj)
-    if self._is_maybe_event_override:
-      prob.set_shape(array_ops.broadcast_static_shape(
-          y.get_shape().with_rank_at_least(1)[:-1], self.batch_shape))
+    prob *= math_ops.exp(math_ops.cast(ildj, prob.dtype))
+    if self._is_maybe_event_override and isinstance(event_ndims, int):
+      prob.set_shape(
+          array_ops.broadcast_static_shape(
+              y.get_shape().with_rank_at_least(1)[:-event_ndims],
+              self.batch_shape))
     return prob
 
   def _log_cdf(self, y):
     if self._is_maybe_event_override:
       raise NotImplementedError("log_cdf is not implemented when overriding "
                                 "event_shape")
+    if not self.bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError("log_cdf is not implemented when "
+                                "bijector is not injective.")
     x = self.bijector.inverse(y)
     return self.distribution.log_cdf(x)
 
@@ -421,6 +481,9 @@ class TransformedDistribution(distribution_lib.Distribution):
     if self._is_maybe_event_override:
       raise NotImplementedError("cdf is not implemented when overriding "
                                 "event_shape")
+    if not self.bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError("cdf is not implemented when "
+                                "bijector is not injective.")
     x = self.bijector.inverse(y)
     return self.distribution.cdf(x)
 
@@ -428,6 +491,9 @@ class TransformedDistribution(distribution_lib.Distribution):
     if self._is_maybe_event_override:
       raise NotImplementedError("log_survival_function is not implemented when "
                                 "overriding event_shape")
+    if not self.bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError("log_survival_function is not implemented when "
+                                "bijector is not injective.")
     x = self.bijector.inverse(y)
     return self.distribution.log_survival_function(x)
 
@@ -435,12 +501,31 @@ class TransformedDistribution(distribution_lib.Distribution):
     if self._is_maybe_event_override:
       raise NotImplementedError("survival_function is not implemented when "
                                 "overriding event_shape")
+    if not self.bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError("survival_function is not implemented when "
+                                "bijector is not injective.")
     x = self.bijector.inverse(y)
     return self.distribution.survival_function(x)
+
+  def _quantile(self, value):
+    if self._is_maybe_event_override:
+      raise NotImplementedError("quantile is not implemented when overriding "
+                                "event_shape")
+    if not self.bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError("quantile is not implemented when "
+                                "bijector is not injective.")
+    # x_q is the "qth quantile" of X iff q = P[X <= x_q].  Now, since X =
+    # g^{-1}(Y), q = P[X <= x_q] = P[g^{-1}(Y) <= x_q] = P[Y <= g(x_q)],
+    # implies the qth quantile of Y is g(x_q).
+    inv_cdf = self.distribution.quantile(value)
+    return self.bijector.forward(inv_cdf)
 
   def _entropy(self):
     if not self.bijector.is_constant_jacobian:
       raise NotImplementedError("entropy is not implemented")
+    if not self.bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError("entropy is not implemented when "
+                                "bijector is not injective.")
     # Suppose Y = g(X) where g is a diffeomorphism and X is a continuous rv. It
     # can be shown that:
     #   H[Y] = H[X] + E_X[(log o abs o det o J o g)(X)].
@@ -464,8 +549,17 @@ class TransformedDistribution(distribution_lib.Distribution):
           _ones_like(self.distribution.batch_shape_tensor())
       ], 0)
       entropy = array_ops.tile(entropy, multiples)
-    dummy = array_ops.zeros([], self.dtype)
-    entropy -= self.bijector.inverse_log_det_jacobian(dummy)
+    dummy = array_ops.zeros(
+        shape=array_ops.concat(
+            [self.batch_shape_tensor(), self.event_shape_tensor()],
+            0),
+        dtype=self.dtype)
+    event_ndims = (self.event_shape.ndims if self.event_shape.ndims is not None
+                   else array_ops.size(self.event_shape_tensor()))
+    ildj = self.bijector.inverse_log_det_jacobian(
+        dummy, event_ndims=event_ndims)
+
+    entropy -= math_ops.cast(ildj, entropy.dtype)
     entropy.set_shape(self.batch_shape)
     return entropy
 
@@ -527,3 +621,15 @@ class TransformedDistribution(distribution_lib.Distribution):
     n = (ndims - self._rotate_ndims) if rotate_right else self._rotate_ndims
     return array_ops.transpose(
         x, _concat_vectors(math_ops.range(n, ndims), math_ops.range(0, n)))
+
+  def _maybe_get_static_event_ndims(self):
+    if self.event_shape.ndims is not None:
+      return self.event_shape.ndims
+
+    event_ndims = array_ops.size(self.event_shape_tensor())
+    event_ndims_ = distribution_util.maybe_get_static_value(event_ndims)
+
+    if event_ndims_ is not None:
+      return event_ndims_
+
+    return event_ndims

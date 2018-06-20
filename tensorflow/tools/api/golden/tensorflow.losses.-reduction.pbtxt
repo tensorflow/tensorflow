@@ -18,6 +18,14 @@ tf_class {
     name: "SUM_BY_NONZERO_WEIGHTS"
     mtype: "<type \'str\'>"
   }
+  member {
+    name: "SUM_OVER_BATCH_SIZE"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SUM_OVER_NONZERO_WEIGHTS"
+    mtype: "<type \'str\'>"
+  }
   member_method {
     name: "__init__"
   }

@@ -17,7 +17,7 @@ limitations under the License.
 //
 // Dumps a graphviz URL for a snapshot computation to the command line.
 //
-// some_binary_snapshot_proto is obtained by serializing the SessionModule from
+// some_binary_snapshot_proto is obtained by serializing the HloSnapshot from
 // ServiceInterface::SnapshotComputation to disk.
 //
 // The GraphViz URL is placed into the log stderr, whereas computation
@@ -30,11 +30,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/service.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -49,12 +48,16 @@ namespace tools {
 void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
   Client* client = ClientLibrary::LocalClientOrDie();
   for (char* arg : args) {
-    SessionModule module;
+    HloSnapshot module;
     TF_CHECK_OK(
         tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg, &module));
-    Computation computation = client->LoadSnapshot(module).ConsumeValueOrDie();
+    XlaComputation computation =
+        client->LoadSnapshot(module).ConsumeValueOrDie();
+    DebugOptions debug_options = legacy_flags::GetDebugOptionsFromFlags();
+    debug_options.set_xla_generate_hlo_graph(".*");
     ComputationStats stats =
-        client->GetComputationStats(computation).ConsumeValueOrDie();
+        client->GetComputationStats(computation, debug_options)
+            .ConsumeValueOrDie();
     fprintf(stdout, ">>> %s :: %s\n", arg, stats.DebugString().c_str());
   }
 }

@@ -94,7 +94,7 @@ of thin wrapper functions in
 [variables.py](https://www.tensorflow.org/code/tensorflow/contrib/framework/python/ops/variables.py)
 which allow callers to easily define variables.
 
-For example, to create a `weight` variable, initialize it using a truncated
+For example, to create a `weights` variable, initialize it using a truncated
 normal distribution, regularize it with an `l2_loss` and place it on the `CPU`,
 one need only declare the following:
 
@@ -145,7 +145,7 @@ regular_variables_and_model_variables = slim.get_variables()
 
 How does this work? When you create a model variable via TF-Slim's layers or
 directly via the `slim.model_variable` function, TF-Slim adds the variable to
-a the `tf.GraphKeys.MODEL_VARIABLES` collection. What if you have your own
+the `tf.GraphKeys.MODEL_VARIABLES` collection. What if you have your own
 custom layers or variable creation routine but still want TF-Slim to manage or
 be aware of your model variables? TF-Slim provides a convenience function for
 adding the model variable to its collection:
@@ -237,7 +237,7 @@ One way to reduce this code duplication would be via a `for` loop:
 ```python
 net = ...
 for i in range(3):
-  net = slim.conv2d(net, 256, [3, 3], scope='conv3_' % (i+1))
+  net = slim.conv2d(net, 256, [3, 3], scope='conv3_%d' % (i+1))
 net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
@@ -290,9 +290,9 @@ slim.stack(x, slim.conv2d, [(32, [3, 3]), (32, [1, 1]), (64, [3, 3]), (64, [1, 1
 
 In addition to the types of scope mechanisms in TensorFlow
 ([name_scope](https://www.tensorflow.org/api_docs/python/tf/name_scope),
-[variable_scope](https://www.tensorflow.org/api_docs/python/tf/variable_scope),
+[variable_scope](https://www.tensorflow.org/api_docs/python/tf/variable_scope)),
 TF-Slim adds a new scoping mechanism called
-[arg_scope](https://www.tensorflow.org/api_docs/python/tf/contrib/framework/arg_scope),
+[arg_scope](https://www.tensorflow.org/api_docs/python/tf/contrib/framework/arg_scope).
 This new scope allows a user to specify one or more operations and a set of
 arguments which will be passed to each of the operations defined in the
 `arg_scope`. This functionality is best illustrated by example. Consider the
@@ -441,7 +441,8 @@ module. Consider the simple case where we want to train the VGG network:
 
 ```python
 import tensorflow as tf
-vgg = tf.contrib.slim.nets.vgg
+import tensorflow.contrib.slim.nets as nets
+vgg = nets.vgg
 
 # Load the images and labels.
 images, labels = ...
@@ -559,9 +560,10 @@ examine the following sample of training the VGG network:
 
 ```python
 import tensorflow as tf
+import tensorflow.contrib.slim.nets as nets
 
 slim = tf.contrib.slim
-vgg = tf.contrib.slim.nets.vgg
+vgg = nets.vgg
 
 ...
 
@@ -574,7 +576,7 @@ with tf.Graph().as_default():
   images, labels = ...
 
   # Define the model:
-  predictions = vgg.vgg16(images, is_training=True)
+  predictions = vgg.vgg_16(images, is_training=True)
 
   # Specify the loss function:
   slim.losses.softmax_cross_entropy(predictions, labels)
@@ -674,7 +676,7 @@ file were implicitly obtained from each provided variable's `var.op.name`.
 
 This works well when the variable names in the checkpoint file match those in
 the graph. However, sometimes, we want to restore a model from a checkpoint
-whose variables have different names those in the current graph. In this case,
+whose variables have different names to those in the current graph. In this case,
 we must provide the `Saver` a dictionary that maps from each checkpoint variable
 name to each graph variable. Consider the following example where the checkpoint
 variables names are obtained via a simple function:
@@ -759,8 +761,8 @@ parts:
 3. Finalization: (optionally) perform any final operation to compute metric
 values. For example, computing means, mins, maxes, etc.
 
-For example, to compute `mean_absolute_error`, two variables, a `count` and
-`total` variable are *initialized* to zero. During *aggregation*, we observed
+For example, to compute `mean_absolute_error`, two variables (`count` and
+`total`) are *initialized* to zero. During *aggregation*, we observed
 some set of predictions and labels, compute their absolute differences and add
 the total to `total`. Each time we observe another value,
 `count` is incremented. Finally, during *finalization*, `total` is divided
@@ -809,9 +811,10 @@ Putting it all together:
 
 ```python
 import tensorflow as tf
+import tensorflow.contrib.slim.nets as nets
 
 slim = tf.contrib.slim
-vgg = tf.contrib.slim.nets.vgg
+vgg = nets.vgg
 
 
 # Load the data
@@ -906,3 +909,8 @@ slim.evaluation.evaluation_loop(
 
 ## Authors
 Sergio Guadarrama and Nathan Silberman
+
+## Citation
+"TensorFlow-Slim: a lightweight library for defining, training and evaluating complex models in TensorFlow"
+S. Guadarrama, N. Silberman, 2016.
+https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/slim

@@ -38,6 +38,13 @@ REGISTER_KERNEL_BUILDER(Name("PlaceholderWithDefault").Device(DEVICE_CPU),
 
 REGISTER_KERNEL_BUILDER(Name("RefIdentity").Device(DEVICE_CPU), IdentityOp);
 
+// Identity op for gradients debugging in TensorFlow Debugger (hidden op in
+// Python).
+REGISTER_KERNEL_BUILDER(Name("DebugGradientIdentity").Device(DEVICE_CPU),
+                        IdentityOp);
+REGISTER_KERNEL_BUILDER(Name("DebugGradientRefIdentity").Device(DEVICE_CPU),
+                        IdentityOp);
+
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(type)                                           \
   REGISTER_KERNEL_BUILDER(                                                   \
@@ -90,10 +97,18 @@ REGISTER_SYCL_HOST_KERNEL(bool);
       IdentityOp);                                                          \
   REGISTER_KERNEL_BUILDER(                                                  \
       Name("StopGradient").Device(DEVICE_GPU).TypeConstraint<type>("T"),    \
-      IdentityOp)
+      IdentityOp);                                                          \
+  REGISTER_KERNEL_BUILDER(Name("DebugGradientIdentity")                     \
+                              .Device(DEVICE_GPU)                           \
+                              .TypeConstraint<type>("T"),                   \
+                          IdentityOp);                                      \
+  REGISTER_KERNEL_BUILDER(Name("PlaceholderWithDefault")                    \
+                              .Device(DEVICE_GPU)                           \
+                              .TypeConstraint<type>("dtype"),               \
+                          IdentityOp)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
-REGISTER_GPU_KERNEL(bfloat16);
+REGISTER_GPU_KERNEL(Variant);
 
 #undef REGISTER_GPU_KERNEL
 
@@ -101,22 +116,35 @@ REGISTER_GPU_KERNEL(bfloat16);
 // A special GPU kernel for int32 and bool.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-#define REGISTER_GPU_HOST_KERNEL(type)                    \
-  REGISTER_KERNEL_BUILDER(Name("Identity")                \
-                              .Device(DEVICE_GPU)         \
-                              .HostMemory("input")        \
-                              .HostMemory("output")       \
-                              .TypeConstraint<type>("T"), \
-                          IdentityOp);                    \
-  REGISTER_KERNEL_BUILDER(Name("RefIdentity")             \
-                              .Device(DEVICE_GPU)         \
-                              .HostMemory("input")        \
-                              .HostMemory("output")       \
-                              .TypeConstraint<type>("T"), \
+#define REGISTER_GPU_HOST_KERNEL(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("Identity")                    \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("T"),     \
+                          IdentityOp);                        \
+  REGISTER_KERNEL_BUILDER(Name("RefIdentity")                 \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("T"),     \
+                          IdentityOp);                        \
+  REGISTER_KERNEL_BUILDER(Name("StopGradient")                \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("T"),     \
+                          IdentityOp);                        \
+  REGISTER_KERNEL_BUILDER(Name("PlaceholderWithDefault")      \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("dtype"), \
                           IdentityOp)
 
 REGISTER_GPU_HOST_KERNEL(int32);
 REGISTER_GPU_HOST_KERNEL(bool);
+REGISTER_GPU_HOST_KERNEL(string);
 
 #undef REGISTER_GPU_HOST_KERNEL
 

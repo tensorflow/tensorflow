@@ -36,13 +36,16 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.gen_parsing_ops import *
 # pylint: enable=wildcard-import,undefined-variable
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 ops.NotDifferentiable("DecodeRaw")
 ops.NotDifferentiable("ParseTensor")
+ops.NotDifferentiable("SerializeTensor")
 ops.NotDifferentiable("StringToNumber")
 
 
+@tf_export("VarLenFeature")
 class VarLenFeature(collections.namedtuple("VarLenFeature", ["dtype"])):
   """Configuration for parsing a variable-length input feature.
 
@@ -52,6 +55,7 @@ class VarLenFeature(collections.namedtuple("VarLenFeature", ["dtype"])):
   pass
 
 
+@tf_export("SparseFeature")
 class SparseFeature(
     collections.namedtuple(
         "SparseFeature",
@@ -126,6 +130,7 @@ class SparseFeature(
         cls, index_key, value_key, dtype, size, already_sorted)
 
 
+@tf_export("FixedLenFeature")
 class FixedLenFeature(collections.namedtuple(
     "FixedLenFeature", ["shape", "dtype", "default_value"])):
   """Configuration for parsing a fixed-length input feature.
@@ -145,6 +150,7 @@ class FixedLenFeature(collections.namedtuple(
         cls, shape, dtype, default_value)
 
 
+@tf_export("FixedLenSequenceFeature")
 class FixedLenSequenceFeature(collections.namedtuple(
     "FixedLenSequenceFeature",
     ["shape", "dtype", "allow_missing", "default_value"])):
@@ -198,7 +204,11 @@ def _features_to_raw_params(features, types):
   sparse_types = []
   dense_keys = []
   dense_types = []
-  dense_defaults = {}
+  # When the graph is built twice, multiple dense_defaults in a normal dict
+  # could come out in different orders. This will fail the _e2e_test which
+  # expects exactly the same graph.
+  # OrderedDict which preserves the order can solve the problem.
+  dense_defaults = collections.OrderedDict()
   dense_shapes = []
   if features:
     # NOTE: We iterate over sorted keys to keep things deterministic.
@@ -206,21 +216,21 @@ def _features_to_raw_params(features, types):
       feature = features[key]
       if isinstance(feature, VarLenFeature):
         if VarLenFeature not in types:
-          raise ValueError("Unsupported VarLenFeature %s.", feature)
+          raise ValueError("Unsupported VarLenFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         sparse_keys.append(key)
         sparse_types.append(feature.dtype)
       elif isinstance(feature, SparseFeature):
         if SparseFeature not in types:
-          raise ValueError("Unsupported SparseFeature %s.", feature)
+          raise ValueError("Unsupported SparseFeature %s." % feature)
 
         if not feature.index_key:
           raise ValueError(
-              "Missing index_key for SparseFeature %s.", feature)
+              "Missing index_key for SparseFeature %s." % feature)
         if not feature.value_key:
           raise ValueError(
-              "Missing value_key for SparseFeature %s.", feature)
+              "Missing value_key for SparseFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         index_keys = feature.index_key
@@ -249,7 +259,7 @@ def _features_to_raw_params(features, types):
           sparse_types.append(feature.dtype)
       elif isinstance(feature, FixedLenFeature):
         if FixedLenFeature not in types:
-          raise ValueError("Unsupported FixedLenFeature %s.", feature)
+          raise ValueError("Unsupported FixedLenFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         if feature.shape is None:
@@ -270,7 +280,7 @@ def _features_to_raw_params(features, types):
           dense_defaults[key] = feature.default_value
       elif isinstance(feature, FixedLenSequenceFeature):
         if FixedLenSequenceFeature not in types:
-          raise ValueError("Unsupported FixedLenSequenceFeature %s.", feature)
+          raise ValueError("Unsupported FixedLenSequenceFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         if feature.shape is None:
@@ -350,6 +360,7 @@ def _prepend_none_dimension(features):
     return features
 
 
+@tf_export("parse_example")
 def parse_example(serialized, features, name=None, example_names=None):
   # pylint: disable=line-too-long
   """Parses `Example` protos into a `dict` of tensors.
@@ -380,7 +391,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   A `values[i]` comes from a position `k` in the feature of an example at batch
   entry `batch`. This positional information is recorded in `indices[i]` as
   `[batch, index_0, index_1, ...]` where `index_j` is the `k-th` value of
-  the feature in the example at with key `SparseFeature.index_key[j].
+  the feature in the example at with key `SparseFeature.index_key[j]`.
   In other words, we split the indices (except the first index indicating the
   batch entry) of a `SparseTensor` by dimension into different features of the
   `Example`. Due to its complexity a `VarLenFeature` should be preferred over a
@@ -417,7 +428,7 @@ def parse_example(serialized, features, name=None, example_names=None):
 
   then the output will look like:
 
-  ```
+  ```python
   {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
                       values=[1.0, 2.0, 3.0],
                       dense_shape=(3, 2)) }
@@ -426,7 +437,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   If instead a `FixedLenSequenceFeature` with `default_value = -1.0` and
   `shape=[]` is used then the output will look like:
 
-  ```
+  ```python
   {"ft": [[1.0, 2.0], [3.0, -1.0]]}
   ```
 
@@ -624,7 +635,8 @@ def _parse_example_raw(serialized,
   """
   with ops.name_scope(name, "ParseExample", [serialized, names]):
     names = [] if names is None else names
-    dense_defaults = {} if dense_defaults is None else dense_defaults
+    dense_defaults = collections.OrderedDict(
+    ) if dense_defaults is None else dense_defaults
     sparse_keys = [] if sparse_keys is None else sparse_keys
     sparse_types = [] if sparse_types is None else sparse_types
     dense_keys = [] if dense_keys is None else dense_keys
@@ -688,8 +700,7 @@ def _parse_example_raw(serialized,
     # Finally, convert dense_shapes to TensorShapeProto
     dense_shapes = [shape.as_proto() for shape in dense_shapes]
 
-    # pylint: disable=protected-access
-    outputs = gen_parsing_ops._parse_example(
+    outputs = gen_parsing_ops.parse_example(
         serialized=serialized,
         names=names,
         dense_defaults=dense_defaults_vec,
@@ -698,7 +709,6 @@ def _parse_example_raw(serialized,
         dense_keys=dense_keys,
         dense_shapes=dense_shapes,
         name=name)
-    # pylint: enable=protected-access
 
     (sparse_indices, sparse_values, sparse_shapes, dense_values) = outputs
 
@@ -709,6 +719,7 @@ def _parse_example_raw(serialized,
     return dict(zip(sparse_keys + dense_keys, sparse_tensors + dense_values))
 
 
+@tf_export("parse_single_example")
 def parse_single_example(serialized, features, name=None, example_names=None):
   """Parses a single `Example` proto.
 
@@ -743,6 +754,8 @@ def parse_single_example(serialized, features, name=None, example_names=None):
   """
   if not features:
     raise ValueError("Missing features.")
+  if example_names is None:
+    return parse_single_example_v2(serialized, features, name)
   features = _prepend_none_dimension(features)
   (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults,
    dense_shapes) = _features_to_raw_params(
@@ -842,6 +855,7 @@ def _parse_single_example_raw(serialized,
     return outputs
 
 
+@tf_export("parse_single_sequence_example")
 def parse_single_sequence_example(
     serialized, context_features=None, sequence_features=None,
     example_name=None, name=None):
@@ -1116,8 +1130,7 @@ def _parse_single_sequence_example_raw(serialized,
     feature_list_dense_shapes = [tensor_shape.as_shape(shape).as_proto()
                                  for shape in feature_list_dense_shapes]
 
-    # pylint: disable=protected-access
-    outputs = gen_parsing_ops._parse_single_sequence_example(
+    outputs = gen_parsing_ops.parse_single_sequence_example(
         serialized=serialized,
         debug_name=debug_name,
         context_dense_defaults=context_dense_defaults_vec,
@@ -1133,7 +1146,6 @@ def _parse_single_sequence_example_raw(serialized,
         feature_list_dense_missing_assumed_empty=(
             feature_list_dense_missing_assumed_empty),
         name=name)
-    # pylint: enable=protected-access
 
     (context_sparse_indices, context_sparse_values,
      context_sparse_shapes, context_dense_values,
@@ -1160,3 +1172,256 @@ def _parse_single_sequence_example_raw(serialized,
             feature_list_sparse_tensors + feature_list_dense_values))
 
     return (context_output, feature_list_output)
+
+
+# Swap `name` and `na_value` for backward compatibility.
+@tf_export("decode_csv")
+def decode_csv(records,
+               record_defaults,
+               field_delim=",",
+               use_quote_delim=True,
+               name=None,
+               na_value="",
+               select_cols=None):
+  """Convert CSV records to tensors. Each column maps to one tensor.
+
+  RFC 4180 format is expected for the CSV records.
+  (https://tools.ietf.org/html/rfc4180)
+  Note that we allow leading and trailing spaces with int or float field.
+
+  Args:
+    records: A `Tensor` of type `string`.
+      Each string is a record/row in the csv and all records should have
+      the same format.
+    record_defaults: A list of `Tensor` objects with specific types.
+      Acceptable types are `float32`, `float64`, `int32`, `int64`, `string`.
+      One tensor per column of the input record, with either a
+      scalar default value for that column or empty if the column is required.
+    field_delim: An optional `string`. Defaults to `","`.
+      char delimiter to separate fields in a record.
+    use_quote_delim: An optional `bool`. Defaults to `True`.
+      If false, treats double quotation marks as regular
+      characters inside of the string fields (ignoring RFC 4180, Section 2,
+      Bullet 5).
+    name: A name for the operation (optional).
+    na_value: Additional string to recognize as NA/NaN.
+    select_cols: Optional sorted list of column indices to select. If specified,
+      only this subset of columns will be parsed and returned.
+
+  Returns:
+    A list of `Tensor` objects. Has the same type as `record_defaults`.
+    Each tensor will have the same shape as records.
+
+  Raises:
+    ValueError: If any of the arguments is malformed.
+  """
+  if select_cols is not None and any(select_cols[i] >= select_cols[i + 1]
+                                     for i in range(len(select_cols) - 1)):
+    raise ValueError("select_cols is not strictly increasing.")
+  if select_cols is not None and select_cols[0] < 0:
+    raise ValueError("select_cols contains negative values.")
+  if select_cols is not None and len(select_cols) != len(record_defaults):
+    raise ValueError("Length of select_cols and record_defaults do not match.")
+  return gen_parsing_ops.decode_csv(
+      records=records,
+      record_defaults=record_defaults,
+      field_delim=field_delim,
+      use_quote_delim=use_quote_delim,
+      na_value=na_value,
+      name=name,
+      select_cols=select_cols,
+  )
+
+
+# TODO(b/70890287): Combine the implementation of this op and
+# `parse_single_example()` after 1/10/2018.
+def parse_single_example_v2(serialized, features, name=None):
+  # pylint: disable=line-too-long
+  """Parses an `Example` proto into a `dict` of tensors.
+
+  Parses a serialized
+  [`Example`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
+  proto given in `serialized`.
+
+  This op parses serialized examples into a dictionary mapping keys to `Tensor`
+  and `SparseTensor` objects. `features` is a dict from keys to `VarLenFeature`,
+  `SparseFeature`, and `FixedLenFeature` objects. Each `VarLenFeature`
+  and `SparseFeature` is mapped to a `SparseTensor`, and each
+  `FixedLenFeature` is mapped to a `Tensor`.
+
+  Each `VarLenFeature` maps to a `SparseTensor` of the specified type
+  representing a ragged matrix. Its indices are `[index]` where
+  `index` is the value's index in the list of values associated with
+  that feature and example.
+
+  Each `SparseFeature` maps to a `SparseTensor` of the specified type
+  representing a Tensor of `dense_shape` `SparseFeature.size`.
+  Its `values` come from the feature in the examples with key `value_key`.
+  A `values[i]` comes from a position `k` in the feature of an example at batch
+  entry `batch`. This positional information is recorded in `indices[i]` as
+  `[batch, index_0, index_1, ...]` where `index_j` is the `k-th` value of
+  the feature in the example at with key `SparseFeature.index_key[j]`.
+  In other words, we split the indices (except the first index indicating the
+  batch entry) of a `SparseTensor` by dimension into different features of the
+  `Example`. Due to its complexity a `VarLenFeature` should be preferred over a
+  `SparseFeature` whenever possible.
+
+  Each `FixedLenFeature` `df` maps to a `Tensor` of the specified type (or
+  `tf.float32` if not specified) and shape `df.shape`.
+
+  `FixedLenFeature` entries with a `default_value` are optional. With no default
+  value, we will fail if that `Feature` is missing from any example in
+  `serialized`.
+
+  Each `FixedLenSequenceFeature` `df` maps to a `Tensor` of the specified type
+  (or `tf.float32` if not specified) and shape `(None,) + df.shape`.
+
+  Args:
+    serialized: A scalar (0-D Tensor) string, a serialized `Example` proto.
+    features: A `dict` mapping feature keys to `FixedLenFeature`,
+      `VarLenFeature`, and `SparseFeature` values.
+    name: A name for this operation (optional).
+
+  Returns:
+    A `dict` mapping feature keys to `Tensor` and `SparseTensor` values.
+
+  Raises:
+    ValueError: if any feature is invalid.
+  """
+  if not features:
+    raise ValueError("Missing: features was %s." % features)
+  features = _prepend_none_dimension(features)
+  (sparse_keys, sparse_types, dense_keys, dense_types,
+   dense_defaults, dense_shapes) = _features_to_raw_params(
+       features,
+       [VarLenFeature, SparseFeature, FixedLenFeature, FixedLenSequenceFeature])
+  outputs = _parse_single_example_v2_raw(serialized, sparse_keys, sparse_types,
+                                         dense_keys, dense_types,
+                                         dense_defaults, dense_shapes, name)
+  return _construct_sparse_tensors_for_sparse_features(features, outputs)
+
+
+def _parse_single_example_v2_raw(serialized, sparse_keys, sparse_types,
+                                 dense_keys, dense_types, dense_defaults,
+                                 dense_shapes, name):
+  """Parses `Example` protos.
+
+  Args:
+    serialized: A scalar (0-D Tensor) string, containing a binary
+      serialized `Example` proto.
+    sparse_keys: A list of string keys in the examples' features.
+      The results for these keys will be returned as `SparseTensor` objects.
+    sparse_types: A list of `DTypes` of the same length as `sparse_keys`.
+      Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+      and `tf.string` (`BytesList`) are supported.
+    dense_keys: A list of string keys in the examples' features.
+      The results for these keys will be returned as `Tensor`s
+    dense_types: A list of DTypes of the same length as `dense_keys`.
+      Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+      and `tf.string` (`BytesList`) are supported.
+    dense_defaults: A dict mapping string keys to `Tensor`s.
+      The keys of the dict must match the dense_keys of the feature.
+    dense_shapes: A list of tuples with the same length as `dense_keys`.
+      The shape of the data for each dense feature referenced by `dense_keys`.
+      Required for any input tensors identified by `dense_keys`.  Must be
+      either fully defined, or may contain an unknown first dimension.
+      An unknown first dimension means the feature is treated as having
+      a variable number of blocks, and the output shape along this dimension
+      is considered unknown at graph build time.  Padding is applied for
+      minibatch elements smaller than the maximum number of blocks for the
+      given feature along this dimension.
+    name: A name for this operation (optional).
+
+  Returns:
+    A `dict` mapping keys to `Tensor`s and `SparseTensor`s.
+
+  Raises:
+    ValueError: If sparse and dense key sets intersect, or input lengths do not
+      match up.
+  """
+  with ops.name_scope(name, "ParseSingleExample", [serialized]):
+    serialized = ops.convert_to_tensor(serialized, name="serialized")
+    dense_defaults = collections.OrderedDict(
+    ) if dense_defaults is None else dense_defaults
+    sparse_keys = [] if sparse_keys is None else sparse_keys
+    sparse_types = [] if sparse_types is None else sparse_types
+    dense_keys = [] if dense_keys is None else dense_keys
+    dense_types = [] if dense_types is None else dense_types
+    dense_shapes = ([[]] * len(dense_keys)
+                    if dense_shapes is None else dense_shapes)
+
+    num_dense = len(dense_keys)
+    num_sparse = len(sparse_keys)
+
+    if len(dense_shapes) != num_dense:
+      raise ValueError("len(dense_shapes) != len(dense_keys): %d vs. %d" %
+                       (len(dense_shapes), num_dense))
+    if len(dense_types) != num_dense:
+      raise ValueError("len(dense_types) != len(num_dense): %d vs. %d" %
+                       (len(dense_types), num_dense))
+    if len(sparse_types) != num_sparse:
+      raise ValueError("len(sparse_types) != len(sparse_keys): %d vs. %d" %
+                       (len(sparse_types), num_sparse))
+    if num_dense + num_sparse == 0:
+      raise ValueError("Must provide at least one sparse key or dense key")
+    if not set(dense_keys).isdisjoint(set(sparse_keys)):
+      raise ValueError(
+          "Dense and sparse keys must not intersect; intersection: %s" %
+          set(dense_keys).intersection(set(sparse_keys)))
+
+    # Convert dense_shapes to TensorShape object.
+    dense_shapes = [tensor_shape.as_shape(shape) for shape in dense_shapes]
+
+    dense_defaults_vec = []
+    for i, key in enumerate(dense_keys):
+      default_value = dense_defaults.get(key)
+      dense_shape = dense_shapes[i]
+      if (dense_shape.ndims is not None and dense_shape.ndims > 0 and
+          dense_shape[0].value is None):
+        # Variable stride dense shape, the default value should be a
+        # scalar padding value
+        if default_value is None:
+          default_value = ops.convert_to_tensor(
+              "" if dense_types[i] == dtypes.string else 0,
+              dtype=dense_types[i])
+        else:
+          # Reshape to a scalar to ensure user gets an error if they
+          # provide a tensor that's not intended to be a padding value
+          # (0 or 2+ elements).
+          key_name = "padding_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+          default_value = ops.convert_to_tensor(
+              default_value, dtype=dense_types[i], name=key_name)
+          default_value = array_ops.reshape(default_value, [])
+      else:
+        if default_value is None:
+          default_value = constant_op.constant([], dtype=dense_types[i])
+        elif not isinstance(default_value, ops.Tensor):
+          key_name = "key_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+          default_value = ops.convert_to_tensor(
+              default_value, dtype=dense_types[i], name=key_name)
+          default_value = array_ops.reshape(default_value, dense_shape)
+
+      dense_defaults_vec.append(default_value)
+
+    # Finally, convert dense_shapes to TensorShapeProto
+    dense_shapes = [shape.as_proto() for shape in dense_shapes]
+
+    outputs = gen_parsing_ops.parse_single_example(
+        serialized=serialized,
+        dense_defaults=dense_defaults_vec,
+        num_sparse=len(sparse_keys),
+        sparse_keys=sparse_keys,
+        sparse_types=sparse_types,
+        dense_keys=dense_keys,
+        dense_shapes=dense_shapes,
+        name=name)
+
+    (sparse_indices, sparse_values, sparse_shapes, dense_values) = outputs
+
+    sparse_tensors = [
+        sparse_tensor.SparseTensor(ix, val, shape)
+        for (ix, val,
+             shape) in zip(sparse_indices, sparse_values, sparse_shapes)
+    ]
+
+    return dict(zip(sparse_keys + dense_keys, sparse_tensors + dense_values))

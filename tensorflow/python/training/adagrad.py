@@ -19,12 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.AdagradOptimizer")
 class AdagradOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adagrad algorithm.
 
@@ -47,6 +51,13 @@ class AdagradOptimizer(optimizer.Optimizer):
 
     Raises:
       ValueError: If the `initial_accumulator_value` is invalid.
+
+    @compatibility(eager)
+    When eager execution is enabled, `learning_rate` can be a callable that
+    takes no arguments and returns the actual value to use. This can be useful
+    for changing these values across different invocations of optimizer
+    functions.
+    @end_compatibility
     """
     if initial_accumulator_value <= 0.0:
       raise ValueError("initial_accumulator_value must be positive: %s" %
@@ -61,14 +72,22 @@ class AdagradOptimizer(optimizer.Optimizer):
     for v in var_list:
       with ops.colocate_with(v):
         dtype = v.dtype.base_dtype
-        init = init_ops.constant_initializer(self._initial_accumulator_value,
-                                             dtype=dtype)
+        if v.get_shape().is_fully_defined():
+          init = init_ops.constant_initializer(self._initial_accumulator_value,
+                                               dtype=dtype)
+        else:
+          # Use a Tensor instead of initializer if variable does not have static
+          # shape.
+          init_constant = gen_array_ops.fill(array_ops.shape(v),
+                                             self._initial_accumulator_value)
+          init = math_ops.cast(init_constant, dtype)
       self._get_or_make_slot_with_initializer(v, init, v.get_shape(), dtype,
                                               "accumulator", self._name)
 
   def _prepare(self):
-    self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
-                                                       name="learning_rate")
+    learning_rate = self._call_if_callable(self._learning_rate)
+    self._learning_rate_tensor = ops.convert_to_tensor(
+        learning_rate, name="learning_rate")
 
   def _apply_dense(self, grad, var):
     acc = self.get_slot(var, "accumulator")

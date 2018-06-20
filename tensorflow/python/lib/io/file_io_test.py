@@ -1,3 +1,4 @@
+# This Python file uses the following encoding: utf-8
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +35,11 @@ class FileIoTest(test.TestCase):
   def tearDown(self):
     file_io.delete_recursively(self._base_dir)
 
+  def testEmptyFilename(self):
+    f = file_io.FileIO("", mode="r")
+    with self.assertRaises(errors.NotFoundError):
+      _ = f.read()
+
   def testFileDoesntExist(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     self.assertFalse(file_io.file_exists(file_path))
@@ -53,6 +59,18 @@ class FileIoTest(test.TestCase):
     self.assertTrue(file_io.file_exists(file_path))
     file_contents = file_io.read_file_to_string(file_path)
     self.assertEqual("testing", file_contents)
+
+  def testAtomicWriteStringToFileOverwriteFalse(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.atomic_write_string_to_file(file_path, "old", overwrite=False)
+    with self.assertRaises(errors.AlreadyExistsError):
+      file_io.atomic_write_string_to_file(file_path, "new", overwrite=False)
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual("old", file_contents)
+    file_io.delete_file(file_path)
+    file_io.atomic_write_string_to_file(file_path, "new", overwrite=False)
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual("new", file_contents)
 
   def testReadBinaryMode(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -451,6 +469,12 @@ class FileIoTest(test.TestCase):
     lines = f.readlines()
     self.assertSequenceEqual(lines, data)
 
+  def testUTF8StringPath(self):
+    file_path = os.path.join(self._base_dir, "UTF8测试_file")
+    file_io.write_string_to_file(file_path, "testing")
+    with file_io.FileIO(file_path, mode="rb") as f:
+      self.assertEqual(b"testing", f.read())
+
   def testEof(self):
     """Test that reading past EOF does not raise an exception."""
 
@@ -461,6 +485,102 @@ class FileIoTest(test.TestCase):
     f.flush()
     self.assertEqual(content, f.read(len(content) + 1))
 
+  def testUTF8StringPathExists(self):
+    file_path = os.path.join(self._base_dir, "UTF8测试_file_exist")
+    file_io.write_string_to_file(file_path, "testing")
+    v = file_io.file_exists(file_path)
+    self.assertEqual(v, True)
+
+  def testFilecmp(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is another sentence\n" * 100)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, u"This is another sentence\n" * 100)
+
+    self.assertFalse(file_io.filecmp(file1, file2))
+    self.assertTrue(file_io.filecmp(file2, file3))
+
+  def testFilecmpSameSize(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is b sentence\n" * 100)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, u"This is b sentence\n" * 100)
+
+    self.assertFalse(file_io.filecmp(file1, file2))
+    self.assertTrue(file_io.filecmp(file2, file3))
+
+  def testFilecmpBinary(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.FileIO(file1, "wb").write("testing\n\na")
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.FileIO(file2, "wb").write("testing\n\nb")
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.FileIO(file3, "wb").write("testing\n\nb")
+
+    file4 = os.path.join(self._base_dir, "file4")
+    file_io.FileIO(file4, "wb").write("testing\n\ntesting")
+
+    self.assertFalse(file_io.filecmp(file1, file2))
+    self.assertFalse(file_io.filecmp(file1, file4))
+    self.assertTrue(file_io.filecmp(file2, file3))
+
+  def testFileCrc32(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+    crc1 = file_io.file_crc32(file1)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is another sentence\n" * 100)
+    crc2 = file_io.file_crc32(file2)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, "This is another sentence\n" * 100)
+    crc3 = file_io.file_crc32(file3)
+
+    self.assertTrue(crc1 != crc2)
+    self.assertEqual(crc2, crc3)
+
+  def testFileCrc32WithBytes(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.write_string_to_file(file1, "This is a sentence\n" * 100)
+    crc1 = file_io.file_crc32(file1, block_size=24)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.write_string_to_file(file2, "This is another sentence\n" * 100)
+    crc2 = file_io.file_crc32(file2, block_size=24)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.write_string_to_file(file3, "This is another sentence\n" * 100)
+    crc3 = file_io.file_crc32(file3, block_size=-1)
+
+    self.assertTrue(crc1 != crc2)
+    self.assertEqual(crc2, crc3)
+
+  def testFileCrc32Binary(self):
+    file1 = os.path.join(self._base_dir, "file1")
+    file_io.FileIO(file1, "wb").write("testing\n\n")
+    crc1 = file_io.file_crc32(file1)
+
+    file2 = os.path.join(self._base_dir, "file2")
+    file_io.FileIO(file2, "wb").write("testing\n\n\n")
+    crc2 = file_io.file_crc32(file2)
+
+    file3 = os.path.join(self._base_dir, "file3")
+    file_io.FileIO(file3, "wb").write("testing\n\n\n")
+    crc3 = file_io.file_crc32(file3)
+
+    self.assertTrue(crc1 != crc2)
+    self.assertEqual(crc2, crc3)
 
 if __name__ == "__main__":
   test.main()

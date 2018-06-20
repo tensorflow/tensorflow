@@ -49,6 +49,8 @@ class GuardedPhiloxRandom {
 
   // Initialize with given seeds.
   void Init(int64 seed, int64 seed2);
+  void Init(random::PhiloxRandom::ResultType counter,
+            random::PhiloxRandom::Key key);
 
   // Reserve a certain number of 128-bit samples.
   // This function is thread safe.  The returned generator is valid for the

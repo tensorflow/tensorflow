@@ -61,9 +61,8 @@ __global__ void DilationKernel(const int32 nthreads, const T* input_ptr,
           const int w_in = w_beg + w * rate_cols;
           if (w_in >= 0 && w_in < input_cols) {
             const T val =
-                input_ptr[d +
-                          depth *
-                              (w_in + input_cols * (h_in + input_rows * b))] +
+                input_ptr[d + depth * (w_in +
+                                       input_cols * (h_in + input_rows * b))] +
                 filter_ptr[d + depth * (w + filter_cols * h)];
             if (val > cur_val) {
               cur_val = val;
@@ -106,9 +105,8 @@ __global__ void DilationBackpropInputKernel(
           const int w_in = w_beg + w * rate_cols;
           if (w_in >= 0 && w_in < input_cols) {
             const T val =
-                input_ptr[d +
-                          depth *
-                              (w_in + input_cols * (h_in + input_rows * b))] +
+                input_ptr[d + depth * (w_in +
+                                       input_cols * (h_in + input_rows * b))] +
                 filter_ptr[d + depth * (w + filter_cols * h)];
             if (val > cur_val) {
               cur_val = val;
@@ -156,9 +154,8 @@ __global__ void DilationBackpropFilterKernel(
           const int w_in = w_beg + w * rate_cols;
           if (w_in >= 0 && w_in < input_cols) {
             const T val =
-                input_ptr[d +
-                          depth *
-                              (w_in + input_cols * (h_in + input_rows * b))] +
+                input_ptr[d + depth * (w_in +
+                                       input_cols * (h_in + input_rows * b))] +
                 filter_ptr[d + depth * (w + filter_cols * h)];
             if (val > cur_val) {
               cur_val = val;

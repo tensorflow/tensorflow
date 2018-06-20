@@ -47,29 +47,22 @@ namespace cpu {
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
-  CpuExecutable(
-      std::unique_ptr<SimpleOrcJIT> jit,
-      std::unique_ptr<BufferAssignment> assignment,
-      std::unique_ptr<HloModule> hlo_module,
-      const string& entry_function_name,
-      std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx);
+  CpuExecutable(std::unique_ptr<SimpleOrcJIT> jit,
+                std::unique_ptr<const BufferAssignment> assignment,
+                std::unique_ptr<const HloModule> hlo_module,
+                const string& entry_function_name,
+                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
-
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) override;
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -80,41 +73,51 @@ class CpuExecutable : public Executable {
 
   static int64 ShapeSizeBytes(const Shape& shape);
 
+  // Type of the computation function we expect in the JIT.
+  using ComputeFunctionType = void (*)(
+      void* /*result*/, const ExecutableRunOptions* /*run_options*/,
+      const void** /*args*/, void** /*temps*/, int64* /*profile_counters*/);
+
+  const ComputeFunctionType& compute_function() const {
+    return compute_function_;
+  }
+
+  const BufferAssignment& buffer_assignment() const { return *assignment_; }
+
  private:
   // Allocate buffers required for execution and assign them to the elements of
   // "buffers". "buffers" should be sized to the number of buffers in buffer
   // assignment. Each vector element corresponds to a particular Index. If
   // a vector element already contains a non-null DeviceMemoryBase, then no
   // buffer is assigned for this element.
-  Status AllocateBuffers(
-      DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-      std::vector<perftools::gputools::DeviceMemoryBase>* buffers);
+  Status AllocateBuffers(DeviceMemoryAllocator* memory_allocator,
+                         int device_ordinal,
+                         std::vector<OwningDeviceMemory>* buffers);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
   Status ExecuteComputeFunction(
       const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers,
-      HloExecutionProfile* hlo_execution_profile);
-  Status ExecuteComputeFunction(
-      const ExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers,
+      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
       HloExecutionProfile* hlo_execution_profile);
+
+  // Creates a ScopedShapedBuffer for holding the result of the computation,
+  // moving buffers out of allocated_buffers and into the result as appropriate.
+  // The addresses are set according to buffer assignment.
+  StatusOr<ScopedShapedBuffer> CreateResultShapedBuffer(
+      const ServiceExecutableRunOptions* run_options,
+      tensorflow::gtl::MutableArraySlice<OwningDeviceMemory> buffers);
 
   // Returns the points-to set of the root instruction of the entry
   // computation. Uses points-to analysis from buffer assignment.
   const PointsToSet& GetRootPointsToSet() const;
 
   // The JIT containing compiled modules.
-  std::unique_ptr<SimpleOrcJIT> jit_;
+  const std::unique_ptr<SimpleOrcJIT> jit_;
 
   // Buffer assignment for the buffers we need to allocate.
-  std::unique_ptr<BufferAssignment> assignment_;
+  const std::unique_ptr<const BufferAssignment> assignment_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving
@@ -122,18 +125,10 @@ class CpuExecutable : public Executable {
   // positives.
   string ir_module_string_;
 
-  // Type of the computation function we expect in the JIT.
-  //    void function(void* result, const void* run_options,
-  //                  const void** args_array, void** temps_array)
-  using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
-                                       uint64*);
   ComputeFunctionType compute_function_;
 
   // Entry function name for the computation.
   const string entry_function_name_;
-
-  // Maps HLOs to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuExecutable);
 };

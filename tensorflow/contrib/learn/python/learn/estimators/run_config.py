@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Run Config."""
+"""Run Config (deprecated, use tf.estimator.RunConfig instead).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,11 +34,12 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as core_run_config
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.util.deprecation import deprecated
 
 
 # A list of the property names in RunConfig user allows to change. They will
 # not affect the execution framework, so when execution framework checks the
-# `uid` of the RunConfig, it should be ingored.
+# `uid` of the RunConfig, it should be ignored.
 _DEFAULT_UID_WHITE_LIST = [
     'tf_random_seed',
     'save_summary_steps',
@@ -47,6 +53,7 @@ _DEFAULT_UID_WHITE_LIST = [
 
 
 class Environment(object):
+  """DEPRECATED CLASS."""
   # For running general distributed training.
   CLOUD = 'cloud'
   # For running Google-internal distributed training.
@@ -56,6 +63,7 @@ class Environment(object):
 
 
 class TaskType(object):
+  """DEPRECATED CLASS."""
   MASTER = 'master'
   PS = 'ps'
   WORKER = 'worker'
@@ -64,7 +72,9 @@ class TaskType(object):
 class ClusterConfig(object):
   """This class specifies the configurations for a distributed run.
 
-  If you're using `tf.learn` `Estimators`, you should probably use the subclass
+  THIS CLASS IS DEPRECATED. Use tf.estimator.RunConfig instead.
+
+  If you're using an `Estimator`, you should probably use the subclass
   RunConfig instead.
   """
 
@@ -211,15 +221,13 @@ class ClusterConfig(object):
 class RunConfig(ClusterConfig, core_run_config.RunConfig):
   """This class specifies the configurations for an `Estimator` run.
 
-  This class is the implementation of ${tf.estimator.RunConfig} interface.
-
-  If you're a Google-internal user using command line flags with
-  `learn_runner.py` (for instance, to do distributed training or to use
-  parameter servers), you probably want to use `learn_runner.EstimatorConfig`
-  instead.
+  This class is a deprecated implementation of @{tf.estimator.RunConfig}
+  interface.
   """
   _USE_DEFAULT = 0
 
+  @deprecated(None, 'When switching to tf.estimator.Estimator, use'
+              ' tf.estimator.RunConfig instead.')
   def __init__(self,
                master=None,
                num_cores=0,
@@ -237,10 +245,18 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
                session_config=None):
     """Constructor.
 
-    Note that the superclass `ClusterConfig` may set properties like
-    `cluster_spec`, `is_chief`, `master` (if `None` in the args),
-    `num_ps_replicas`, `task_id`, and `task_type` based on the `TF_CONFIG`
-    environment variable. See `ClusterConfig` for more details.
+    The superclass `ClusterConfig` may set properties like `cluster_spec`,
+    `is_chief`, `master` (if `None` in the args), `num_ps_replicas`, `task_id`,
+    and `task_type` based on the `TF_CONFIG` environment variable. See
+    `ClusterConfig` for more details.
+
+    N.B.: If `save_checkpoints_steps` or `save_checkpoints_secs` is set,
+    `keep_checkpoint_max` might need to be adjusted accordingly, especially in
+    distributed training. For example, setting `save_checkpoints_secs` as 60
+    without adjusting `keep_checkpoint_max` (defaults to 5) leads to situation
+    that checkpoint would be garbage collected after 5 minutes. In distributed
+    training, the evaluation job starts asynchronously and might fail to load or
+    find the checkpoint due to race condition.
 
     Args:
       master: TensorFlow master. Defaults to empty string for local.
@@ -274,8 +290,16 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
         Note - using this argument, it is easy to provide settings which break
         otherwise perfectly good models. Use with care.
     """
-    super(RunConfig, self).__init__(
-        master=master, evaluation_master=evaluation_master)
+    # Neither parent class calls super().__init__(), so here we have to
+    # manually call their __init__() methods.
+    ClusterConfig.__init__(
+        self, master=master, evaluation_master=evaluation_master)
+    # For too long this code didn't call:
+    #   core_run_config.RunConfig.__init__(self)
+    # so instead of breaking compatibility with that assumption, we
+    # just manually initialize this field:
+    self._train_distribute = None
+    self._device_fn = None
 
     gpu_options = config_pb2.GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
@@ -332,7 +356,9 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     # For class instance without __repr__, some special cares are required.
     # Otherwise, the object address will be used.
     if '_cluster_spec' in ordered_state:
-      ordered_state['_cluster_spec'] = ordered_state['_cluster_spec'].as_dict()
+      ordered_state['_cluster_spec'] = collections.OrderedDict(
+          sorted(ordered_state['_cluster_spec'].as_dict().items(),
+                 key=lambda t: t[0]))
     return ', '.join(
         '%s=%r' % (k, v) for (k, v) in six.iteritems(ordered_state))
 
@@ -383,8 +409,21 @@ def _count_ps(cluster_spec):
 
 
 def _count_worker(cluster_spec):
-  """Counts the number of workers in cluster_spec."""
-  return len(cluster_spec.as_dict().get('worker', [])) if cluster_spec else 0
+  """Counts the number of workers in cluster_spec.
+
+  Workers with TaskType.WORKER and TaskType.MASTER are included in the return
+  value.
+
+  Args:
+    cluster_spec: a ClusterSpec instance that describes current deployment.
+
+  Returns:
+    The total number of eligible workers.
+
+    If 'cluster_spec' was None, then 0 is returned.
+  """
+  return (len(cluster_spec.as_dict().get('worker', [])) +
+          len(cluster_spec.as_dict().get('master', []))) if cluster_spec else 0
 
 
 def _get_master(cluster_spec, task_type, task_id):

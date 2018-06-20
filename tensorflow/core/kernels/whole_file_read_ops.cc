@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -132,10 +133,14 @@ class WriteFileOp : public OpKernel {
                 errors::InvalidArgument(
                     "Contents tensor must be scalar, but had shape: ",
                     contents_input->shape().DebugString()));
-    OP_REQUIRES_OK(
-        context,
-        WriteStringToFile(context->env(), filename_input->scalar<string>()(),
-                          contents_input->scalar<string>()()));
+    const string& filename = filename_input->scalar<string>()();
+    const string dir = std::string(io::Dirname(filename));
+    if (!context->env()->FileExists(dir).ok()) {
+      OP_REQUIRES_OK(context, context->env()->RecursivelyCreateDir(dir));
+    }
+    OP_REQUIRES_OK(context,
+                   WriteStringToFile(context->env(), filename,
+                                     contents_input->scalar<string>()()));
   }
 };
 

@@ -20,9 +20,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -37,97 +38,91 @@ class XlaOpKernelContext;
 // subgraph of Ops using XLA.
 class XlaContext : public ResourceBase {
  public:
-  // A struct that represents either a compile-time constant, or an XLA
-  // computation handle. Used to represent arguments and return values.
-  struct HandleOrConstant {
-    // Is this a compile-time constant? If so, what is its value?
-    bool is_constant;
-    Tensor constant_value;  // Must be in host memory.
-
-    // If this is not a constant, a computation handle. Since the mapping from
-    // Tensorflow types to XLA types is not necessarily injective (one-to-one),
-    // we also require the Tensorflow type.
-    DataType type;
-    xla::ComputationDataHandle handle;
-  };
-
-  struct Argument {
-    XlaCompiler::Argument::Kind kind;
-
-    // Descriptive name for the resource, for use in error messages.
-    string name;
-
-    // Is this a resource?
-    bool is_resource = false;
-
-    HandleOrConstant value;
-
-    int64 tensor_array_size = -1;
-  };
-
   // Retrieves the XlaContext of the current compilation.
   static XlaContext& Get(const OpKernelContext* ctx);
   static XlaContext& Get(const XlaOpKernelContext* ctx);
 
-  // Creates a new XlaContext.
-  XlaContext(XlaCompiler* compiler, xla::ComputationBuilder* builder,
-             bool allow_cpu_custom_calls, bool resolve_compile_time_constants);
+  // Creates a new XlaContext. See the documentation on the class data fields
+  // for descriptions of the arguments.
+  XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
+             bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
+             bool is_entry_computation,
+             const std::function<TensorShape(const TensorShape&, DataType)>*
+                 shape_representation_fn);
 
   // Virtual method defined by ResourceBase.
   string DebugString() override;
 
   XlaCompiler* compiler() const { return compiler_; }
 
-  // Returns the ComputationBuilder that Ops use for compiling new
-  // expressions.
-  xla::ComputationBuilder* builder();
+  // Returns the XlaBuilder that Ops use for compiling new expressions.
+  xla::XlaBuilder* builder();
 
   bool allow_cpu_custom_calls() const { return allow_cpu_custom_calls_; }
-  bool has_context_parameter() const { return has_context_parameter_; }
 
-  const std::vector<Argument>& args() const { return args_; }
-  void set_args(std::vector<Argument> args);
+  bool resolve_compile_time_constants() const {
+    return resolve_compile_time_constants_;
+  }
+  bool is_entry_computation() const { return is_entry_computation_; }
 
-  // Get the runtime context parameter, adding one if it does not already exist.
-  // Dies if not compiling a local executable.
-  const xla::ComputationDataHandle& GetOrCreateRuntimeContextParameter();
+  const std::vector<XlaExpression>& args() const { return args_; }
+  void set_args(std::vector<XlaExpression> args);
 
-  const std::vector<HandleOrConstant>& retvals() { return retvals_; }
+  struct Retval {
+    DataType type;
+    TensorShape shape;
+    // An XlaExpression representing the Retval's value.
+    XlaExpression expression;
+  };
+  const std::vector<Retval>& retvals() { return retvals_; }
 
   // This is called by the Retval Op to associate a computed value
   // with a specific return value of the subgraph.
-  void AddRetval(int retval_index, DataType type,
-                 const xla::ComputationDataHandle& handle);
+  void AddRetval(int retval_index, DataType type, const TensorShape& shape,
+                 const xla::XlaOp& handle);
 
   // As for Retval, but for return values that are compile-time constants.
   Status AddConstRetval(int retval_index, DataType dtype,
                         const xla::Literal& literal);
 
-  // Mark the computation as having side effects (e.g., Send operators).
-  void AddSideEffects();
-
-  bool has_side_effects() const { return has_side_effects_; }
-
-  // Creates a resource with resource `kind` and initial type `type` and
-  // value `handle`. `name` is a descriptive name for use in error messages.
+  // Creates a resource with resource `kind` and initial value `handle`. `name`
+  // is a descriptive name for use in error messages. See the `XlaResource`
+  // constructor for a description of the remaining arguments.
   // Fails if the resource already exists.
   Status CreateResource(XlaResource::Kind kind, int arg_num, string name,
-                        DataType type, const xla::ComputationDataHandle& handle,
+                        DataType type, TensorShape shape,
+                        const xla::XlaOp& handle, int64 tensor_array_size,
+                        const std::set<string>& tensor_array_gradients,
                         XlaResource** resource);
 
   const std::vector<std::unique_ptr<XlaResource>>& resources() {
     return resources_;
   }
 
+  // Returns the XLA shape to be used to represent a variable of TF `shape`
+  // and `type`, or of an argument or return value of a top-level computation.
+  TensorShape RepresentationShape(const TensorShape& shape,
+                                  DataType type) const;
+
   // Get an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateMax(const DataType type);
+  const xla::XlaComputation* GetOrCreateMax(const DataType type);
+
+  // Get an XLA lambda to compute Min. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::XlaComputation* GetOrCreateMin(const DataType type);
 
   // Get an XLA lambda to compute Add. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateAdd(const DataType type);
+  const xla::XlaComputation* GetOrCreateAdd(const DataType type);
+
+  // Get an XLA lambda to compute Mul. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::XlaComputation* GetOrCreateMul(const DataType type);
 
   // The name of the XlaContext resource during symbolic graph execution.
   static const char kXlaContextResourceName[];
@@ -135,52 +130,60 @@ class XlaContext : public ResourceBase {
  private:
   XlaCompiler* const compiler_;
 
-  // The ComputationBuilder used to construct the subgraph's compiled
-  // representation.
-  xla::ComputationBuilder* builder_;
+  // The XlaBuilder used to construct the subgraph's compiled representation.
+  xla::XlaBuilder* builder_;
 
   // Allow ops to emit CustomCall operations for CPU.
   const bool allow_cpu_custom_calls_;
 
   // If true, constant return values are returned as Tensors instead of
-  // run-time computation outptus.
+  // run-time computation outputs.
   const bool resolve_compile_time_constants_;
-
-  // When 'has_context_parameter_' is true, this is the computation handle
-  // for an additional final parameter to the computation, through which will be
-  // passed a XlaLocalRuntimeContext* at runtime. Created on demand by
-  // GetOrCreateRuntimeContextParameter().
-  bool has_context_parameter_ = false;
-  xla::ComputationDataHandle context_parameter_;
 
   // Arguments to the Tensorflow graph, indexed by _Arg index.
   // Includes both compile-time constant arguments and runtime parameters.
-  std::vector<Argument> args_;
+  std::vector<XlaExpression> args_;
 
   // Return values of the Tensorflow graph, indexed by _Retval index.
-  std::vector<HandleOrConstant> retvals_;
-
-  // Does the computation have side effects, i.e., Send() calls?
-  bool has_side_effects_ = false;
+  std::vector<Retval> retvals_;
 
   // Holds ownership of resources. The resources are not ordered.
   std::vector<std::unique_ptr<XlaResource>> resources_;
 
+  // Is this a top-level computation, or an inner computation (e.g., a while
+  // body)?
+  const bool is_entry_computation_;
+
+  // A function that describes how the shapes of
+  // a) argument and return value, for entry computations
+  // b) variables, for all computations,
+  // should be represented in XLA. Parameters/return values will be shaped
+  // according to this function, and reshaped back to/from their declared shapes
+  // for computations. Must be non-null.
+  const std::function<TensorShape(const TensorShape&, DataType)>*
+      shape_representation_fn_;
+
   // Cache of prebuilt computations indexed by their type.
-  using ComputationMap = std::map<DataType, xla::Computation>;
+  using ComputationMap = std::map<DataType, xla::XlaComputation>;
 
   // Finds the value for the given type in out map if it already
   // exists or makes a new value with create function and keeps it the
   // map. The returned value != nullptr and is owned by the map.
-  const xla::Computation* LookupOrCreate(
+  const xla::XlaComputation* LookupOrCreate(
       DataType type, ComputationMap* out,
-      const std::function<xla::Computation()>& create);
+      const std::function<xla::XlaComputation()>& create);
 
   // Cached computation to compute Max of two elements, specialized by type.
   ComputationMap max_func_;
 
+  // Cached computation to compute Min of two elements, specialized by type.
+  ComputationMap min_func_;
+
   // Cached computation to compute Sum of two elements, specialized by type.
   ComputationMap add_func_;
+
+  // Cached computation to compute Mul of two elements, specialized by type.
+  ComputationMap mul_func_;
 
   // Cached computation to compute Sigmoid of an element, specialized by type.
   ComputationMap sigmoid_func_;

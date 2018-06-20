@@ -17,16 +17,16 @@ limitations under the License.
 
 #include <errno.h>
 #include <fcntl.h>
-#include <fstream>
 #include <libv4l2.h>
 #include <linux/videodev2.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/time.h>
 #include <sys/mman.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <fstream>
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
@@ -46,10 +46,10 @@ limitations under the License.
 
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Flag;
-using tensorflow::Tensor;
+using tensorflow::int32;
 using tensorflow::Status;
 using tensorflow::string;
-using tensorflow::int32;
+using tensorflow::Tensor;
 
 // Used to store the memory-mapped buffers we use for capture.
 struct CameraBuffer {

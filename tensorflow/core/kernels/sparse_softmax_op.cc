@@ -50,8 +50,9 @@ class SparseSoftmaxOp : public OpKernel {
                 errors::InvalidArgument(
                     "Input sp_indices should be a matrix but received shape: ",
                     indices_t->shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(values_t->shape()) &&
-                             TensorShapeUtils::IsVector(shape_t->shape()),
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsVector(values_t->shape()) &&
+                    TensorShapeUtils::IsVector(shape_t->shape()),
                 errors::InvalidArgument(
                     "Inputs sp_values and sp_shape should be vectors "
                     "but received shapes: ",

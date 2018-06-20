@@ -18,7 +18,7 @@
 #                    <COMMAND>
 #
 # CONTAINER_TYPE: Type of the docker container used the run the build:
-#                 e.g., (cpu | gpu | gpu_clang | android | tensorboard)
+#                 e.g., (cpu | gpu | android | tensorboard)
 #
 # DOCKERFILE_PATH: (Optional) Path to the Dockerfile used for docker build.
 #                  If this optional value is not supplied (via the
@@ -73,18 +73,13 @@ CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user "\
 "${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
-if [[ ! -z "${TF_BUILD_DISABLE_GCP}" ]] &&
-   [[ "${TF_BUILD_DISABLE_GCP}" != "0" ]]; then
-  CI_COMMAND_PREFIX+=("--disable-gcp")
-fi
-
 # cmake (CPU) builds do not require configuration.
 if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
   CI_COMMAND_PREFIX=("")
 fi
 
 # Use nvidia-docker if the container is GPU.
-if [[ "${CONTAINER_TYPE}" == "gpu" ]] || [[ "${CONTAINER_TYPE}" == "gpu_clang" ]]; then
+if [[ "${CONTAINER_TYPE}" == "gpu" ]]; then
   DOCKER_BINARY="nvidia-docker"
 else
   DOCKER_BINARY="docker"
@@ -104,7 +99,7 @@ BUILD_TAG="${BUILD_TAG:-tf_ci}"
 
 # Add extra params for cuda devices and libraries for GPU container.
 # And clear them if we are not building for GPU.
-if [[ "${CONTAINER_TYPE}" != "gpu" ]] && [[ "${CONTAINER_TYPE}" != "gpu_clang" ]]; then
+if [[ "${CONTAINER_TYPE}" != "gpu" ]]; then
   GPU_EXTRA_PARAMS=""
 fi
 
@@ -139,6 +134,12 @@ if [[ $? != "0" ]]; then
   die "ERROR: docker build failed. Dockerfile is at ${DOCKERFILE_PATH}"
 fi
 
+# If caller wants the with_the_same_user script to allow bad usernames, 
+# pass the var to the docker environment
+if [ -n "${CI_BUILD_USER_FORCE_BADNAME}" ]; then
+        CI_BUILD_USER_FORCE_BADNAME_ENV="-e CI_BUILD_USER_FORCE_BADNAME=yes"
+fi
+
 # Run the command inside the container.
 echo "Running '${COMMAND[*]}' inside ${DOCKER_IMG_NAME}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
@@ -153,6 +154,7 @@ ${DOCKER_BINARY} run --rm --pid=host \
     -e "CI_BUILD_GROUP=$(id -g -n)" \
     -e "CI_BUILD_GID=$(id -g)" \
     -e "CI_TENSORFLOW_SUBMODULE_PATH=${CI_TENSORFLOW_SUBMODULE_PATH}" \
+    ${CI_BUILD_USER_FORCE_BADNAME_ENV} \
     -v ${WORKSPACE}:/workspace \
     -w /workspace \
     ${GPU_EXTRA_PARAMS} \

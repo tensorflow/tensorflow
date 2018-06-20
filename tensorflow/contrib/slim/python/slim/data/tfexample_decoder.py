@@ -102,7 +102,7 @@ class BoundingBox(ItemHandler):
   """An ItemHandler that concatenates a set of parsed Tensors to Bounding Boxes.
   """
 
-  def __init__(self, keys=None, prefix=None):
+  def __init__(self, keys=None, prefix=''):
     """Initialize the bounding box handler.
 
     Args:
@@ -124,7 +124,7 @@ class BoundingBox(ItemHandler):
     super(BoundingBox, self).__init__(self._full_keys)
 
   def tensors_to_item(self, keys_to_tensors):
-    """Maps the given dictionary of tensors to a contatenated list of bboxes.
+    """Maps the given dictionary of tensors to a concatenated list of bboxes.
 
     Args:
       keys_to_tensors: a mapping of TF-Example keys to parsed tensors.
@@ -135,7 +135,10 @@ class BoundingBox(ItemHandler):
     """
     sides = []
     for key in self._full_keys:
-      side = array_ops.expand_dims(keys_to_tensors[key].values, 0)
+      side = keys_to_tensors[key]
+      if isinstance(side, sparse_tensor.SparseTensor):
+        side = side.values
+      side = array_ops.expand_dims(side, 0)
       sides.append(side)
 
     bounding_box = array_ops.concat(sides, 0)
@@ -202,6 +205,76 @@ class Tensor(ItemHandler):
       if shape is not None:
         tensor = array_ops.reshape(tensor, shape)
     return tensor
+
+
+class LookupTensor(Tensor):
+  """An ItemHandler that returns a parsed Tensor, the result of a lookup."""
+
+  def __init__(self,
+               tensor_key,
+               table,
+               shape_keys=None,
+               shape=None,
+               default_value=''):
+    """Initializes the LookupTensor handler.
+
+    See Tensor.  Simply calls a vocabulary (most often, a label mapping) lookup.
+
+    Args:
+      tensor_key: the name of the `TFExample` feature to read the tensor from.
+      table: A tf.lookup table.
+      shape_keys: Optional name or list of names of the TF-Example feature in
+        which the tensor shape is stored. If a list, then each corresponds to
+        one dimension of the shape.
+      shape: Optional output shape of the `Tensor`. If provided, the `Tensor` is
+        reshaped accordingly.
+      default_value: The value used when the `tensor_key` is not found in a
+        particular `TFExample`.
+
+    Raises:
+      ValueError: if both `shape_keys` and `shape` are specified.
+    """
+    self._table = table
+    super(LookupTensor, self).__init__(tensor_key, shape_keys, shape,
+                                       default_value)
+
+  def tensors_to_item(self, keys_to_tensors):
+    unmapped_tensor = super(LookupTensor, self).tensors_to_item(keys_to_tensors)
+    return self._table.lookup(unmapped_tensor)
+
+
+class BackupHandler(ItemHandler):
+  """An ItemHandler that tries two ItemHandlers in order."""
+
+  def __init__(self, handler, backup):
+    """Initializes the BackupHandler handler.
+
+    If the first Handler's tensors_to_item returns a Tensor with no elements,
+    the second Handler is used.
+
+    Args:
+      handler: The primary ItemHandler.
+      backup: The backup ItemHandler.
+
+    Raises:
+      ValueError: if either is not an ItemHandler.
+    """
+    if not isinstance(handler, ItemHandler):
+      raise ValueError('Primary handler is of type %s instead of ItemHandler'
+                       % type(handler))
+    if not isinstance(backup, ItemHandler):
+      raise ValueError('Backup handler is of type %s instead of ItemHandler'
+                       % type(backup))
+    self._handler = handler
+    self._backup = backup
+    super(BackupHandler, self).__init__(handler.keys + backup.keys)
+
+  def tensors_to_item(self, keys_to_tensors):
+    item = self._handler.tensors_to_item(keys_to_tensors)
+    return control_flow_ops.cond(
+        pred=math_ops.equal(math_ops.reduce_prod(array_ops.shape(item)), 0),
+        true_fn=lambda: self._backup.tensors_to_item(keys_to_tensors),
+        false_fn=lambda: item)
 
 
 class SparseTensor(ItemHandler):
@@ -276,7 +349,8 @@ class Image(ItemHandler):
                shape=None,
                channels=3,
                dtype=dtypes.uint8,
-               repeated=False):
+               repeated=False,
+               dct_method=''):
     """Initializes the image.
 
     Args:
@@ -295,6 +369,11 @@ class Image(ItemHandler):
               tf.decode_raw,
       repeated: if False, decodes a single image. If True, decodes a
         variable number of image strings from a 1D tensor of strings.
+      dct_method: An optional string. Defaults to empty string. It only takes
+        effect when image format is jpeg, used to specify a hint about the
+        algorithm used for jpeg decompression. Currently valid values
+        are ['INTEGER_FAST', 'INTEGER_ACCURATE']. The hint may be ignored, for
+        example, the jpeg library does not have that specific option.
     """
     if not image_key:
       image_key = 'image/encoded'
@@ -308,6 +387,7 @@ class Image(ItemHandler):
     self._channels = channels
     self._dtype = dtype
     self._repeated = repeated
+    self._dct_method = dct_method
 
   def tensors_to_item(self, keys_to_tensors):
     """See base class."""
@@ -333,9 +413,25 @@ class Image(ItemHandler):
       A tensor that represents decoded image of self._shape, or
       (?, ?, self._channels) if self._shape is not specified.
     """
+
     def decode_image():
-      """Decodes a png or jpg based on the headers."""
-      return image_ops.decode_image(image_buffer, self._channels)
+      """Decodes a image based on the headers."""
+      return image_ops.decode_image(image_buffer, channels=self._channels)
+
+    def decode_jpeg():
+      """Decodes a jpeg image with specified '_dct_method'."""
+      return image_ops.decode_jpeg(
+          image_buffer, channels=self._channels, dct_method=self._dct_method)
+
+    def check_jpeg():
+      """Checks if an image is jpeg."""
+      # For jpeg, we directly use image_ops.decode_jpeg rather than decode_image
+      # in order to feed the jpeg specify parameter 'dct_method'.
+      return control_flow_ops.cond(
+          image_ops.is_jpeg(image_buffer),
+          decode_jpeg,
+          decode_image,
+          name='cond_jpeg')
 
     def decode_raw():
       """Decodes a raw image."""
@@ -347,7 +443,7 @@ class Image(ItemHandler):
             math_ops.equal(image_format, 'RAW')): decode_raw,
     }
     image = control_flow_ops.case(
-        pred_fn_pairs, default=decode_image, exclusive=True)
+        pred_fn_pairs, default=check_jpeg, exclusive=True)
 
     image.set_shape([None, None, self._channels])
     if self._shape is not None:

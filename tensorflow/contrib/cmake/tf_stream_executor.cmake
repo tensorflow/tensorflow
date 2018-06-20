@@ -61,19 +61,30 @@ file(GLOB tf_stream_executor_srcs
     "${tensorflow_source_dir}/tensorflow/stream_executor/platform/default/*.h"
 )
 
-if (tensorflow_ENABLE_GPU)    
+if (tensorflow_ENABLE_GPU)
     file(GLOB tf_stream_executor_gpu_srcs
         "${tensorflow_source_dir}/tensorflow/stream_executor/cuda/*.cc"
+        "${tensorflow_source_dir}/tensorflow/compiler/xla/statusor.h"
+        "${tensorflow_source_dir}/tensorflow/compiler/xla/statusor.cc"
     )
+    if (NOT tensorflow_BUILD_CC_TESTS)
+        file(GLOB tf_stream_executor_gpu_tests
+            "${tensorflow_source_dir}/tensorflow/stream_executor/cuda/*_test.cc"
+        )
+        list(REMOVE_ITEM tf_stream_executor_gpu_srcs ${tf_stream_executor_gpu_tests})
+    endif()
     list(APPEND tf_stream_executor_srcs ${tf_stream_executor_gpu_srcs})
-endif()    
+endif()
 
 #file(GLOB_RECURSE tf_stream_executor_test_srcs
 #    "${tensorflow_source_dir}/tensorflow/stream_executor/*_test.cc"
 #    "${tensorflow_source_dir}/tensorflow/stream_executor/*_test.h"
 #)
-#list(REMOVE_ITEM tf_stream_executor_srcs ${tf_stream_executor_test_srcs}) 
+#list(REMOVE_ITEM tf_stream_executor_srcs ${tf_stream_executor_test_srcs})
 
+if (NOT WIN32)
+  set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lgomp")
+endif (NOT WIN32)
 add_library(tf_stream_executor OBJECT ${tf_stream_executor_srcs})
 
 add_dependencies(tf_stream_executor

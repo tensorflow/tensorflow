@@ -14,6 +14,7 @@
 *   [Transform Reference](#transform-reference)
     *   [add_default_attributes](#add_default_attributes)
     *   [backport_concatv2](#backport_concatv2)
+    *   [flatten_atrous_conv](#flatten_atrous_conv)
     *   [fold_batch_norms](#fold_batch_norms)
     *   [fold_constants](#fold_constants)
     *   [fold_old_batch_norms](#fold_old_batch_norms)
@@ -94,9 +95,9 @@ transforms to modify the graph with. The transforms are given as a list of
 names, and can each have arguments themselves. These transforms define the
 pipeline of modifications that are applied in order to produce the output.
 Sometimes you need some transforms to happen before others, and the ordering
-within the list lets you specify which happen first. 
-Note that the optimization 
-`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control 
+within the list lets you specify which happen first.
+Note that the optimization
+`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control
 flow operations, such as `tf.cond`, `tf.map_fn`, and `tf.while`.
 
 ## Inspecting Graphs
@@ -354,6 +355,20 @@ TensorFlow framework and includes ConcatV2, and you want to run it on an older
 version that only supports Concat, this transform will take care of converting
 those newer ops to the equivalent older form.
 
+### flatten_atrous_conv
+
+Args: None \
+Prerequisites: [fold_constants](#fold_constants)
+
+This transform flattens atrous convolution, corresponding to a sequence of
+SpaceToBatchND-Conv2D-BatchToSpaceND operations, converting it to a regular
+Conv2D op with upsampled filters. This transforms should only be used in order
+to run graphs having atrous convolution on platforms that do not yet natively
+support SpaceToBatchND and BatchToSpaceND operations. You will need to make
+sure you run [fold_constants](#fold_constants) after this transform. If
+applicable, you should run this transform before
+[fold_batch_norms](#fold_batch_norms).
+
 ### fold_batch_norms
 
 Args: None \
@@ -370,7 +385,12 @@ input is collapsed down into a simple constant.
 
 ### fold_constants
 
-Args: None \
+Args:
+
+*   clear_output_shapes: Clears tensor shape information saved as attributes.
+    Some older graphs contains out-of-date information and may cause import
+    errors. Defaults to true.
+
 Prerequisites: None
 
 Looks for any sub-graphs within the model that always evaluate to constant
@@ -578,10 +598,14 @@ eight-bit form.
 
 ### quantize_weights
 
-Args: None \
+Args:
+
+*   minimum_size: Tensors with fewer elements than this won't be quantized
+(defaults to 1024)
+
 Prerequisites: None
 
-Converts any large (more than 15 element) float Const op into an eight-bit
+Converts any large (more than minimum_size) float Const op into an eight-bit
 equivalent, followed by a float conversion op so that the result is usable by
 subsequent nodes. This is mostly useful for [shrinking file
 sizes](#shrinking-file-size), but also helps with the more advanced
@@ -614,6 +638,13 @@ loading a graph on a different system than the model was trained on, since some
 specified devices may not be available. In order to work with graphs like these,
 you can run this transform to wipe the slate clean and delete the device
 specifier from all ops.
+
+### remove_control_dependencies
+
+Args: None \
+Prerequisites: None
+
+Removes all control dependencies from the graph.
 
 ### remove_nodes
 
@@ -760,7 +791,7 @@ heart, all of the transforms take in a valid GraphDef, make some changes, and
 output a new GraphDef. Each GraphDef is just a list of NodeDefs, each defining
 one node in the graph and its connections. You can find more information on the
 format at [this guide to TensorFlow model
-files](https://www.tensorflow.org/versions/master/how_tos/tool_developers/index.html),
+files](https://www.tensorflow.org/versions/master/extend/tool_developers/index.html),
 but for a simple example take a look at
 [tensorflow/tools/graph_transforms/rename_op.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/graph_transforms/rename_op.cc),
 which implements the [rename_op](#rename_op) transform:

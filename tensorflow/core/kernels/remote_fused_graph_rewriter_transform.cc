@@ -66,7 +66,7 @@ static Status ParseArguments(const TransformFuncContext& context,
                              string* input_types_str, string* input_shapes_str,
                              string* fused_nodes_str, string* border_inputs_str,
                              string* border_outputs_str,
-                             string* fused_op_types_str,
+                             string* fused_op_types_str, bool* fuse_by_executor,
                              string* remote_fused_graph_node_name,
                              string* remote_graph_executor_name) {
   TF_RETURN_IF_ERROR(context.GetOneStringParameter(
@@ -87,6 +87,9 @@ static Status ParseArguments(const TransformFuncContext& context,
   TF_RETURN_IF_ERROR(context.GetOneStringParameter(
       RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_FUSED_OP_TYPES, "",
       fused_op_types_str));
+  TF_RETURN_IF_ERROR(context.GetOneBoolParameter(
+      RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_FUSE_BY_EXECUTOR, false,
+      fuse_by_executor));
   TF_RETURN_IF_ERROR(context.GetOneStringParameter(
       RemoteFusedGraphExecuteUtils::
           TRANSFORM_ARG_REMOTE_FUSED_GRAPH_EXECUTOR_NAME,
@@ -140,12 +143,14 @@ Status FuseRemoteGraph(const GraphDef& input_graph_def,
   string border_inputs_str;
   string border_outputs_str;
   string fused_op_types_str;
+  bool fuse_by_executor = false;
   string remote_fused_graph_node_name;
   string remote_graph_executor_name;
   TF_RETURN_IF_ERROR(ParseArguments(
       context, &input_types_str, &input_shapes_str, &fused_nodes_str,
       &border_inputs_str, &border_outputs_str, &fused_op_types_str,
-      &remote_fused_graph_node_name, &remote_graph_executor_name));
+      &fuse_by_executor, &remote_fused_graph_node_name,
+      &remote_graph_executor_name));
 
   if (!input_types_str.empty()) {
     TF_RETURN_IF_ERROR(PlaceShapeType(inputs, outputs, input_types_str,
@@ -187,8 +192,12 @@ Status FuseRemoteGraph(const GraphDef& input_graph_def,
         mutable_input_graph_def, inputs, outputs, remote_fused_graph_node_name,
         fused_op_types, remote_graph_executor_name, require_shape_type,
         output_graph_def));
+  } else if (fuse_by_executor) {
+    TF_RETURN_IF_ERROR(RemoteFusedGraphExecuteUtils::FuseRemoteGraphByExecutor(
+        mutable_input_graph_def, inputs, outputs, remote_graph_executor_name,
+        output_graph_def));
   } else {
-    CHECK(false) << "Fuse targets are not specified.";
+    LOG(FATAL) << "Fuse targets are not specified.";
   }
 
   return Status::OK();
@@ -205,15 +214,17 @@ Status PlaceRemoteGraphArguments(const GraphDef& input_graph_def,
   string input_types_str;
   string input_shapes_str;
   string fused_nodes_str;
-  string fused_op_types_str;
   string border_inputs_str;
   string border_outputs_str;
+  string fused_op_types_str;
+  bool fuse_by_executor = false;
   string remote_fused_graph_node_name;
   string remote_graph_executor_name;
   TF_RETURN_IF_ERROR(ParseArguments(
       context, &input_types_str, &input_shapes_str, &fused_nodes_str,
       &border_inputs_str, &border_outputs_str, &fused_op_types_str,
-      &remote_fused_graph_node_name, &remote_graph_executor_name));
+      &fuse_by_executor, &remote_fused_graph_node_name,
+      &remote_graph_executor_name));
 
   if (!input_types_str.empty()) {
     TF_RETURN_IF_ERROR(PlaceShapeType(inputs, outputs, input_types_str,

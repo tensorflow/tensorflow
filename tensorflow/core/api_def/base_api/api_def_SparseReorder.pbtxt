@@ -1,0 +1,46 @@
+op {
+  graph_op_name: "SparseReorder"
+  in_arg {
+    name: "input_indices"
+    description: <<END
+2-D.  `N x R` matrix with the indices of non-empty values in a
+SparseTensor, possibly not in canonical ordering.
+END
+  }
+  in_arg {
+    name: "input_values"
+    description: <<END
+1-D.  `N` non-empty values corresponding to `input_indices`.
+END
+  }
+  in_arg {
+    name: "input_shape"
+    description: <<END
+1-D.  Shape of the input SparseTensor.
+END
+  }
+  out_arg {
+    name: "output_indices"
+    description: <<END
+2-D.  `N x R` matrix with the same indices as input_indices, but
+in canonical row-major ordering.
+END
+  }
+  out_arg {
+    name: "output_values"
+    description: <<END
+1-D.  `N` non-empty values corresponding to `output_indices`.
+END
+  }
+  summary: "Reorders a SparseTensor into the canonical, row-major ordering."
+  description: <<END
+Note that by convention, all sparse ops preserve the canonical ordering along
+increasing dimension number. The only time ordering can be violated is during
+manual manipulation of the indices and values vectors to add entries.
+
+Reordering does not affect the shape of the SparseTensor.
+
+If the tensor has rank `R` and `N` non-empty values, `input_indices` has
+shape `[N, R]`, input_values has length `N`, and input_shape has length `R`.
+END
+}

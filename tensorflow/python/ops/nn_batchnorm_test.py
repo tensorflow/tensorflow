@@ -24,6 +24,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
@@ -52,12 +53,9 @@ class BatchNormalizationTest(test.TestCase):
   def _tfBatchNormV1(self, x, m, v, beta, gamma, epsilon,
                      scale_after_normalization):
     """Original implementation."""
-    # _batch_norm_with_global_normalization is deprecated in v9
-    ops.get_default_graph().graph_def_versions.producer = 8
-    # pylint: disable=protected-access
+    test_util.set_producer_version(ops.get_default_graph(), 8)
     return gen_nn_ops._batch_norm_with_global_normalization(
         x, m, v, beta, gamma, epsilon, scale_after_normalization)
-    # pylint: enable=protected-access
 
   def _tfBatchNormV1BW(self, x, m, v, beta, gamma, epsilon,
                        scale_after_normalization):
@@ -222,8 +220,8 @@ class BatchNormalizationTest(test.TestCase):
         epsilon = 0.001
         for scale_after_normalization in [True, False]:
           # _batch_norm_with_global_normalization_grad is deprecated in v9
-          ops.get_default_graph().graph_def_versions.producer = 8
-          grad = gen_nn_ops._batch_norm_with_global_normalization_grad(
+          test_util.set_producer_version(ops.get_default_graph(), 8)
+          grad = gen_nn_ops.batch_norm_with_global_normalization_grad(
               x, m, v, gamma, backprop, epsilon, scale_after_normalization)
           dx, dm, dv, db, dg = grad
           self.assertEqual(grad.dx, dx)
@@ -293,12 +291,16 @@ class BatchNormalizationTest(test.TestCase):
             self.assertAllClose(
                 tf_batch_norm, keep_dims_tf_batch_norm, atol=0.000001)
 
-  def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.0001):
-    x_val = np.random.random_sample(x_shape).astype(np.float32)
-    m_val = np.random.random_sample(param_shape).astype(np.float32)
-    v_val = np.random.random_sample(param_shape).astype(np.float32)
-    beta_val = np.random.random_sample(param_shape).astype(np.float32)
-    gamma_val = np.random.random_sample(param_shape).astype(np.float32)
+  def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.0001,
+                                    dtype=dtypes.float32,
+                                    param_dtype=dtypes.float32):
+    numpy_dtype = dtype.as_numpy_dtype
+    numpy_param_dtype = param_dtype.as_numpy_dtype
+    x_val = np.random.random_sample(x_shape).astype(numpy_dtype)
+    m_val = np.random.random_sample(param_shape).astype(numpy_param_dtype)
+    v_val = np.random.random_sample(param_shape).astype(numpy_param_dtype)
+    beta_val = np.random.random_sample(param_shape).astype(numpy_param_dtype)
+    gamma_val = np.random.random_sample(param_shape).astype(numpy_param_dtype)
     for use_gpu in [True, False]:
       with self.test_session(use_gpu=use_gpu) as sess:
         x = constant_op.constant(x_val, name="x")
@@ -332,6 +334,10 @@ class BatchNormalizationTest(test.TestCase):
     self._testBatchNormArbitraryShapes((3, 2, 4, 5), (1, 2, 1, 1))
     self._testBatchNormArbitraryShapes(
         (2, 3, 2, 4, 5), (1, 1, 1, 4, 5), atol=0.005)
+
+  def testBatchNormMixedPrecision(self):
+    self._testBatchNormArbitraryShapes((3, 3), (1, 3), dtype=dtypes.float16,
+                                       param_dtype=dtypes.float32, atol=0.001)
 
 
 class SufficientStatisticsTest(test.TestCase):

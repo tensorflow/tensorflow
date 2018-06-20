@@ -24,6 +24,8 @@ of the subclasses.
 *   @{tf.train.ProximalAdagradOptimizer}
 *   @{tf.train.RMSPropOptimizer}
 
+See @{tf.contrib.opt} for more optimizers.
+
 ## Gradient Computation
 
 TensorFlow provides functions to compute the derivatives for a given
@@ -52,11 +54,15 @@ gradients.
 *   @{tf.global_norm}
 
 ## Decaying the learning rate
+
 *   @{tf.train.exponential_decay}
 *   @{tf.train.inverse_time_decay}
 *   @{tf.train.natural_exp_decay}
 *   @{tf.train.piecewise_constant}
 *   @{tf.train.polynomial_decay}
+*   @{tf.train.cosine_decay}
+*   @{tf.train.linear_cosine_decay}
+*   @{tf.train.noisy_linear_cosine_decay}
 
 ## Moving Averages
 

@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -45,6 +46,7 @@ _beta_sample_note = """Note: `x` must have dtype `self.dtype` and be in
 `[0, 1].` It must have a shape compatible with `self.batch_shape()`."""
 
 
+@tf_export("distributions.Beta")
 class Beta(distribution.Distribution):
   """Beta distribution.
 
@@ -148,8 +150,8 @@ class Beta(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration1, concentration0]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration1, concentration0]) as name:
       self._concentration1 = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration1, name="concentration1"),
           validate_args)
@@ -302,12 +304,11 @@ class Beta(distribution.Distribution):
     if not self.validate_args:
       return x
     return control_flow_ops.with_dependencies([
-        check_ops.assert_positive(
-            x,
-            message="sample must be positive"),
+        check_ops.assert_positive(x, message="sample must be positive"),
         check_ops.assert_less(
-            x, array_ops.ones([], self.dtype),
-            message="sample must be no larger than `1`."),
+            x,
+            array_ops.ones([], self.dtype),
+            message="sample must be less than `1`."),
     ], x)
 
 
@@ -320,9 +321,9 @@ class BetaWithSoftplusConcentration(Beta):
                validate_args=False,
                allow_nan_stats=True,
                name="BetaWithSoftplusConcentration"):
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[concentration1,
-                                      concentration0]) as ns:
+                                      concentration0]) as name:
       super(BetaWithSoftplusConcentration, self).__init__(
           concentration1=nn.softplus(concentration1,
                                      name="softplus_concentration1"),
@@ -330,7 +331,7 @@ class BetaWithSoftplusConcentration(Beta):
                                      name="softplus_concentration0"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
 

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Take a look at [this great article](http://colah.github.io/posts/2015-08-Understanding-LSTMs/)
+Take a look at [this great article](https://colah.github.io/posts/2015-08-Understanding-LSTMs/)
 for an introduction to recurrent neural networks and LSTMs in particular.
 
 ## Language Modeling
@@ -17,11 +17,11 @@ models, whilst being small and relatively fast to train.
 
 Language modeling is key to many interesting problems such as speech
 recognition, machine translation, or image captioning. It is also fun --
-take a look [here](http://karpathy.github.io/2015/05/21/rnn-effectiveness/).
+take a look [here](https://karpathy.github.io/2015/05/21/rnn-effectiveness/).
 
 For the purpose of this tutorial, we will reproduce the results from
-[Zaremba et al., 2014](http://arxiv.org/abs/1409.2329)
-([pdf](http://arxiv.org/pdf/1409.2329.pdf)), which achieves very good quality
+[Zaremba et al., 2014](https://arxiv.org/abs/1409.2329)
+([pdf](https://arxiv.org/pdf/1409.2329.pdf)), which achieves very good quality
 on the PTB dataset.
 
 ## Tutorial Files
@@ -51,28 +51,30 @@ The core of the model consists of an LSTM cell that processes one word at a
 time and computes probabilities of the possible values for the next word in the
 sentence. The memory state of the network is initialized with a vector of zeros
 and gets updated after reading each word. For computational reasons, we will
-process data in mini-batches of size `batch_size`.  In this example, it is important 
-to note that `current_batch_of_words` does not correspond to a "sentence" of words.  
-Every word in a batch should correspond to time t.  Tensorflow will automatically sum 
-the gradients of each batch for you.
+process data in mini-batches of size `batch_size`.  In this example, it is
+important to note that `current_batch_of_words` does not correspond to a
+"sentence" of words.  Every word in a batch should correspond to a time t.
+TensorFlow will automatically sum the gradients of each batch for you.
 
 For example:
+
 ```
  t=0  t=1    t=2  t=3     t=4
 [The, brown, fox, is,     quick]
 [The, red,   fox, jumped, high]
 
 words_in_dataset[0] = [The, The]
-words_in_dataset[1] = [fox, fox]
-words_in_dataset[2] = [is, jumped]
-words_in_dataset[3] = [quick, high]
-num_batches = 4, batch_size = 2, time_steps = 5
+words_in_dataset[1] = [brown, red]
+words_in_dataset[2] = [fox, fox]
+words_in_dataset[3] = [is, jumped]
+words_in_dataset[4] = [quick, high]
+batch_size = 2, time_steps = 5
 ```
 
 The basic pseudocode is as follows:
 
 ```python
-words_in_dataset = tf.placeholder(tf.float32, [num_batches, batch_size, num_features])
+words_in_dataset = tf.placeholder(tf.float32, [time_steps, batch_size, num_features])
 lstm = tf.contrib.rnn.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
 hidden_state = tf.zeros([batch_size, lstm.state_size])

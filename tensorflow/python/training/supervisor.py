@@ -23,6 +23,7 @@ import time
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -35,10 +36,16 @@ from tensorflow.python.training import coordinator
 from tensorflow.python.training import saver as saver_mod
 from tensorflow.python.training import session_manager as session_manager_mod
 from tensorflow.python.training import training_util
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.Supervisor")
 class Supervisor(object):
   """A training helper that checkpoints models and computes summaries.
+
+  This class is deprecated. Please use
+  @{tf.train.MonitoredTrainingSession} instead.
 
   The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
   and a `SessionManager` that takes care of common needs of TensorFlow
@@ -147,14 +154,14 @@ class Supervisor(object):
   Example: Start a thread to print losses.  We want this thread to run
   every 60 seconds, so we launch it with `sv.loop()`.
 
-    ```python
-    ...
-    sv = Supervisor(logdir='/tmp/mydir')
-    with sv.managed_session(FLAGS.master) as sess:
-      sv.loop(60, print_loss, (sess, ))
-      while not sv.should_stop():
-        sess.run(my_train_op)
-    ```
+  ```python
+  ...
+  sv = Supervisor(logdir='/tmp/mydir')
+  with sv.managed_session(FLAGS.master) as sess:
+    sv.loop(60, print_loss, (sess, ))
+    while not sv.should_stop():
+      sess.run(my_train_op)
+  ```
 
   ##### Launching fewer services
 
@@ -166,22 +173,22 @@ class Supervisor(object):
 
   Example: Create summaries manually every 100 steps in the chief.
 
-    ```python
-    # Create a Supervisor with no automatic summaries.
-    sv = Supervisor(logdir='/tmp/mydir', is_chief=is_chief, summary_op=None)
-    # As summary_op was None, managed_session() does not start the
-    # summary thread.
-    with sv.managed_session(FLAGS.master) as sess:
-      for step in xrange(1000000):
-        if sv.should_stop():
-          break
-        if is_chief and step % 100 == 0:
-          # Create the summary every 100 chief steps.
-          sv.summary_computed(sess, sess.run(my_summary_op))
-        else:
-          # Train normally
-          sess.run(my_train_op)
-    ```
+  ```python
+  # Create a Supervisor with no automatic summaries.
+  sv = Supervisor(logdir='/tmp/mydir', is_chief=is_chief, summary_op=None)
+  # As summary_op was None, managed_session() does not start the
+  # summary thread.
+  with sv.managed_session(FLAGS.master) as sess:
+    for step in xrange(1000000):
+      if sv.should_stop():
+        break
+      if is_chief and step % 100 == 0:
+        # Create the summary every 100 chief steps.
+        sv.summary_computed(sess, sess.run(my_summary_op))
+      else:
+        # Train normally
+        sess.run(my_train_op)
+  ```
 
   ##### Custom model initialization
 
@@ -197,6 +204,8 @@ class Supervisor(object):
   # the default behavior should be used.
   USE_DEFAULT = 0
 
+  @deprecation.deprecated(None,
+                          "Please switch to tf.train.MonitoredTrainingSession")
   def __init__(self,
                graph=None,
                ready_op=USE_DEFAULT,
@@ -216,7 +225,8 @@ class Supervisor(object):
                checkpoint_basename="model.ckpt",
                session_manager=None,
                summary_writer=USE_DEFAULT,
-               init_fn=None):
+               init_fn=None,
+               local_init_run_options=None):
     """Create a `Supervisor`.
 
     Args:
@@ -285,10 +295,21 @@ class Supervisor(object):
       init_fn: Optional callable used to initialize the model. Called
         after the optional `init_op` is called.  The callable must accept one
         argument, the session being initialized.
+      local_init_run_options: RunOptions to be passed as the SessionManager
+        local_init_run_options parameter.
 
     Returns:
       A `Supervisor`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    `Supervisor`s are not supported when eager execution is enabled.
+    @end_compatibility
     """
+    if context.executing_eagerly():
+      raise RuntimeError("Supervisors are compatible with eager execution.")
     # Set default values of arguments.
     if graph is None:
       graph = ops.get_default_graph()
@@ -309,6 +330,7 @@ class Supervisor(object):
     self._recovery_wait_secs = recovery_wait_secs
     self._stop_grace_secs = stop_grace_secs
     self._init_fn = init_fn
+    self._local_init_run_options = local_init_run_options
 
     # Set all attributes related to checkpointing and writing events to None.
     # Afterwards, set them appropriately for chief supervisors, as these are
@@ -344,7 +366,8 @@ class Supervisor(object):
           ready_op=self._ready_op,
           ready_for_local_init_op=self._ready_for_local_init_op,
           graph=self._graph,
-          recovery_wait_secs=self._recovery_wait_secs)
+          recovery_wait_secs=self._recovery_wait_secs,
+          local_init_run_options=self._local_init_run_options)
     else:
       self._session_manager = session_manager
 
@@ -735,7 +758,17 @@ class Supervisor(object):
 
     Returns:
       The list of threads started for the `QueueRunners`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    Queues are not compatible with eager execution. To ingest data when eager
+    execution is enabled, use the `tf.data` API.
+    @end_compatibility
     """
+    if context.executing_eagerly():
+      raise RuntimeError("Queues are not compatible with eager execution.")
     if queue_runners is None:
       queue_runners = self._graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS)
     threads = []
@@ -768,7 +801,10 @@ class Supervisor(object):
     looper.start()
     return looper
 
-  def stop(self, threads=None, close_summary_writer=True):
+  def stop(self,
+           threads=None,
+           close_summary_writer=True,
+           ignore_live_threads=False):
     """Stop the services and the coordinator.
 
     This does not close the session.
@@ -782,14 +818,19 @@ class Supervisor(object):
       close_summary_writer: Whether to close the `summary_writer`.  Defaults to
         `True` if the summary writer was created by the supervisor, `False`
         otherwise.
+      ignore_live_threads: If `True` ignores threads that remain running after
+        a grace period when joining threads via the coordinator, instead of
+        raising a RuntimeError.
     """
     self._coord.request_stop()
     try:
       # coord.join() re-raises the first reported exception; the "finally"
       # block ensures that we clean up whether or not an exception was
       # reported.
-      self._coord.join(threads,
-                       stop_grace_period_secs=self._stop_grace_secs)
+      self._coord.join(
+          threads,
+          stop_grace_period_secs=self._stop_grace_secs,
+          ignore_live_threads=ignore_live_threads)
     finally:
       # Close the writer last, in case one of the running threads was using it.
       if close_summary_writer and self._summary_writer:

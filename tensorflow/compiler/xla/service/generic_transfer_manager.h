@@ -36,46 +36,44 @@ namespace xla {
 // infeed.
 class GenericTransferManager : public TransferManager {
  public:
-  explicit GenericTransferManager(
-      perftools::gputools::Platform::Id platform_id);
+  GenericTransferManager(se::Platform::Id platform_id, size_t pointer_size);
   ~GenericTransferManager() override {}
 
-  perftools::gputools::Platform::Id PlatformId() const override;
+  se::Platform::Id PlatformId() const override;
 
-  Status TransferLiteralFromDevice(
-      perftools::gputools::StreamExecutor* executor,
-      const perftools::gputools::DeviceMemoryBase& source,
-      const Shape& device_shape, const Shape& literal_shape,
-      Literal* literal) override;
+  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
+      se::StreamExecutor* executor, const ShapedBuffer& device_buffer) override;
 
-  Status TransferLiteralToDevice(
-      perftools::gputools::StreamExecutor* executor, const Literal& literal,
-      perftools::gputools::DeviceMemoryBase* destination) override;
+  Status TransferLiteralToDevice(se::StreamExecutor* executor,
+                                 const LiteralSlice& literal,
+                                 const ShapedBuffer& device_buffer) override;
 
-  Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
-                                 const Literal& literal) override;
-  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
-                                int64 size, const void* source) override;
-
-  Status TransferLiteralFromOutfeed(
-      perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
-      Literal* literal) override;
+  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                 const LiteralSlice& literal) override;
+  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
+                                    const Shape& literal_shape,
+                                    Literal* literal) override;
 
   Status ResetDevices(
-      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-          executors) override;
+      tensorflow::gtl::ArraySlice<se::StreamExecutor*> executors) override;
 
-  StatusOr<std::vector<perftools::gputools::DeviceMemoryBase>>
-  ShallowCopyTupleFromDevice(
-      perftools::gputools::StreamExecutor* executor,
-      const perftools::gputools::DeviceMemoryBase& source,
-      const Shape& shape) override;
+  int64 GetByteSizeRequirement(const Shape& shape) const override;
 
-  int64 GetByteSizeRequirement(const Shape& shape) override;
+ protected:
+  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
+                                const void* source) override;
+
+  Status WriteSingleTupleIndexTable(
+      se::StreamExecutor* executor,
+      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+      const Shape& shape, se::DeviceMemoryBase* region) override;
 
  private:
   // The platform this transfer manager targets.
-  perftools::gputools::Platform::Id platform_id_;
+  const se::Platform::Id platform_id_;
+
+  // The size in bytes of pointers on this platform.
+  const size_t pointer_size_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GenericTransferManager);
 };

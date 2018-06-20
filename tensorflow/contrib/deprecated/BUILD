@@ -11,35 +11,22 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "deprecated_py",
-    srcs = [
-        "__init__.py",
-    ],
+    srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:logging_ops"],
+    deps = [
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:util",
+    ],
 )
 
 py_test(
     name = "summaries_test",
-    size = "small",
     srcs = ["summaries_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":deprecated_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:logging_ops",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

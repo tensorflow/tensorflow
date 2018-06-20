@@ -19,11 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.python.ops.distributions.bijector_impl import *
-# pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
+# pylint: disable=wildcard-import,unused-import
+from tensorflow.python.ops.distributions.bijector_impl import Bijector
 
-_allowed_symbols = ["Bijector"]
-
-remove_undocumented(__name__, _allowed_symbols)
+# pylint: enable=wildcard-import,unused-import

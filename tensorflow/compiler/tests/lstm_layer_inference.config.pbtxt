@@ -1,4 +1,4 @@
-# Text form of tensorflow.tfcompile.Config proto.
+# Text form of tensorflow.tf2xla.Config proto.
 feed{ id{node_name:"inputs/x_seq_0/read"} shape{dim{size:128}dim{size:1024}} }
 feed{ id{node_name:"inputs/x_seq_1/read"} shape{dim{size:128}dim{size:1024}} }
 feed{ id{node_name:"inputs/x_seq_2/read"} shape{dim{size:128}dim{size:1024}} }
