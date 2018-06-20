@@ -1493,6 +1493,7 @@ bool HloInstruction::IdenticalSlowPath(
       return protobuf_util::ProtobufEquals(padding_config(),
                                            other.padding_config());
     case HloOpcode::kCall:
+      return eq_computations(to_apply(), other.to_apply());
     case HloOpcode::kCrossReplicaSum:
       return replica_group_ids() == other.replica_group_ids() &&
              cross_replica_sum_barrier() == other.cross_replica_sum_barrier() &&
