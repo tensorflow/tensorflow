@@ -440,7 +440,7 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
 #endif
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
-    TF_RETURN_IF_ERROR(ConvertSubGraphDefToEngine(
+    TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
         info.segment_graph_def, info.precision_mode, shapes, builder.get(),
         &engine, /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());

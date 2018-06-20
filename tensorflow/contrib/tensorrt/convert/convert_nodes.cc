@@ -2129,7 +2129,7 @@ void Converter::register_op_converters() {
 
 }  // namespace
 
-tensorflow::Status ConvertSubGraphDefToEngine(
+tensorflow::Status ConvertGraphDefToEngine(
     const tensorflow::GraphDef& gdef, int precision_mode,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
     nvinfer1::IBuilder* builder,

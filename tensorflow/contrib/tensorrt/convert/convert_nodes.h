@@ -118,7 +118,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
 // - convert_successfully: indicates whether the converson to TensorRT network
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
-tensorflow::Status ConvertSubGraphDefToEngine(
+tensorflow::Status ConvertGraphDefToEngine(
     const tensorflow::GraphDef& gdef, int precision_mode,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
     nvinfer1::IBuilder* builder,
