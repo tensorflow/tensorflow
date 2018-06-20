@@ -147,7 +147,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
                            partitioner=lambda shape, dtype: [5, 1])
 
   # Initialize all variables in `new_scope_1` from `old_scope_1`.
-  init_from_checkpoint('/tmp/model.ckpt', {'old_scope_1/', 'new_scope_1'})
+  init_from_checkpoint('/tmp/model.ckpt', {'old_scope_1/': 'new_scope_1'})
 
   # Use names to specify which variables to initialize from checkpoint.
   init_from_checkpoint('/tmp/model.ckpt',
