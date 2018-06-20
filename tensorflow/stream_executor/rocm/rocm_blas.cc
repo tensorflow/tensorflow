@@ -237,10 +237,10 @@ namespace wrap {
   __macro(rocblas_strmm)                    \
   __macro(rocblas_dtrmm)                    \
   __macro(rocblas_ctrmm)                    \
-  __macro(rocblas_ztrmm)                    \
+  __macro(rocblas_ztrmm)                    */ \
   __macro(rocblas_sgeam)                    \
   __macro(rocblas_dgeam)                    \
-  __macro(rocblas_cgeam)                    \
+/*  __macro(rocblas_cgeam)                    \
   __macro(rocblas_zgeam)                    \
   __macro(rocblas_sdgmm)                    \
   __macro(rocblas_ddgmm)                    \
