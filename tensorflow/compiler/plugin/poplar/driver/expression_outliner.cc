@@ -102,11 +102,6 @@ ReplacedInstructions ExpressionOutliner::ReplaceNodes(
 
 StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   HloComputation* comp = module->entry_computation();
-  XLA_VLOG_LINES(1, module->entry_computation()->ToString());
-
-  for (auto* i:inplace_instructions) {
-    LOG(INFO) << "INPLACE INSTRUCTION " << i->name();
-  }
 
   std::list<HloInstruction*> all_ops;
   for (auto* inst : comp->MakeInstructionPostOrder()) {
