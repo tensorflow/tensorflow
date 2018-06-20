@@ -45,6 +45,7 @@ class Wrapper(Layer):
   """
 
   def __init__(self, layer, **kwargs):
+    assert isinstance(layer, Layer)
     self.layer = layer
     self._track_checkpointable(layer, name='layer')
     # Tracks mapping of Wrapper inputs to inner layer inputs. Useful when
@@ -155,9 +156,16 @@ class TimeDistributed(Wrapper):
 
   Arguments:
       layer: a layer instance.
+
+  Raises:
+      ValueError: If not initialized with a `Layer` instance.
   """
 
   def __init__(self, layer, **kwargs):
+    if not isinstance(layer, Layer):
+      raise ValueError(
+          'Please initialize `TimeDistributed` layer with a '
+          '`Layer` instance. You passed: {input}'.format(input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
 
@@ -250,7 +258,8 @@ class Bidirectional(Wrapper):
           they will be returned as a list.
 
   Raises:
-      ValueError: In case of invalid `merge_mode` argument.
+      ValueError: If not initialized with a `Layer` instance or
+          In case of invalid `merge_mode` argument.
 
   Examples:
 
@@ -266,6 +275,10 @@ class Bidirectional(Wrapper):
   """
 
   def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
+    if not isinstance(layer, Layer):
+      raise ValueError(
+          'Please initialize `Bidirectional` layer with a '
+          '`Layer` instance. You passed: {input}'.format(input=layer))
     if merge_mode not in ['sum', 'mul', 'ave', 'concat', None]:
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '

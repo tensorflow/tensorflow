@@ -23,6 +23,7 @@ import copy
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training.checkpointable import util as checkpointable_util
@@ -101,6 +102,13 @@ class TimeDistributedTest(test.TestCase):
         np.random.random((10, 3, 2)),
         epochs=1,
         batch_size=10)
+
+  def test_timedistributed_invalid_init(self):
+    x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Please initialize `TimeDistributed` layer with a `Layer` instance.'):
+      keras.layers.TimeDistributed(x)
 
   def test_timedistributed_conv2d(self):
     with self.test_session():
@@ -224,6 +232,13 @@ class BidirectionalTest(test.TestCase):
         model.get_config()
         model = keras.models.model_from_json(model.to_json())
         model.summary()
+
+  def test_bidirectional_invalid_init(self):
+    x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Please initialize `Bidirectional` layer with a `Layer` instance.'):
+      keras.layers.Bidirectional(x)
 
   def test_bidirectional_weight_loading(self):
     rnn = keras.layers.SimpleRNN
