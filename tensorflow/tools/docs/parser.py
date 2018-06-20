@@ -1166,7 +1166,7 @@ class _ClassPageInfo(object):
       if short_name in [
           '__class__', '__base__', '__weakref__', '__doc__', '__module__',
           '__dict__', '__abstractmethods__', '__slots__', '__getnewargs__',
-          '__str__', '__repr__', '__hash__'
+          '__str__', '__repr__', '__hash__', '__reduce__'
       ]:
         continue
 
@@ -1370,7 +1370,8 @@ class _ModulePageInfo(object):
     for name in member_names:
 
       if name in ['__builtins__', '__doc__', '__file__',
-                  '__name__', '__path__', '__package__']:
+                  '__name__', '__path__', '__package__',
+                  '__cached__', '__loader__', '__spec__']:
         continue
 
       member_full_name = self.full_name + '.' + name if self.full_name else name
