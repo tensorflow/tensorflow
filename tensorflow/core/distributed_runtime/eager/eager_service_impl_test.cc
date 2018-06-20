@@ -122,15 +122,20 @@ tensorflow::FunctionDef MatMulFunction() {
 TEST(EagerServiceImplTest, BasicTest) {
   WorkerEnv worker_env;
   worker_env.env = Env::Default();
-  tensorflow::RpcRendezvousMgr rm(&worker_env);
-  worker_env.rendezvous_mgr = &rm;
-
+  
+  Status cons_status;
   TestEagerServiceImpl eager_service_impl(&worker_env);
 
   CreateContextRequest request;
   request.mutable_server_def()->set_job_name("localhost");
   request.mutable_server_def()->set_task_index(0);
   CreateContextResponse response;
+
+  cons_status = eager_service_impl.CreateContext(&request, &response);
+  EXPECT_EQ(cons_status.error_message(), "invalid eager env_ or env_->rendezvous_mgr.");
+
+  tensorflow::RpcRendezvousMgr rm(&worker_env);
+  worker_env.rendezvous_mgr = &rm; 
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
