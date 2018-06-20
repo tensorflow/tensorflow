@@ -60,9 +60,9 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Workaround: use HIP PR#457 and then build from source
+# Workaround: build HIP from source
 RUN cd ~ && git clone https://github.com/GPUOpen-ProfessionalCompute-Tools/HIP.git
-RUN cd ~/HIP && git fetch origin pull/457/head:pr457 && git checkout pr457 && mkdir -p build && cd build && cmake .. && make package -j && dpkg -i *.deb
+RUN cd ~/HIP && mkdir -p build && cd build && cmake .. && make package -j && dpkg -i *.deb
 
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
