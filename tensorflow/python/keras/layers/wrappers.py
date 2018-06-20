@@ -46,6 +46,7 @@ class Wrapper(Layer):
 
   def __init__(self, layer, **kwargs):
     self.layer = layer
+    self._track_checkpointable(layer, name='layer')
     # Tracks mapping of Wrapper inputs to inner layer inputs. Useful when
     # the inner layer has update ops that depend on its inputs (as opposed
     # to the inputs to the Wrapper layer).

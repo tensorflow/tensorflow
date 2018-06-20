@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
+from tensorflow.python.training.checkpointable import util as checkpointable_util
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
@@ -84,6 +85,10 @@ class TimeDistributedTest(test.TestCase):
 
     # test config
     model.get_config()
+
+    checkpointed_objects = set(checkpointable_util.list_objects(model))
+    for v in model.variables:
+      self.assertIn(v, checkpointed_objects)
 
   def test_timedistributed_static_batch_size(self):
     model = keras.models.Sequential()
