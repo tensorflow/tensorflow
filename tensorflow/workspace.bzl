@@ -107,11 +107,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/267806ed9b4f.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/267806ed9b4f.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/7a835107faf8.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/7a835107faf8.tar.gz",
       ],
-      sha256 = "ade57357093463cab9e4e51cd5749c81483a75451b1471a3ebc73f9c1d14043b",
-      strip_prefix = "eigen-eigen-267806ed9b4f",
+      sha256 = "1c65c3d9b4eb8d95ea3a4f9d3968eaf567be22fe8c445db173665d2a25d47263",
+      strip_prefix = "eigen-eigen-7a835107faf8",
       build_file = clean_dep("//third_party:eigen.BUILD"),
   )
 
@@ -331,11 +331,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "protobuf_archive",
       urls = [
-          "https://mirror.bazel.build/github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
-          "https://github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
+          "https://mirror.bazel.build/github.com/google/protobuf/archive/v3.6.0.tar.gz",
+          "https://github.com/google/protobuf/archive/v3.6.0.tar.gz",
       ],
-      sha256 = "846d907acf472ae233ec0882ef3a2d24edbbe834b80c305e867ac65a1f2c59e3",
-      strip_prefix = "protobuf-396336eb961b75f03b25824fe86cf6490fb75e3a",
+      sha256 = "50a5753995b3142627ac55cfd496cebc418a2e575ca0236e29033c67bd5665f4",
+      strip_prefix = "protobuf-3.6.0",
   )
 
   # We need to import the protobuf library under the names com_google_protobuf
@@ -344,31 +344,31 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "com_google_protobuf",
       urls = [
-          "https://mirror.bazel.build/github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
-          "https://github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
+          "https://mirror.bazel.build/github.com/google/protobuf/archive/v3.6.0.tar.gz",
+          "https://github.com/google/protobuf/archive/v3.6.0.tar.gz",
       ],
-      sha256 = "846d907acf472ae233ec0882ef3a2d24edbbe834b80c305e867ac65a1f2c59e3",
-      strip_prefix = "protobuf-396336eb961b75f03b25824fe86cf6490fb75e3a",
+      sha256 = "50a5753995b3142627ac55cfd496cebc418a2e575ca0236e29033c67bd5665f4",
+      strip_prefix = "protobuf-3.6.0",
   )
 
   tf_http_archive(
       name = "com_google_protobuf_cc",
       urls = [
-          "https://mirror.bazel.build/github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
-          "https://github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz",
+          "https://mirror.bazel.build/github.com/google/protobuf/archive/v3.6.0.tar.gz",
+          "https://github.com/google/protobuf/archive/v3.6.0.tar.gz",
       ],
-      sha256 = "846d907acf472ae233ec0882ef3a2d24edbbe834b80c305e867ac65a1f2c59e3",
-      strip_prefix = "protobuf-396336eb961b75f03b25824fe86cf6490fb75e3a",
+      sha256 = "50a5753995b3142627ac55cfd496cebc418a2e575ca0236e29033c67bd5665f4",
+      strip_prefix = "protobuf-3.6.0",
   )
 
   tf_http_archive(
       name = "nsync",
       urls = [
-          "https://mirror.bazel.build/github.com/google/nsync/archive/0559ce013feac8db639ee1bf776aca0325d28777.tar.gz",
-          "https://github.com/google/nsync/archive/0559ce013feac8db639ee1bf776aca0325d28777.tar.gz",
+          "https://mirror.bazel.build/github.com/google/nsync/archive/5e8b19a81e5729922629dd505daa651f6ffdf107.tar.gz",
+          "https://github.com/google/nsync/archive/5e8b19a81e5729922629dd505daa651f6ffdf107.tar.gz",
       ],
-      sha256 = "6284454c5cd8b1dae2eeb8cf5eb63004de930b5427ed5f6b1aa793513df6b361",
-      strip_prefix = "nsync-0559ce013feac8db639ee1bf776aca0325d28777",
+      sha256 = "2723e6db509779fcf05bd01556e51f2e5179197e2c864cd8010f6b7100a5b1e1",
+      strip_prefix = "nsync-5e8b19a81e5729922629dd505daa651f6ffdf107",
   )
 
   tf_http_archive(
@@ -452,12 +452,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/45a02a4f8474b4b8c5cc106b5cecb06cf6e1b3c6.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/45a02a4f8474b4b8c5cc106b5cecb06cf6e1b3c6.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/a587557962e93552e1a8b9270b435b021891e9cd.tar.gz",
+	  "https://github.com/llvm-mirror/llvm/archive/a587557962e93552e1a8b9270b435b021891e9cd.tar.gz",
       ],
-      sha256 = "056f7316a354d1f95e013176bd9b8be74e8f4d47fb0d908e0e742613187dbd59",
-      strip_prefix = "llvm-45a02a4f8474b4b8c5cc106b5cecb06cf6e1b3c6",
-      build_file = clean_dep("//third_party/llvm:llvm.BUILD"),
+      sha256 = "5cf25652e8913e88ce2fb02f1186affd25cf5c1cb2146f9754881daaf3450ddb",
+      strip_prefix = "llvm-a587557962e93552e1a8b9270b435b021891e9cd",
+      build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
   )
 
   tf_http_archive(
@@ -763,6 +763,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       build_file = clean_dep("//third_party:tflite_ovic_testdata.BUILD"),
       strip_prefix = "ovic",
+  )
+
+  tf_http_archive(
+      name = "build_bazel_rules_android",
+      sha256 = "cd06d15dd8bb59926e4d65f9003bfc20f9da4b2519985c27e190cddc8b7a7806",
+      urls = [
+          "https://mirror.bazel.build/github.com/bazelbuild/rules_android/archive/v0.1.1.zip",
+          "https://github.com/bazelbuild/rules_android/archive/v0.1.1.zip",
+      ],
+      strip_prefix = "rules_android-0.1.1",
   )
 
   ##############################################################################

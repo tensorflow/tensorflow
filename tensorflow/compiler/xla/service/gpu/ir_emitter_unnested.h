@@ -67,7 +67,6 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleDot(HloInstruction* dot) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleGather(HloInstruction* gather) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;

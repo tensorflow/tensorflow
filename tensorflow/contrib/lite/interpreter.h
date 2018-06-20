@@ -39,6 +39,10 @@ constexpr TfLiteType typeToTfLiteType<int>() {
   return kTfLiteInt32;
 }
 template <>
+constexpr TfLiteType typeToTfLiteType<int16_t>() {
+  return kTfLiteInt16;
+}
+template <>
 constexpr TfLiteType typeToTfLiteType<int64_t>() {
   return kTfLiteInt64;
 }
@@ -588,6 +592,11 @@ class Interpreter {
   std::unique_ptr<MemoryPlanner> memory_planner_;
 
   bool allow_buffer_handle_output_ = false;
+
+  // Tracking bit for whether a tensor was resized in the course of an op
+  // invocation. This is a useful hint to ensure that dynamic tensor outputs
+  // trigger downstream reallocation after op invocation.
+  bool tensor_resized_since_op_invoke_ = false;
 
   // Profiler for this interpreter instance.
   profiling::Profiler* profiler_;

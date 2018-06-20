@@ -240,6 +240,12 @@ class HloSharding {
         tuple_(false),
         tile_shape_(),
         tile_assignment_({0}) {}
+  // device_id values:
+  // -2: magic number to mean unassigned device, used by spatial partitioning
+  // -1: the id of the host
+  //  0 or positive: the id of a device
+  // NOTE(dimvar): -1 is needed for outside compilation. It can be removed once
+  // we have fully switched to the side-effect tokens.
   explicit HloSharding(int64 device_id)
       : replicated_(false),
         maximal_(true),

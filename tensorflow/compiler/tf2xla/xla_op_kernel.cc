@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {
 
@@ -87,6 +88,25 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   }
   const XlaExpression* expression = CastExpressionFromTensor(tensor);
 
+  auto copy_tensor_to_literal = [](const Tensor& tensor,
+                                   xla::Literal* literal) {
+    xla::Shape literal_shape;
+    TF_RETURN_IF_ERROR(
+        TensorShapeToXLAShape(tensor.dtype(), tensor.shape(), &literal_shape));
+
+    *literal = xla::Literal(literal_shape);
+
+    // memcpy over the payload ...
+    // TODO(phawkins): handle string types.
+    size_t total_bytes = tensor.TotalBytes();
+    if (total_bytes > 0) {
+      void* dst_ptr = literal->untyped_data();
+      const void* src_ptr = DMAHelper::base(&tensor);
+      memcpy(dst_ptr, src_ptr, total_bytes);
+    }
+    return Status::OK();
+  };
+
   // If the tensor has a known constant value, there is no need to invoke XLA.
   if (expression->has_constant_value()) {
     Tensor temp(tensor.dtype());
@@ -95,13 +115,15 @@ Status XlaOpKernelContext::ConstantInputReshaped(
       // with the enclosing Tensor.
       return errors::Internal("Incompatible shapes in ConstantInputReshaped.");
     }
-    return HostTensorToLiteral(temp, constant_literal);
+
+    return copy_tensor_to_literal(temp, constant_literal);
   }
 
   // Make sure we treat zero-element tensors as constant.
   if (new_shape.num_elements() == 0) {
     Tensor temp(tensor.dtype(), new_shape);
-    return HostTensorToLiteral(temp, constant_literal);
+
+    return copy_tensor_to_literal(temp, constant_literal);
   }
 
   xla::XlaOp handle = expression->handle();
@@ -162,7 +184,8 @@ Status XlaOpKernelContext::ConstantInputReshaped(
 }
 
 // Converts an int32 or int64 scalar literal to an int64.
-static Status LiteralToInt64Scalar(const xla::Literal& literal, int64* out) {
+static Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
+                                   int64* out) {
   if (xla::ShapeUtil::Rank(literal.shape()) != 0) {
     return errors::InvalidArgument("value is not a scalar");
   }
@@ -177,7 +200,8 @@ static Status LiteralToInt64Scalar(const xla::Literal& literal, int64* out) {
 }
 
 // Converts an float32 or float64 scalar literal to a float64.
-static Status LiteralToFloat64Scalar(const xla::Literal& literal, double* out) {
+static Status LiteralToFloat64Scalar(const xla::LiteralSlice& literal,
+                                     double* out) {
   if (xla::ShapeUtil::Rank(literal.shape()) != 0) {
     return errors::InvalidArgument("value is not a scalar");
   }
@@ -204,7 +228,7 @@ Status XlaOpKernelContext::ConstantInputAsFloatScalar(int index, double* out) {
 }
 
 // Converts an int32 or int64 1D literal to an int64 vector.
-static Status LiteralToInt64Vector(const xla::Literal& literal,
+static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                    std::vector<int64>* out) {
   if (xla::ShapeUtil::Rank(literal.shape()) != 1) {
     return errors::InvalidArgument("value is not 1D");
@@ -368,8 +392,9 @@ void XlaOpKernelContext::SetOutput(int index, const xla::XlaOp& handle) {
 void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
   const TensorShape& shape = constant.shape();
 
-  xla::Literal literal;
-  OP_REQUIRES_OK(context_, HostTensorToLiteral(constant, &literal));
+  xla::BorrowingLiteral literal;
+  OP_REQUIRES_OK(context_, HostTensorToBorrowingLiteral(constant, &literal));
+
   xla::XlaOp handle = builder()->ConstantLiteral(literal);
   CHECK_NE(handle.builder(), nullptr);
 

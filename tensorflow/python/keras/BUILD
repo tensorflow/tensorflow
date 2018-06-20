@@ -549,7 +549,7 @@ py_test(
 
 py_test(
     name = "gru_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/gru_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # http://b/62136390

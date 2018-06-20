@@ -1134,22 +1134,12 @@ inline void Add(int left_shift, const uint8* input1_data,
   }
 }
 
-template <FusedActivationFunctionType Ac>
 inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
                 int input1_shift, const int16* input2_data,
                 const Dims<4>& input2_dims, int input2_shift,
                 int16 output_activation_min, int16 output_activation_max,
                 int16* output_data, const Dims<4>& output_dims) {
-  static_assert(Ac == FusedActivationFunctionType::kNone ||
-                    Ac == FusedActivationFunctionType::kRelu ||
-                    Ac == FusedActivationFunctionType::kRelu6 ||
-                    Ac == FusedActivationFunctionType::kRelu1,
-                "");
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  if (Ac == FusedActivationFunctionType::kNone) {
-    TFLITE_DCHECK_EQ(output_activation_min, -32768);
-    TFLITE_DCHECK_EQ(output_activation_max, 32767);
-  }
 
   const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
@@ -1173,6 +1163,28 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
         output_activation_max, std::max(output_activation_min, raw_output));
     output_data[i] = clamped_output;
   }
+}
+
+template <FusedActivationFunctionType Ac>
+inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
+                int input1_shift, const int16* input2_data,
+                const Dims<4>& input2_dims, int input2_shift,
+                int16 output_activation_min, int16 output_activation_max,
+                int16* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, -32768);
+    TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  }
+
+  Add(input1_data, input1_dims, input1_shift, input2_data, input2_dims,
+      input2_shift, output_activation_min, output_activation_max, output_data,
+      output_dims);
 }
 
 // TODO(jiawen): We can implement BroadcastAdd on buffers of arbitrary
@@ -1755,7 +1767,6 @@ template <FusedActivationFunctionType Ac, typename Scalar>
 void Concatenation(int concat_dim, const Scalar* const* input_data,
                    const Dims<4>* const* input_dims, int inputs_count,
                    Scalar* output_data, const Dims<4>& output_dims) {
-  TFLITE_DCHECK_GT(inputs_count, 1);
   int concat_size = 0;
   for (int i = 0; i < inputs_count; i++) {
     for (int j = 0; j < 4; j++) {
@@ -1766,7 +1777,9 @@ void Concatenation(int concat_dim, const Scalar* const* input_data,
     concat_size += ArraySize(*input_dims[i], concat_dim);
   }
   TFLITE_DCHECK_EQ(concat_size, ArraySize(output_dims, concat_dim));
-  TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  // For now we don't have a model with a Concatenation with fused activation.
+  TFLITE_DCHECK_EQ(Ac, FusedActivationFunctionType::kNone);
   int outer_size = 1;
   for (int i = concat_dim + 1; i < 4; i++) {
     outer_size *= output_dims.sizes[i];
@@ -3523,8 +3536,6 @@ inline void Exp(const T* input_data, const size_t num_elements,
 }
 
 // A generic reduce method that can be used for reduce_sum, reduce_mean, etc.
-// It takes a reducer function as input and returns false when numeric overflow
-// is detected.
 // This method iterates through input data and reduce elements along the
 // dimensions given in axis.
 template <typename In, typename Out>
@@ -3532,8 +3543,7 @@ inline bool Reduce(const In* input_data, const int* input_dims,
                    const int* output_dims, const int input_num_dims,
                    const int output_num_dims, const int* axis,
                    const int num_axis, int* input_iter,
-                   Out reducer(Out current, const In in, bool* overflow),
-                   Out* output_data) {
+                   Out reducer(Out current, const In in), Out* output_data) {
   // Reset input iterator.
   TFLITE_DCHECK(input_num_dims > 0);
   for (int idx = 0; idx < input_num_dims; ++idx) {
@@ -3545,10 +3555,8 @@ inline bool Reduce(const In* input_data, const int* input_dims,
         ReducedOutputOffset(input_num_dims, input_dims, input_iter, 0, nullptr);
     size_t output_offset = ReducedOutputOffset(input_num_dims, input_dims,
                                                input_iter, num_axis, axis);
-    bool overflow = false;
-    output_data[output_offset] = reducer(output_data[output_offset],
-                                         input_data[input_offset], &overflow);
-    if (overflow) return false;
+    output_data[output_offset] =
+        reducer(output_data[output_offset], input_data[input_offset]);
   } while (NextIndex(input_num_dims, input_dims, input_iter));
   return true;
 }
@@ -3583,13 +3591,46 @@ inline bool ReduceSumImpl(const In* input_data, const int* input_dims,
                           const int output_num_dims, const int* axis,
                           const int num_axis, int* input_iter,
                           Out* output_data) {
-  auto reducer = [](Out current, const In in, bool* overflow) -> Out {
+  auto reducer = [](Out current, const In in) -> Out {
     const Out actual_in = static_cast<Out>(in);
     return current + actual_in;
   };
   return Reduce<In, Out>(input_data, input_dims, output_dims, input_num_dims,
                          output_num_dims, axis, num_axis, input_iter, reducer,
                          output_data);
+}
+
+// Computes the sum of elements across dimensions given in axis.
+template <typename T>
+inline bool Sum(const T* input_data, const int* input_dims,
+                const int input_num_dims, T* output_data,
+                const int* output_dims, const int output_num_dims,
+                const int* axis, const int num_axis_dimensions, bool keep_dims,
+                int* temp_index, int* resolved_axis) {
+  // Reset output data.
+  size_t num_outputs = 1;
+  for (int idx = 0; idx < output_num_dims; ++idx) {
+    size_t current = static_cast<size_t>(output_dims[idx]);
+    // Overflow prevention.
+    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
+      return false;
+    }
+    num_outputs *= current;
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = T();
+  }
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
+                   &num_resolved_axis)) {
+    return false;
+  }
+
+  return ReduceSumImpl<T, T>(input_data, input_dims, output_dims,
+                             input_num_dims, output_num_dims, resolved_axis,
+                             num_resolved_axis, temp_index, output_data);
 }
 
 // Computes the mean of elements across dimensions given in axis.
@@ -3794,7 +3835,7 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
 
 template <typename T>
 void Transpose(const T* input, const Dims<4>& input_dims, T* output,
-               const Dims<4>& output_dims, int* permuted_axes) {
+               const Dims<4>& output_dims, const int* permuted_axes) {
   int out_sizes[4];
   // Compute the inverse permutation array so we can do an output centered
   // transpose. Also, check to make sure output_dims is matching input_dims.
@@ -3844,7 +3885,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   // computing their influence on the output, rather than looping through the
   // output elements in the typical "gather" access pattern of a conv. We
   // therefore must initialize the output array to zero.
-  for (int i = 0; i < FlatSize(output_dims); i++) {
+  const int num_elements = FlatSize(output_dims);
+  for (int i = 0; i < num_elements; i++) {
     output_data[i] = 0.0f;
   }
 

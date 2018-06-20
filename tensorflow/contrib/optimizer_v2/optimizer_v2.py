@@ -211,8 +211,9 @@ class _OptimizerV2State(object):
     # This dict starts with a single item with key "None" with the hyper
     # parameter value converted to a Tensor. Other items have dtype keys
     # with that Tensor cast to that dtype.
-    self._hyper = {name: {None: ops.convert_to_tensor(value, name=name)}
-                   for name, (dynamic, value) in hyper.items() if not dynamic}
+    with ops.init_scope():
+      self._hyper = {name: {None: ops.convert_to_tensor(value, name=name)}
+                     for name, (dynamic, value) in hyper.items() if not dynamic}
     self._slots = {}
     self._non_slot_dict = {}
     # Extra state to help Optimizers implement Checkpointable. Holds information

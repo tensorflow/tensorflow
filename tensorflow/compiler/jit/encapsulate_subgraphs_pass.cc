@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
+#include "tensorflow/compiler/tf2xla/validate_control_flow.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -1504,6 +1505,11 @@ Status Encapsulator::SplitIntoSubgraphs() {
   for (auto& entry : subgraphs_) {
     Subgraph& subgraph = entry.second;
     FixupSourceAndSinkEdges(subgraph.GetGraph());
+    // Verify that the graph has well-formed control flow structure to be
+    // functionalized.
+    std::vector<ControlFlowInfo> dummy;
+    TF_RETURN_IF_ERROR(
+        BuildAndValidateControlFlowInfo(subgraph.GetGraph(), &dummy));
   }
 
   return s;
@@ -2519,10 +2525,12 @@ Status EncapsulateSubgraphsPass::Run(
         return Status::OK();
       };
 
-  TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
-      kXlaClusterAttr, kXlaOutsideCompilationAttr, **options.graph,
-      rewrite_subgraph,
-      /*reuse_existing_functions=*/false, &graph_out, library));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      EncapsulateSubgraphsInFunctions(
+          kXlaClusterAttr, kXlaOutsideCompilationAttr, **options.graph,
+          rewrite_subgraph, /*reuse_existing_functions=*/false, &graph_out,
+          library),
+      "EncapsulateSubgraphsPass failed");
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile("after_encapsulate_subgraphs", *graph_out,

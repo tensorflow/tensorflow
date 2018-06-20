@@ -384,9 +384,7 @@ class _InternalTPUContext(object):
     # On TPU
     if self.is_input_sharded_per_core() or (
         self.is_input_per_host_with_iterators()):
-      # We prohibit per core input sharding for the model parallelism case,
-      # therefore it is safe to use num_cores here.
-      return global_batch_size // self.num_cores
+      return global_batch_size // self.num_replicas
     else:
       return global_batch_size // self.num_hosts
 
@@ -484,25 +482,27 @@ class _InternalTPUContext(object):
 
     return _placement_function
 
-  @property
-  def tpu_ordinal_function(self):
+  def tpu_ordinal_function(self, host_id):
     """Returns the TPU ordinal fn."""
 
-    def _tpu_ordinal_function(index):
+    def _tpu_ordinal_function(shard_index_in_host):
       """Return the TPU ordinal associated with a shard.
 
       Required because the enqueue ops are placed on CPU.
 
       Args:
-        index: the shard index
+        shard_index_in_host: the shard index
 
       Returns:
         The ordinal of the TPU device the shard's infeed should be placed on.
       """
       if self.model_parallelism_enabled:
-        return self.device_assignment.tpu_ordinal(replica=index)
+        # We put both enqueue/dequeue ops at tpu.core(0) in each replica.
+        replica = self.device_assignment.lookup_replicas(
+            host_id, (0, 0, 0))[shard_index_in_host]
+        return self.device_assignment.tpu_ordinal(replica=replica)
       else:
-        return index % self.num_of_cores_per_host
+        return shard_index_in_host % self.num_of_cores_per_host
 
     return _tpu_ordinal_function
 

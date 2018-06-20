@@ -145,12 +145,16 @@ message HloInstructionProto {
   repeated int64 operand_ids = 36;
   repeated int64 control_predecessor_ids = 37;
   repeated int64 called_computation_ids = 38;
-  repeated int64 replica_group_ids = 44;
 
   xla.OpSharding sharding = 40;
 
   // Backend configuration for the instruction. Has backend-specific meaning.
   string backend_config = 43;
+
+  // Cross Replica Sum fields.
+  repeated int64 replica_group_ids = 44;
+  int64 all_reduce_id = 45;
+  string cross_replica_sum_barrier = 46;
 }
 
 // Serialization of HloComputation.

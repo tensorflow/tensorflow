@@ -325,7 +325,7 @@ void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
   if (!op->depth_multiplier) {
     op->depth_multiplier = output_depth / input_depth;
   }
-  QCHECK_EQ(output_depth, input_depth * op->depth_multiplier)
+  CHECK_EQ(output_depth, input_depth * op->depth_multiplier)
       << "input/output depths and depth_multiplier don't match";
 
   const int kheight = weights_shape.dims(1);

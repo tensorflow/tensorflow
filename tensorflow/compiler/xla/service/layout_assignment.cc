@@ -175,41 +175,32 @@ Status LayoutConstraints::SetBufferLayout(const Layout& layout,
   TF_RETURN_IF_ERROR(
       LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()));
 
-  const BufferLayoutConstraint* curr_constraint =
-      GetBufferLayoutConstraint(buffer);
-  if (curr_constraint != nullptr) {
-    if (LayoutUtil::Equal(curr_constraint->layout(), layout)) {
+  auto iter = buffer_constraints_.find(&buffer);
+  if (iter != buffer_constraints_.end()) {
+    const BufferLayoutConstraint& curr_constraint = iter->second;
+    if (LayoutUtil::Equal(curr_constraint.layout(), layout)) {
       // New constraint matches existing constraint. Nothing to do.
       return Status::OK();
     }
-    if (curr_constraint->mandatory()) {
+    if (curr_constraint.mandatory()) {
       return FailedPrecondition(
           "Buffer %s already has the layout constraint %s, cannot add "
           "incompatible constraint %s",
           buffer.ToString().c_str(),
-          LayoutUtil::HumanString(curr_constraint->layout()).c_str(),
+          LayoutUtil::HumanString(curr_constraint.layout()).c_str(),
           LayoutUtil::HumanString(layout).c_str());
     }
-  }
-
-  auto iter = buffer_constraints_.find(&buffer);
-  bool overwrite = iter != buffer_constraints_.end();
-  if (!overwrite) {
+    iter->second = BufferLayoutConstraint(layout, buffer, mandatory, dfs);
+  } else {
+    TF_RET_CHECK(unconstrained_buffer_ids_.erase(buffer.id()) == 1)
+        << buffer.ToString();
     iter = buffer_constraints_
                .insert(std::make_pair(
                    &buffer,
                    BufferLayoutConstraint(layout, buffer, mandatory, dfs)))
                .first;
-  } else {
-    iter->second = BufferLayoutConstraint(layout, buffer, mandatory, dfs);
   }
   added_constraints_.push_back(&iter->second);
-
-  // Remove buffer from the set of unconstrained buffers.
-  TF_RET_CHECK(unconstrained_buffer_ids_.count(buffer.id()) ==
-               static_cast<int>(!overwrite));
-  unconstrained_buffer_ids_.erase(buffer.id());
-
   return Status::OK();
 }
 
@@ -716,7 +707,8 @@ Status CheckParameterLayout(HloInstruction* parameter,
                             const ComputationLayout& computation_layout) {
   const ShapeLayout& parameter_layout =
       computation_layout.parameter_layout(parameter->parameter_number());
-  if (!parameter_layout.MatchesLayoutInShape(parameter->shape())) {
+  if (parameter_layout.LayoutIsSet() &&
+      !parameter_layout.MatchesLayoutInShape(parameter->shape())) {
     return InternalError(
         "parameter instruction %s does not match layout of computation "
         "shape: %s",
@@ -936,6 +928,7 @@ LayoutAssignment::LayoutAssignment(
     ComputationLayout* entry_computation_layout,
     ChannelLayoutConstraints* channel_constraints)
     : entry_computation_layout_(entry_computation_layout),
+      saved_entry_computation_layout_(*entry_computation_layout),
       channel_layout_constraints_(channel_constraints) {
   if (channel_layout_constraints_ != nullptr) {
     // Save a copy of the input ChannelLayoutConstraints so that we can reset it
@@ -944,11 +937,6 @@ LayoutAssignment::LayoutAssignment(
   }
   VLOG(1) << "Entry computation layout given to layout assignment: "
           << entry_computation_layout_->ToString();
-  // Layouts of all parameter instructions must be set.
-  for (const ShapeLayout& parameter_layout :
-       entry_computation_layout_->parameter_layouts()) {
-    CHECK(parameter_layout.LayoutIsSet());
-  }
 }
 
 std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
@@ -1728,6 +1716,7 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   // root, we also fix up the eventually inconsistent ComputationLayout, which
   // will be then made mandatory by the second pass.
   for (int64 i = 0; i < 2; ++i) {
+    VLOG(5) << "Running " << (i == 0 ? "un" : "") << "constrained pass";
     TF_RETURN_IF_ERROR(ClearPreviousPassSideEffects(module));
     TF_ASSIGN_OR_RETURN(auto points_to_analysis,
                         TuplePointsToAnalysis::Run(module));
@@ -1765,10 +1754,12 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
 
 Status LayoutAssignment::Init() {
   computation_layouts_.clear();
+  *entry_computation_layout_ = saved_entry_computation_layout_;
   return Status::OK();
 }
 
 Status LayoutAssignment::ClearPreviousPassSideEffects(HloModule* module) {
+  VLOG(5) << "Clearing previous side effects";
   // Clear all the copies which have been added, and all the related
   // instructions (like GTE and tuples).
   int64 removed_copies = 0;

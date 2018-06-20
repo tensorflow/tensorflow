@@ -150,7 +150,66 @@ ENTRY %TokenInWhileLoop () -> s32[] {
 }
 )";
 
-  EXPECT_TRUE(RunAndCompare(module_string, error_spec_));
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  // Module DCE pass removes the generate token instructions.
+  debug_options.add_xla_disable_hlo_passes("hlo-module-dce");
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      HloRunner::CreateModuleFromString(module_string, debug_options));
+
+  EXPECT_TRUE(RunAndCompare(std::move(module), error_spec_));
+}
+
+XLA_TEST_F(TokenHloTest, TokenInConditional) {
+  string module_string = R"(
+HloModule TokenInConditional
+
+%True (param.1: token[]) -> (s32[], token[]) {
+  %param.1 = token[] parameter(0)
+  %forty_two = s32[] constant(42)
+  ROOT %tuple = (s32[], token[]) tuple(s32[] %forty_two, token[] %param.1)
+}
+
+%False (param.2: s32[]) -> (s32[], token[]) {
+  %param.2 = s32[] parameter(0)
+  %new_token = token[] generate-token()
+  ROOT %tuple = (s32[], token[]) tuple(s32[] %param.2, token[] %new_token)
+}
+
+ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
+  %param.3 = pred[] parameter(0)
+  %init_token = token[] generate-token()
+  %seven = s32[] constant(7)
+  %cond = (s32[], token[]) conditional(pred[] %param.3, token[] %init_token, s32[] %seven), true_computation=True, false_computation=False
+  ROOT %root = s32[] get-tuple-element((s32[], token[]) %cond), index=0
+}
+)";
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  // Module DCE pass removes the generate token instructions.
+  debug_options.add_xla_disable_hlo_passes("hlo-module-dce");
+
+  {
+    // True case.
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> module,
+        HloRunner::CreateModuleFromString(module_string, debug_options));
+    auto arg = Literal::CreateR0<bool>(true);
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
+                            Execute(std::move(module), {arg.get()}));
+    EXPECT_EQ(42, result->Get<int32>({}));
+  }
+
+  {
+    // False case.
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> module,
+        HloRunner::CreateModuleFromString(module_string, debug_options));
+    auto arg = Literal::CreateR0<bool>(false);
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
+                            Execute(std::move(module), {arg.get()}));
+    EXPECT_EQ(7, result->Get<int32>({}));
+  }
 }
 
 }  // namespace

@@ -56,6 +56,7 @@ from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops.variables import global_variables_initializer
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+# from tensorflow.python.util.all_util import remove_undocumented
 
 
 class TocoConverter(object):
@@ -390,3 +391,5 @@ def _freeze_graph(sess, output_tensors):
                                                         output_arrays)
   else:
     return sess.graph_def
+
+# remove_undocumented(__name__)

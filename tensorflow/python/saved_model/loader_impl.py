@@ -28,6 +28,7 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.training import saver as tf_saver
@@ -207,11 +208,56 @@ def load(sess, tags, export_dir, import_scope=None, **saver_kwargs):
   Raises:
     RuntimeError: MetaGraphDef associated with the tags cannot be found.
   """
-  with sess.graph.as_default():
-    # Build the SavedModel protocol buffer and find requested meta graph def.
-    saved_model = _parse_saved_model(export_dir)
+  loader = SavedModelLoader(export_dir)
+  return loader.load(sess, tags, import_scope, **saver_kwargs)
+
+
+class SavedModelLoader(object):
+  """Load graphs and restore variable values from a `SavedModel`."""
+
+  def __init__(self, export_dir):
+    """Creates a `SavedModelLoader`.
+
+    Args:
+      export_dir: Directory in which the SavedModel protocol buffer and
+        variables to be loaded are located.
+    """
+    self._export_dir = export_dir
+    self._variables_path = os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes(constants.VARIABLES_DIRECTORY),
+        compat.as_bytes(constants.VARIABLES_FILENAME))
+    self._saved_model = _parse_saved_model(export_dir)
+
+  @property
+  def export_dir(self):
+    """Directory containing the SavedModel."""
+    return self._export_dir
+
+  @property
+  def variables_path(self):
+    """Path to variable checkpoint files."""
+    return self._variables_path
+
+  @property
+  def saved_model(self):
+    """SavedModel object parsed from the export directory."""
+    return self._saved_model
+
+  def get_meta_graph_def_from_tags(self, tags):
+    """Return MetaGraphDef with the exact specified tags.
+
+    Args:
+      tags: A list or set of string tags that identify the MetaGraphDef.
+
+    Returns:
+      MetaGraphDef with the same tags.
+
+    Raises:
+      RuntimeError: if no metagraphs were found with the associated tags.
+    """
     found_match = False
-    for meta_graph_def in saved_model.meta_graphs:
+    for meta_graph_def in self._saved_model.meta_graphs:
       if set(meta_graph_def.meta_info_def.tags) == set(tags):
         meta_graph_def_to_load = meta_graph_def
         found_match = True
@@ -223,32 +269,100 @@ def load(sess, tags, export_dir, import_scope=None, **saver_kwargs):
           " could not be found in SavedModel. To inspect available tag-sets in"
           " the SavedModel, please use the SavedModel CLI: `saved_model_cli`"
       )
-
-    # Build a saver by importing the meta graph def to load.
-    saver = tf_saver.import_meta_graph(
-        meta_graph_def_to_load, import_scope=import_scope, **saver_kwargs)
-
-    if saver:
-      # Build the checkpoint path where the variables are located.
-      variables_path = os.path.join(
-          compat.as_bytes(export_dir),
-          compat.as_bytes(constants.VARIABLES_DIRECTORY),
-          compat.as_bytes(constants.VARIABLES_FILENAME))
-
-      # Restore the variables using the built saver in the provided session.
-      saver.restore(sess, variables_path)
-    else:
-      tf_logging.info("The specified SavedModel has no variables; no "
-                      "checkpoints were restored.")
-
-    # Get asset tensors, if any.
-    asset_tensors_dictionary = _get_asset_tensors(
-        export_dir, meta_graph_def_to_load, import_scope=import_scope)
-
-    main_op_tensor = (
-        _get_main_op_tensor(meta_graph_def_to_load) or
-        (_get_legacy_init_op_tensor(meta_graph_def_to_load)))
-    if main_op_tensor is not None:
-      sess.run(fetches=[main_op_tensor], feed_dict=asset_tensors_dictionary)
-
     return meta_graph_def_to_load
+
+  def load_graph(self, graph, tags, import_scope=None, **saver_kwargs):
+    """Load ops and nodes from SavedModel MetaGraph into graph.
+
+    Args:
+      graph: tf.Graph object.
+      tags: a set of string tags identifying a MetaGraphDef.
+      import_scope: Optional `string` -- if specified, prepend this string
+        followed by '/' to all loaded tensor names. This scope is applied to
+        tensor instances loaded into the passed session, but it is *not* written
+        through to the static `MetaGraphDef` protocol buffer that is returned.
+      **saver_kwargs: keyword arguments to pass to tf.train.import_meta_graph.
+
+    Returns:
+      Saver defined by the MetaGraph, which can be used to restore the variable
+      values.
+    """
+    meta_graph_def = self.get_meta_graph_def_from_tags(tags)
+    with graph.as_default():
+      return tf_saver.import_meta_graph(
+          meta_graph_def, import_scope=import_scope, **saver_kwargs)
+
+  def restore_variables(self, sess, saver, import_scope=None):
+    """Restore SavedModel variable values into the session.
+
+    Args:
+      sess: tf.Session to restore variable values.
+      saver: a tf.train.Saver object. Can be None if there are no variables in
+        graph. This may be the saver returned by the load_graph() function, or a
+        default `tf.train.Saver()`.
+      import_scope: Optional `string` -- if specified, prepend this string
+        followed by '/' to all loaded tensor names. This scope is applied to
+        tensor instances loaded into the passed session, but it is *not* written
+        through to the static `MetaGraphDef` protocol buffer that is returned.
+
+    Raises:
+      ValueError: if no saver was passed to the saver argument, and there are
+        variables in the graph.
+    """
+    with sess.graph.as_default():
+      if (saver is None and
+          not variables._all_saveable_objects(scope=import_scope)):  # pylint: disable=protected-access
+        tf_logging.info("The specified SavedModel has no variables; no "
+                        "checkpoints were restored.")
+      elif isinstance(saver, tf_saver.Saver):
+        saver.restore(sess, self._variables_path)
+      else:
+        raise ValueError(
+            "No tf.train.Saver object was passed to the function "
+            "SavedModelLoader.restore_variables. Since there are variables in "
+            "the graph, a saver is required.")
+
+  def run_init_ops(self, sess, tags, import_scope=None):
+    """Run initialization ops defined in the `MetaGraphDef`.
+
+    Args:
+      sess: tf.Session to restore variable values.
+      tags: a set of string tags identifying a MetaGraphDef.
+      import_scope: Optional `string` -- if specified, prepend this string
+        followed by '/' to all loaded tensor names. This scope is applied to
+        tensor instances loaded into the passed session, but it is *not* written
+        through to the static `MetaGraphDef` protocol buffer that is returned.
+    """
+    meta_graph_def = self.get_meta_graph_def_from_tags(tags)
+    with sess.graph.as_default():
+      # Get asset tensors, if any.
+      asset_tensors_dictionary = _get_asset_tensors(
+          self._export_dir, meta_graph_def, import_scope=import_scope)
+
+      main_op_tensor = (
+          _get_main_op_tensor(meta_graph_def) or
+          (_get_legacy_init_op_tensor(meta_graph_def)))
+      if main_op_tensor is not None:
+        sess.run(fetches=[main_op_tensor], feed_dict=asset_tensors_dictionary)
+
+  def load(self, sess, tags, import_scope=None, **saver_kwargs):
+    """Load the MetaGraphDef graph and restore variable values into the session.
+
+    Args:
+      sess: tf.Session to restore variable values.
+      tags: a set of string tags identifying a MetaGraphDef.
+      import_scope: Optional `string` -- if specified, prepend this string
+        followed by '/' to all loaded tensor names. This scope is applied to
+        tensor instances loaded into the passed session, but it is *not* written
+        through to the static `MetaGraphDef` protocol buffer that is returned.
+      **saver_kwargs: keyword arguments to pass to tf.train.import_meta_graph.
+
+    Returns:
+      `MetagraphDef` proto of the graph that was loaded.
+    """
+    with sess.graph.as_default():
+      saver = self.load_graph(sess.graph, tags, import_scope,
+                              **saver_kwargs)
+      self.restore_variables(sess, saver, import_scope)
+      self.run_init_ops(sess, tags, import_scope)
+    return self.get_meta_graph_def_from_tags(tags)
