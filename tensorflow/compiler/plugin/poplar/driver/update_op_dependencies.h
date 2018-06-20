@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXPRESSION_OUTLINER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXPRESSION_OUTLINER_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_UPDATE_OP_DEPENDENCIES_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_UPDATE_OP_DEPENDENCIES_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
-
-#include <set>
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -28,23 +26,24 @@ namespace poplarplugin {
 
 struct CompilerAnnotations;
 
-// Extract elementwise ops into a called sub-graph
-// (must come after InplaceFinder)
+// Add control dependencies between in-place updates and readers of the updates
+// (must come after any outliners, eg ExpressionOutliner, FuseOps, Outliner)
 
-class ExpressionOutliner : public HloMatcher {
+class UpdateOpDependenctOrdering : public HloPassInterface {
  public:
-  ExpressionOutliner(CompilerAnnotations& annotations);
+  UpdateOpDependenctOrdering(CompilerAnnotations& annotations) :
+      annotations_(annotations) {}
 
-  ~ExpressionOutliner() override = default;
+  ~UpdateOpDependenctOrdering() override = default;
 
-  tensorflow::StringPiece name() const override { return "expression-outline"; }
+  tensorflow::StringPiece name() const override {
+    return "update-op-dependencies";
+  }
 
   StatusOr<bool> Run(HloModule *module) override;
 
  private:
-  ReplacedInstructions ReplaceNodes(int, const HloMatcherMatched&) override;
-
-  const std::set<const HloInstruction*>& inplace_instructions;
+  CompilerAnnotations& annotations_;
 };
 
 }  // namespace poplarplugin

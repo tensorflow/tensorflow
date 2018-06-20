@@ -43,6 +43,7 @@ cc_library(
         "driver/matcher_predicates.cc",
         "driver/outliner.cc",
         "driver/scheduler.cc",
+        "driver/update_op_dependencies.cc",
         "driver/util.cc",
         "driver/while_loop_condition_simplify.cc",
         "driver/while_loop_util.cc",
@@ -61,6 +62,7 @@ cc_library(
         "driver/matcher_predicates.h",
         "driver/outliner.h",
         "driver/scheduler.h",
+        "driver/update_op_dependencies.h",
         "driver/util.h",
         "driver/while_loop_condition_simplify.h",
         "driver/while_loop_util.h",
@@ -249,6 +251,17 @@ tf_cc_test(
 tf_cc_test(
     name = "convolution_classifier_test",
     srcs = ["tests/convolution_classifier_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "inplace_test",
+    srcs = ["tests/inplace_test.cc"],
     size = "small",
     deps = [
         ":optimizers",
@@ -652,6 +665,7 @@ test_suite(
         "while_loop_condition_simplify_test",
         "conv3d_test",
         "ipu_engine_cache_test",
+        "inplace_test",
     ],
 )
 
@@ -682,6 +696,7 @@ test_suite(
         "while_loop_condition_simplify_test",
         "conv3d_test",
         "ipu_engine_cache_test",
+        "inplace_test",
     ],
 )
 

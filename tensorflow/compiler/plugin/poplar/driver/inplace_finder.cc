@@ -20,15 +20,22 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace poplarplugin {
 
-void InplaceFinder::RouteFinder(HloInstruction* inst) {
+void InplaceFinder::RouteFinder(HloInstruction* inst,
+                                const std::vector<int64>& stack) {
+  std::vector<int64> new_stack;
+  bool tuple_stack_modified = false;
+
   switch (inst->opcode()) {
     case HloOpcode::kParameter: {
       if (ShapeUtil::IsTuple(inst->shape())) {
-        tuple_stack.push_back(-1);
+        new_stack = stack;
+        tuple_stack_modified = true;
+        new_stack.push_back(-1);
       }
       break;
     }
@@ -60,15 +67,20 @@ void InplaceFinder::RouteFinder(HloInstruction* inst) {
       break;
     }
     case HloOpcode::kTuple: {
-      tuple_stack.push_back(inst->operand_index(current_route.back()));
+      new_stack = stack;
+      tuple_stack_modified = true;
+      new_stack.push_back(inst->operand_index(current_route.back()));
       break;
     }
     case HloOpcode::kGetTupleElement: {
-      if (inst->tuple_index() != tuple_stack.back()) {
-        return;
+      if (inst->tuple_index() == stack.back() ||
+          stack.back() == -1) {
+        new_stack = stack;
+        tuple_stack_modified = true;
+        new_stack.pop_back();
+        break;
       }
-      tuple_stack.pop_back();
-      break;
+      return;
     }
     default:
       return;
@@ -79,7 +91,7 @@ void InplaceFinder::RouteFinder(HloInstruction* inst) {
     routes.insert(std::make_pair(current_route[0], current_route));
   } else {
     for (auto& user : inst->users()) {
-      RouteFinder(user);
+      RouteFinder(user, tuple_stack_modified ? new_stack : stack);
     }
   }
 
@@ -87,26 +99,38 @@ void InplaceFinder::RouteFinder(HloInstruction* inst) {
 }
 
 StatusOr<bool> InplaceFinder::Run(HloModule* module) {
-  HloComputation* comp = module->entry_computation();
 
-  // For each input
-  const auto& params = comp->parameter_instructions();
-  for (auto& p : params) {
-    current_route.clear();
-    RouteFinder(p);
-  }
+  for (auto* comp : module->computations()) {
+    if (tensorflow::str_util::StartsWith(comp->name(), "_pop_op")) {
+      continue;
+    }
 
-  // For each route in map
-  for (auto& r : routes) {
-    if (routes.count(r.first) == 1) {
+    // For each input
+    const auto& params = comp->parameter_instructions();
+    for (auto& p : params) {
+      current_route.clear();
+      RouteFinder(p, {});
+    }
+
+    // For each route in map
+    for (auto& r : routes) {
       for (auto& inst : r.second) {
-        inplace_instructions.insert(inst);
+        switch (inst->opcode()) {
+          case HloOpcode::kAdd:
+          case HloOpcode::kSubtract:
+          case HloOpcode::kMultiply:
+          case HloOpcode::kDynamicUpdateSlice:
+            inplace_instructions.insert(inst);
+            break;
+          default:
+            break;
+        }
       }
     }
-  }
 
-  routes.clear();
-  current_route.clear();
+    routes.clear();
+    current_route.clear();
+  }
 
   return true;
 }
