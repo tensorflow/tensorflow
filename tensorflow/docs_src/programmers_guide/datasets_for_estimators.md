@@ -1,4 +1,4 @@
-# Datasets Quick Start
+# Datasets for Estimators
 
 The @{tf.data} module contains a collection of classes that allows you to
 easily load data, manipulate it, and pipe it into your model. This document
