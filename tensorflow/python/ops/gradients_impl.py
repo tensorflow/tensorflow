@@ -548,9 +548,8 @@ def _GradientsHelper(ys,
                      src_graph=None):
   """Implementation of gradients()."""
   if context.executing_eagerly():
-    raise RuntimeError("tf.gradients not supported when eager execution "
-                       "is enabled. Use tf.contrib.eager.GradientTape "
-                       "instead.")
+    raise RuntimeError("tf.gradients is not supported when eager execution "
+                       "is enabled. Use tf.GradientTape instead.")
   if src_graph is None:
     src_graph = ops.get_default_graph()
 
