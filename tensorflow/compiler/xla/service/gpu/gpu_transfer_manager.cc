@@ -22,10 +22,10 @@ limitations under the License.
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 // XXX figure out how to cope with both platforms
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
+#else
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #endif
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -46,13 +46,11 @@ namespace xla {
 GpuTransferManager::GpuTransferManager(se::Platform::Id id)
     : GenericTransferManager(
           id,
-// XXX figure out how to cope with both platforms
-#if GOOGLE_CUDA
-          /*pointer_size=*/llvm::DataLayout(gpu::NVPTXCompiler::kDataLayout)
-#elif TENSORFLOW_USE_ROCM
-          /*pointer_size=*/llvm::DataLayout(gpu::AMDGPUCompiler::kDataLayout)
+#if TENSORFLOW_USE_ROCM
+          llvm::DataLayout(gpu::AMDGPUCompiler::kDataLayout).getPointerSize(0)){}
+#else
+          llvm::DataLayout(gpu::NVPTXCompiler::kDataLayout).getPointerSize(0)){}
 #endif
-              .getPointerSize(0 /* default address space */)) {}
 
 Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
