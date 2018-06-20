@@ -1162,8 +1162,8 @@ TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
   if (TF_GetCode(status) != TF_OK) return nullptr;
   TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
   TFE_OpSetAttrShape(op, "shape", {}, 0, status);
-  TFE_OpSetAttrString(op, "container", "");
-  TFE_OpSetAttrString(op, "shared_name", "");
+  TFE_OpSetAttrString(op, "container", "", 0);
+  TFE_OpSetAttrString(op, "shared_name", "", 0);
   if (TF_GetCode(status) != TF_OK) return nullptr;
   TFE_TensorHandle* var_handle = nullptr;
   int num_retvals = 1;

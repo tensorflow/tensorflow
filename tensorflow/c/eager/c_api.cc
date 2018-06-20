@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -441,8 +442,11 @@ TF_AttrType TFE_OpNameGetAttrType(TFE_Context* ctx,
   return ret;
 }
 
-void TFE_OpSetAttrString(TFE_Op* op, const char* attr_name, const char* value) {
-  op->operation.MutableAttrs()->Set(attr_name, value);
+void TFE_OpSetAttrString(TFE_Op* op, const char* attr_name, const void* value,
+                         size_t length) {
+  op->operation.MutableAttrs()->Set(
+      attr_name,
+      tensorflow::StringPiece(static_cast<const char*>(value), length));
 }
 
 void TFE_OpSetAttrInt(TFE_Op* op, const char* attr_name, int64_t value) {
@@ -493,16 +497,22 @@ void TFE_OpSetAttrFunction(TFE_Op* op, const char* attr_name,
   op->operation.MutableAttrs()->Set(attr_name, attr_value);
 }
 
-#define TFE_OP_SET_ATTR_LIST(fn, type)                                \
-  void fn(TFE_Op* op, const char* attr_name, const type* values,      \
-          int num_values) {                                           \
-    op->operation.MutableAttrs()->Set(                                \
-        attr_name,                                                    \
-        tensorflow::gtl::ArraySlice<const type>(values, num_values)); \
+void TFE_OpSetAttrStringList(TFE_Op* op, const char* attr_name,
+                             const void* const* values, const size_t* lengths,
+                             int num_values) {
+  std::vector<tensorflow::StringPiece> v(num_values);
+  for (int i = 0; i < num_values; ++i) {
+    v[i] = tensorflow::StringPiece(static_cast<const char*>(values[i]),
+                                   lengths[i]);
   }
-TFE_OP_SET_ATTR_LIST(TFE_OpSetAttrStringList, char*)
-TFE_OP_SET_ATTR_LIST(TFE_OpSetAttrFloatList, float)
-#undef TFE_OP_SET_ATTR_LIST
+  op->operation.MutableAttrs()->Set(attr_name, v);
+}
+
+void TFE_OpSetAttrFloatList(TFE_Op* op, const char* attr_name,
+                            const float* values, int num_values) {
+  op->operation.MutableAttrs()->Set(
+      attr_name, tensorflow::gtl::ArraySlice<const float>(values, num_values));
+}
 
 void TFE_OpSetAttrIntList(TFE_Op* op, const char* attr_name,
                           const int64_t* values, int num_values) {
@@ -675,9 +685,11 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const tensorflow::AttrValue& default_value,
                           const char* attr_name, TF_Status* status) {
   switch (default_value.value_case()) {
-    case tensorflow::AttrValue::kS:
-      TFE_OpSetAttrString(op, attr_name, default_value.s().data());
+    case tensorflow::AttrValue::kS: {
+      const string& v = default_value.s();
+      TFE_OpSetAttrString(op, attr_name, v.data(), v.size());
       break;
+    }
     case tensorflow::AttrValue::kI:
       TFE_OpSetAttrInt(op, attr_name, static_cast<int64_t>(default_value.i()));
       break;
