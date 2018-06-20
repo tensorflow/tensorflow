@@ -1962,6 +1962,35 @@ class TestTrainingWithDataset(test.TestCase):
                                    'expected input to have shape'):
         model.train_on_batch(dataset)
 
+  def test_dataset_input_tuples(self):
+    with self.test_session():
+      a = keras.layers.Input(shape=(3,), name='input_a')
+      b = keras.layers.Input(shape=(4,), name='input_b')
+      x = keras.layers.concatenate([a, b])
+      y = keras.layers.Dense(5, name='dense')(x)
+
+      model = keras.Model(inputs=[a, b], outputs=[y])
+      model.compile(loss='mse', optimizer='rmsprop')
+
+      inputs_a = np.zeros((10, 3))
+      inputs_b = np.zeros((10, 4))
+      targets = np.zeros((10, 5))
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs_a,
+                                                        inputs_b,
+                                                        targets))
+      dataset = dataset.map(lambda a, b, t: ((a, b), t))
+      dataset = dataset.repeat(100)
+      dataset = dataset.batch(10)
+
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
+      model.evaluate(dataset, steps=2, verbose=1)
+      model.predict(dataset, steps=2)
+      model.train_on_batch(dataset)
+      model.predict_on_batch(dataset)
+
+      # Test with validation data
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
+                validation_data=dataset, validation_steps=2)
 
 if __name__ == '__main__':
   test.main()
