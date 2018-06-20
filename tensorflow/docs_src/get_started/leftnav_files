@@ -1,4 +1,10 @@
-index.md
+### Learn and use ML
+basic_classification.md
+basic_text_classification.md
+basic_regression.md
+overfit_and_underfit.md
+save_and_restore_models.md
+next_steps.md
 
-eager.md
-datasets_quickstart.md
+### Research and experimentation
+custom_training_walkthrough.md
