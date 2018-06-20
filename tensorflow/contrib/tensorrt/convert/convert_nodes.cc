@@ -2263,7 +2263,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
     auto& connection = connections->at(i);
     auto outside_node = graph->FindNodeId(connection.outside_id);
     if (!outside_node) {
-      // TODO(aaroey): this should never happen, so make it a CHECK?
+      // This should never happen, unless the original graph is problematic.
       return tensorflow::errors::NotFound(
           "Cannot find node with id ", connection.outside_id, " in the graph.");
     }

@@ -249,13 +249,16 @@ EngineInfo GetEngineInfo(
   std::set<string> segment_devices;
   int input_port = 0;
   int output_port = 0;
-  // Each input can have only one incoming edge, outputs can have multiple edges
-  // though since we are keeping outside name, this can only fail in case of 2
-  // op loops in the graph.
+
+  // Map from src_node_name+port to the unique port numbers of the TRT op, where
+  // the src_node_name is the name of the source node of the input/output
+  // edge, thus there must not be any duplicates since source nodes of
+  // input/output edges must be in different split of the graph.
+  // TODO(aaroey): consider using node id and port instead.
   std::unordered_map<string, int> created_edges;
   for (auto it = reverse_topo_order.rbegin(); it != reverse_topo_order.rend();
        ++it) {
-    auto node_name = (*it)->name();
+    const auto& node_name = (*it)->name();
 
     if (segment_nodes.count(node_name) == 0) continue;
     auto node = node_map.at(node_name);
@@ -337,7 +340,8 @@ EngineInfo GetEngineInfo(
   return info;
 }
 
-// Function to insert a TRT node into the graph.
+// Function to insert a TRT node into the graph. The graph is not modified if
+// the returned status is not ok.
 // 'alloc' is only used for creating static engine.
 tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
                                  const std::vector<EngineInfo>& infos, int pos,
@@ -381,7 +385,10 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     string input_node = conn.outside_node_name;
     int input_port = conn.outside_port;
     bool found_engine = false;
-    // Rewire the inputs to other engines if they contain original input node
+    // Rewire the inputs to other engines if they contain original input node.
+    // Note that we use the information of the engine here, not the information
+    // of the created TRT nodes, so we're able to find all the connections to
+    // any other engines beforehand.
     for (size_t t = 0; t < infos.size(); ++t) {
       if (t == pos) continue;
       auto& engine_info = infos.at(t);
@@ -440,6 +447,8 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     segment_string =
         string((const char*)engine_data->data(), engine_data->size());
     if (info.precision_mode == INT8MODE) {
+      // See above comment on the reason why not putting this inside the 'else'
+      // branch.
       segment_string = info.segment_graph_def.SerializeAsString();
     }
   } else {
@@ -501,7 +510,7 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
   }
   VLOG(1) << "Adding TRTEngine " << info.engine_name << " to graph";
 
-  // up until this point, graph is not modified. If we return !status.ok() from
+  // Up until this point, graph is not modified. If we return !status.ok() from
   // here, this segment will be skipped
   tensorflow::Node* engine_node = graph->AddNode(trt_node, &status);
   if (!status.ok()) {
@@ -520,18 +529,15 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     // In this case, other engines input edge is updated in nodedef to point to
     // this engine. Even though edge doesn't exists in the graph, when it is
     // deserialized again, correct edges will be constructed. This is a problem
-    // of graph.
+    // of graph->AddNode().
     if (!dst_node) continue;
     VLOG(1) << "Updating " << engine_node->name() << ":" << conn.port_number
             << " to " << dst_node->name() << ":" << conn.outside_port;
     auto new_edge = graph->AddEdge(engine_node, conn.port_number, dst_node,
                                    conn.outside_port);
-    // this should never happen!
-    if (!new_edge) {
-      LOG(WARNING) << "Adding a new edge failed " << engine_node->name() << ":"
-                   << conn.port_number << " -> " << dst_node->name() << ":"
-                   << conn.outside_port;
-    }
+    CHECK(new_edge) << "Adding a new edge failed " << engine_node->name() << ":"
+                    << conn.port_number << " -> " << dst_node->name() << ":"
+                    << conn.outside_port;
   }
   return status;
 }
@@ -800,6 +806,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
         graph.RemoveNode(node_map.at(node_name));
       }
     } else {
+      // Graph is not modified.
       LOG(WARNING) << "Engine creation for segment " << i << ", composed of "
                    << segments.at(i).first.size() << " nodes failed: " << status
                    << ". Skipping...";
