@@ -120,13 +120,17 @@ class ConfigureGcsHook(training.SessionRunHook):
   def begin(self):
     if self._credentials:
       self._credentials_placeholder = array_ops.placeholder(dtypes.string)
-      self._credentials_ops = gen_gcs_config_ops.gcs_configure_credentials(
+      self._credentials_op = gen_gcs_config_ops.gcs_configure_credentials(
           self._credentials_placeholder)
+    else:
+      self._credentials_op = None
     if self._block_cache:
       self._block_cache_op = gen_gcs_config_ops.gcs_configure_block_cache(
           max_cache_size=self._block_cache.max_bytes,
           block_size=self._block_cache.block_size,
           max_staleness=self._block_cache.max_staleness)
+    else:
+      self._block_cache_op = None
 
   def after_create_session(self, session, coord):
     del coord
