@@ -39,6 +39,10 @@ constexpr TfLiteType typeToTfLiteType<int>() {
   return kTfLiteInt32;
 }
 template <>
+constexpr TfLiteType typeToTfLiteType<int16_t>() {
+  return kTfLiteInt16;
+}
+template <>
 constexpr TfLiteType typeToTfLiteType<int64_t>() {
   return kTfLiteInt64;
 }

@@ -60,11 +60,22 @@ class QuantizedAddOpModel : public BaseAddOpModel {
     return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
                                GetScale(output_), GetZeroPoint(output_));
   }
+
+  std::vector<float> GetDequantizedOutputInt16() {
+    return Dequantize<int16_t>(ExtractVector<int16_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
+  }
 };
 
 // for quantized Add, the error shouldn't exceed 2*step
-float GetTolerance(int min, int max) {
+float GetTolerance(float min, float max) {
   float kQuantizedStep = (max - min) / 255.0;
+  float kQuantizedTolerance = 2.0 * kQuantizedStep;
+  return kQuantizedTolerance;
+}
+
+float GetToleranceInt16(float min, float max) {
+  float kQuantizedStep = (max - min) / 32767.f;
   float kQuantizedTolerance = 2.0 * kQuantizedStep;
   return kQuantizedTolerance;
 }
@@ -140,6 +151,31 @@ TEST(QuantizedAddOpModel, QuantizedTestsNoActivation) {
     m.Invoke();
     EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear(
                                               results[i], kQuantizedTolerance)))
+        << "With test number " << i;
+  }
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsNoActivationInt16) {
+  const float kMin = -1.f;
+  const float kMax = 32767.f / 32768.f;
+  float kQuantizedTolerance = GetToleranceInt16(kMin, kMax);
+  std::vector<std::initializer_list<float>> inputs1 = {
+      {0.1, 0.2, 0.3, 0.4}, {-0.8, 0.2, 0.4, 0.7}, {-0.8, 0.2, 0.7, 0.3}};
+  std::vector<std::initializer_list<float>> inputs2 = {
+      {0.6, 0.4, 0.3, 0.1}, {0.6, 0.4, 0.5, -0.8}, {0.6, 0.4, -0.8, 0.5}};
+  std::vector<std::initializer_list<float>> results = {
+      {0.7, 0.6, 0.6, 0.5}, {-0.2, 0.6, 0.9, -0.1}, {-0.2, 0.6, -0.1, 0.8}};
+  for (int i = 0; i < inputs1.size(); ++i) {
+    QuantizedAddOpModel m({TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT16, {}, kMin, kMax},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<int16_t>(m.input1(), inputs1[i]);
+    m.QuantizeAndPopulate<int16_t>(m.input2(), inputs2[i]);
+    m.Invoke();
+    EXPECT_THAT(
+        m.GetDequantizedOutputInt16(),
+        ElementsAreArray(ArrayFloatNear(results[i], kQuantizedTolerance)))
         << "With test number " << i;
   }
 }

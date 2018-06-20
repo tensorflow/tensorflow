@@ -2658,25 +2658,13 @@ inline void Add(int left_shift, const uint8* input1_data,
                  output_activation_max, output_data);
 }
 
-template <FusedActivationFunctionType Ac>
 inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
                 int input1_shift, const int16* input2_data,
                 const Dims<4>& input2_dims, int input2_shift,
                 int16 output_activation_min, int16 output_activation_max,
                 int16* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Add/Int16");
-  // This is a copy of the reference implementation. We do not currently have a
-  // properly optimized version.
-  static_assert(Ac == FusedActivationFunctionType::kNone ||
-                    Ac == FusedActivationFunctionType::kRelu ||
-                    Ac == FusedActivationFunctionType::kRelu6 ||
-                    Ac == FusedActivationFunctionType::kRelu1,
-                "");
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  if (Ac == FusedActivationFunctionType::kNone) {
-    TFLITE_DCHECK_EQ(output_activation_min, -32768);
-    TFLITE_DCHECK_EQ(output_activation_max, 32767);
-  }
 
   const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
@@ -2700,6 +2688,28 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
         output_activation_max, std::max(output_activation_min, raw_output));
     output_data[i] = clamped_output;
   }
+}
+
+template <FusedActivationFunctionType Ac>
+inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
+                int input1_shift, const int16* input2_data,
+                const Dims<4>& input2_dims, int input2_shift,
+                int16 output_activation_min, int16 output_activation_max,
+                int16* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, -32768);
+    TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  }
+
+  Add(input1_data, input1_dims, input1_shift, input2_data, input2_dims,
+      input2_shift, output_activation_min, output_activation_max, output_data,
+      output_dims);
 }
 
 template <FusedActivationFunctionType Ac>

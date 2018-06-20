@@ -280,6 +280,9 @@ class SingleOpModel {
         } else if (t.type == TensorType_INT32) {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<int32_t>(t.min, t.max);
+        } else if (t.type == TensorType_INT16) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<int16_t>(t.min, t.max);
         } else {
           LOG(FATAL) << "No support for the requested quantized type";
         }
