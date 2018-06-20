@@ -311,8 +311,10 @@ class EmbedCheckCategoricalEventShapeTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testUnsupportedDtype(self):
     with self.test_session():
+      param = ops.convert_to_tensor(
+          np.ones([2**11+1]).astype(dtypes.qint16.as_numpy_dtype),
+          dtype=dtypes.qint16)
       with self.assertRaises(TypeError):
-        param = array_ops.ones([int(2**11+1)], dtype=dtypes.qint16)
         du.embed_check_categorical_event_shape(param)
 
 
