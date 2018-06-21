@@ -49,13 +49,14 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"  // NOLINT
 #include "tensorflow/core/util/device_name_utils.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include <cuda/include/cuda_runtime_api.h>
+#include "cuda/include/cuda_runtime_api.h"
 #include "tensorrt/include/NvInfer.h"
 namespace tensorflow {
 namespace tensorrt {
@@ -238,14 +239,14 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 }
 
 // Function to get subsegment information structure.
-EngineInfo GetEngineInfo(
+tensorflow::Status GetEngineInfo(
     const tensorflow::Graph* g,
     const tensorflow::grappler::GraphProperties& graph_properties,
     const std::set<string>& segment_nodes,
     const std::unordered_map<string, tensorflow::Node*>& node_map,
-    const std::vector<tensorflow::Node*>& reverse_topo_order) {
+    const std::vector<tensorflow::Node*>& reverse_topo_order,
+    EngineInfo* info) {
   std::vector<int> subgraph_node_ids;
-  EngineInfo info;
   std::set<string> segment_devices;
   int input_port = 0;
   int output_port = 0;
@@ -296,9 +297,9 @@ EngineInfo GetEngineInfo(
             created_edges.insert({s, port});
             input_port++;
           }
-          info.connections.emplace_back(input_node->name(), input_node->id(),
-                                        edge->src_output(), node_name, node_id,
-                                        edge->dst_input(), true, port);
+          info->connections.emplace_back(input_node->name(), input_node->id(),
+                                         edge->src_output(), node_name, node_id,
+                                         edge->dst_input(), true, port);
         }
       }
     }
@@ -316,28 +317,28 @@ EngineInfo GetEngineInfo(
           created_edges.insert({s, port});
           output_port++;
         }
-        info.connections.emplace_back(output_node->name(), output_node->id(),
-                                      edge->dst_input(), node_name, node_id,
-                                      edge->src_output(), false, port);
+        info->connections.emplace_back(output_node->name(), output_node->id(),
+                                       edge->dst_input(), node_name, node_id,
+                                       edge->src_output(), false, port);
       }
     }
   }
 
-  ConvertSegmentToGraphDef(g, graph_properties, subgraph_node_ids,
-                           &info.connections, &info.segment_graph_def,
-                           &info.engine_name);
+  TF_RETURN_IF_ERROR(ConvertSegmentToGraphDef(
+      g, graph_properties, subgraph_node_ids, &info->connections,
+      &info->segment_graph_def, &info->engine_name));
   // TODO(sami): This should not happen once segmenter is updated.
   if (segment_devices.size() == 1) {
-    info.device = *segment_devices.begin();
+    info->device = *segment_devices.begin();
   } else if (segment_devices.size() > 1) {
     LOG(WARNING) << "Detected multiple(" << segment_devices.size()
                  << ") devices for the segment. Picking first one to continue "
                  << "but this shouldn't have happened";
-    info.device = *segment_devices.begin();
+    info->device = *segment_devices.begin();
   } else {
     VLOG(1) << "Segment devices size is 0";
   }
-  return info;
+  return Status::OK();
 }
 
 // Function to insert a TRT node into the graph. The graph is not modified if
@@ -562,7 +563,9 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     tensorflow::NodeDefBuilder node_builder(
         StrCat(name, "_Arg"), tensorflow::FunctionLibraryDefinition::kArgOp);
     VLOG(1) << "Adding " << StrCat(name, "_Arg");
-    node_builder.Attr("T", node->output_type(0)).Attr("index", i).Finalize(&nd);
+    TF_RETURN_IF_ERROR(node_builder.Attr("T", node->output_type(0))
+                           .Attr("index", i)
+                           .Finalize(&nd));
     tensorflow::Status s;
     auto node_arg = sgraph.AddNode(nd, &s);
     if (!s.ok()) {
@@ -593,7 +596,9 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     VLOG(1) << " input " << nout.node << ":" << nout.index
             << " dtype=" << tensorflow::DataTypeString(nout.data_type);
     node_builder.Input({nout});
-    node_builder.Attr("T", node->output_type(0)).Attr("index", i).Finalize(&nd);
+    TF_RETURN_IF_ERROR(node_builder.Attr("T", node->output_type(0))
+                           .Attr("index", i)
+                           .Finalize(&nd));
     if (VLOG_IS_ON(3)) {
       VLOG(3) << nd.DebugString();
     }
@@ -713,11 +718,12 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     segment_options.exclude_node_list.insert(node);
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
-  tensorflow::tensorrt::segment::SegmentNodesVector segments;
+  tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      &graph, IsTensorRTCandidate, segment_options, &segments));
-  if (segments.size() > 1) {
-    VLOG(0) << "MULTIPLE tensorrt candidate conversion: " << segments.size();
+      &graph, IsTensorRTCandidate, segment_options, &initial_segments));
+  if (initial_segments.size() > 1) {
+    VLOG(0) << "MULTIPLE tensorrt candidate conversion: "
+            << initial_segments.size();
   }
 
   // Get the EngineInfo for each segment.
@@ -725,17 +731,24 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   TF_RETURN_IF_ERROR(BuildNodeMap(graph, &node_map));
   float total_num_nodes_in_segments = 0.;
   std::vector<EngineInfo> engine_segments;
-  engine_segments.reserve(segments.size());
+  engine_segments.reserve(initial_segments.size());
   std::vector<tensorflow::Node*> reverse_topo_order;
   tensorflow::GetPostOrder(graph, &reverse_topo_order);
   size_t total_engine_bytes_size = 0;
   std::vector<size_t> engine_bytes_size;
-  for (size_t t = 0; t < segments.size(); t++) {
-    auto& s = segments.at(t);
-    engine_segments.emplace_back(GetEngineInfo(&graph, *params.graph_properties,
-                                               s.first, node_map,
-                                               reverse_topo_order));
-    auto& curr_engine = engine_segments.back();
+  tensorflow::tensorrt::segment::SegmentNodesVector converted_segments;
+  converted_segments.reserve(initial_segments.size());
+  for (size_t t = 0; t < initial_segments.size(); t++) {
+    auto& curr_segment = initial_segments.at(t);
+    EngineInfo curr_engine;
+    Status status =
+        GetEngineInfo(&graph, *params.graph_properties, curr_segment.first,
+                      node_map, reverse_topo_order, &curr_engine);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to get engine info for segment " << t << ": "
+                   << status;
+      continue;
+    }
     curr_engine.precision_mode = params.precision_mode;
     curr_engine.engine_type =
         (params.is_dyn_op || params.precision_mode == INT8MODE
@@ -744,12 +757,19 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
     StrAppend(&curr_engine.engine_name, "my_trt_op_", t);
-    RegisterSegmentFunctionToFunctionLibrary(
+    status = RegisterSegmentFunctionToFunctionLibrary(
         &graph, curr_engine.segment_graph_def, curr_engine.engine_name);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to register segment graphdef as a function " << t
+                   << ": " << status;
+      continue;
+    }
 
     engine_bytes_size.push_back(curr_engine.segment_graph_def.ByteSizeLong());
     total_engine_bytes_size += engine_bytes_size.back();
-    total_num_nodes_in_segments += s.first.size();
+    total_num_nodes_in_segments += curr_segment.first.size();
+    engine_segments.push_back(std::move(curr_engine));
+    converted_segments.push_back(std::move(curr_segment));
 
     if (VLOG_IS_ON(8)) {
       string fname = curr_engine.engine_name;
@@ -775,7 +795,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     engine.max_workspace_size_bytes =
         params.max_workspace_size_bytes *
         (engine_bytes_size.at(i) / total_engine_bytes_size +
-         segments.at(i).first.size() / total_num_nodes_in_segments) /
+         converted_segments.at(i).first.size() / total_num_nodes_in_segments) /
         2.0;
     // The allocator is used to build the engine. The build and the built engine
     // will be destroyed after we get the serialized engine string, so it's fine
@@ -793,17 +813,17 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     cudaSetDevice(cuda_device_id);
     auto status = CreateTRTNode(&graph, engine_segments, i, alloc.get(),
                                 params.max_batch_size);
-    // If status is ok, we successfuly added the node to the graph and can
+    // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
     if (status.ok()) {
-      for (auto node_name : segments.at(i).first) {
+      for (auto node_name : converted_segments.at(i).first) {
         graph.RemoveNode(node_map.at(node_name));
       }
     } else {
       // Graph is not modified.
       LOG(WARNING) << "Engine creation for segment " << i << ", composed of "
-                   << segments.at(i).first.size() << " nodes failed: " << status
-                   << ". Skipping...";
+                   << converted_segments.at(i).first.size() << " nodes failed: "
+                   << status << ". Skipping...";
     }
   }
   cudaSetDevice(old_cuda_device);

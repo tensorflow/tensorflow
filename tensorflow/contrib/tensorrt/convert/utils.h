@@ -31,7 +31,7 @@ struct TrtDestroyer {
 template <typename T>
 using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
 
-}  // namespace convert
 }  // namespace tensorrt
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_CONVERT_UTILS_H_
