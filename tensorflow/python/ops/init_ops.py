@@ -43,7 +43,8 @@ from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import (
+  deprecated, deprecated_arg_values)
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -406,6 +407,10 @@ class UniformUnitScaling(Initializer):
 
 @tf_export("keras.initializers.VarianceScaling",
            "initializers.variance_scaling", "variance_scaling_initializer")
+@deprecated_arg_values(
+  None,
+  "`normal` is a deprecated alias for `truncated_normal`",
+  distribution="normal")
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
 
@@ -420,8 +425,6 @@ class VarianceScaling(Initializer):
 
   With `distribution="uniform"`, samples are drawn from a uniform distribution
   within [-limit, limit], with `limit = sqrt(3 * scale / n)`.
-
-  `distribution="normal"` is a deprecated alias for "truncated_normal".
 
   Args:
     scale: Scaling factor (positive float).
@@ -477,6 +480,7 @@ class VarianceScaling(Initializer):
       return random_ops.truncated_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
     elif self.distribution == "untruncated_normal":
+      stddev = math.sqrt(scale)
       return random_ops.random_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
     else:
