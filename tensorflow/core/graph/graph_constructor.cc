@@ -227,6 +227,10 @@ class GraphConstructor {
   // already unique in the graph.
   string FindUniqueName(StringPiece original_name);
 
+  // Decrement pending count for users of `processed` and add the ones that now
+  // have all of their pending inputs satisfied to `ready_`.
+  void UpdatePendingCountAndReady(int processed);
+
   // From constructor
   const Options opts_;
   const NodeDefSlice node_defs_;
@@ -314,6 +318,25 @@ class GraphConstructor {
   };
   std::vector<EdgeInfo> back_edges_;
 };
+
+void GraphConstructor::UpdatePendingCountAndReady(int processed) {
+  // We didn't consider NextIteration->Merge edges when computing
+  // pending_counts_ so we should not have to consider it here either.
+  bool is_next_iteration = IsNextIteration(*node_defs_[processed]);
+  for (size_t i = 0; i < outputs_[processed].size(); ++i) {
+    const int output = outputs_[processed][i];
+    bool is_next_iteration_to_merge_edge =
+        is_next_iteration && IsMerge(*node_defs_[output]);
+    if (!is_next_iteration_to_merge_edge) {
+      int* current_pending_count = &pending_count_[output];
+      CHECK_GT(*current_pending_count, 0);
+      (*current_pending_count)--;
+      if (*current_pending_count == 0) {
+        ready_.insert(output);
+      }
+    }
+  }
+}
 
 // This could be expensive but we don't expect to call it often, if at all (only
 // if there are multiple nodes in g_ with the same name)
@@ -881,22 +904,6 @@ Status GraphConstructor::IsNodeFullyMapped(const NodeDef& node_def,
   return Status::OK();
 }
 
-namespace {
-
-void UpdatePendingCountAndReady(
-    const std::vector<gtl::InlinedVector<int, 4>>& outputs, int o,
-    std::vector<int>* pending_count, std::set<int>* ready) {
-  for (size_t i = 0; i < outputs[o].size(); ++i) {
-    const int output = outputs[o][i];
-    (*pending_count)[output]--;
-    if ((*pending_count)[output] == 0) {
-      ready->insert(output);
-    }
-  }
-}
-
-}  // anonymous namespace
-
 Status GraphConstructor::Convert() {
   // Import functions before adding nodes, since imported nodes may refer to
   // functions
@@ -938,7 +945,7 @@ Status GraphConstructor::Convert() {
             IsNodeFullyMapped(original_node_def, &is_node_mapped));
         if (is_node_mapped) {
           // Skip this node after updating pending_count_ for outputs
-          UpdatePendingCountAndReady(outputs_, o, &pending_count_, &ready_);
+          UpdatePendingCountAndReady(o);
           continue;
         }
       }
@@ -1031,7 +1038,7 @@ Status GraphConstructor::Convert() {
     TF_RETURN_IF_ERROR(ValidateShape(node));
 
     // Update pending_count_ for outputs.
-    UpdatePendingCountAndReady(outputs_, o, &pending_count_, &ready_);
+    UpdatePendingCountAndReady(o);
   }
 
   if (processed < node_defs_.size()) {
