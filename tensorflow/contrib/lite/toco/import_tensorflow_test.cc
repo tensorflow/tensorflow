@@ -36,8 +36,14 @@ using tensorflow::NodeDef;
 using tensorflow::Status;
 
 namespace internal {
+using ConverterType = tensorflow::Status (*)(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model);
+using ConverterMapType = std::unordered_map<std::string, ConverterType>;
+
+ConverterMapType GetTensorFlowNodeConverterMap();
 Status ImportTensorFlowNode(const NodeDef&, const TensorFlowImportFlags&,
-                            Model*);
+                            Model*, const ConverterMapType&);
 }  // namespace internal
 
 namespace {
@@ -105,8 +111,9 @@ class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
 
   Status ImportNode(const NodeDef& node) {
     Model model;
-    return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(),
-                                          &model);
+    const auto converter = internal::GetTensorFlowNodeConverterMap();
+    return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(), &model,
+                                          converter);
   }
 };
 

@@ -128,20 +128,23 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   se::StreamExecutor* executor = backend->default_stream_executor();
   DeviceMemoryAllocator* allocator = backend->memory_allocator();
   auto* transfer_manager = backend->transfer_manager();
+  TF_ASSERT_OK_AND_ASSIGN(
+      Backend::StreamPtr stream_ptr,
+      backend->BorrowStream(backend->default_device_ordinal()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer lhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           lhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      executor, *Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
+      stream_ptr.get(), *Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer rhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           rhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      executor, *Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
+      stream_ptr.get(), *Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
@@ -153,9 +156,6 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       &executable->hlo_profile_printer_data(),
       &executable->hlo_profile_index_map());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Backend::StreamPtr stream_ptr,
-      backend->BorrowStream(backend->default_device_ordinal()));
   ExecutableRunOptions exec_run_options;
   exec_run_options.set_stream(stream_ptr.get());
   exec_run_options.set_allocator(backend->memory_allocator());

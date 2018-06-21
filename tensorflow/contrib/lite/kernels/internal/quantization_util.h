@@ -218,6 +218,11 @@ void NudgeQuantizationRange(const float min, const float max,
                             const int quant_min, const int quant_max,
                             float* nudged_min, float* nudged_max, float* scale);
 
+// If x is approximately a power of two (with any positive or negative
+// exponent), stores that exponent (i.e. log2(x)) in *log2_result, otherwise
+// returns false.
+bool CheckedLog2(const float x, int* log2_result);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_QUANTIZATION_UTIL_H_

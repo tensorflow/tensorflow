@@ -21,6 +21,7 @@ import numpy as np
 import scipy.sparse
 
 from tensorflow.python import keras
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -1212,6 +1213,13 @@ class TestRandomOps(test.TestCase):
       self.assertAllClose(np.max(y), 2., atol=0.1)
       self.assertAllClose(np.min(y), -2., atol=0.1)
 
+  def test_string_input(self):
+    seq = keras.Sequential([
+        keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
+        keras.layers.Lambda(lambda x: x[0])
+    ])
+    preds = seq.predict([['tensorflow eager']])
+    self.assertEqual(preds.shape, (1,))
 
 if __name__ == '__main__':
   test.main()

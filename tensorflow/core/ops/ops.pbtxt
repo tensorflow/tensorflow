@@ -1977,13 +1977,14 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT8
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_BOOL
-        type: DT_INT8
       }
     }
   }
@@ -12446,6 +12447,31 @@ op {
   }
 }
 op {
+  name: "IgammaGradA"
+  input_arg {
+    name: "a"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "Igammac"
   input_arg {
     name: "a"
@@ -20705,6 +20731,31 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "RandomGammaGrad"
+  input_arg {
+    name: "alpha"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sample"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
 }
 op {
   name: "RandomPoisson"
@@ -31613,6 +31664,36 @@ op {
   }
 }
 op {
+  name: "StringSplitV2"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "sep"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "maxsplit"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}
+op {
   name: "StringStrip"
   input_arg {
     name: "input"
@@ -34534,9 +34615,14 @@ op {
         type: DT_UINT8
         type: DT_INT16
         type: DT_INT8
+        type: DT_COMPLEX64
         type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
         type: DT_BFLOAT16
         type: DT_UINT16
+        type: DT_COMPLEX128
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64

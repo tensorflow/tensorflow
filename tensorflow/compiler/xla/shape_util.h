@@ -175,6 +175,9 @@ class ShapeUtil {
   // Precondition: IsArray(shape)
   static int64 ElementsIn(const Shape& shape);
 
+  // As ElementsIn(), but recurses through tuples.
+  static int64 ElementsInRecursive(const Shape& shape);
+
   // Returns true if 'shape' is an array with zero elements.
   static bool IsZeroElementArray(const Shape& shape);
 
@@ -457,6 +460,9 @@ class ShapeUtil {
   // Precondition: IsTuple(shape) && TupleElementCount(shape) > index
   static const Shape& GetTupleElementShape(const Shape& shape, int64 index);
 
+  // Returns the number of elements, recursively, in the given shape.
+  static int64 SubshapeCount(const Shape& shape);
+
   // Slices tuple elements in the range [start, limit) and returns a new tuple
   // shape. E.g. a tuple like (f32, s32, u32) would slice via 1,3 to (s32, u32).
   static Shape SliceTuple(const Shape& tuple, int64 start, int64 limit);
@@ -515,6 +521,10 @@ class ShapeUtil {
       std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
   static Status ForEachMutableSubshapeWithStatus(
       Shape* shape, const MutatingStatusVisitorFunction& func);
+
+  // Returns true if `shape` (which must be an array) with degenerate dimensions
+  // (dimensions with bound 1).
+  static bool HasDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[permutation[i]] = argument.dimensions[i]

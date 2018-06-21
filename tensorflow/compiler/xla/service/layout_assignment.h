@@ -432,7 +432,12 @@ class LayoutAssignment : public HloPassInterface {
   Status PropagateComputationLayouts(HloComputation* computation,
                                      ComputationLayout* computation_layout);
 
+  // The pointer to the ComputationLayout passed as constructor parameter.
   ComputationLayout* entry_computation_layout_;
+
+  // A copy of entry_computation_layout_ used to reset it to the initial values
+  // during the multiple passes done by the layout assignment operation.
+  ComputationLayout saved_entry_computation_layout_;
 
  protected:
   // Sets up the copy instruction according to the characteristic (sharding,

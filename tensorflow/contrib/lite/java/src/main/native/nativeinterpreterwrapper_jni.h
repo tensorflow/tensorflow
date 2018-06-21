@@ -155,6 +155,28 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
+ *  Signature: (JI)I
+ *
+ * Gets output quantization zero point.
+ */
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputQuantizationZeroPoint(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
+ *  Signature: (JI)F
+ *
+ * Gets output quantization scale.
+ */
+JNIEXPORT jfloat JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputQuantizationScale(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
  *  Signature: (JJI[I)Z
  *
  * It returns true if resizing input tensor to different dimensions, else return

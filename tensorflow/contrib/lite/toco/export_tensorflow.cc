@@ -1047,6 +1047,18 @@ void ConvertSqrtOperator(const TensorFlowSqrtOperator& src_op,
   (*sqrt_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
+void ConvertRsqrtOperator(const Model& model,
+                          const TensorFlowRsqrtOperator& src_op,
+                          GraphDef* tensorflow_graph) {
+  auto* rsqrt_op = tensorflow_graph->add_node();
+  rsqrt_op->set_op("Rsqrt");
+  rsqrt_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *rsqrt_op->add_input() = src_op.inputs[0];
+  const auto data_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*rsqrt_op->mutable_attr())["T"].set_type(data_type);
+}
+
 void ConvertSplitOperator(const Model& model,
                           const TensorFlowSplitOperator& src_op,
                           GraphDef* tensorflow_graph) {
@@ -1856,6 +1868,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kTensorFlowSqrt) {
     ConvertSqrtOperator(static_cast<const TensorFlowSqrtOperator&>(src_op),
                         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTensorFlowRsqrt) {
+    ConvertRsqrtOperator(model,
+                         static_cast<const TensorFlowRsqrtOperator&>(src_op),
+                         tensorflow_graph);
   } else if (src_op.type == OperatorType::kTensorFlowSplit) {
     ConvertSplitOperator(model,
                          static_cast<const TensorFlowSplitOperator&>(src_op),

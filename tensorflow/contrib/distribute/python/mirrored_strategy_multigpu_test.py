@@ -530,6 +530,42 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         _, v1 = dist.unwrap(v)
         self.assertStartsWith(v1.name, "tower_1/")
 
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testTowerLocalVariableUpdate(self):
+    with context.graph_mode():
+
+      def model_fn():
+        tower_context = distribute_lib.get_tower_context()
+        with tower_context.tower_local_var_scope("sum"):
+          v_sum = variable_scope.variable(1.0)
+        self.assertTrue(isinstance(v_sum, values.TowerLocalVariable))
+        return v_sum
+
+      dist = mirrored_strategy.MirroredStrategy(
+          ["/device:GPU:0", "/device:GPU:1"])
+
+      def update(var, value):
+        return var.assign(value)
+
+      with dist.scope():
+        ret_v_sum = dist.call_for_each_tower(model_fn, run_concurrently=False)
+        update_ops = dist.unwrap(dist.update(ret_v_sum, update, 5.0))
+
+        # Initialize variables.
+        self.evaluate(variables.global_variables_initializer())
+        # Assert that the aggregated value of the tower local vars is the sum of
+        # the individual values before running the update ops.
+        self.assertEquals(1.0, self.evaluate(
+            ret_v_sum.get(dist._devices[0]).read_value()))
+        self.assertEquals(2.0, self.evaluate(dist.read_var(ret_v_sum)))
+        # Apply updates.
+        self.evaluate(update_ops)
+        # Assert that the aggregated value of the tower local vars is the sum of
+        # the individual values after running the update ops.
+        self.assertEquals(5.0, self.evaluate(
+            ret_v_sum.get(dist._devices[0]).read_value()))
+        self.assertEquals(10.0, self.evaluate(dist.read_var(ret_v_sum)))
+
 
 if __name__ == "__main__":
   test.main()

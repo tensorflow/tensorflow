@@ -168,9 +168,10 @@ def _group_features_by_num_buckets(sorted_feature_columns):
   # pylint:enable=protected-access
   # Replace the dummy key with the real max num of buckets for all bucketized
   # columns.
-  bucket_size_to_feature_ids_dict[
-      max_buckets_for_bucketized] = bucket_size_to_feature_ids_dict[
-          _DUMMY_NUM_BUCKETS]
+  if max_buckets_for_bucketized not in bucket_size_to_feature_ids_dict:
+    bucket_size_to_feature_ids_dict[max_buckets_for_bucketized] = []
+  bucket_size_to_feature_ids_dict[max_buckets_for_bucketized].extend(
+      bucket_size_to_feature_ids_dict[_DUMMY_NUM_BUCKETS])
   del bucket_size_to_feature_ids_dict[_DUMMY_NUM_BUCKETS]
 
   feature_ids_list = list(bucket_size_to_feature_ids_dict.values())

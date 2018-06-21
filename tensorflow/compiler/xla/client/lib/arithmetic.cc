@@ -176,8 +176,8 @@ xla::XlaOp EvaluatePolynomial(xla::XlaBuilder* b, const xla::XlaOp& x,
 }
 
 // Compute an approximation of the error function complement (1 - erf(x)).
-xla::XlaOp ComputeErfc(xla::XlaBuilder* b, const xla::XlaOp& x,
-                       PrimitiveType data_type) {
+xla::XlaOp Erfc(xla::XlaBuilder* b, const xla::XlaOp& x,
+                PrimitiveType data_type) {
   xla::XlaOp zero = FloatLiteral(b, data_type, 0.0);
   xla::XlaOp two = FloatLiteral(b, data_type, 2.0);
   xla::XlaOp eight = FloatLiteral(b, data_type, 8.0);
@@ -197,12 +197,57 @@ xla::XlaOp ComputeErfc(xla::XlaBuilder* b, const xla::XlaOp& x,
 }
 
 // Compute a polynomial approximation of the error function.
-xla::XlaOp ComputeErf(xla::XlaBuilder* b, const xla::XlaOp& x,
-                      PrimitiveType data_type) {
+xla::XlaOp Erf(xla::XlaBuilder* b, const xla::XlaOp& x,
+               PrimitiveType data_type) {
   xla::XlaOp z = b->Mul(x, x);
   xla::XlaOp pt = EvaluatePolynomial(b, z, kErfTCoefficient, data_type);
   xla::XlaOp pu = EvaluatePolynomial(b, z, kErfUCoefficient, data_type);
   return b->Div(b->Mul(x, pt), pu);
+}
+
+// Approximation for the inverse error function from
+//   Giles, M., "Approximating the erfinv function".
+// The approximation has the form:
+//   w = -log((1 - x) * (1 + x))
+//   if ( w < 5 ) {
+//     w = w - 2.5
+//     p = sum_{i=1}^n lq[i]*w^i
+//   } else {
+//     w = sqrt(w) - 3
+//     p = sum_{i=1}^n gq[i]*w^i
+//   }
+//   return p*x
+StatusOr<XlaOp> ErfInv(xla::XlaBuilder* b, const xla::XlaOp& x) {
+  TF_ASSIGN_OR_RETURN(Shape shape, b->GetShape(x));
+  constexpr int kDegree = 9;
+  constexpr std::array<float, 9> w_less_than_5_constants = {
+      2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
+      -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
+      -0.00417768164f,  0.246640727f,    1.50140941f};
+  constexpr std::array<float, 9> w_greater_than_5_constants = {
+      -0.000200214257f, 0.000100950558f, 0.00134934322f,
+      -0.00367342844f,  0.00573950773f,  -0.0076224613f,
+      0.00943887047f,   1.00167406f,     2.83297682f};
+
+  auto one = b->ConstantR0<float>(1.0);
+  auto w = b->Neg(b->Log(b->Mul(b->Sub(one, x), b->Add(one, x))));
+
+  auto lt = b->Lt(w, b->ConstantR0<float>(5.0));
+  auto coefficient = [&](int i) {
+    return b->Select(
+        lt,
+        b->Broadcast(b->ConstantR0<float>(w_less_than_5_constants[i]),
+                     AsInt64Slice(shape.dimensions())),
+        b->Broadcast(b->ConstantR0<float>(w_greater_than_5_constants[i]),
+                     AsInt64Slice(shape.dimensions())));
+  };
+  w = b->Select(lt, b->Sub(w, b->ConstantR0<float>(2.5f)),
+                b->Sub(b->SqrtF32(w), b->ConstantR0<float>(3.0f)));
+  auto p = coefficient(0);
+  for (int i = 1; i < kDegree; ++i) {
+    p = b->Add(coefficient(i), b->Mul(p, w));
+  }
+  return b->Mul(p, x);
 }
 
 }  // namespace xla
