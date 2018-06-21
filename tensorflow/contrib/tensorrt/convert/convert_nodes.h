@@ -78,7 +78,7 @@ struct EngineInfo {
   EngineInfo()
       : engine_type(EngineType::TRTStatic),
         max_workspace_size_bytes(0),
-        precision_mode(FP32MODE) {};
+        precision_mode(FP32MODE) {}
 
   string engine_name;
   string device;
@@ -120,13 +120,10 @@ tensorflow::Status ConvertSegmentToGraphDef(
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
 tensorflow::Status ConvertGraphDefToEngine(
-    const tensorflow::GraphDef& gdef,
-    int precision_mode,
-    int max_batch_size,
+    const tensorflow::GraphDef& gdef, int precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
-    Logger* logger,
-    nvinfer1::IGpuAllocator* allocator,
+    Logger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
     bool* convert_successfully);

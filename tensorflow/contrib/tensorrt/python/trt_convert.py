@@ -21,9 +21,9 @@ from __future__ import print_function
 # pylint: disable=unused-import,line-too-long
 import six as _six
 from tensorflow.contrib.tensorrt.wrap_conversion import calib_convert
-from tensorflow.contrib.tensorrt.wrap_conversion import trt_convert
-from tensorflow.contrib.tensorrt.wrap_conversion import get_loaded_tensorrt_version
 from tensorflow.contrib.tensorrt.wrap_conversion import get_linked_tensorrt_version
+from tensorflow.contrib.tensorrt.wrap_conversion import get_loaded_tensorrt_version
+from tensorflow.contrib.tensorrt.wrap_conversion import trt_convert
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import errors
@@ -58,6 +58,10 @@ def create_inference_graph(input_graph_def,
     precision_mode: one of 'FP32', 'FP16' and 'INT8'
     minimum_segment_size: the minimum number of nodes required for a subgraph to
       be replaced by TRTEngineOp.
+    is_dynamic_op: whether to generate dynamic TRT ops which will build the TRT
+      network and engine at run time.
+    maximum_cached_engines: max number of cached TRT engines in dynamic TRT ops.
+    cached_engine_batches: batch sizes used to pre-create cached engines.
 
   Returns:
     New GraphDef with TRTEngineOps placed in graph replacing subgraphs.
@@ -81,7 +85,7 @@ def create_inference_graph(input_graph_def,
         "TensorRT %s but library loaded from environment is TensorRT %s" %
         (".".join([str(x) for x in compiled_version]),
          ".".join([str(x) for x in loaded_version])) +
-        ". Please make sure that correct version of TensorRT "\
+        ". Please make sure that correct version of TensorRT " +
         "is available in the system and added to ldconfig or LD_LIBRARY_PATH"
     )
     raise RuntimeError("Incompatible TensorRT library version")
@@ -178,7 +182,7 @@ def calib_graph_to_infer_graph(calibration_graph_def, is_dynamic_op=False):
   is_calib_graph = False
   for n in calibration_graph_def.node:
     if n.op == "TRTEngineOp":
-      is_calib_graph = is_calib_graph or len(n.attr["calibration_data"].s) == 0
+      is_calib_graph = is_calib_graph or not n.attr["calibration_data"].s
   if not is_calib_graph:
     tf_logging.error(
         "Not a calib graph. Doesn't seem to contain any calibration nodes.")

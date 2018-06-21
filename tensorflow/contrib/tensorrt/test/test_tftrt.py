@@ -76,7 +76,7 @@ def get_multi_engine_graph_def(mode="FP32"):
   g = ops.Graph()
   with g.as_default():
     x = aops.placeholder(shape=[None, 3, 7, 5], name="input", dtype=dtype)
-    with g.name_scope("Global_scope") as scope:
+    with g.name_scope("Global_scope"):
       with g.name_scope("first_scope"):
         e = cop.constant(
             np.random.randn(3, 2, 3, 4), name="weights", dtype=dtype)
@@ -92,15 +92,14 @@ def get_multi_engine_graph_def(mode="FP32"):
 
         b = cop.constant(np.random.randn(1, 4, 1, 1), name="bias2", dtype=dtype)
         q = conv / b
-        c = cop.constant(np.random.randn(1, 4, 1, 1), name="bias3", dtype=dtype)
       edge = mops.sin(q)
       edge1 = mops.cos(conv)
       with g.name_scope("test_scope"):
         de = edge + edge1
-        t = t - edge1
-        q = q * edge
-        t = t + q
-        t = t - de
+        t -= edge1
+        q *= edge
+        t += q
+        t -= de
     k = aops.squeeze(t, name="output")
   print(k.dtype)
   return g.as_graph_def()

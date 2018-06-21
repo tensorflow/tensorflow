@@ -944,7 +944,7 @@ def set_tf_cudnn_version(environ_cp):
 
 
 def is_cuda_compatible(lib, cuda_ver, cudnn_ver):
-  """Check the compatibility between given library and cudnn/cudart libraries."""
+  """Check compatibility between given library and cudnn/cudart libraries."""
   ldd_bin = which('ldd') or '/usr/bin/ldd'
   ldd_out = run_shell([ldd_bin, lib], True)
   ldd_out = ldd_out.split(os.linesep)

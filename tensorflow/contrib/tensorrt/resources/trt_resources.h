@@ -49,15 +49,15 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
 
   string DebugString() override {
     std::stringstream oss;
-    using std::hex;
     using std::dec;
     using std::endl;
+    using std::hex;
     oss << " Calibrator = " << hex << calibrator_.get() << dec << endl
-        << " Builder    = " << hex << builder_.get()    << dec << endl
-        << " Engine     = " << hex << engine_.get()     << dec << endl
-        << " Logger     = " << hex << &logger_          << dec << endl
-        << " Allocator  = " << hex << allocator_.get()  << dec << endl
-        << " Thread     = " << hex << thr_.get()        << dec << endl;
+        << " Builder    = " << hex << builder_.get() << dec << endl
+        << " Engine     = " << hex << engine_.get() << dec << endl
+        << " Logger     = " << hex << &logger_ << dec << endl
+        << " Allocator  = " << hex << allocator_.get() << dec << endl
+        << " Thread     = " << hex << thr_.get() << dec << endl;
     return oss.str();
   }
 

@@ -15,8 +15,8 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 
 #include <algorithm>
-#include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
+#include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
@@ -77,9 +77,8 @@ tensorflow::Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
   }
   auto fdef = lib->GetFunctionLibraryDefinition()->Find(funcdef_name_);
   if (fdef == nullptr) {
-    return tensorflow::errors::Internal(
-        "Native FunctionDef ", funcdef_name_,
-        " can't be found in function library");
+    return tensorflow::errors::Internal("Native FunctionDef ", funcdef_name_,
+                                        " can't be found in function library");
   }
   tensorflow::FunctionLibraryRuntime::InstantiateOptions inst_ops;
   inst_ops.overlay_lib = nullptr;
@@ -128,8 +127,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   } else if (precision_string == "INT8") {
     precision_mode_ = convert::INT8MODE;
   }
-  calibration_mode_ = (precision_mode_ == convert::INT8MODE &&
-                       calibration_data.size() == 0);
+  calibration_mode_ =
+      (precision_mode_ == convert::INT8MODE && calibration_data.size() == 0);
   if (calibration_data.size()) {
     calibrator_.reset(new TRTInt8Calibrator(calibration_data));
     calibration_data.resize(0);
@@ -291,8 +290,8 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
   std::vector<void*> buffers(num_binding);
   for (int i = 0; i < ctx->num_inputs(); i++) {
     const string inp_name = StrCat(kInputPHName, i);
-    const size_t binding_index = trt_engine_ptr->getBindingIndex(
-        inp_name.c_str());
+    const size_t binding_index =
+        trt_engine_ptr->getBindingIndex(inp_name.c_str());
 
     const Tensor& input_tensor = ctx->input(i);
     const TensorShape& input_shape = input_tensor.shape();
@@ -320,7 +319,7 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
       default:
         LOG(ERROR) << "Unknown TRT data type: " << int(dtype);
         ctx->SetStatus(tensorflow::errors::InvalidArgument(
-            "Unknown ouput TRT data type! ", int(dtype)));
+            "Unknown ouput TRT data type! ", static_cast<int>(dtype)));
         return;
     }
   }
@@ -343,8 +342,8 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
                                            &output_shape));
     } else {
       LOG(ERROR) << "output node not found, at " << output_name;
-      ctx->SetStatus(tensorflow::errors::Internal(
-          "output ", output_name, " couldn't be found!"));
+      ctx->SetStatus(tensorflow::errors::Internal("output ", output_name,
+                                                  " couldn't be found!"));
       return;
     }
     auto status = ctx->allocate_output(i, output_shape, &output_tensor);
@@ -370,7 +369,7 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
             "INT8 outputs are not supported!"));
         return;
       default:
-        LOG(ERROR) << "Unknown TRT data type: " << int(dtype);
+        LOG(ERROR) << "Unknown TRT data type: " << static_cast<int>(dtype);
         ctx->SetStatus(tensorflow::errors::InvalidArgument(
             "Unsupported output data type! ", int(dtype)));
         return;
@@ -442,7 +441,7 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     if (allocator == nullptr) {
       // GetAllocator already set the Status.
       return null_pair;
-    };
+    }
     infer->setGpuAllocator(allocator);
 #endif
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
@@ -506,8 +505,7 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
 }
 
 tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
-    tensorflow::OpKernelContext* ctx,
-    TRTCalibrationResource** cr) {
+    tensorflow::OpKernelContext* ctx, TRTCalibrationResource** cr) {
   auto cres = new TRTCalibrationResource();
   *cr = cres;
   // Get the allocator.

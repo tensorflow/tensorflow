@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 
 #include <atomic>
-#include <chrono>
 #include <unordered_map>
 
 #include "tensorflow/core/platform/logging.h"

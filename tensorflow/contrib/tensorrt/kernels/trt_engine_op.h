@@ -52,19 +52,17 @@ class TRTEngineOp : public AsyncOpKernel {
 
  private:
   // Execute calibration
-  void ExecuteCalibration(OpKernelContext* ctx,
-                          AsyncHelper* helper);
+  void ExecuteCalibration(OpKernelContext* ctx, AsyncHelper* helper);
 
   // Construct a function handle for executing native funcdef graph
   Status ConstructFunctionHandle(OpKernelContext* ctx);
 
   // Execute replaced native segment as function Op.
-  void ExecuteNativeSegment(OpKernelContext* ctx,
-                            AsyncHelper* helper);
+  void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* helper);
 
   // Allocate necessary resources for calibration
-  Status AllocateCalibrationResources(
-      OpKernelContext* ctx, TRTCalibrationResource** cr);
+  Status AllocateCalibrationResources(OpKernelContext* ctx,
+                                      TRTCalibrationResource** cr);
 
   // TODO(samikama): context should go to a resource manager!
   typedef std::pair<TrtUniquePtrType<nvinfer1::ICudaEngine>,

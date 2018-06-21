@@ -2130,13 +2130,10 @@ void Converter::register_op_converters() {
 }  // namespace
 
 tensorflow::Status ConvertGraphDefToEngine(
-    const tensorflow::GraphDef& gdef,
-    int precision_mode,
-    int max_batch_size,
+    const tensorflow::GraphDef& gdef, int precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
-    Logger* logger,
-    nvinfer1::IGpuAllocator* allocator,
+    Logger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
     bool* convert_successfully) {
