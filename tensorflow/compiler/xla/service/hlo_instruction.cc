@@ -1460,25 +1460,6 @@ bool HloInstruction::IdenticalSlowPath(
     // Remaining instructions with special values.
     case HloOpcode::kCall:
       return eq_computations(to_apply(), other.to_apply());
-    case HloOpcode::kCrossReplicaSum:
-      return replica_group_ids() == other.replica_group_ids() &&
-             cross_replica_sum_barrier() == other.cross_replica_sum_barrier() &&
-             eq_computations(to_apply(), other.to_apply());
-    case HloOpcode::kCustomCall:
-      if ((window_ == nullptr) != (other.window_ == nullptr) ||
-          (window_ != nullptr &&
-           !protobuf_util::ProtobufEquals(window(), other.window()))) {
-        return false;
-      }
-      if ((convolution_dimension_numbers_ == nullptr) !=
-              (other.convolution_dimension_numbers_ == nullptr) ||
-          (convolution_dimension_numbers_ != nullptr &&
-           !protobuf_util::ProtobufEquals(
-               convolution_dimension_numbers(),
-               other.convolution_dimension_numbers()))) {
-        return false;
-      }
-      return custom_call_target_ == other.custom_call_target_;
     case HloOpcode::kConditional:
       return eq_computations(true_computation(), other.true_computation()) &&
              eq_computations(false_computation(), other.false_computation());
