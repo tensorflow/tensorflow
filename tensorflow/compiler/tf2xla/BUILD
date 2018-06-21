@@ -162,6 +162,7 @@ cc_library(
         ":host_compute_metadata_proto",
         ":sharding_util",
         ":tf2xla_util",
+        "//tensorflow/compiler/plugin:plugin_backend",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
