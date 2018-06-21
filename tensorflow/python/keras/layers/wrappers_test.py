@@ -444,6 +444,42 @@ class BidirectionalTest(test.TestCase):
       layer.trainable = True
       assert len(layer.trainable_weights) == 6
 
+  def test_Bidirectional_updates(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3, 2))
+      x_reachable_update = x * x
+      layer = keras.layers.Bidirectional(keras.layers.SimpleRNN(3))
+      _ = layer(x)
+      assert not layer.updates
+      assert not layer.get_updates_for(None)
+      assert not layer.get_updates_for(x)
+      layer.forward_layer.add_update(x_reachable_update, inputs=x)
+      layer.forward_layer.add_update(1, inputs=None)
+      layer.backward_layer.add_update(x_reachable_update, inputs=x)
+      layer.backward_layer.add_update(1, inputs=None)
+      assert len(layer.updates) == 4
+      assert len(layer.get_updates_for(None)) == 2
+      assert len(layer.get_updates_for(x)) == 2
+
+  def test_Bidirectional_losses(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3, 2))
+      x_reachable_loss = x * x
+      layer = keras.layers.Bidirectional(
+          keras.layers.SimpleRNN(
+              3, kernel_regularizer='l1', bias_regularizer='l1'))
+      _ = layer(x)
+      assert len(layer.losses) == 4
+      assert len(layer.get_losses_for(None)) == 4
+      assert not layer.get_losses_for(x)
+      layer.forward_layer.add_loss(x_reachable_loss, inputs=x)
+      layer.forward_layer.add_loss(1, inputs=None)
+      layer.backward_layer.add_loss(x_reachable_loss, inputs=x)
+      layer.backward_layer.add_loss(1, inputs=None)
+      assert len(layer.losses) == 8
+      assert len(layer.get_losses_for(None)) == 6
+      assert len(layer.get_losses_for(x)) == 2
+
   def test_Bidirectional_with_constants(self):
     with self.test_session():
       # Test basic case.
