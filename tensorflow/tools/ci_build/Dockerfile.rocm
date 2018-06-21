@@ -61,10 +61,9 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Workaround: build HIP from source at commit # 836627279fd5bd995910c471882743accef5ec58
-# which has PR457 logic and to prevent further issues in the tip of HIP
-RUN cd ~ && git clone https://github.com/GPUOpen-ProfessionalCompute-Tools/HIP.git
-RUN cd ~/HIP && git pull && git reset --hard 836627279fd5bd995910c471882743accef5ec58 && mkdir -p build && cd build && cmake .. && make package -j && dpkg -i *.deb
+# Workaround: build HIP from source using fork that holds roc-1.8.x with merged PR457
+RUN cd ~ && git clone -b roc-1.8.x-pr457 https://github.com/parallelo/HIP.git 
+RUN cd ~/HIP && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i *.deb
 
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
