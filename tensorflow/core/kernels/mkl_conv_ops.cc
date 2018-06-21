@@ -891,12 +891,11 @@ class MklConv2DOp : public OpKernel {
       T* dst_data = static_cast<T*>(dst_tensor->flat<T>().data());
 
       // check whether src/filter need reorder
-      std::vector<primitive> net;
       T *src_data = nullptr;
       if (src_md.data.format != conv2d_fwd->GetSrcMemoryFormat()) {
         src.SetUsrMem(src_md, &src_tensor);
         src.CheckReorderToOpMem(
-            conv_fwd_pd.get()->src_primitive_desc(), &net);
+            conv_fwd_pd.get()->src_primitive_desc());
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(const_cast<T*>(
@@ -907,14 +906,12 @@ class MklConv2DOp : public OpKernel {
         filter.SetUsrMem(filter_md, &filter_tensor);
         filter.CheckReorderToOpMem(
             conv_fwd_pd.get()->weights_primitive_desc(),
-            filter.GetTensorBuffer(filter_out_tensor), &net);
+            filter.GetTensorBuffer(filter_out_tensor));
         filter_data = static_cast<T*>(filter.GetOpMem().get_data_handle());
       } else {
         filter_data = static_cast<T*>(const_cast<T*>(
                        filter_tensor.flat<T>().data()));
       }
-
-      stream(stream::kind::eager).submit(net).wait();
 
 
       // execute convolution
@@ -1010,16 +1007,15 @@ class MklConv2DOp : public OpKernel {
     // Create reorders between user layout and MKL layout if it is needed and
     // add it to the net before convolution. No need to check for output
     // reorder as we propagate output layout to the next layer.
-    std::vector<primitive> net;
-    src->CheckReorderToOpMem(conv_prim_desc.src_primitive_desc(), &net);
+    src->CheckReorderToOpMem(conv_prim_desc.src_primitive_desc());
 
     // rather than re-order to a temp buffer, reorder directly to the
     // filter output tensor
     filter->CheckReorderToOpMem(conv_prim_desc.weights_primitive_desc(),
-                                filter->GetTensorBuffer(filter_out_tensor),
-                                &net);
+                                filter->GetTensorBuffer(filter_out_tensor));
 
     // Create convolution primitive and add it to net.
+    std::vector<primitive> net;
     if (bias) {
       CHECK_EQ(biasEnabled, true);
       net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),
