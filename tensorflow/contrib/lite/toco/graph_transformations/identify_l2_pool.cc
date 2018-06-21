@@ -41,7 +41,7 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
 bool IdentifyL2Pool::Run(Model* model, std::size_t op_index) {
   const auto sqrt_it = model->operators.begin() + op_index;
   const auto* sqrt_op = sqrt_it->get();
-  if (sqrt_op->type != OperatorType::kTensorFlowSqrt) {
+  if (sqrt_op->type != OperatorType::kSqrt) {
     return false;
   }
 
@@ -72,7 +72,7 @@ bool IdentifyL2Pool::Run(Model* model, std::size_t op_index) {
 
   square_op = GetOpWithOutput(*model, avpool_op->inputs[0]);
   CHECK_EQ(square_op->inputs.size(), 1);
-  if (square_op->type != OperatorType::kTensorFlowSquare) {
+  if (square_op->type != OperatorType::kSquare) {
     AddMessageF(
         "Giving up trying to identify L2Pool subgraph: "
         "expected Square op, got %s",

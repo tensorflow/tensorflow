@@ -39,6 +39,7 @@ py_library(
         "datasets/imdb.py",
         "datasets/mnist.py",
         "datasets/reuters.py",
+        "estimator/__init__.py",
         "preprocessing/__init__.py",
         "preprocessing/image.py",
         "preprocessing/sequence.py",
@@ -866,6 +867,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

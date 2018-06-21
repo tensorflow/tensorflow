@@ -2710,8 +2710,9 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     // If the literal is 8 or 16 bits wide, we can emit a 32-bit memset by
     // repeating the literal 4 or 2 times, so long as the destination buffer is
     // an even multiple of 32 bits long.
+    const Shape& output_shape = ShapeUtil::GetSubshape(hlo->shape(), index);
     if ((num_bytes == 1 || num_bytes == 2) &&
-        ShapeUtil::ByteSizeOf(hlo->shape()) % 4 == 0) {
+        ShapeUtil::ByteSizeOf(output_shape) % 4 == 0) {
       uint16 pattern16;
       if (num_bytes == 1) {
         uint8 b = literal_bytes.front();

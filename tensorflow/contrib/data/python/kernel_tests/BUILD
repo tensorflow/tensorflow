@@ -158,6 +158,26 @@ py_test(
 )
 
 py_test(
+    name = "iterator_ops_test",
+    size = "small",
+    srcs = ["iterator_ops_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:model_fn",
+    ],
+)
+
+py_test(
     name = "map_dataset_op_test",
     size = "medium",
     srcs = ["map_dataset_op_test.py"],
@@ -425,6 +445,7 @@ py_test(
         "//tensorflow/python:script_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

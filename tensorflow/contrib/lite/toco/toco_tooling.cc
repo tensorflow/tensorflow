@@ -34,11 +34,11 @@ limitations under the License.
 
 namespace toco {
 namespace {
-// CHECK-fails if the model contains a kTensorFlowUnsupported operation.
+// CHECK-fails if the model contains a kUnsupported operation.
 void CheckUnsupportedOperations(const Model& model) {
   std::set<string> unsupported_ops;
   for (auto& op : model.operators) {
-    if (op->type == OperatorType::kTensorFlowUnsupported) {
+    if (op->type == OperatorType::kUnsupported) {
       unsupported_ops.insert(
           static_cast<const TensorFlowUnsupportedOperator*>(op.get())
               ->tensorflow_op);

@@ -1114,8 +1114,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(new Pad(::tflite::BuiltinOperator_PAD, OperatorType::kPad));
   ops.emplace_back(
       new PadV2(::tflite::BuiltinOperator_PADV2, OperatorType::kPadV2));
-  ops.emplace_back(new Reshape(::tflite::BuiltinOperator_RESHAPE,
-                               OperatorType::kTensorFlowReshape));
+  ops.emplace_back(
+      new Reshape(::tflite::BuiltinOperator_RESHAPE, OperatorType::kReshape));
   ops.emplace_back(
       new Softmax(::tflite::BuiltinOperator_SOFTMAX, OperatorType::kSoftmax));
   ops.emplace_back(new SpaceToDepth(::tflite::BuiltinOperator_SPACE_TO_DEPTH,
@@ -1126,14 +1126,13 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                  OperatorType::kTranspose));
   ops.emplace_back(
       new Mean(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
-  ops.emplace_back(
-      new Sum(::tflite::BuiltinOperator_SUM, OperatorType::kTensorFlowSum));
+  ops.emplace_back(new Sum(::tflite::BuiltinOperator_SUM, OperatorType::kSum));
   ops.emplace_back(new ResizeBilinear(::tflite::BuiltinOperator_RESIZE_BILINEAR,
                                       OperatorType::kResizeBilinear));
   ops.emplace_back(
       new Squeeze(::tflite::BuiltinOperator_SQUEEZE, OperatorType::kSqueeze));
-  ops.emplace_back(new Split(::tflite::BuiltinOperator_SPLIT,
-                             OperatorType::kTensorFlowSplit));
+  ops.emplace_back(
+      new Split(::tflite::BuiltinOperator_SPLIT, OperatorType::kSplit));
   ops.emplace_back(new StridedSlice(::tflite::BuiltinOperator_STRIDED_SLICE,
                                     OperatorType::kStridedSlice));
   ops.emplace_back(
@@ -1145,28 +1144,27 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
   ops.emplace_back(
-      new Tile(::tflite::BuiltinOperator_TILE, OperatorType::kTensorFlowTile));
+      new Tile(::tflite::BuiltinOperator_TILE, OperatorType::kTile));
   ops.emplace_back(new ExpandDims(::tflite::BuiltinOperator_EXPAND_DIMS,
                                   OperatorType::kExpandDims));
   ops.emplace_back(new TransposeConv(::tflite::BuiltinOperator_TRANSPOSE_CONV,
                                      OperatorType::kTransposeConv));
   ops.emplace_back(new SparseToDense(::tflite::BuiltinOperator_SPARSE_TO_DENSE,
                                      OperatorType::kSparseToDense));
-  ops.emplace_back(new Shape(::tflite::BuiltinOperator_SHAPE,
-                             OperatorType::kTensorFlowShape));
+  ops.emplace_back(
+      new Shape(::tflite::BuiltinOperator_SHAPE, OperatorType::kShape));
 
   // Custom Operators.
   ops.emplace_back(
       new DepthToSpace("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
   ops.emplace_back(new FakeQuant("FAKE_QUANT", OperatorType::kFakeQuant));
-  ops.emplace_back(new TensorFlowUnsupported(
-      "TENSORFLOW_UNSUPPORTED", OperatorType::kTensorFlowUnsupported));
+  ops.emplace_back(new TensorFlowUnsupported("TENSORFLOW_UNSUPPORTED",
+                                             OperatorType::kUnsupported));
 
   // There operators are supported by Toco, but not by TF Lite, and has no
   // attributes.
   ops.emplace_back(
       new SimpleOperator<AddNOperator>("ADDN", OperatorType::kAddN));
-
   // Simple Operators.
   ops.emplace_back(new SimpleOperator<DequantizeOperator>(
       "DEQUANTIZE", OperatorType::kDequantize));
@@ -1188,21 +1186,21 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(new SimpleOperator<LogSoftmaxOperator>(
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
   ops.emplace_back(new SimpleOperator<TensorFlowMaximumOperator>(
-      "MAXIMUM", OperatorType::kTensorFlowMaximum));
+      "MAXIMUM", OperatorType::kMaximum));  //  Element-wise Maximum
   ops.emplace_back(new SimpleOperator<TensorFlowMinimumOperator>(
-      "MINIMUM", OperatorType::kTensorFlowMinimum));
+      "MINIMUM", OperatorType::kMinimum));  //  Element-wise Minimum
   ops.emplace_back(new SimpleOperator<TensorFlowGreaterOperator>(
-      "GREATER", OperatorType::kTensorFlowGreater));
+      "GREATER", OperatorType::kGreater));
   ops.emplace_back(new SimpleOperator<TensorFlowGreaterEqualOperator>(
-      "GREATER_EQUAL", OperatorType::kTensorFlowGreaterEqual));
-  ops.emplace_back(new SimpleOperator<TensorFlowLessOperator>(
-      "LESS", OperatorType::kTensorFlowLess));
+      "GREATER_EQUAL", OperatorType::kGreaterEqual));
+  ops.emplace_back(
+      new SimpleOperator<TensorFlowLessOperator>("LESS", OperatorType::kLess));
   ops.emplace_back(new SimpleOperator<TensorFlowLessEqualOperator>(
-      "LESS_EQUAL", OperatorType::kTensorFlowLessEqual));
+      "LESS_EQUAL", OperatorType::kLessEqual));
   ops.emplace_back(new SimpleOperator<TensorFlowEqualOperator>(
-      "EQUAL", OperatorType::kTensorFlowEqual));
+      "EQUAL", OperatorType::kEqual));
   ops.emplace_back(new SimpleOperator<TensorFlowNotEqualOperator>(
-      "NOT_EQUAL", OperatorType::kTensorFlowNotEqual));
+      "NOT_EQUAL", OperatorType::kNotEqual));
   ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   ops.emplace_back(
       new SimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect));
@@ -1211,10 +1209,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   // Element-wise operator
   ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
   ops.emplace_back(new SimpleOperator<LogOperator>("LOG", OperatorType::kLog));
-  ops.emplace_back(new SimpleOperator<TensorFlowSqrtOperator>(
-      "SQRT", OperatorType::kTensorFlowSqrt));
+  ops.emplace_back(
+      new SimpleOperator<TensorFlowSqrtOperator>("SQRT", OperatorType::kSqrt));
   ops.emplace_back(new SimpleOperator<TensorFlowRsqrtOperator>(
-      "RSQRT", OperatorType::kTensorFlowRsqrt));
+      "RSQRT", OperatorType::kRsqrt));
 
   return ops;
 }

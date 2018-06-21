@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "StringToNumber"
+  endpoint {
+    name: "strings.to_number"
+  }
+  endpoint {
+    name: "string_to_number"
+    deprecation_message: "tf.string_to_number is deprecated, please use tf.strings.to_number instead."
+  }
+}
