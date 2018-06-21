@@ -528,9 +528,12 @@ class XlaBuilder {
       tensorflow::gtl::ArraySlice<int64> window_strides,
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
 
-  // Returns the sum of the operand value across all replicas. All replicas
-  // supply one input to the sum and all replicas receive the resulting sum.
-  XlaOp CrossReplicaSum(const XlaOp& operand);
+  // Returns the sum of the operand value within each subgroup of replicas. All
+  // replicas supply one input to the sum and all replicas receive the resulting
+  // sum for each subgroup.
+  XlaOp CrossReplicaSum(
+      const XlaOp& operand,
+      tensorflow::gtl::ArraySlice<int64> replica_group_ids = {});
 
   // Enqueues an operation that do an AllReduce of the operand cross cores. Here
   // AllReduce means doing a reduction on the input operand cross cores and then

@@ -116,10 +116,11 @@ void RunOneLogSoftmaxTest(const uint8* input_data, const Dims<4>& dims_common,
   int32 reverse_scaling_divisor;
   int reverse_scaling_right_shift;
   static const int kScaledDiffIntegerBits = 5;
-  tflite::PreprocessLogSoftmaxScaling(
+  tflite::PreprocessLogSoftmaxScalingExp(
       beta, input_scale, kScaledDiffIntegerBits, &input_beta_multiplier,
       &input_beta_left_shift, &reverse_scaling_divisor,
       &reverse_scaling_right_shift);
+  reverse_scaling_right_shift *= -1;
   // diff_min has a negative value, and is used to limit the maximum magnitude
   // of the diffs, which are <= 0.
   const int diff_min = -tflite::CalculateInputRadius(kScaledDiffIntegerBits,

@@ -11,8 +11,8 @@ cc_library(
     srcs = ["grpc_eager_service.cc"],
     hdrs = ["grpc_eager_service.h"],
     deps = [
+        "//tensorflow:grpc++",
         "//tensorflow/core:eager_service_proto_cc",
-        "@grpc//:grpc++_unsecure",
     ],
 )
 
@@ -21,6 +21,7 @@ cc_library(
     srcs = ["grpc_eager_client.cc"],
     hdrs = ["grpc_eager_client.h"],
     deps = [
+        "//tensorflow:grpc++",
         "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
@@ -29,7 +30,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_state",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_service",
-        "@grpc//:grpc++_unsecure",
     ],
 )
 
@@ -39,6 +39,7 @@ cc_library(
     hdrs = ["grpc_eager_service_impl.h"],
     deps = [
         ":grpc_eager_service",
+        "//tensorflow:grpc++",
         "//tensorflow/core:framework",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/distributed_runtime/eager:eager_service_impl",
@@ -48,7 +49,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
-        "@grpc//:grpc++_unsecure",
     ],
 )
 

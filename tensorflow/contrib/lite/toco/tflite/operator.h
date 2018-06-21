@@ -87,6 +87,17 @@ class BaseOperator {
   //   overridden. (See example in `operator_test.cc`)
   virtual int GetVersion(const Operator& op) const = 0;
 
+  // Given a Toco `Operator`, return a list of booleans indicating the op
+  // mutates which input variables.
+  // * If the op mutates any input variables, it should return a list of bool
+  //   with the same length as inputs.
+  // * Otherwise, it will return an empty list.
+  virtual std::vector<bool> GetMutatingInputVariables(
+      const Operator& op) const {
+    // Most ops don't have variable tensors. This function can be overridden.
+    return std::vector<bool>();
+  }
+
  private:
   string name_;
   OperatorType type_;

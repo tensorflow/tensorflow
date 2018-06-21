@@ -127,9 +127,14 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
     for (HloInstruction* instruction : *companions) {
       // Go through all the communicating instructions (send, recv) of the given
       // companion, and record their device.
+      auto it = tracked_instructions_comms_.find(instruction);
+      if (it == tracked_instructions_comms_.end()) {
+        // Companions can be added even if they have no communicating
+        // instructions, if they are parent of companions.
+        continue;
+      }
       std::unordered_set<int64> comm_devices;
-      for (HloInstruction* comm_instruction :
-           tracked_instructions_comms_.at(instruction)) {
+      for (HloInstruction* comm_instruction : it->second) {
         auto device = GetInstructionDevice(*comm_instruction);
         TF_RET_CHECK(device) << "Instruction " << comm_instruction->ToString()
                              << " does not have a device";

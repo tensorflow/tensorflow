@@ -147,7 +147,7 @@ class HloRematerializationTest : public HloTestBase {
     TF_EXPECT_OK(verifier().Run(module).status());
     return HloRematerialization::RematerializeAndSchedule(
         ByteSizeOf, memory_limit_bytes, module, DefaultMemoryScheduler,
-        sequence);
+        sequence, /*sizes=*/nullptr, /*run_copy_elision=*/false);
   }
 
   // Various shapes used in the canned computations.

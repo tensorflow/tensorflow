@@ -43,10 +43,8 @@ class GpuMultiOutputFusion : public MultiOutputFusion {
   // estimated as the size of the common operands b/w instr1 and instr2.
   int64 GetProfit(HloInstruction* instr1, HloInstruction* instr2) override;
 
-  // Whether fusing the instruction can reduce memory reads.
-  //
-  // TODO(tjoerg): Move this method up into the MultiOutputFusion base class.
-  bool IsProfitableOperand(HloInstruction* instr) override;
+  // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
+  bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2) override;
 };
 
 }  // namespace gpu

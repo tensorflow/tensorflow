@@ -1493,21 +1493,21 @@ Status IrEmitterUnnested::EmitRowReduction(
   //       x + (x_tile_size - 1) * warpSize < width) {
   //     // The entire x_tile is in bounds.
   //     for (int element_id_in_z_tile = 0; element_id_in_z_tile < z_tile_size;
-  //        ++element_id_in_z_tile) {
+  //          ++element_id_in_z_tile) {
   //       z = z_in_tiles * z_tile_size + element_id_in_z_tile;
-  //       for (int element_id_in_x_tile = 0;element_id_in_x_tile < x_tile_size;
-  //        ++element_id_in_x_tile, x += warpSize) {
+  //       for (int element_id_in_x_tile = 0;
+  //            element_id_in_x_tile < x_tile_size;
+  //            ++element_id_in_x_tile, x += warpSize) {
   //         partial_result = Reducer(partial_result, input[z][y][x]);
   //       }
   //     }
   //   } else {
   //     // The tile is partially in bounds.
   //     for (int element_id_in_z_tile = 0; element_id_in_z_tile < z_tile_size;
-  //        ++element_id_in_z_tile) {
+  //          ++element_id_in_z_tile) {
   //       z = z_in_tiles * z_tile_size + element_id_in_z_tile;
   //       for (int element_id_in_x_tile = 0; element_id_in_x_tile <
-  //       x_tile_size;
-  //          ++element_id_in_tile, x += warpSize) {
+  //            x_tile_size; ++element_id_in_tile, x += warpSize) {
   //         if (x < width)
   //           partial_result = Reducer(partial_result, input[z][y][x]);
   //       }
@@ -1558,8 +1558,7 @@ Status IrEmitterUnnested::EmitRowReduction(
         x_tile, ir_builder_.getInt64(kWarpSize), "lane_id");
 
     // The x-location of the last element in this z-x-tile.
-    //   last_x = lane_id + warpSize * (x_tile_size - 1 + warp_id *
-    //   x_tile_size);
+    // last_x = lane_id + warpSize * (x_tile_size - 1 + warp_id * x_tile_size);
     llvm::Value* last_x = ir_builder_.CreateNSWAdd(
         lane_id, ir_builder_.CreateNSWMul(
                      ir_builder_.getInt64(kWarpSize),
@@ -1586,8 +1585,8 @@ Status IrEmitterUnnested::EmitRowReduction(
             "x_tile",
             /*start=*/0, /*end=*/x_tile_loop_bound, /*step=*/1,
             [&](llvm::Value* x_indvar) -> Status {
-              // x = lane_id + warpSize * (element_id_in_x_tile + warp_id *
-              // x_tile_size);
+              // x = lane_id +
+              //     warpSize * (element_id_in_x_tile + warp_id * x_tile_size);
               llvm::Value* x = ir_builder_.CreateNSWAdd(
                   lane_id,
                   ir_builder_.CreateNSWMul(
@@ -2203,6 +2202,10 @@ Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
                                           GetAllocationSlice(*crs), crs));
   thunk_sequence_->push_back(
       MakeUnique<SequentialThunk>(std::move(thunks), crs));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleGenerateToken(HloInstruction* gen_token) {
   return Status::OK();
 }
 

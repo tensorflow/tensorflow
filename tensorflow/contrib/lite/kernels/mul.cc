@@ -120,8 +120,9 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
   double real_multiplier =
       input1->params.scale * input2->params.scale / output->params.scale;
-  QuantizeMultiplierSmallerThanOne(real_multiplier, &output_multiplier,
-                                   &output_shift);
+  QuantizeMultiplierSmallerThanOneExp(real_multiplier, &output_multiplier,
+                                      &output_shift);
+  output_shift *= -1;
 
   int32 output_activation_min, output_activation_max;
   CalculateActivationRangeUint8(params->activation, output,

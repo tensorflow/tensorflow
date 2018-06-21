@@ -26,6 +26,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
 from tensorflow.python.ops.distributions import util as dist_util
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -62,6 +63,14 @@ class FillTriangular(bijector.Bijector):
   ```
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                upper=False,
                validate_args=False,
@@ -130,6 +139,14 @@ class FillTriangular(bijector.Bijector):
     return array_ops.concat([batch_shape, [d]], axis=0)
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def vector_size_to_square_matrix_size(d, validate_args, name=None):
   """Convert a vector size to a matrix size."""
   if isinstance(d, (float, int, np.generic, np.ndarray)):

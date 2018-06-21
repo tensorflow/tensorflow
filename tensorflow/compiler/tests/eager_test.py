@@ -31,11 +31,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import adam
 
 
 class EagerTest(XLATestCase):
@@ -230,6 +232,43 @@ class EagerTest(XLATestCase):
       self.assertEqual(
           2, array_ops.rank(
               constant_op.constant([[1.0, 2.0], [3.0, 4.0]])).numpy())
+
+  def testAdam(self):
+    with self.test_scope():
+      optimizer = adam.AdamOptimizer(0.1)
+      x = resource_variable_ops.ResourceVariable(10.0)
+      with backprop.GradientTape() as tape:
+        y = x * x
+      dy_dx = tape.gradient(y, x)
+      optimizer.apply_gradients([(dy_dx, x)])
+      self.assertAlmostEqual(9.9, x.numpy(), places=3)
+
+  def testAdamSparse(self):
+    with ops.device('/cpu:0'):
+      # Create 2-D embedding for 3 objects on CPU because sparse/sliced updates
+      # are not implemented on TPU.
+      embedding_matrix = resource_variable_ops.ResourceVariable(
+          array_ops.ones([3, 2]))
+
+    with self.test_scope():
+      with backprop.GradientTape() as tape:
+        embedding = embedding_ops.embedding_lookup(embedding_matrix, [1])
+        y = math_ops.reduce_sum(embedding)
+      dy_dx = tape.gradient(y, embedding_matrix)
+      self.assertIsInstance(dy_dx, ops.IndexedSlices)
+      optimizer = adam.AdamOptimizer(0.1)
+      # The gradient application operations will run on CPU because optimizer
+      # updates are always collocated with the variable.
+      optimizer.apply_gradients([(dy_dx, embedding_matrix)])
+
+      # This assign_add will run on CPU because when an input to an
+      # operation is a resource, this operation is placed on the resource's
+      # device by the eager runtime.
+      embedding_matrix.assign_add(array_ops.ones([3, 2]))
+
+    self.assertAllClose([[2.0, 2.0],
+                         [1.9, 1.9],
+                         [2.0, 2.0]], embedding_matrix.numpy())
 
 
 class EagerFunctionTest(XLATestCase):
