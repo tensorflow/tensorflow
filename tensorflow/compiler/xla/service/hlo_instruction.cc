@@ -1754,6 +1754,9 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kClamp:
       return true;
 
+    case HloOpcode::kDynamicUpdateSlice:
+      return operand_idx.has_value() && operand_idx.value() == 0;
+
     default:
       return false;
   }

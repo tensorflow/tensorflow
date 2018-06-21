@@ -2157,7 +2157,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 }
 
 TEST_F(CanShareOperandBufferWithUserTest,
-       FusedDynamicUpdateSliceWithConvertCantShare) {
+       FusedDynamicUpdateSliceWithConvertCanShare) {
   auto builder = HloComputation::Builder(TestName());
 
   Shape data_shape = ShapeUtil::MakeShape(F32, {8});
@@ -2191,8 +2191,7 @@ TEST_F(CanShareOperandBufferWithUserTest,
       HloInstruction::FusionKind::kLoop);
   RunAnalysis();
 
-  // The fusion instruction can't share with tuple element 1.
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       dataflow_analysis_->CanShareOperandBufferWithUser(gte1, {}, fusion, {}));
 }
 
