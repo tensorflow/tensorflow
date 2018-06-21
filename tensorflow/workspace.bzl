@@ -463,11 +463,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "lmdb",
       urls = [
-          "https://mirror.bazel.build/github.com/LMDB/lmdb/archive/LMDB_0.9.19.tar.gz",
-          "https://github.com/LMDB/lmdb/archive/LMDB_0.9.19.tar.gz",
+          "https://mirror.bazel.build/github.com/LMDB/lmdb/archive/LMDB_0.9.22.tar.gz",
+          "https://github.com/LMDB/lmdb/archive/LMDB_0.9.22.tar.gz",
       ],
-      sha256 = "108532fb94c6f227558d45be3f3347b52539f0f58290a7bb31ec06c462d05326",
-      strip_prefix = "lmdb-LMDB_0.9.19/libraries/liblmdb",
+      sha256 = "f3927859882eb608868c8c31586bb7eb84562a40a6bf5cc3e13b6b564641ea28",
+      strip_prefix = "lmdb-LMDB_0.9.22/libraries/liblmdb",
       build_file = clean_dep("//third_party:lmdb.BUILD"),
   )
 
