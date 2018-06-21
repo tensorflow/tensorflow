@@ -71,6 +71,16 @@ cc_library(
 )
 
 cc_library(
+    name = "unordered_merge_dataset_op",
+    srcs = ["unordered_merge_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
+cc_library(
     name = "dataset_kernels",
     deps = [
         ":csv_dataset_op",
@@ -79,6 +89,7 @@ cc_library(
         ":prefetching_kernels",
         ":threadpool_dataset_op",
         ":unique_dataset_op",
+        ":unordered_merge_dataset_op",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",

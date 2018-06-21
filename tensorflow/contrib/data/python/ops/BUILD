@@ -321,6 +321,21 @@ py_library(
 )
 
 py_library(
+    name = "unordered_merge",
+    srcs = [
+        "unordered_merge.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":contrib_op_loader",
+        ":gen_dataset_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest"
+    ],
+)
+
+py_library(
     name = "writers",
     srcs = [
         "writers.py",
@@ -395,6 +410,7 @@ py_library(
         ":stats_ops",
         ":threadpool",
         ":unique",
+        "unordered_merge",
         ":writers",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:util",

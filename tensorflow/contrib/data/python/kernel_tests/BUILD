@@ -578,6 +578,22 @@ py_test(
     ],
 )
 
+py_test(
+    name = "unordered_merge_op_test",
+    size = "small",
+    srcs = ["unordered_merge_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+    ],
+)
+
 cuda_py_test(
     name = "prefetching_ops_test",
     size = "small",

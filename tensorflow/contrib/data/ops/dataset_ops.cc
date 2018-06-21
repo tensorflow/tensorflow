@@ -88,6 +88,17 @@ REGISTER_OP("UniqueDataset")
 Creates a dataset that contains the unique elements of `input_dataset`.
 )doc");
 
+REGISTER_OP("UnorderedMergeDataset")
+    .Input("input_datasets: N * variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("N: int >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that contains all elements of datasets in `input_datasets` without garantee of data order.
+)doc");
+
 REGISTER_OP("IteratorGetDevice")
     .Input("resource: resource")
     .Output("device: string")
