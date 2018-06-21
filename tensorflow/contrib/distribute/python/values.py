@@ -26,7 +26,6 @@ import weakref
 
 import six
 
-from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.distribute.python import input_ops
 from tensorflow.contrib.distribute.python import prefetching_ops_v2
 from tensorflow.python.eager import context
@@ -614,8 +613,7 @@ class PerDeviceDataset(object):
       # TODO(priyag): If dropping remainder is not appropriate, find another
       # approach to distributing the dataset when not possible to divide evenly.
       # Possibly not an issue when we start using PartitionedDataset.
-      self._dataset = dataset.apply(
-          batching.batch_and_drop_remainder(len(devices)))
+      self._dataset = dataset.batch(len(devices), drop_remainder=True)
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for the distributed PerDeviceDataset."""
