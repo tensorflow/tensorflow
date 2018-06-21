@@ -221,7 +221,14 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     std::vector<Tensor> fused_tensors;
     TF_ASSERT_OK(session->Run({}, {"fused_conv"}, {}, &fused_tensors));
 
+#ifdef INTEL_MKL
+    // With MKL optimizations, Conv2D and FusedResizeAndPadConv2D use different
+    // kernels for convolution which could lead to subtle precision differences
+    // Check for relative error instead of absolute error
+    test::ExpectClose(unfused_tensors[0], fused_tensors[0]);
+#else
     test::ExpectTensorNear<float>(unfused_tensors[0], fused_tensors[0], 1e-5);
+#endif
   }
 
   void CompareFusedPadOnlyAndSeparate(int input_width, int input_height,
@@ -269,7 +276,14 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     std::vector<Tensor> fused_tensors;
     TF_ASSERT_OK(session->Run({}, {"fused_conv"}, {}, &fused_tensors));
 
+#ifdef INTEL_MKL
+    // With MKL optimizations, Conv2D and FusedResizeAndPadConv2D use different
+    // kernels for convolution which could lead to subtle precision differences
+    // Check for relative error instead of absolute error
+    test::ExpectClose(unfused_tensors[0], fused_tensors[0]);
+#else
     test::ExpectTensorNear<float>(unfused_tensors[0], fused_tensors[0], 1e-5);
+#endif
   }
 };
 
