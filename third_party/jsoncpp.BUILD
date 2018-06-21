@@ -19,6 +19,7 @@ cc_library(
         "include/json/json.h",
         "include/json/reader.h",
         "include/json/value.h",
+        "include/json/version.h",
         "include/json/writer.h",
     ],
     copts = [
