@@ -185,7 +185,7 @@ class SoftmaxOpGPU : public OpKernel {
           context, const_cast<acc_type*>(sum_probs.flat<acc_type>().data()),
           input_itr, rows, cols);
 
-      GPU_LAUNCH_KERNEL(GenerateNormalizedProb<T, acc_type>,
+      GPU_LAUNCH_KERNEL((GenerateNormalizedProb<T, acc_type>),
           dim3(numBlocks), dim3(numThreads), 0, cu_stream,
               reinterpret_cast<const T*>(logits_in_.flat<T>().data()),
               reinterpret_cast<const acc_type*>(

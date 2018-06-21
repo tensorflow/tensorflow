@@ -95,7 +95,7 @@ __global__ void DeterminantFromPivotedLUKernel(int nthreads, int n,
   // since this cheap O(n) kernel always follows an O(n^3) LU factorization.
   // The main purpose is to avoid having to copy the LU decomposition to
   // host memory.
-  CUDA_1D_KERNEL_LOOP(o_idx, nthreads) {
+  GPU_1D_KERNEL_LOOP(o_idx, nthreads) {
     // Initialize sign to (-1)^order.
     const int order = PermutationOrder(n, all_pivots + o_idx * n);
     Scalar prod_sign = order % 2 ? Scalar(-1) : Scalar(1);
@@ -128,7 +128,7 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
                   int* info) {
     const int64 num_matrices = output.size();
     const int64 n = lu_factor.dimension(2);
-    CudaLaunchConfig config = GetCudaLaunchConfig(num_matrices, device);
+    GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
     DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/false>
         <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
             config.virtual_thread_count, n, lu_factor.data(), pivots, nullptr,
@@ -149,7 +149,7 @@ struct LogDeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
                   typename TTypes<Scalar, 1>::Tensor log_abs_det) {
     const int64 num_matrices = sign.size();
     const int64 n = lu_factor.dimension(2);
-    CudaLaunchConfig config = GetCudaLaunchConfig(num_matrices, device);
+    GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
     DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/true>
         <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
             config.virtual_thread_count, n, lu_factor.data(), pivots,

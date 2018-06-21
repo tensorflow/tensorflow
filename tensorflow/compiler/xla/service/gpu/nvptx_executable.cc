@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_executable.h"
 
 #include <set>
 #include <utility>
@@ -45,7 +45,7 @@ NVPTXExecutable::NVPTXExecutable(
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-    : GpuExecutable(std::move(text), std::move(think_schedule),
+    : GpuExecutable(std::move(text), std::move(thunk_schedule),
                     std::move(hlo_module), std::move(assignment),
                     std::move(hlo_profile_printer_data),
                     std::move(hlo_profile_index_map)),

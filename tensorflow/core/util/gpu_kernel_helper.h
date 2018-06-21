@@ -35,7 +35,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, \
                           shared_mem, stream, ...) \
-  kernel<<block_count, threads_per_block, shared_mem, stream>>>(__VA_ARGS__);
+  kernel<<<block_count, threads_per_block, shared_mem, stream>>>(__VA_ARGS__);
 #elif TENSORFLOW_USE_ROCM
 #define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, \
                           shared_mem, stream, ...) \
@@ -68,7 +68,7 @@ using gpuError_t = hipError_t;
 #endif
 
 #if GOOGLE_CUDA
-#define GetGPUStream(context) GetCudaStream(context)
+#define GetGPUStream(context) context->eigen_gpu_device().stream()
 #elif TENSORFLOW_USE_ROCM
 #define GetGPUStream(context) context->eigen_gpu_device().stream()
 #endif

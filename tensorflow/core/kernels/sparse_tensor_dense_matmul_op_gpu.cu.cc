@@ -81,7 +81,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
     // out.size()?  Perhaps p * nnz ?
     GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
 
-    GPU_LAUNCH_KERNEL(SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>,
+    GPU_LAUNCH_KERNEL((SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         nnz, m, b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
         out.data());
