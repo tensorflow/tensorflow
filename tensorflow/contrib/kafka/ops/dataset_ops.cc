@@ -20,11 +20,6 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_OP("KafkaDataset")
-    .Input("topics: string")
-    .Input("servers: string")
-    .Input("group: string")
-    .Input("eof: bool")
-    .Input("timeout: int64")
     .Output("handle: variant")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)

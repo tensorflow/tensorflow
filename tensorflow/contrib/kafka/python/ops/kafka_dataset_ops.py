@@ -29,47 +29,22 @@ class KafkaDataset(Dataset):
   """A Kafka Dataset that consumes the message.
   """
 
-  def __init__(self,
-               topics,
-               servers="localhost",
-               group="",
-               eof=False,
-               timeout=1000):
+  def __init__(self):
     """Create a KafkaReader.
-
-    Args:
-      topics: A `tf.string` tensor containing one or more subscriptions,
-              in the format of [topic:partition:offset:length],
-              by default length is -1 for unlimited.
-      servers: A list of bootstrap servers.
-      group: The consumer group id.
-      eof: If True, the kafka reader will stop on EOF.
-      timeout: The timeout value for the Kafka Consumer to wait
-               (in millisecond).
     """
     super(KafkaDataset, self).__init__()
-    self._topics = ops.convert_to_tensor(
-        topics, dtype=dtypes.string, name="topics")
-    self._servers = ops.convert_to_tensor(
-        servers, dtype=dtypes.string, name="servers")
-    self._group = ops.convert_to_tensor(
-        group, dtype=dtypes.string, name="group")
-    self._eof = ops.convert_to_tensor(eof, dtype=dtypes.bool, name="eof")
-    self._timeout = ops.convert_to_tensor(
-        timeout, dtype=dtypes.int64, name="timeout")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.kafka_dataset(self._topics, self._servers,
-                                         self._group, self._eof, self._timeout)
+    return gen_dataset_ops.kafka_dataset()
 
-  @property
-  def output_classes(self):
-    return ops.Tensor
+  # @property
+  # def output_classes(self):
+  #   return ops.Tensor
 
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
+  # @property
+  # def output_shapes(self):
+  #   return tensor_shape.scalar()
 
-  @property
-  def output_types(self):
-    return dtypes.string
+  # @property
+  # def output_types(self):
+  #   return dtypes.string

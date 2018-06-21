@@ -90,32 +90,3 @@ tf_custom_op_py_library(
         "//tensorflow/python:platform",
     ],
 )
-
-# The Kafka server has to be setup before running the test.
-# The Kafka server is setup through Docker so the Docker engine
-# has to be installed.
-#
-# Once the Docker engine is ready:
-# To setup the Kafka server:
-# $ bash tensorflow/contrib/kafka/python/kernel_tests/kafka_test.sh start kafka
-#
-# After the test is complete:
-# To team down the Kafka server:
-# $ bash tensorflow/contrib/kafka/python/kernel_tests/kafka_test.sh stop kafka
-tf_py_test(
-    name = "kafka_test",
-    srcs = ["python/kernel_tests/kafka_test.py"],
-    additional_deps = [
-        ":kafka",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-    tags = [
-        "manual",
-        "no_windows",
-        "notap",
-    ],
-)
