@@ -114,6 +114,7 @@ py_library(
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
+        "//tensorflow/python/estimator:estimator_py",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
         "//tensorflow/contrib/tensorrt:init_py",
     ]) + select({

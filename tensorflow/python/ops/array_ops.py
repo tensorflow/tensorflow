@@ -41,6 +41,7 @@ from tensorflow.python.ops import gen_math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
+from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint: disable=unused-import
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
@@ -2607,14 +2608,6 @@ def where(condition, x=None, y=None, name=None):
     return gen_math_ops.select(condition=condition, x=x, y=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
-
-
-@tf_export("reverse")
-def reverse(tensor, axis, name=None):
-  return gen_array_ops.reverse_v2(tensor, axis, name)
-
-
-reverse.__doc__ = gen_array_ops.reverse_v2.__doc__
 
 
 # pylint: disable=redefined-builtin

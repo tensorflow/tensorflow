@@ -23,6 +23,7 @@ import math
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -452,6 +453,18 @@ class NormalTest(test.TestCase):
 
       self.assertAllEqual(expected_samples_shape, samples.get_shape())
       self.assertAllEqual(expected_samples_shape, sample_values.shape)
+
+  def testNormalFullyReparameterized(self):
+    mu = constant_op.constant(4.0)
+    sigma = constant_op.constant(3.0)
+    with backprop.GradientTape() as tape:
+      tape.watch(mu)
+      tape.watch(sigma)
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
+      samples = normal.sample(100)
+    grad_mu, grad_sigma = tape.gradient(samples, [mu, sigma])
+    self.assertIsNotNone(grad_mu)
+    self.assertIsNotNone(grad_sigma)
 
   @test_util.run_in_graph_and_eager_modes()
   def testNormalSampleMultiDimensional(self):

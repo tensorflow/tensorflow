@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
@@ -375,6 +376,15 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
           [0.2**2 + 0.8**2], [prob_val[:, :, :, 0].mean()], atol=1e-2)
       self.assertAllClose(
           [0.4**2 + 0.6**2], [prob_val[:, :, :, 1].mean()], atol=1e-2)
+
+  def testNotReparameterized(self):
+    p = constant_op.constant([0.3, 0.3, 0.4])
+    with backprop.GradientTape() as tape:
+      tape.watch(p)
+      dist = categorical.Categorical(p)
+      samples = dist.sample(100)
+    grad_p = tape.gradient(samples, p)
+    self.assertIsNone(grad_p)
 
   def testLogPMFBroadcasting(self):
     with self.test_session():

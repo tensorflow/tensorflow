@@ -33,10 +33,11 @@ namespace tflite {
 // int some_int = 10;
 // bool some_switch = false;
 // std::string some_name = "something";
+//
 // std::vector<tensorFlow::Flag> flag_list = {
-//   Flag("some_int", &some_int, "an integer that affects X"),
-//   Flag("some_switch", &some_switch, "a bool that affects Y"),
-//   Flag("some_name", &some_name, "a std::string that affects Z")
+//   Flag::CreateFlag("some_int", &some_int, "an integer that affects X"),
+//   Flag::CreateFlag("some_switch", &some_switch, "a bool that affects Y"),
+//   Flag::CreateFlag("some_name", &some_name, "a string that affects Z")
 // };
 // // Get usage message before ParseFlags() to capture default values.
 // std::string usage = Flag::Usage(argv[0], flag_list);
@@ -63,11 +64,21 @@ namespace tflite {
 // text, and a pointer to the corresponding variable.
 class Flag {
  public:
-  Flag(const char* name, int32_t* dst, const std::string& usage_text);
-  Flag(const char* name, int64_t* dst, const std::string& usage_text);
-  Flag(const char* name, bool* dst, const std::string& usage_text);
-  Flag(const char* name, std::string* dst, const std::string& usage_text);
-  Flag(const char* name, float* dst, const std::string& usage_text);
+  template <typename T>
+  static Flag CreateFlag(const char* name, T* val, const char* usage) {
+    return Flag(name, [val](const T& v) { *val = v; }, *val, usage);
+  }
+
+  Flag(const char* name, const std::function<void(const int32_t&)>& hook,
+       int32_t default_value, const std::string& usage_text);
+  Flag(const char* name, const std::function<void(const int64_t&)>& hook,
+       int64_t default_value, const std::string& usage_text);
+  Flag(const char* name, const std::function<void(const float&)>& hook,
+       float default_value, const std::string& usage_text);
+  Flag(const char* name, const std::function<void(const bool&)>& hook,
+       bool default_value, const std::string& usage_text);
+  Flag(const char* name, const std::function<void(const std::string&)>& hook,
+       const std::string& default_value, const std::string& usage_text);
 
  private:
   friend class Flags;

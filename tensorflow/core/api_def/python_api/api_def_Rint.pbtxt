@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Rint"
+  endpoint {
+    name: "math.rint"
+  }
+  endpoint {
+    name: "rint"
+    deprecation_message: "tf.rint is deprecated, please use tf.math.rint instead."
+  }
+}

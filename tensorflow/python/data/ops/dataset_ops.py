@@ -809,11 +809,12 @@ class Dataset(object):
   def batch(self, batch_size, drop_remainder=False):
     """Combines consecutive elements of this dataset into batches.
 
-    NOTE: If the number of elements (`N`) in this dataset is not an exact
-    multiple of `batch_size`, the final batch contain smaller tensors with
-    shape `N % batch_size` in the batch dimension. If your program depends on
-    the batches having the same shape, consider using the
-    @{tf.contrib.data.batch_and_drop_remainder} transformation instead.
+    The tensors in the resulting element will have an additional outer
+    dimension, which will be `batch_size` (or `N % batch_size` for the last
+    element if `batch_size` does not divide the number of input elements `N`
+    evenly and `drop_remainder` is `False`). If your program depends on the
+    batches having the same outer dimension, you should set the `drop_remainder`
+    argument to `True` to prevent the smaller batch from being produced.
 
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -836,13 +837,19 @@ class Dataset(object):
     """Combines consecutive elements of this dataset into padded batches.
 
     This transformation combines multiple consecutive elements of the input
-    dataset into a single element. Like @{tf.data.Dataset.batch}, the tensors
-    in the resulting element have an additional outer dimension, which will be
-    `batch_size` for all but the last element, and `N % batch_size` for the
-    last element (where `N` is the number of elements in this dataset). Unlike
-    @{tf.data.Dataset.batch}, the elements may have different shapes for some
-    of their components, and this transformation will pad each component to
-    the respective shape in `padding_shapes`. The `padding_shapes` argument
+    dataset into a single element.
+
+    Like @{tf.data.Dataset.batch}, the tensors in the resulting element will
+    have an additional outer dimension, which will be `batch_size` (or
+    `N % batch_size` for the last element if `batch_size` does not divide the
+    number of input elements `N` evenly and `drop_remainder` is `False`). If
+    your program depends on the batches having the same outer dimension, you
+    should set the `drop_remainder` argument to `True` to prevent the smaller
+    batch from being produced.
+
+    Unlike @{tf.data.Dataset.batch}, the input elements to be batched may have
+    different shapes, and this transformation will pad each component to the
+    respective shape in `padding_shapes`. The `padding_shapes` argument
     determines the resulting shape for each dimension of each component in an
     output element:
 
@@ -851,12 +858,6 @@ class Dataset(object):
     * If the dimension is unknown (e.g. `tf.Dimension(None)`), the component
       will be padded out to the maximum length of all elements in that
       dimension.
-
-    NOTE: If the number of elements (`N`) in this dataset is not an exact
-    multiple of `batch_size`, the final batch contain smaller tensors with
-    shape `N % batch_size` in the batch dimension. If your program depends on
-    the batches having the same shape, consider using the
-    @{tf.contrib.data.padded_batch_and_drop_remainder} transformation instead.
 
     See also @{tf.contrib.data.dense_to_sparse_batch}, which combines elements
     that may have different shapes into a @{tf.SparseTensor}.

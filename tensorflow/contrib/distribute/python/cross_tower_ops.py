@@ -536,7 +536,7 @@ class AllReduceCrossTowerOps(CrossTowerOps):
     destinations = per_device_values[0].devices
     grouped = _group_value_by_device(per_device_values)
 
-    device_grad_packs, self._tensor_packer = _pack_tensors(
+    device_grad_packs, tensor_packer = _pack_tensors(
         grouped, self._num_packs, self._agg_small_grads_max_bytes,
         self._agg_small_grads_max_group)
 
@@ -554,7 +554,7 @@ class AllReduceCrossTowerOps(CrossTowerOps):
           cross_tower_utils.aggregate_gradients_using_hierarchical_copy(
               destinations, device_grad_packs))
 
-    reduced = _unpack_tensors(reduced, self._tensor_packer)
+    reduced = _unpack_tensors(reduced, tensor_packer)
     return _ungroup_and_make_mirrored(reduced, per_device_values[0].devices,
                                       method_string)
 
@@ -665,13 +665,13 @@ class MultiWorkerAllReduce(AllReduceCrossTowerOps):
         (this_grads, remaining_grads) = cross_tower_utils.split_grads_by_size(
             spec_tuple.limit, remaining_grads)
       if this_grads:
-        device_grad_packs, self._tensor_packer = _pack_tensors(
+        device_grad_packs, tensor_packer = _pack_tensors(
             this_grads, self._num_packs, self._agg_small_grads_max_bytes,
             self._agg_small_grads_max_group)
         range_agg_grads = cross_tower_utils.sum_gradients_all_reduce(
             self._worker_devices, device_grad_packs, len(self._worker_devices),
             spec_tuple.alg, spec_tuple.shards, range(self._num_gpus_per_worker))
-        range_agg_grads = _unpack_tensors(range_agg_grads, self._tensor_packer)
+        range_agg_grads = _unpack_tensors(range_agg_grads, tensor_packer)
 
         if not aggregated_grads:
           aggregated_grads = range_agg_grads

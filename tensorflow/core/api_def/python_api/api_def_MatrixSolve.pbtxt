@@ -5,5 +5,6 @@ op {
   }
   endpoint {
     name: "matrix_solve"
+    deprecation_message: "tf.matrix_solve is deprecated, please use tf.linalg.solve instead."
   }
 }
