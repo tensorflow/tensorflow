@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 
+#include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -231,5 +232,40 @@ REGISTER_XLA_OP(Name("StatelessRandomNormal")
                     .TypeConstraint("dtype", DT_FLOAT)
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomNormalOp);
+
+class StatelessTruncatedNormalOp : public XlaOpKernel {
+ public:
+  explicit StatelessTruncatedNormalOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const DataType dtype = output_type(0);
+
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+
+    TensorShape seed_shape = ctx->InputShape(1);
+    OP_REQUIRES(ctx, seed_shape == TensorShape({2}),
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_shape.DebugString()));
+    xla::XlaOp seed = ctx->Input(1);
+    xla::XlaBuilder* b = ctx->builder();
+
+    auto uniform =
+        RandomUniform(b, seed, shape, std::numeric_limits<float>::min(), 1.0);
+    auto truncated_normal_or_status = TruncatedNormal(dtype, uniform, b);
+    OP_REQUIRES_OK(ctx, truncated_normal_or_status.status());
+    ctx->SetOutput(0, truncated_normal_or_status.ValueOrDie());
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(StatelessTruncatedNormalOp);
+};
+
+REGISTER_XLA_OP(Name("StatelessTruncatedNormal")
+                    .CompileTimeConstInput("shape")
+                    .TypeConstraint("dtype", DT_FLOAT)
+                    .TypeConstraint("Tseed", DT_INT32),
+                StatelessTruncatedNormalOp);
 
 }  // namespace tensorflow
