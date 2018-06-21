@@ -163,51 +163,6 @@ xla::XlaOp RandomUniform(xla::XlaBuilder* builder, const xla::XlaOp& seed,
   return floats;
 }
 
-// Approximation for the inverse error function from
-//   Giles, M., "Approximating the erfinv function".
-// The approximation has the form:
-//   w = -log((1 - x) * (1 + x))
-//   if ( w < 5 ) {
-//     w = w - 2.5
-//     p = sum_{i=1}^n lq[i]*w^i
-//   } else {
-//     w = sqrt(w) - 3
-//     p = sum_{i=1}^n gq[i]*w^i
-//   }
-//   return p*x
-xla::XlaOp ErfInvF32(xla::XlaBuilder* b, const xla::XlaOp& x,
-                     const TensorShape& shape) {
-  constexpr int kDegree = 9;
-  constexpr std::array<float, 9> w_less_than_5_constants = {
-      2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
-      -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
-      -0.00417768164f,  0.246640727f,    1.50140941f};
-  constexpr std::array<float, 9> w_greater_than_5_constants = {
-      -0.000200214257f, 0.000100950558f, 0.00134934322f,
-      -0.00367342844f,  0.00573950773f,  -0.0076224613f,
-      0.00943887047f,   1.00167406f,     2.83297682f};
-
-  auto one = b->ConstantR0<float>(1.0);
-  auto w = b->Neg(b->Log(b->Mul(b->Sub(one, x), b->Add(one, x))));
-
-  auto lt = b->Lt(w, b->ConstantR0<float>(5.0));
-  auto coefficient = [&](int i) {
-    return b->Select(
-        lt,
-        b->Broadcast(b->ConstantR0<float>(w_less_than_5_constants[i]),
-                     shape.dim_sizes()),
-        b->Broadcast(b->ConstantR0<float>(w_greater_than_5_constants[i]),
-                     shape.dim_sizes()));
-  };
-  w = b->Select(lt, b->Sub(w, b->ConstantR0<float>(2.5f)),
-                b->Sub(b->SqrtF32(w), b->ConstantR0<float>(3.0f)));
-  auto p = coefficient(0);
-  for (int i = 1; i < kDegree; ++i) {
-    p = b->Add(coefficient(i), b->Mul(p, w));
-  }
-  return b->Mul(p, x);
-}
-
 }  // namespace
 
 class StatelessRandomUniformOp : public XlaOpKernel {
@@ -259,8 +214,10 @@ class StatelessRandomNormalOp : public XlaOpKernel {
         RandomUniform(builder, seed, shape, std::nextafter(-1.0f, 0.0f), 1.0);
     // Convert uniform distribution to normal distribution by computing
     // sqrt(2) * erfinv(x)
+    auto erfinv_or_status = ErfInv(builder, uniform);
+    OP_REQUIRES_OK(ctx, erfinv_or_status.status());
     auto normal = builder->Mul(builder->ConstantR0<float>(std::sqrt(2.0)),
-                               ErfInvF32(builder, uniform, shape));
+                               erfinv_or_status.ValueOrDie());
     ctx->SetOutput(0, normal);
   }
 

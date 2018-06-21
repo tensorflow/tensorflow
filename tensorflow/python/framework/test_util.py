@@ -61,7 +61,6 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -830,14 +829,13 @@ class TensorFlowTestCase(googletest.TestCase):
   def _eval_tensor(self, tensor):
     if tensor is None:
       return None
-    elif isinstance(tensor, ops.EagerTensor):
-      return tensor.numpy()
-    elif isinstance(tensor, resource_variable_ops.ResourceVariable):
-      return tensor.read_value().numpy()
     elif callable(tensor):
       return self._eval_helper(tensor())
     else:
-      raise ValueError("Unsupported type %s." % type(tensor))
+      try:
+        return tensor.numpy()
+      except AttributeError as e:
+        six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
 
   def _eval_helper(self, tensors):
     if tensors is None:

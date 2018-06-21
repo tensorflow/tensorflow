@@ -281,10 +281,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     // map from HloInstruction* to the instruction's index in the vector. An
     // instruction is "removed" from the vector by setting it's element to
     // nullptr.
-    std::list<HloInstruction*> post_order_list =
+    std::vector<HloInstruction*> post_order =
         computation_->MakeInstructionPostOrder();
-    std::vector<HloInstruction*> post_order(post_order_list.begin(),
-                                            post_order_list.end());
 
     tensorflow::gtl::FlatMap<HloInstruction*, int> post_order_index;
     for (size_t i = 0; i < post_order.size(); ++i) {

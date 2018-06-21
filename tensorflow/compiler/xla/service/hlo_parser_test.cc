@@ -1302,7 +1302,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   auto module = ParseHloString(original);
   TF_ASSERT_OK(module.status());
-  auto program_layout = module.ValueOrDie()->host_entry_computation_layout();
+  auto program_layout = module.ValueOrDie()->entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
   auto param_layout = program_layout.parameter_layout(0).layout();
   auto result_layout = program_layout.result_layout().layout();

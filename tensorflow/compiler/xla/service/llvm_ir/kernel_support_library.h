@@ -125,8 +125,8 @@ class KernelSupportLibrary {
                                         llvm::Value* is_first_iteration)>&
                  for_body_generator) {
     return For(name, /*start=*/start, /*end=*/end,
-               /*step=*/ir_builder_->getInt64(step), peel_first_iteration,
-               for_body_generator);
+               /*step=*/llvm::ConstantInt::get(start->getType(), step),
+               peel_first_iteration, for_body_generator);
   }
 
   void ForReturnVoid(tensorflow::StringPiece name, llvm::Value* start,
@@ -135,8 +135,8 @@ class KernelSupportLibrary {
                                               llvm::Value* is_first_iteration)>&
                          for_body_generator) {
     ForReturnVoid(name, /*start=*/start, /*end=*/end,
-                  /*step=*/ir_builder_->getInt64(step), peel_first_iteration,
-                  for_body_generator);
+                  /*step=*/llvm::ConstantInt::get(start->getType(), step),
+                  peel_first_iteration, for_body_generator);
   }
 
   Status For(
@@ -165,7 +165,7 @@ class KernelSupportLibrary {
       tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
       int64 step,
       const std::function<Status(llvm::Value* ind_var)>& for_body_generator) {
-    return For(name, start, end, ir_builder_->getInt64(step),
+    return For(name, start, end, llvm::ConstantInt::get(start->getType(), step),
                /*peel_first_iteration=*/false,
                [&](llvm::Value* indvar, llvm::Value*) -> Status {
                  return for_body_generator(indvar);
@@ -176,7 +176,8 @@ class KernelSupportLibrary {
       tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
       int64 step,
       const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
-    ForReturnVoid(name, start, end, ir_builder_->getInt64(step),
+    ForReturnVoid(name, start, end,
+                  llvm::ConstantInt::get(start->getType(), step),
                   for_body_generator);
   }
 

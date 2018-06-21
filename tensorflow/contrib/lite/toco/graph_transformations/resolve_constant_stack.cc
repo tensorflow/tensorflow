@@ -41,7 +41,7 @@ void Stack(Model* model, StackOperator const& op) {
     const auto& input_array = model->GetArray(op.inputs[i]);
     int input_size = RequiredBufferSizeForShape(input_array.shape());
     memcpy(&output_data[dst_offset], &input_array.GetBuffer<Type>().data[0],
-           input_size * sizeof(Type));
+           input_size * ElementSize(Type));
     dst_offset += input_size;
   }
   CHECK_EQ(dst_offset, output_data.size());

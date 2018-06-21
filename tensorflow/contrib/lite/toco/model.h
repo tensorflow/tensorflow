@@ -32,7 +32,7 @@ namespace toco {
 
 using tflite::QuantizationParams;
 
-enum class OperatorType {
+enum class OperatorType : uint8 {
   kNone,
   // General-purpose neural network operators.
   kAdd,
@@ -174,7 +174,7 @@ enum class AxesOrder {
 // because we'll be dropping the array anyway (e.g. some exotic array types
 // may be involved only in debug-only subgraphs that we may not be interested
 // in actually supporting).
-enum class ArrayDataType {
+enum class ArrayDataType : uint8 {
   kNone,  // 0
   kBool,
   kFloat,
@@ -1157,10 +1157,10 @@ struct StackOperator : Operator {
 // This operation outputs a 1-D integer tensor representing the shape of
 // the input.
 //
-// TensorFlow equivalent: Shape.  We currently assume that the output is int32
-// and not int64.  The output type could be stored herein.
+// TensorFlow equivalent: Shape.
 struct TensorFlowShapeOperator : Operator {
   TensorFlowShapeOperator() : Operator(OperatorType::kTensorFlowShape) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt32;
 };
 
 // Element-wise square-root (x^0.5) operator.
@@ -1208,14 +1208,12 @@ struct SubOperator : Operator {
   SubOperator() : Operator(OperatorType::kSub) {}
 };
 
-// Global sum reduction: computes the sum of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Sum reduction: computes the sum of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Sum --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Sum
 struct TensorFlowSumOperator : Operator {
   TensorFlowSumOperator() : Operator(OperatorType::kTensorFlowSum) {}
   bool keep_dims = false;

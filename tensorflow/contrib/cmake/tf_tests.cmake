@@ -229,6 +229,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/debug/cli/profile_analyzer_cli_test.py"
       # Windows does not have the curses library and uses readline.
       "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
+      # Bug in shape inference (b/110283809)
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/random/random_ops_test.py"
       # TFDBG grpc:// mode is not yet available on Windows.
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/dist_session_debug_grpc_test.py"
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/grpc_large_data_test.py"
@@ -325,8 +327,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/estimator/python/estimator/replicate_model_fn_test.py"  # b/71901810
       # Broken io_utils_test
       "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/utils/io_utils_test.py"  # b/72894325
-      # OOM
-      "${tensorflow_source_dir}/tensorflow/python/training/saver_large_variable_test.py"  # b/110210559
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})

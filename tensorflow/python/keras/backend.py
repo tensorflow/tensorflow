@@ -2880,7 +2880,10 @@ class Function(object):
         feed_arrays.append(tensor)
         # We need to do array conversion and type casting at this level, since
         # `callable_fn` only supports exact matches.
-        array_vals.append(np.asarray(value, dtype=tensor.dtype.base_dtype.name))
+        tensor_type = dtypes_module.as_dtype(tensor.dtype)
+        array_vals.append(np.asarray(value,
+                                     dtype=tensor_type.as_numpy_dtype))
+
     if self.feed_dict:
       for key in sorted(self.feed_dict.keys()):
         array_vals.append(

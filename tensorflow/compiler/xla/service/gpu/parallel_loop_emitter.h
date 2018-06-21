@@ -58,7 +58,7 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
   ~ParallelLoopEmitter() override = default;
 
   std::vector<llvm_ir::IrArray::Index> EmitIndexAndSetExitBasicBlock(
-      tensorflow::StringPiece loop_name) override;
+      tensorflow::StringPiece loop_name, llvm::Type* index_type) override;
 
  private:
   // The thread and block dimension to parallelize the loop on.

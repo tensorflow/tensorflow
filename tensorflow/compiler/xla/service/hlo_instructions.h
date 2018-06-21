@@ -557,6 +557,7 @@ class HloFusionInstruction : public HloInstruction {
       tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       HloComputation* fusion_computation);
 
+  string ToCategory() const override;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -841,6 +842,257 @@ class HloOutfeedInstruction : public HloInstruction {
   Shape outfeed_shape_;
   // Outfeed configuration information, only present for kOutfeed.
   string outfeed_config_;
+};
+
+class HloConvolutionInstruction : public HloInstruction {
+ public:
+  explicit HloConvolutionInstruction(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const Window& window,
+      const ConvolutionDimensionNumbers& dimension_numbers);
+  const Window& window() const override { return window_; }
+  void set_window(const Window& window) override { window_ = window; }
+  const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
+    return convolution_dimension_numbers_;
+  }
+  void set_convolution_dimension_numbers(
+      const ConvolutionDimensionNumbers& dnums) {
+    convolution_dimension_numbers_ = dnums;
+  }
+  string ToCategory() const override;
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+  Window window_;
+  // Describes the dimension numbers used for a convolution.
+  ConvolutionDimensionNumbers convolution_dimension_numbers_;
+};
+
+class HloReduceWindowInstruction : public HloInstruction {
+ public:
+  explicit HloReduceWindowInstruction(const Shape& shape,
+                                      HloInstruction* operand,
+                                      HloInstruction* init_value,
+                                      const Window& window,
+                                      HloComputation* reduce_computation);
+  const Window& window() const override { return window_; }
+  void set_window(const Window& window) override { window_ = window; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+  Window window_;
+};
+
+class HloSelectAndScatterInstruction : public HloInstruction {
+ public:
+  explicit HloSelectAndScatterInstruction(
+      const Shape& shape, HloInstruction* operand, HloComputation* select,
+      const Window& window, HloInstruction* source, HloInstruction* init_value,
+      HloComputation* scatter);
+  const Window& window() const override { return window_; }
+  void set_window(const Window& window) override { window_ = window; }
+  // Gets/sets the select or scatter HloComputation for SelectAndScatter. The
+  // setters should only be called by HloModule or HloComputation methods.
+  HloComputation* select() const {
+    return called_computations()[kSelectComputationIndex];
+  }
+
+  HloComputation* scatter() const {
+    return called_computations()[kScatterComputationIndex];
+  }
+
+  void set_select(HloComputation* computation) {
+    // Don't allow changing the computation for fused instructions so we don't
+    // have to recompute called_instructions for the entire fusion instruction.
+    CHECK(!IsFused());
+    set_called_computation(kSelectComputationIndex, computation);
+  }
+
+  void set_scatter(HloComputation* computation) {
+    // Don't allow changing the computation for fused instructions so we don't
+    // have to recompute called_instructions for the entire fusion instruction.
+    CHECK(!IsFused());
+    set_called_computation(kScatterComputationIndex, computation);
+  }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+  Window window_;
+};
+
+class HloCustomCallInstruction : public HloInstruction {
+ public:
+  explicit HloCustomCallInstruction(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      tensorflow::StringPiece custom_call_target);
+  const Window& window() const override {
+    CHECK(window_ != nullptr);
+    return *window_;
+  }
+
+  void set_window(const Window& window) override {
+    window_ = MakeUnique<Window>(window);
+  }
+
+  const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
+    CHECK(convolution_dimension_numbers_ != nullptr);
+    return *convolution_dimension_numbers_;
+  }
+
+  void set_convolution_dimension_numbers(
+      const ConvolutionDimensionNumbers& dnums) {
+    convolution_dimension_numbers_ =
+        MakeUnique<ConvolutionDimensionNumbers>(dnums);
+  }
+  const string& custom_call_target() const { return custom_call_target_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+  // Name of a global symbol to call, only present for kCustomCall.
+  string custom_call_target_;
+  // Describes the window in a windowed operation such as convolution.
+  std::unique_ptr<Window> window_;
+  // Describes the dimension numbers used for a convolution.
+  std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
+};
+
+class HloHostComputeInstruction : public HloInstruction {
+ public:
+  explicit HloHostComputeInstruction(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      tensorflow::StringPiece channel_name, const int64 cost_estimate_ns);
+  // Returns the channel name associated with the instruction. The name is
+  // used to identify host Send/Recv operations.
+  const string& channel_name() const { return channel_name_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+  // Name to use for host send/recv channels.
+  string channel_name_;
+  // Estimate of the duration of a host computation in nanoseconds.
+  int64 cost_estimate_ns_ = 0;
+};
+
+class HloPadInstruction : public HloInstruction {
+ public:
+  explicit HloPadInstruction(const Shape& shape, HloInstruction* operand,
+                             HloInstruction* padding_value,
+                             const PaddingConfig& padding_config);
+  // Returns the padding configuration for a pad node.
+  const PaddingConfig& padding_config() const { return padding_config_; }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // The padding configuration that describes the edge padding and interior
+  // padding of this pad instruction.
+  PaddingConfig padding_config_;
+};
+
+class HloDynamicSliceInstruction : public HloInstruction {
+ public:
+  explicit HloDynamicSliceInstruction(
+      const Shape& shape, HloInstruction* operand,
+      HloInstruction* start_indices,
+      tensorflow::gtl::ArraySlice<int64> slice_sizes);
+  // Old methods kept for smooth subclassing transition END.
+  // Returns the size of the slice in the given dimension for a dynamic
+  // slice node.
+  int64 slice_sizes(int64 dimension) const {
+    return dynamic_slice_sizes_[dimension];
+  }
+  const std::vector<int64>& dynamic_slice_sizes() const {
+    return dynamic_slice_sizes_;
+  }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  // Describes the [start, start + size) range size for a dynamic slice
+  // ('start' is specified dynamically in the second operand of the operation).
+  std::vector<int64> dynamic_slice_sizes_;
 };
 }  // namespace xla
 

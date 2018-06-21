@@ -263,46 +263,11 @@ void HloComputation::set_root_instruction(
 
 namespace {
 
-// Helper class which computes the post order of an expression rooted at a
-// particular instruction.
-class InstructionPostOrderer : public DfsHloVisitorWithDefault {
- public:
-  // added_instructions is the set of instructions which have already been
-  // accounted for in the post order in previous invocations of
-  // GetOrder. Without this mechanism, instructions which are predecessors of
-  // multiple root instructions of the computation can be added to the post
-  // order more than once.
-  static std::list<HloInstruction*> GetOrder(
-      HloInstruction* root,
-      tensorflow::gtl::FlatSet<HloInstruction*>* added_instructions) {
-    InstructionPostOrderer orderer(added_instructions);
-    TF_CHECK_OK(root->Accept(&orderer));
-    return std::move(orderer.post_order_);
-  }
-
- private:
-  explicit InstructionPostOrderer(
-      tensorflow::gtl::FlatSet<HloInstruction*>* added_instructions)
-      : added_instructions_(added_instructions) {}
-  ~InstructionPostOrderer() override {}
-
-  Status DefaultAction(HloInstruction* hlo_instruction) override {
-    if (added_instructions_->count(hlo_instruction) == 0) {
-      post_order_.push_back(hlo_instruction);
-      added_instructions_->insert(hlo_instruction);
-    }
-    return Status::OK();
-  }
-
-  std::list<HloInstruction*> post_order_;
-  tensorflow::gtl::FlatSet<HloInstruction*>* added_instructions_;
-};
-
 // Helper which builds a post order of the HLO call graph.
 void ComputeComputationPostOrder(
     HloComputation* computation,
     tensorflow::gtl::FlatSet<HloComputation*>* visited,
-    std::list<HloComputation*>* post_order) {
+    std::vector<HloComputation*>* post_order) {
   if (visited->insert(computation).second) {
     for (auto* instruction : computation->instructions()) {
       for (HloComputation* called_computation :
@@ -314,48 +279,53 @@ void ComputeComputationPostOrder(
   }
 }
 
-std::list<HloInstruction*> ComputeInstructionPostOrder(
-    HloInstruction* root, tensorflow::gtl::FlatSet<HloInstruction*>* visited) {
-  std::list<HloInstruction*> post_order;
-  std::vector<std::pair<HloInstruction*, bool>> dfs_stack;
-  dfs_stack.emplace_back(root, false);
+enum State { kVisiting, kVisited };
+
+void ComputeInstructionPostOrder(
+    std::vector<HloInstruction*>* post_order, HloInstruction* root,
+    tensorflow::gtl::FlatMap<HloInstruction*, State>* visited) {
+  std::vector<HloInstruction*> dfs_stack;
+  dfs_stack.push_back(root);
   while (!dfs_stack.empty()) {
     const auto current = dfs_stack.back();
-    if (current.second) {
-      dfs_stack.pop_back();
-      if (!visited->insert(current.first).second) {
-        continue;
-      }
-      post_order.push_back(current.first);
-    } else {
-      if (visited->count(current.first)) {
+    auto it = visited->find(current);
+    if (it != visited->end()) {
+      if (it->second == kVisited) {
+        // Already visited.
         dfs_stack.pop_back();
         continue;
       }
-      dfs_stack.back().second = true;
+      // Visit this node.
+      CHECK_EQ(kVisiting, it->second);
+      dfs_stack.pop_back();
+      post_order->push_back(current);
+      it->second = kVisited;
+      continue;
+    }
 
-      // Add the operands to the stack in reverse order so the first operand is
-      // processed first. This will produce a more natural ordering and a nicer
-      // result for thigns like HLO stringification.
-      const auto& operands = current.first->operands();
-      for (int64 i = operands.size() - 1; i >= 0; --i) {
-        dfs_stack.emplace_back(operands[i], false);
-      }
+    visited->insert({current, kVisiting});
 
-      for (HloInstruction* op : current.first->control_predecessors()) {
-        dfs_stack.emplace_back(op, false);
-      }
+    // Add the operands to the stack in reverse order so the first operand is
+    // processed first. This will produce a more natural ordering and a nicer
+    // result for thigns like HLO stringification.
+    const auto& operands = current->operands();
+    for (int64 i = operands.size() - 1; i >= 0; --i) {
+      dfs_stack.emplace_back(operands[i]);
+    }
+
+    for (HloInstruction* op : current->control_predecessors()) {
+      dfs_stack.emplace_back(op);
     }
   }
-  return post_order;
 }
 
 }  // namespace
 
-std::list<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
-  std::list<HloInstruction*> post_order;
-  std::list<HloInstruction*> trace_instructions;
-  tensorflow::gtl::FlatSet<HloInstruction*> added_instructions;
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
+  std::vector<HloInstruction*> post_order;
+  post_order.reserve(instruction_count());
+  std::vector<HloInstruction*> trace_instructions;
+  tensorflow::gtl::FlatMap<HloInstruction*, State> visited;
   for (auto& instruction : instructions_) {
     if (instruction->opcode() == HloOpcode::kTrace) {
       // Trace instructions aren't handled by the DFS visitor. Add trace
@@ -363,21 +333,20 @@ std::list<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
       // users).
       trace_instructions.push_back(instruction.get());
     } else if (instruction->users().empty()) {
-      post_order.splice(
-          post_order.end(),
-          ComputeInstructionPostOrder(instruction.get(), &added_instructions));
+      ComputeInstructionPostOrder(&post_order, instruction.get(), &visited);
     }
   }
-  post_order.splice(post_order.end(), trace_instructions);
+  post_order.insert(post_order.end(), trace_instructions.begin(),
+                    trace_instructions.end());
   CHECK_EQ(instructions_.size(), post_order.size())
       << "number of instructions does not match post order size";
   return post_order;
 }
 
-std::list<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
+std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
     const {
   tensorflow::gtl::FlatSet<HloComputation*> visited;
-  std::list<HloComputation*> post_order;
+  std::vector<HloComputation*> post_order;
 
   // To avoid special handling of this computation, cast away const of
   // 'this'. 'this' is immediately removed from the post order after
@@ -648,7 +617,7 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
 
 std::unique_ptr<HloReachabilityMap> HloComputation::ComputeReachability()
     const {
-  const std::list<HloInstruction*> all = MakeInstructionPostOrder();
+  const auto& all = MakeInstructionPostOrder();
   auto result = MakeUnique<HloReachabilityMap>(all);
 
   std::vector<HloInstruction*> inputs;
