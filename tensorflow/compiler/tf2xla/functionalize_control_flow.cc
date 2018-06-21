@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/tf2xla/validate_control_flow.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -1441,7 +1440,7 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
   std::vector<ControlFlowInfo> cf_info;
   std::vector<string> unreachable_nodes;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      BuildAndValidateControlFlowInfo(graph, &cf_info, &unreachable_nodes),
+      BuildControlFlowInfo(graph, &cf_info, &unreachable_nodes),
       "FunctionalizeControlFlow failed");
   if (!unreachable_nodes.empty()) {
     return errors::InvalidArgument(

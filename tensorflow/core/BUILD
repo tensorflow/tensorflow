@@ -3400,6 +3400,7 @@ tf_cc_tests(
         "framework/variant_op_registry_test.cc",
         "framework/variant_test.cc",
         "graph/algorithm_test.cc",
+        "graph/control_flow_test.cc",
         "graph/edgeset_test.cc",
         "graph/graph_def_builder_test.cc",
         "graph/graph_partition_test.cc",
