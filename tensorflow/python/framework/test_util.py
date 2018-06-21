@@ -67,6 +67,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
 
@@ -618,6 +619,11 @@ def run_in_graph_and_eager_modes(__unused__=None,
   assert not __unused__, "Add () after run_in_graph_and_eager_modes."
 
   def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError(
+          "`run_test_in_graph_and_eager_modes` only supports test methods. "
+          "Did you mean to use `run_all_tests_in_graph_and_eager_modes`?")
+
     def decorated(self, **kwargs):
       with context.graph_mode():
         with self.test_session(use_gpu=use_gpu):
