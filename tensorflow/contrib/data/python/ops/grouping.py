@@ -55,7 +55,7 @@ def group_by_reducer(key_func, reducer):
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return GroupByReducerDataset(dataset, key_func, reducer)
+    return _GroupByReducerDataset(dataset, key_func, reducer)
 
   return _apply_fn
 
@@ -113,8 +113,8 @@ def group_by_window(key_func,
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return GroupByWindowDataset(dataset, key_func, reduce_func,
-                                window_size_func)
+    return _GroupByWindowDataset(dataset, key_func, reduce_func,
+                                 window_size_func)
 
   return _apply_fn
 
@@ -254,12 +254,12 @@ class _VariantDataset(dataset_ops.Dataset):
     return self._output_types
 
 
-class GroupByReducerDataset(dataset_ops.Dataset):
+class _GroupByReducerDataset(dataset_ops.Dataset):
   """A `Dataset` that groups its input and performs a reduction."""
 
   def __init__(self, input_dataset, key_func, reducer):
     """See `group_by_reducer()` for details."""
-    super(GroupByReducerDataset, self).__init__()
+    super(_GroupByReducerDataset, self).__init__()
 
     self._input_dataset = input_dataset
 
@@ -388,12 +388,12 @@ class GroupByReducerDataset(dataset_ops.Dataset):
         **dataset_ops.flat_structure(self))
 
 
-class GroupByWindowDataset(dataset_ops.Dataset):
+class _GroupByWindowDataset(dataset_ops.Dataset):
   """A `Dataset` that groups its input and performs a windowed reduction."""
 
   def __init__(self, input_dataset, key_func, reduce_func, window_size_func):
     """See `group_by_window()` for details."""
-    super(GroupByWindowDataset, self).__init__()
+    super(_GroupByWindowDataset, self).__init__()
 
     self._input_dataset = input_dataset
 

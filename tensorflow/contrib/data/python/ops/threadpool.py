@@ -37,6 +37,8 @@ def _generate_shared_name(prefix):
   return "{}{}".format(prefix, uid)
 
 
+# TODO(b/73383364): Properly export in the `tf.contrib.data` API when stable
+# or make private / remove.
 class PrivateThreadPool(object):
   """A stateful resource that represents a private thread pool."""
 
@@ -82,6 +84,8 @@ class _ThreadPoolDataset(dataset_ops.Dataset):
     return self._input_dataset.output_classes
 
 
+# TODO(b/73383364): Properly export in the `tf.contrib.data` API when stable
+# or make private / remove.
 def override_threadpool(dataset, thread_pool):
   """Returns a new dataset that uses the given thread pool for its operations.
 

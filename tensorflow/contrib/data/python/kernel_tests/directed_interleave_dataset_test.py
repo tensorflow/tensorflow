@@ -33,8 +33,8 @@ class DirectedInterleaveDatasetTest(test.TestCase):
     input_datasets = [
         dataset_ops.Dataset.from_tensors(i).repeat(100) for i in range(10)
     ]
-    dataset = interleave_ops.DirectedInterleaveDataset(selector_dataset,
-                                                       input_datasets)
+    dataset = interleave_ops._DirectedInterleaveDataset(selector_dataset,
+                                                        input_datasets)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
