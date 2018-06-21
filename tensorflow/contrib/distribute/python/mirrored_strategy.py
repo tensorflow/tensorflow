@@ -351,33 +351,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     assert isinstance(tower_local_var, values.Mirrored)
     return array_ops.identity(tower_local_var.get())
 
-  def _fetch(self, val, destination, fn):
-    """Return a copy of `val` or `fn(val)` on `destination`."""
-    if isinstance(val, values.TowerLocalVariable):
-      val = self.reduce(val.reduce_method, val, destinations=destination)
-      with ops.device(destination):
-        return fn(self.unwrap(val)[0])
-
-    assert isinstance(val, values.Mirrored), (
-        "val = %s (type %s)" % (val, val.__class__.__name__))
-    if val.on_device(destination):
-      with ops.device(destination):
-        # Use an identity here to make sure we are returning a tensor
-        # instead of e.g. a variable object.
-        return array_ops.identity(fn(val.get(destination)))
-    device = None
-    for d in self._devices:
-      if val.on_device(d):
-        device = d
-        break
-    assert device is not None, (
-        "Could not find destination %s in list of devices %s." %
-        (destination, val.devices))
-    with ops.device(device):
-      v = fn(val.get(device))
-    with ops.device(destination):
-      return array_ops.identity(v)
-
   def _unwrap(self, val):
     if isinstance(val, values.DistributedValues):
       # Return in a deterministic order.
