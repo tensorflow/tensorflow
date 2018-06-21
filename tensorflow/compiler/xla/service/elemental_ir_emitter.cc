@@ -1164,6 +1164,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
       return ir_builder_->CreateAnd(lhs_value, rhs_value);
     case HloOpcode::kOr:
       return ir_builder_->CreateOr(lhs_value, rhs_value);
+    case HloOpcode::kXor:
+      return ir_builder_->CreateXor(lhs_value, rhs_value);
 
     // Shifting out bits >= the number of bits in the type being shifted
     // produces a poison value in LLVM which is basically "deferred undefined
@@ -1961,6 +1963,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kShiftLeft:

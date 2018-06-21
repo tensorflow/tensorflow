@@ -1432,6 +1432,10 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
       return [](llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
                 llvm::Value* rhs) { return ir_builder->CreateOr(lhs, rhs); };
 
+    case HloOpcode::kXor:
+      return [](llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
+                llvm::Value* rhs) { return ir_builder->CreateXor(lhs, rhs); };
+
     case HloOpcode::kMaximum:
       return [root_is_floating_point, root_is_signed](
                  llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,

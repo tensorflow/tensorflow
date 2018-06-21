@@ -38,14 +38,6 @@ xla::XlaOp RotateLeftS32(xla::XlaBuilder* builder, const xla::XlaOp& v,
       builder->ShiftRightLogical(v, builder->ConstantR0<int>(32 - distance)));
 }
 
-// TODO(b/65209188): add a primitive XOR to XLA and call it here, rather than
-// building XOR out of other bitwise operators.
-xla::XlaOp BitwiseXor(xla::XlaBuilder* builder, const xla::XlaOp& x,
-                      const xla::XlaOp& y) {
-  return builder->Or(builder->And(x, builder->Not(y)),
-                     builder->And(builder->Not(x), y));
-}
-
 using ThreeFry2x32State = std::array<xla::XlaOp, 2>;
 
 // Implements the ThreeFry counter-based PRNG algorithm.
@@ -63,7 +55,7 @@ ThreeFry2x32State ThreeFry2x32(xla::XlaBuilder* builder,
   for (int i = 0; i < 2; ++i) {
     ks[i] = key[i];
     x[i] = input[i];
-    ks[2] = BitwiseXor(builder, ks[2], key[i]);
+    ks[2] = builder->Xor(ks[2], key[i]);
   }
 
   x[0] = builder->Add(x[0], ks[0]);
@@ -74,7 +66,7 @@ ThreeFry2x32State ThreeFry2x32(xla::XlaBuilder* builder,
   auto round = [builder](ThreeFry2x32State v, int rotation) {
     v[0] = builder->Add(v[0], v[1]);
     v[1] = RotateLeftS32(builder, v[1], rotation);
-    v[1] = BitwiseXor(builder, v[0], v[1]);
+    v[1] = builder->Xor(v[0], v[1]);
     return v;
   };
 

@@ -506,6 +506,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kSubtract:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -1116,6 +1117,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kRemainder:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -1419,6 +1421,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kAnd:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -1742,6 +1745,7 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kSubtract:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -2095,6 +2099,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleAnd(this);
     case HloOpcode::kOr:
       return visitor->HandleOr(this);
+    case HloOpcode::kXor:
+      return visitor->HandleXor(this);
     case HloOpcode::kShiftLeft:
       return visitor->HandleShiftLeft(this);
     case HloOpcode::kShiftRightArithmetic:

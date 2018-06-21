@@ -83,6 +83,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
     case HloOpcode::kReal:
