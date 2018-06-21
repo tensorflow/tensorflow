@@ -3115,7 +3115,7 @@ class _SignalsHelper(object):
 
   def __init__(self, signals):
     self._signal_keys = []
-    for key in sorted(signals.iterkeys()):
+    for key in sorted(six.iterkeys(signals)):
       self._signal_keys.append(key)
 
   @property
@@ -3127,7 +3127,7 @@ class _SignalsHelper(object):
 
   @staticmethod
   def as_tensor_list(signals):
-    return [signals[key] for key in sorted(signals.iterkeys())]
+    return [signals[key] for key in sorted(six.iterkeys(signals))]
 
 
 def _verify_cross_hosts_transfer_size(tensor_dict, message):
