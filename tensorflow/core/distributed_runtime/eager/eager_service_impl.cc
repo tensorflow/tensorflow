@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
@@ -80,8 +81,8 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                                        CreateContextResponse* response) {
-  tensorflow::RemoteRendezvous* r = env_->rendezvous_mgr->Find(0);
   std::vector<tensorflow::Device*> devices;
+
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
       // TODO(nareshmodi): Correctly set the SessionOptions.
       SessionOptions(),
@@ -89,7 +90,6 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                       request->server_def().job_name().data(),
                       request->server_def().task_index()),
       &devices));
-
   response->mutable_device_attributes()->Reserve(devices.size());
   for (auto& d : devices) {
     *response->add_device_attributes() = d->attributes();
@@ -97,6 +97,19 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
 
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
       new tensorflow::DeviceMgr(devices));
+
+  auto* r = env_->rendezvous_mgr->Find(request->rendezvous_id());
+  auto session_name = strings::StrCat("eager_", request->rendezvous_id());
+  TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
+      session_name, request->server_def(), true));
+
+  std::shared_ptr<WorkerSession> worker_session;
+  TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(
+      session_name, &worker_session));
+
+  // Initialize remote tensor communication based on worker session.
+  TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+
   std::unique_ptr<tensorflow::EagerContext> ctx(new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,

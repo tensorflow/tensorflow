@@ -121,6 +121,7 @@ tf_cuda_library(
 
 tf_cuda_cc_test(
     name = "c_api_test",
+    size = "small",
     srcs = [
         "c_api_debug_test.cc",
         "c_api_test.cc",
