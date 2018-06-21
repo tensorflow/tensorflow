@@ -433,7 +433,8 @@ struct SpaceToDepthOperator : Operator {
 // input activations as a matrix, followed by a MatMul node.
 struct FullyConnectedOperator : Operator {
   FullyConnectedOperator() : Operator(OperatorType::kFullyConnected) {}
-  bool experimental_shuffled_weights = false;
+  FullyConnectedWeightsFormat weights_format =
+      FullyConnectedWeightsFormat::kDefault;
 };
 
 // Dequantization operator, converting a quantized array of integers with

@@ -24,14 +24,14 @@ limitations under the License.
 
 namespace toco {
 
-bool ExperimentalShuffleFCWeights::Run(Model* model, std::size_t op_index) {
+bool ShuffleFCWeights::Run(Model* model, std::size_t op_index) {
   Operator* op = model->operators[op_index].get();
   if (op->type != OperatorType::kFullyConnected) {
     return false;
   }
   FullyConnectedOperator* fc_op = static_cast<FullyConnectedOperator*>(op);
   // Exit if this FC op already has shuffled weights
-  if (fc_op->experimental_shuffled_weights) {
+  if (fc_op->weights_format != FullyConnectedWeightsFormat::kDefault) {
     return false;
   }
   const Array& input_array = model->GetArray(fc_op->inputs[0]);
@@ -135,7 +135,7 @@ bool ExperimentalShuffleFCWeights::Run(Model* model, std::size_t op_index) {
   CHECK_EQ(shuffled_data_ptr, shuffled_data.data() + rows * cols);
   // Switch this FC op to using the shuffled weights.
   weights_data = std::move(shuffled_data);
-  fc_op->experimental_shuffled_weights = true;
+  fc_op->weights_format = FullyConnectedWeightsFormat::kShuffled4x16Int8;
   AddMessageF("Applied experimental shuffling to the weights of %s",
               LogName(*op));
   // Add a second output array to this FC op, serving as a workspace to perform
