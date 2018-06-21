@@ -34,6 +34,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -1227,6 +1228,316 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                     'labels': processed_labels,
                     'logits': logits,
                     'logistic': logistic,
+                    'class_ids': class_ids,
+                    'weights': weights,
+                    'unreduced_loss': unreduced_loss,
+                    'regularization_loss': regularization_loss
+                }
+            ))
+
+      # Train.
+      if optimizer is not None:
+        if train_op_fn is not None:
+          raise ValueError('train_op_fn and optimizer cannot both be set.')
+        train_op = optimizer.minimize(
+            regularized_training_loss,
+            global_step=training_util.get_global_step())
+      elif train_op_fn is not None:
+        train_op = train_op_fn(regularized_training_loss)
+      else:
+        raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
+      # Only summarize mean_loss for SUM reduction to preserve backwards
+      # compatibility. Otherwise skip it to avoid unnecessary computation.
+      if self._loss_reduction == losses.Reduction.SUM:
+        example_weight_sum = math_ops.reduce_sum(
+            weights * array_ops.ones_like(unreduced_loss))
+        mean_loss = training_loss / example_weight_sum
+      else:
+        mean_loss = None
+    with ops.name_scope(''):
+      keys = metric_keys.MetricKeys
+      summary.scalar(
+          _summary_key(self._name, keys.LOSS),
+          regularized_training_loss)
+      if mean_loss is not None:
+        summary.scalar(
+            _summary_key(self._name, keys.LOSS_MEAN), mean_loss)
+      if regularization_loss is not None:
+        summary.scalar(
+            _summary_key(self._name, keys.LOSS_REGULARIZATION),
+            regularization_loss)
+    return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
+        mode=model_fn.ModeKeys.TRAIN,
+        predictions=predictions,
+        loss=regularized_training_loss,
+        train_op=train_op)
+
+
+def _multi_label_head_with_sigmoid_cross_entropy_loss(
+    n_labels,
+    weight_column=None,
+    thresholds=None,
+    label_vocabulary=None,
+    label_sep=',',
+    loss_reduction=losses.Reduction.SUM,
+    loss_fn=None,
+    name=None):
+  """Creates a '_Head' for multi label classification.
+
+  The head expects `logits` with shape `[D0, D1, ... DN, n_labels]`.
+  In many applications, the shape is `[batch_size, n_labels]`.
+
+  `labels` must be a dense `Tensor` with shape matching `logits`, namely
+  `[D0, D1, ... DN, 1]`. If `label_vocabulary` given, `labels` must be a string,
+  using `label_sep` concat multi labels.
+  `Tensor` with values from the vocabulary. If `label_vocabulary` is not given,
+  `labels` must be an integer `Tensor` with values specifying the label index.
+
+  If `weight_column` is specified, weights must be of shape
+  `[D0, D1, ... DN]`, or `[D0, D1, ... DN, 1]`.
+
+  The loss is the weighted sum over the input dimensions. Namely, if the input
+  labels have shape `[batch_size, n_labels]`, the loss is the weighted sum over
+  `batch_size`.
+
+  Also supports custom `loss_fn`. `loss_fn` takes `(labels, logits)` or
+  `(labels, logits, features)` as arguments and returns unreduced loss with
+  shape `[D0, D1, ... DN, 1]`. `loss_fn` must support integer `labels` with
+  shape `[D0, D1, ... DN, 1]`. Namely, the head applies `label_vocabulary` to
+  the input labels before passing them to `loss_fn`.
+
+  Args:
+    n_labels: Number of labels, must be greater than 2 (for 2 classes, use
+      `_BinaryLogisticHeadWithSigmoidCrossEntropyLoss`).
+    weight_column: A string or a `_NumericColumn` created by
+      `tf.feature_column.numeric_column` defining feature column representing
+      weights. It is used to down weight or boost examples during training. It
+      will be multiplied by the loss of the example.
+    thresholds: Iterable of floats in the range `(0, 1)`. For binary
+      classification metrics such as precision and recall, an eval metric is
+      generated for each threshold value. This threshold is applied to the
+      logistic values to determine the binary classification of each label (i.e.,
+      above the threshold is `true`, below is `false`.
+    label_vocabulary: A list or tuple of strings representing possible label
+      values. If it is not given, that means labels are already encoded as an
+      integer within [0, n_labels). If given, labels must be of string type and
+      have any value in `label_vocabulary`. Note that errors will be raised if
+      `label_vocabulary` is not provided but labels are strings.
+    label_sep: A string that concat multiple label in one string. Note that errors
+      will be raised if `label_vocabulary` is provided but not `label_sep`.
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
+      reduce training loss over batch. Defaults to `SUM`.
+    loss_fn: Optional loss function.
+    name: name of the head. If provided, summary and metrics keys will be
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
+
+  Returns:
+    An instance of `_Head` for multi label classification.
+
+  Raises:
+    ValueError: If `n_labels`, `label_vocabulary`, `label_sep` or `loss_reduction`
+    is invalid.
+  """
+  thresholds = tuple(thresholds) if thresholds else tuple()
+  if label_vocabulary is not None:
+    if not isinstance(label_sep, basestring):
+      raise TypeError(
+        'label_sep should be a str. Given type: {}'.format(
+            type(label_sep)))
+    if not isinstance(label_vocabulary, (list, tuple)):
+      raise TypeError(
+        'label_vocabulary should be a list or tuple. Given type: {}'.format(
+            type(label_vocabulary)))
+
+  for threshold in thresholds:
+    if (threshold <= 0.0) or (threshold >= 1.0):
+      raise ValueError('thresholds not in (0, 1): {}.'.format((thresholds,)))
+  if (loss_reduction not in losses.Reduction.all() or
+      loss_reduction == losses.Reduction.NONE):
+    raise ValueError('Invalid loss_reduction: {}'.format(loss_reduction))
+  if loss_fn:
+    _validate_loss_fn_args(loss_fn)
+  return _MultiLabelHeadWithSigmoidCrossEntropyLoss(
+      n_labels=n_labels,
+      weight_column=weight_column,
+      thresholds=thresholds,
+      label_vocabulary=label_vocabulary,
+      label_sep=label_sep,
+      loss_reduction=loss_reduction,
+      loss_fn=loss_fn,
+      name=name)
+
+
+class _MultiLabelHeadWithSigmoidCrossEntropyLoss(_BinaryLogisticHeadWithSigmoidCrossEntropyLoss):
+  """See `_multi_label_head_with_sigmoid_cross_entropy_loss`."""
+
+  def __init__(self,
+                 n_labels,
+                 weight_column=None,
+                 thresholds=None,
+                 label_vocabulary=None,
+                 label_sep=None,
+                 loss_reduction=losses.Reduction.SUM,
+                 loss_fn=None,
+                 name=None):
+    self._n_labels = n_labels
+    self._weight_column = weight_column
+    self._thresholds = thresholds
+    self._label_vocabulary = label_vocabulary
+    self._label_sep = label_sep
+    self._loss_reduction = loss_reduction
+    self._loss_fn = loss_fn
+    self._name = name
+
+  @property
+  def logits_dimension(self):
+    return self._n_labels
+
+  def _eval_metric_opss(self,
+                        labels,
+                        logits,
+                        class_ids,
+                        weights,
+                        unreduced_loss,
+                        regularization_loss):
+
+    with ops.name_scope(None, 'metrics',
+                        (labels, logits, class_ids, weights,
+                         unreduced_loss, regularization_loss)):
+      keys = metric_keys.MetricKeys
+      labels_mean = _indicator_labels_mean(
+          labels=labels, weights=weights, name=keys.LABEL_MEAN)
+
+      metric_ops = {
+          # Estimator already adds a metric for loss.
+          _summary_key(self._name, keys.LOSS_MEAN):
+              metrics_lib.mean(
+                  values=unreduced_loss,
+                  weights=weights,
+                  name=keys.LOSS_MEAN),
+          _summary_key(self._name, keys.ACCURACY):
+              metrics_lib.accuracy(
+                  labels=labels,
+                  predictions=class_ids,
+                  weights=weights,
+                  name=keys.ACCURACY),
+          _summary_key(self._name, keys.PRECISION):
+              metrics_lib.precision(
+                  labels=labels,
+                  predictions=class_ids,
+                  weights=weights,
+                  name=keys.PRECISION),
+          _summary_key(self._name, keys.RECALL):
+              metrics_lib.recall(
+                  labels=labels,
+                  predictions=class_ids,
+                  weights=weights,
+                  name=keys.RECALL),
+          _summary_key(self._name, keys.LABEL_MEAN):
+              labels_mean,
+          _summary_key(self._name, keys.ACCURACY_BASELINE):
+              _accuracy_baseline(labels_mean)
+      }
+      if regularization_loss is not None:
+        metric_ops[_summary_key(self._name, keys.LOSS_REGULARIZATION)] = (
+            metrics_lib.mean(
+                values=regularization_loss,
+                name=keys.LOSS_REGULARIZATION))
+
+      return metric_ops
+
+  def create_loss(self, features, mode, logits, labels):
+    """See `Head`."""
+    del mode  # Unused for this head.
+    logits = ops.convert_to_tensor(logits)
+    labels = _check_dense_labels_match_logits_and_reshape(
+        labels=labels, logits=logits, expected_labels_dimension=self.logits_dimension)
+    if self._label_vocabulary is not None:
+      sparse_labels = string_ops.string_split(labels, '.')
+      label_values = lookup_ops.index_table_from_tensor(
+              vocabulary_list=tuple(self._label_vocabulary),
+              name='label_id_lookup').lookup(sparse_labels.values)
+      labels = sparse_ops.sparse_to_dense(sparse_labels.indices, sparse_labels.dense_shape, label_values)
+    labels = math_ops.to_float(labels)
+    labels = _assert_range(labels, n_classes=self.logits_dimension)
+    if self._loss_fn:
+      unweighted_loss = _call_loss_fn(
+          loss_fn=self._loss_fn, labels=labels, logits=logits,
+          features=features, expected_loss_dim=1)
+    else:
+      unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
+          labels=labels, logits=logits)
+    weights = _get_weights_and_check_match_logits(
+        features=features, weight_column=self._weight_column, logits=logits)
+    training_loss = losses.compute_weighted_loss(
+        unweighted_loss, weights=weights, reduction=self._loss_reduction)
+    return LossSpec(
+        training_loss=training_loss,
+        unreduced_loss=unweighted_loss,
+        weights=weights,
+        processed_labels=labels)
+
+  def _create_tpu_estimator_spec(self,
+      features, mode, logits, labels=None, optimizer=None,
+      train_op_fn=None, regularization_losses=None):
+
+    with ops.name_scope(self._name, 'head'):
+      with ops.name_scope(None, 'predictions', (logits,)):
+        pred_keys = prediction_keys.PredictionKeys
+        logits = _check_logits_final_dim(logits, self.logits_dimension)
+        probabilities = math_ops.sigmoid(logits, name=pred_keys.PROBABILITIES)
+        _single_class_ids = math_ops.range(self.logits_dimension, dtype=dtypes.int64)
+        _class_ids = array_ops.zeros_like(logits, dtype=dtypes.int64)
+        class_ids = math_ops.add(_class_ids, _single_class_ids, name=pred_keys.CLASS_IDS)
+        if self._label_vocabulary:
+          table = lookup_ops.index_to_string_table_from_tensor(
+              vocabulary_list=self._label_vocabulary,
+              name='class_string_lookup')
+          classes = table.lookup(class_ids)
+        else:
+          classes = string_ops.as_string(class_ids, name='str_classes')
+        predictions = {
+            pred_keys.LOGITS: logits,
+            pred_keys.PROBABILITIES: probabilities,
+            pred_keys.CLASS_IDS: class_ids,
+            pred_keys.CLASSES: classes,
+        }
+      if mode == model_fn.ModeKeys.PREDICT:
+        classifier_output = _classification_output(
+            scores=probabilities, n_classes=self.logits_dimension,
+            label_vocabulary=self._label_vocabulary)
+        return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
+            mode=model_fn.ModeKeys.PREDICT,
+            predictions=predictions,
+            export_outputs={
+                _DEFAULT_SERVING_KEY: classifier_output,
+                _CLASSIFY_SERVING_KEY: classifier_output,
+                _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
+            })
+
+      (training_loss, unreduced_loss, weights, processed_labels) = (
+          self.create_loss(
+              features=features, mode=mode, logits=logits, labels=labels))
+      if regularization_losses:
+        regularization_loss = math_ops.add_n(regularization_losses)
+        regularized_training_loss = math_ops.add_n(
+            [training_loss, regularization_loss])
+      else:
+        regularization_loss = None
+        regularized_training_loss = training_loss
+
+      # Eval.
+      if mode == model_fn.ModeKeys.EVAL:
+        return model_fn._TPUEstimatorSpec(  # pylint: disable=protected-access
+            mode=model_fn.ModeKeys.EVAL,
+            predictions=predictions,
+            loss=regularized_training_loss,
+            eval_metrics=_create_eval_metrics_tuple(
+                self._eval_metric_opss,
+                {
+                    'labels': processed_labels,
+                    'logits': logits,
                     'class_ids': class_ids,
                     'weights': weights,
                     'unreduced_loss': unreduced_loss,
