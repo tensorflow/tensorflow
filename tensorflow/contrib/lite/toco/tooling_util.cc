@@ -413,16 +413,20 @@ string HelpfulOperatorTypeName(const Operator& op) {
 
 bool OperatorSupportsFusedActivation(OperatorType type) {
   switch (type) {
-    case OperatorType::kConcatenation:
-    case OperatorType::kFakeQuant:
-    case OperatorType::kGather:
-    case OperatorType::kSlice:
-    case OperatorType::kSqueeze:
-    case OperatorType::kReshape:
-    case OperatorType::kSplit:
-      return false;
-    default:
+    case OperatorType::kAdd:
+    case OperatorType::kAveragePool:
+    case OperatorType::kBatchNormalization:
+    case OperatorType::kConv:
+    case OperatorType::kDepthwiseConv:
+    case OperatorType::kDiv:
+    case OperatorType::kFullyConnected:
+    case OperatorType::kL2Pool:
+    case OperatorType::kMaxPool:
+    case OperatorType::kMul:
+    case OperatorType::kSub:
       return true;
+    default:
+      return false;
   }
 }
 
