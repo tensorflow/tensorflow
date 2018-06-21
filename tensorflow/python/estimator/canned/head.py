@@ -1487,7 +1487,9 @@ class _MultiLabelHeadWithSigmoidCrossEntropyLoss(_BinaryLogisticHeadWithSigmoidC
         pred_keys = prediction_keys.PredictionKeys
         logits = _check_logits_final_dim(logits, self.logits_dimension)
         probabilities = math_ops.sigmoid(logits, name=pred_keys.PROBABILITIES)
-        class_ids = math_ops.argsort(logits, axis=-1, name=pred_keys.CLASS_IDS)
+        _single_class_ids = math_ops.range(self.logits_dimension, dtype=dtypes.int64)
+        _class_ids = array_ops.zeros_like(logits, dtype=dtypes.int64)
+        class_ids = math_ops.add(_class_ids, _single_class_ids, name=pred_keys.CLASS_IDS)
         if self._label_vocabulary:
           table = lookup_ops.index_to_string_table_from_tensor(
               vocabulary_list=self._label_vocabulary,

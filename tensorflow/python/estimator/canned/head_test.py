@@ -4107,15 +4107,15 @@ class MultiLabelHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     head = head_lib._multi_label_head_with_sigmoid_cross_entropy_loss(2)
     self.assertEqual(2, head.logits_dimension)
 
-    # Logits should be shape (batch_size, 1).
-    logits_2x2 = np.array(((45., 44.), (41., 42.),))
+    # Logits should be shape (batch_size, 2).
+    logits_2x3 = np.array(((45., 44., 11.), (41., 42., 22.),))
 
     # Static shape.
     with self.assertRaisesRegexp(ValueError, 'logits shape'):
       head.create_estimator_spec(
           features={'x': np.array(((42.,),))},
           mode=model_fn.ModeKeys.PREDICT,
-          logits=logits_2x2)
+          logits=logits_2x3)
 
     # Dynamic shape.
     logits_placeholder = array_ops.placeholder(dtype=dtypes.float32)
@@ -4126,15 +4126,15 @@ class MultiLabelHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     with self.test_session():
       with self.assertRaisesRegexp(errors.OpError, 'logits shape'):
         spec.predictions[prediction_keys.PredictionKeys.PROBABILITIES].eval({
-            logits_placeholder: logits_2x2
+            logits_placeholder: logits_2x3
         })
 
   def test_invalid_labels_shape(self):
-    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
-    self.assertEqual(1, head.logits_dimension)
+    head = head_lib._multi_label_head_with_sigmoid_cross_entropy_loss(2)
+    self.assertEqual(2, head.logits_dimension)
 
-    # Labels and logits should be shape (batch_size, 1).
-    labels_2x2 = np.array(((45., 44.), (41., 42.),))
+    # Labels and logits should be shape (batch_size, 2).
+    labels_2x3 = np.array(((45., 44., 11.), (41., 42., 11.),))
     logits_2x1 = np.array(((45.,), (41.,),))
 
     # Static shape.
@@ -4143,7 +4143,7 @@ class MultiLabelHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
           features={'x': np.array(((42.,),))},
           mode=model_fn.ModeKeys.EVAL,
           logits=logits_2x1,
-          labels=labels_2x2)
+          labels=labels_2x3)
 
     # Dynamic shape.
     labels_placeholder = array_ops.placeholder(dtype=dtypes.float32)
@@ -4156,79 +4156,85 @@ class MultiLabelHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     with self.test_session():
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
-          r'\[expected_labels_shape: \] \[2 1\] \[labels_shape: \] \[2 2\]'):
+          r'\[expected_labels_shape: \] \[2 2\] \[labels_shape: \] \[2 3\]'):
         training_loss.eval({
             logits_placeholder: logits_2x1,
-            labels_placeholder: labels_2x2
+            labels_placeholder: labels_2x3
         })
 
   def test_incompatible_labels_shape(self):
-    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
-    self.assertEqual(1, head.logits_dimension)
+    head = head_lib._multi_label_head_with_sigmoid_cross_entropy_loss(2)
+    self.assertEqual(2, head.logits_dimension)
 
-    # Both logits and labels should be shape (batch_size, 1).
-    values_2x1 = np.array(((0.,), (1.,),))
-    values_3x1 = np.array(((0.,), (1.,), (0.,),))
+    # Both logits and labels should be shape (batch_size, 2).
+
+    values_2x2 = np.array(((0., 0.), (1., 1.),))
+    values_3x2 = np.array(((0., 1.), (1., 1.), (0., 1.),))
 
     # Static shape.
     with self.assertRaisesRegexp(
         ValueError, 'logits and labels must have the same shape'):
       head.create_loss(
-          features={'x': values_2x1},
+          features={'x': values_2x2},
           mode=model_fn.ModeKeys.EVAL,
-          logits=values_2x1,
-          labels=values_3x1)
+          logits=values_2x2,
+          labels=values_3x2)
     with self.assertRaisesRegexp(
         ValueError, 'logits and labels must have the same shape'):
       head.create_loss(
-          features={'x': values_2x1},
+          features={'x': values_2x2},
           mode=model_fn.ModeKeys.EVAL,
-          logits=values_3x1,
-          labels=values_2x1)
+          logits=values_3x2,
+          labels=values_2x2)
 
     # Dynamic shape.
     labels_placeholder = array_ops.placeholder(dtype=dtypes.float32)
     logits_placeholder = array_ops.placeholder(dtype=dtypes.float32)
     training_loss = head.create_loss(
-        features={'x': values_2x1},
+        features={'x': values_2x2},
         mode=model_fn.ModeKeys.EVAL,
         logits=logits_placeholder,
         labels=labels_placeholder)[0]
     with self.test_session():
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
-          r'\[expected_labels_shape: \] \[3 1\] \[labels_shape: \] \[2 1\]'):
+          r'\[expected_labels_shape: \] \[3 2\] \[labels_shape: \] \[2 2\]'):
         training_loss.eval({
-            labels_placeholder: values_2x1,
-            logits_placeholder: values_3x1
+            labels_placeholder: values_2x2,
+            logits_placeholder: values_3x2
         })
     with self.test_session():
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
-          r'\[expected_labels_shape: \] \[2 1\] \[labels_shape: \] \[3 1\]'):
+          r'\[expected_labels_shape: \] \[2 2\] \[labels_shape: \] \[3 2\]'):
         training_loss.eval({
-            labels_placeholder: values_3x1,
-            logits_placeholder: values_2x1
+            labels_placeholder: values_3x2,
+            logits_placeholder: values_2x2
         })
 
+  def test_fail_vocabulary_list_without_sep(self):
+    with self.assertRaisesRegexp(
+        TypeError, 'label_sep should be a str.'):
+        head = head_lib._multi_label_head_with_sigmoid_cross_entropy_loss(2, label_sep=None,
+        label_vocabulary=['a', 'b'])
+
   def test_name(self):
-    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+    head = head_lib._multi_label_head_with_sigmoid_cross_entropy_loss(2,
         name='foo')
     self.assertEqual('foo', head.name)
 
   def test_predict(self):
-    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
-    self.assertEqual(1, head.logits_dimension)
+    head = head_lib._multi_label_head_with_sigmoid_cross_entropy_loss(2)
+    self.assertEqual(2, head.logits_dimension)
 
     # Create estimator spec.
-    logits = [[0.3], [-0.4]]
-    expected_logistics = [[0.574443], [0.401312]]
-    expected_probabilities = [[0.425557, 0.574443], [0.598688, 0.401312]]
-    expected_class_ids = [[1], [0]]
-    expected_classes = [[b'1'], [b'0']]
+    logits = [[0.3, 0.3], [-0.4, -0.4]]
+    expected_probabilities = [[0.574443, 0.574443], [0.401312, 0.401312]]
+    expected_class_ids = [[0, 1], [0, 1]]
+    expected_classes = [[b'0', b'1'], [b'0', b'1']]
     expected_export_classes = [[b'0', b'1']] * 2
     spec = head.create_estimator_spec(
-        features={'x': np.array(((42,),), dtype=np.int32)},
+        features={'x': np.array(((42, 42),), dtype=np.int32)},
         mode=model_fn.ModeKeys.PREDICT,
         logits=logits)
 
@@ -4236,7 +4242,8 @@ class MultiLabelHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     self.assertIsNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNone(spec.train_op)
-    self.assertItemsEqual(('classification', 'regression', 'predict',
+    print(spec.export_outputs.keys())
+    self.assertItemsEqual(('classification', 'predict',
                            _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
     _assert_no_hooks(self, spec)
 
@@ -4247,8 +4254,6 @@ class MultiLabelHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       predictions = sess.run(spec.predictions)
       self.assertAllClose(logits,
                           predictions[prediction_keys.PredictionKeys.LOGITS])
-      self.assertAllClose(expected_logistics,
-                          predictions[prediction_keys.PredictionKeys.LOGISTIC])
       self.assertAllClose(
           expected_probabilities,
           predictions[prediction_keys.PredictionKeys.PROBABILITIES])
@@ -4262,15 +4267,14 @@ class MultiLabelHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       self.assertAllEqual(
           expected_export_classes,
           sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
-      self.assertAllClose(expected_logistics,
-                          sess.run(spec.export_outputs['regression'].value))
 
   def test_predict_with_vocabulary_list(self):
-    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
-        label_vocabulary=['aang', 'iroh'])
+    head = head_lib._multi_label_head_with_sigmoid_cross_entropy_loss(2,
+        label_sep='=',
+        label_vocabulary=[b'aang', b'iroh'])
 
-    logits = [[1.], [0.]]
-    expected_classes = [[b'iroh'], [b'aang']]
+    logits = [[1., 0.], [0., 1.]]
+    expected_classes = [[b'aang', b'iroh',], [b'aang', b'iroh']]
 
     spec = head.create_estimator_spec(
         features={'x': np.array(((42,),), dtype=np.int32)},
@@ -4284,7 +4288,7 @@ class MultiLabelHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
           sess.run(spec.predictions[prediction_keys.PredictionKeys.CLASSES]))
 
   def test_eval_create_loss(self):
-    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+    head = head_lib._multi_label_head_with_sigmoid_cross_entropy_loss(2)
     logits = np.array(((45,), (-41,),), dtype=np.float32)
     labels = np.array(((1,), (1,),), dtype=np.int32)
     features = {'x': np.array(((42,),), dtype=np.int32)}
