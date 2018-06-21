@@ -475,5 +475,36 @@ TEST_F(HloCostAnalysisTest, Slice) {
   EXPECT_EQ(analysis.bytes_accessed(), 8);
 }
 
+TEST_F(HloCostAnalysisTest, DynamicSlice) {
+  // Test the analysis on a slice.
+  XlaBuilder builder("dynamic-slice");
+  auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2}), "x");
+  auto slice = builder.DynamicSlice(x, builder.ConstantR1<int32>({1}), {1});
+  auto hlo_module = BuildHloGraph(&builder);
+
+  // Run HLO cost analysis.
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(), 8);
+}
+
+TEST_F(HloCostAnalysisTest, DynamicUpdateSlice) {
+  // Test the analysis on a slice.
+  XlaBuilder builder("dynamic-update-slice");
+  auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2}), "x");
+  auto slice = builder.DynamicUpdateSlice(x, builder.ConstantR1<float>({1.0}),
+                                          builder.ConstantR1<int32>({1}));
+  auto hlo_module = BuildHloGraph(&builder);
+
+  // Run HLO cost analysis.
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(), 8);
+}
+
 }  // namespace
 }  // namespace xla

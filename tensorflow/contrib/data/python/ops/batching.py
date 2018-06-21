@@ -103,10 +103,7 @@ class UnbatchDataset(dataset_ops.Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.unbatch_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):
@@ -320,10 +317,7 @@ class DenseToSparseBatchDataset(dataset_ops.Dataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._batch_size,
         row_shape=convert.partial_shape_to_tensor(self._row_shape),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):
@@ -500,10 +494,7 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
         batch_size=self._batch_size_t,
         num_parallel_calls=self._num_parallel_calls_t,
         drop_remainder=self._drop_remainder_t,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
     # pylint: enable=protected-access
 
   @property

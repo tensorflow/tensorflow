@@ -23,6 +23,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors import chain
 from tensorflow.contrib.distributions.python.ops.bijectors import fill_triangular
 from tensorflow.contrib.distributions.python.ops.bijectors import softplus
 from tensorflow.contrib.distributions.python.ops.bijectors import transform_diagonal
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "ScaleTriL",
@@ -76,6 +77,14 @@ class ScaleTriL(chain.Chain):
   ```
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                diag_bijector=None,
                diag_shift=1e-5,

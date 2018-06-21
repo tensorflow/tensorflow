@@ -30,6 +30,7 @@ py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -51,6 +52,19 @@ py_test(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "cache_dataset_op_test",
+    size = "small",
+    srcs = ["cache_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_serialization_test",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 

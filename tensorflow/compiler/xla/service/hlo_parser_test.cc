@@ -913,11 +913,29 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} cross-replica-sum(input), to_apply=add
+  ROOT crs = f32[8]{0} cross-replica-sum(input), replica_group_ids={}, to_apply=add
 }
 
 )"
 },
+// cross-replica-sum with subgroups
+{
+"CrossReplicaSumWithSubgroups",
+R"(HloModule CRS_Subgroups
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CrossReplicaSumWithSubgroups {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_group_ids={0,0,1,1}, barrier="abc", to_apply=add
+}
+
+)"
+}
   });
   // clang-format on
 }

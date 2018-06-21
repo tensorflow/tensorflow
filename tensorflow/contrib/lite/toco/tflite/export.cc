@@ -99,7 +99,8 @@ void LoadOperatorsMap(
 
 Offset<Vector<Offset<Tensor>>> ExportTensors(
     const Model& model, const details::TensorsMap& tensors_map,
-    FlatBufferBuilder* builder, std::vector<const Array*>* buffers_to_write) {
+    FlatBufferBuilder* builder, std::vector<const Array*>* buffers_to_write,
+    const std::set<int32_t>& variable_tensor_indices) {
   // In the end we will need to produce a vector sorted by the indices of the
   // tensors in the tensors_map.
   std::map<int, Offset<Tensor>> ordered_tensors;
@@ -139,9 +140,11 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
                                                           scale, zero_point);
 
     int index = tensors_map.at(tensor_name);
+    bool is_variable =
+        variable_tensor_indices.find(index) != variable_tensor_indices.end();
     ordered_tensors[index] =
         CreateTensor(*builder, builder->CreateVector(shape), type, buffer_index,
-                     builder->CreateString(tensor_name), q_param);
+                     builder->CreateString(tensor_name), q_param, is_variable);
   }
 
   std::vector<Offset<Tensor>> tensor_vector;
@@ -239,7 +242,10 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     const Model& model,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
     const details::OperatorsMap& operators_map,
-    const details::TensorsMap& tensors_map, FlatBufferBuilder* builder) {
+    const details::TensorsMap& tensors_map, FlatBufferBuilder* builder,
+    std::set<int32_t>* variable_tensor_indices) {
+  variable_tensor_indices->clear();
+
   // The operators are in execution order, so we just follow tf.mini order.
   std::vector<Offset<Operator>> op_vector;
   for (const auto& op : model.operators) {
@@ -256,18 +262,36 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
 
     int op_index = operators_map.at(GetOperatorKey(*op, ops_by_type));
 
+    auto tflite_op_it = ops_by_type.find(op->type);
+    BaseOperator* tflite_op = tflite_op_it == ops_by_type.end()
+                                  ? nullptr
+                                  : tflite_op_it->second.get();
+
     // This is a custom op unless we can find it in ops_by_type, and even then
     // it could be a custom op (such as kTensorFlowUnsupported).
-
     auto options = Options::Custom(0);
-    if (ops_by_type.count(op->type) != 0) {
-      options = ops_by_type.at(op->type)->Serialize(*op, builder);
+
+    std::vector<bool> mutating_input_variables;
+    if (tflite_op) {
+      options = tflite_op->Serialize(*op, builder);
+      mutating_input_variables = tflite_op->GetMutatingInputVariables(*op);
+
+      if (!mutating_input_variables.empty()) {
+        for (int i = 0; i < op->inputs.size(); ++i) {
+          if (!mutating_input_variables[i]) {
+            continue;
+          }
+          int32_t variable_tensor_index = tensors_map.at(op->inputs[i]);
+          variable_tensor_indices->insert(variable_tensor_index);
+        }
+      }
     }
     // The only supported CustomOptionFormat is FLEXBUFFERS now.
     op_vector.push_back(CreateOperator(
         *builder, op_index, builder->CreateVector(inputs),
         builder->CreateVector(outputs), options.type, options.builtin,
-        options.custom, ::tflite::CustomOptionsFormat_FLEXBUFFERS));
+        options.custom, ::tflite::CustomOptionsFormat_FLEXBUFFERS,
+        builder->CreateVector(mutating_input_variables)));
   }
 
   return builder->CreateVector(op_vector);
@@ -308,13 +332,10 @@ void Export(
   Array empty_array;
   buffers_to_write.push_back(&empty_array);
 
-  auto tensors = ExportTensors(model, tensors_map, &builder, &buffers_to_write);
-  auto inputs = ExportInputTensors(model, tensors_map, &builder);
-  auto outputs = ExportOutputTensors(model, tensors_map, &builder);
-
   std::set<string> error_summary;
   auto op_codes = ExportOperatorCodes(model, ops_by_type, operators_map,
                                       &builder, &error_summary);
+
   const string fake_quant_operation_name = "FAKE_QUANT";
 
   if (error_summary.count(fake_quant_operation_name) != 0) {
@@ -353,11 +374,18 @@ void Export(
         << absl::StrJoin(error_summary_final, ", ") << ".";
   }
 
-  auto ops =
-      ExportOperators(model, ops_by_type, operators_map, tensors_map, &builder);
+  std::set<int32_t> variable_tensor_indices;
+  auto ops = ExportOperators(model, ops_by_type, operators_map, tensors_map,
+                             &builder, &variable_tensor_indices);
+
+  auto tensors = ExportTensors(model, tensors_map, &builder, &buffers_to_write,
+                               variable_tensor_indices);
+  auto inputs = ExportInputTensors(model, tensors_map, &builder);
+  auto outputs = ExportOutputTensors(model, tensors_map, &builder);
 
   // TODO(aselle): add support to toco for multiple subgraphs.
-  auto subgraph = CreateSubGraph(builder, tensors, inputs, outputs, ops);
+  auto subgraph = CreateSubGraph(builder, tensors, inputs, outputs, ops,
+                                 /* name */ 0);
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {subgraph};
 
   auto buffers = ExportBuffers(model, buffers_to_write, &builder);

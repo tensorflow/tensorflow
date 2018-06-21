@@ -39,7 +39,8 @@ struct ArenaAlloc {
 // This small class is responsible for allocating, deallocating and reusing
 // dynamic memory from a common underlying buffer. The arena can be used in
 // scenarios when the pattern of memory allocations and deallocations is
-// repetitive, e.g. running NN inference in multiple iterations.
+// repetitive, e.g. running NN inference in multiple iterations. Note that
+// zero-sized allocations are explicitly allowed, and will resolve to null.
 class SimpleMemoryArena {
  public:
   explicit SimpleMemoryArena(size_t arena_alignment)
