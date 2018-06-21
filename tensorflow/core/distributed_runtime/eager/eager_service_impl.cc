@@ -80,8 +80,9 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                                        CreateContextResponse* response) {
+  //make sure env_ , env_->rendezvous_mgr available
   if (env_ == nullptr || env_->rendezvous_mgr == nullptr) {
-    return errors::InvalidArgument("invalid eager env_ or env_->rendezvous_mgr.");
+    return tensorflow::errors::Internal("invalid eager env_ or env_->rendezvous_mgr.");
   } 
   tensorflow::RemoteRendezvous* r = env_->rendezvous_mgr->Find(0);
   std::vector<tensorflow::Device*> devices;

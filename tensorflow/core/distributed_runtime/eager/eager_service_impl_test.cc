@@ -132,12 +132,16 @@ TEST(EagerServiceImplTest, BasicTest) {
   CreateContextResponse response;
 
   cons_status = eager_service_impl.CreateContext(&request, &response);
-  EXPECT_EQ(cons_status.error_message(), "invalid eager env_ or env_->rendezvous_mgr.");
+  
+  EXPECT_NE(cons_status,Status::OK());
+  EXPECT_NE(cons_status.ok(),Status::OK().ok());
 
   tensorflow::RpcRendezvousMgr rm(&worker_env);
   worker_env.rendezvous_mgr = &rm; 
 
-  TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
+  cons_status = eager_service_impl.CreateContext(&request, &response);
+  TF_ASSERT_OK(cons_status); 
+  EXPECT_EQ(cons_status,Status::OK());
 
   uint64 context_id = response.context_id();
 
