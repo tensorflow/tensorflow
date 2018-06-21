@@ -364,14 +364,52 @@ class UniformUnitScalingInitializationTest(test.TestCase):
 
 class VarianceScalingInitializationTest(test.TestCase):
 
+  def testTruncatedNormalDistribution(self):
+    shape = [100, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops.variance_scaling_initializer(
+      distribution='truncated_normal')
+
+    with self.test_session(use_gpu=True), \
+      test.mock.patch.object(
+          random_ops, 'truncated_normal', wraps=random_ops.truncated_normal) \
+          as mock_truncated_normal:
+      x = init(shape).eval()
+      mock_truncated_normal.assert_called()
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
+
   def testNormalDistribution(self):
     shape = [100, 100]
     expect_mean = 0.
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(distribution='normal')
 
-    with self.test_session(use_gpu=True):
+    with self.test_session(use_gpu=True), \
+      test.mock.patch.object(
+          random_ops, 'truncated_normal', wraps=random_ops.truncated_normal) \
+          as mock_truncated_normal:
       x = init(shape).eval()
+      mock_truncated_normal.assert_called()
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
+
+  def testUntruncatedNormalDistribution(self):
+    shape = [100, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops.variance_scaling_initializer(
+      distribution='untruncated_normal')
+
+    with self.test_session(use_gpu=True), \
+      test.mock.patch.object(
+          random_ops, 'random_normal', wraps=random_ops.random_normal) \
+          as mock_random_normal:
+      x = init(shape).eval()
+      mock_random_normal.assert_called()
 
     self.assertNear(np.mean(x), expect_mean, err=1e-2)
     self.assertNear(np.var(x), expect_var, err=1e-2)
