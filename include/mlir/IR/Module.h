@@ -1,4 +1,4 @@
-//===- Function.cpp - MLIR Function Classes -------------------------------===//
+//===- Module.h - MLIR Module Class -----------------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,18 +14,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
+//
+// Module is the top-level container for code in an MLIR program.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef MLIR_IR_MODULE_H
+#define MLIR_IR_MODULE_H
 
 #include "mlir/IR/Function.h"
-#include "llvm/Support/raw_ostream.h"
-using namespace mlir;
+#include <vector>
 
-Function::Function(StringRef name) : name(name.str()) {
-}
+namespace mlir {
+class Module {
+public:
+  explicit Module();
 
-void Function::print(raw_ostream &os) {
-  os << "extfunc @" << name << "()\n";
-}
+  // FIXME: wrong representation and API.
+  std::vector<Function*> functionList;
 
-void Function::dump() {
-  print(llvm::errs());
-}
+
+  void print(raw_ostream &os);
+  void dump();
+};
+} // end namespace mlir
+
+#endif  // MLIR_IR_FUNCTION_H

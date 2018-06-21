@@ -1,4 +1,4 @@
-//===- Function.cpp - MLIR Function Classes -------------------------------===//
+//===- Module.cpp - MLIR Module Class -------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,17 +15,20 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
-Function::Function(StringRef name) : name(name.str()) {
+Module::Module() {
 }
 
-void Function::print(raw_ostream &os) {
-  os << "extfunc @" << name << "()\n";
+
+void Module::print(raw_ostream &os) {
+  for (auto *fn : functionList)
+    fn->print(os);
 }
 
-void Function::dump() {
+void Module::dump() {
   print(llvm::errs());
 }
+

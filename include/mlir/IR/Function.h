@@ -1,4 +1,4 @@
-//===- Function.h - MLIR Function Class ------------------------*- llvm -*-===//
+//===- Function.h - MLIR Function Class -------------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,18 +15,27 @@
 // limitations under the License.
 // =============================================================================
 //
-// TODO
+// Functions are the basic unit of composition in MLIR.  There are three
+// different kinds of functions: external functions, CFG functions, and ML
+// functions.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef MLIR_IR_FUNCTION_H
 #define MLIR_IR_FUNCTION_H
 
-namespace mlir {
-  class Function {
-  public:
-    explicit Function();
+#include "mlir/Support/LLVM.h"
 
+namespace mlir {
+  /// This is the base class for all of the MLIR function types
+  class Function {
+    std::string name;
+    // TODO: type and lots of other stuff.
+  public:
+    explicit Function(StringRef name);
+
+    void print(raw_ostream &os);
+    void dump();
   };
 } // end namespace mlir
 

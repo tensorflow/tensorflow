@@ -21,18 +21,48 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/ToolOutputFile.h"
 using namespace mlir;
+using namespace llvm;
+
+static cl::opt<std::string>
+inputFilename(cl::Positional, cl::desc("<input file>"), cl::init("-"));
+
+static cl::opt<std::string>
+outputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"),
+               cl::init("-"));
+
+
+/// Open the specified output file and return it, exiting if there is any I/O or
+/// other errors.
+static std::unique_ptr<ToolOutputFile> getOutputStream() {
+  std::error_code error;
+  auto result = make_unique<ToolOutputFile>(outputFilename, error,
+                                            sys::fs::F_None);
+  if (error) {
+    llvm::errs() << error.message() << '\n';
+    exit(1);
+  }
+
+  return result;
+}
 
 int main(int argc, char **argv) {
-  llvm::InitLLVM x(argc, argv);
+  InitLLVM x(argc, argv);
 
-  llvm::cl::ParseCommandLineOptions(argc, argv,
-                                    "MLIR modular optimizer driver\n");
+  cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
 
   // Instantiate an IR object.
-  Function f;
-  (void)f;
+  Module m;
+  m.functionList.push_back(new Function("foo"));
+  m.functionList.push_back(new Function("bar"));
+
+  // Print the output.
+  auto output = getOutputStream();
+  m.print(output->os());
+  output->keep();
 }
