@@ -610,12 +610,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <typename NativeT, typename std::enable_if<std::is_floating_point<
                                   NativeT>::value>::type* = nullptr>
   Status HandleAnd(HloInstruction* and_) {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[and_],
-        ElementWiseBinaryOp(and_, [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
-          return lhs_el && rhs_el;
-        }));
-    return Status::OK();
+    return InvalidArgument("Unsupported type for And");
   }
 
   template <
@@ -644,12 +639,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <typename NativeT, typename std::enable_if<std::is_floating_point<
                                   NativeT>::value>::type* = nullptr>
   Status HandleOr(HloInstruction* or_) {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[or_],
-        ElementWiseBinaryOp(or_, [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
-          return lhs_el || rhs_el;
-        }));
-    return Status::OK();
+    return InvalidArgument("Unsupported type for Or");
   }
 
   template <
