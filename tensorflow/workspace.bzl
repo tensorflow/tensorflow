@@ -474,11 +474,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "jsoncpp_git",
       urls = [
-          "https://mirror.bazel.build/github.com/open-source-parsers/jsoncpp/archive/11086dd6a7eba04289944367ca82cea71299ed70.tar.gz",
-          "https://github.com/open-source-parsers/jsoncpp/archive/11086dd6a7eba04289944367ca82cea71299ed70.tar.gz",
+          "https://mirror.bazel.build/github.com/open-source-parsers/jsoncpp/archive/1.8.4.tar.gz",
+          "https://github.com/open-source-parsers/jsoncpp/archive/1.8.4.tar.gz",
       ],
-      sha256 = "07d34db40593d257324ec5fb9debc4dc33f29f8fb44e33a2eeb35503e61d0fe2",
-      strip_prefix = "jsoncpp-11086dd6a7eba04289944367ca82cea71299ed70",
+      sha256 = "c49deac9e0933bcb7044f08516861a2d560988540b23de2ac1ad443b219afdb6",
+      strip_prefix = "jsoncpp-1.8.4",
       build_file = clean_dep("//third_party:jsoncpp.BUILD"),
   )
 
