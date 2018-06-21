@@ -255,6 +255,7 @@ cc_library(
         "include/curl/mprintf.h",
         "include/curl/multi.h",
         "include/curl/stdcheaders.h",
+        "include/curl/system.h",
         "include/curl/typecheck-gcc.h",
     ],
     copts = select({
