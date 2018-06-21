@@ -445,6 +445,7 @@ py_test(
         "//tensorflow/python:script_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

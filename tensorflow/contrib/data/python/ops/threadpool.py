@@ -42,19 +42,23 @@ def _generate_shared_name(prefix):
 class PrivateThreadPool(object):
   """A stateful resource that represents a private thread pool."""
 
-  def __init__(self, num_threads, display_name=None):
+  def __init__(self, num_threads, display_name=None,
+               max_intra_op_parallelism=1):
     """Creates a `PrivateThreadPool` with the given number of threads."""
     if context.executing_eagerly():
       shared_name = _generate_shared_name("privatethreadpool")
       self._resource = gen_dataset_ops.thread_pool_handle(
           num_threads=num_threads,
+          max_intra_op_parallelism=max_intra_op_parallelism,
           display_name=display_name,
           shared_name=shared_name)
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device=context.context().device_name)
     else:
       self._resource = gen_dataset_ops.thread_pool_handle(
-          num_threads=num_threads, display_name=display_name)
+          num_threads=num_threads,
+          max_intra_op_parallelism=max_intra_op_parallelism,
+          display_name=display_name)
 
 
 class _ThreadPoolDataset(dataset_ops.Dataset):
