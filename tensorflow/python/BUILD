@@ -4,14 +4,16 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-package(default_visibility = [
+visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//tensorflow:internal",
     "//tensorflow/contrib/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
-])
+]
+
+package(default_visibility = visibility)
 
 licenses(["notice"])  # Apache 2.0
 
@@ -358,6 +360,9 @@ cc_library(
     name = "ndarray_tensor",
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
+    visibility = visibility + [
+        "//learning/deepmind/courier:__subpackages__",
+    ],
     deps = [
         ":bfloat16_lib",
         ":ndarray_tensor_bridge",
