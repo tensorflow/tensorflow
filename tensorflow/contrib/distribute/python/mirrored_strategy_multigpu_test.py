@@ -337,6 +337,8 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     all_v_sum = {}
     all_v_mean = {}
+    components_sum = {}
+    components_mean = {}
 
     def model_fn(device_id):
       tower_context = distribute_lib.get_tower_context()
@@ -350,21 +352,33 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
                  v_mean.assign(6.0 * device_id)]
       all_v_sum[device_id] = v_sum
       all_v_mean[device_id] = v_mean
-      return updates, v_sum, v_mean
+      c_sum = v_sum.get()
+      c_mean = v_mean.get()
+      components_sum[device_id] = c_sum
+      components_mean[device_id] = c_mean
+      self.assertIsNot(v_sum, c_sum)
+      self.assertIsNot(v_mean, c_mean)
+      return updates, v_sum, v_mean, c_sum, c_mean
 
     dist = mirrored_strategy.MirroredStrategy(
         ["/device:GPU:0", "/device:CPU:0"])
 
     with dist.scope():
       # Create "sum" and "mean" versions of TowerLocalVariables.
-      ret_ops, ret_v_sum, ret_v_mean = dist.call_for_each_tower(
-          model_fn, dist.worker_device_index, run_concurrently=False)
+      ret_ops, ret_v_sum, ret_v_mean, regrouped_sum, regrouped_mean = (
+          dist.call_for_each_tower(
+              model_fn, dist.worker_device_index, run_concurrently=False))
       # Should see the same wrapping instance in all towers.
       self.assertIs(all_v_sum[0], ret_v_sum)
       self.assertIs(all_v_mean[0], ret_v_mean)
-      for i in range(1, dist.num_towers):
-        self.assertIs(all_v_sum[0], all_v_sum[1])
-        self.assertIs(all_v_mean[0], all_v_mean[1])
+      self.assertIs(all_v_sum[0], all_v_sum[1])
+      self.assertIs(all_v_mean[0], all_v_mean[1])
+
+      # Regroup should recover the same wrapper.
+      self.assertIs(ret_v_sum, regrouped_sum)
+      self.assertIs(ret_v_mean, regrouped_mean)
+      self.assertIsNot(components_sum[0], components_sum[1])
+      self.assertIsNot(components_mean[0], components_mean[1])
 
       # Apply updates
       self.evaluate(variables.global_variables_initializer())
