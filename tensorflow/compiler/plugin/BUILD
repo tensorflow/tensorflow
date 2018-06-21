@@ -34,10 +34,29 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
+# This target is for plugins/extensions to add their TF device, and XLA backend
+# into the system. The depenency comes via the jit module.  The target should
+# include the creation of a XlaDevice, and a factory registered with
+# REGISTER_LOCAL_DEVICE_FACTORY.  It should also include the XLA compiler and
+# associated platform, registered with xla::Compiler::RegisterCompilerFactory.
+# See tensorflow/compiler/jit/xla_cpu_device.cc,
+# tensorflow/compiler/xla/service/cpu/cpu_compiler.cc and
+# tensorflow/stream_executor/host/host_platform.cc for examples.
 cc_library(
     name = "plugin",
     deps = [
         #"//tensorflow/compiler/plugin/example:example_lib",
+    ],
+)
+
+# This target is for plugins/extensions to add their backend registration files.
+# The dependency comes via the tf2xla module, and should register the backend
+# using the REGISTER_XLA_BACKEND macro.  See tf2xla/xla_cpu_backend.cc for an
+# example.
+cc_library(
+    name = "plugin_backend",
+    deps = [
+        #"//tensorflow/compiler/plugin/example:example_backend",
     ],
 )
 
