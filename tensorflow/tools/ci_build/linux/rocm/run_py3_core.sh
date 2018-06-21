@@ -39,7 +39,6 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
     -//tensorflow/python/eager:backprop_test \
-    -//tensorflow/python/eager:function_test \
     -//tensorflow/python/estimator:boosted_trees_test   \
     -//tensorflow/python/feature_column:feature_column_test \
     -//tensorflow/python/keras:activations_test \
@@ -94,18 +93,14 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     -//tensorflow/python/kernel_tests:self_adjoint_eig_op_test \
     -//tensorflow/python/kernel_tests:split_op_test \
     -//tensorflow/python/kernel_tests:svd_op_test \
-    -//tensorflow/python/kernel_tests:tensor_array_ops_test \
     -//tensorflow/python/kernel_tests:tensordot_op_test \
-    -//tensorflow/python/kernel_tests:variable_scope_test \
     -//tensorflow/python/profiler/internal:run_metadata_test \
     -//tensorflow/python/profiler:profile_context_test \
     -//tensorflow/python/profiler:profiler_test \
-    -//tensorflow/python:adam_test \
     -//tensorflow/python:cluster_test \
     -//tensorflow/python:cost_analyzer_test \
     -//tensorflow/python:function_test \
     -//tensorflow/python:gradient_checker_test \
-    -//tensorflow/python:gradients_test \
     -//tensorflow/python:histogram_ops_test \
     -//tensorflow/python:image_grad_test \
     -//tensorflow/python:image_ops_test \
@@ -118,7 +113,6 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     -//tensorflow/python:timeline_test \
     -//tensorflow/python:virtual_gpu_test \
     -//tensorflow/python:function_def_to_graph_test \
-    -//tensorflow/python:gradient_descent_test \
     -//tensorflow/python:momentum_test \
     -//tensorflow/python/keras:models_test \
     -//tensorflow/python/keras:training_test \
@@ -132,4 +126,4 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     -//tensorflow/python/estimator:linear_test \
     -//tensorflow/python/estimator:dnn_linear_combined_test
 
-# Note: temp. disabling 93 unit tests in order to esablish a CI baseline (2018/06/13)
+# Note: temp. disabling 87 unit tests in order to esablish a CI baseline (2018/06/13)
