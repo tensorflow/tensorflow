@@ -394,7 +394,7 @@ def scatter_add(ref, indices, updates, use_locking=False, name=None):
       A tensor of indices into the first dimension of `ref`.
     updates: A `Tensor`. Must have the same type as `ref`.
       A tensor of updated values to store in `ref`.
-    use_locking: An optional `bool`. Defaults to `True`.
+    use_locking: An optional `bool`. Defaults to `False`.
       If True, the assignment will be protected by a lock;
       otherwise the behavior is undefined, but may exhibit less contention.
     name: A name for the operation (optional).
