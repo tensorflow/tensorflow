@@ -2205,10 +2205,11 @@ def sensitivity(labels,
                 metrics_collections=None,
                 updates_collections=None,
                 name=None):
-  """Same as `tensorflow.metrics.recall`
+  """Same as `tensorflow.metrics.recall`.
 
   For additional information about specificity and sensitivity, see the
-  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity"""
+  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  """
   return recall(labels, predictions, weights, metrics_collections,
                 updates_collections, name or "sensitivity")
 
@@ -2293,13 +2294,18 @@ def specificity(labels,
       return array_ops.where(
           math_ops.greater(true_n + false_p, 0),
           math_ops.div(true_n, true_n + false_p), 0, name)
+    
+    def once_across_towers(_, true_n, false_p):
+      specificity = compute_specificity(true_n, false_p, 'value')
+      if metrics_collections:
+        ops.add_to_collections(metrics_collections, specificity)
+      return specificity
 
-    specificity = compute_specificity(true_n, false_p, 'value')
+    specificity = distribute_lib.get_tower_context().merge_call(
+        once_across_towers, true_n, false_p)
+
     update_op = compute_specificity(true_negatives_update_op,
                                     false_positives_update_op, 'update_op')
-
-    if metrics_collections:
-      ops.add_to_collections(metrics_collections, specificity)
 
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
