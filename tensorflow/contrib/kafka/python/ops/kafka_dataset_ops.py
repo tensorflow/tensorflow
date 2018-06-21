@@ -37,14 +37,26 @@ class KafkaDataset(Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.kafka_dataset()
 
-  # @property
-  # def output_classes(self):
-  #   return ops.Tensor
+  @property
+  def output_classes(self):
+    return ops.Tensor
 
-  # @property
-  # def output_shapes(self):
-  #   return tensor_shape.scalar()
+  @property
+  def output_shapes(self):
+    return {
+	'a' : tensor_shape.scalar(),
+        'b' : {
+            'b1' : tensor_shape.TensorShape([None]),
+	    'b2' : tensor_shape.scalar()
+        }
+    }
 
-  # @property
-  # def output_types(self):
-  #   return dtypes.string
+  @property
+  def output_types(self):
+    return {
+    	'a' : dtypes.string,
+        'b' : {
+           'b1' : dtypes.int32,
+           'b2' : dtypes.int64
+        }
+    }

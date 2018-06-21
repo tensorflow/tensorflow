@@ -31,12 +31,7 @@ class KafkaDatasetOp : public DatasetOpKernel {
   class Dataset : public GraphDatasetBase {
    public:
     Dataset(OpKernelContext* ctx)
-        : GraphDatasetBase(ctx),
-          topics_(std::move(topics)),
-          servers_(servers),
-          group_(group),
-          eof_(eof),
-          timeout_(timeout) {}
+        : GraphDatasetBase(ctx) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new Iterator({this, strings::StrCat(prefix, "::Kafka")}));
@@ -68,7 +63,20 @@ class KafkaDatasetOp : public DatasetOpKernel {
         Tensor line_tensor(cpu_allocator(), DT_STRING, {});
         line_tensor.scalar<string>()() = "Hello, world!";
 
+	Tensor arr_tensor(cpu_allocator(), DT_INT32, TensorShape({4}));
+	int arr [4] = {1, 2, 3, 4};
+	arr_tensor.vec<int32>()(0) = 22;
+	arr_tensor.vec<int32>()(1) = 23;
+	arr_tensor.vec<int32>()(2) = 24;
+	arr_tensor.vec<int32>()(3) = 25;
+
+	Tensor num_tensor(cpu_allocator(), DT_INT64, {});
+	num_tensor.scalar<int64>()() = 42;
+
         out_tensors->emplace_back(std::move(line_tensor));
+        out_tensors->emplace_back(std::move(arr_tensor));
+        out_tensors->emplace_back(std::move(num_tensor));
+
         *end_of_sequence = false;
         return Status::OK();
       }
