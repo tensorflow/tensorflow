@@ -39,7 +39,7 @@ FlatBuffer to perform floating-point inference.
 
 ```
 bazel run --config=opt \
-  third_party/tensorflow/contrib/lite/toco:toco -- \
+  //tensorflow/contrib/lite/toco:toco -- \
   --savedmodel_directory=/tmp/saved_model \
   --output_file=/tmp/foo.tflite
 ```
