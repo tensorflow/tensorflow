@@ -866,6 +866,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
