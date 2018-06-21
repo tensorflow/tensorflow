@@ -222,8 +222,8 @@ def user(multi_engine,
   _ = run_calibration(int8_calib_gdef, dummy_input)
   int8_graph = trt.calib_graph_to_infer_graph(int8_calib_gdef)
   o5 = run_graph(int8_graph, dummy_input)
-  print("Is FP32 == FP16? %s (False is possible)"%np.allclose(o1, o4))
-  print("Is FP32 == INT8? %s (False is possible)"%np.allclose(o1, o5))
+  print("Is FP32 == FP16? %s (False is possible)" % np.allclose(o1, o4))
+  print("Is FP32 == INT8? %s (False is possible)" % np.allclose(o1, o5))
   print("Pass")
 
 

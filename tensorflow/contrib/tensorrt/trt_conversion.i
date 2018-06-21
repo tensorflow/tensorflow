@@ -198,9 +198,8 @@ std::pair<string, string> calib_convert(
   graph_def_string.resize(0);
   tensorflow::GraphDef out_graph;
   tensorflow::Status conversion_status =
-      tensorflow::tensorrt::convert::ConvertCalibGraphToInferGraph(graph_def,
-                                                                   &out_graph,
-                                                                   is_dyn_op);
+      tensorflow::tensorrt::convert::ConvertCalibGraphToInferGraph(
+          graph_def, &out_graph, is_dyn_op);
   if (!conversion_status.ok()) {
     auto retCode = (int)conversion_status.code();
     char buff[2000];
