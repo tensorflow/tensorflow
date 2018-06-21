@@ -57,12 +57,12 @@ py_library(
         "//tensorflow/contrib/lite/toco/python:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/tools/api/generator:__pkg__",
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
         ":no_contrib",
         "//tensorflow/contrib:contrib_py",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -128,7 +128,6 @@ py_library(
         ":weights_broadcast_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data",
-        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/distributions",

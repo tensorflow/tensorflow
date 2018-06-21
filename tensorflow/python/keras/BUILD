@@ -39,6 +39,7 @@ py_library(
         "datasets/imdb.py",
         "datasets/mnist.py",
         "datasets/reuters.py",
+        "estimator/__init__.py",
         "preprocessing/__init__.py",
         "preprocessing/image.py",
         "preprocessing/sequence.py",

@@ -118,24 +118,44 @@ ESTIMATOR_API_INIT_FILES = [
 #     template will be replaced with root imports collected by this genrule.
 #   srcs: genrule sources. If passing root_init_template, the template file
 #     must be included in sources.
+#   api_name: Name of the project that you want to generate API files for
+#     (e.g. "tensorflow" or "estimator").
+#   package: Python package containing the @tf_export decorators you want to
+#     process
+#   package_dep: Python library target containing your package.
+
 def gen_api_init_files(
         name,
         output_files = TENSORFLOW_API_INIT_FILES,
         root_init_template = None,
         srcs = [],
         api_name = "tensorflow",
-        package = "tensorflow.python"):
+        package = "tensorflow.python",
+        package_dep = "//tensorflow/python:no_contrib"):
     root_init_template_flag = ""
     if root_init_template:
-        root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
+      root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
+
+    api_gen_binary_target = "create_" + package + "_api"
+    native.py_binary(
+        name = "create_" + package + "_api",
+        srcs = ["//tensorflow/tools/api/generator:create_python_api.py"],
+        main = "//tensorflow/tools/api/generator:create_python_api.py",
+        srcs_version = "PY2AND3",
+        visibility = ["//visibility:public"],
+        deps = [
+            package_dep,
+            "//tensorflow/tools/api/generator:doc_srcs",
+        ],
+    )
+
     native.genrule(
         name = name,
         outs = output_files,
         cmd = (
-            "$(location //tensorflow/tools/api/generator:create_python_api) " +
-            root_init_template_flag + " --apidir=$(@D) --apiname=" + api_name + " --package=" + package + " $(OUTS)"
-        ),
+            "$(location :" + api_gen_binary_target + ") " +
+            root_init_template_flag + " --apidir=$(@D) --apiname=" + api_name + " --package=" + package + " $(OUTS)"),
         srcs = srcs,
-        tools = ["//tensorflow/tools/api/generator:create_python_api"],
+        tools = [":" + api_gen_binary_target ],
         visibility = ["//tensorflow:__pkg__"],
     )
