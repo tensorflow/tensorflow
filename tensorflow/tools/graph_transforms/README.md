@@ -388,7 +388,7 @@ input is collapsed down into a simple constant.
 Args:
 
 *   clear_output_shapes: Clears tensor shape information saved as attributes.
-    Some older graphs containes out-of-date information and may cause import
+    Some older graphs contains out-of-date information and may cause import
     errors. Defaults to true.
 
 Prerequisites: None

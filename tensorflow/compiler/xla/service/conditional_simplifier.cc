@@ -35,7 +35,7 @@ namespace xla {
 
 // Tries to replace a conditional with a call operation of the corresponding
 // computation. If the given conditional has a constant predicate, tries to
-// replace it with a call to its true/false computation as appropirate and then
+// replace it with a call to its true/false computation as appropriate and then
 // inline that computation.
 //
 // Returns true if it made a change to the graph.

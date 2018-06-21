@@ -42,7 +42,6 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
-@test_util.with_c_api
 class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
@@ -107,11 +106,25 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable(False, name="bool_test")
       self.assertAllEqual(bool(v), False)
 
+  def testDifferentAssignGraph(self):
+    with ops.Graph().as_default():
+      v = resource_variable_ops.ResourceVariable(1.0)
+    ops.reset_default_graph()
+    v.assign(2.0)  # Note: this fails if we run convert_to_tensor on not the
+                   # variable graph.
+
   def testFetchHandle(self):
     with self.test_session():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
       self.assertGreater(len(handle.eval()), 0)
+
+  def testCachedValueReadBeforeWrite(self):
+    with self.test_session() as sess:
+      v = resource_variable_ops.ResourceVariable(0.0, caching_device="cpu:0")
+      sess.run(v.initializer)
+      value, _ = sess.run([v, v.assign_add(1.0)])
+      self.assertAllEqual(value, 0.0)
 
   def testAssignVariableDtypeMismatchEager(self):
     with context.eager_mode():
@@ -138,6 +151,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     id_handle = array_ops.identity(handle)
     self.evaluate(resource_variable_ops.assign_variable_op(
         id_handle, constant_op.constant(0, dtype=dtypes.int32)))
+
+  def testUnreadOpName(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.assertNotEqual(v.name, v.assign_add(1.0).name)
 
   @test_util.run_in_graph_and_eager_modes()
   def testCreateRead(self):
@@ -400,6 +417,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
               resource_variable_ops.var_is_initialized_op(abc.handle)),
           True)
 
+  def testScatterBool(self):
+    with context.eager_mode():
+      ref = resource_variable_ops.ResourceVariable(
+          [False, True, False], trainable=False)
+      indices = math_ops.range(3)
+      updates = constant_op.constant([True, True, True])
+      state_ops.scatter_update(ref, indices, updates)
+      self.assertAllEqual(ref.read_value(), [True, True, True])
+
   @test_util.run_in_graph_and_eager_modes()
   def testConstraintArg(self):
     constraint = lambda x: x
@@ -515,6 +541,25 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       # But attempts to use initialized_value will result in errors.
       with self.assertRaises(ValueError):
         sess.run(v.initialized_value())
+
+  def testTrainableInProto(self):
+    with ops.Graph().as_default():
+      non_trainable_variable = resource_variable_ops.ResourceVariable(
+          trainable=False,
+          initial_value=constant_op.constant(10.0))
+      self.assertEqual(
+          False,
+          resource_variable_ops.ResourceVariable(
+              variable_def=non_trainable_variable.to_proto())
+          .trainable)
+      trainable_variable = resource_variable_ops.ResourceVariable(
+          trainable=True,
+          initial_value=constant_op.constant(10.0))
+      self.assertEqual(
+          True,
+          resource_variable_ops.ResourceVariable(
+              variable_def=trainable_variable.to_proto())
+          .trainable)
 
   @test_util.run_in_graph_and_eager_modes()
   def testSparseRead(self):
@@ -780,6 +825,16 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable([1.0, 2.0], name="add")
       state_ops.scatter_add(v, [1], [3])
       self.assertAllEqual([1.0, 5.0], v.numpy())
+
+  def testScatterNdAddStateOps(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(
+          [1, 1, 1, 1, 1, 1, 1, 1], dtype=dtypes.float32, name="add")
+      indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
+      updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
+      expected = np.array([1, 12, 1, 11, 10, 1, 1, 13])
+      state_ops.scatter_nd_add(v, indices, updates)
+      self.assertAllClose(expected, v.numpy())
 
   def testScatterUpdateCast(self):
     with context.eager_mode():

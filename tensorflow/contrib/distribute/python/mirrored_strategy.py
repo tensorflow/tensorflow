@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import threading
 import six
 
@@ -30,6 +31,7 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import device_util
@@ -37,6 +39,16 @@ from tensorflow.python.training import distribute as distribute_lib
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
+
+
+@contextlib.contextmanager
+def _enter_graph(g):
+  if context.executing_eagerly():
+    with g.as_default(), context.eager_mode():
+      yield
+  else:
+    with g.as_default():
+      yield
 
 
 def _cpu_device(device):
@@ -73,13 +85,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument.")
     # TODO(josh11b): Require at least 2 devices?
-    self._devices = devices
-    self._canonical_device_set = set(
-        [device_util.canonicalize(d) for d in devices])
+    self._devices = [device_util.resolve(d) for d in devices]
+    self._canonical_device_set = set(self._devices)
     self._device_index = values.PerDevice(
         dict((d, i) for i, d in enumerate(devices)))
     self._cross_tower_ops = cross_tower_ops
     self._prefetch_on_device = prefetch_on_device
+    # TODO(yuefengz): consider setting the default device.
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
@@ -107,13 +119,19 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = index[devices[0]].name.split(":")[0]
-            kwargs["name"] = "%s/replica_%d" % (var0name, i)
+            # We append a / to variable names created on towers with id > 0 to
+            # ensure that we ignore the name scope and instead use the given
+            # name as the absolute name of the variable.
+            kwargs["name"] = "%s/replica_%d/" % (var0name, i)
             # Initialize replicas with the same value:
             if context.executing_eagerly():
-              initial_value = index[devices[0]].value()
+              kwargs["initial_value"] = array_ops.identity(
+                  index[devices[0]].value())
             else:
-              initial_value = index[devices[0]].initial_value
-            kwargs["initial_value"] = array_ops.identity(initial_value)
+              def initial_value_fn(device=d):
+                with ops.device(device):
+                  return array_ops.identity(index[devices[0]].initial_value)
+              kwargs["initial_value"] = initial_value_fn
           with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
           assert not isinstance(v, values.DistributedVariable)
@@ -244,8 +262,15 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                 {t.device: t.merge_args for t in threads})
             merge_kwargs = values.regroup(
                 {t.device: t.merge_kwargs for t in threads})
-            merge_result = threads[0].merge_fn(
-                self, *merge_args, **merge_kwargs)
+            # We capture the name_scope of the MTT when we call merge_fn
+            # to ensure that if we have opened a name scope in the MTT,
+            # it will be respected when executing the merge function. We only
+            # capture the name_scope from the first MTT and assume it is
+            # the same for all other MTTs.
+            mtt_captured_name_scope = threads[0].captured_name_scope
+            with ops.name_scope(mtt_captured_name_scope):
+              merge_result = threads[0].merge_fn(
+                  self, *merge_args, **merge_kwargs)
             for t in threads:
               t.merge_result = values.select_device(t.device, merge_result)
     finally:
@@ -319,9 +344,15 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                         **values.select_device_mirrored(d, kwargs))
     return values.regroup(updates, values.Mirrored)
 
+  def read_var(self, tower_local_var):
+    """Read the aggregate value of a tower-local variable."""
+    if isinstance(tower_local_var, values.TowerLocalVariable):
+      return math_ops.add_n(self.unwrap(tower_local_var))
+    assert isinstance(tower_local_var, values.Mirrored)
+    return array_ops.identity(tower_local_var.get())
+
   def _fetch(self, val, destination, fn):
     """Return a copy of `val` or `fn(val)` on `destination`."""
-    assert isinstance(destination, six.string_types)
     if isinstance(val, values.TowerLocalVariable):
       val = self.reduce(val.reduce_method, val, destinations=destination)
       with ops.device(destination):
@@ -386,7 +417,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       # pylint: disable=protected-access
       return list(colocate_with._index.keys())
     elif isinstance(colocate_with, six.string_types):
-      return [colocate_with]
+      return [device_util.resolve(colocate_with)]
+    elif isinstance(colocate_with, list):
+      return [device_util.resolve(d) for d in colocate_with]
     else:
       return colocate_with
 
@@ -413,6 +446,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       self.merge_args = None
       self.merge_kwargs = None
       self.merge_result = None
+      self.captured_name_scope = None
       # We use a thread.Event for the main thread to signal when this
       # thread should start running (`should_run`), and another for
       # this thread to transfer control back to the main thread
@@ -436,13 +470,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       self._variable_creator_stack = self.graph._variable_creator_stack[:]
       self._captured_var_scope = variable_scope.get_variable_scope()
       # Adding a "/" at end lets us re-enter this scope later.
-      self._captured_name_scope = self.graph.get_name_scope()
-      if self._captured_name_scope:
-        self._captured_name_scope += "/"
+      self._name_scope = self.graph.get_name_scope()
+      if self._name_scope:
+        self._name_scope += "/"
       if self.tower_id > 0:
-        if not self._captured_name_scope:
-          self._captured_name_scope = ""
-        self._captured_name_scope += "tower_%d/" % self.tower_id
+        if not self._name_scope:
+          self._name_scope = ""
+        self._name_scope += "tower_%d/" % self.tower_id
 
     def run(self):
       # pylint: disable=protected-access
@@ -455,10 +489,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         with self.coord.stop_on_exception(), \
             context.context()._mode(self.context_mode), \
             context.context().device_policy(self.context_device_policy), \
-            self.graph.as_default(), \
+            _enter_graph(self.graph), \
             MirroredTowerContext(self.distribution, self.tower_id), \
             ops.device(self.device), \
-            ops.name_scope(self._captured_name_scope), \
+            ops.name_scope(self._name_scope), \
             variable_scope.variable_scope(
                 self._captured_var_scope, reuse=self.tower_id > 0), \
             variable_scope.variable_creator_scope(self.variable_creator_fn):
@@ -484,6 +518,10 @@ class MirroredTowerContext(distribute_lib.TowerContext):
     t.merge_fn = fn
     t.merge_args = args
     t.merge_kwargs = kwargs
+    t.captured_name_scope = t.graph.get_name_scope()
+    # Adding a "/" at end lets us re-enter this scope later.
+    if t.captured_name_scope:
+      t.captured_name_scope += "/"
     t.has_paused.set()
     t.should_run.wait()
     t.should_run.clear()

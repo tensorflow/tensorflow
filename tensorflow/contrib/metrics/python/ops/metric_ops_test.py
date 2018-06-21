@@ -2333,47 +2333,24 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
-  def _testResultsEqual(self, expected_dict, gotten_result):
+  def _testResultsEqual(self, expected_dict, gotten_result, eps=None):
     """Tests that 2 results (dicts) represent the same data.
 
     Args:
       expected_dict: A dictionary with keys that are the names of properties
         of PrecisionRecallData and whose values are lists of floats.
       gotten_result: A PrecisionRecallData object.
+      eps: Epsilon value to use for testing output values. If unspecified, use
+        default from assertAllClose.
     """
     gotten_dict = {k: t.eval() for k, t in gotten_result._asdict().items()}
     self.assertItemsEqual(list(expected_dict.keys()), list(gotten_dict.keys()))
 
     for key, expected_values in expected_dict.items():
-      self.assertAllClose(expected_values, gotten_dict[key])
-
-  def _testCase(self, predictions, labels, expected_result, weights=None):
-    """Performs a test given a certain scenario of labels, predictions, weights.
-
-    Args:
-      predictions: The predictions tensor. Of type float32.
-      labels: The labels tensor. Of type bool.
-      expected_result: The expected result (dict) that maps to tensors.
-      weights: Optional weights tensor.
-    """
-    with self.test_session() as sess:
-      predictions_tensor = constant_op.constant(
-          predictions, dtype=dtypes_lib.float32)
-      labels_tensor = constant_op.constant(labels, dtype=dtypes_lib.bool)
-      weights_tensor = None
-      if weights:
-        weights_tensor = constant_op.constant(weights, dtype=dtypes_lib.float32)
-      gotten_result, update_op = (
-          metric_ops.precision_recall_at_equal_thresholds(
-              labels=labels_tensor,
-              predictions=predictions_tensor,
-              weights=weights_tensor,
-              num_thresholds=3))
-
-      sess.run(variables.local_variables_initializer())
-      sess.run(update_op)
-
-      self._testResultsEqual(expected_result, gotten_result)
+      if eps is not None:
+        self.assertAllClose(expected_values, gotten_dict[key], atol=eps)
+      else:
+        self.assertAllClose(expected_values, gotten_dict[key])
 
   def testVars(self):
     metric_ops.precision_recall_at_equal_thresholds(
@@ -2413,6 +2390,50 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
       }
       for _ in range(3):
         self._testResultsEqual(initial_result, result)
+
+  def _testCase(self,
+                predictions,
+                labels,
+                expected_result,
+                dtype=dtypes_lib.float32,
+                eps=None,
+                weights=None):
+    """Performs a test given a certain scenario of labels, predictions, weights.
+
+    Args:
+      predictions: The predictions tensor. Of type dtype.
+      labels: The labels tensor. Of type bool.
+      expected_result: The expected result (dict) that maps to tensors.
+      dtype: Data type to use for predictions and weights tensor. Default
+        is float32.
+      eps: Epsilon value to use for testing output values. If unspecified, use
+        default from assertAllClose.
+      weights: Optional weights tensor.
+    """
+    with self.test_session() as sess:
+      predictions_tensor = constant_op.constant(predictions, dtype=dtype)
+      labels_tensor = constant_op.constant(labels, dtype=dtypes_lib.bool)
+      weights_tensor = None
+      if weights:
+        weights_tensor = constant_op.constant(weights, dtype=dtype)
+      gotten_result, update_op = (
+          metric_ops.precision_recall_at_equal_thresholds(
+              labels=labels_tensor,
+              predictions=predictions_tensor,
+              weights=weights_tensor,
+              num_thresholds=3))
+      self.assertEqual(gotten_result.tp.dtype, dtype)
+      self.assertEqual(gotten_result.fp.dtype, dtype)
+      self.assertEqual(gotten_result.tn.dtype, dtype)
+      self.assertEqual(gotten_result.fn.dtype, dtype)
+      self.assertEqual(gotten_result.precision.dtype, dtype)
+      self.assertEqual(gotten_result.recall.dtype, dtype)
+      self.assertEqual(gotten_result.thresholds.dtype, dtype)
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+
+      self._testResultsEqual(expected_result, gotten_result, eps=eps)
 
   def testAllTruePositives(self):
     self._testCase(
@@ -2488,6 +2509,35 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
             'thresholds': [0.0, 0.5, 1.0],
         },
         weights=[[0.0, 0.5, 2.0, 0.0, 0.5, 1.0]])
+
+  def testFloat64(self):
+    self._testCase(
+        [[0.2, 0.3, 0.4, 0.6, 0.7, 0.8]],
+        [[True, False, False, True, True, True]], {
+            'tp': [4, 3, 0],
+            'fp': [2, 0, 0],
+            'tn': [0, 2, 2],
+            'fn': [0, 1, 4],
+            'precision': [2.0 / 3.0, 1.0, 0.0],
+            'recall': [1.0, 0.75, 0.0],
+            'thresholds': [0.0, 0.5, 1.0],
+        },
+        dtype=dtypes_lib.float64)
+
+  def testFloat16(self):
+    self._testCase(
+        [[0.2, 0.3, 0.4, 0.6, 0.7, 0.8]],
+        [[True, False, False, True, True, True]], {
+            'tp': [4, 3, 0],
+            'fp': [2, 0, 0],
+            'tn': [0, 2, 2],
+            'fn': [0, 1, 4],
+            'precision': [2.0 / 3.0, 1.0, 0.0],
+            'recall': [1.0, 0.75, 0.0],
+            'thresholds': [0.0, 0.5, 1.0],
+        },
+        dtype=dtypes_lib.float16,
+        eps=1e-3)
 
 
 class StreamingSpecificityAtSensitivityTest(test.TestCase):
@@ -4649,199 +4699,204 @@ class StreamingSparseRecallTest(test.TestCase):
       self._test_sparse_recall_at_top_k(
           labels, top_k_predictions, expected=1.0 / 2)
 
-  def test_one_label_at_k1_weighted(self):
+  def _test_one_label_at_k1_weighted(self, labels):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     top_k_predictions = [[3], [3]]
+
+    # Class 3: 1 label, 2 predictions, 1 correct.
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=NAN, class_id=3, weights=(0.0,))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=NAN, class_id=3, weights=(0.0,))
+    self._test_streaming_sparse_recall_at_k(
+        predictions,
+        labels,
+        k=1,
+        expected=1.0 / 1,
+        class_id=3,
+        weights=(1.0,))
+    self._test_sparse_recall_at_top_k(
+        labels,
+        top_k_predictions,
+        expected=1.0 / 1,
+        class_id=3,
+        weights=(1.0,))
+    self._test_streaming_sparse_recall_at_k(
+        predictions,
+        labels,
+        k=1,
+        expected=1.0 / 1,
+        class_id=3,
+        weights=(2.0,))
+    self._test_sparse_recall_at_top_k(
+        labels,
+        top_k_predictions,
+        expected=1.0 / 1,
+        class_id=3,
+        weights=(2.0,))
+    self._test_streaming_sparse_recall_at_k(
+        predictions,
+        labels,
+        k=1,
+        expected=NAN,
+        class_id=3,
+        weights=(0.0, 0.0))
+    self._test_sparse_recall_at_top_k(
+        labels,
+        top_k_predictions,
+        expected=NAN,
+        class_id=3,
+        weights=(0.0, 0.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions,
+        labels,
+        k=1,
+        expected=NAN,
+        class_id=3,
+        weights=(0.0, 1.0))
+    self._test_sparse_recall_at_top_k(
+        labels,
+        top_k_predictions,
+        expected=NAN,
+        class_id=3,
+        weights=(0.0, 1.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions,
+        labels,
+        k=1,
+        expected=1.0 / 1,
+        class_id=3,
+        weights=(1.0, 0.0))
+    self._test_sparse_recall_at_top_k(
+        labels,
+        top_k_predictions,
+        expected=1.0 / 1,
+        class_id=3,
+        weights=(1.0, 0.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions,
+        labels,
+        k=1,
+        expected=1.0 / 1,
+        class_id=3,
+        weights=(1.0, 1.0))
+    self._test_sparse_recall_at_top_k(
+        labels,
+        top_k_predictions,
+        expected=1.0 / 1,
+        class_id=3,
+        weights=(1.0, 1.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions,
+        labels,
+        k=1,
+        expected=2.0 / 2,
+        class_id=3,
+        weights=(2.0, 3.0))
+    self._test_sparse_recall_at_top_k(
+        labels,
+        top_k_predictions,
+        expected=2.0 / 2,
+        class_id=3,
+        weights=(2.0, 3.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions,
+        labels,
+        k=1,
+        expected=3.0 / 3,
+        class_id=3,
+        weights=(3.0, 2.0))
+    self._test_sparse_recall_at_top_k(
+        labels,
+        top_k_predictions,
+        expected=3.0 / 3,
+        class_id=3,
+        weights=(3.0, 2.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions,
+        labels,
+        k=1,
+        expected=0.3 / 0.3,
+        class_id=3,
+        weights=(0.3, 0.6))
+    self._test_sparse_recall_at_top_k(
+        labels,
+        top_k_predictions,
+        expected=0.3 / 0.3,
+        class_id=3,
+        weights=(0.3, 0.6))
+    self._test_streaming_sparse_recall_at_k(
+        predictions,
+        labels,
+        k=1,
+        expected=0.6 / 0.6,
+        class_id=3,
+        weights=(0.6, 0.3))
+    self._test_sparse_recall_at_top_k(
+        labels,
+        top_k_predictions,
+        expected=0.6 / 0.6,
+        class_id=3,
+        weights=(0.6, 0.3))
+
+    # All classes: 2 labels, 2 predictions, 1 correct.
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=NAN, weights=(0.0,))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=NAN, weights=(0.0,))
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=1.0 / 2, weights=(1.0,))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=1.0 / 2, weights=(1.0,))
+
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=1.0 / 2, weights=(2.0,))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=1.0 / 2, weights=(2.0,))
+
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=1.0 / 1, weights=(1.0, 0.0))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=1.0 / 1, weights=(1.0, 0.0))
+
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=0.0 / 1, weights=(0.0, 1.0))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=0.0 / 1, weights=(0.0, 1.0))
+
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=1.0 / 2, weights=(1.0, 1.0))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=1.0 / 2, weights=(1.0, 1.0))
+
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=2.0 / 5, weights=(2.0, 3.0))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=2.0 / 5, weights=(2.0, 3.0))
+
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=3.0 / 5, weights=(3.0, 2.0))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=3.0 / 5, weights=(3.0, 2.0))
+
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=0.3 / 0.9, weights=(0.3, 0.6))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=0.3 / 0.9, weights=(0.3, 0.6))
+
+    self._test_streaming_sparse_recall_at_k(
+        predictions, labels, k=1, expected=0.6 / 0.9, weights=(0.6, 0.3))
+    self._test_sparse_recall_at_top_k(
+        labels, top_k_predictions, expected=0.6 / 0.9, weights=(0.6, 0.3))
+
+  def test_one_label_at_k1_weighted_sparse_labels(self):
     sparse_labels = _binary_2d_label_to_sparse_value([[0, 0, 0, 1],
                                                       [0, 0, 1, 0]])
+    self._test_one_label_at_k1_weighted(sparse_labels)
+
+  def test_one_label_at_k1_weighted_dense_labels(self):
     dense_labels = np.array([[3], [2]], dtype=np.int64)
-
-    for labels in (sparse_labels, dense_labels):
-      # Class 3: 1 label, 2 predictions, 1 correct.
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=NAN, class_id=3, weights=(0.0,))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=NAN, class_id=3, weights=(0.0,))
-      self._test_streaming_sparse_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=1.0 / 1,
-          class_id=3,
-          weights=(1.0,))
-      self._test_sparse_recall_at_top_k(
-          labels,
-          top_k_predictions,
-          expected=1.0 / 1,
-          class_id=3,
-          weights=(1.0,))
-      self._test_streaming_sparse_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=1.0 / 1,
-          class_id=3,
-          weights=(2.0,))
-      self._test_sparse_recall_at_top_k(
-          labels,
-          top_k_predictions,
-          expected=1.0 / 1,
-          class_id=3,
-          weights=(2.0,))
-      self._test_streaming_sparse_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=NAN,
-          class_id=3,
-          weights=(0.0, 0.0))
-      self._test_sparse_recall_at_top_k(
-          labels,
-          top_k_predictions,
-          expected=NAN,
-          class_id=3,
-          weights=(0.0, 0.0))
-      self._test_streaming_sparse_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=NAN,
-          class_id=3,
-          weights=(0.0, 1.0))
-      self._test_sparse_recall_at_top_k(
-          labels,
-          top_k_predictions,
-          expected=NAN,
-          class_id=3,
-          weights=(0.0, 1.0))
-      self._test_streaming_sparse_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=1.0 / 1,
-          class_id=3,
-          weights=(1.0, 0.0))
-      self._test_sparse_recall_at_top_k(
-          labels,
-          top_k_predictions,
-          expected=1.0 / 1,
-          class_id=3,
-          weights=(1.0, 0.0))
-      self._test_streaming_sparse_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=1.0 / 1,
-          class_id=3,
-          weights=(1.0, 1.0))
-      self._test_sparse_recall_at_top_k(
-          labels,
-          top_k_predictions,
-          expected=1.0 / 1,
-          class_id=3,
-          weights=(1.0, 1.0))
-      self._test_streaming_sparse_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=2.0 / 2,
-          class_id=3,
-          weights=(2.0, 3.0))
-      self._test_sparse_recall_at_top_k(
-          labels,
-          top_k_predictions,
-          expected=2.0 / 2,
-          class_id=3,
-          weights=(2.0, 3.0))
-      self._test_streaming_sparse_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=3.0 / 3,
-          class_id=3,
-          weights=(3.0, 2.0))
-      self._test_sparse_recall_at_top_k(
-          labels,
-          top_k_predictions,
-          expected=3.0 / 3,
-          class_id=3,
-          weights=(3.0, 2.0))
-      self._test_streaming_sparse_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=0.3 / 0.3,
-          class_id=3,
-          weights=(0.3, 0.6))
-      self._test_sparse_recall_at_top_k(
-          labels,
-          top_k_predictions,
-          expected=0.3 / 0.3,
-          class_id=3,
-          weights=(0.3, 0.6))
-      self._test_streaming_sparse_recall_at_k(
-          predictions,
-          labels,
-          k=1,
-          expected=0.6 / 0.6,
-          class_id=3,
-          weights=(0.6, 0.3))
-      self._test_sparse_recall_at_top_k(
-          labels,
-          top_k_predictions,
-          expected=0.6 / 0.6,
-          class_id=3,
-          weights=(0.6, 0.3))
-
-      # All classes: 2 labels, 2 predictions, 1 correct.
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=NAN, weights=(0.0,))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=NAN, weights=(0.0,))
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=1.0 / 2, weights=(1.0,))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=1.0 / 2, weights=(1.0,))
-
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=1.0 / 2, weights=(2.0,))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=1.0 / 2, weights=(2.0,))
-
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=1.0 / 1, weights=(1.0, 0.0))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=1.0 / 1, weights=(1.0, 0.0))
-
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=0.0 / 1, weights=(0.0, 1.0))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=0.0 / 1, weights=(0.0, 1.0))
-
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=1.0 / 2, weights=(1.0, 1.0))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=1.0 / 2, weights=(1.0, 1.0))
-
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=2.0 / 5, weights=(2.0, 3.0))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=2.0 / 5, weights=(2.0, 3.0))
-
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=3.0 / 5, weights=(3.0, 2.0))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=3.0 / 5, weights=(3.0, 2.0))
-
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=0.3 / 0.9, weights=(0.3, 0.6))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=0.3 / 0.9, weights=(0.3, 0.6))
-
-      self._test_streaming_sparse_recall_at_k(
-          predictions, labels, k=1, expected=0.6 / 0.9, weights=(0.6, 0.3))
-      self._test_sparse_recall_at_top_k(
-          labels, top_k_predictions, expected=0.6 / 0.9, weights=(0.6, 0.3))
+    self._test_one_label_at_k1_weighted(dense_labels)
 
   def test_three_labels_at_k5_nan(self):
     predictions = [[0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
@@ -7101,6 +7156,14 @@ class CohenKappaTest(test.TestCase):
     with self.assertRaises(ValueError):
       metrics.cohen_kappa(labels, invalid_predictions, 3)
 
+  def testConditionalPackingOptimization(self):
+    placeholder = array_ops.placeholder(dtypes_lib.float32, [None])
+    values, update_op = metric_ops.streaming_concat(placeholder)
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      for feed in range(10):
+        sess.run(update_op, feed_dict={placeholder: [feed]})
+        print(sess.run(values))
 
 if __name__ == '__main__':
   test.main()

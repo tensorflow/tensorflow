@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_CHOLESKY_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_CHOLESKY_H_
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 
 namespace tensorflow {
 
@@ -30,9 +30,8 @@ namespace tensorflow {
 // TODO(phawkins): check for negative values on the diagonal and return an
 // error, instead of silently yielding NaNs.
 // TODO(znado): handle the complex Hermitian case
-xla::StatusOr<xla::ComputationDataHandle> Cholesky(
-    xla::ComputationBuilder* builder, xla::ComputationDataHandle a,
-    int64 block_size = 256);
+xla::StatusOr<xla::XlaOp> Cholesky(xla::XlaBuilder* builder, xla::XlaOp a,
+                                   int64 block_size = 256);
 
 }  // namespace tensorflow
 

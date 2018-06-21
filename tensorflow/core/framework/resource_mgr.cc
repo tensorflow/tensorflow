@@ -138,16 +138,13 @@ string ResourceMgr::DebugString() const {
 
 Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
                              const string& name, ResourceBase* resource) {
-  {
-    mutex_lock l(mu_);
-    Container** b = &containers_[container];
-    if (*b == nullptr) {
-      *b = new Container;
-    }
-    if ((*b)->insert({{type.hash_code(), name}, resource}).second) {
-      TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
-      return Status::OK();
-    }
+  Container** b = &containers_[container];
+  if (*b == nullptr) {
+    *b = new Container;
+  }
+  if ((*b)->insert({{type.hash_code(), name}, resource}).second) {
+    TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
+    return Status::OK();
   }
   resource->Unref();
   return errors::AlreadyExists("Resource ", container, "/", name, "/",
@@ -157,7 +154,6 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
 Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                              const string& name,
                              ResourceBase** resource) const {
-  tf_shared_lock l(mu_);
   const Container* b = gtl::FindPtrOrNull(containers_, container);
   if (b == nullptr) {
     return errors::NotFound("Container ", container,

@@ -37,7 +37,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 # The default learning rates are a historical artifact of the initial
 # implementation.
@@ -225,7 +225,7 @@ def _dnn_linear_combined_model_fn(features,
       logits=logits)
 
 
-@tf_export('estimator.DNNLinearCombinedClassifier')
+@estimator_export('estimator.DNNLinearCombinedClassifier')
 class DNNLinearCombinedClassifier(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined classification models.
 
@@ -292,7 +292,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
   Loss is calculated by using softmax cross entropy.
 
   @compatibility(eager)
-  Estimators are not compatible with eager execution.
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
   @end_compatibility
   """
 
@@ -406,7 +409,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         warm_start_from=warm_start_from)
 
 
-@tf_export('estimator.DNNLinearCombinedRegressor')
+@estimator_export('estimator.DNNLinearCombinedRegressor')
 class DNNLinearCombinedRegressor(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined models for regression.
 
@@ -473,7 +476,10 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
   Loss is calculated by using mean squared error.
 
   @compatibility(eager)
-  Estimators are not compatible with eager execution.
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
   @end_compatibility
   """
 
@@ -553,8 +559,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           features=features,
           labels=labels,
           mode=mode,
-          head=head_lib.  # pylint: disable=protected-access
-          _regression_head_with_mean_squared_error_loss(
+          head=head_lib._regression_head(  # pylint: disable=protected-access
               label_dimension=label_dimension, weight_column=weight_column,
               loss_reduction=loss_reduction),
           linear_feature_columns=linear_feature_columns,

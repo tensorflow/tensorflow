@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import six
 
 from tensorflow.contrib.distribute.python import cross_tower_utils
@@ -53,15 +54,14 @@ def _validate_value_destination_pairs(value_destination_pairs):
   return True
 
 
+# TODO(yuefengz): consider calling this function in the caller of CrossTowerOps.
 def _get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
     return list(destinations.devices)
   elif isinstance(destinations, six.string_types):
-    return [device_util.canonicalize(destinations)]
+    return [device_util.resolve(destinations)]
   else:
-    return [
-        device_util.canonicalize(destination) for destination in destinations
-    ]
+    return [device_util.resolve(destination) for destination in destinations]
 
 
 def _devices_match(left, right):
@@ -78,12 +78,12 @@ def _all_devices_match(value_destination_pairs):
   return True
 
 
-def _simple_broadcast(tensor, destinations):
+def _simple_broadcast(value, destinations):
   index = {}
   devices = _get_devices_from(destinations)
   for d in devices:
-    with ops.device(d):
-      index[d] = array_ops.identity(tensor)
+    index[d] = cross_tower_utils.copy_tensor_or_indexed_slices_to_device(
+        value, d)
   return value_lib.Mirrored(index)
 
 
@@ -99,7 +99,9 @@ def _simple_reduce(per_device_value, reduce_to_device, accumulation_fn,
         continue
       count += len(v_list)
       # Sum within each device before aggregating across devices.
-      v = math_ops.add_n(v_list)
+      # TODO(yuefengz): Check whether it helps to use accumulation_fn here.
+      v = cross_tower_utils.aggregate_tensors_or_indexed_slices(
+          v_list, math_ops.add_n)
     else:
       count += 1
     all_values.append(v)
@@ -108,11 +110,12 @@ def _simple_reduce(per_device_value, reduce_to_device, accumulation_fn,
 
   with ops.device(reduce_to_device):
     with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
-      if method_string == "sum":
-        reduced = accumulation_fn(all_values)
-      elif method_string == "mean":
-        reduced = accumulation_fn(all_values) / count
-      else:
+      reduced = cross_tower_utils.aggregate_tensors_or_indexed_slices(
+          all_values, accumulation_fn)
+      if method_string == "mean":
+        reduced = cross_tower_utils.divide_by_n_tensors_or_indexed_slices(
+            reduced, count)
+      elif method_string != "sum":
         raise ValueError("`method_string` must be 'sum' or 'mean'")
   return reduced
 
@@ -232,7 +235,13 @@ class ReductionToOneDeviceCrossTowerOps(CrossTowerOps):
 def _group_value_by_device(per_device_values):
   """Group values into sublists by their devices.
 
-  This grouping is needed to call the all-reduce library.
+  This grouping is needed to call the all-reduce library because it expects a
+  list of the following form:
+    [(grad0_gpu0, v0_gpu0), (grad1_gpu0, v1_gpu0), (grad2_gpu0, v2_gpu0) ...
+     (grad0_gpu1, v0_gpu1), (grad1_gpu1, v1_gpu1), (grad2_gpu1, v2_gpu1) ...
+     (grad0_gpu2, v0_gpu2), (grad1_gpu0, v1_gpu2), (grad2_gpu0, v2_gpu2) ...
+     ...
+    ]
 
   Args:
     per_device_values: a list of PerDevice obejcts.
@@ -320,7 +329,17 @@ class ConcatAndSplitPacker(object):
         # TODO(zhengxq): it is also possible to optimize away all the concat
         # as well.
         num_splits = self.num_packs
-        total_grad_size = array_ops.size(concat_grads)
+
+        # The array_ops.size function will sometimes remove static shapes. So if
+        # all gradient shapes are defined, we use another method to get the
+        # total size.
+        # TODO(yuefengz): move this logic to array_ops.size.
+        if all([g.shape.is_fully_defined() for g, _ in tower_grads_and_vars]):
+          total_grad_size = sum(
+              [g.shape.num_elements() for g, _ in tower_grads_and_vars])
+        else:
+          total_grad_size = array_ops.size(concat_grads)
+
         split_size = total_grad_size // num_splits
         split_size_last = total_grad_size - split_size * (num_splits - 1)
         split_sizes = [split_size] * (num_splits - 1) + [split_size_last]
@@ -410,6 +429,31 @@ class AggregateSmallTensorPacker(object):
                                                   self.packing)
 
 
+def _pack_tensors(device_grads,
+                  num_packs=0,
+                  agg_small_grads_max_bytes=0,
+                  agg_small_grads_max_group=0):
+  """Pack tensors if specified."""
+  if num_packs > 0:
+    tensor_packer = ConcatAndSplitPacker(num_packs)
+    device_grad_packs = tensor_packer.pack(device_grads)
+  elif agg_small_grads_max_bytes > 0 and agg_small_grads_max_group > 0:
+    tensor_packer = AggregateSmallTensorPacker(agg_small_grads_max_bytes,
+                                               agg_small_grads_max_group)
+    device_grad_packs = tensor_packer.pack(device_grads)
+  else:
+    tensor_packer = None
+    device_grad_packs = device_grads
+  return device_grad_packs, tensor_packer
+
+
+def _unpack_tensors(reduced, tensor_packer=None):
+  """Unpack tensors if they are packed before all-reduce."""
+  if tensor_packer:
+    return tensor_packer.unpack(reduced)
+  return reduced
+
+
 class AllReduceCrossTowerOps(CrossTowerOps):
   """Reduction using all reduce."""
 
@@ -438,17 +482,25 @@ class AllReduceCrossTowerOps(CrossTowerOps):
       agg_small_grads_max_group: see above.
         tensors.
     """
-    self.all_reduce_alg = all_reduce_alg
-    self.num_packs = num_packs
-    self.agg_small_grads_max_bytes = agg_small_grads_max_bytes
-    self.agg_small_grads_max_group = agg_small_grads_max_group
+    self._all_reduce_alg = all_reduce_alg
+    self._num_packs = num_packs
+    self._agg_small_grads_max_bytes = agg_small_grads_max_bytes
+    self._agg_small_grads_max_group = agg_small_grads_max_group
     super(AllReduceCrossTowerOps, self).__init__()
 
   def _reduce(self, method_string, per_device_value, destinations):
+    contains_indexed_slices = cross_tower_utils.contains_indexed_slices(
+        per_device_value)
     if ((destinations is None or _devices_match(per_device_value, destinations))
-        and not context.executing_eagerly()):
+        and not context.executing_eagerly()
+        and not contains_indexed_slices):
       return self._batch_all_reduce(method_string, [per_device_value])[0]
     else:
+      if contains_indexed_slices:
+        logging.log_first_n(
+            logging.WARN,
+            "Efficient allreduce is not supported for IndexedSlices.", 10)
+
       devices = _get_devices_from(destinations or per_device_value)
       reduce_to_device = devices[0]
       reduced = _simple_reduce(per_device_value, reduce_to_device,
@@ -456,14 +508,18 @@ class AllReduceCrossTowerOps(CrossTowerOps):
       return self.broadcast(reduced, devices)
 
   def _batch_reduce(self, method_string, value_destination_pairs):
-    if (_all_devices_match(value_destination_pairs) and
-        not context.executing_eagerly()):
+    all_devices_match = _all_devices_match(value_destination_pairs)
+    contains_indexed_slices = cross_tower_utils.contains_indexed_slices(
+        value_destination_pairs)
+    if (all_devices_match and not context.executing_eagerly()
+        and not contains_indexed_slices):
       return self._batch_all_reduce(method_string,
                                     [v[0] for v in value_destination_pairs])
     else:
-      if not context.executing_eagerly():
+      if not all_devices_match:
         logging.warning("Efficient batch_reduce is not supported if "
                         "destinations are different.")
+
       return [
           self._reduce(method_string, t, destinations=v)
           for t, v in value_destination_pairs
@@ -471,37 +527,24 @@ class AllReduceCrossTowerOps(CrossTowerOps):
 
   def _batch_all_reduce(self, method_string, per_device_values):
     """All reduce algorithm in a batch."""
+    logging.info(
+        "batch_all_reduce invoked for batches size = %d with "
+        "algorithm = %s, num_packs = %d, agg_small_grads_max_bytes = %d and "
+        "agg_small_grads_max_group = %d", len(per_device_values),
+        self._all_reduce_alg, self._num_packs, self._agg_small_grads_max_bytes,
+        self._agg_small_grads_max_group)
     destinations = per_device_values[0].devices
     grouped = _group_value_by_device(per_device_values)
-    if self.num_packs > 0:
-      logging.info(
-          "batch_all_reduce invoked for batches size = %d with "
-          "algorithm = %s and num_packs = %d", len(per_device_values),
-          self.all_reduce_alg, self.num_packs)
-      tensor_packer = ConcatAndSplitPacker(self.num_packs)
-      device_grad_packs = tensor_packer.pack(grouped)
-    elif (self.agg_small_grads_max_bytes > 0 and
-          self.agg_small_grads_max_group > 0):
-      logging.info(
-          "batch_all_reduce invoked for batches size = %d with "
-          "algorithm = %s, agg_small_grads_max_bytes = %d and "
-          "agg_small_grads_max_group = %d", len(per_device_values),
-          self.all_reduce_alg, self.agg_small_grads_max_bytes,
-          self.agg_small_grads_max_group)
-      tensor_packer = AggregateSmallTensorPacker(
-          self.agg_small_grads_max_bytes, self.agg_small_grads_max_group)
-      device_grad_packs = tensor_packer.pack(grouped)
-    else:
-      logging.info(
-          "batch_all_reduce invoked for batches size = %d with algorithm = %s",
-          len(per_device_values), self.all_reduce_alg)
-      tensor_packer = None
-      device_grad_packs = grouped
+
+    device_grad_packs, self._tensor_packer = _pack_tensors(
+        grouped, self._num_packs, self._agg_small_grads_max_bytes,
+        self._agg_small_grads_max_group)
 
     # The actual aggregation of the repacked gradients. Note that they are
     # sharded among different aggregation trees. So it is important to strike
     # the balance on num_splits.
-    if self.all_reduce_alg == "nccl":
+    if self._all_reduce_alg == "nccl":
+      # TODO(yuefengz): merge this into the all-reduce library.
       reduced = cross_tower_utils.aggregate_gradients_using_nccl(
           device_grad_packs)
     else:
@@ -511,10 +554,134 @@ class AllReduceCrossTowerOps(CrossTowerOps):
           cross_tower_utils.aggregate_gradients_using_hierarchical_copy(
               destinations, device_grad_packs))
 
-    if tensor_packer:
-      reduced = tensor_packer.unpack(reduced)
-
+    reduced = _unpack_tensors(reduced, self._tensor_packer)
     return _ungroup_and_make_mirrored(reduced, per_device_values[0].devices,
+                                      method_string)
+
+
+AllReduceSpecTuple = collections.namedtuple("AllReduceSpecTuple",
+                                            "alg shards limit")
+
+
+class MultiWorkerAllReduce(AllReduceCrossTowerOps):
+  """All-reduce algorithms for distributed TensorFlow."""
+
+  def __init__(self,
+               worker_devices,
+               num_gpus_per_worker,
+               all_reduce_spec=("pscpu/pscpu", 2, -1),
+               num_packs=0,
+               agg_small_grads_max_bytes=0,
+               agg_small_grads_max_group=10):
+    """Initialize the all-reduce algorithm.
+
+    Args:
+      worker_devices: a list of device strings for workers participating in
+        all-reduce.
+      num_gpus_per_worker: number of GPU devices per worker.
+      all_reduce_spec: a tuple or a named tuple or a list of tuples specifying
+        the all-reduce algorithm.
+        1. The first element of a tuple is the name of the all-reduce algorithm.
+        Valid algorithm names are: "nccl", "nccl/xring", "nccl/rechd",
+        "nccl/pscpu", "xring", "pscpu", "psgpu", "pscpu/pscpu". Algorithms with
+        a "/" are hierarchical, so two all-reduces are executed, the first one
+        aggregates tensors within a worker and the second aggregates across
+        workers.
+        2. The second element of a tuple is the number of shards when doing
+        all-reduce. Let's say its values is M, each tensor after packing will be
+        split into M shards and then M parallel all-reduces would be performed
+        before finally they are concatenated backed into a complete tensor.
+        3. The third element is the maximum size of tensors that will be
+        applicable for the algorithm specified by the first element. For
+        example, if all_reduce_spec=[("nccl", 2, 1024), ("pscpu/pscpu", 2, -1)],
+        tensors with size not larger than 1024 bytes will be applied a 2-shard
+        "nccl" all-reduce and other tensors will be applied a 2-shard
+        "pscpu/pscpu" algorithm. The third elements should be in increasing
+        order across tuples and end with -1 which indicates infinity.
+      num_packs: see AllReduceCrossTowerOps.
+      agg_small_grads_max_bytes: see AllReduceCrossTowerOps.
+      agg_small_grads_max_group: see AllReduceCrossTowerOps.
+    """
+    self._worker_devices = worker_devices
+    self._num_gpus_per_worker = num_gpus_per_worker
+    super(MultiWorkerAllReduce, self).__init__(
+        num_packs=num_packs,
+        agg_small_grads_max_bytes=agg_small_grads_max_bytes,
+        agg_small_grads_max_group=agg_small_grads_max_group)
+
+    def validate_and_complete_spec(spec):
+      """Validate and complete the all-reduce spec."""
+      # TODO(yuefengz): support namedtuple.
+      if not isinstance(spec, tuple):
+        raise ValueError(
+            "A tuple is expected for all-reduce spec: %r" % all_reduce_spec)
+      if not spec or len(spec) > 3:
+        raise ValueError(
+            "Too many elements in the all-reduce spec tuple: %r" % spec)
+      if len(spec) == 1:
+        return AllReduceSpecTuple(spec[0], 1, -1)
+      elif len(spec) == 2:
+        return AllReduceSpecTuple(spec[0], spec[1], -1)
+      else:
+        return AllReduceSpecTuple(*spec)
+
+    self._all_reduce_spec = []
+    if isinstance(all_reduce_spec, six.string_types):
+      self._all_reduce_spec.append(AllReduceSpecTuple(all_reduce_spec, 1, -1))
+    elif isinstance(all_reduce_spec, tuple):
+      self._all_reduce_spec.append(validate_and_complete_spec(all_reduce_spec))
+    elif isinstance(all_reduce_spec, list):
+      self._all_reduce_spec = [
+          validate_and_complete_spec(spec) for spec in all_reduce_spec
+      ]
+
+  def _batch_all_reduce(self, method_string, per_device_values):
+    """All reduce algorithm in a batch."""
+    logging.info(
+        "distributed batch_all_reduce invoked for batches size = %d with "
+        "allreduce_spec = %r, num_packs = %d, agg_small_grads_max_bytes = %d "
+        "and agg_small_grads_max_group = %d", len(per_device_values),
+        self._all_reduce_spec, self._num_packs, self._agg_small_grads_max_bytes,
+        self._agg_small_grads_max_group)
+
+    destinations = sorted(per_device_values[0].devices)
+    device_grads = _group_value_by_device(per_device_values)
+
+    # The all reduce library requires fully defined shapes.
+    # TODO(yuefengz): when tensor sharding is not needed, static shapes are not
+    # required as well.
+    for device_grad in device_grads:
+      for grad, _ in device_grad:
+        if not grad.shape.is_fully_defined():
+          raise ValueError("Shape is unknown for node %r" % grad)
+
+    remaining_grads = device_grads
+    aggregated_grads = []
+    for spec_tuple in self._all_reduce_spec:
+      if spec_tuple.limit < 0:
+        this_grads = remaining_grads
+        remaining_grads = []
+      else:
+        (this_grads, remaining_grads) = cross_tower_utils.split_grads_by_size(
+            spec_tuple.limit, remaining_grads)
+      if this_grads:
+        device_grad_packs, self._tensor_packer = _pack_tensors(
+            this_grads, self._num_packs, self._agg_small_grads_max_bytes,
+            self._agg_small_grads_max_group)
+        range_agg_grads = cross_tower_utils.sum_gradients_all_reduce(
+            self._worker_devices, device_grad_packs, len(self._worker_devices),
+            spec_tuple.alg, spec_tuple.shards, range(self._num_gpus_per_worker))
+        range_agg_grads = _unpack_tensors(range_agg_grads, self._tensor_packer)
+
+        if not aggregated_grads:
+          aggregated_grads = range_agg_grads
+        else:
+          assert len(aggregated_grads) == len(range_agg_grads)
+          for i in range(len(aggregated_grads)):
+            aggregated_grads[i] += range_agg_grads[i]
+    assert not remaining_grads
+
+    return _ungroup_and_make_mirrored(aggregated_grads, destinations,
                                       method_string)
 
 

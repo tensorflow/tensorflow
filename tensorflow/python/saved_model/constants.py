@@ -41,6 +41,10 @@ MAIN_OP_KEY = "saved_model_main_op"
 tf_export("saved_model.constants.MAIN_OP_KEY").export_constant(
     __name__, "MAIN_OP_KEY")
 
+# CollectionDef key for the SavedModel train op.
+# Not exported while export_all_saved_models is in contrib.
+TRAIN_OP_KEY = "saved_model_train_op"
+
 # Schema version for SavedModel.
 SAVED_MODEL_SCHEMA_VERSION = 1
 tf_export("saved_model.constants.SAVED_MODEL_SCHEMA_VERSION").export_constant(
@@ -65,3 +69,5 @@ tf_export("saved_model.constants.VARIABLES_DIRECTORY").export_constant(
 VARIABLES_FILENAME = "variables"
 tf_export("saved_model.constants.VARIABLES_FILENAME").export_constant(
     __name__, "VARIABLES_FILENAME")
+
+

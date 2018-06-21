@@ -35,6 +35,11 @@ inline uint8_t* GetTensorData(TfLiteTensor* tensor) {
 }
 
 template <>
+inline int16_t* GetTensorData(TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.i16 : nullptr;
+}
+
+template <>
 inline int32_t* GetTensorData(TfLiteTensor* tensor) {
   return tensor != nullptr ? tensor->data.i32 : nullptr;
 }
@@ -46,6 +51,39 @@ inline int64_t* GetTensorData(TfLiteTensor* tensor) {
 
 template <>
 inline bool* GetTensorData(TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.b : nullptr;
+}
+
+template <typename T>
+inline const T* GetTensorData(const TfLiteTensor* tensor);
+
+template <>
+inline const float* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.f : nullptr;
+}
+
+template <>
+inline const uint8_t* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.uint8 : nullptr;
+}
+
+template <>
+inline const int16_t* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.i16 : nullptr;
+}
+
+template <>
+inline const int32_t* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.i32 : nullptr;
+}
+
+template <>
+inline const int64_t* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.i64 : nullptr;
+}
+
+template <>
+inline const bool* GetTensorData(const TfLiteTensor* tensor) {
   return tensor != nullptr ? tensor->data.b : nullptr;
 }
 
@@ -84,6 +122,19 @@ inline Dims<4> GetTensorDims(const TfLiteTensor* tensor) {
 
   auto* dims = tensor->dims;
   return GetTensorDims(dims->data, dims->size);
+}
+
+inline RuntimeShape GetTensorShape(std::vector<int32_t> data) {
+  return RuntimeShape(data.size(), data.data());
+}
+
+inline RuntimeShape GetTensorShape(const TfLiteTensor* tensor) {
+  if (tensor == nullptr) {
+    return RuntimeShape();
+  }
+
+  auto* dims = tensor->dims;
+  return RuntimeShape(dims->size, dims->data);
 }
 
 // A list of tensors in a format that can be used by kernels like split and

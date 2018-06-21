@@ -349,6 +349,23 @@ class FunctionTest(test.TestCase):
 
     g(constant_op.constant(1.0))
 
+  def testNestedDefunWithNoOutputAndTapedInput(self):
+    three = resource_variable_ops.ResourceVariable(3.0, name='v')
+
+    @function.defun
+    def f(x):
+      # This function intentionally takes a taped variable as input,
+      # but does not return any values
+      math_ops.add(x, three)
+
+    @function.defun
+    def g(x):
+      tape.watch_variable(x)
+      y = math_ops.add(x, three)
+      f(y)
+
+    g(three)
+
   def testGradientTensorConversionWithDefun(self):
     three = resource_variable_ops.ResourceVariable(3.0, name='v')
 
@@ -616,6 +633,23 @@ class FunctionTest(test.TestCase):
     y = model(x)
     self.assertAllEqual([[[[4.0]]]], y.numpy())
 
+  def testVariablesAreTracked(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    def foo(x):
+      return v * x
+
+    defined = function.defun(foo)
+
+    x = constant_op.constant([1.0])
+    self.assertAllEqual(defined.variables, [])
+    _ = defined(x)
+    self.assertAllEqual(defined.variables, [v])
+
+    x = constant_op.constant([1.0, 2.0])
+    _ = defined(x)  # ensure the variables list remains the same
+    self.assertAllEqual(defined.variables, [v])
+
 
 @test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):
@@ -770,6 +804,21 @@ class AutomaticControlDependenciesTest(test.TestCase):
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
+
+  def testDefunWhileLoopWithCapturedLoopVars(self):
+    n = 3
+    x = constant_op.constant(list(range(n)))
+
+    @function.defun
+    def loop():
+      c = lambda i, x: i < n
+      b = lambda i, x: (i + 1, x + 1)
+      i, out = control_flow_ops.while_loop(c, b, (0, x))
+      return i, out
+
+    i, out = loop()
+    self.assertEqual(int(i), 3)
+    self.assertAllEqual(out, [3, 4, 5])
 
   def testDecorator(self):
     with context.graph_mode(), self.test_session():

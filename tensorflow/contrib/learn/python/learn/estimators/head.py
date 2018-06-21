@@ -1862,12 +1862,12 @@ def _get_arguments(func):
   if hasattr(func, "__code__"):
     # Regular function.
     return tf_inspect.getargspec(func)
-  elif hasattr(func, "__call__"):
-    # Callable object.
-    return _get_arguments(func.__call__)
   elif hasattr(func, "func"):
     # Partial function.
     return _get_arguments(func.func)
+  elif hasattr(func, "__call__"):
+    # Callable object.
+    return _get_arguments(func.__call__)
 
 
 def _verify_loss_fn_args(loss_fn):

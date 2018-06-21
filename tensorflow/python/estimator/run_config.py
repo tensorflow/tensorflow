@@ -27,9 +27,9 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
-from tensorflow.python.estimator import util
 from tensorflow.python.util import compat_internal
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util import function_utils
+from tensorflow.python.util.tf_export import estimator_export
 
 
 _USE_DEFAULT = object()
@@ -283,7 +283,7 @@ def _validate_properties(run_config):
             message='tf_random_seed must be integer.')
 
   _validate('device_fn', lambda device_fn: six.callable(device_fn) and
-            set(util.fn_args(device_fn)) == _VALID_DEVICE_FN_ARGS,
+            set(function_utils.fn_args(device_fn)) == _VALID_DEVICE_FN_ARGS,
             message='device_fn must be callable with exactly'
                     ' one argument "op".')
 
@@ -296,7 +296,7 @@ class TaskType(object):
   EVALUATOR = 'evaluator'
 
 
-@tf_export('estimator.RunConfig')
+@estimator_export('estimator.RunConfig')
 class RunConfig(object):
   """This class specifies the configurations for an `Estimator` run."""
 

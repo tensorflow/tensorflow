@@ -26,8 +26,6 @@ Table of contents:
     *   [Convert a TensorFlow Lite FlatBuffer back into TensorFlow GraphDef
         format](#to-graphdef)
 *   [Logging](#logging)
-    *   [Standard logging](#standard-logging)
-    *   [Verbose logging](#verbose-logging)
     *   [Graph "video" logging](#graph-video-logging)
 *   [Graph visualizations](#graph-visualizations)
     *   [Using --output_format=GRAPHVIZ_DOT](#using-output-formatgraphviz-dot)
@@ -115,7 +113,7 @@ bazel run --config=opt \
 
 In order to evaluate the possible benefit of generating a quantized graph, TOCO
 allows "dummy-quantization" on float graphs. The flags `--default_ranges_min`
-and `--default_ranges_max` accept plausable values for the min-max ranges of the
+and `--default_ranges_max` accept plausible values for the min-max ranges of the
 values in all arrays that do not have min-max information. "Dummy-quantization"
 will produce lower accuracy but will emulate the performance of a correctly
 quantized model.
@@ -277,49 +275,6 @@ bazel run --config=opt \
 
 ## Logging
 
-### Standard logging
-
-The converter generates some informative log messages during processing. The
-easiest way to view them is to add `--logtostderr` to command lines as seen in
-the following example.
-
-```
-curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
-  | tar xzv -C /tmp
-bazel run --config=opt \
-  //tensorflow/contrib/lite/toco:toco -- \
-  --input_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
-  --output_file=/tmp/foo.tflite \
-  --input_format=TENSORFLOW_GRAPHDEF \
-  --output_format=TFLITE \
-  --inference_type=FLOAT \
-  --input_shape=1,128,128,3 \
-  --input_array=input \
-  --output_array=MobilenetV1/Predictions/Reshape_1 \
-  --logtostderr
-```
-
-After some initialization messages, we get the following informative messages:
-
-```
-I1101 21:51:33.297475    5339 graph_transformations.cc:39] Before general graph transformations: 416 operators, 583 arrays (0 quantized)
-I1101 21:51:33.308972    5339 graph_transformations.cc:39] After general graph transformations pass 1: 31 operators, 89 arrays (0 quantized)
-I1101 21:51:33.309204    5339 graph_transformations.cc:39] Before dequantization graph transformations: 31 operators, 89 arrays (0 quantized)
-I1101 21:51:33.309368    5339 allocate_transient_arrays.cc:312] Total transient array allocated size: 1048576 bytes, theoretical optimal value: 786432 bytes.
-I1101 21:51:33.309484    5339 toco_tooling.cc:249] Estimated count of arithmetic ops: 0.099218 billion (note that a multiply-add is counted as 2 ops).
-```
-
-### Verbose logging
-
-For debugging purposes, the converter supports two levels of verbose logging,
-which can be set by passing a `--v=` flag:
-
-*   For `--v=1`, the converter generates text dumps of the graph at various
-    points during processing as well as log messages about every graph
-    transformation that took place.
-*   For `--v=2`, the converter additionally generates log messages about graph
-    transformations that were considered but not performed.
-
 ### Graph "video" logging
 
 When `--dump_graphviz=` is used (see the section on [graph
@@ -338,7 +293,7 @@ below outline the use cases for each.
 ### Using `--output_format=GRAPHVIZ_DOT`
 
 The first way to get a graphviz rendering is to pass `GRAPHVIZ_DOT` into
-`--output_format`. This results in a plausable visualization of the graph. This
+`--output_format`. This results in a plausible visualization of the graph. This
 reduces the requirements that normally exist during conversion between other
 input and output formats. For example, this may be useful if conversion from
 TENSORFLOW_GRAPHDEF to TFLITE is failing.

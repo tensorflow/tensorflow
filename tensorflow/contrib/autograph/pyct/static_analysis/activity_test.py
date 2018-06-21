@@ -123,7 +123,7 @@ class ActivityAnalyzerTest(test.TestCase):
         recursive=True)
     node = qual_names.resolve(node)
     node = activity.resolve(node, ctx)
-    return node
+    return node, ctx
 
   def test_local_markers(self):
 
@@ -133,7 +133,7 @@ class ActivityAnalyzerTest(test.TestCase):
         b -= 1
       return b
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     self.assertFalse(
         anno.getanno(node.body[0].body[0].value,
                      NodeAnno.IS_LOCAL))  # c in b = c
@@ -156,6 +156,7 @@ class ActivityAnalyzerTest(test.TestCase):
                               expected - actual, actual - expected))
 
   def assertScopeIsRmc(self, scope, used, modified, created):
+    """Assert the scope contains specific used, modified & created variables."""
     self.assertSymbolSetsAre(used, scope.used, 'read')
     self.assertSymbolSetsAre(modified, scope.modified, 'modified')
     self.assertSymbolSetsAre(created, scope.created, 'created')
@@ -168,7 +169,7 @@ class ActivityAnalyzerTest(test.TestCase):
       print(a, b)
       return c
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     print_node = node.body[0].body[2]
     if isinstance(print_node, gast.Print):
       # Python 2
@@ -191,7 +192,7 @@ class ActivityAnalyzerTest(test.TestCase):
       foo(a, b)  # pylint:disable=undefined-variable
       return c
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     call_node = node.body[0].body[2].value
     # We basically need to detect which variables are captured by the call
     # arguments.
@@ -208,7 +209,7 @@ class ActivityAnalyzerTest(test.TestCase):
       foo(a.b, a.c)
       return a.d
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     call_node = node.body[0].body[1].value
     self.assertScopeIsRmc(
         anno.getanno(call_node, NodeAnno.ARGS_SCOPE),
@@ -234,7 +235,7 @@ class ActivityAnalyzerTest(test.TestCase):
       foo(a[0], a[b])
       return a[c]
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     call_node = node.body[0].body[2].value
     self.assertScopeIsRmc(
         anno.getanno(call_node, NodeAnno.ARGS_SCOPE),
@@ -258,7 +259,7 @@ class ActivityAnalyzerTest(test.TestCase):
         b -= 1
       return b, c
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     while_node = node.body[0].body[1]
     self.assertScopeIsRmc(
         anno.getanno(while_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'),
@@ -278,7 +279,7 @@ class ActivityAnalyzerTest(test.TestCase):
         b -= 1
       return b, c
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     for_node = node.body[0].body[1]
     self.assertScopeIsRmc(
         anno.getanno(for_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'), ('c',))
@@ -299,7 +300,7 @@ class ActivityAnalyzerTest(test.TestCase):
         u = -y
       return z, u
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     if_node = node.body[0].body[0]
     self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('x', 'y', 'z'),
@@ -326,7 +327,7 @@ class ActivityAnalyzerTest(test.TestCase):
         d = 1
       return d
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     if_node = node.body[0].body[0]
     self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE),
@@ -358,7 +359,7 @@ class ActivityAnalyzerTest(test.TestCase):
         d = 1
       return d
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     if_node = node.body[0].body[0]
     self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE),
@@ -390,7 +391,7 @@ class ActivityAnalyzerTest(test.TestCase):
           a = b * b
       return a
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     inner_if_node = node.body[0].body[0].body[0]
     self.assertScopeIsRmc(
         anno.getanno(inner_if_node, NodeAnno.BODY_SCOPE), ('b',), ('a',),
@@ -413,7 +414,7 @@ class ActivityAnalyzerTest(test.TestCase):
         b -= f(i)
       return b, c
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     fn_def_node = node.body[0].body[0]
 
     self.assertScopeIsRmc(
@@ -434,7 +435,7 @@ class ActivityAnalyzerTest(test.TestCase):
         self.b = a
         self.b.c = 1
 
-    node = self._parse_and_analyze(TestClass)
+    node, _ = self._parse_and_analyze(TestClass)
     init_node = node.body[0].body[0]
     self.assertScopeIsRmc(
         anno.getanno(init_node, NodeAnno.BODY_SCOPE),
@@ -448,14 +449,117 @@ class ActivityAnalyzerTest(test.TestCase):
     def test_fn(a):
       a[0] += 1
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     fn_node = node.body[0]
     self.assertScopeIsRmc(
         anno.getanno(fn_node, NodeAnno.BODY_SCOPE),
-        ('a',),
+        ('a', 'a[0]'),
         ('a', 'a[0]'),
         ('a',),
     )
+
+  def test_return_vars_are_read(self):
+
+    def test_fn(a, b, c):  # pylint: disable=unused-argument
+      return c
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
+    self.assertScopeIsRmc(
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE),
+        ('c',),
+        (),
+        (
+            'a',
+            'b',
+            'c',
+        ),
+    )
+
+  def test_aug_assign(self):
+
+    def test_fn(a, b):
+      a += b
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
+    self.assertScopeIsRmc(
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE),
+        ('a', 'b'),
+        ('a'),
+        ('a', 'b'),
+    )
+
+  def test_aug_assign_rvalues(self):
+
+    a = dict(bar=3)
+
+    def foo():
+      return a
+
+    def test_fn(x):
+      foo()['bar'] += x
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
+    self.assertScopeIsRmc(
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE),
+        ('foo', 'x'),
+        (),
+        ('x',),
+    )
+
+  def test_params_created(self):
+
+    def test_fn(a, b):  # pylint: disable=unused-argument
+      return b
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
+    self.assertScopeIsRmc(
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('b',), (('')),
+        (('a', 'b')))
+
+  def test_get_read(self):
+
+    def test_fn(x, y):
+      z = test_fn(x, y)
+      return z
+
+    node, ctx = self._parse_and_analyze(test_fn)
+    node = node.body[0].body[0]
+    read_vars = activity.get_read(node, ctx)
+    self.assertEqual(read_vars, set(map(qual_names.QN, ('test_fn', 'x', 'y'))))
+
+    def test_fn2(x, y, z):
+      z += test_fn2(x, y, z)
+      return z
+
+    node, ctx = self._parse_and_analyze(test_fn2)
+    node = node.body[0].body[0]
+    read_vars = activity.get_read(node, ctx)
+    self.assertEqual(read_vars,
+                     set(map(qual_names.QN, ('test_fn2', 'x', 'y', 'z'))))
+
+  def test_get_updated(self):
+
+    def test_fn(x, y):
+      z = test_fn(x, y)
+      return z
+
+    node, ctx = self._parse_and_analyze(test_fn)
+    node = node.body[0].body[0]
+    updated_vars = activity.get_updated(node, ctx)
+    self.assertEqual(updated_vars, set(map(qual_names.QN, ('z'))))
+
+    def test_fn2(x, y, z):
+      z += test_fn2(x, y, z)
+      return z
+
+    node, ctx = self._parse_and_analyze(test_fn2)
+    node = node.body[0].body[0]
+    updated_vars = activity.get_updated(node, ctx)
+    self.assertEqual(updated_vars, set(map(qual_names.QN, ('z'))))
 
 
 if __name__ == '__main__':

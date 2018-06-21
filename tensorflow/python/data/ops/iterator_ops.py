@@ -52,6 +52,9 @@ GET_NEXT_CALL_WARNING_MESSAGE = (
     "`next_element` as the input to some computation that is invoked inside "
     "the loop.")
 
+# Collection of all IteratorResources in the `Graph`.
+GLOBAL_ITERATORS = "iterators"
+
 
 @tf_export("data.Iterator")
 class Iterator(object):
@@ -75,8 +78,7 @@ class Iterator(object):
       output_shapes: A nested structure of `tf.TensorShape` objects
         corresponding to each component of an element of this dataset.
       output_classes: A nested structure of Python `type` object corresponding
-        to each
-        component of an element of this iterator.
+        to each component of an element of this iterator.
     """
     self._iterator_resource = iterator_resource
     self._initializer = initializer
@@ -86,6 +88,7 @@ class Iterator(object):
     self._string_handle = gen_dataset_ops.iterator_to_string_handle(
         self._iterator_resource)
     self._get_next_call_count = 0
+    ops.add_to_collection(GLOBAL_ITERATORS, self._iterator_resource)
 
   @staticmethod
   def from_structure(output_types,
@@ -468,9 +471,7 @@ class EagerIterator(object):
           sparse.as_dense_types(self._output_types, self._output_classes))
       self._flat_output_shapes = nest.flatten(
           sparse.as_dense_shapes(self._output_shapes, self._output_classes))
-      self._resource = gen_dataset_ops.iterator(
-          shared_name="",
-          container=_generate_shared_name("eageriterator"),
+      self._resource = gen_dataset_ops.anonymous_iterator(
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
       gen_dataset_ops.make_iterator(ds_variant, self._resource)

@@ -53,6 +53,13 @@ class DNNEstimator(estimator.Estimator):
         l1_regularization_strength=0.001
       ))
 
+  # Or estimator with warm-starting from a previous checkpoint.
+  estimator = DNNEstimator(
+      head=tf.contrib.estimator.multi_label_head(n_classes=3),
+      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      hidden_units=[1024, 512, 256],
+      warm_start_from="/path/to/checkpoint/dir")
+
   # Input builders
   def input_fn_train: # returns x, y
     pass
@@ -92,8 +99,9 @@ class DNNEstimator(estimator.Estimator):
                activation_fn=nn.relu,
                dropout=None,
                input_layer_partitioner=None,
-               config=None):
-    """Initializes a `DNNClassifier` instance.
+               config=None,
+               warm_start_from=None):
+    """Initializes a `DNNEstimator` instance.
 
     Args:
       head: A `_Head` instance constructed with a method such as
@@ -116,6 +124,11 @@ class DNNEstimator(estimator.Estimator):
       input_layer_partitioner: Optional. Partitioner for input layer. Defaults
         to `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: `RunConfig` object to configure the runtime settings.
+      warm_start_from: A string filepath to a checkpoint to warm-start from, or
+        a `WarmStartSettings` object to fully configure warm-starting.  If the
+        string filepath is provided instead of a `WarmStartSettings`, then all
+        weights are warm-started, and it is assumed that vocabularies and Tensor
+        names are unchanged.
     """
     def _model_fn(features, labels, mode, config):
       return dnn_lib._dnn_model_fn(  # pylint: disable=protected-access
@@ -131,4 +144,5 @@ class DNNEstimator(estimator.Estimator):
           input_layer_partitioner=input_layer_partitioner,
           config=config)
     super(DNNEstimator, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        warm_start_from=warm_start_from)

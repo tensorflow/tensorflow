@@ -85,7 +85,7 @@ class Profiler {
   std::vector<const ProfileEvent*> GetProfileEvents() {
     std::vector<const ProfileEvent*> profile_events;
     profile_events.reserve(buffer_.Size());
-    for (int i = 0; i < buffer_.Size(); i++) {
+    for (size_t i = 0; i < buffer_.Size(); i++) {
       profile_events.push_back(buffer_.At(i));
     }
     return profile_events;
@@ -103,7 +103,9 @@ class ScopedProfile {
   // Adds a profile event to profile that begins with the construction
   // of object and ends when the object goes out of scope.
   // The lifetime of tag should be at least the lifetime of profiler.
-  ScopedProfile(Profiler* profiler, const char* tag) {
+
+  ScopedProfile(Profiler* profiler, const char* tag)
+      : buffer_(nullptr), event_handle_(0) {
     if (profiler) {
       buffer_ = profiler->GetProfileBuffer();
       event_handle_ =
@@ -126,7 +128,8 @@ class ScopedOperatorProfile {
   // Adds a profile event to profile that begins with the construction
   // of object and ends when the object goes out of scope.
   // The lifetime of tag should be at least the lifetime of profiler.
-  ScopedOperatorProfile(Profiler* profiler, const char* tag, int node_index) {
+  ScopedOperatorProfile(Profiler* profiler, const char* tag, int node_index)
+      : buffer_(nullptr), event_handle_(0) {
     if (profiler) {
       buffer_ = profiler->GetProfileBuffer();
       event_handle_ = buffer_->BeginEvent(
@@ -148,9 +151,11 @@ class ScopedOperatorProfile {
 }  // namespace profiling
 }  // namespace tflite
 
-#define SCOPED_OPERATOR_PROFILE(profiler, node_index)                       \
-  tflite::profiling::ScopedOperatorProfile _profile((profiler), "OpInvoke", \
-                                                    (node_index))
+#define VARNAME_UNIQ(name, ctr) name##ctr
+
+#define SCOPED_OPERATOR_PROFILE(profiler, node_index)    \
+  tflite::profiling::ScopedOperatorProfile VARNAME_UNIQ( \
+      _profile_, __COUNTER__)((profiler), "OpInvoke", (node_index))
 #else
 
 namespace tflite {

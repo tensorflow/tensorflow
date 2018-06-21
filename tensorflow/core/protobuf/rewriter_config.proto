@@ -5,12 +5,18 @@ option cc_enable_arenas = true;
 option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 
 import "tensorflow/core/framework/attr_value.proto";
 
 message AutoParallelOptions {
   bool enable = 1;
   int32 num_replicas = 2;
+}
+
+message ScopedAllocatorOptions {
+  // If present, only perform optimization for these ops.
+  repeated string enable_op = 1;
 }
 
 message RewriterConfig {
@@ -31,7 +37,7 @@ message RewriterConfig {
     AGGRESSIVE = 3;
   }
 
-  // Enum controling the number of times to run optimizers. The default is to
+  // Enum controlling the number of times to run optimizers. The default is to
   // run them once.
   enum NumIterationsType {
     DEFAULT_NUM_ITERS = 0;
@@ -46,6 +52,12 @@ message RewriterConfig {
   // Statically infer the value of tensors when possible, and materialize the
   // result using constants.
   Toggle constant_folding = 3;
+  // Shape optimizations (default is ON)
+  // Simplify computations made on shapes.
+  Toggle shape_optimization = 13;
+  // Remapping (default is ON)
+  // Remap subgraphs onto more efficient implementations.
+  Toggle remapping = 14;
   // Arithmetic optimizations (default is ON)
   // e.g. Simplify arithmetic ops; merge ops with same value (like constants).
   Toggle arithmetic_optimization = 7;
@@ -60,6 +72,9 @@ message RewriterConfig {
   Toggle debug_stripper = 11;
   // If true, don't remove unnecessary ops from the graph
   bool disable_model_pruning = 2;
+  // Try to allocate some independent Op outputs contiguously in order to
+  // merge or eliminate downstream Ops (off by default).
+  Toggle scoped_allocator_optimization = 15;
 
   // Controls how many times we run the optimizers in meta optimizer (default
   // is once).
@@ -107,6 +122,8 @@ message RewriterConfig {
   // Configures AutoParallel optimization passes either through the
   // meta-optimizer or when manually specified through the optimizers field.
   AutoParallelOptions auto_parallel = 5;
+
+  ScopedAllocatorOptions scoped_allocator_opts = 16;
 
   // If non-empty, will use this as an alternative way to specify a list of
   // optimizations to turn on and the order of the optimizations (replacing the

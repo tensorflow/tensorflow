@@ -278,8 +278,9 @@ class GraphConstructor {
   // name, the value is the new unique name.
   std::unordered_map<string, string> uniquified_names_;
 
-  // Index of NodeDefs in node_defs_ with all inputs already converted.
-  std::vector<int> ready_;
+  // Index of NodeDefs in node_defs_ with all inputs already converted. We use a
+  // (sorted) set so nodes are created in the order defined in the GraphDef.
+  std::set<int> ready_;
 
   // Mapping between index within node_defs_ and the number of inputs that
   // still need to be converted.
@@ -489,7 +490,7 @@ Status GraphConstructor::InitFromEdges() {
           num_control_edges++;
         } else {
           TensorId id(ParseTensorName(input_name));
-          if (next_iteration_nodes_.find(id.first.ToString()) !=
+          if (next_iteration_nodes_.find(std::string(id.first)) !=
               next_iteration_nodes_.end()) {
             has_loop_back_edge = true;
           }
@@ -520,7 +521,7 @@ Status GraphConstructor::InitFromEdges() {
       }
     }
     if (pending_count == 0) {
-      ready_.push_back(n);
+      ready_.insert(n);
     }
     pending_count_.push_back(pending_count);
   }
@@ -811,7 +812,7 @@ void GraphConstructor::UniquifyNames(
     // We require that UniquifyNames() is called on all NodeDefs in topological
     // order. This guarantees that node_def's inputs will already be uniquified
     // if necessary.
-    auto iter = uniquified_names_.find(id.first.ToString());
+    auto iter = uniquified_names_.find(std::string(id.first));
     if (iter == uniquified_names_.end()) continue;
     id.first = iter->second;
     node_def->set_input(i, id.ToString());
@@ -830,7 +831,7 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
     for (int i = 0; i < coloc_values.size(); ++i) {
       StringPiece val(coloc_values[i]);
       if (str_util::ConsumePrefix(&val, kColocationGroupPrefix)) {
-        const auto& name_pair = uniquified_names_.find(val.ToString());
+        const auto& name_pair = uniquified_names_.find(std::string(val));
         if (name_pair == uniquified_names_.end()) continue;
         updated = true;
         coloc_values[i] =
@@ -856,7 +857,7 @@ bool GraphConstructor::NameExistsInGraphDef(StringPiece name) {
 }
 
 string GraphConstructor::FindUniqueName(StringPiece original_name) {
-  string name = original_name.ToString();
+  string name = std::string(original_name);
   int count = 0;
   // Check that any generated names don't collide with imported NodeDefs (as
   // well as nodes in g_).
@@ -884,12 +885,12 @@ namespace {
 
 void UpdatePendingCountAndReady(
     const std::vector<gtl::InlinedVector<int, 4>>& outputs, int o,
-    std::vector<int>* pending_count, std::vector<int>* ready) {
+    std::vector<int>* pending_count, std::set<int>* ready) {
   for (size_t i = 0; i < outputs[o].size(); ++i) {
     const int output = outputs[o][i];
     (*pending_count)[output]--;
     if ((*pending_count)[output] == 0) {
-      ready->push_back(output);
+      ready->insert(output);
     }
   }
 }
@@ -913,8 +914,8 @@ Status GraphConstructor::Convert() {
   // inputs, pending_counts_ with the number of inputs for each node and
   // outputs_ with the outputs of each node).
   while (!ready_.empty()) {
-    int o = ready_.back();
-    ready_.pop_back();
+    int o = *ready_.begin();
+    ready_.erase(ready_.begin());
     ++processed;
     inputs.clear();
     bool has_data_back_edge = false;
@@ -989,7 +990,7 @@ Status GraphConstructor::Convert() {
             src_node->num_outputs(), " outputs");
       }
 
-      inputs.emplace_back(id.first.ToString(), src_node, src_index);
+      inputs.emplace_back(std::string(id.first), src_node, src_index);
     }
 
     if (has_data_back_edge && !IsMerge(*node_def)) {

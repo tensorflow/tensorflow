@@ -33,7 +33,7 @@ DEFAULT_UNCOMPILED_MODULES = set((
     (utils.__name__,),
 
     # All of tensorflow's subpackages. Unlike the root tf module, they don't
-    # have well-known names. Not refering to the module directly to avoid
+    # have well-known names. Not referring to the module directly to avoid
     # circular imports.
     (
         utils.__name__[:-len('.contrib.autograph.utils')],),

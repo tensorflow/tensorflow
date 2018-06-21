@@ -37,7 +37,7 @@ TransferManager::GetPlatformTransferManagers() {
 }
 
 Status TransferManager::TransferArrayToDevice(
-    se::StreamExecutor* executor, const Literal& literal,
+    se::StreamExecutor* executor, const LiteralSlice& literal,
     const se::DeviceMemoryBase& dest) {
   const Shape on_device_shape = HostShapeToDeviceShape(literal.shape());
   TF_RET_CHECK(ShapeUtil::IsArray(on_device_shape))
@@ -196,9 +196,11 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
     const ShapeIndex& index = pair.first;
     se::DeviceMemoryBase& memory_base = pair.second;
     const Shape& subshape = ShapeUtil::GetSubshape(on_device_shape, index);
-    TF_ASSIGN_OR_RETURN(memory_base,
+    TF_ASSIGN_OR_RETURN(auto memory,
                         allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape)));
+    // Move the allocated buffer into the ScopedShapedBuffer, which owns it.
+    memory_base = memory.Forget();
   }
 
   return std::move(shaped_buffer);

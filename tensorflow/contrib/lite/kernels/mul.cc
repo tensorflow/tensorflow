@@ -57,8 +57,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
@@ -80,7 +80,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteMulParams* params, const OpData* data,
-               TfLiteTensor* input1, TfLiteTensor* input2,
+               const TfLiteTensor* input1, const TfLiteTensor* input2,
                TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRangeFloat(params->activation, &output_activation_min,
@@ -109,7 +109,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                    TfLiteMulParams* params, const OpData* data,
-                   TfLiteTensor* input1, TfLiteTensor* input2,
+                   const TfLiteTensor* input1, const TfLiteTensor* input2,
                    TfLiteTensor* output) {
   auto input1_offset = -input1->params.zero_point;
   auto input2_offset = -input2->params.zero_point;
@@ -120,8 +120,9 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
   double real_multiplier =
       input1->params.scale * input2->params.scale / output->params.scale;
-  QuantizeMultiplierSmallerThanOne(real_multiplier, &output_multiplier,
-                                   &output_shift);
+  QuantizeMultiplierSmallerThanOneExp(real_multiplier, &output_multiplier,
+                                      &output_shift);
+  output_shift *= -1;
 
   int32 output_activation_min, output_activation_max;
   CalculateActivationRangeUint8(params->activation, output,
@@ -149,8 +150,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteMulParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32) {
@@ -159,8 +160,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     EvalQuantized<kernel_type>(context, node, params, data, input1, input2,
                                output);
   } else {
-    context->ReportError(context,
-                         "Mul only supports FLOAT32 and quantized UINT8 now.");
+    context->ReportError(
+        context, "Mul only supports FLOAT32 and quantized UINT8 now, got %d.",
+        output->type);
     return kTfLiteError;
   }
 

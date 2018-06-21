@@ -1,7 +1,9 @@
 # Description:
 # TensorFlow Lite Java API.
 
-package(default_visibility = ["//visibility:private"])
+package(default_visibility = [
+    "//tensorflow/contrib/lite/java/ovic:__pkg__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -42,23 +44,6 @@ android_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
-        "@org_checkerframework_qual",
-    ],
-)
-
-java_library(
-    name = "ovicbenchmarkerlib",
-    srcs = [
-        "ovic/src/main/java/org/tensorflow/ovic/OvicClassifier.java",
-        "ovic/src/main/java/org/tensorflow/ovic/OvicSingleImageResult.java",
-    ],
-    javacopts = JAVACOPTS,
-    visibility = ["//visibility:public"],
-    deps = [
-        ":libtensorflowlite_jni.so",
-        ":tensorflowlite_java",
-        "//tensorflow/contrib/lite/java/src/main/native",
-        "//tensorflow/contrib/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
         "@org_checkerframework_qual",
     ],
 )
@@ -160,28 +145,6 @@ java_test(
     test_class = "org.tensorflow.lite.TensorTest",
     deps = [
         ":tensorflowlitelib",
-        "@com_google_truth",
-        "@junit",
-    ],
-)
-
-java_test(
-    name = "OvicClassifierTest",
-    size = "medium",
-    srcs = ["ovic/src/test/java/org/tensorflow/ovic/OvicClassifierTest.java"],
-    data = [
-        "ovic/src/testdata/float_model.lite",
-        "ovic/src/testdata/labels.txt",
-        "ovic/src/testdata/low_res_model.lite",
-        "ovic/src/testdata/quantized_model.lite",
-        "ovic/src/testdata/test_image_128.jpg",
-        "ovic/src/testdata/test_image_224.jpg",
-    ],
-    javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.ovic.OvicClassifierTest",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":ovicbenchmarkerlib",
         "@com_google_truth",
         "@junit",
     ],

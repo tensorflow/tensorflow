@@ -125,8 +125,8 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`,
-      `int64`, `complex64` or `complex128`.
+    x: A `Tensor` or `SparseTensor` of type `float16`, `float32`, `float64`,
+      `int32`, `int64`, `complex64` or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -370,7 +370,7 @@ def erf(x, name=None):
   """Computes the Gauss error function of `x` element-wise.
 
   Args:
-    x: A `Tensor` of `SparseTensor`. Must be one of the following types: `half`,
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
     name: A name for the operation (optional).
 
@@ -430,10 +430,10 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
-     or `complex128`.
-    y: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
-     or `complex128`.
+    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, `int64`,
+     `complex64`, or `complex128`.
+    y: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, `int64`,
+     `complex64`, or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -600,7 +600,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` of type `float32` or `float64`.
+    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, or `int64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1257,7 +1257,7 @@ def reduce_sum(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1285,7 +1285,7 @@ def reduce_sum(input_tensor,
     The reduced tensor, of the same dtype as the input_tensor.
 
   @compatibility(numpy)
-  Equivalent to np.sum appart the fact that numpy upcast uint8 and int32 to
+  Equivalent to np.sum apart the fact that numpy upcast uint8 and int32 to
   int64 while tensorflow returns the same dtype as the input.
   @end_compatibility
   """
@@ -1397,7 +1397,7 @@ def reduce_mean(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1469,7 +1469,7 @@ def reduce_prod(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   Args:
@@ -1519,7 +1519,7 @@ def reduce_min(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   Args:
@@ -1568,7 +1568,7 @@ def reduce_max(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   Args:
@@ -1617,7 +1617,7 @@ def reduce_all(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1675,7 +1675,7 @@ def reduce_any(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1768,6 +1768,7 @@ def reduce_logsumexp(input_tensor,
                                                     "keep_dims", keep_dims)
   if keepdims is None:
     keepdims = False
+  input_tensor = ops.convert_to_tensor(input_tensor)
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     raw_max = reduce_max(
         input_tensor,
@@ -1780,13 +1781,13 @@ def reduce_logsumexp(input_tensor,
             array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
         reduce_sum(
-            gen_math_ops.exp(input_tensor - my_max),
+            gen_math_ops.exp(gen_math_ops.sub(input_tensor, my_max)),
             axis,
             keepdims=keepdims,
             reduction_indices=reduction_indices))
     if not keepdims:
       my_max = array_ops.reshape(my_max, array_ops.shape(result))
-    result += my_max
+    result = gen_math_ops.add(result, my_max)
     return _may_reduce_to_scalar(keepdims, axis, reduction_indices, result)
 
 
@@ -2224,8 +2225,8 @@ def sigmoid(x, name=None):
   Returns:
     A Tensor with the same type as `x`.
 
-  @compatibility(numpy)
-  Equivalent to np.scipy.special.expit
+  @compatibility(scipy)
+  Equivalent to scipy.special.expit
   @end_compatibility
   """
   with ops.name_scope(name, "Sigmoid", [x]) as name:
@@ -2486,6 +2487,12 @@ def reduced_shape(input_shape, axes):
   """
   # Example:
   # cast needed for SparseTensor reductions
+  if context.executing_eagerly():
+    input_shape = input_shape.numpy()
+    axes = axes.numpy()
+    input_shape[axes] = 1
+    return input_shape
+
   input_shape = to_int32(input_shape)  # [2, 3, 5, 7]
   axes = to_int32(axes)  # [1, 2]
 
@@ -2508,7 +2515,8 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
       of segment entries with 0-entries set to 1 to allow division by N.
   """
   # bincount doesn't support negative indices so we use unsorted_segment_sum
-  ones_tensor = array_ops.ones(segment_ids.shape, dtype=data.dtype)
+  segment_ids_shape = array_ops.shape_internal(segment_ids)
+  ones_tensor = array_ops.ones(segment_ids_shape, dtype=data.dtype)
   N = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
   # add dimensions for all non-reduced axes
   ndims_output = data.shape.ndims - segment_ids.shape.ndims
@@ -2945,6 +2953,67 @@ def polyval(coeffs, x, name=None):
     for c in coeffs[1:]:
       p = c + p * x
     return p
+
+
+@tf_export("math.bessel_i0e")
+def bessel_i0e(x, name=None):
+  """Computes the Bessel i0e function of `x` element-wise.
+
+  Exponentially scaled modified Bessel function of order 0 defined as
+  `bessel_i0e(x) = exp(-abs(x)) bessel_i0(x)`.
+
+  This function is faster and numerically stabler than `bessel_i0(x)`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i0e
+  @end_compatibility
+  """
+  with ops.name_scope(name, "bessel_i0e", [x]) as name:
+    if isinstance(x, sparse_tensor.SparseTensor):
+      x_i0e = gen_math_ops.bessel_i0e(x.values, name=name)
+      return sparse_tensor.SparseTensor(
+          indices=x.indices, values=x_i0e, dense_shape=x.dense_shape)
+    else:
+      return gen_math_ops.bessel_i0e(x, name=name)
+
+
+@tf_export("math.bessel_i1e")
+def bessel_i1e(x, name=None):
+  """Computes the Bessel i1e function of `x` element-wise.
+
+  Exponentially scaled modified Bessel function of order 1 defined as
+  `bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
+
+  This function is faster and numerically stabler than `bessel_i1(x)`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i1e
+  @end_compatibility
+  """
+  with ops.name_scope(name, "bessel_i1e", [x]) as name:
+    if isinstance(x, sparse_tensor.SparseTensor):
+      x_i1e = gen_math_ops.bessel_i1e(x.values, name=name)
+      return sparse_tensor.SparseTensor(
+          indices=x.indices, values=x_i1e, dense_shape=x.dense_shape)
+    else:
+      return gen_math_ops.bessel_i1e(x, name=name)
+
 
 # FFT ops were moved to tf.spectral. tf.fft symbols were part of the TensorFlow
 # 1.0 API so we leave these here for backwards compatibility.

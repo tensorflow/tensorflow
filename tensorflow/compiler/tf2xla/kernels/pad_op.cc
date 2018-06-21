@@ -70,7 +70,7 @@ class PadOp : public XlaOpKernel {
     }
 
     // PadV2 added a "constant_values" input that indicates the pad value.
-    xla::ComputationDataHandle constant_values;
+    xla::XlaOp constant_values;
     if (ctx->num_inputs() == 3) {
       OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->InputShape(2)),
                   errors::InvalidArgument("constant_values must be a scalar."));

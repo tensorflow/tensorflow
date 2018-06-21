@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -31,15 +33,17 @@ limitations under the License.
 namespace tensorflow {
 class XlaAllocator;
 
-// Takes a snapshot of the values of resource variable arguments, which are
-// the last `num_variables` arguments. We snapshot tensors that back
+// Takes a snapshot of the values of resource variable arguments, whose
+// indices are specified in `variables` argument. We snapshot tensors that back
 // resource variables since concurrent updates may modify the shape, and it is
 // important that the shapes used for compilation match the true shapes of the
 // buffers.
 //
-// Returns a map of TensorFlow argument index to resource variable.
-std::map<int, OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
-                                                        int num_variables);
+// Returns a map of TensorFlow argument index to resource variable. If a
+// resource variable is not initialized, the corresponding OptionalTensor
+// will have its `present` field set to false.
+std::map<int, OptionalTensor> SnapshotResourceVariables(
+    OpKernelContext* ctx, const std::vector<int>& variables);
 
 // Adapter class that wraps a Tensorflow allocator as an XLA allocator.
 // Assumes that the Tensorflow allocator permits asynchronous deallocation:
@@ -48,9 +52,9 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
  public:
   XlaAllocator(const se::Platform* platform, Allocator* wrapped);
   ~XlaAllocator() override;
-  xla::StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
-                                               bool retry_on_failure) override;
-  Status Deallocate(int device_ordinal, se::DeviceMemoryBase* mem) override;
+  xla::StatusOr<xla::OwningDeviceMemory> Allocate(
+      int device_ordinal, uint64 size, bool retry_on_failure) override;
+  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
   // before GPU execution takes place. Tensorflow uses the ordering of the main
@@ -72,7 +76,7 @@ class XlaComputationLaunchContext {
   // Create a new launch context. 'allocate_xla_tensors' is true if allocated
   // output tensors and variables are always XlaTensors. If false they are
   // assumed to be "normal" device pointers.
-  XlaComputationLaunchContext(int64 num_resource_args, xla::LocalClient* client,
+  XlaComputationLaunchContext(xla::LocalClient* client,
                               xla::DeviceMemoryAllocator* xla_allocator,
                               bool allocate_xla_tensors);
 
@@ -92,7 +96,6 @@ class XlaComputationLaunchContext {
   const std::vector<xla::ShapedBuffer*>& arguments() const { return arg_ptrs_; }
 
  private:
-  int64 num_resource_args_;
   xla::LocalClient* client_;
   xla::DeviceMemoryAllocator* xla_allocator_;
   bool allocate_xla_tensors_;
@@ -139,6 +142,17 @@ class XlaTensorBuffer : public TensorBuffer {
   size_t actual_size_;
   Allocator* allocator_;
 };
+
+// Exposed in this header file for microbenchmarking purposes, but this is an
+// internal implementation detail.
+namespace internal {
+// Return the 'index''th subtree of the given ShapedBuffer as a
+// ScopedShapedBuffer. The returned ScopedShapedBuffer takes ownership of the
+// subtree, and sets the input's buffer pointers to nullptr for the subtree.
+xla::ScopedShapedBuffer ExtractSubShapedBuffer(
+    xla::ShapedBuffer* shaped_buffer, int index,
+    xla::DeviceMemoryAllocator* allocator);
+}  // namespace internal
 
 }  // namespace tensorflow
 

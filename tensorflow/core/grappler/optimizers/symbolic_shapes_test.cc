@@ -74,6 +74,26 @@ TEST_F(SymbolicShapesTest, ShapesBroadcastable) {
   EXPECT_TRUE(ShapesBroadcastable(MakeShape({-2, 1}), MakeShape({1, -2})));
   EXPECT_TRUE(ShapesBroadcastable(MakeShape({-2, 1}), MakeShape({1, -3})));
   EXPECT_TRUE(ShapesBroadcastable(MakeShape({-3}), MakeShape({-2, -3})));
+
+  TensorShapeProto output_shape;
+  EXPECT_TRUE(
+      ShapeAfterBroadcast(MakeShape({1, 2}), MakeShape({1, 2}), &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({1, 2}), output_shape));
+  EXPECT_TRUE(ShapeAfterBroadcast(MakeShape({-2, 2}), MakeShape({-2, 2}),
+                                  &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({-2, 2}), output_shape));
+  EXPECT_TRUE(ShapeAfterBroadcast(MakeShape({-2, 32}), MakeShape({-2, 1}),
+                                  &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({-2, 32}), output_shape));
+  EXPECT_TRUE(ShapeAfterBroadcast(MakeShape({-2, 1}), MakeShape({1, -2}),
+                                  &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({-2, -2}), output_shape));
+  EXPECT_TRUE(ShapeAfterBroadcast(MakeShape({-2, 1}), MakeShape({1, -3}),
+                                  &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({-2, -3}), output_shape));
+  EXPECT_TRUE(
+      ShapeAfterBroadcast(MakeShape({-3}), MakeShape({-2, -3}), &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({-2, -3}), output_shape));
 }
 
 TEST_F(SymbolicShapesTest, CompareSymbolicallyShapedTensorSizes) {
@@ -88,6 +108,33 @@ TEST_F(SymbolicShapesTest, CompareSymbolicallyShapedTensorSizes) {
   EXPECT_FALSE(MakeShape({1, -1, 32}) < MakeShape({1, -1, 32}));
   EXPECT_FALSE(MakeShape({1, -1, 32}) < MakeShape({-1, -1, 32}));
   EXPECT_FALSE(MakeShape({-1, -1, 32}) < MakeShape({1, -1, 32}));
+}
+
+TEST_F(SymbolicShapesTest, RankAndNumCoeff) {
+  EXPECT_EQ(2, Rank(MakeShape({32, 32})));
+  EXPECT_EQ(32 * 32, NumCoefficients(MakeShape({32, 32})));
+  EXPECT_EQ(2, Rank(MakeShape({-2, 32})));
+  EXPECT_EQ(-1, NumCoefficients(MakeShape({-2, 32})));
+  TensorShapeProto shape;
+  shape.set_unknown_rank(true);
+  EXPECT_EQ(-1, Rank(shape));
+  EXPECT_EQ(-1, NumCoefficients(shape));
+}
+
+TEST_F(SymbolicShapesTest, SizeRatio) {
+  EXPECT_EQ(16, ComputeSizeRatio(MakeShape({32, 32}), MakeShape({32, 2})));
+  EXPECT_EQ(16, ComputeSizeRatio(MakeShape({-2, 32}), MakeShape({-2, 2})));
+  EXPECT_EQ(16,
+            ComputeSizeRatio(MakeShape({-2, -2, 32}), MakeShape({-2, 2, -2})));
+  EXPECT_EQ(-1,
+            ComputeSizeRatio(MakeShape({-2, -2, 32}), MakeShape({-2, 2, 2})));
+  EXPECT_EQ(-1,
+            ComputeSizeRatio(MakeShape({-2, 2, 32}), MakeShape({-2, 2, -2})));
+  EXPECT_EQ(-1, ComputeSizeRatio(MakeShape({-2, -2}), MakeShape({-2, 2})));
+  EXPECT_EQ(-1, ComputeSizeRatio(MakeShape({-2, 32}), MakeShape({-2, -2})));
+  EXPECT_EQ(1, ComputeSizeRatio(MakeShape({-2, -3}), MakeShape({-3, -2})));
+  EXPECT_EQ(-1, ComputeSizeRatio(MakeShape({-1, 32}), MakeShape({-2, 2})));
+  EXPECT_EQ(-1, ComputeSizeRatio(MakeShape({-1, 32}), MakeShape({-2, 0})));
 }
 
 }  // namespace

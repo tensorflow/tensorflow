@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
@@ -71,6 +73,33 @@ def multi_class_head(n_classes,
   shape `[D0, D1, ... DN, 1]`. `loss_fn` must support integer `labels` with
   shape `[D0, D1, ... DN, 1]`. Namely, the head applies `label_vocabulary` to
   the input labels before passing them to `loss_fn`.
+
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.multi_class_head(n_classes=3)
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.multi_class_head(n_classes=3)
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
 
   Args:
     n_classes: Number of classes, must be greater than 2 (for 2 classes, use
@@ -139,6 +168,33 @@ def binary_classification_head(
   shape `[D0, D1, ... DN, 1]`. Namely, the head applies `label_vocabulary` to
   the input labels before passing them to `loss_fn`.
 
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.binary_classification_head()
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.binary_classification_head()
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
+
   Args:
     weight_column: A string or a `_NumericColumn` created by
       `tf.feature_column.numeric_column` defining feature column representing
@@ -205,10 +261,38 @@ def regression_head(weight_column=None,
   shape `[D0, D1, ... DN, label_dimension]`.
 
   Also supports custom `inverse_link_fn`, also known as 'mean function'.
-  `inverse_link_fn` takes `logits` as argument and returns predicted values.
-  This function is the inverse of the link function defined in
+  `inverse_link_fn` is only used in `PREDICT` mode. It takes `logits` as
+  argument and returns predicted values. This function is the inverse of the
+  link function defined in
   https://en.wikipedia.org/wiki/Generalized_linear_model#Link_function
   Namely, for poisson regression, set `inverse_link_fn=tf.exp`.
+
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.regression_head()
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.regression_head()
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
 
   Args:
     weight_column: A string or a `_NumericColumn` created by
@@ -234,7 +318,7 @@ def regression_head(weight_column=None,
   Raises:
     ValueError: If `label_dimension` or `loss_reduction` is invalid.
   """
-  return head_lib._regression_head_with_mean_squared_error_loss(  # pylint:disable=protected-access
+  return head_lib._regression_head(  # pylint:disable=protected-access
       weight_column=weight_column,
       label_dimension=label_dimension,
       loss_reduction=loss_reduction,
@@ -269,6 +353,33 @@ def poisson_regression_head(
   This is implemented as a generalized linear model, see
   https://en.wikipedia.org/wiki/Generalized_linear_model.
 
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.poisson_regression_head()
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.poisson_regression_head()
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
+
   Args:
     weight_column: A string or a `_NumericColumn` created by
       `tf.feature_column.numeric_column` defining feature column representing
@@ -296,12 +407,102 @@ def poisson_regression_head(
   def _poisson_loss(labels, logits):
     return nn.log_poisson_loss(
         targets=labels, log_input=logits, compute_full_loss=compute_full_loss)
-  return head_lib._regression_head_with_mean_squared_error_loss(  # pylint:disable=protected-access
+  return head_lib._regression_head(  # pylint:disable=protected-access
       weight_column=weight_column,
       label_dimension=label_dimension,
       loss_reduction=loss_reduction,
       loss_fn=_poisson_loss,
       inverse_link_fn=math_ops.exp,
+      name=name)
+
+
+def logistic_regression_head(
+    weight_column=None,
+    loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
+    name=None):
+  """Creates a `_Head` for logistic regression.
+
+  Uses `sigmoid_cross_entropy_with_logits` loss, which is the same as
+  `binary_classification_head`. The differences compared to
+  `binary_classification_head` are:
+
+  * Does not support `label_vocabulary`. Instead, labels must be float in the
+    range [0, 1].
+  * Does not calculate some metrics that do not make sense, such as AUC.
+  * In `PREDICT` mode, only returns logits and predictions
+    (`=tf.sigmoid(logits)`), whereas `binary_classification_head` also returns
+    probabilities, classes, and class_ids.
+  * Export output defaults to `RegressionOutput`, whereas
+    `binary_classification_head` defaults to `PredictOutput`.
+
+  The head expects `logits` with shape `[D0, D1, ... DN, 1]`.
+  In many applications, the shape is `[batch_size, 1]`.
+
+  The `labels` shape must match `logits`, namely
+  `[D0, D1, ... DN]` or `[D0, D1, ... DN, 1]`.
+
+  If `weight_column` is specified, weights must be of shape
+  `[D0, D1, ... DN]` or `[D0, D1, ... DN, 1]`.
+
+  This is implemented as a generalized linear model, see
+  https://en.wikipedia.org/wiki/Generalized_linear_model.
+
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.logistic_regression_head()
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.logistic_regression_head()
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
+
+  Args:
+    weight_column: A string or a `_NumericColumn` created by
+      `tf.feature_column.numeric_column` defining feature column representing
+      weights. It is used to down weight or boost examples during training. It
+      will be multiplied by the loss of the example.
+    loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
+      reduce training loss over batch and label dimension. Defaults to
+      `SUM_OVER_BATCH_SIZE`, namely weighted sum of losses divided by
+      `batch size * label_dimension`. See `tf.losses.Reduction`.
+    name: name of the head. If provided, summary and metrics keys will be
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
+
+  Returns:
+    An instance of `_Head` for logistic regression.
+
+  Raises:
+    ValueError: If `loss_reduction` is invalid.
+  """
+  def _logistic_loss(labels, logits):
+    labels = head_lib._assert_range(  # pylint:disable=protected-access
+        labels, n_classes=2, message='Labels must be in range [0, 1]')
+    return nn.sigmoid_cross_entropy_with_logits(
+        labels=labels, logits=logits)
+  return head_lib._regression_head(  # pylint:disable=protected-access
+      weight_column=weight_column,
+      label_dimension=1,
+      loss_reduction=loss_reduction,
+      loss_fn=_logistic_loss,
+      inverse_link_fn=math_ops.sigmoid,
       name=name)
 
 
@@ -311,6 +512,7 @@ def multi_label_head(n_classes,
                      label_vocabulary=None,
                      loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
                      loss_fn=None,
+                     classes_for_class_based_metrics=None,
                      name=None):
   """Creates a `_Head` for multi-label classification.
 
@@ -327,6 +529,7 @@ def multi_label_head(n_classes,
   applications, the shape is `[batch_size, n_classes]`.
 
   Labels can be:
+
   * A multi-hot tensor of shape `[D0, D1, ... DN, n_classes]`
   * An integer `SparseTensor` of class indices. The `dense_shape` must be
     `[D0, D1, ... DN, ?]` and the values within `[0, n_classes)`.
@@ -341,6 +544,33 @@ def multi_label_head(n_classes,
   shape `[D0, D1, ... DN, 1]`. `loss_fn` must support indicator `labels` with
   shape `[D0, D1, ... DN, n_classes]`. Namely, the head applies
   `label_vocabulary` to the input labels before passing them to `loss_fn`.
+
+  The head can be used with a canned estimator. Example:
+
+  ```python
+  my_head = tf.contrib.estimator.multi_label_head(n_classes=3)
+  my_estimator = tf.contrib.estimator.DNNEstimator(
+      head=my_head,
+      hidden_units=...,
+      feature_columns=...)
+  ```
+
+  It can also be used with a custom `model_fn`. Example:
+
+  ```python
+  def _my_model_fn(features, labels, mode):
+    my_head = tf.contrib.estimator.multi_label_head(n_classes=3)
+    logits = tf.keras.Model(...)(features)
+
+    return my_head.create_estimator_spec(
+        features=features,
+        mode=mode,
+        labels=labels,
+        optimizer=tf.AdagradOptimizer(learning_rate=0.1),
+        logits=logits)
+
+  my_estimator = tf.estimator.Estimator(model_fn=_my_model_fn)
+  ```
 
   Args:
     n_classes: Number of classes, must be greater than 1 (for 1 class, use
@@ -363,6 +593,10 @@ def multi_label_head(n_classes,
       reduce training loss over batch. Defaults to `SUM_OVER_BATCH_SIZE`, namely
       weighted sum of losses divided by batch size. See `tf.losses.Reduction`.
     loss_fn: Optional loss function.
+    classes_for_class_based_metrics: List of integer class IDs or string class
+      names for which per-class metrics are evaluated. If integers, all must be
+      in the range `[0, n_classes - 1]`. If strings, all must be in
+      `label_vocabulary`.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -370,8 +604,8 @@ def multi_label_head(n_classes,
     An instance of `_Head` for multi-label classification.
 
   Raises:
-    ValueError: if `n_classes`, `thresholds`, `loss_reduction` or `loss_fn` is
-    invalid.
+    ValueError: if `n_classes`, `thresholds`, `loss_reduction`, `loss_fn` or
+    `metric_class_ids` is invalid.
   """
   thresholds = tuple(thresholds) if thresholds else tuple()
   if n_classes is None or n_classes < 2:
@@ -396,10 +630,31 @@ def multi_label_head(n_classes,
   if (loss_reduction not in losses.Reduction.all() or
       loss_reduction == losses.Reduction.NONE):
     raise ValueError('Invalid loss_reduction: {}'.format(loss_reduction))
+  classes_for_class_based_metrics = tuple(
+      [] if classes_for_class_based_metrics is None
+      else classes_for_class_based_metrics)
+  if classes_for_class_based_metrics:
+    if isinstance(classes_for_class_based_metrics[0], six.string_types):
+      if not label_vocabulary:
+        raise ValueError(
+            'label_vocabulary must be provided when '
+            'classes_for_class_based_metrics are sting.')
+      class_ids = []
+      for class_string in classes_for_class_based_metrics:
+        class_ids.append(label_vocabulary.index(class_string))
+      classes_for_class_based_metrics = tuple(class_ids)
+    else:
+      for class_id in classes_for_class_based_metrics:
+        if (class_id < 0) or (class_id >= n_classes):
+          raise ValueError(
+              'All classes_for_class_based_metrics must be in range [0, {}]. '
+              'Given: {}'.format(n_classes - 1, class_id))
   return _MultiLabelHead(
       n_classes=n_classes, weight_column=weight_column, thresholds=thresholds,
       label_vocabulary=label_vocabulary, loss_reduction=loss_reduction,
-      loss_fn=loss_fn, name=name)
+      loss_fn=loss_fn,
+      classes_for_class_based_metrics=classes_for_class_based_metrics,
+      name=name)
 
 
 class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
@@ -412,6 +667,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                label_vocabulary=None,
                loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
                loss_fn=None,
+               classes_for_class_based_metrics=None,
                name=None):
     self._n_classes = n_classes
     self._weight_column = weight_column
@@ -419,6 +675,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
     self._label_vocabulary = label_vocabulary
     self._loss_reduction = loss_reduction
     self._loss_fn = loss_fn
+    self._classes_for_class_based_metrics = classes_for_class_based_metrics
     self._name = name
 
   @property
@@ -496,10 +753,10 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         weights=weights,
         processed_labels=processed_labels)
 
-  def create_estimator_spec(
+  def _create_tpu_estimator_spec(
       self, features, mode, logits, labels=None, optimizer=None,
       train_op_fn=None, regularization_losses=None):
-    """Returns an `EstimatorSpec`.
+    """Returns an `model_fn._TPUEstimatorSpec`.
 
     Args:
       features: Input `dict` of `Tensor` or `SparseTensor` objects.
@@ -522,7 +779,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         `loss_reduction=SUM_OVER_NONZERO_WEIGHTS` when creating the head to
         avoid scaling errors.
     Returns:
-      `EstimatorSpec`.
+      `model_fn._TPUEstimatorSpec`.
     Raises:
       ValueError: If both `train_op_fn` and `optimizer` are `None` in TRAIN
         mode, or if both are set.
@@ -542,7 +799,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         classifier_output = head_lib._classification_output(  # pylint:disable=protected-access
             scores=probabilities, n_classes=self._n_classes,
             label_vocabulary=self._label_vocabulary)
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint:disable=protected-access
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
@@ -565,16 +822,18 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(  # pylint:disable=protected-access
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
             loss=regularized_training_loss,
-            eval_metric_ops=self._eval_metric_ops(
-                labels=processed_labels,
-                probabilities=probabilities,
-                weights=weights,
-                unreduced_loss=unreduced_loss,
-                regularization_loss=regularization_loss))
+            eval_metrics=head_lib._create_eval_metrics_tuple(  # pylint:disable=protected-access
+                self._eval_metric_ops, {
+                    'labels': processed_labels,
+                    'probabilities': probabilities,
+                    'weights': weights,
+                    'unreduced_loss': unreduced_loss,
+                    'regularization_loss': regularization_loss,
+                }))
 
       # Train.
       if optimizer is not None:
@@ -587,6 +846,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = head_lib._append_update_ops(train_op)  # pylint:disable=protected-access
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -608,7 +868,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         summary.scalar(
             head_lib._summary_key(self._name, keys.LOSS_REGULARIZATION),  # pylint:disable=protected-access
             regularization_loss)
-    return model_fn.EstimatorSpec(
+    return model_fn._TPUEstimatorSpec(  # pylint:disable=protected-access
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
         loss=regularized_training_loss,
@@ -671,4 +931,36 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                 weights=weights,
                 threshold=threshold,
                 name=recall_key))
+      for class_id in self._classes_for_class_based_metrics:
+        batch_rank = array_ops.rank(probabilities) - 1
+        begin = array_ops.concat(
+            [array_ops.zeros([batch_rank], dtype=dtypes.int32), [class_id]],
+            axis=0)
+        size = array_ops.concat(
+            [-1 * array_ops.ones([batch_rank], dtype=dtypes.int32), [1]],
+            axis=0)
+        class_probabilities = array_ops.slice(
+            probabilities, begin=begin, size=size)
+        class_labels = array_ops.slice(labels, begin=begin, size=size)
+        prob_key = keys.PROBABILITY_MEAN_AT_CLASS % class_id
+        metric_ops[head_lib._summary_key(self._name, prob_key)] = (  # pylint:disable=protected-access
+            head_lib._predictions_mean(  # pylint:disable=protected-access
+                predictions=class_probabilities,
+                weights=weights,
+                name=prob_key))
+        auc_key = keys.AUC_AT_CLASS % class_id
+        metric_ops[head_lib._summary_key(self._name, auc_key)] = (  # pylint:disable=protected-access
+            head_lib._auc(  # pylint:disable=protected-access
+                labels=class_labels,
+                predictions=class_probabilities,
+                weights=weights,
+                name=auc_key))
+        auc_pr_key = keys.AUC_PR_AT_CLASS % class_id
+        metric_ops[head_lib._summary_key(self._name, auc_pr_key)] = (  # pylint:disable=protected-access
+            head_lib._auc(  # pylint:disable=protected-access
+                labels=class_labels,
+                predictions=class_probabilities,
+                weights=weights,
+                curve='PR',
+                name=auc_pr_key))
     return metric_ops

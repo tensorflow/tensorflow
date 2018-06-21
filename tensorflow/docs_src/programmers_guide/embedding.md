@@ -238,7 +238,7 @@ row doesn't have to be filled, as shown below.
 </tr>
 </table>
 
-Follow [this link]("https://www.tensorflow.org/images/embedding-mnist.mp4" )
+Follow [this link](https://www.tensorflow.org/images/embedding-mnist.mp4)
 to see a fun example of thumbnail images in the Embedding Projector.
 
 

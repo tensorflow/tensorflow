@@ -102,6 +102,8 @@ bool DoesOpBlockBackwardPropagation(const Operator& op) {
       // Gathers need their parameters changed to the appropriate data type.
     case OperatorType::kTensorFlowReshape:
     case OperatorType::kTranspose:
+    case OperatorType::kSelect:
+    case OperatorType::kTensorFlowTile:
       // Reshapes and transposes don't change values.
       return false;
     default:
@@ -113,6 +115,8 @@ bool DoesOpBlockBackwardPropagation(const Operator& op) {
 // propagation.
 bool DoesOpInputBlockBackwardPropagation(const Operator& op, int input_index) {
   switch (op.type) {
+    case OperatorType::kSelect:
+      return input_index == 0;
     case OperatorType::kGather:
       // Ignore gather indices.
       return input_index != 0;
@@ -120,6 +124,9 @@ bool DoesOpInputBlockBackwardPropagation(const Operator& op, int input_index) {
     case OperatorType::kTensorFlowReshape:
     case OperatorType::kTranspose:
       // Ignore reshape/transpose shapes/dimensions.
+      return input_index != 0;
+    case OperatorType::kTensorFlowTile:
+      // Ignore tile multiples.
       return input_index != 0;
     default:
       return false;

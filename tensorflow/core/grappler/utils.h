@@ -65,7 +65,7 @@ class NodeMap {
 // A vector with a set. The set stores the same elements as the vector, and
 // quickly answers whether a value is in the vector. Duplicated elements are not
 // allowed for now.
-template <class T>
+template <class T, class Hash = std::hash<T>>
 class SetVector {
  public:
   // Returns false if value already existed in the set, true otherwise.
@@ -91,7 +91,7 @@ class SetVector {
   void Reserve(int64 size) { vector_.reserve(size); }
 
  private:
-  std::unordered_set<T> set_;
+  std::unordered_set<T, Hash> set_;
   std::vector<T> vector_;
 };
 
@@ -139,7 +139,7 @@ inline StringPiece ParseNodeNameAsStringPiece(const string& name,
 
 // Returns the node name and position in a single call.
 inline string ParseNodeName(const string& name, int* position) {
-  return ParseNodeNameAsStringPiece(name, position).ToString();
+  return std::string(ParseNodeNameAsStringPiece(name, position));
 }
 
 // Add a prefix to a node name with a custom delimiter.
@@ -211,11 +211,24 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
 
 class SimpleGraphView {
  public:
+  // Build a graph view for the specified graphdef.
   Status Initialize(const GraphDef& graph) {
-    return Initialize(graph, true, true);
+    return Initialize(graph, nullptr, true, true);
   }
-  Status Initialize(const GraphDef& graph, bool dedup_inputs,
-                    bool dedup_outputs);
+  // Build a graph view for the specified graphdef augmented with the additional
+  // edges specified in 'extra_dependencies' if any. Note that
+  // extra_dependencies can be null.
+  Status Initialize(
+      const GraphDef& graph,
+      const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+          extra_dependencies) {
+    return Initialize(graph, extra_dependencies, true, true);
+  }
+  Status Initialize(
+      const GraphDef& graph,
+      const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+          extra_dependencies,
+      bool dedup_inputs, bool dedup_outputs);
 
   const GraphDef* graph() const { return graph_; }
   inline int num_nodes() const { return index_to_name_.size(); }
@@ -238,6 +251,7 @@ class SimpleGraphView {
   // visited in nodes_found. If a node has an op in `op_types_to_traverse`, the
   // walk continues to its children. It is assumed that *graph_ was not modified
   // after the call to Initialize().
+  // If `op_types_to_traverse` is empty the DFS will traverse any node type.
   void DepthFirstSearch(const std::unordered_set<string>& op_types_to_traverse,
                         int node_idx, std::set<int>* nodes_found) const;
 

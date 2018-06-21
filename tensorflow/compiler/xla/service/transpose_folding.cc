@@ -35,7 +35,8 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoDot(
     const HloInstruction& dot,
     const TransposeFolding::TransposableGemmOperandsFn&
         transposable_gemm_operands) {
-  if (HloOpcode::kDot != dot.opcode()) {
+  if (HloOpcode::kDot != dot.opcode() ||
+      dot.dot_dimension_numbers().lhs_batch_dimensions_size() != 0) {
     return {};
   }
 
@@ -44,6 +45,8 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoDot(
     auto& operand = *dot.operand(i);
     if (operand.IsRank2Transpose()) {
       operand_set.push_back(i);
+    } else if (ShapeUtil::Rank(operand.shape()) != 2) {
+      return {};
     }
   }
 
@@ -74,23 +77,39 @@ using InstructionOperandsPair =
 
 // Folds the operands of `dot` that are foldable transposes. `computation` is
 // the parent HLO computation of `dot`.
-//
-// Returns whether the module is changed.
-bool FoldTransposeIntoDot(InstructionOperandsPair pair) {
-  auto* dot = pair.first;
-  std::vector<HloInstruction*> instructions_to_fuse(1, dot);
-  for (const int64 operand_index : pair.second) {
-    instructions_to_fuse.push_back(dot->mutable_operand(operand_index));
+Status FoldTransposeIntoDot(InstructionOperandsPair pair) {
+  HloInstruction* dot = pair.first;
+
+  DotDimensionNumbers new_dim_numbers = dot->dot_dimension_numbers();
+  HloInstruction* new_lhs = dot->mutable_operand(0);
+  HloInstruction* new_rhs = dot->mutable_operand(1);
+
+  CHECK_EQ(new_dim_numbers.lhs_batch_dimensions_size(), 0);
+  CHECK_EQ(new_dim_numbers.rhs_batch_dimensions_size(), 0);
+  CHECK_EQ(new_dim_numbers.lhs_contracting_dimensions_size(), 1);
+  CHECK_EQ(new_dim_numbers.rhs_contracting_dimensions_size(), 1);
+
+  for (int64 operand_index : pair.second) {
+    // We've checked that there aren't any batch dimensions and that the inputs
+    // are rank 2, and shape inference guarantees that there is exactly one
+    // contracting dimension.
+    if (operand_index == 0) {
+      CHECK_EQ(new_lhs->opcode(), HloOpcode::kTranspose);
+      new_dim_numbers.set_lhs_contracting_dimensions(
+          0, 1 - new_dim_numbers.lhs_contracting_dimensions(0));
+      new_lhs = new_lhs->mutable_operand(0);
+    } else {
+      CHECK_EQ(operand_index, 1);
+      CHECK_EQ(new_rhs->opcode(), HloOpcode::kTranspose);
+      new_dim_numbers.set_rhs_contracting_dimensions(
+          0, 1 - new_dim_numbers.rhs_contracting_dimensions(0));
+      new_rhs = new_rhs->mutable_operand(0);
+    }
   }
 
-  // Early-exit if no operands are foldable.
-  if (instructions_to_fuse.size() == 1) {
-    return false;
-  }
-
-  dot->parent()->CreateFusionInstruction(
-      instructions_to_fuse, HloInstruction::FusionKind::kTransposeDot);
-  return true;
+  std::unique_ptr<HloInstruction> new_dot = HloInstruction::CreateDot(
+      dot->shape(), new_lhs, new_rhs, new_dim_numbers);
+  return dot->parent()->ReplaceWithNewInstruction(dot, std::move(new_dot));
 }
 
 // Folds the operands of `convolution` that are foldable transposes.
@@ -159,7 +178,6 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
 
   auto new_conv = HloInstruction::CreateConvolve(
       convolution.shape(), new_lhs, new_rhs, convolution.window(), new_dnums);
-  convolution.SetupDerivedInstruction(new_conv.get());
   TF_CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
       &convolution, std::move(new_conv)));
 
@@ -196,7 +214,7 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
             std::make_pair(instruction, operand_indices));
       }
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   };
 
   for (auto* comp : module->MakeNonfusionComputations()) {
@@ -205,7 +223,8 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
 
   bool changed = false;
   for (InstructionOperandsPair& pair : foldable_dots) {
-    changed |= FoldTransposeIntoDot(pair);
+    TF_RETURN_IF_ERROR(FoldTransposeIntoDot(pair));
+    changed = true;
   }
   for (InstructionOperandsPair& pair : foldable_convolutions) {
     changed |= FoldTransposeIntoConvolution(pair);

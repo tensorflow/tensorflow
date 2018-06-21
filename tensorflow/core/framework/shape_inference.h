@@ -434,6 +434,13 @@ class InferenceContext {
   Status Subshape(ShapeHandle s, int64 start, int64 end,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 
+  // Returns in <*out> a sub-shape of <s>, with dimensions [start:end:stride].
+  // <start> and <end> can be negative, to index from the end of the shape.
+  // <start> and <end> are set to the rank of <s> if > rank of <s>.
+  // <stride> can be negative, to reverse the <s>.
+  Status Subshape(ShapeHandle s, int64 start, int64 end, int64 stride,
+                  ShapeHandle* out) TF_MUST_USE_RESULT;
+
   // Returns in <*out> the result of appending the dimensions of <s2> to those
   // of <s1>.
   Status Concatenate(ShapeHandle s1, ShapeHandle s2,

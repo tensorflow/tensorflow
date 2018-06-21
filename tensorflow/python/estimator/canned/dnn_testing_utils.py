@@ -134,7 +134,7 @@ def mock_head(testcase, hidden_units, logits_dimension, expected_logits):
       hidden_weights_names + hidden_biases_names +
       [LOGITS_WEIGHTS_NAME + '/part_0:0', LOGITS_BIASES_NAME + '/part_0:0'])
 
-  def _create_estimator_spec(
+  def _create_tpu_estimator_spec(
       features, mode, logits, labels, train_op_fn=None, optimizer=None):
     del features, labels  # Not used.
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
@@ -149,19 +149,29 @@ def mock_head(testcase, hidden_units, logits_dimension, expected_logits):
           train_op = train_op_fn(loss)
         elif optimizer is not None:
           train_op = optimizer.minimize(loss, global_step=None)
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(
             mode=mode, loss=loss, train_op=train_op)
       elif mode == model_fn.ModeKeys.EVAL:
-        return model_fn.EstimatorSpec(mode=mode, loss=array_ops.identity(loss))
+        return model_fn._TPUEstimatorSpec(
+            mode=mode, loss=array_ops.identity(loss))
       elif mode == model_fn.ModeKeys.PREDICT:
-        return model_fn.EstimatorSpec(
+        return model_fn._TPUEstimatorSpec(
             mode=mode, predictions={'logits': array_ops.identity(logits)})
       else:
         testcase.fail('Invalid mode: {}'.format(mode))
 
+  def _create_estimator_spec(
+      features, mode, logits, labels, train_op_fn=None, optimizer=None):
+    tpu_spec = _create_tpu_estimator_spec(
+        features, mode, logits, labels, train_op_fn, optimizer)
+    return tpu_spec.as_estimator_spec()
+
   head = test.mock.NonCallableMagicMock(spec=head_lib._Head)
   head.logits_dimension = logits_dimension
-  head.create_estimator_spec = test.mock.MagicMock(wraps=_create_estimator_spec)
+  head._create_tpu_estimator_spec = test.mock.MagicMock(
+      wraps=_create_tpu_estimator_spec)
+  head.create_estimator_spec = test.mock.MagicMock(
+      wraps=_create_estimator_spec)
 
   return head
 

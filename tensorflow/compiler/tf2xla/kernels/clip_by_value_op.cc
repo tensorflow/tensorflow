@@ -29,7 +29,7 @@ class ClipByValueOp : public XlaOpKernel {
     const TensorShape min_shape = ctx->InputShape(1);
     const TensorShape max_shape = ctx->InputShape(2);
 
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
     auto input = ctx->Input(0);
     auto min = ctx->Input(1);
     auto max = ctx->Input(2);

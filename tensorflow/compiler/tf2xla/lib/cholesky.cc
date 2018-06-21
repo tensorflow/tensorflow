@@ -47,23 +47,21 @@ namespace {
 //     l[..., j+1:, j] = (a[..., j+1:, j] - np.dot(l[..., j+1:, :j], row_t)) /
 //                       l[..., j, j]
 //   return l
-xla::StatusOr<xla::ComputationDataHandle> CholeskyUnblocked(
-    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& a) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> a_shape,
-                      builder->GetShape(a));
-  const int n_dims = xla::ShapeUtil::Rank(*a_shape);
-  const int64 n = xla::ShapeUtil::GetDimension(*a_shape, -1);
-  gtl::ArraySlice<int64> major_dims(xla::AsInt64Slice(a_shape->dimensions()),
+xla::StatusOr<xla::XlaOp> CholeskyUnblocked(xla::XlaBuilder* builder,
+                                            const xla::XlaOp& a) {
+  TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
+  const int n_dims = xla::ShapeUtil::Rank(a_shape);
+  const int64 n = xla::ShapeUtil::GetDimension(a_shape, -1);
+  gtl::ArraySlice<int64> major_dims(xla::AsInt64Slice(a_shape.dimensions()),
                                     /*pos=*/0,
                                     /*len=*/n_dims - 2);
 
-  xla::ComputationDataHandle l = Zeros(builder, *a_shape);
+  xla::XlaOp l = Zeros(builder, a_shape);
 
   // Construct the for loop body to iterate over rows.
-  auto body_fn = [&](xla::ComputationDataHandle i,
-                     gtl::ArraySlice<xla::ComputationDataHandle> loop_vars,
-                     xla::ComputationBuilder* body_builder)
-      -> xla::StatusOr<std::vector<xla::ComputationDataHandle>> {
+  auto body_fn = [&](xla::XlaOp i, gtl::ArraySlice<xla::XlaOp> loop_vars,
+                     xla::XlaBuilder* body_builder)
+      -> xla::StatusOr<std::vector<xla::XlaOp>> {
     xla::Shape col_shape;
     xla::Shape row_shape;
     for (int64 d : major_dims) {
@@ -72,12 +70,12 @@ xla::StatusOr<xla::ComputationDataHandle> CholeskyUnblocked(
     }
     row_shape.add_dimensions(1);
     row_shape.add_dimensions(n);
-    row_shape.set_element_type(a_shape->element_type());
+    row_shape.set_element_type(a_shape.element_type());
     auto mask_zeros_row = Zeros(body_builder, row_shape);
 
     col_shape.add_dimensions(n);
     col_shape.add_dimensions(1);
-    col_shape.set_element_type(a_shape->element_type());
+    col_shape.set_element_type(a_shape.element_type());
     auto mask_zeros_col = Zeros(body_builder, col_shape);
 
     std::vector<int32> mask_vector(n);
@@ -101,7 +99,7 @@ xla::StatusOr<xla::ComputationDataHandle> CholeskyUnblocked(
     TF_ASSIGN_OR_RETURN(auto a_ii, DynamicSliceInMinorDims(body_builder, body_a,
                                                            {i, i}, {1, 1}));
     // np.dot(row, np.swapaxes(row, -1, -2))
-    xla::ComputationDataHandle diag_dot;
+    xla::XlaOp diag_dot;
     TF_ASSIGN_OR_RETURN(diag_dot, BatchDot(body_builder, row, row,
                                            /*transpose_x=*/false,
                                            /*transpose_y=*/true));
@@ -109,10 +107,9 @@ xla::StatusOr<xla::ComputationDataHandle> CholeskyUnblocked(
     //                                              np.swapaxes(row, -1, -2)))
     auto l_ii = body_builder->Pow(
         body_builder->Sub(a_ii, diag_dot),
-        FloatLiteral(body_builder, a_shape->element_type(), 0.5));
+        FloatLiteral(body_builder, a_shape.element_type(), 0.5));
 
     // a[..., i+1:, i]
-    auto ip1 = body_builder->Add(i, body_builder->ConstantR0<int32>(1));
     // select the whole i-th column, then mask out all rows above i+1
     TF_ASSIGN_OR_RETURN(
         auto a_0i, DynamicSliceInMinorDims(body_builder, body_a, {i}, {1}));
@@ -140,7 +137,7 @@ xla::StatusOr<xla::ComputationDataHandle> CholeskyUnblocked(
     TF_ASSIGN_OR_RETURN(body_l, DynamicUpdateSliceInMinorDims(
                                     body_builder, body_l, l_ii, {i, i}));
 
-    return std::vector<xla::ComputationDataHandle>{body_a, body_l};
+    return std::vector<xla::XlaOp>{body_a, body_l};
   };
 
   TF_ASSIGN_OR_RETURN(
@@ -152,22 +149,20 @@ xla::StatusOr<xla::ComputationDataHandle> CholeskyUnblocked(
 
 }  // namespace
 
-xla::StatusOr<xla::ComputationDataHandle> Cholesky(
-    xla::ComputationBuilder* builder, xla::ComputationDataHandle a,
-    int64 block_size) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> a_shape,
-                      builder->GetShape(a));
-  const int ndims = xla::ShapeUtil::Rank(*a_shape);
+xla::StatusOr<xla::XlaOp> Cholesky(xla::XlaBuilder* builder, xla::XlaOp a,
+                                   int64 block_size) {
+  TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
+  const int ndims = xla::ShapeUtil::Rank(a_shape);
   if (ndims < 2) {
     return errors::InvalidArgument(
         "Arguments to Cholesky must have rank >= 2: ", ndims);
   }
 
-  const int64 n = xla::ShapeUtil::GetDimension(*a_shape, -1);
-  if (n != xla::ShapeUtil::GetDimension(*a_shape, -2)) {
+  const int64 n = xla::ShapeUtil::GetDimension(a_shape, -1);
+  if (n != xla::ShapeUtil::GetDimension(a_shape, -2)) {
     return errors::InvalidArgument(
         "Arguments to Cholesky must be square matrices: ",
-        xla::ShapeUtil::HumanString(*a_shape));
+        xla::ShapeUtil::HumanString(a_shape));
   }
 
   if (block_size < 1) {
@@ -179,7 +174,7 @@ xla::StatusOr<xla::ComputationDataHandle> Cholesky(
   // Algorithm 1 from
   // Haidar, Azzam, et al. "High-performance Cholesky factorization for GPU-only
   // execution." Proceedings of General Purpose GPUs. ACM, 2017.
-  xla::ComputationDataHandle l = Zeros(builder, *a_shape);
+  xla::XlaOp l = Zeros(builder, a_shape);
   for (int64 i = 0; i < n; i += block_size) {
     int64 k = std::min(block_size, n - i);
     if (i > 0) {
@@ -218,7 +213,7 @@ xla::StatusOr<xla::ComputationDataHandle> Cholesky(
                                           /*lower=*/true,
                                           /*transpose_a=*/true,
                                           /*conjugate_a=*/false,
-                                          /*block_size=*/8));
+                                          /*block_size=*/block_size));
       TF_ASSIGN_OR_RETURN(
           l, UpdateSliceInMinorDims(builder, l, update, {i + k, i}));
     }

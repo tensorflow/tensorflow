@@ -51,10 +51,10 @@ enum ExtendedLstmCellInputs {
 };
 
 enum ExtendedLstmCellOutputs {
-  kScratchBufferTensor = 0,
-  kOutputStateTensor = 1,
-  kCellStateTensor = 2,
-  kOutputTensor = 3
+  kOutputStateTensor = 0,
+  kCellStateTensor = 1,
+  kOutputTensor = 2,
+  kExtendedLstmOutputCount = 3
 };
 
 // Create optional array used for optional tensor in ExtendedLstmCell inputs.

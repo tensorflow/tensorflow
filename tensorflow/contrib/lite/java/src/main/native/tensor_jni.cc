@@ -43,31 +43,27 @@ size_t writeOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
   }
   switch (type) {
     case kTfLiteFloat32: {
-      jfloatArray a = static_cast<jfloatArray>(array);
-      jfloat* values = env->GetFloatArrayElements(a, nullptr);
-      memcpy(dst, values, to_copy);
-      env->ReleaseFloatArrayElements(a, values, JNI_ABORT);
+      jfloatArray float_array = static_cast<jfloatArray>(array);
+      jfloat* float_dst = static_cast<jfloat*>(dst);
+      env->GetFloatArrayRegion(float_array, 0, num_elements, float_dst);
       return to_copy;
     }
     case kTfLiteInt32: {
-      jintArray a = static_cast<jintArray>(array);
-      jint* values = env->GetIntArrayElements(a, nullptr);
-      memcpy(dst, values, to_copy);
-      env->ReleaseIntArrayElements(a, values, JNI_ABORT);
+      jintArray int_array = static_cast<jintArray>(array);
+      jint* int_dst = static_cast<jint*>(dst);
+      env->GetIntArrayRegion(int_array, 0, num_elements, int_dst);
       return to_copy;
     }
     case kTfLiteInt64: {
-      jlongArray a = static_cast<jlongArray>(array);
-      jlong* values = env->GetLongArrayElements(a, nullptr);
-      memcpy(dst, values, to_copy);
-      env->ReleaseLongArrayElements(a, values, JNI_ABORT);
+      jlongArray long_array = static_cast<jlongArray>(array);
+      jlong* long_dst = static_cast<jlong*>(dst);
+      env->GetLongArrayRegion(long_array, 0, num_elements, long_dst);
       return to_copy;
     }
     case kTfLiteUInt8: {
-      jbyteArray a = static_cast<jbyteArray>(array);
-      jbyte* values = env->GetByteArrayElements(a, nullptr);
-      memcpy(dst, values, to_copy);
-      env->ReleaseByteArrayElements(a, values, JNI_ABORT);
+      jbyteArray byte_array = static_cast<jbyteArray>(array);
+      jbyte* byte_dst = static_cast<jbyte*>(dst);
+      env->GetByteArrayRegion(byte_array, 0, num_elements, byte_dst);
       return to_copy;
     }
     default: {
@@ -238,10 +234,6 @@ Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env, jclass clazz, jlong handle) {
   if (tensor == nullptr) return nullptr;
   int num_dims = tensor->dims->size;
   jintArray result = env->NewIntArray(num_dims);
-  jint* dims = env->GetIntArrayElements(result, nullptr);
-  for (int i = 0; i < num_dims; ++i) {
-    dims[i] = static_cast<jint>(tensor->dims->data[i]);
-  }
-  env->ReleaseIntArrayElements(result, dims, 0);
+  env->SetIntArrayRegion(result, 0, num_dims, tensor->dims->data);
   return result;
 }

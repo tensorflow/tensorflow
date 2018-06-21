@@ -93,7 +93,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
                                 input_shape.DebugString()));
     const int64 depth = input_shape.dim_size(feature_dim);
 
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     // The following code is equivalent to:
     // eye = np.eye(kH * kW * D).reshape([kH, kW, D, kH * kW * kD])
@@ -110,7 +110,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     // Builds an identity matrix as a broadcast equality of iotas.
     // iota = np.arange(np.prod(ksize), depth)
     // filter = np.equal(np.reshape(iota, [-1, 1]), iota).astype(np.float32)
-    xla::ComputationDataHandle iota;
+    xla::XlaOp iota;
     TF_CHECK_OK(XlaHelpers::Iota(builder, DataType::DT_INT32,
                                  kernel_size * depth, &iota));
 
@@ -147,7 +147,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
                    &padding[i].first, &padding[i].second));
     }
 
-    xla::ComputationDataHandle conv =
+    xla::XlaOp conv =
         builder->ConvGeneralDilated(ctx->Input(0), filter, window_strides,
                                     padding, lhs_dilation, rhs_dilation, dims);
     ctx->SetOutput(0, conv);

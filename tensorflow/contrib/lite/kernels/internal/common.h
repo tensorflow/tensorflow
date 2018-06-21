@@ -87,12 +87,12 @@ float ActivationFunction(float x) {
                                       output_activation_max);
 }
 
-inline int32 MultiplyByQuantizedMultiplierSmallerThanOne(
-    int32 x, int32 quantized_multiplier, int right_shift) {
+inline int32 MultiplyByQuantizedMultiplierSmallerThanOneExp(
+    int32 x, int32 quantized_multiplier, int left_shift) {
   using gemmlowp::RoundingDivideByPOT;
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   return RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(x, quantized_multiplier), right_shift);
+      SaturatingRoundingDoublingHighMul(x, quantized_multiplier), -left_shift);
 }
 
 inline int32 MultiplyByQuantizedMultiplierGreaterThanOne(
@@ -111,6 +111,20 @@ inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier,
   return RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
                                  x * (1 << left_shift), quantized_multiplier),
                              right_shift);
+}
+
+template <typename T>
+int CountLeadingZeros(T integer_input) {
+  static_assert(std::is_unsigned<T>::value,
+                "Only unsigned integer types handled.");
+  const T one_in_leading_positive = static_cast<T>(1)
+                                    << (std::numeric_limits<T>::digits - 1);
+  int leading_zeros = 0;
+  while (integer_input < one_in_leading_positive) {
+    integer_input <<= 1;
+    ++leading_zeros;
+  }
+  return leading_zeros;
 }
 
 }  // namespace tflite

@@ -11,7 +11,7 @@ optimizing the kernels for mobile apps, pre-fused activations, and quantized
 kernels that allow smaller and faster (fixed-point math) models.
 
 Most of our TensorFlow Lite documentation is [on
-Github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite)
+GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite)
 for the time being.
 
 ## What does TensorFlow Lite contain?
@@ -37,8 +37,9 @@ a custom (less-dynamic) memory allocator to ensure minimal load, initialization,
 and execution latency.
 
 TensorFlow Lite provides an interface to leverage hardware acceleration, if
-available on the device. It does so via the Android Neural Networks library,
-released as part of Android O-MR1.
+available on the device. It does so via the
+[Android Neural Networks API](https://developer.android.com/ndk/guides/neuralnetworks/index.html),
+available on Android 8.1 (API level 27) and higher.
 
 ## Why do we need a new mobile-specific library?
 
@@ -116,6 +117,10 @@ following:
       Wear](https://research.googleblog.com/2017/02/on-device-machine-intelligence.html)
       to all first-party and third-party apps.
 
+    Also see the complete list of
+    [TensorFlow Lite's supported models](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/models.md),
+    including the model sizes, performance numbers, and downloadable model files.
+
 - Quantized versions of the MobileNet model, which runs faster than the
   non-quantized (float) version on CPU.
 
@@ -131,10 +136,10 @@ compatibility with this release.
 ## Getting Started
 
 We recommend you try out TensorFlow Lite with the pre-tested models indicated
-above. If you have an existing mode, you will need to test whether your model is
-compatible with both the converter and the supported operator set.  To test your
-model, see the [documentation on
-GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite).
+above. If you have an existing model, you will need to test whether your model
+is compatible with both the converter and the supported operator set.  To test
+your model, see the
+[documentation on GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite).
 
 ### Retrain Inception-V3 or MobileNet for a custom data set
 
@@ -155,7 +160,7 @@ retraining for both floating point and quantized inference.
 
 The following diagram shows the architectural design of TensorFlow Lite:
 
-<img src="/images/tflite-architecture.jpg"
+<img src="https://www.tensorflow.org/images/tflite-architecture.jpg"
      alt="TensorFlow Lite architecture diagram"
      style="max-width:600px;">
 

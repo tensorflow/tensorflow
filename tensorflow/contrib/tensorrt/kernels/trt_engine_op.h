@@ -17,25 +17,28 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_TENSORRT_KERNELS_TRT_ENGINE_OP_H_
 
 #include <memory>
-#include <string>
 #include <vector>
+
+#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 #include "cuda/include/cuda_runtime_api.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
 class Logger;
 
+//  TODO(Sami): Remove this file?
 class TRTEngineOp : public OpKernel {
  public:
   explicit TRTEngineOp(OpKernelConstruction* context);
 
   void Compute(OpKernelContext* context) override;
+  ~TRTEngineOp();
 
  private:
   template <typename T>
@@ -51,6 +54,8 @@ class TRTEngineOp : public OpKernel {
 
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
+  std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
+  string serialized_engine_;
 };
 
 }  // namespace tensorrt

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
@@ -289,19 +290,31 @@ def _require_distribution_strategy_scope(distribution_strategy):
 class _CurrentDistributionContext(object):
   """Context manager for setting the `DistributionStrategy` and var creator."""
 
-  def __init__(self, distribution_strategy, var_creator_scope, var_scope=None):
+  def __init__(self,
+               distribution_strategy,
+               var_creator_scope,
+               var_scope=None,
+               default_device=None):
     self._context = _CrossTowerThreadMode(distribution_strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
+    if default_device:
+      self._device_scope = ops.device(default_device)
+    else:
+      self._device_scope = None
 
   def __enter__(self):
     _push_per_thread_mode(self._context)
     if self._var_scope:
       self._var_scope.__enter__()
     self._var_creator_scope.__enter__()
+    if self._device_scope:
+      self._device_scope.__enter__()
     return self._context.distribution_strategy
 
   def __exit__(self, exception_type, exception_value, traceback):
+    if self._device_scope:
+      self._device_scope.__exit__(exception_type, exception_value, traceback)
     self._var_creator_scope.__exit__(exception_type, exception_value, traceback)
     if self._var_scope:
       self._var_scope.__exit__(exception_type, exception_value, traceback)
@@ -344,14 +357,14 @@ class DistributionStrategy(object):
     on different slices of the input data. This is in contrast to
     _model parallelism_ where we divide up a single copy of a model
     across multiple devices.
-    Note: for now we only support data parallelism at this time, but
+    Note: we only support data parallelism for now, but
     hope to add support for model parallelism in the future.
   * A _tower_ is one copy of the model, running on one slice of the
     input data.
-  * _Synchronous_, or more commonly _sync_, training is when the
+  * _Synchronous_, or more commonly _sync_, training is where the
     updates from each tower are aggregated together before updating
     the model variables. This is in contrast to _asynchronous_, or
-    _async_ training where each tower updates the model variables
+    _async_ training, where each tower updates the model variables
     independently.
   * Furthermore you might run your computation on multiple devices
     on one machine (or "host"), or on multiple machines/hosts.
@@ -373,11 +386,11 @@ class DistributionStrategy(object):
   * Reductions and Allreduce: A _reduction_ is some method of
     aggregating multiple values into one value, like "sum" or
     "mean". If doing sync training, we will perform a reduction on the
-    gradients to a parameter from each tower before applying the
+    gradients to a parameter from all towers before applying the
     update. Allreduce is an algorithm for performing a reduction on
     values from multiple devices and making the result available on
     all of those devices.
-  * In the future we will have support for TensorFlows' partitioned
+  * In the future we will have support for TensorFlow's partitioned
     variables, where a single variable is split across multiple
     devices.
 
@@ -406,9 +419,9 @@ class DistributionStrategy(object):
     `tower_fn` can use the `get_tower_context()` API to get enhanced
     behavior in this case.
 
-    You can also create an initializable iterator instead of one shot iterator.
-    In that case, you will need to ensure that you initialize the iterator
-    before calling get_next.
+    You can also create an initializable iterator instead of a one-shot
+    iterator. In that case, you will need to ensure that you initialize the
+    iterator before calling get_next.
     ```
     iterator = my_distribution.distribute_dataset(
         dataset).make_initializable_iterator())
@@ -515,6 +528,8 @@ class DistributionStrategy(object):
   * `d.update_non_slot(d.non_slot_devices(), fn)`: in cross-tower
     context, like `d.update()` except with locality N.
   * `d.fetch(t)`: Copy `t` with any locality to the client's CPU device.
+    TODO(josh11b): Deprecate `fetch`, switch to `read_var` for
+    reading tower-local variables.
 
   The standard pattern for updating variables is to:
 
@@ -556,6 +571,9 @@ class DistributionStrategy(object):
   # TODO(josh11b): List of towers with their worker and parameter devices
   #   (where the parameter devices may overlap in the ps case).
 
+  def __init__(self):
+    self._default_device = None
+
   def scope(self):
     """Returns a context manager selecting this DistributionStrategy as current.
 
@@ -586,7 +604,8 @@ class DistributionStrategy(object):
         self, variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=disable_partitioned_variables))
+            custom_getter=disable_partitioned_variables),
+        self._default_device)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     # Note: should support "colocate_with" argument.
@@ -597,8 +616,8 @@ class DistributionStrategy(object):
 
     There will still be one component variable per tower, but there is
     no requirement that they stay in sync. Instead, when saving them
-    or calling `fetch()`, we use the value that results when calling
-    `reduce()` on all the towers' variables.
+    or calling `fetch()/read_var()`, we use the value that
+    results when calling `reduce()` on all the towers' variables.
 
     Note: tower-local implies not trainable. Instead, it is expected
     that each tower will directly update (using `assign_add()` or
@@ -628,6 +647,21 @@ class DistributionStrategy(object):
 
     _require_distribution_strategy_scope(self)
     return variable_scope.variable_creator_scope(create_tower_local_variable)
+
+  def read_var(self, v):
+    """Reads the value of a variable.
+
+    Returns the aggregate value of a tower-local variable, or the
+    (read-only) value of any other variable.
+
+    Args:
+      v: A variable allocated within the scope of this `DistributionStrategy`.
+
+    Returns:
+      A tensor representing the value of `v`, aggregated across towers if
+      necessary.
+    """
+    raise NotImplementedError("must be implemented in descendants")
 
   def colocate_vars_with(self, colocate_with_variable):
     """Scope that controls which devices variables will be created on.
@@ -733,7 +767,7 @@ class DistributionStrategy(object):
     `fn` may call `tf.get_tower_context()` to access methods such as
     `tower_id()` and `merge_call()`.
 
-    `merge_call()` is used to communicate betwen the towers and
+    `merge_call()` is used to communicate between the towers and
     re-enter the cross-tower context. All towers pause their execution
     having encountered a `merge_call()` call. After that the
     `merge_fn`-function is executed. Its results are then unwrapped and
@@ -799,6 +833,7 @@ class DistributionStrategy(object):
     # TODO(josh11b): Return an unwrapped value if colocate_with is a
     # single device.
     _require_cross_tower_context(self)
+    assert method_string in ("sum", "mean")
     return self._reduce(method_string, value, destinations)
 
   def _reduce(self, method_string, value, destinations):
@@ -886,6 +921,8 @@ class DistributionStrategy(object):
     will attempt to avoid a copy by checking if the value is already
     on the destination device.
 
+    TODO(josh11b): Switch to `read_var`.
+
     Args:
       val: Value (which may be mirrored) to copy.
       destination: A device string to copy the value to.
@@ -896,6 +933,8 @@ class DistributionStrategy(object):
       A `Tensor` on `destination`.
     """
     _require_cross_tower_context(self)
+    assert isinstance(destination, six.string_types)
+    destination = device_util.resolve(destination)
     return self._fetch(val, destination, fn)
 
   def _fetch(self, val, destination, fn):
@@ -926,7 +965,7 @@ class DistributionStrategy(object):
       return control_flow_ops.group(value, name=name)
     # Special handling for the common case of one op.
     v, = value
-    if isinstance(v, ops.Tensor):
+    if hasattr(v, "op"):
       v = v.op
     return v
 
@@ -1124,8 +1163,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
     def creator(next_creator, *args, **kwargs):
       _require_distribution_strategy_scope(self)
-      if kwargs.pop("tower_local_reduce_method", None) is not None:
-        kwargs["trainable"] = False
+      kwargs.pop("tower_local_reduce_method", None)
       return next_creator(*args, **kwargs)
 
     return _CurrentDistributionContext(
@@ -1135,7 +1173,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     """Does not set to resource variables."""
     def create_tower_local_variable(next_creator, *args, **kwargs):
       _require_distribution_strategy_scope(self)
-      kwargs["tower_local_reduce_method"] = reduce_method
+      kwargs["trainable"] = False
       return next_creator(*args, **kwargs)
 
     _require_distribution_strategy_scope(self)
@@ -1177,6 +1215,9 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     # once that value is used for something.
     with ops.colocate_with(colocate_with), UpdateContext(colocate_with):
       return fn(*args, **kwargs)
+
+  def read_var(self, tower_local_var):
+    return array_ops.identity(tower_local_var)
 
   def _fetch(self, var, destination, fn):
     with ops.colocate_with(var):

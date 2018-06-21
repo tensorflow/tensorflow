@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -331,6 +332,22 @@ TEST_F(LiteralUtilTest, NonScalarEquality) {
   EXPECT_NE(*matrix, *scalar);
   EXPECT_NE(*matrix, nil);
   EXPECT_EQ(nil, nil);
+}
+
+TEST_F(LiteralUtilTest, TokenEquality) {
+  auto token0 = Literal::CreateToken();
+  auto token1 = Literal::CreateToken();
+  auto scalar = Literal::CreateR0<float>(1.0);
+
+  EXPECT_EQ(*token0, *token1);
+  EXPECT_NE(*token0, *scalar);
+
+  EXPECT_EQ(*Literal::MakeTuple({token0.get()}),
+            *Literal::MakeTuple({token0.get()}));
+  EXPECT_EQ(*Literal::MakeTuple({token0.get(), scalar.get()}),
+            *Literal::MakeTuple({token1.get(), scalar.get()}));
+  EXPECT_NE(*Literal::MakeTuple({token0.get(), scalar.get()}),
+            *Literal::MakeTuple({scalar.get(), token1.get()}));
 }
 
 TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
@@ -974,7 +991,7 @@ TEST_F(LiteralUtilTest, CopyFromTuples) {
                                    Literal::CreateR1<double>({2.0, 4.0}).get(),
                                    &nil_literal});
 
-  EXPECT_EQ(*matrix, LiteralView::Create(*nested_tuple, {0}));
+  EXPECT_EQ(*matrix, LiteralSlice(*nested_tuple, {0}));
   EXPECT_EQ(nested_tuple->Get<int32>({}, {1, 0}), 42);
   EXPECT_EQ(nested_tuple->Get<double>({0}, {1, 1}), 23.0);
   EXPECT_EQ(nested_tuple->Get<double>({1}, {1, 1}), 44.0);
@@ -985,7 +1002,7 @@ TEST_F(LiteralUtilTest, CopyFromTuples) {
                                       /*src_shape_index=*/{}));
 
   // The matrix element should be unchanged.
-  EXPECT_EQ(*matrix, LiteralView::Create(*nested_tuple, {0}));
+  EXPECT_EQ(*matrix, LiteralSlice(*nested_tuple, {0}));
 
   // The tuple element should have been copied from 'tuple'.
   EXPECT_EQ(nested_tuple->Get<int32>({}, {1, 0}), -5);
@@ -1065,7 +1082,7 @@ TEST_F(LiteralUtilTest, Populate) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
-    auto literal = Literal::CreateFromShape(shape);
+    auto literal = MakeUnique<Literal>(shape);
     auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
@@ -1107,7 +1124,7 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
         data.layout);
-    auto literal = Literal::CreateFromShape(shape);
+    auto literal = MakeUnique<Literal>(shape);
     auto generator = [&](ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
@@ -1373,36 +1390,36 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   ASSERT_EQ(h1, r[3]);
 }
 
-TEST_F(LiteralUtilTest, LiteralViewTest) {
+TEST_F(LiteralUtilTest, LiteralSliceTest) {
   auto scalar = Literal::CreateR0<float>(1.0);
   auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
   auto nested_tuple = Literal::MakeTuple({tuple.get(), scalar.get()});
   Literal nil(ShapeUtil::MakeNil());
 
-  EXPECT_EQ(LiteralView::Create(*scalar, {}), *scalar);
-  EXPECT_EQ(LiteralView::Create(*matrix, {}), *matrix);
-  EXPECT_EQ(LiteralView::Create(*tuple, {}), *tuple);
-  EXPECT_EQ(LiteralView::Create(*nested_tuple, {}), *nested_tuple);
-  EXPECT_EQ(LiteralView::Create(nil, {}), nil);
+  EXPECT_EQ(LiteralSlice(*scalar, {}), *scalar);
+  EXPECT_EQ(LiteralSlice(*matrix, {}), *matrix);
+  EXPECT_EQ(LiteralSlice(*tuple, {}), *tuple);
+  EXPECT_EQ(LiteralSlice(*nested_tuple, {}), *nested_tuple);
+  EXPECT_EQ(LiteralSlice(nil, {}), nil);
 
-  EXPECT_EQ(LiteralView::Create(*tuple, {0}), *scalar);
-  EXPECT_EQ(LiteralView::Create(*tuple, {1}), *matrix);
+  EXPECT_EQ(LiteralSlice(*tuple, {0}), *scalar);
+  EXPECT_EQ(LiteralSlice(*tuple, {1}), *matrix);
 
-  EXPECT_EQ(LiteralView::Create(*nested_tuple, {0}), *tuple);
-  EXPECT_EQ(LiteralView::Create(*nested_tuple, {0, 0}), *scalar);
-  EXPECT_EQ(LiteralView::Create(*nested_tuple, {0, 1}), *matrix);
-  EXPECT_EQ(LiteralView::Create(*nested_tuple, {1}), *scalar);
+  EXPECT_EQ(LiteralSlice(*nested_tuple, {0}), *tuple);
+  EXPECT_EQ(LiteralSlice(*nested_tuple, {0, 0}), *scalar);
+  EXPECT_EQ(LiteralSlice(*nested_tuple, {0, 1}), *matrix);
+  EXPECT_EQ(LiteralSlice(*nested_tuple, {1}), *scalar);
 }
 
-TEST_F(LiteralUtilTest, MutatingLiteralView) {
+TEST_F(LiteralUtilTest, MutatingLiteralSlice) {
   auto scalar = Literal::CreateR0<float>(1.0);
   auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
   auto nested_tuple = Literal::MakeTuple({tuple.get(), scalar.get()});
   // Verify that changing the underlying data beneath the view changes the
   // data of the view itself.
-  const auto nested_tuple_view = LiteralView::Create(*nested_tuple);
+  const auto nested_tuple_view = LiteralSlice(*nested_tuple);
   EXPECT_EQ(
       nested_tuple->Get<float>(/*multi_index=*/{}, /*shape_index=*/{0, 0}),
       1.0f);
@@ -1418,17 +1435,55 @@ TEST_F(LiteralUtilTest, MutatingLiteralView) {
             555.0f);
 }
 
-TEST_F(LiteralUtilTest, LiteralViewOfALiteralView) {
+TEST_F(LiteralUtilTest, LiteralSliceOfALiteralSlice) {
   auto scalar = Literal::CreateR0<float>(1.0);
   auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
   auto nested_tuple = Literal::MakeTuple({tuple.get(), scalar.get()});
 
-  const auto nested_tuple_view = LiteralView::Create(*nested_tuple);
-  const auto tuple_view =
-      LiteralView::Create(nested_tuple_view, /*view_root=*/{0});
-  const auto matrix_view = LiteralView::Create(tuple_view, /*view_root=*/{1});
+  const auto nested_tuple_view = LiteralSlice(*nested_tuple);
+  const auto tuple_view = LiteralSlice(nested_tuple_view, /*view_root=*/{0});
+  const auto matrix_view = LiteralSlice(tuple_view, /*view_root=*/{1});
   EXPECT_EQ(matrix_view, *Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}));
+}
+
+TEST_F(LiteralUtilTest, BorrowingLiteralFromOneBufferPtr) {
+  std::vector<int64> int64_values = {1, 2, 3};
+  const Shape literal_shape = ShapeUtil::MakeShape(S64, {3});
+
+  BorrowingLiteral literal(reinterpret_cast<const char*>(int64_values.data()),
+                           literal_shape);
+
+  EXPECT_EQ(literal.Get<int64>({0}), 1);
+  EXPECT_EQ(literal.Get<int64>({1}), 2);
+  EXPECT_EQ(literal.Get<int64>({2}), 3);
+}
+
+TEST_F(LiteralUtilTest, BorrowingLiteralFromMultipleBufferPtrs) {
+  std::vector<int64> one_two_three = {1, 2, 3};
+  const Shape one_two_three_shape = ShapeUtil::MakeShape(S64, {3});
+
+  std::vector<int64> hundred = {100};
+  const Shape hundred_shape = ShapeUtil::MakeShape(S64, {1});
+
+  std::vector<const char*> src_buf_ptrs;
+  src_buf_ptrs.emplace_back(
+      reinterpret_cast<const char*>(one_two_three.data()));
+  src_buf_ptrs.emplace_back(reinterpret_cast<const char*>(hundred.data()));
+  auto literal_tuple = BorrowingLiteral(
+      src_buf_ptrs,
+      ShapeUtil::MakeTupleShape({one_two_three_shape, hundred_shape}));
+
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{0}, /*shape_index=*/{0}),
+            1);
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{0}, /*shape_index=*/{1}),
+            100);
+
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{1}, /*shape_index=*/{0}),
+            2);
+
+  EXPECT_EQ(literal_tuple.Get<int64>(/*multi_index=*/{2}, /*shape_index=*/{0}),
+            3);
 }
 
 TEST_F(LiteralUtilTest, LiteralMove) {
@@ -1533,11 +1588,11 @@ TEST_F(LiteralUtilTest, LiteralMoveAssignment) {
   EXPECT_EQ(literal.Get<float>({1, 1}), 4.0);
 }
 
-TEST_F(LiteralUtilTest, LiteralViewCopy) {
+TEST_F(LiteralUtilTest, LiteralSliceCopy) {
   std::unique_ptr<Literal> matrix =
       Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
-  const auto matrix_view = LiteralView::Create(*matrix);
-  LiteralView matrix_view_copy(matrix_view);
+  const auto matrix_view = LiteralSlice(*matrix);
+  LiteralSlice matrix_view_copy(matrix_view);
 
   EXPECT_EQ(matrix_view_copy.Get<float>({0, 0}), 1.0);
   EXPECT_EQ(matrix_view_copy.Get<float>({0, 1}), 2.0);
@@ -1769,6 +1824,36 @@ TEST_F(LiteralUtilTest, GetSparseElementAsString) {
           std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
           ->GetSparseElementAsString(1),
       tensorflow::strings::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
+}
+
+TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {
+  std::unique_ptr<Literal> literal = Literal::CreateR1<int64>({1, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> broadcasted_literal,
+      literal->Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
+          /*dimensions=*/{0}));
+  EXPECT_EQ(*broadcasted_literal, *Literal::CreateR2<int64>({{1, 1}, {2, 2}}));
+}
+
+TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
+  std::unique_ptr<Literal> literal = Literal::CreateR1<int64>({1, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> broadcasted_literal,
+      literal->Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
+          /*dimensions=*/{1}));
+  EXPECT_EQ(*broadcasted_literal, *Literal::CreateR2<int64>({{1, 2}, {1, 2}}));
+}
+
+TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
+  std::unique_ptr<Literal> literal = Literal::CreateR0<int32>(9);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> broadcasted_literal,
+      literal->Broadcast(
+          /*result_shape=*/ShapeUtil::MakeShape(S32, {2, 2}),
+          /*dimensions=*/{}));
+  EXPECT_EQ(*broadcasted_literal, *Literal::CreateR2<int32>({{9, 9}, {9, 9}}));
 }
 
 }  // namespace

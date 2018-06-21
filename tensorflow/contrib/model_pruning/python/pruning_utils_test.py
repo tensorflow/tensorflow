@@ -22,14 +22,40 @@ import numpy as np
 
 from tensorflow.contrib.model_pruning.python import pruning_utils
 from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
 class PruningUtilsTest(test.TestCase):
+
+  def _compare_cdf(self, values):
+    abs_values = math_ops.abs(values)
+    max_value = math_ops.reduce_max(abs_values)
+    with self.test_session():
+      variables.global_variables_initializer().run()
+      cdf_from_histogram = pruning_utils.compute_cdf_from_histogram(
+          abs_values, [0.0, max_value], nbins=pruning_utils._NBINS)
+      cdf = pruning_utils.compute_cdf(abs_values, [0.0, max_value])
+      self.assertAllEqual(cdf.eval(), cdf_from_histogram.eval())
+
+  def _compare_pooling_methods(self, weights, pooling_kwargs):
+    with self.test_session():
+      variables.global_variables_initializer().run()
+      pooled_weights_tf = array_ops.squeeze(
+          nn_ops.pool(
+              array_ops.reshape(
+                  weights,
+                  [1, weights.get_shape()[0],
+                   weights.get_shape()[1], 1]), **pooling_kwargs))
+      pooled_weights_factorized_pool = pruning_utils.factorized_pool(
+          weights, **pooling_kwargs)
+      self.assertAllClose(pooled_weights_tf.eval(),
+                          pooled_weights_factorized_pool.eval())
 
   def testHistogram(self):
     width = 10
@@ -59,27 +85,35 @@ class PruningUtilsTest(test.TestCase):
       self.assertAllEqual(len(norm_cdf_val), nbins)
       self.assertAllEqual(expected_cdf, norm_cdf_val)
 
-  def _compare_cdf(self, values):
-    abs_values = math_ops.abs(values)
-    max_value = math_ops.reduce_max(abs_values)
-    with self.test_session():
-      variables.global_variables_initializer().run()
-      cdf_from_histogram = pruning_utils.compute_cdf_from_histogram(
-          abs_values, [0.0, max_value], nbins=pruning_utils._NBINS)
-      cdf = pruning_utils.compute_cdf(abs_values, [0.0, max_value])
-      return cdf.eval(), cdf_from_histogram.eval()
-
   def testCDFEquivalence2D(self):
     width = 100
     height = 100
     weights = variable_scope.get_variable("weights", shape=[width, height])
-    cdf_val, cdf_from_histogram_val = self._compare_cdf(weights)
-    self.assertAllEqual(cdf_val, cdf_from_histogram_val)
+    self._compare_cdf(weights)
 
   def testCDFEquivalence4D(self):
     weights = variable_scope.get_variable("weights", shape=[5, 5, 128, 128])
-    cdf_val, cdf_from_histogram_val = self._compare_cdf(weights)
-    self.assertAllEqual(cdf_val, cdf_from_histogram_val)
+    self._compare_cdf(weights)
+
+  def testFactorizedAvgPool(self):
+    weights = variable_scope.get_variable("weights", shape=[1024, 2048])
+    pooling_kwargs = {
+        "window_shape": [2, 4],
+        "pooling_type": "AVG",
+        "strides": [2, 4],
+        "padding": "SAME"
+    }
+    self._compare_pooling_methods(weights, pooling_kwargs)
+
+  def testFactorizedMaxPool(self):
+    weights = variable_scope.get_variable("weights", shape=[1024, 2048])
+    pooling_kwargs = {
+        "window_shape": [2, 4],
+        "pooling_type": "MAX",
+        "strides": [2, 4],
+        "padding": "SAME"
+    }
+    self._compare_pooling_methods(weights, pooling_kwargs)
 
 
 if __name__ == "__main__":

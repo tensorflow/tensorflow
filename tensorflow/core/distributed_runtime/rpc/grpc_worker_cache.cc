@@ -115,7 +115,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
 
   size_t AssignWorkerToThread(const string& target) {
     // Round-robin target assignment, but keeps the same target on the same
-    // polling thread always, as this is important for gRPC performace
+    // polling thread always, as this is important for gRPC performance
     mutex_lock lock(assignment_mu_);
     auto it = target_assignments_.find(target);
     if (it == target_assignments_.end()) {

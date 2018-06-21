@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 
@@ -131,6 +132,27 @@ class HloShardingMatcher
   tensorflow::gtl::optional<HloSharding> sharding_;
 };
 
+// Matches a Dot HLO instruction with specific LHS and RHS contracting
+// dimensions.
+class HloDotWithContractingDimsMatcher : public HloMatcher {
+ public:
+  explicit HloDotWithContractingDimsMatcher(
+      ::testing::Matcher<const HloInstruction*> lhs,
+      ::testing::Matcher<const HloInstruction*> rhs, int64 lhs_contracting_dim,
+      int64 rhs_contracting_dim)
+      : HloMatcher(HloOpcode::kDot, /*operands=*/{lhs, rhs}),
+        lhs_contracting_dim_(lhs_contracting_dim),
+        rhs_contracting_dim_(rhs_contracting_dim) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  int64 lhs_contracting_dim_;
+  int64 rhs_contracting_dim_;
+};
+
 // HloInstruction* matchers for opcode and operands. Example:
 //   namespace op = xla::opcode_matchers;
 //   EXPECT_THAT(instruction,
@@ -158,7 +180,6 @@ HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
 HLO_MATCHER(CrossReplicaSum);
 HLO_MATCHER(Divide);
-HLO_MATCHER(Dot);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
 HLO_MATCHER(Eq);
@@ -166,6 +187,7 @@ HLO_MATCHER(Exp);
 HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);
 HLO_MATCHER(Ge);
+HLO_MATCHER(GenerateToken);
 HLO_MATCHER(Gt);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(IsFinite);
@@ -304,10 +326,40 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
   return ::testing::MakeMatcher(
       new ::xla::testing::HloShardingMatcher(sharding));
 }
+// Matcher for Sharding from sharding string
+inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
+    tensorflow::StringPiece sharding) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloShardingMatcher(
+      ParseSharding(sharding).ValueOrDie()));
+}
 // Verifies that no HloSharding is set for an HLO instruction.
 inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloShardingMatcher(tensorflow::gtl::nullopt));
+}
+
+inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
+    ::testing::Matcher<const HloInstruction*> lhs_matcher,
+    ::testing::Matcher<const HloInstruction*> rhs_matcher) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(
+      ::xla::HloOpcode::kDot, {lhs_matcher, rhs_matcher}));
+}
+
+// Matches a Dot HLO instruction if it has exactly one lhs contracting dimension
+// equal to `lhs_contracting_dim` and exactly one rhs contracting dimension
+// equal to `rhs_contracting_dim`.
+//
+// Currently the HLO verifier rejects Dot operations with more than one
+// contracting dimension (even though we can represent these in the
+// DotDimensionNumbers proto) so there is no need to generalize this to support
+// multiple contracting dimensions.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
+    ::testing::Matcher<const HloInstruction*> lhs_matcher,
+    ::testing::Matcher<const HloInstruction*> rhs_matcher,
+    int64 lhs_contracting_dim, int64 rhs_contracting_dim) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloDotWithContractingDimsMatcher(
+          lhs_matcher, rhs_matcher, lhs_contracting_dim, rhs_contracting_dim));
 }
 
 #undef HLO_MATCHER

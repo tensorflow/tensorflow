@@ -169,13 +169,10 @@ class DeviceBase {
     return nullptr;
   }
 
-  // Return the Allocator implementation to use based on the allocator
-  // attributes requested and the supplied resource manager. By
-  // default this ignores the resource manager and calls the base
-  // implementation but devices can override if they want to consult
-  // the resource manager when choosing the allocator.
-  virtual Allocator* GetStepAllocator(AllocatorAttributes attr,
-                                      ResourceMgr* /*step_resource_manager*/) {
+  // DEPRECATED: Use `this->GetAllocator()` or `this->GetScopedAllocator()`.
+  // This method is provided for backwards compatibility, and will be removed
+  // in a future release.
+  Allocator* GetStepAllocator(AllocatorAttributes attr, ResourceMgr*) {
     return GetAllocator(attr);
   }
 

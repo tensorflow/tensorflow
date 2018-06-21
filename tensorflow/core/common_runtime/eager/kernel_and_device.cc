@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -77,6 +79,7 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   params.function_library = flib_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
+  params.cancellation_manager = &cm_;
   if (stats != nullptr) {
     params.track_allocations = true;
   }
@@ -84,6 +87,11 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   std::function<void(std::function<void()>)> runner =
       [](std::function<void()> f) { f(); };
   params.runner = &runner;
+
+  ScopedStepContainer step_container(0, [this](const string& name) {
+    device_->resource_manager()->Cleanup(name).IgnoreError();
+  });
+  params.step_container = &step_container;
 
   OpKernelContext context(&params);
 

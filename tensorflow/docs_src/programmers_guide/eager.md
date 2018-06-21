@@ -118,13 +118,14 @@ it is easy to write [fizzbuzz](https://en.wikipedia.org/wiki/Fizz_buzz):
 ```py
 def fizzbuzz(max_num):
   counter = tf.constant(0)
-  for num in range(max_num):
+  max_num = tf.convert_to_tensor(max_num)
+  for num in range(max_num.numpy()):
     num = tf.constant(num)
-    if num % 3 == 0 and num % 5 == 0:
+    if int(num % 3) == 0 and int(num % 5) == 0:
       print('FizzBuzz')
-    elif num % 3 == 0:
+    elif int(num % 3) == 0:
       print('Fizz')
-    elif num % 5 == 0:
+    elif int(num % 5) == 0:
       print('Buzz')
     else:
       print(num)
@@ -148,16 +149,17 @@ it to implement your own layer:
 ```py
 class MySimpleLayer(tf.keras.layers.Layer):
   def __init__(self, output_units):
+    super(MySimpleLayer, self).__init__()
     self.output_units = output_units
 
-  def build(self, input):
+  def build(self, input_shape):
     # The build method gets called the first time your layer is used.
     # Creating variables on build() allows you to make their shape depend
-    # on the input shape and hence remove the need for the user to specify
+    # on the input shape and hence removes the need for the user to specify
     # full shapes. It is possible to create variables during __init__() if
     # you already know their full shapes.
     self.kernel = self.add_variable(
-      "kernel", [input.shape[-1], self.output_units])
+      "kernel", [input_shape[-1], self.output_units])
 
   def call(self, input):
     # Override call() instead of __call__ so we can perform some bookkeeping.
@@ -227,8 +229,8 @@ w = tfe.Variable([[1.0]])
 with tf.GradientTape() as tape:
   loss = w * w
 
-grad = tape.gradient(loss, [w])
-print(grad)  # => [tf.Tensor([[ 2.]], shape=(1, 1), dtype=float32)]
+grad = tape.gradient(loss, w)
+print(grad)  # => tf.Tensor([[ 2.]], shape=(1, 1), dtype=float32)
 ```
 
 Here's an example of `tf.GradientTape` that records forward-pass operations
@@ -596,7 +598,7 @@ def line_search_step(fn, init_x, rate=1.0):
     # Variables are automatically recorded, but manually watch a tensor
     tape.watch(init_x)
     value = fn(init_x)
-  grad, = tape.gradient(value, [init_x])
+  grad = tape.gradient(value, init_x)
   grad_norm = tf.reduce_sum(grad * grad)
   init_value = value
   while value > init_value - rate * grad_norm:

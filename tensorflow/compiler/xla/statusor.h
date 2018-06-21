@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// StatusOr<T> is the union of a Status object and a T
-// object. StatusOr models the concept of an object that is either a
-// usable value, or an error Status explaining why such a value is
-// not present. To this end, StatusOr<T> does not allow its Status
-// value to be Status::OK. Furthermore, the value of a StatusOr<T*>
-// must not be null. This is enforced by a debug check in most cases,
-// but even when it is not, clients must not set the value to null.
+// StatusOr<T> is the union of a Status object and a T object. StatusOr models
+// the concept of an object that is either a value, or an error Status
+// explaining why such a value is not present. To this end, StatusOr<T> does not
+// allow its Status value to be Status::OK.
 //
 // The primary use-case for StatusOr<T> is as the return value of a
 // function which may fail.

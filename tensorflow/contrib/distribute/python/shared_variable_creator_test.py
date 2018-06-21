@@ -44,7 +44,6 @@ class CanonicalizeVariableNameTest(test.TestCase):
     self.assertEquals("foo_a", self._canonicalize("foo_a"))
 
 
-@test_util.with_c_api
 class SharedVariableCreatorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()

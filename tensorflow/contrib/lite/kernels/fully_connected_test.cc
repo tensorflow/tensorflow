@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
 #include "tensorflow/contrib/lite/model.h"
@@ -224,6 +225,60 @@ class QuantizedFullyConnectedOpModel : public BaseFullyConnectedOpModel {
   }
 };
 
+// In the hybrid model the weights are quantized (to uint8). But the bias,
+// input (and output) are expected to be in float precision.
+class HybridFullyConnectedOpModel : public SingleOpModel {
+ public:
+  HybridFullyConnectedOpModel(int units, int batches, const TensorData& input,
+                              const TensorData& weights,
+                              const TensorData& output = {TensorType_FLOAT32})
+      : batches_(batches), units_(units) {
+    int total_input_size = 1;
+    for (int i = 0; i < input.shape.size(); ++i) {
+      total_input_size *= input.shape[i];
+    }
+    input_size_ = total_input_size / batches_;
+
+    input_ = AddInput(input);
+    weights_ = AddInput(weights);
+
+    TensorData bias{TensorType_FLOAT32, {units_}};
+    bias_ = AddInput(bias);
+
+    output_ = AddOutput(output);
+
+    SetBuiltinOp(
+        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_RELU)
+            .Union());
+    resolver_ = absl::make_unique<SingleOpResolver>(
+        BuiltinOperator_FULLY_CONNECTED,
+        ops::builtin::Register_FULLY_CONNECTED_PIE());
+    BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)});
+  }
+  void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
+  void SetWeights(std::initializer_list<float> data) {
+    SymmetricQuantizeAndPopulate(weights_, data);
+  }
+
+  void SetInput(std::initializer_list<float> f) { PopulateTensor(input_, f); }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+  int input_size() { return input_size_; }
+  int num_units() { return units_; }
+  int num_batches() { return batches_; }
+
+ protected:
+  int input_;
+  int weights_;
+  int bias_;
+  int output_;
+
+  int batches_;
+  int units_;
+  int input_size_;
+};
+
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
     {"NeonOptimized", ops::builtin::Register_FULLY_CONNECTED_NEON_OPT()},
@@ -231,18 +286,43 @@ const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
 });
 
-class FullyConnectedOpTest : public SingleOpTest {
+class FloatFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
     return *kKernelMap;
   }
 };
 
+const auto kKernelMapNoPie = new std::map<string, TfLiteRegistration*>({
+    {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
+    {"NeonOptimized", ops::builtin::Register_FULLY_CONNECTED_NEON_OPT()},
+    {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
+});
+
+class QuantizedFullyConnectedOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kKernelMapNoPie;
+  }
+};
+
+const auto kKernelMapPie = new std::map<string, TfLiteRegistration*>({
+    {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
+});
+
+// Hybrid mode is used by the Pie quantized kernel.
+class HybridFullyConnectedOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kKernelMapPie;
+  }
+};
+
 // TODO(ahentz): add more small tests like this one, focused on making sure the
 // calculations are correct.
-TEST_P(FullyConnectedOpTest, SimpleTest) {
-  FloatFullyConnectedOpModel m(GetRegistration(), 3, 2,
-                               {TensorType_FLOAT32, {2, 10}});
+TEST_P(FloatFullyConnectedOpTest, SimpleTest) {
+  FloatFullyConnectedOpModel m(GetRegistration(), /*units=*/3, /*batches=*/2,
+                               /*input=*/{TensorType_FLOAT32, {2, 10}});
   m.SetWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
@@ -260,9 +340,9 @@ TEST_P(FullyConnectedOpTest, SimpleTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAre(24, 25, 26, 58, 59, 60));
 }
 
-TEST_P(FullyConnectedOpTest, SimpleTestQuantized) {
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantized) {
   QuantizedFullyConnectedOpModel m(
-      GetRegistration(), 3, 2,
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
       /*input=*/{TensorType_UINT8, {2, 10}, -63.5, 64},
       /*output=*/{TensorType_UINT8, {}, -127, 128});
 
@@ -288,13 +368,40 @@ TEST_P(FullyConnectedOpTest, SimpleTestQuantized) {
   EXPECT_THAT(m.GetOutput(), ElementsAre(151, 152, 153, 185, 186, 187));
 }
 
-TEST(FullyConnectedOpTest, SimpleTest4DInput) {
+TEST(HybridFullyConnectedOpTest, SimpleTestQuantized) {
+  HybridFullyConnectedOpModel m(
+      /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 10}},
+      /*weights=*/{TensorType_UINT8, {3, 10}, -63.5, 64});  // PIE
+
+  m.SetWeights({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     24, 25, 26,  //
+                                     58, 59, 60,  //
+                                 },
+                                 /*max_abs_error=*/1.3f)));
+}
+
+TEST(FloatFullyConnectedOpTest, SimpleTest4DInput) {
   // Note that it is not required that the first dimension be the number of
   // batches. All we care is that the input can be evenly distributed in
   // batches. In this case, we need the input to have multiples of '2'.
   FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),
-                               /*units=*/3,
-                               /*batches=*/2,
+                               /*units=*/3, /*batches=*/2,
                                /*input=*/{TensorType_FLOAT32, {4, 1, 5, 1}});
   m.SetWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
@@ -316,9 +423,9 @@ TEST(FullyConnectedOpTest, SimpleTest4DInput) {
                              }));
 }
 
-TEST_P(FullyConnectedOpTest, SimpleTest4dInputQuantized) {
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTest4dInputQuantized) {
   QuantizedFullyConnectedOpModel m(
-      GetRegistration(), 3, 2,
+      GetRegistration(), /*units=*/3, /*batches=*/2,
       /*input=*/{TensorType_UINT8, {4, 1, 5, 1}, -63.5, 64},
       /*output=*/{TensorType_UINT8, {}, -127, 128});
 
@@ -345,14 +452,18 @@ TEST_P(FullyConnectedOpTest, SimpleTest4dInputQuantized) {
 }
 
 INSTANTIATE_TEST_CASE_P(
-    FullyConnectedOpTest, FullyConnectedOpTest,
+    FloatFullyConnectedOpTest, FloatFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
+
+INSTANTIATE_TEST_CASE_P(
+    QuantizedFullyConnectedOpTest, QuantizedFullyConnectedOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
 
 // TODO(ahentz): Reconsider this test. Having arbitrary weights makes it hard
 // to debug errors and doesn't necessarily test all the important details.
-TEST_P(FullyConnectedOpTest, BlackBoxTest) {
-  FloatFullyConnectedOpModel m(GetRegistration(), 16, 2,
-                               {TensorType_FLOAT32, {2, 8}});
+TEST_P(FloatFullyConnectedOpTest, BlackBoxTest) {
+  FloatFullyConnectedOpModel m(GetRegistration(), /*units=*/16, /*batches=*/2,
+                               /*input=*/{TensorType_FLOAT32, {2, 8}});
   m.SetWeights(
       {0.091327,  0.103366,  -0.316505, -0.083120, 0.149366,  -0.196636,
        -0.123672, 0.062800,  0.063031,  0.191670,  -0.062001, -0.061504,

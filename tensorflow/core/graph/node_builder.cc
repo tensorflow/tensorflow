@@ -30,7 +30,7 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
       dt(SafeGetOutput(node, i, &error)) {}
 
 NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
-    : node(nullptr), error(false), name(n.ToString()), index(i), dt(t) {}
+    : node(nullptr), error(false), name(std::string(n)), index(i), dt(t) {}
 
 NodeBuilder::NodeOut::NodeOut()
     : node(nullptr), error(true), index(0), dt(DT_FLOAT) {}

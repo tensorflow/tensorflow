@@ -128,7 +128,7 @@ class GraphDefBuilder {
     Options WithControlInputsImpl(gtl::ArraySlice<Node*> control_inputs);
     template <class T>
     Options WithAttrImpl(StringPiece name, T&& value) {
-      attrs_.emplace_back(name.ToString(), AttrValue());
+      attrs_.emplace_back(std::string(name), AttrValue());
       SetAttrValue(std::forward<T>(value), &attrs_.back().second);
       return *this;
     }

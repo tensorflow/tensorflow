@@ -23,11 +23,12 @@ import copy
 import gast
 
 from tensorflow.contrib.autograph.pyct import anno
+from tensorflow.contrib.autograph.pyct import qual_names
 from tensorflow.contrib.autograph.pyct import transformer
-from tensorflow.contrib.autograph.pyct.qual_names import QN
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 # TODO(mdan): Add support for PY3 (e.g. Param vs arg).
+# TODO(alexbw): Ignore named literals (e.g. None)
 
 
 class Scope(object):
@@ -43,16 +44,20 @@ class Scope(object):
     used: identifiers referenced in this scope
   """
 
-  def __init__(self, parent, isolated=True):
+  def __init__(self, parent, isolated=True, add_unknown_symbols=False):
     """Create a new scope.
 
     Args:
       parent: A Scope or None.
       isolated: Whether the scope is isolated, that is, whether variables
           created in this scope should be visible to the parent scope.
+      add_unknown_symbols: Whether to handle attributed and subscripts
+          without having first seen the base name.
+          E.g., analyzing the statement 'x.y = z' without first having seen 'x'.
     """
     self.isolated = isolated
     self.parent = parent
+    self.add_unknown_symbols = add_unknown_symbols
     self.modified = set()
     self.created = set()
     self.used = set()
@@ -134,13 +139,17 @@ class Scope(object):
     self.params.add(name)
 
   def mark_creation(self, name, writes_create_symbol=False):
+    """Mark a qualified name as created."""
     if name.is_composite():
       parent = name.parent
-      if self.has(parent):
-        if not writes_create_symbol:
-          return
+      if not writes_create_symbol:
+        return
       else:
-        raise ValueError('Unknown symbol "%s".' % parent)
+        if not self.has(parent):
+          if self.add_unknown_symbols:
+            self.mark_read(parent)
+          else:
+            raise ValueError('Unknown symbol "%s".' % parent)
     self.created.add(name)
 
   def mark_write(self, name):
@@ -163,17 +172,25 @@ class Scope(object):
 
 
 class ActivityAnalyzer(transformer.Base):
-  """Annotates nodes with local scope information. See Scope."""
+  """Annotates nodes with local scope information.
 
-  def __init__(self, context, parent_scope):
+  See Scope.
+
+  The use of this class requires that qual_names.resolve() has been called on
+  the node. This class will ignore nodes have not been
+  annotated with their qualified names.
+  """
+
+  def __init__(self, context, parent_scope=None, add_unknown_symbols=False):
     super(ActivityAnalyzer, self).__init__(context)
-    self.scope = Scope(parent_scope)
+    self.scope = Scope(parent_scope, None, add_unknown_symbols)
     self._in_return_statement = False
+    self._in_aug_assign = False
 
   @property
   def _in_constructor(self):
-    innermost = self.enclosing_entities[-1]
     if len(self.enclosing_entities) > 1:
+      innermost = self.enclosing_entities[-1]
       parent = self.enclosing_entities[-2]
       return isinstance(parent, gast.ClassDef) and innermost.name == '__init__'
     return False
@@ -184,6 +201,7 @@ class ActivityAnalyzer(transformer.Base):
       # TODO(mdan): The 'self' argument is not guaranteed to be called 'self'.
       if qn.has_attr and qn.parent.qn == ('self',):
         return True
+    return False
 
   def _track_symbol(self,
                     node,
@@ -201,12 +219,14 @@ class ActivityAnalyzer(transformer.Base):
         self.scope.mark_write(qn.parent)
       if writes_create_symbol:
         self.scope.mark_creation(qn, writes_create_symbol=True)
+      if self._in_aug_assign:
+        self.scope.mark_read(qn)
     elif isinstance(node.ctx, gast.Load):
       self.scope.mark_read(qn)
     elif isinstance(node.ctx, gast.Param):
       # Param contexts appear in function defs, so they have the meaning of
       # defining a variable.
-      # TODO(mdan): This bay be incorrect with nested functions.
+      # TODO(mdan): This may be incorrect with nested functions.
       # For nested functions, we'll have to add the notion of hiding args from
       # the parent scope, not writing to them.
       self.scope.mark_creation(qn)
@@ -221,6 +241,14 @@ class ActivityAnalyzer(transformer.Base):
 
     if self._in_return_statement:
       self.scope.mark_returned(qn)
+
+  def visit_AugAssign(self, node):
+    # Special rules for AugAssign. In Assign, the target is only written,
+    # but in AugAssig (e.g. a += b), the target is both read and written.
+    self._in_aug_assign = True
+    self.generic_visit(node)
+    self._in_aug_assign = False
+    return node
 
   def visit_Name(self, node):
     self.generic_visit(node)
@@ -295,7 +323,7 @@ class ActivityAnalyzer(transformer.Base):
 
   def visit_FunctionDef(self, node):
     if self.scope:
-      qn = QN(node.name)
+      qn = qual_names.QN(node.name)
       self.scope.mark_write(qn)
     current_scope = self.scope
     body_scope = Scope(current_scope, isolated=True)
@@ -353,6 +381,33 @@ class ActivityAnalyzer(transformer.Base):
     node = self.generic_visit(node)
     self._in_return_statement = False
     return node
+
+
+def get_read(node, context):
+  """Return the variable names as QNs (qual_names.py) read by this statement."""
+  analyzer = ActivityAnalyzer(context, None, True)
+  analyzer.visit(node)
+  return analyzer.scope.used
+
+
+def get_updated(node, context):
+  """Return the variable names created or mutated by this statement.
+
+  This function considers assign statements, augmented assign statements, and
+  the targets of for loops, as well as function arguments.
+  For example, `x[0] = 2` will return `x`, `x, y = 3, 4` will return `x` and
+  `y`, `for i in range(x)` will return `i`, etc.
+  Args:
+    node: An AST node
+    context: An EntityContext instance
+
+  Returns:
+    A set of variable names (QNs, see qual_names.py) of all the variables
+    created or mutated.
+  """
+  analyzer = ActivityAnalyzer(context, None, True)
+  analyzer.visit(node)
+  return analyzer.scope.created | analyzer.scope.modified
 
 
 def resolve(node, context, parent_scope=None):

@@ -33,27 +33,85 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
+
+// TODO(b/77858996): Add these to gemmlowp.
+template <typename IntegerType>
+IntegerType SaturatingAddNonGemmlowp(IntegerType a, IntegerType b) {
+  static_assert(std::is_same<IntegerType, void>::value, "unimplemented");
+  return a;
+}
+
+template <>
+inline std::int32_t SaturatingAddNonGemmlowp(std::int32_t a, std::int32_t b) {
+  std::int64_t a64 = a;
+  std::int64_t b64 = b;
+  std::int64_t sum = a64 + b64;
+  return static_cast<std::int32_t>(std::min(
+      static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()),
+      std::max(
+          static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
+          sum)));
+}
+
+template <typename tRawType, int tIntegerBits>
+gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingAddNonGemmlowp(
+    gemmlowp::FixedPoint<tRawType, tIntegerBits> a,
+    gemmlowp::FixedPoint<tRawType, tIntegerBits> b) {
+  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
+      SaturatingAddNonGemmlowp(a.raw(), b.raw()));
+}
+
+template <typename IntegerType>
+IntegerType SaturatingSub(IntegerType a, IntegerType b) {
+  static_assert(std::is_same<IntegerType, void>::value, "unimplemented");
+  return a;
+}
+
+template <>
+inline std::int16_t SaturatingSub(std::int16_t a, std::int16_t b) {
+  std::int32_t a32 = a;
+  std::int32_t b32 = b;
+  std::int32_t diff = a32 - b32;
+  return static_cast<std::int16_t>(std::min(32767, std::max(-32768, diff)));
+}
+
+template <>
+inline std::int32_t SaturatingSub(std::int32_t a, std::int32_t b) {
+  std::int64_t a64 = a;
+  std::int64_t b64 = b;
+  std::int64_t diff = a64 - b64;
+  return static_cast<std::int32_t>(std::min(
+      static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()),
+      std::max(
+          static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
+          diff)));
+}
+
+template <typename tRawType, int tIntegerBits>
+gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingSub(
+    gemmlowp::FixedPoint<tRawType, tIntegerBits> a,
+    gemmlowp::FixedPoint<tRawType, tIntegerBits> b) {
+  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
+      SaturatingSub(a.raw(), b.raw()));
+}
+// End section to be moved to gemmlowp.
+
 namespace reference_ops {
 
-inline int32 MultiplyByQuantizedMultiplierSmallerThanOne(
-    int32 x, int32 quantized_multiplier, int right_shift) {
-  using gemmlowp::RoundingDivideByPOT;
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  return RoundingDivideByPOT(
-      SaturatingRoundingDoublingHighMul(x, quantized_multiplier), right_shift);
-}
-
-inline int32 MultiplyByQuantizedMultiplierGreaterThanOne(
-    int32 x, int32 quantized_multiplier, int left_shift) {
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  return SaturatingRoundingDoublingHighMul(x * (1 << left_shift),
-                                           quantized_multiplier);
-}
+// TODO(b/80247582) Remove this constant.
+// This will be phased out as the shifts are revised with more thought. Use of a
+// constant enables us to track progress on this work.
+//
+// Used mainly to convert from old-style shifts (right) to new-style (left).
+static constexpr int kReverseShift = -1;
 
 template <typename T>
 int CountLeadingZeros(T integer_input) {
   static_assert(std::is_unsigned<T>::value,
                 "Only unsigned integer types handled.");
+  if (integer_input == 0) {
+    return std::numeric_limits<T>::digits;
+  }
   const T one_in_leading_positive = static_cast<T>(1)
                                     << (std::numeric_limits<T>::digits - 1);
   int leading_zeros = 0;
@@ -62,6 +120,42 @@ int CountLeadingZeros(T integer_input) {
     ++leading_zeros;
   }
   return leading_zeros;
+}
+
+template <typename IntegerType>
+IntegerType SaturatingRoundingMultiplyByPOTParam(IntegerType x, int exponent) {
+  if (exponent == 0) {
+    return x;
+  }
+  using ScalarIntegerType =
+      typename gemmlowp::FixedPointRawTypeTraits<IntegerType>::ScalarRawType;
+  const IntegerType min =
+      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::min());
+  const IntegerType max =
+      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::max());
+  const int ScalarIntegerTypeBits = 8 * sizeof(ScalarIntegerType);
+
+  const std::int32_t threshold =
+      ((1 << (ScalarIntegerTypeBits - 1 - exponent)) - 1);
+  const IntegerType positive_mask =
+      gemmlowp::MaskIfGreaterThan(x, gemmlowp::Dup<IntegerType>(threshold));
+  const IntegerType negative_mask =
+      gemmlowp::MaskIfLessThan(x, gemmlowp::Dup<IntegerType>(-threshold));
+
+  IntegerType result = gemmlowp::ShiftLeft(x, exponent);
+  result = gemmlowp::SelectUsingMask(positive_mask, max, result);
+  result = gemmlowp::SelectUsingMask(negative_mask, min, result);
+  return result;
+}
+
+// If we want to leave IntegerBits fixed, then multiplication
+// by a power of two has to be saturating/rounding, not exact anymore.
+template <typename tRawType, int tIntegerBits>
+gemmlowp::FixedPoint<tRawType, tIntegerBits>
+SaturatingRoundingMultiplyByPOTParam(
+    gemmlowp::FixedPoint<tRawType, tIntegerBits> a, int exponent) {
+  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
+      SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
 }
 
 // DO NOT USE THIS STRUCT FOR NEW FUNCTIONALITY BEYOND IMPLEMENTING ELEMENT-WISE
@@ -320,8 +414,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
           if (bias_data) {
             acc += bias_data[Offset(bias_dims, out_channel, 0, 0, 0)];
           }
-          acc = MultiplyByQuantizedMultiplierSmallerThanOne(
-              acc, output_multiplier, output_shift);
+          acc = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+              acc, output_multiplier, kReverseShift * output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -544,8 +638,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       if (bias_data) {
         acc += bias_data[Offset(bias_dims, out_c, 0, 0, 0)];
       }
-      acc = MultiplyByQuantizedMultiplierSmallerThanOne(acc, output_multiplier,
-                                                        output_shift);
+      acc = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          acc, output_multiplier, kReverseShift * output_shift);
       acc += output_offset;
       acc = std::max(acc, output_activation_min);
       acc = std::min(acc, output_activation_max);
@@ -856,11 +950,14 @@ inline void Relu6(const float* input_data, const Dims<4>& input_dims,
 }
 
 template <FusedActivationFunctionType Ac>
-void L2Normalization(const float* input_data, const Dims<4>& input_dims,
-                     float* output_data, const Dims<4>& output_dims) {
+void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
+                     float* output_data, const RuntimeShape& output_shape) {
   static_assert(Ac == FusedActivationFunctionType::kNone, "");
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
   for (int i = 0; i < outer_size; ++i) {
     float squared_l2_norm = 0;
     for (int c = 0; c < depth; ++c) {
@@ -874,8 +971,9 @@ void L2Normalization(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
-                                          int* output_shift) {
+inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
+                                             int32* output_inv_sqrt,
+                                             int* output_shift) {
   *output_shift = 11;
   while (input >= (1 << 29)) {
     input /= 4;
@@ -917,36 +1015,37 @@ inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
     *output_inv_sqrt <<= -*output_shift;
     *output_shift = 0;
   }
+  *output_shift *= kReverseShift;
 }
 
-inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
+inline void L2Normalization(const uint8* input_data,
+                            const RuntimeShape& input_shape,
                             int32 input_zero_point, uint8* output_data,
-                            const Dims<4>& output_dims) {
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  TFLITE_DCHECK_EQ(batches, 1);
-  TFLITE_DCHECK_EQ(height, 1);
-  TFLITE_DCHECK_EQ(width, 1);
-  int32 square_l2_norm = 0;
-  for (int i = 0; i < depth; i++) {
-    int32 diff = input_data[Offset(input_dims, i, 0, 0, 0)] - input_zero_point;
-    square_l2_norm += diff * diff;
-  }
-  int32 inv_l2norm_multiplier;
-  int inv_l2norm_shift;
-  GetInvSqrtQuantizedMultiplier(square_l2_norm, &inv_l2norm_multiplier,
-                                &inv_l2norm_shift);
+                            const RuntimeShape& output_shape) {
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  for (int i = 0; i < outer_size; ++i) {
+    int32 square_l2_norm = 0;
+    for (int c = 0; c < depth; c++) {
+      int32 diff = input_data[depth * i + c] - input_zero_point;
+      square_l2_norm += diff * diff;
+    }
+    int32 inv_l2norm_multiplier;
+    int inv_l2norm_shift;
+    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, &inv_l2norm_multiplier,
+                                     &inv_l2norm_shift);
 
-  for (int i = 0; i < depth; i++) {
-    int32 diff = input_data[Offset(input_dims, i, 0, 0, 0)] - input_zero_point;
-    int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOne(
-        128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
-    int32 unclamped_output_val = 128 + rescaled_diff;
-    int32 output_val = std::min(255, std::max(0, unclamped_output_val));
-    output_data[Offset(output_dims, i, 0, 0, 0)] =
-        static_cast<uint8>(output_val);
+    for (int c = 0; c < depth; c++) {
+      int32 diff = input_data[depth * i + c] - input_zero_point;
+      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
+      int32 unclamped_output_val = 128 + rescaled_diff;
+      int32 output_val = std::min(255, std::max(0, unclamped_output_val));
+      output_data[depth * i + c] = static_cast<uint8>(output_val);
+    }
   }
 }
 
@@ -1012,15 +1111,17 @@ inline void Add(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sum = scaled_input1_val + scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sum, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sum, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -1050,9 +1151,7 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
     TFLITE_DCHECK_EQ(output_activation_max, 32767);
   }
 
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
   TFLITE_DCHECK(input1_shift == 0 || input2_shift == 0);
   TFLITE_DCHECK_GE(input1_shift, 0);
@@ -1168,21 +1267,79 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sum = scaled_input1_val + scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sum, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sum, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
                        std::max(output_activation_min, raw_output));
           output_data[Offset(output_dims, c, x, y, b)] =
               static_cast<uint8>(clamped_output);
+        }
+      }
+    }
+  }
+}
+
+inline void BroadcastAddFivefold(
+    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
+    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
+    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
+    int input2_shift, int32 output_offset, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    uint8* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("BroadcastAddFivefold/8bit");
+
+  int sb1 = y0;
+  int sa2 = y0;
+  int sb2 = y0 * y1;
+  int sa3 = y0 * y2;
+  int sa4 = y0 * y2 * y3;
+  int sb4 = y0 * y1 * y2;
+
+  uint8* output_data_ptr = output_data;
+  for (int i4 = 0; i4 < y4; ++i4) {
+    for (int i3 = 0; i3 < y3; ++i3) {
+      for (int i2 = 0; i2 < y2; ++i2) {
+        for (int i1 = 0; i1 < y1; ++i1) {
+          for (int i0 = 0; i0 < y0; ++i0) {
+            const int32 input1_val =
+                input1_offset +
+                input1_data[i4 * sa4 + i3 * sa3 + i2 * sa2 + i0];
+            const int32 input2_val =
+                input2_offset +
+                input2_data[i4 * sb4 + i2 * sb2 + i1 * sb1 + i0];
+            const int32 shifted_input1_val = input1_val * (1 << left_shift);
+            const int32 shifted_input2_val = input2_val * (1 << left_shift);
+            const int32 scaled_input1_val =
+                MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    shifted_input1_val, input1_multiplier,
+                    kReverseShift * input1_shift);
+            const int32 scaled_input2_val =
+                MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    shifted_input2_val, input2_multiplier,
+                    kReverseShift * input2_shift);
+            const int32 raw_sum = scaled_input1_val + scaled_input2_val;
+            const int32 raw_output =
+                MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    raw_sum, output_multiplier, kReverseShift * output_shift) +
+                output_offset;
+            const int32 clamped_output =
+                std::min(output_activation_max,
+                         std::max(output_activation_min, raw_output));
+            *output_data_ptr = static_cast<uint8>(clamped_output);
+            ++output_data_ptr;
+          }
         }
       }
     }
@@ -1215,6 +1372,33 @@ inline void BroadcastAdd(int left_shift, const uint8* input1_data,
                input2_offset, input2_multiplier, input2_shift, output_offset,
                output_multiplier, output_shift, output_activation_min,
                output_activation_max, output_data, output_dims);
+}
+
+template <FusedActivationFunctionType Ac>
+inline void BroadcastAddFivefold(
+    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
+    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
+    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
+    int input2_shift, int32 output_offset, int32 output_multiplier,
+    int output_shift, int32 output_activation_min, int32 output_activation_max,
+    uint8* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, 0);
+    TFLITE_DCHECK_EQ(output_activation_max, 255);
+  }
+  BroadcastAddFivefold(y0, y1, y2, y3, y4, left_shift, input1_data, input1_dims,
+                       input1_offset, input1_multiplier, input1_shift,
+                       input2_data, input2_dims, input2_offset,
+                       input2_multiplier, input2_shift, output_offset,
+                       output_multiplier, output_shift, output_activation_min,
+                       output_activation_max, output_data, output_dims);
 }
 
 inline void Mul(const float* input1_data, const Dims<4>& input1_dims,
@@ -1328,9 +1512,9 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
           const int32 input2_val =
               input2_offset + input2_data[SubscriptToIndex(desc2, c, x, y, b)];
           const int32 unclamped_result =
-              output_offset +
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  input1_val * input2_val, output_multiplier, output_shift);
+              output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                                  input1_val * input2_val, output_multiplier,
+                                  kReverseShift * output_shift);
           const int32 clamped_output =
               std::min(output_activation_max,
                        std::max(output_activation_min, unclamped_result));
@@ -1347,9 +1531,7 @@ inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
                 int16* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Mul/Int16");
 
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -1369,9 +1551,7 @@ inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
   gemmlowp::ScopedProfilingLabel label("Mul/Int16Uint8");
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
-  const int flat_size = RequiredBufferSizeForDims(output_dims);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input1_dims), flat_size);
-  TFLITE_DCHECK_EQ(RequiredBufferSizeForDims(input2_dims), flat_size);
+  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
   for (int i = 0; i < flat_size; i++) {
     // F0 uses 0 integer bits, range [-1, 1].
@@ -1402,33 +1582,6 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
                input2_dims, input2_offset, output_offset, output_multiplier,
                output_shift, output_activation_min, output_activation_max,
                output_data, output_dims);
-}
-
-inline void Div(const float* input1_data, const Dims<4>& input1_dims,
-                const float* input2_data, const Dims<4>& input2_dims,
-                float output_activation_min, float output_activation_max,
-                float* output_data, const Dims<4>& output_dims) {
-  const int batches =
-      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
-  const int height =
-      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
-  const int width =
-      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
-  const int depth =
-      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[Offset(input1_dims, c, x, y, b)] /
-                      input2_data[Offset(input2_dims, c, x, y, b)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
-  }
 }
 
 // TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
@@ -1469,6 +1622,18 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
         }
       }
     }
+  }
+}
+
+inline void Div(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(
+        input1_data[i] / input2_data[i], output_activation_min,
+        output_activation_max);
   }
 }
 
@@ -1563,15 +1728,17 @@ inline void BroadcastSub(int left_shift, const uint8* input1_data,
           const int32 shifted_input1_val = input1_val * (1 << left_shift);
           const int32 shifted_input2_val = input2_val * (1 << left_shift);
           const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input1_val, input1_multiplier, input1_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
           const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  shifted_input2_val, input2_multiplier, input2_shift);
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
           const int32 raw_sub = scaled_input1_val - scaled_input2_val;
           const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOne(
-                  raw_sub, output_multiplier, output_shift) +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sub, output_multiplier, kReverseShift * output_shift) +
               output_offset;
           const int32 clamped_output =
               std::min(output_activation_max,
@@ -1628,7 +1795,7 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
                           const int32 output_zeropoint,
                           const float output_scale) {
   // The arguments input_zeropoint and input_scale are expected to be an array
-  // that have the quantization paramaters for all the inputs to the concat
+  // that have the quantization parameters for all the inputs to the concat
   // operator.
   TFLITE_DCHECK_GT(inputs_count, 1);
   int64_t concat_size = 0;
@@ -1766,7 +1933,7 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
 // The quantization of the input, output arrays is as follows:
 //  - The input activations are quantized as uint8 on the interval
 //    [-1, 127/128].
-//    The rationale for that is that that is the natural interval for output
+//    The rationale for that is that is the natural interval for output
 //    activations (see next point) and these need to be concatenated together.
 //    We could accommodate different ranges by re-scaling, but we empirically
 //    found that setting the input activations range to be [-1, 127/128] in the
@@ -1814,7 +1981,7 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
 // requiring a power-of-two representation interval. Thus, we should right
 // away quantize this array to a power-of-two interval; otherwise,
 // implementation will need to rescale that, losing any benefit that a tighter
-// representation interval might otherwise yield, while introducting some
+// representation interval might otherwise yield, while introducing some
 // numerical error and computational overhead.
 //
 // Now, Logistic and Tanh
@@ -1831,7 +1998,7 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
 // However, for a fixed-point implementation in 16-bit integers, using 5
 // integer bits to represent the [-16, 16] range would leave only 11
 // fractional bits, giving an increment of 2^-11 = 4.9e-4 between consecutive
-// representable values. Notice that that is higher than the
+// representable values. Notice that is higher than the
 // worst-case clamping error with clamping to [-8, 8]: 3.4e-4 for Logistic.
 // Using [-8, 8] thus seems like the better compromise overall, enjoying
 // an increment of 2.4e-4 between representable values and a worst-case
@@ -2612,6 +2779,121 @@ inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+// Although currently the name of this function says that it cannot handle
+// values less than 1, in practice it can handle as low as 1/x_max, where
+// x_max is the largest representable input.  In other words, the output range
+// is symmetric.
+template <int OutputIntegerBits, int InputIntegerBits>
+inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
+log_x_for_x_greater_than_or_equal_to_1_impl(
+    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
+  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+  // The reason for accumulating the result with an extra bit of headroom is
+  // that z_pow_2_adj * log_2 might be saturated, and adding num_scaled *
+  // recip_denom will otherwise introduce an error.
+  static constexpr int kAccumIntegerBits = OutputIntegerBits + 1;
+  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumIntegerBits>;
+
+  const FixedPoint0 log_2 = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 1488522236, std::log(2.0));
+  const FixedPoint0 sqrt_sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 1805811301, std::sqrt(std::sqrt(0.5)));
+  const FixedPoint0 sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 1518500250, std::sqrt(0.5));
+  const FixedPoint0 one_quarter =
+      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(FixedPoint0, 536870912, 1.0 / 4.0);
+
+  const FixedPoint0 alpha_n = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 117049297, 11.0 / 240.0 * std::sqrt(std::sqrt(2.0)));
+  const FixedPoint0 alpha_d = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 127690142, 1.0 / 20.0 * std::sqrt(std::sqrt(2.0)));
+  const FixedPoint0 alpha_i = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 1057819769,
+      2.0 / std::sqrt(std::sqrt(2.0)) - std::sqrt(std::sqrt(2.0)));
+  const FixedPoint0 alpha_f = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
+      FixedPoint0, 638450708, 1.0 / 4.0 * std::sqrt(std::sqrt(2.0)));
+
+  const FixedPointAccum shifted_quarter =
+      gemmlowp::Rescale<kAccumIntegerBits>(one_quarter);
+
+  // Reinterpret the input value as Q0.31, because we will figure out the
+  // required shift "ourselves" instead of using, say, Rescale.
+  FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
+  // z_a_pow_2 = input_integer_bits - z_a_headroom;
+  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32>(z_a.raw()));
+  FixedPoint0 r_a_tmp =
+      SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
+  const int32 r_a_raw =
+      SaturatingRoundingMultiplyByPOTParam((r_a_tmp * sqrt_half).raw(), 1);
+  // z_pow_2_adj = max(z_pow_2_a - 0.75, z_pow_2_b - 0.25);
+  // z_pow_2_adj = max(InputIntegerBits - z_a_headroom_plus_1 + 0.25,
+  //                   InputIntegerBits - z_b_headroom - 0.25);
+  const FixedPointAccum z_a_pow_2_adj = SaturatingAddNonGemmlowp(
+      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
+          InputIntegerBits - z_a_headroom_plus_1, 31 - kAccumIntegerBits)),
+      shifted_quarter);
+
+  // z_b is treated like z_a, but premultiplying by sqrt(0.5).
+  FixedPoint0 z_b = z_a * sqrt_half;
+  int z_b_headroom = CountLeadingZeros(static_cast<uint32>(z_b.raw())) - 1;
+  const int32 r_b_raw =
+      SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
+  const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
+      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
+          InputIntegerBits - z_b_headroom, 31 - kAccumIntegerBits)),
+      shifted_quarter);
+
+  const FixedPoint0 r = FixedPoint0::FromRaw(std::min(r_a_raw, r_b_raw));
+  const FixedPointAccum z_pow_2_adj = FixedPointAccum::FromRaw(
+      std::max(z_a_pow_2_adj.raw(), z_b_pow_2_adj.raw()));
+
+  const FixedPoint0 p = gemmlowp::RoundingHalfSum(r, sqrt_sqrt_half);
+  FixedPoint0 q = r - sqrt_sqrt_half;
+  q = q + q;
+
+  const FixedPoint0 common_sq = q * q;
+  const FixedPoint0 num = q * r + q * common_sq * alpha_n;
+  const FixedPoint0 denom_minus_one_0 =
+      p * (alpha_i + q + alpha_d * common_sq) + alpha_f * q;
+  const FixedPoint0 recip_denom =
+      one_over_one_plus_x_for_x_in_0_1(denom_minus_one_0);
+
+  const FixedPointAccum num_scaled = gemmlowp::Rescale<kAccumIntegerBits>(num);
+  return gemmlowp::Rescale<OutputIntegerBits>(z_pow_2_adj * log_2 +
+                                              num_scaled * recip_denom);
+}
+
+// Minimum output bits to accommodate log of maximum input range.  It actually
+// does not matter if one considers, say, [-64,64] or [-64,64).
+//
+// For example, run this through Octave:
+// [0:127; ...
+//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2)); ...
+//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2))]
+constexpr int min_log_x_output_bits(int input_bits) {
+  return input_bits > 90
+             ? 7
+             : input_bits > 44
+                   ? 6
+                   : input_bits > 21
+                         ? 5
+                         : input_bits > 10
+                               ? 4
+                               : input_bits > 4 ? 3 : input_bits > 1 ? 2 : 1;
+}
+
+template <int OutputIntegerBits, int InputIntegerBits>
+inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
+log_x_for_x_greater_than_or_equal_to_1(
+    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
+  static_assert(
+      OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
+      "Output integer bits must be sufficent to accommodate logs of inputs.");
+  return log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
+                                                     InputIntegerBits>(
+      input_val);
+}
+
 inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
                        int32 input_multiplier, int32 input_left_shift,
                        int32 reverse_scaling_divisor,
@@ -2654,13 +2936,10 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
       }
     }
 
-    // TODO(b/77858996): Implement fixed-point log().
-    // Not a fully-quantized implementation: floating-point log().
-    const float float_log_sum_of_exps =
-        std::log(static_cast<float>(sum_of_exps.raw()) /
-                 (1 << (31 - kAccumulationIntegerBits)));
-    const int32 fixed_log_sum_of_exps = static_cast<int32>(TfLiteRound(
-        float_log_sum_of_exps * (1 << (31 - kScaledDiffIntegerBits))));
+    const int32 fixed_log_sum_of_exps =
+        log_x_for_x_greater_than_or_equal_to_1<kScaledDiffIntegerBits>(
+            sum_of_exps)
+            .raw();
 
     // rescaled_diff_min is smallest representable in
     // Q(kScaledDiffIntegerBits).(31-kScaledDiffIntegerBits) plus the
@@ -2671,9 +2950,9 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
         fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
     const int adjusted_diff_min =
         std::max(diff_min - 1,  // Note use of > below instead of >= above.
-                 MultiplyByQuantizedMultiplierSmallerThanOne(
+                 MultiplyByQuantizedMultiplierSmallerThanOneExp(
                      rescaled_diff_min, reverse_scaling_divisor,
-                     reverse_scaling_right_shift));
+                     kReverseShift * reverse_scaling_right_shift));
 
     for (int c = 0; c < depth; ++c) {
       int32 input_diff =
@@ -2929,9 +3208,10 @@ inline void Gather(const T* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
+template <typename T>
+inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
-                           const Dims<4>& output_size_dims, float* output_data,
+                           const Dims<4>& output_size_dims, T* output_data,
                            const Dims<4>& output_dims, bool align_corners) {
   int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   int32 input_height = ArraySize(input_dims, 2);
@@ -2963,15 +3243,15 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
         int32 x0 = static_cast<int32>(std::floor(input_x));
         int32 x1 = std::min(x0 + 1, input_width - 1);
         for (int c = 0; c < depth; ++c) {
-          float interpolation = input_data[Offset(input_dims, c, x0, y0, b)] *
-                                    (1 - (input_y - y0)) *
-                                    (1 - (input_x - x0)) +
-                                input_data[Offset(input_dims, c, x0, y1, b)] *
-                                    (input_y - y0) * (1 - (input_x - x0)) +
-                                input_data[Offset(input_dims, c, x1, y0, b)] *
-                                    (1 - (input_y - y0)) * (input_x - x0) +
-                                input_data[Offset(input_dims, c, x1, y1, b)] *
-                                    (input_y - y0) * (input_x - x0);
+          T interpolation =
+              static_cast<T>(input_data[Offset(input_dims, c, x0, y0, b)] *
+                                 (1 - (input_y - y0)) * (1 - (input_x - x0)) +
+                             input_data[Offset(input_dims, c, x0, y1, b)] *
+                                 (input_y - y0) * (1 - (input_x - x0)) +
+                             input_data[Offset(input_dims, c, x1, y0, b)] *
+                                 (1 - (input_y - y0)) * (input_x - x0) +
+                             input_data[Offset(input_dims, c, x1, y1, b)] *
+                                 (input_y - y0) * (input_x - x0));
           output_data[Offset(output_dims, c, x, y, b)] = interpolation;
         }
       }
@@ -2984,8 +3264,18 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
                            const Dims<4>& output_dims) {
-  ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
-                 output_data, output_dims, /*align_corners=*/false);
+  ResizeBilinear<float>(input_data, input_dims, output_size_data,
+                        output_size_dims, output_data, output_dims,
+                        /*align_corners=*/false);
+}
+
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
+                           const Dims<4>& output_dims) {
+  ResizeBilinear<uint8>(input_data, input_dims, output_size_data,
+                        output_size_dims, output_data, output_dims,
+                        /*align_corners=*/false);
 }
 
 template <typename T>
@@ -3077,10 +3367,10 @@ inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void Pad(const T* input_data, const Dims<4>& input_dims,
-                const std::vector<int>& left_paddings,
-                const std::vector<int>& right_paddings, T* output_data,
-                const Dims<4>& output_dims, const int32_t pad_value) {
+inline void PadV2(const T* input_data, const Dims<4>& input_dims,
+                  const std::vector<int>& left_paddings,
+                  const std::vector<int>& right_paddings, T* output_data,
+                  const Dims<4>& output_dims, const T pad_value) {
   TFLITE_DCHECK_EQ(left_paddings.size(), 4);
   TFLITE_DCHECK_EQ(right_paddings.size(), 4);
 
@@ -3113,7 +3403,7 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
               out_w >= output_width - right_w_padding ||
               out_d < left_d_padding ||
               out_d >= output_depth - right_d_padding) {
-            *out_ptr++ = static_cast<T>(pad_value);
+            *out_ptr++ = pad_value;
           } else {
             *out_ptr++ = *in_ptr++;
           }
@@ -3121,6 +3411,17 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+// Legacy Pad() method that casts an int32_t to T before padding.
+template <typename T>
+inline void Pad(const T* input_data, const Dims<4>& input_dims,
+                const std::vector<int>& left_paddings,
+                const std::vector<int>& right_paddings, T* output_data,
+                const Dims<4>& output_dims, const int32_t pad_value) {
+  const T converted_pad_value = static_cast<T>(pad_value);
+  PadV2<T>(input_data, input_dims, left_paddings, right_paddings, output_data,
+           output_dims, converted_pad_value);
 }
 
 template <typename T>
@@ -3193,10 +3494,10 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
       size[3] == -1 ? input_dims.sizes[3] - start_b : start_b + size[3];
   const int start_h = begin[2];
   const int stop_h =
-      size[2] == -1 ? input_dims.sizes[2] - start_b : start_b + size[2];
+      size[2] == -1 ? input_dims.sizes[2] - start_h : start_h + size[2];
   const int start_w = begin[1];
   const int stop_w =
-      size[1] == -1 ? input_dims.sizes[1] - start_b : start_b + size[1];
+      size[1] == -1 ? input_dims.sizes[1] - start_w : start_w + size[1];
   const int start_d = begin[0];
   const int stop_d =
       size[0] == -1 ? input_dims.sizes[0] - start_d : start_d + size[0];
@@ -3221,63 +3522,124 @@ inline void Exp(const T* input_data, const size_t num_elements,
   }
 }
 
-template <typename T, typename U>
-inline bool Mean(T* input_data, const int* input_dims, const int input_num_dims,
-                 T* output_data, const int* output_dims,
-                 const int output_num_dims, const int* axis,
-                 const int num_axis_dimensions, bool keep_dims, int* temp_index,
-                 int* resolved_axis, U* temp_sum) {
-  // resets output data.
-  size_t num_outputs = 1;
-  for (int idx = 0; idx < output_num_dims; ++idx) {
-    num_outputs *= static_cast<size_t>(output_dims[idx]);
-  }
-  for (size_t idx = 0; idx < num_outputs; ++idx) {
-    output_data[idx] = T();
-    temp_sum[idx] = U();
-  }
-  // resets temp index.
+// A generic reduce method that can be used for reduce_sum, reduce_mean, etc.
+// It takes a reducer function as input and returns false when numeric overflow
+// is detected.
+// This method iterates through input data and reduce elements along the
+// dimensions given in axis.
+template <typename In, typename Out>
+inline bool Reduce(const In* input_data, const int* input_dims,
+                   const int* output_dims, const int input_num_dims,
+                   const int output_num_dims, const int* axis,
+                   const int num_axis, int* input_iter,
+                   Out reducer(Out current, const In in, bool* overflow),
+                   Out* output_data) {
+  // Reset input iterator.
+  TFLITE_DCHECK(input_num_dims > 0);
   for (int idx = 0; idx < input_num_dims; ++idx) {
-    temp_index[idx] = 0;
+    input_iter[idx] = 0;
   }
-  // resolves axis.
-  int num_resolved_axis = 0;
-  for (int idx = 0; idx < num_axis_dimensions; ++idx) {
-    int current = axis[idx];
-    TFLITE_DCHECK(current < input_num_dims && current + input_num_dims >= 0);
-    if (current < 0) {
-      current += input_num_dims;
-    }
+  // Iterate through input_data.
+  do {
+    size_t input_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, input_iter, 0, nullptr);
+    size_t output_offset = ReducedOutputOffset(input_num_dims, input_dims,
+                                               input_iter, num_axis, axis);
+    bool overflow = false;
+    output_data[output_offset] = reducer(output_data[output_offset],
+                                         input_data[input_offset], &overflow);
+    if (overflow) return false;
+  } while (NextIndex(input_num_dims, input_dims, input_iter));
+  return true;
+}
+
+inline bool ResolveAxis(const int num_dims, const int* axis, const int num_axis,
+                        int* out_axis, int* out_num_axis) {
+  *out_num_axis = 0;  // Just in case.
+  // o(n^2) is fine since out_num_axis should be really small, mostly <= 4
+  for (int idx = 0; idx < num_axis; ++idx) {
+    // Handle negative index.
+    int current = axis[idx] < 0 ? (axis[idx] + num_dims) : axis[idx];
+    TFLITE_DCHECK(current >= 0 && current < num_dims);
     bool is_dup = false;
-    for (int j = 0; j < num_resolved_axis; ++j) {
-      if (resolved_axis[j] == current) {
+    for (int j = 0; j < *out_num_axis; ++j) {
+      if (out_axis[j] == current) {
         is_dup = true;
         break;
       }
     }
     if (!is_dup) {
-      resolved_axis[num_resolved_axis++] = current;
+      out_axis[*out_num_axis] = current;
+      *out_num_axis += 1;
     }
   }
-  // iterates through input_data.
-  for (bool has_next = true; has_next;
-       has_next = NextIndex(input_num_dims, input_dims, temp_index)) {
-    size_t input_offset =
-        ReducedOutputOffset(input_num_dims, input_dims, temp_index, 0, nullptr);
-    size_t output_offset =
-        ReducedOutputOffset(input_num_dims, input_dims, temp_index,
-                            num_resolved_axis, resolved_axis);
-    temp_sum[output_offset] += static_cast<U>(input_data[input_offset]);
+  return true;
+}
+
+// This method expects that output_data has been initialized.
+template <typename In, typename Out>
+inline bool ReduceSumImpl(const In* input_data, const int* input_dims,
+                          const int* output_dims, const int input_num_dims,
+                          const int output_num_dims, const int* axis,
+                          const int num_axis, int* input_iter,
+                          Out* output_data) {
+  auto reducer = [](Out current, const In in, bool* overflow) -> Out {
+    const Out actual_in = static_cast<Out>(in);
+    return current + actual_in;
+  };
+  return Reduce<In, Out>(input_data, input_dims, output_dims, input_num_dims,
+                         output_num_dims, axis, num_axis, input_iter, reducer,
+                         output_data);
+}
+
+// Computes the mean of elements across dimensions given in axis.
+// It does so in two stages, first calculates the sum of elements along the axis
+// then divides it by the number of element in axis.
+template <typename T, typename U>
+inline bool Mean(const T* input_data, const int* input_dims,
+                 const int input_num_dims, T* output_data,
+                 const int* output_dims, const int output_num_dims,
+                 const int* axis, const int num_axis_dimensions, bool keep_dims,
+                 int* temp_index, int* resolved_axis, U* temp_sum) {
+  // Reset output data.
+  size_t num_outputs = 1;
+  for (int idx = 0; idx < output_num_dims; ++idx) {
+    size_t current = static_cast<size_t>(output_dims[idx]);
+    // Overflow prevention.
+    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
+      return false;
+    }
+    num_outputs *= current;
   }
-  // takes average by num of elements added to get mean.
-  size_t num_elements_in_axis = 1;
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = T();
+    temp_sum[idx] = U();
+  }
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
+                   &num_resolved_axis)) {
+    return false;
+  }
+
+  if (!ReduceSumImpl<T, U>(input_data, input_dims, output_dims, input_num_dims,
+                           output_num_dims, resolved_axis, num_resolved_axis,
+                           temp_index, temp_sum)) {
+    return false;
+  }
+
+  // Calculate mean by dividing output_data by num of aggregated element.
+  U num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
+    // Overflow prevention.
     if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
       return false;
     }
     num_elements_in_axis *= current;
   }
+
   if (num_elements_in_axis > 0) {
     for (size_t idx = 0; idx < num_outputs; ++idx) {
       output_data[idx] =
@@ -3407,7 +3769,6 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
             T2* output_data, const Dims<4>& output_dims) {
   // The current ArgMax implemention can only determine the index of the maximum
   // value in the last dimension. So the axis argument is ignored.
-  TFLITE_DCHECK_EQ(axis[0], 3);
 
   // For ArgMax, the number of output dimensions = (number of input dimensions -
   // 1). For the sake of simplicity, the output dimensions are equal to the
@@ -3464,10 +3825,11 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                           const float* filter_data, const Dims<4>& filter_dims,
                           int stride_width, int stride_height, int pad_width,
                           int pad_height, float* output_data,
-                          const Dims<4>& output_dims) {
+                          const Dims<4>& output_dims, float* /*im2col_data*/,
+                          const Dims<4>& /*im2col_dims*/) {
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 3);
-  const int output_depth = MatchingArraySize(filter_dims, 0, output_dims, 0);
+  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
+  const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
   const int input_height = ArraySize(input_dims, 2);
   const int input_width = ArraySize(input_dims, 1);
   const int filter_height = ArraySize(filter_dims, 2);
@@ -3482,7 +3844,7 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   // computing their influence on the output, rather than looping through the
   // output elements in the typical "gather" access pattern of a conv. We
   // therefore must initialize the output array to zero.
-  for (int i = 0; i < RequiredBufferSizeForDims(output_dims); i++) {
+  for (int i = 0; i < FlatSize(output_dims); i++) {
     output_data[i] = 0.0f;
   }
 
@@ -3507,8 +3869,8 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                   float input_value = input_data[Offset(input_dims, in_channel,
                                                         in_x, in_y, batch)];
                   float filter_value =
-                      filter_data[Offset(filter_dims, out_channel, filter_x,
-                                         filter_y, in_channel)];
+                      filter_data[Offset(filter_dims, in_channel, filter_x,
+                                         filter_y, out_channel)];
                   output_data[Offset(output_dims, out_channel, out_x, out_y,
                                      batch)] += input_value * filter_value;
                 }
@@ -3522,47 +3884,252 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
-inline void Less(int64_t num_elements, const T* input1, const T* input2,
-                 bool* output) {
-  for (int64_t i = 0; i < num_elements; ++i) {
-    output[i] = input1[i] < input2[i];
-  }
+inline bool EqualFn(T lhs, T rhs) {
+  return lhs == rhs;
 }
 
 template <typename T>
-inline void Less(const T* input1_data, const Dims<4>& input1_dims,
-                 const T* input2_data, const Dims<4>& input2_dims,
-                 bool* output_data, const Dims<4>& output_dims) {
-  const int64_t batches =
-      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
-  const int64_t height =
-      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
-  const int64_t width =
-      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
-  const int64_t depth =
-      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
-  Less(batches * height * width * depth, input1_data, input2_data, output_data);
+inline bool NotEqualFn(T lhs, T rhs) {
+  return lhs != rhs;
 }
 
-template <typename T1, typename T2>
-inline void BroadcastLess(T1* input1_data, const Dims<4>& input1_dims,
-                          T2* input2_data, const Dims<4>& input2_dims,
-                          bool* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastLess");
+template <typename T>
+inline bool GreaterFn(T lhs, T rhs) {
+  return lhs > rhs;
+}
+template <typename T>
+inline bool GreaterEqualFn(T lhs, T rhs) {
+  return lhs >= rhs;
+}
+template <typename T>
+inline bool LessFn(T lhs, T rhs) {
+  return lhs < rhs;
+}
+template <typename T>
+inline bool LessEqualFn(T lhs, T rhs) {
+  return lhs <= rhs;
+}
+
+template <typename T>
+using ComparisonFn = bool (*)(T, T);
+
+template <typename T, ComparisonFn<T> F>
+inline void Comparison(const T* input1_data, const Dims<4>& input1_dims,
+                       const T* input2_data, const Dims<4>& input2_dims,
+                       bool* output_data, const Dims<4>& output_dims) {
+  const int64_t flatsize =
+      MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int64_t i = 0; i < flatsize; ++i) {
+    output_data[i] = F(input1_data[i], input2_data[i]);
+  }
+}
+
+template <typename T, ComparisonFn<int32> F>
+inline void Comparison(int left_shift, const T* input1_data,
+                       const Dims<4>& input1_dims, int32 input1_offset,
+                       int32 input1_multiplier, int input1_shift,
+                       const T* input2_data, const Dims<4>& input2_dims,
+                       int32 input2_offset, int32 input2_multiplier,
+                       int input2_shift, bool* output_data,
+                       const Dims<4>& output_dims) {
+  const int64_t flatsize =
+      MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int64_t i = 0; i < flatsize; ++i) {
+    const int32 input1_val = input1_offset + input1_data[i];
+    const int32 input2_val = input2_offset + input2_data[i];
+    const int32 shifted_input1_val = input1_val * (1 << left_shift);
+    const int32 shifted_input2_val = input2_val * (1 << left_shift);
+    const int32 scaled_input1_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input1_val, input1_multiplier,
+            kReverseShift * input1_shift);
+    const int32 scaled_input2_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input2_val, input2_multiplier,
+            kReverseShift * input2_shift);
+    output_data[i] = F(scaled_input1_val, scaled_input2_val);
+  }
+}
+
+template <typename T, ComparisonFn<T> F>
+inline void BroadcastComparison(const T* input1_data,
+                                const Dims<4>& input1_dims,
+                                const T* input2_data,
+                                const Dims<4>& input2_dims, bool* output_data,
+                                const Dims<4>& output_dims) {
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
-
   for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
     for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
       for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
         for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
           output_data[Offset(output_dims, c, x, y, b)] =
-              input1_data[SubscriptToIndex(desc1, c, x, y, b)] <
-              input2_data[SubscriptToIndex(desc2, c, x, y, b)];
+              F(input1_data[SubscriptToIndex(desc1, c, x, y, b)],
+                input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
         }
       }
     }
+  }
+}
+
+template <typename T, ComparisonFn<int32> F>
+inline void BroadcastComparison(int left_shift, const T* input1_data,
+                                const Dims<4>& input1_dims, int32 input1_offset,
+                                int32 input1_multiplier, int input1_shift,
+                                const T* input2_data,
+                                const Dims<4>& input2_dims, int32 input2_offset,
+                                int32 input2_multiplier, int input2_shift,
+                                bool* output_data, const Dims<4>& output_dims) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          const int32 input1_val =
+              input1_offset + input1_data[SubscriptToIndex(desc1, c, x, y, b)];
+          const int32 input2_val =
+              input2_offset + input2_data[SubscriptToIndex(desc2, c, x, y, b)];
+          const int32 shifted_input1_val = input1_val * (1 << left_shift);
+          const int32 shifted_input2_val = input2_val * (1 << left_shift);
+          const int32 scaled_input1_val =
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input1_val, input1_multiplier,
+                  kReverseShift * input1_shift);
+          const int32 scaled_input2_val =
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  shifted_input2_val, input2_multiplier,
+                  kReverseShift * input2_shift);
+          output_data[Offset(output_dims, c, x, y, b)] =
+              F(scaled_input1_val, scaled_input2_val);
+        }
+      }
+    }
+  }
+}
+
+#define TFLITE_COMPARISON_OP(name)                                            \
+  template <typename T>                                                       \
+  inline void name(const T* input1_data, const Dims<4>& input1_dims,          \
+                   const T* input2_data, const Dims<4>& input2_dims,          \
+                   bool* output_data, const Dims<4>& output_dims) {           \
+    gemmlowp::ScopedProfilingLabel label(#name);                              \
+    Comparison<T, name##Fn>(input1_data, input1_dims, input2_data,            \
+                            input2_dims, output_data, output_dims);           \
+  }                                                                           \
+  template <typename T>                                                       \
+  inline void name(                                                           \
+      int left_shift, const T* input1_data, const Dims<4>& input1_dims,       \
+      int32 input1_offset, int32 input1_multiplier, int input1_shift,         \
+      const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
+      int32 input2_multiplier, int input2_shift, bool* output_data,           \
+      const Dims<4>& output_dims) {                                           \
+    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                      \
+    Comparison<T, name##Fn>(left_shift, input1_data, input1_dims,             \
+                            input1_offset, input1_multiplier, input1_shift,   \
+                            input2_data, input2_dims, input2_offset,          \
+                            input2_multiplier, input2_shift, output_data,     \
+                            output_dims);                                     \
+  }                                                                           \
+  template <typename T>                                                       \
+  inline void Broadcast##name(                                                \
+      const T* input1_data, const Dims<4>& input1_dims, const T* input2_data, \
+      const Dims<4>& input2_dims, bool* output_data,                          \
+      const Dims<4>& output_dims) {                                           \
+    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                  \
+    BroadcastComparison<T, name##Fn>(input1_data, input1_dims, input2_data,   \
+                                     input2_dims, output_data, output_dims);  \
+  }                                                                           \
+  template <typename T>                                                       \
+  inline void Broadcast##name(                                                \
+      int left_shift, const T* input1_data, const Dims<4>& input1_dims,       \
+      int32 input1_offset, int32 input1_multiplier, int input1_shift,         \
+      const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
+      int32 input2_multiplier, int input2_shift, bool* output_data,           \
+      const Dims<4>& output_dims) {                                           \
+    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");          \
+    BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,    \
+                                     input1_offset, input1_multiplier,        \
+                                     input1_shift, input2_data, input2_dims,  \
+                                     input2_offset, input2_multiplier,        \
+                                     input2_shift, output_data, output_dims); \
+  }
+TFLITE_COMPARISON_OP(Equal);
+TFLITE_COMPARISON_OP(NotEqual);
+TFLITE_COMPARISON_OP(Greater);
+TFLITE_COMPARISON_OP(GreaterEqual);
+TFLITE_COMPARISON_OP(Less);
+TFLITE_COMPARISON_OP(LessEqual);
+#undef TFLITE_COMPARISON_OP
+
+template <typename D, typename T>
+inline void Select(const D* input_condition_data,
+                   const Dims<4>& input_condition_dims, const T* input_x_data,
+                   const Dims<4>& input_x_dims, const T* input_y_data,
+                   const Dims<4>& input_y_dims, T* output_data,
+                   const Dims<4>& output_dims) {
+  const int64_t flatsize =
+      MatchingFlatSize(input_x_dims, input_y_dims, output_dims);
+  for (int64_t i = 0; i < flatsize; ++i) {
+    output_data[i] =
+        input_condition_data[i] ? input_x_data[i] : input_y_data[i];
+  }
+}
+
+template <typename D, typename T>
+inline void RankOneSelect(const D* input_condition_data,
+                          const Dims<4>& input_condition_dims,
+                          const T* input_x_data, const Dims<4>& input_x_dims,
+                          const T* input_y_data, const Dims<4>& input_y_dims,
+                          T* output_data, const Dims<4>& output_dims) {
+  const int64_t rank = MatchingArraySize(input_condition_dims, 0, input_x_dims,
+                                         3, input_y_dims, 3, output_dims, 3);
+  const int64_t inner_size =
+      MatchingFlatSizeSkipDim(input_x_dims, 3, input_y_dims, output_dims);
+
+  int64_t offset = 0;
+  for (int64_t i = 0; i < rank; i++) {
+    const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
+    memcpy(output_data + offset, input_data + offset, inner_size * sizeof(T));
+    offset += inner_size;
+  }
+}
+
+// For easy implementation, the indices is always a vector of size-4 vectors.
+template <typename T, typename I>
+inline void SparseToDense(const std::vector<std::vector<I>>& indices,
+                          const T* values, T default_value, T* output_data,
+                          const Dims<4>& output_dims, bool value_is_scalar) {
+  const int value_count = indices.size();
+
+  // First fill the output_data with default value.
+  const int num_elements = FlatSize(output_dims);
+  for (int i = 0; i < num_elements; ++i) {
+    output_data[i] = default_value;
+  }
+
+  // Special handle for value is scalar case to avoid checking the boolean
+  // condition within the loop every time.
+  if (value_is_scalar) {
+    for (int i = 0; i < value_count; ++i) {
+      const std::vector<I>& index = indices[i];
+      TFLITE_DCHECK_EQ(index.size(), 4);
+      const T value = *values;  // just use the first value.
+      output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
+          value;
+    }
+    return;
+  }
+
+  // Go through the values and indices to fill the sparse values.
+  for (int i = 0; i < value_count; ++i) {
+    const std::vector<I>& index = indices[i];
+    TFLITE_DCHECK_EQ(index.size(), 4);
+    const T value = values[i];
+    output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
+        value;
   }
 }
 

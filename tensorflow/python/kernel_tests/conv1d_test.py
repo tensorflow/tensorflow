@@ -31,9 +31,7 @@ class Conv1DTest(test.TestCase):
 
   def testBasic(self):
     """Test that argument passing to conv1d is handled properly."""
-    # TODO(yongtang): dtypes.float64 can only be enabled once conv2d support
-    # dtypes.float64, as conv1d implicitly calls conv2d after expand_dims.
-    for dtype in [dtypes.float16, dtypes.float32]:
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       x = constant_op.constant([1, 2, 3, 4], dtype=dtype)
       x = array_ops.expand_dims(x, 0)  # Add batch dimension
       x = array_ops.expand_dims(x, 2)  # And depth dimension

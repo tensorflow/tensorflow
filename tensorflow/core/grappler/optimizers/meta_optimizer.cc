@@ -24,11 +24,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
-#include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+#include "tensorflow/core/grappler/optimizers/remapper.h"
+#include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
@@ -65,7 +67,7 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "arithmetic_optimizer" || name == "loop_optimizer";
+         name == "loop_optimizer";
 }
 
 }  // namespace
@@ -78,6 +80,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("pruning", new ModelPruner());
   MK_OPT("function", new FunctionOptimizer(cfg_.function_optimization()));
   MK_OPT("constfold", new ConstantFolding(cpu_device_));
+  MK_OPT("shape", new ShapeOptimizer());
+  MK_OPT("remap", new Remapper(cfg_.remapping()));
   MK_OPT("layout", new LayoutOptimizer());
   MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
   MK_OPT("arithmetic", new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
@@ -85,6 +89,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("loop", new LoopOptimizer(cfg_.loop_optimization()));
   MK_OPT("dependency", new DependencyOptimizer(cfg_.dependency_optimization()));
   MK_OPT("debug_stripper", new DebugStripper());
+  MK_OPT("scoped_allocator",
+         new ScopedAllocatorOptimizer(cfg_.scoped_allocator_opts()));
 
   return std::unique_ptr<GraphOptimizer>();
 }
@@ -106,6 +112,12 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.constant_folding() != RewriterConfig::OFF) {
     optimizers->emplace_back(
         new ConstantFolding(cfg_.constant_folding(), cpu_device_));
+  }
+  if (cfg_.shape_optimization() != RewriterConfig::OFF) {
+    optimizers->emplace_back(new ShapeOptimizer());
+  }
+  if (cfg_.remapping() != RewriterConfig::OFF) {
+    optimizers->emplace_back(new Remapper(cfg_.remapping()));
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
     optimizers->emplace_back(
@@ -135,6 +147,10 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.auto_parallel().enable()) {
     optimizers->emplace_back(
         new AutoParallel(cfg_.auto_parallel().num_replicas()));
+  }
+  if (cfg_.scoped_allocator_optimization()) {
+    optimizers->emplace_back(
+        new ScopedAllocatorOptimizer(cfg_.scoped_allocator_opts()));
   }
   return Status::OK();
 }
@@ -201,6 +217,8 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 
   bool is_optimized = false;
   GraphOptimizationResult optimization_result(item.id);
+  GraphOptimizer* fusion_optimizer = nullptr;
+  GraphOptimizer* sa_optimizer = nullptr;
 
   for (int iteration = 0; iteration < NumIterations(cfg_); ++iteration) {
     VLOG(4) << "Starting optimization iteration " << iteration + 1;
@@ -208,32 +226,39 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     for (const auto& optimizer : optimizers) {
       // Some optimizers can run only once.
       if (iteration > 0 && IsRunOnceOptimizer(optimizer->name())) continue;
-
-      uint64 start_us = Env::Default()->NowMicros();
-      // This swaps the current optimized_graph into optimized item and
-      // resets optimized_graph to an empty graph.
-      optimized_graph->Swap(&optimized_item.graph);
-      *optimized_graph = GraphDef();
-      Status status =
-          optimizer->Optimize(cluster, optimized_item, optimized_graph);
-      uint64 end_us = Env::Default()->NowMicros();
-
-      string result;
-      if (!status.ok()) {
-        optimized_graph->Swap(&optimized_item.graph);
-        result = status.ToString();
-      } else {
-        is_optimized = true;
-        float duration_ms = (end_us - start_us) / 1000.0f;
-        result = strings::StrCat(
-            PrintSizesBeforeAfter(optimized_item.graph, *optimized_graph),
-            ", time = ", duration_ms, "ms.");
+      // Some must run only on the last iteration.
+      if (optimizer->name() == "scoped_allocator_optimizer") {
+        if (sa_optimizer == nullptr) sa_optimizer = optimizer.get();
+        continue;
       }
-      VLOG(4) << optimizer->name() << ": " << result;
+      if (optimizer->name() == "xla-fusion") {
+        if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
+        continue;
+      }
 
-      OptimizerResult optimizer_result{optimizer->name(), result};
-      optimization_result.results.push_back(optimizer_result);
+      Status status = RunOptimizer(optimizer.get(), cluster, &optimized_item,
+                                   optimized_graph, &optimization_result);
+      if (status.ok()) is_optimized = true;
     }
+  }
+
+  // Run fusion optimizer if requested after all other optimizers since: 1) it
+  // doesn't need to be called more than once. 2) we don't want subsequent
+  // optimization passes to break the fusion clusters. We could potentially
+  // encapsulate the fusion clusters right away, but that will prevent a lot of
+  // optimizations from taking place since we don't have shape inference for
+  // functions, and we can't optimize across function boundaries.
+  if (fusion_optimizer != nullptr) {
+    Status status = RunOptimizer(fusion_optimizer, cluster, &optimized_item,
+                                 optimized_graph, &optimization_result);
+    if (status.ok()) is_optimized = true;
+  }
+
+  // ScopedAllocatorOptimizer must run last.
+  if (sa_optimizer != nullptr) {
+    Status status = RunOptimizer(sa_optimizer, cluster, &optimized_item,
+                                 optimized_graph, &optimization_result);
+    if (status.ok()) is_optimized = true;
   }
 
   // Record graph optimization result.
@@ -248,6 +273,35 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   }
 
   return Status::OK();
+}
+
+Status MetaOptimizer::RunOptimizer(
+    GraphOptimizer* optimizer, Cluster* cluster, GrapplerItem* optimized_item,
+    GraphDef* optimized_graph, GraphOptimizationResult* optimization_result) {
+  uint64 start_us = Env::Default()->NowMicros();
+  // This swaps the current optimized_graph into optimized item and
+  // resets optimized_graph to an empty graph.
+  optimized_graph->Swap(&optimized_item->graph);
+  *optimized_graph = GraphDef();
+  Status status =
+      optimizer->Optimize(cluster, *optimized_item, optimized_graph);
+  uint64 end_us = Env::Default()->NowMicros();
+
+  string result;
+  if (!status.ok()) {
+    optimized_graph->Swap(&optimized_item->graph);
+    result = status.ToString();
+  } else {
+    float duration_ms = (end_us - start_us) / 1000.0f;
+    result = strings::StrCat(
+        PrintSizesBeforeAfter(optimized_item->graph, *optimized_graph),
+        ", time = ", duration_ms, "ms.");
+  }
+  VLOG(4) << optimizer->name() << ": " << result;
+
+  OptimizerResult optimizer_result{optimizer->name(), result};
+  optimization_result->results.push_back(optimizer_result);
+  return status;
 }
 
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -344,12 +398,15 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.layout_optimizer() != RewriterConfig::OFF ||
          cfg.function_optimization() != RewriterConfig::OFF ||
          cfg.constant_folding() != RewriterConfig::OFF ||
+         cfg.shape_optimization() != RewriterConfig::OFF ||
+         cfg.remapping() != RewriterConfig::OFF ||
          cfg.arithmetic_optimization() != RewriterConfig::OFF ||
          cfg.loop_optimization() != RewriterConfig::OFF ||
          cfg.dependency_optimization() != RewriterConfig::OFF ||
          cfg.auto_parallel().enable() ||
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          cfg.debug_stripper() == RewriterConfig::ON ||
+         cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
          !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
 }
 

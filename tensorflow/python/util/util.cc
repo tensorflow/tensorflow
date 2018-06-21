@@ -14,8 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/util/util.h"
 
+#include <functional>
+#include <unordered_map>
+#include <vector>
+
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
@@ -25,6 +31,9 @@ namespace {
 
 // Type object for collections.Sequence. This is set by RegisterSequenceClass.
 PyObject* CollectionsSequenceType = nullptr;
+PyTypeObject* SparseTensorValueType = nullptr;
+
+const int kMaxItemsInCache = 1024;
 
 bool WarnedThatSetIsNotSequence = false;
 
@@ -135,6 +144,12 @@ class ValIterator {
   Py_ssize_t index_;
 };
 
+mutex g_type_to_sequence_map(LINKER_INITIALIZED);
+std::unordered_map<PyTypeObject*, bool>* IsTypeSequenceMap() {
+  static auto* const m = new std::unordered_map<PyTypeObject*, bool>;
+  return m;
+}
+
 // Returns 1 if `o` is considered a sequence for the purposes of Flatten().
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
@@ -155,64 +170,149 @@ int IsSequenceHelper(PyObject* o) {
             .c_str());
     return -1;
   }
+
+  // Try not to return to Python - see if the type has already been seen
+  // before.
+
+  auto* type_to_sequence_map = IsTypeSequenceMap();
+  auto* type = Py_TYPE(o);
+
+  {
+    mutex_lock l(g_type_to_sequence_map);
+    auto it = type_to_sequence_map->find(type);
+    if (it != type_to_sequence_map->end()) {
+      return it->second;
+    }
+  }
+
+  // NOTE: We explicitly release the g_type_to_sequence_map mutex,
+  // because PyObject_IsInstance() may release the GIL, allowing another thread
+  // concurrent entry to this function.
   int is_instance = PyObject_IsInstance(o, CollectionsSequenceType);
+
+  // Don't cache a failed is_instance check.
   if (is_instance == -1) return -1;
-  return static_cast<int>(is_instance != 0 && !IsString(o));
+
+  bool is_sequence = static_cast<int>(is_instance != 0 && !IsString(o));
+
+  // NOTE: This is never decref'd, but we don't want the type to get deleted
+  // as long as it is in the map. This should not be too much of a
+  // leak, as there should only be a relatively small number of types in the
+  // map, and an even smaller number that are eligible for decref. As a
+  // precaution, we limit the size of the map to 1024.
+  {
+    mutex_lock l(g_type_to_sequence_map);
+    if (type_to_sequence_map->size() < kMaxItemsInCache) {
+      Py_INCREF(type);
+      type_to_sequence_map->insert({type, is_sequence});
+    }
+  }
+
+  return is_sequence;
 }
 
-bool FlattenHelper(PyObject* nested, PyObject* list) {
+bool IsSparseTensorValueType(PyObject* o) {
+  if (TF_PREDICT_FALSE(SparseTensorValueType == nullptr)) {
+    return false;
+  }
+
+  return PyObject_TypeCheck(o, SparseTensorValueType) == 1;
+}
+
+int IsSequenceForDataHelper(PyObject* o) {
+  return IsSequenceHelper(o) == 1 && !PyList_Check(o) &&
+         !IsSparseTensorValueType(o);
+}
+
+bool GetNextValuesForDict(PyObject* nested,
+                          std::vector<Safe_PyObjectPtr>* next_values) {
+  std::vector<PyObject*> result;
+
+  PyObject* keys = PyDict_Keys(nested);
+  if (PyList_Sort(keys) == -1) return false;
+  Py_ssize_t size = PyList_Size(keys);
+  for (Py_ssize_t i = 0; i < size; ++i) {
+    // We know that key and item will not be deleted because nested owns
+    // a reference to them and callers of flatten must not modify nested
+    // while the method is running.
+    PyObject* key = PyList_GET_ITEM(keys, i);
+    PyObject* item = PyDict_GetItem(nested, key);
+    Py_INCREF(item);
+    next_values->emplace_back(item);
+  }
+  Py_DECREF(keys);
+  return true;
+}
+
+bool GetNextValuesForIterable(PyObject* nested,
+                              std::vector<Safe_PyObjectPtr>* next_values) {
+  PyObject* item;
+  PyObject* iterator = PyObject_GetIter(nested);
+  if (iterator == nullptr || PyErr_Occurred()) {
+    return false;
+  }
+  while ((item = PyIter_Next(iterator)) != nullptr) {
+    next_values->emplace_back(item);
+  }
+  Py_DECREF(iterator);
+  return true;
+}
+
+// GetNextValues returns the values that the FlattenHelper function will recurse
+// over next.
+bool GetNextValues(PyObject* nested,
+                   std::vector<Safe_PyObjectPtr>* next_values) {
+  if (PyDict_Check(nested)) {
+    // if nested is dictionary, sort it by key and recurse on each value
+    return GetNextValuesForDict(nested, next_values);
+  }
+  // iterate and recurse
+  return GetNextValuesForIterable(nested, next_values);
+}
+
+// Similar to above, just specialized for the functions in the data pacakage.
+bool GetNextValuesForData(PyObject* nested,
+                          std::vector<Safe_PyObjectPtr>* next_values) {
+  if (PyDict_Check(nested)) {
+    // if nested is dictionary, sort it by key and recurse on each value
+    return GetNextValuesForDict(nested, next_values);
+  } else if (IsSparseTensorValueType(nested)) {
+    // if nested is a SparseTensorValue, just return itself as a single item
+    Py_INCREF(nested);
+    next_values->emplace_back(nested);
+    return true;
+  }
+  // iterate and recurse
+  return GetNextValuesForIterable(nested, next_values);
+}
+
+bool FlattenHelper(
+    PyObject* nested, PyObject* list,
+    const std::function<int(PyObject*)>& is_sequence_helper,
+    const std::function<bool(PyObject*, std::vector<Safe_PyObjectPtr>*)>&
+        next_values_getter) {
   // if nested is not a sequence, append itself and exit
-  int is_seq = IsSequenceHelper(nested);
+  int is_seq = is_sequence_helper(nested);
   if (is_seq == -1) return false;
   if (!is_seq) {
     return PyList_Append(list, nested) != -1;
   }
 
-  // if nested if dictionary, sort it by key and recurse on each value
-  if (PyDict_Check(nested)) {
-    PyObject* keys = PyDict_Keys(nested);
-    if (PyList_Sort(keys) == -1) return false;
-    Py_ssize_t size = PyList_Size(keys);
-    for (Py_ssize_t i = 0; i < size; ++i) {
-      // We know that key and val will not be deleted because nested owns
-      // a reference to them and callers of flatten must not modify nested
-      // while the method is running.
-      PyObject* key = PyList_GET_ITEM(keys, i);
-      PyObject* val = PyDict_GetItem(nested, key);
-      if (Py_EnterRecursiveCall(" in flatten")) {
-        Py_DECREF(keys);
-        return false;
-      }
-      const bool success = FlattenHelper(val, list);
-      Py_LeaveRecursiveCall();
-      if (!success) {
-        Py_DECREF(keys);
-        return false;
-      }
-    }
-    Py_DECREF(keys);
-    return true;
-  }
+  std::vector<Safe_PyObjectPtr> next_values;
+  // Get the next values to recurse over.
+  if (!next_values_getter(nested, &next_values)) return false;
 
-  // iterate and recurse
-  PyObject* item;
-  PyObject* iterator = PyObject_GetIter(nested);
-  while ((item = PyIter_Next(iterator)) != nullptr) {
+  for (const auto& item : next_values) {
     if (Py_EnterRecursiveCall(" in flatten")) {
-      Py_DECREF(iterator);
-      Py_DECREF(item);
       return false;
     }
-    bool success = FlattenHelper(item, list);
+    const bool success =
+        FlattenHelper(item.get(), list, is_sequence_helper, next_values_getter);
     Py_LeaveRecursiveCall();
     if (!success) {
-      Py_DECREF(iterator);
-      Py_DECREF(item);
       return false;
     }
-    Py_DECREF(item);
   }
-  Py_DECREF(iterator);
   return true;
 }
 
@@ -234,7 +334,7 @@ void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
 
 // Returns true iff there were no "internal" errors. In other words,
 // errors that has nothing to do with structure checking.
-// If an "internal" error occured, the appropriate Python error will be
+// If an "internal" error occurred, the appropriate Python error will be
 // set and the caller can propage it directly to the user.
 //
 // Both `error_msg` and `is_type_error` must be non-null. `error_msg` must
@@ -351,7 +451,7 @@ bool AssertSameStructureHelper(PyObject* o1, PyObject* o2, bool check_types,
   }
 }
 
-}  // anonymous namespace
+}  // namespace
 
 void RegisterSequenceClass(PyObject* sequence_class) {
   if (!PyType_Check(sequence_class)) {
@@ -366,11 +466,38 @@ void RegisterSequenceClass(PyObject* sequence_class) {
   CollectionsSequenceType = sequence_class;
 }
 
+void RegisterSparseTensorValueClass(PyObject* sparse_tensor_value_class) {
+  if (!PyType_Check(sparse_tensor_value_class)) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        tensorflow::strings::StrCat(
+            "Expecting a class definition for `SparseTensorValue`. Got ",
+            Py_TYPE(sparse_tensor_value_class)->tp_name)
+            .c_str());
+    return;
+  }
+  SparseTensorValueType =
+      reinterpret_cast<PyTypeObject*>(sparse_tensor_value_class);
+}
+
 bool IsSequence(PyObject* o) { return IsSequenceHelper(o) == 1; }
 
 PyObject* Flatten(PyObject* nested) {
   PyObject* list = PyList_New(0);
-  if (FlattenHelper(nested, list)) {
+  if (FlattenHelper(nested, list, IsSequenceHelper, GetNextValues)) {
+    return list;
+  } else {
+    Py_DECREF(list);
+    return nullptr;
+  }
+}
+
+bool IsSequenceForData(PyObject* o) { return IsSequenceForDataHelper(o) == 1; }
+
+PyObject* FlattenForData(PyObject* nested) {
+  PyObject* list = PyList_New(0);
+  if (FlattenHelper(nested, list, IsSequenceForDataHelper,
+                    GetNextValuesForData)) {
     return list;
   } else {
     Py_DECREF(list);

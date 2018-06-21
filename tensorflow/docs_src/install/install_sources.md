@@ -81,7 +81,7 @@ or
 [macOS](#PrepareMac)
 
 
-<a name="#PrepareLinux"></a>
+<a name="PrepareLinux"></a>
 ## Prepare environment for Linux
 
 Before building TensorFlow on Linux, install the following build
@@ -133,7 +133,7 @@ The following NVIDIA <i>hardware</i> must be installed on your system:
 
 The following NVIDIA <i>software</i> must be installed on your system:
 
-  * [CUDA Toolkit](http://nvidia.com/cuda) (>= 7.0). We recommend version 9.0.
+  * [CUDA Toolkit](http://nvidia.com/cuda) (>= 8.0). We recommend version 9.0.
     For details, see
     [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/).
     Ensure that you append the relevant CUDA pathnames to the
@@ -141,7 +141,7 @@ The following NVIDIA <i>software</i> must be installed on your system:
     NVIDIA documentation.
   * [GPU drivers](http://nvidia.com/driver) supporting your version of the CUDA
     Toolkit.
-  * [cuDNN SDK](http://developer.nvidia.com/cudnn) (>= v3). We recommend version 7.0. For details, see
+  * [cuDNN SDK](http://developer.nvidia.com/cudnn) (>= 6.0). We recommend version 7.0. For details, see
     [NVIDIA's documentation](http://docs.nvidia.com/deeplearning/sdk/cudnn-install/).
   * [CUPTI](http://docs.nvidia.com/cuda/cupti/) ships with the CUDA Toolkit, but
     you also need to append its path to the `LD_LIBRARY_PATH` environment
@@ -194,32 +194,6 @@ the pip package will download additional packages required to _run_ it. If you
 plan on executing tasks directly with `bazel` , without the pip installation,
 you may need to install additional python packages. For example, you should
 `pip install mock enum34` before running TensorFlow's tests with bazel.
-
-### Optional: install TensorFlow for GPU prerequisites
-
-If you do not have brew installed, install it by following
-[these instructions](http://brew.sh/).
-
-After installing brew, install GNU coreutils by issuing the following command:
-
-<pre>$ <b>brew install coreutils</b></pre>
-
-If you want to compile tensorflow and have XCode 7.3 and CUDA 7.5 installed,
-note that Xcode 7.3 is not yet compatible with CUDA 7.5.  To remedy this
-problem, do either of the following:
-
-  * Upgrade to CUDA 8.0.
-  * Download Xcode 7.2 and select it as your default by issuing the following
-    command:
-
-    <pre> $ <b>sudo xcode-select -s /Applications/Xcode-7.2/Xcode.app</b></pre>
-
-**NOTE:** Your system must fulfill the NVIDIA software requirements described
-in one of the following documents:
-
-  * @{$install_linux#NVIDIARequirements$Installing TensorFlow on Linux}
-  * @{$install_mac#NVIDIARequirements$Installing TensorFlow on Mac OS}
-
 
 <a name="ConfigureInstallation"></a>
 ## Configure the installation
@@ -280,7 +254,7 @@ Do you wish to build TensorFlow with CUDA support? [y/N] <b>Y</b>
 CUDA support will be enabled for TensorFlow
 Do you want to use clang as CUDA compiler? [y/N]
 nvcc will be used as CUDA compiler
-Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 9.0]: <b>9.0</b>
+Please specify the CUDA SDK version you want to use. [Leave empty to default to CUDA 9.0]: <b>9.0</b>
 Please specify the location where CUDA 9.0 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
 Please specify which gcc should be used by nvcc as the host compiler. [Default is /usr/bin/gcc]:
 Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 7.0]: <b>7</b>
@@ -354,10 +328,10 @@ Invoke `pip install` to install that pip package.
 The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
 
-for TensorFlow 1.8.0rc1 on Linux:
+for TensorFlow 1.9.0rc0 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.8.0rc1-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.9.0rc0-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation
@@ -388,7 +362,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Started with TensorFlow}.
+If you are new to TensorFlow, see @{$get_started/eager}.
 
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
@@ -399,9 +373,9 @@ The build and installation problems you encounter typically depend on the
 operating system.  See the "Common installation problems" section
 of one of the following guides:
 
-  * @{$install_linux#CommonInstallationProblems$Installing TensorFlow on Linux}
-  * @{$install_mac#CommonInstallationProblems$Installing TensorFlow on Mac OS}
-  * @{$install_windows#CommonInstallationProblems$Installing TensorFlow on Windows}
+  * @{$install_linux#common_installation_problems$Installing TensorFlow on Linux}
+  * @{$install_mac#common_installation_problems$Installing TensorFlow on Mac OS}
+  * @{$install_windows#common_installation_problems$Installing TensorFlow on Windows}
 
 Beyond the errors documented in those two guides, the following table
 notes additional errors specific to building TensorFlow.  Note that we
@@ -459,6 +433,8 @@ Stack Overflow and specify the `tensorflow` tag.
 **Linux**
 <table>
 <tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.9.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.11.0</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.9.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.11.0</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.8.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.10.0</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow_gpu-1.8.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.9.0</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.7.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.10.0</td><td>N/A</td><td>N/A</td></tr>
@@ -482,6 +458,7 @@ Stack Overflow and specify the `tensorflow` tag.
 **Mac**
 <table>
 <tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.9.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.11.0</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow-1.8.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.10.1</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow-1.7.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.10.1</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow-1.6.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.8.1</td><td>N/A</td><td>N/A</td></tr>
@@ -498,6 +475,8 @@ Stack Overflow and specify the `tensorflow` tag.
 **Windows**
 <table>
 <tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.9.0</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.9.0</td><td>GPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.8.0</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>
 <tr><td>tensorflow_gpu-1.8.0</td><td>GPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>7</td><td>9</td></tr>
 <tr><td>tensorflow-1.7.0</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>

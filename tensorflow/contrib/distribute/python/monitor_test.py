@@ -25,6 +25,7 @@ from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import monitor as monitor_lib
 from tensorflow.contrib.distribute.python import one_device_strategy
 from tensorflow.contrib.distribute.python.single_loss_example import single_loss_example
+from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
@@ -65,7 +66,7 @@ class MonitorTest(test.TestCase, parameterized.TestCase):
     step_function, _ = single_loss_example(
         lambda: gradient_descent.GradientDescentOptimizer(0.2), distribution)
 
-    with self.test_session() as sess:
+    with session.Session() as sess, context.eager_mode():
       with self.assertRaisesRegexp(ValueError, "Should not provide"):
         _ = monitor_lib.Monitor(step_function, sess)
 

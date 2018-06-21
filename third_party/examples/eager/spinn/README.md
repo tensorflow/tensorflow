@@ -70,7 +70,7 @@ Other eager execution examples can be found under [tensorflow/contrib/eager/pyth
 - After training, you may use the model to perform inference on input data in
   the SNLI data format. The premise and hypotheses sentences are specified with
   the command-line flags `--inference_premise` and `--inference_hypothesis`,
-  respecitvely. Each sentence should include the words, as well as parentheses
+  respectively. Each sentence should include the words, as well as parentheses
   representing a binary parsing of the sentence. The words and parentheses
   should all be separated by spaces. For instance,
 

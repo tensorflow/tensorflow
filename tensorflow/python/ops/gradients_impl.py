@@ -112,14 +112,14 @@ def _MarkReachedOps(from_ops, reached_ops):
 
   Args:
     from_ops: list of Operations.
-    reached_ops: list of booleans, indexed by operation id.
+    reached_ops: set of Operations.
   """
   queue = collections.deque()
   queue.extend(from_ops)
   while queue:
     op = queue.popleft()
-    if not reached_ops[op._id]:
-      reached_ops[op._id] = True
+    if op not in reached_ops:
+      reached_ops.add(op)
       for output in op.outputs:
         if _IsBackpropagatable(output):
           queue.extend(output.consumers())
@@ -130,7 +130,7 @@ def _GatherInputs(to_ops, reached_ops):
 
   Args:
     to_ops: list of Operations.
-    reached_ops: list of booleans, indexed by operation id.
+    reached_ops: set of Operations.
 
   Returns:
     The list of all inputs of to_ops that are in reached_ops.
@@ -142,58 +142,57 @@ def _GatherInputs(to_ops, reached_ops):
   while queue:
     op = queue.popleft()
     # We are interested in this op.
-    if reached_ops[op._id]:
+    if op in reached_ops:
       inputs.append(op)
       # Clear the boolean so we won't add the inputs again.
-      reached_ops[op._id] = False
+      reached_ops.remove(op)
       for inp in op.inputs:
         queue.append(inp.op)
   return inputs
 
 
-def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
+def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops):
   """Initialize the pending count for ops between two lists of Operations.
 
-  'pending_count[op._id]' indicates the number of backprop inputs
+  'pending_count[op]' indicates the number of backprop inputs
   to this operation.
 
   Args:
-    graph: a Graph.
     to_ops: list of Operations.
     from_ops: list of Operations.
     colocate_gradients_with_ops: Python bool.  See docstring of gradients().
 
   Returns:
-    A tuple containing: (1) the subset of to_ops ids reachable from from_ops
-    by a path of zero or more backpropagatable tensors, (2) a list of integers
-    indexed by operation id, indicating the number of backprop inputs to this
-    operation, and (3) a ControlFlowState object which is not None if the ops
-    between from_ops and to_ops contain control flow loops.
+    A tuple containing: (1) the subset of to_ops reachable from from_ops by a
+    path of zero or more backpropagatable tensors, (2) a mapping from operation
+    to the number of backprop inputs to that op, and (3) a ControlFlowState
+    object which is not None if the ops between from_ops and to_ops contain
+    control flow loops.
   """
   # Mark reachable ops from from_ops.
-  reached_ops = [False] * (graph._last_id + 1)
+  reached_ops = set()
   _MarkReachedOps(from_ops, reached_ops)
-  # reached_ops[X] iff X is reachable from from_ops by a path of zero or more
+  # X in reached_ops iff X is reachable from from_ops by a path of zero or more
   # backpropagatable tensors.
 
-  reachable_to_ops = set(op._id for op in to_ops if reached_ops[op._id])  # pylint: disable=protected-access
+  reachable_to_ops = set(op for op in to_ops if op in reached_ops)
 
   # Mark between ops.
-  between_ops = [False] * (graph._last_id + 1)
+  between_ops = set()
   between_op_list = []
   queue = collections.deque()
   queue.extend(to_ops)
   while queue:
     op = queue.popleft()
     # We are interested in this op.
-    if reached_ops[op._id]:
-      between_ops[op._id] = True
+    if op in reached_ops:
+      between_ops.add(op)
       between_op_list.append(op)
       # Clear the boolean so we won't add the inputs again.
-      reached_ops[op._id] = False
+      reached_ops.remove(op)
       for inp in op.inputs:
         queue.append(inp.op)
-  # between_ops[X] iff X is on a path of zero or more backpropagatable tensors
+  # X in between_ops iff X is on a path of zero or more backpropagatable tensors
   # between from_ops and to_ops
 
   # 'loop_state' is None if there are no while loops.
@@ -201,11 +200,11 @@ def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
       between_op_list, between_ops, colocate_gradients_with_ops)
 
   # Initialize pending count for between ops.
-  pending_count = [0] * (graph._last_id + 1)
+  pending_count = collections.defaultdict(int)
   for op in between_op_list:
     for x in op.inputs:
-      if between_ops[x.op._id]:
-        pending_count[x.op._id] += 1
+      if x.op in between_ops:
+        pending_count[x.op] += 1
 
   return reachable_to_ops, pending_count, loop_state
 
@@ -297,7 +296,8 @@ def _DefaultGradYs(grad_ys,
 def _IsTrainable(tensor):
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
-                              dtypes.complex64, dtypes.complex128)
+                              dtypes.complex64, dtypes.complex128,
+                              dtypes.resource)
 
 
 def _IsBackpropagatable(tensor):
@@ -330,15 +330,15 @@ def _StopOps(from_ops, stop_gradient_ops, pending_count):
   should stop. Operations in the returned set will not be differentiated.
   This set is defined as the subset of `from_ops` containing ops that have
   no predecessor in `from_ops`. `pending_count` is the result of
-  `_PendingCount(g, xs, from_ops)`. An 'op' has predecessors in `from_ops`
-  iff pending_count[op._id] > 0.
+  `_PendingCount(xs, from_ops)`. An 'op' has predecessors in `from_ops`
+  iff pending_count[op] > 0.
 
   In addition, none of `stop_gradient_ops` will be differentiated.
 
   Args:
     from_ops: list of Operations.
     stop_gradient_ops: list of Operations never to backprop through.
-    pending_count: List of integers, indexed by operation id.
+    pending_count: mapping from operation to number of backprop inputs.
 
   Returns:
     The set of operations.
@@ -347,12 +347,12 @@ def _StopOps(from_ops, stop_gradient_ops, pending_count):
   for op in from_ops:
     is_stop_op = True
     for inp in op.inputs:
-      if pending_count[inp.op._id] > 0:
+      if pending_count[inp.op] > 0:
         is_stop_op = False
         break
     if is_stop_op:
-      stop_ops.add(op._id)
-  stop_ops.update(op._id for op in stop_gradient_ops)  # pylint: disable=protected-access
+      stop_ops.add(op)
+  stop_ops.update(op for op in stop_gradient_ops)
   return stop_ops
 
 
@@ -374,9 +374,7 @@ def _SymGrad(op, out_grads):
   f.name = op.type
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
-  # pylint: disable=protected-access
   in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
-  # pylint: enable=protected-access
   return in_grads
 
 
@@ -415,6 +413,30 @@ def _MaybeCompile(scope, op, func, grad_fn):
   }
   with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
     return grad_fn()
+
+
+def _RaiseNoGradWrtInitialLoopValError(op, from_ops):
+  """Raises an error if we backprop through a loop var."""
+  # Find the nearest 'to_op' reachable from 'op' to provide a more helpful error
+  # message.
+  target_op = None
+  queue = collections.deque([op])
+  visited = set()
+  while queue:
+    curr_op = queue.popleft()
+    if curr_op in visited: continue
+    visited.add(curr_op)
+    if curr_op in from_ops:
+      target_op = curr_op
+      break
+    queue.extend(t.op for t in curr_op.inputs)
+  assert target_op
+  raise ValueError(
+      "Cannot compute gradient inside while loop with respect to op '%s'. "
+      "We do not support taking the gradient wrt or through the initial value "
+      "of a loop variable. Gradients can be computed through loop invariants "
+      "or wrt the input parameters to the loop body."
+      % target_op.name)
 
 
 @tf_export("gradients")
@@ -510,13 +532,23 @@ def gradients(ys,
                             gate_gradients, aggregation_method, stop_gradients)
 
 
-def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
-                     gate_gradients, aggregation_method, stop_gradients):
+def _GradientsHelper(ys,
+                     xs,
+                     grad_ys=None,
+                     name="gradients",
+                     colocate_gradients_with_ops=False,
+                     gate_gradients=False,
+                     aggregation_method=None,
+                     stop_gradients=None,
+                     src_graph=None):
   """Implementation of gradients()."""
   if context.executing_eagerly():
     raise RuntimeError("tf.gradients not supported when eager execution "
                        "is enabled. Use tf.contrib.eager.GradientTape "
                        "instead.")
+  if src_graph is None:
+    src_graph = ops.get_default_graph()
+
   ys = _AsList(ys)
   xs = _AsList(xs)
   stop_gradients = [] if stop_gradients is None else _AsList(stop_gradients)
@@ -556,7 +588,7 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
     from_ops = [t.op for t in xs]
     stop_gradient_ops = [t.op for t in stop_gradients]
     reachable_to_ops, pending_count, loop_state = _PendingCount(
-        ops.get_default_graph(), to_ops, from_ops, colocate_gradients_with_ops)
+        to_ops, from_ops, colocate_gradients_with_ops)
 
     # Iterate over the collected ops.
     #
@@ -578,12 +610,10 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
     for op in to_ops:
       # 'ready' handles the case where one output gradient relies on
       # another output's gradient.
-      # pylint: disable=protected-access
-      ready = (pending_count[op._id] == 0)
-      if ready and op._id not in to_ops_set and op._id in reachable_to_ops:
-        to_ops_set.add(op._id)
+      ready = (pending_count[op] == 0)
+      if ready and op not in to_ops_set and op in reachable_to_ops:
+        to_ops_set.add(op)
         queue.append(op)
-      # pylint: enable=protected-access
 
     if loop_state:
       loop_exits = loop_state.ProcessUnusedLoopExits(pending_count, to_ops_set)
@@ -607,12 +637,12 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
         grad_fn = None
         func_call = None
         # pylint: disable=protected-access
-        is_func_call = ops.get_default_graph()._is_function(op.type)
+        is_func_call = src_graph._is_function(op.type)
         # pylint: enable=protected-access
         has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
-        if has_out_grads and (op._id not in stop_ops):
+        if has_out_grads and (op not in stop_ops):
           if is_func_call:
-            func_call = ops.get_default_graph()._get_function(op.type)
+            func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
             # Note that __defun is not set if the graph is
             # imported. If it's set, we prefer to access the original
             # defun.
@@ -629,6 +659,21 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
                   (op.name, op.type))
         if loop_state:
           loop_state.EnterGradWhileContext(op, before=False)
+
+        # NOTE(skyewm): We don't support computing gradients wrt a loop variable
+        # unless it's within the context of a single iteration (i.e. the
+        # gradient is wrt to the loop parameter in the body function, not wrt or
+        # through the initial value). This means if we're in a while loop
+        # context, we should never see a switch node from this context.
+        # pylint: disable=protected-access
+        if (control_flow_util.IsSwitch(op) and
+            op._control_flow_context is not None and
+            op._control_flow_context.IsWhileContext() and
+            op._control_flow_context ==
+            ops.get_default_graph()._get_control_flow_context()):
+          _RaiseNoGradWrtInitialLoopValError(op, from_ops)
+        # pylint: enable=protected-access
+
         if (grad_fn or is_func_call) and has_out_grads:
           # NOTE: If _AggregatedGrads didn't compute a value for the i'th
           # output, it means that the cost does not depend on output[i],
@@ -647,7 +692,7 @@ def _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
                 out_grads[i] = control_flow_ops.ZerosLikeOutsideLoop(op, i)
           with ops.name_scope(op.name + "_grad"):
             # pylint: disable=protected-access
-            with ops.get_default_graph()._original_op(op):
+            with src_graph._original_op(op):
               # pylint: enable=protected-access
               if grad_fn:
                 # If grad_fn was found, do not use SymbolicGradient even for
@@ -714,13 +759,10 @@ def _HasAnyNotNoneGrads(grads, op):
 def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state):
   """Update pending count for the inputs of op and enqueue ready ops."""
   for x in op.inputs:
-    # pylint: disable=protected-access
-    pending_count[x.op._id] -= 1
-    ready = (pending_count[x.op._id] == 0)
+    pending_count[x.op] -= 1
+    ready = (pending_count[x.op] == 0)
     if loop_state and not ready:
-      ready = (
-          pending_count[x.op._id] > 0 and control_flow_util.IsLoopSwitch(x.op))
-    # pylint: enable=protected-access
+      ready = pending_count[x.op] > 0 and control_flow_util.IsLoopSwitch(x.op)
     if ready:
       if control_flow_util.IsLoopExit(x.op):
         # if x is an exit without real gradient, defer processing them.
@@ -964,19 +1006,30 @@ def _AggregatedGrads(grads,
         logging.vlog(2, "  _AggregatedGrads %d x %s using %s", len(out_grad),
                      tensor_shape, used)
       else:
-        out_grad = math_ops._as_indexed_slices_list(
-            [g for g in out_grad if g is not None])
-        out_grad = [_HandleNestedIndexedSlices(x) for x in out_grad]
-        # Form IndexedSlices out of the concatenated values and
-        # indices.
-        out_grads[i] = ops.IndexedSlices(
-            array_ops.concat([x.values for x in out_grad], 0),
-            array_ops.concat([x.indices for x in out_grad], 0),
-            out_grad[0].dense_shape)
+        out_grads[i] = _AggregateIndexedSlicesGradients(out_grad)
     else:  # not out_grad
       # out_grads[i] is [], thus its aggregation is simply None.
       out_grads[i] = None
   return out_grads
+
+
+def _AggregateIndexedSlicesGradients(grads):
+  """Aggregates gradients of type `IndexedSlices` by concatenation."""
+  if len(grads) < 1:
+    return None
+  elif len(grads) == 1:
+    return grads[0]
+  else:
+    grads = math_ops._as_indexed_slices_list(  # pylint: disable=protected-access
+        [g for g in grads if g is not None])
+    grads = [_HandleNestedIndexedSlices(x) for x in grads]  # pylint: disable=protected-access
+    # Form IndexedSlices out of the concatenated values and indices.
+    concat_grad = ops.IndexedSlices(
+        array_ops.concat([x.values for x in grads], axis=0),
+        array_ops.concat([x.indices for x in grads], axis=0),
+        grads[0].dense_shape)
+
+    return concat_grad
 
 
 # TODO(vrv): Make this available when we want to make it public.

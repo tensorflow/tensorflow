@@ -43,6 +43,7 @@ def scalar_shape():
   return ops.convert_to_tensor([], dtype=dtypes.int32)
 
 
+@test_util.with_c_shapes
 class ListOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()

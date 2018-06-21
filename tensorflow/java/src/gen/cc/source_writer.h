@@ -93,25 +93,22 @@ class SourceWriter {
   // This method appends a new opening brace to the current data and indent the
   // next lines according to Google Java Style Guide. The block can optionally
   // be preceded by an expression (e.g. Append("if(true)").BeginBlock();)
-  SourceWriter& BeginBlock() {
-    return Append(newline_ ? "{" : " {").EndLine().Indent(2);
-  }
+  SourceWriter& BeginBlock(const string& expression = "");
 
   // Ends the current block of source code.
   //
   // This method appends a new closing brace to the current data and outdent the
   // next lines back to the margin used before BeginBlock() was invoked.
-  SourceWriter& EndBlock() {
-    return Indent(-2).Append("}").EndLine();
-  }
+  SourceWriter& EndBlock();
 
   // Begins to write a method.
   //
   // This method outputs the signature of the Java method from the data passed
-  // in the 'method' parameter and starts a new block. Additionnal modifiers can
-  // also be passed in parameter to define the accesses and the scope of this
-  // method.
-  SourceWriter& BeginMethod(const Method& method, int modifiers = 0);
+  // in the 'method' parameter and starts a new block. Modifiers are also passed
+  // in parameter to define the access scope of this method and, optionally,
+  // a Javadoc.
+  SourceWriter& BeginMethod(const Method& method, int modifiers,
+                            const Javadoc* javadoc = nullptr);
 
   // Ends the current method.
   //
@@ -122,22 +119,24 @@ class SourceWriter {
   // Begins to write the main type of a source file.
   //
   // This method outputs the declaration of the Java type from the data passed
-  // in the 'type' parameter and starts a new block. Additionnal modifiers can
-  // also be passed in parameter to define the accesses and the scope of this
-  // type.
+  // in the 'type' parameter and starts a new block. Modifiers are also passed
+  // in parameter to define the access scope of this type and, optionally,
+  // a Javadoc.
   //
-  // If not null, all types found in the 'dependencies' list will be imported
-  // before declaring the new type.
-  SourceWriter& BeginType(const Type& clazz,
-      const std::list<Type>* dependencies, int modifiers = 0);
+  // If not null, all types found in the 'extra_dependencies' list will be
+  // imported before declaring the new type.
+  SourceWriter& BeginType(const Type& type, int modifiers,
+                          const std::list<Type>* extra_dependencies = nullptr,
+                          const Javadoc* javadoc = nullptr);
 
   // Begins to write a new inner type.
   //
   // This method outputs the declaration of the Java type from the data passed
-  // in the 'type' parameter and starts a new block. Additionnal modifiers can
-  // also be passed in parameter to define the accesses and the scope of this
-  // type.
-  SourceWriter& BeginInnerType(const Type& type, int modifiers = 0);
+  // in the 'type' parameter and starts a new block. Modifiers are also passed
+  // in parameter to define the accesses and the scope of this type and,
+  // optionally, a Javadoc.
+  SourceWriter& BeginInnerType(const Type& type, int modifiers,
+                               const Javadoc* javadoc = nullptr);
 
   // Ends the current type.
   //
@@ -145,13 +144,13 @@ class SourceWriter {
   // BeginType() or BeginInnerType() prior to this.
   SourceWriter& EndType();
 
-  // Writes a list of variables as fields of a type.
+  // Writes a variable as fields of a type.
   //
   // This method must be called within the definition of a type (see BeginType()
-  // or BeginInnerType()). Additional modifiers can also be passed in parameter
-  // to define the accesses and the scope of those fields.
-  SourceWriter& WriteFields(const std::list<Variable>& fields,
-      int modifiers = 0);
+  // or BeginInnerType()). Modifiers are also be passed in parameter to define
+  // the accesses and the scope of this field and, optionally, a Javadoc.
+  SourceWriter& WriteField(const Variable& field, int modifiers,
+                           const Javadoc* javadoc = nullptr);
 
  protected:
   virtual void DoAppend(const StringPiece& str) = 0;
@@ -207,9 +206,7 @@ class SourceWriter {
   std::stack<GenericNamespace*> generic_namespaces_;
 
   SourceWriter& WriteModifiers(int modifiers);
-  SourceWriter& WriteDoc(const string& description,
-    const string& return_description = "",
-    const std::list<Variable>* parameters = nullptr);
+  SourceWriter& WriteJavadoc(const Javadoc& javadoc);
   SourceWriter& WriteAnnotations(const std::list<Annotation>& annotations);
   SourceWriter& WriteGenerics(const std::list<const Type*>& generics);
   GenericNamespace* PushGenericNamespace(int modifiers);

@@ -28,8 +28,8 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/c/eager/runtime.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -37,6 +37,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/distributed_runtime/remote_device.h"
+#include "tensorflow/core/distributed_runtime/rpc/eager/eager_grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -51,6 +59,7 @@ struct TFE_ContextOptions {
   // true if async execution is enabled.
   bool async = false;
   TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_SILENT};
+  tensorflow::ServerDef server_def;
 };
 
 struct TFE_Context {
@@ -63,6 +72,23 @@ struct TFE_Context {
                 static_cast<tensorflow::ContextDevicePlacementPolicy>(
                     default_policy),
                 async, std::move(device_mgr), rendezvous) {}
+
+  explicit TFE_Context(
+      const tensorflow::SessionOptions& opts,
+      TFE_ContextDevicePlacementPolicy default_policy, bool async,
+      tensorflow::DeviceMgr* local_device_mgr,
+      tensorflow::Rendezvous* rendezvous,
+      std::unique_ptr<tensorflow::GrpcServer> server,
+      std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers,
+      std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr,
+      const tensorflow::gtl::FlatMap<tensorflow::string, tensorflow::uint64>&
+          remote_contexts)
+      : context(opts,
+                static_cast<tensorflow::ContextDevicePlacementPolicy>(
+                    default_policy),
+                async, local_device_mgr, rendezvous, std::move(server),
+                std::move(remote_eager_workers), std::move(remote_device_mgr),
+                remote_contexts) {}
 
   tensorflow::EagerContext context;
 };
@@ -79,6 +105,14 @@ struct TFE_TensorHandle {
   TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
 
   tensorflow::TensorHandle* handle;
+};
+
+struct TFE_TensorDebugInfo {
+  TFE_TensorDebugInfo(const std::vector<tensorflow::int64>& dims)
+      : dev_dims(dims) {}
+
+  // Fully-padded, minor-to-major.
+  std::vector<tensorflow::int64> dev_dims;
 };
 
 struct TFE_Op {

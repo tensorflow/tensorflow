@@ -30,6 +30,7 @@ from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib import coder
 from tensorflow.contrib import compiler
 from tensorflow.contrib import constrained_optimization
+from tensorflow.contrib import control_flow
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn
@@ -60,6 +61,7 @@ from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
 from tensorflow.contrib import memory_stats
 from tensorflow.contrib import metrics
+from tensorflow.contrib import mixed_precision
 from tensorflow.contrib import model_pruning
 from tensorflow.contrib import nccl
 from tensorflow.contrib import nn

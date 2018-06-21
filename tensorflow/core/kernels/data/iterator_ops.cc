@@ -158,7 +158,10 @@ class IteratorResource : public ResourceBase {
         graph_runner.Run(&graph, lib, {}, {output_node}, &outputs));
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
 
-    TF_RETURN_IF_ERROR(set_iterator(dataset->MakeIterator("Iterator")));
+    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+    std::unique_ptr<IteratorBase> iterator;
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, "Iterator", &iterator));
+    TF_RETURN_IF_ERROR(set_iterator(std::move(iterator)));
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
 
     if (captured_iterator) {
@@ -204,12 +207,6 @@ class IteratorResource : public ResourceBase {
     return Status::OK();
   }
 
-
-  std::shared_ptr<StatsAggregator> stats_aggregator() {
-    tf_shared_lock l(mu_);
-    return stats_aggregator_;
-  }
-
   string DebugString() override { return "Iterator resource"; }
 
   const DataTypeVector& output_dtypes() const { return output_dtypes_; }
@@ -228,7 +225,6 @@ class IteratorResource : public ResourceBase {
   FunctionLibraryRuntime* lib_ = nullptr;  // not owned.
   std::shared_ptr<IteratorBase> iterator_;
   mutex mu_;
-  std::shared_ptr<StatsAggregator> stats_aggregator_ GUARDED_BY(mu_);
   std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
@@ -438,6 +434,9 @@ class IteratorStateVariant {
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
                                        kIteratorVariantTypeName);
 
+// Note that IteratorHandleOp holds a reference to the resource it creates. If
+// cleaning up resources with DestroyResourceOp is important, consider creating
+// resource containers with AnonymousIteratorHandleOp instead.
 class IteratorHandleOp : public OpKernel {
  public:
   explicit IteratorHandleOp(OpKernelConstruction* ctx)
@@ -574,6 +573,75 @@ class IteratorHandleOp : public OpKernel {
   string name_;
 };
 
+// Like IteratorHandleOp, but creates handles which are never shared, and does
+// not hold a reference to these handles. The latter is important for eager
+// execution, since OpKernel instances generally live as long as the program
+// running them.
+class AnonymousIteratorHandleOp : public OpKernel {
+ public:
+  explicit AnonymousIteratorHandleOp(OpKernelConstruction* context)
+      : OpKernel(context), graph_def_version_(context->graph_def_version()) {
+    OP_REQUIRES_OK(context, context->GetAttr("output_types", &output_dtypes_));
+    OP_REQUIRES_OK(context, context->GetAttr("output_shapes", &output_shapes_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    FunctionLibraryRuntime* lib;
+    std::unique_ptr<DeviceMgr> device_mgr(nullptr);
+    std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
+    OP_REQUIRES_OK(context,
+                   context->function_library()->Clone(&flib_def, &pflr, &lib));
+
+    ResourceMgr* mgr = context->resource_manager();
+
+    const string container_name = "AnonymousIterator";
+    string unique_name;
+    {
+      mutex_lock l(static_resource_lookup_mutex_);
+      while (true) {  // Find an unused name
+        IteratorResource* existing_resource = nullptr;
+        unique_name = strings::StrCat("AnonymousIterator", current_id_++);
+        Status status = mgr->Lookup<IteratorResource>(
+            container_name, unique_name, &existing_resource);
+        if (status.code() == error::NOT_FOUND) {
+          break;
+        }
+        OP_REQUIRES_OK(context, status);
+        existing_resource->Unref();
+      }
+      IteratorResource* new_resource = new IteratorResource(
+          output_dtypes_, output_shapes_, graph_def_version_,
+          std::move(device_mgr), std::move(flib_def), std::move(pflr), lib);
+      // Create the resource with our chosen name under the resource lookup
+      // mutex to avoid another kernel racily creating a resource with this
+      // name.
+      OP_REQUIRES_OK(context, mgr->Create<IteratorResource>(
+                                  container_name, unique_name, new_resource));
+    }
+    OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
+                                context, 0, container_name, unique_name,
+                                MakeTypeIndex<IteratorResource>()));
+  }
+
+ private:
+  // Coordinates Iterator unique name creation across AnonymousIteratorHandleOp
+  // instances.
+  static mutex static_resource_lookup_mutex_;
+  // current_id_ is just a hint for creating unique names. If it turns out
+  // there's a collision (e.g. because another AnonymousIteratorHandleOp
+  // instance is generating handles) we'll just skip that id.
+  static int64 current_id_ GUARDED_BY(static_resource_lookup_mutex_);
+  DataTypeVector output_dtypes_;
+  std::vector<PartialTensorShape> output_shapes_;
+  const int graph_def_version_;
+};
+
+// Static initializers for AnonymousIteratorHandleOp id counting.
+mutex AnonymousIteratorHandleOp::static_resource_lookup_mutex_{
+    LINKER_INITIALIZED};
+int64 AnonymousIteratorHandleOp::current_id_(0);
+
 class MakeIteratorOp : public OpKernel {
  public:
   explicit MakeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -585,8 +653,12 @@ class MakeIteratorOp : public OpKernel {
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
     core::ScopedUnref unref(iterator_resource);
-    OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(
-                            dataset->MakeIterator("Iterator")));
+
+    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+    std::unique_ptr<IteratorBase> iterator;
+    OP_REQUIRES_OK(ctx,
+                   dataset->MakeIterator(&iter_ctx, "Iterator", &iterator));
+    OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(std::move(iterator)));
   }
 };
 
@@ -608,9 +680,12 @@ class ToSingleElementOp : public AsyncOpKernel {
       DatasetBase* dataset;
       OP_REQUIRES_OK_ASYNC(
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
-      auto iterator = dataset->MakeIterator("SingleElementIterator");
-
       IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+      std::unique_ptr<IteratorBase> iterator;
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          dataset->MakeIterator(&iter_ctx, "SingleElementIterator", &iterator),
+          done);
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;
@@ -700,7 +775,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
         return;
       }
     }
-    ProduceOutput(ctx, std::move(done));
+    ProduceOutput(ctx, done);
   }
 
  private:
@@ -721,9 +796,9 @@ class OneShotIteratorOp : public AsyncOpKernel {
     }
 
     for (auto&& ctx_done : callbacks_to_run) {
-      ProduceOutput(ctx_done.first, std::move(ctx_done.second));
+      ProduceOutput(ctx_done.first, ctx_done.second);
     }
-    ProduceOutput(ctx, std::move(done));
+    ProduceOutput(ctx, done);
   }
 
   Status TryInit(OpKernelContext* ctx, IteratorResource** iterator,
@@ -794,8 +869,10 @@ class OneShotIteratorOp : public AsyncOpKernel {
     // factory function.
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
-    TF_RETURN_IF_ERROR(
-        (*iterator)->set_iterator(dataset->MakeIterator("Iterator")));
+    IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+    std::unique_ptr<IteratorBase> iter;
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, "Iterator", &iter));
+    TF_RETURN_IF_ERROR((*iterator)->set_iterator(std::move(iter)));
 
     (*iterator)->Ref();
     return Status::OK();
@@ -860,9 +937,6 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
           IteratorContext::Params params;
           params.env = ctx->env();
-          params.stats_aggregator_getter = [iterator]() {
-            return iterator->stats_aggregator();
-          };
           params.runner = *(ctx->runner());
           params.function_library = iterator->function_library();
           DeviceBase* device = ctx->function_library()->device();
@@ -911,9 +985,6 @@ class IteratorGetNextSyncOp : public OpKernel {
 
     IteratorContext::Params params;
     params.env = ctx->env();
-    params.stats_aggregator_getter = [iterator]() {
-      return iterator->stats_aggregator();
-    };
     params.runner = *(ctx->runner());
     params.function_library = iterator->function_library();
     DeviceBase* device = ctx->function_library()->device();
@@ -1051,7 +1122,7 @@ class DeserializeIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
-
+    core::ScopedUnref unref_iterator(iterator_resource);
     Variant variant = ctx->input(1).scalar<Variant>()();
     auto* wrapper = variant.get<IteratorStateVariant>();
     OP_REQUIRES(ctx, wrapper != nullptr,
@@ -1066,6 +1137,8 @@ class DeserializeIteratorOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE_CPU),
+                        AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
                         ToSingleElementOp);
 REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),

@@ -27,7 +27,14 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 
+// forward declare
+struct EagerTensor;
+
 namespace {
+
+// An instance of _EagerTensorProfiler that will receive callbacks about
+// events on eager tensors. This is set by TFE_Py_InitEagerTensor, if at all.
+PyObject* eager_tensor_profiler = nullptr;
 
 TFE_Context* GetContext(PyObject* ctx) {
   TFE_Context* context =
@@ -253,7 +260,44 @@ typedef struct EagerTensor {
   // to use a TF_Status object. However note that accesses to `status` are not
   // thread-safe.
   TF_Status* status;
+
+  PyObject* weakreflist; /* List of weak references */
 } EagerTensor;
+
+namespace {
+
+// Returns true on success - successfully invoked or no profiler registered.
+// Returns false if some error occurred.
+bool MaybeInvokeCreatedOnEagerTensorProfiler(EagerTensor* created_tensor) {
+  if (eager_tensor_profiler != nullptr) {
+#if PY_MAJOR_VERSION < 3
+    PyObject* created_method_name = PyString_InternFromString("created");
+#else
+    PyObject* created_method_name = PyUnicode_InternFromString("created");
+#endif
+    if (created_method_name == nullptr) {
+      return false;
+    }
+    PyObject* result = PyObject_CallMethodObjArgs(
+        eager_tensor_profiler, created_method_name, created_tensor, NULL);
+    if (result == nullptr) {
+      LOG(ERROR) << "Invoking created() on EagerTensor profiler failed";
+      // While we can potentially continue because the error is related to
+      // profiling, we choose to return an error because:
+      //  - If profiling is used, the user likely wants to stop execution on
+      //    profiling errors.
+      //  - Error in profiling code might have left some state in an invalid
+      //    form that can lead to an error later on. Better to fail fast.
+      Py_DECREF(created_method_name);
+      return false;
+    }
+    Py_DECREF(created_method_name);
+    Py_DECREF(result);
+  }
+  return true;
+}
+
+}  // namespace
 
 // tp_init for EagerTensor.
 int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
@@ -266,6 +310,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   Py_INCREF(Py_None);
   self->tensor_shape = Py_None;
   self->status = TF_NewStatus();
+  self->weakreflist = nullptr;
   PyObject* value;
   PyObject* context = nullptr;
   PyObject* device = nullptr;
@@ -299,7 +344,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
         GetContext(context), handle.get(), handle_dtype,
         static_cast<TF_DataType>(desired_dtype), self->status));
     if (TF_GetCode(self->status) != TF_OK) {
-      PyErr_SetString(PyExc_ValueError,
+      PyErr_SetString(PyExc_TypeError,
                       tensorflow::strings::StrCat(
                           "Error while casting from DataType ", handle_dtype,
                           " to ", desired_dtype, ". ", TF_Message(self->status))
@@ -344,11 +389,22 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
     if (handle == nullptr) return -1;
   }
   self->handle = handle.release();
+
+  if (!MaybeInvokeCreatedOnEagerTensorProfiler(self)) {
+    return -1;
+  }
+
   return 0;
 }
 
 // tp_dealloc for EagerTensor.
 void EagerTensor_dealloc(EagerTensor* self) {
+  // Clear weak references to self.
+  // Needs to happen before any actual destruction.
+  if (self->weakreflist != nullptr) {
+    PyObject_ClearWeakRefs((PyObject*)self);
+  }
+
   TF_DeleteStatus(self->status);
   Py_DECREF(self->handle_data);
   Py_DECREF(self->keras_mask);
@@ -574,43 +630,43 @@ static PyTypeObject _EagerTensorType = {
     // clang-format off
     PyVarObject_HEAD_INIT(nullptr, 0)
     // clang-format on
-    "EagerTensor",                   /* tp_name */
-    sizeof(EagerTensor),             /* tp_basicsize */
-    0,                               /* tp_itemsize */
-    (destructor)EagerTensor_dealloc, /* tp_dealloc */
-    nullptr,                         /* tp_print */
-    nullptr,                         /* tp_getattr */
-    nullptr,                         /* tp_setattr */
-    nullptr,                         /* tp_compare */
-    nullptr,                         /* tp_repr */
-    nullptr,                         /* tp_as_number */
-    nullptr,                         /* tp_as_sequence */
-    nullptr,                         /* tp_as_mapping */
-    nullptr,                         /* tp_hash */
-    nullptr,                         /* tp_call */
-    nullptr,                         /* tp_str */
-    nullptr,                         /* tp_getattro */
-    nullptr,                         /* tp_setattro */
-    nullptr,                         /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,              /* tp_flags */
-    nullptr,                         /* tp_doc */
-    nullptr,                         /* tp_traverse */
-    nullptr,                         /* tp_clear */
-    nullptr,                         /* tp_richcompare */
-    0,                               /* tp_weaklistoffset */
-    nullptr,                         /* tp_iter */
-    nullptr,                         /* tp_iternext */
-    EagerTensor_methods,             /* tp_methods */
-    nullptr,                         /* tp_members */
-    EagerTensor_getseters,           /* tp_getset */
-    nullptr,                         /* tp_base */
-    nullptr,                         /* tp_dict */
-    nullptr,                         /* tp_descr_get */
-    nullptr,                         /* tp_descr_set */
-    0,                               /* tp_dictoffset */
-    (initproc)EagerTensor_init,      /* tp_init */
-    nullptr,                         /* tp_alloc */
-    nullptr,                         /* tp_new */
+    "EagerTensor",                      /* tp_name */
+    sizeof(EagerTensor),                /* tp_basicsize */
+    0,                                  /* tp_itemsize */
+    (destructor)EagerTensor_dealloc,    /* tp_dealloc */
+    nullptr,                            /* tp_print */
+    nullptr,                            /* tp_getattr */
+    nullptr,                            /* tp_setattr */
+    nullptr,                            /* tp_compare */
+    nullptr,                            /* tp_repr */
+    nullptr,                            /* tp_as_number */
+    nullptr,                            /* tp_as_sequence */
+    nullptr,                            /* tp_as_mapping */
+    nullptr,                            /* tp_hash */
+    nullptr,                            /* tp_call */
+    nullptr,                            /* tp_str */
+    nullptr,                            /* tp_getattro */
+    nullptr,                            /* tp_setattro */
+    nullptr,                            /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    nullptr,                            /* tp_doc */
+    nullptr,                            /* tp_traverse */
+    nullptr,                            /* tp_clear */
+    nullptr,                            /* tp_richcompare */
+    offsetof(EagerTensor, weakreflist), /* tp_weaklistoffset */
+    nullptr,                            /* tp_iter */
+    nullptr,                            /* tp_iternext */
+    EagerTensor_methods,                /* tp_methods */
+    nullptr,                            /* tp_members */
+    EagerTensor_getseters,              /* tp_getset */
+    nullptr,                            /* tp_base */
+    nullptr,                            /* tp_dict */
+    nullptr,                            /* tp_descr_get */
+    nullptr,                            /* tp_descr_set */
+    0,                                  /* tp_dictoffset */
+    (initproc)EagerTensor_init,         /* tp_init */
+    nullptr,                            /* tp_alloc */
+    nullptr,                            /* tp_new */
 };
 
 #endif
@@ -641,6 +697,11 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
     t->tensor_shape = Py_None;
     t->handle = handle;
     t->status = TF_NewStatus();
+    t->weakreflist = nullptr;
+
+    if (!MaybeInvokeCreatedOnEagerTensorProfiler(t)) {
+      return nullptr;
+    }
   }
   return reinterpret_cast<PyObject*>(t);
 }
@@ -648,6 +709,12 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
 tensorflow::int64 EagerTensor_id(const PyObject* tensor) {
   CHECK(EagerTensor_CheckExact(tensor));
   return reinterpret_cast<const EagerTensor*>(tensor)->id;
+}
+
+tensorflow::DataType EagerTensor_dtype(const PyObject* tensor) {
+  CHECK(EagerTensor_CheckExact(tensor));
+  return static_cast<tensorflow::DataType>(TFE_TensorHandleDataType(
+      reinterpret_cast<const EagerTensor*>(tensor)->handle));
 }
 
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
@@ -712,6 +779,18 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
   // dictionaries are correctly initialized in the first place.
   EagerTensorType->tp_dictoffset = 0;
   return reinterpret_cast<PyObject*>(EagerTensorType);
+}
+
+PyObject* TFE_Py_SetEagerTensorProfiler(PyObject* profiler) {
+  Py_XDECREF(eager_tensor_profiler);
+
+  if (profiler == Py_None) {
+    eager_tensor_profiler = nullptr;
+  } else {
+    eager_tensor_profiler = profiler;
+    Py_INCREF(eager_tensor_profiler);
+  }
+  Py_RETURN_NONE;
 }
 
 PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
@@ -785,4 +864,38 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
   }
 
   return EagerTensorFromHandle(handle);
+}
+
+PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor) {
+  if (!EagerTensor_CheckExact(tensor)) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        tensorflow::strings::StrCat("Expected an EagerTensors but got type \"",
+                                    Py_TYPE(tensor)->tp_name, "\"")
+            .c_str());
+    return nullptr;
+  }
+  TFE_TensorHandle* handle = EagerTensor_Handle(tensor);
+
+  auto status = tensorflow::make_safe(TF_NewStatus());
+  TFE_TensorDebugInfo* debug_info =
+      TFE_TensorHandleTensorDebugInfo(handle, status.get());
+  if (TF_GetCode(status.get()) != TF_OK) {
+    PyErr_SetString(
+        PyExc_RuntimeError,
+        tensorflow::strings::StrCat("Error retrieving tensor's device shape: ",
+                                    TF_Message(status.get()))
+            .c_str());
+    return nullptr;
+  }
+
+  int rank = TFE_TensorDebugInfoOnDeviceNumDims(debug_info);
+  PyObject* shape = PyTuple_New(rank);
+  for (int i = 0; i < rank; ++i) {
+    tensorflow::int64 dim_size = TFE_TensorDebugInfoOnDeviceDim(debug_info, i);
+    PyTuple_SET_ITEM(shape, i, PyLong_FromLongLong(dim_size));
+  }
+  TFE_DeleteTensorDebugInfo(debug_info);
+
+  return shape;
 }

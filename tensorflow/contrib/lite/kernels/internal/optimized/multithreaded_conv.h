@@ -129,8 +129,9 @@ class EigenTensorConvFunctor {
       const int conv_width = output_height * output_width;
       Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
       dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
-      EigenMatrix output(output_data, conv_width, filter_count);
-      ConstEigenMatrix input(input_data, conv_width, input_depth);
+      EigenMatrix output(output_data, input_batches * conv_width, filter_count);
+      ConstEigenMatrix input(input_data, input_batches * conv_width,
+                             input_depth);
       ConstEigenMatrix filter(filter_data, input_depth, filter_count);
       MatMulConvFunctor<Eigen::ThreadPoolDevice, T>()(device, output, input,
                                                       filter, dim_pair);

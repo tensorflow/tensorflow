@@ -23,7 +23,7 @@ limitations under the License.
 namespace xla {
 namespace source_map_util {
 
-// Creates an INVALID_ARUGMENT status with the given format string.
+// Creates an INVALID_ARGUMENT status with the given format string.
 //
 // Also, attempts to extract the OpMetadata for parameter_number on executable
 // and append it to the status message for source mapping to user code.

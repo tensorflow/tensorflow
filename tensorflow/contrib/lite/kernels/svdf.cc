@@ -37,7 +37,7 @@ constexpr int kWeightsFeatureTensor = 1;
 constexpr int kWeightsTimeTensor = 2;
 constexpr int kBiasTensor = 3;
 constexpr int kStateTensor = 0;
-constexpr int KOutputTensor = 1;
+constexpr int kOutputTensor = 1;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* scratch_tensor_index = new int;
@@ -58,10 +58,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 2);
 
   TfLiteTensor* input = &context->tensors[node->inputs->data[kInputTensor]];
-  TfLiteTensor* weights_feature =
-      &context->tensors[node->inputs->data[kWeightsFeatureTensor]];
-  TfLiteTensor* weights_time =
-      &context->tensors[node->inputs->data[kWeightsTimeTensor]];
+  const TfLiteTensor* weights_feature =
+      GetInput(context, node, kWeightsFeatureTensor);
+  const TfLiteTensor* weights_time =
+      GetInput(context, node, kWeightsTimeTensor);
 
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
@@ -74,13 +74,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ASSERT_EQ(input->dims->data[1], weights_feature->dims->data[1]);
   TF_LITE_ASSERT_EQ(weights_time->dims->data[0], num_filters);
 
-  TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   if (bias) {
     TF_LITE_ASSERT_EQ(bias->dims->data[0], num_units);
   }
 
-  TfLiteTensor* state = &context->tensors[node->outputs->data[kStateTensor]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[KOutputTensor]];
+  TfLiteTensor* state = GetOutput(context, node, kStateTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Resize state.
   // For each batch, the state is a 2-D tensor: memory_size * num_filters
@@ -112,7 +112,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   scratch_size_array->data[0] = batch_size;
   scratch_size_array->data[1] = num_filters;
 
-  TfLiteTensor* scratch_tensor = &context->tensors[node->temporaries->data[0]];
+  TfLiteTensor* scratch_tensor = GetTemporary(context, node, /*index=*/0);
   scratch_tensor->type = input->type;
   scratch_tensor->allocation_type = kTfLiteArenaRw;
   TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scratch_tensor,
@@ -124,17 +124,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
 
-  TfLiteTensor* input = &context->tensors[node->inputs->data[kInputTensor]];
-  TfLiteTensor* weights_feature =
-      &context->tensors[node->inputs->data[kWeightsFeatureTensor]];
-  TfLiteTensor* weights_time =
-      &context->tensors[node->inputs->data[kWeightsTimeTensor]];
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* weights_feature =
+      GetInput(context, node, kWeightsFeatureTensor);
+  const TfLiteTensor* weights_time =
+      GetInput(context, node, kWeightsTimeTensor);
 
-  TfLiteTensor* state = &context->tensors[node->outputs->data[kStateTensor]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[KOutputTensor]];
-  TfLiteTensor* scratch = &context->tensors[node->temporaries->data[0]];
+  TfLiteTensor* state = GetOutput(context, node, kStateTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* scratch = GetTemporary(context, node, /*index=*/0);
 
-  TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];

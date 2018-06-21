@@ -26,10 +26,12 @@ namespace grappler {
 
 // Kahn's algorithm is implemented.
 // For details, see https://en.wikipedia.org/wiki/Topological_sorting
-Status ComputeTopologicalOrder(const GraphDef& graph,
-                               std::vector<int>* ready_nodes) {
+Status ComputeTopologicalOrder(
+    const GraphDef& graph, std::vector<int>* ready_nodes,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies) {
   SimpleGraphView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.Initialize(graph));
+  TF_RETURN_IF_ERROR(graph_view.Initialize(graph, extra_dependencies));
 
   ready_nodes->reserve(graph_view.num_nodes());
 
@@ -70,10 +72,12 @@ Status ComputeTopologicalOrder(const GraphDef& graph,
 }
 
 Status ComputeTopologicalOrder(
-    const GraphDef& graph,
-    std::unordered_map<const NodeDef*, int>* topo_order) {
+    const GraphDef& graph, std::unordered_map<const NodeDef*, int>* topo_order,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies) {
   std::vector<int> ready_nodes;
-  TF_RETURN_IF_ERROR(ComputeTopologicalOrder(graph, &ready_nodes));
+  TF_RETURN_IF_ERROR(
+      ComputeTopologicalOrder(graph, &ready_nodes, extra_dependencies));
   topo_order->reserve(graph.node_size());
   for (int i = 0; i < ready_nodes.size(); ++i) {
     (*topo_order)[&graph.node(ready_nodes[i])] = i;
@@ -83,7 +87,7 @@ Status ComputeTopologicalOrder(
 
 Status TopologicalSort(GraphDef* graph) {
   std::vector<int> ready_nodes;
-  TF_RETURN_IF_ERROR(ComputeTopologicalOrder(*graph, &ready_nodes));
+  TF_RETURN_IF_ERROR(ComputeTopologicalOrder(*graph, &ready_nodes, nullptr));
   PermuteNodesInPlace(graph, &ready_nodes, /*invert_permutation=*/true);
   return Status::OK();
 }

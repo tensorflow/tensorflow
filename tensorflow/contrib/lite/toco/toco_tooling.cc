@@ -56,6 +56,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialStackToReshape);
+  transformations->Add(new ConvertTrivialTileToConcat);
   transformations->Add(new ConvertTrivialTransposeToReshape);
   transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
@@ -76,6 +77,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMatMul);
   transformations->Add(new FuseBinaryIntoPrecedingAffine);
   transformations->Add(new FuseBinaryIntoFollowingAffine);
+  transformations->Add(new FuseBroadcastIntoFollowingBinary);
   transformations->Add(new MergeReshapeIntoPrecedingTranspose);
   transformations->Add(new ReorderElementwiseUnary);
   transformations->Add(new ReorderReshapeTranspose);
@@ -86,6 +88,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantReshape);
+  transformations->Add(new ResolveConstantSlice);
   transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantTranspose);
@@ -93,7 +96,6 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMerge);
   transformations->Add(new ResolveSqueezeAttributes);
   transformations->Add(new ResolveTensorFlowSwitch);
-  transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
   transformations->Add(new IdentifyDilatedConv);
@@ -106,6 +108,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
   transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
+  transformations->Add(new ResolvePadV2Attributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
   transformations->Add(new ResolveMeanAttributes);
@@ -261,11 +264,14 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     if (!toco_flags.debug_disable_recurrent_cell_fusion()) {
       transformations.Add(new IdentifyLstmCell);
     }
-    if (output_format == TFLITE) {
+    if (output_format == TFLITE && toco_flags.split_tflite_lstm_inputs()) {
       transformations.Add(new toco::SplitLstmCellInputs);
     } else {
       transformations.Add(new toco::MergeLstmCellInputs);
     }
+  }
+  if (toco_flags.quantize_weights()) {
+    transformations.Add(new QuantizeWeights);
   }
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",
@@ -345,6 +351,11 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
 
+  // Deduplicate large constant arrays.
+  if (toco_flags.has_dedupe_array_min_size_bytes()) {
+    DedupeConstantArrays(model, toco_flags.dedupe_array_min_size_bytes());
+  }
+
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 
   if (output_format != GRAPHVIZ_DOT && output_format != TFLITE) {
@@ -366,6 +377,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     LOG(INFO) << "Estimated count of arithmetic ops: " << 1e-9 * ops_count
               << " billion (note that a multiply-add is counted as 2 ops).";
   }
+  model->ops_count = ops_count;
 }
 
 void Export(const TocoFlags& toco_flags, const Model& model,

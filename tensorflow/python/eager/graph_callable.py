@@ -202,7 +202,7 @@ class _InitializingFunctionObject(object):
         v.handle).numpy() for v in self._call_fn.variables]
     if all(x for x in initialized):
       for v in self._call_fn.variables:
-        if v._trainable:  # pylint: disable=protected-access
+        if v.trainable:
           tape.watch_variable(v)
       return self._call_fn(*args)
     elif all(not x for x in initialized):

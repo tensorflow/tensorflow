@@ -21,7 +21,8 @@ limitations under the License.
 
 #include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -29,27 +30,31 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 
+namespace {
+
 using xla::string;
 
-xla::Computation Doubler(xla::Client* client) {
-  xla::ComputationBuilder builder(client, "doubler");
+xla::XlaComputation Doubler() {
+  xla::XlaBuilder builder("doubler");
   auto r0f32 = xla::ShapeUtil::MakeShape(xla::F32, {});
   auto x = builder.Parameter(0, r0f32, "x");
   builder.Mul(x, builder.ConstantR0<float>(2.0));
   return std::move(builder.Build().ValueOrDie());
 }
 
+}  // namespace
+
 int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
   auto client = xla::ClientLibrary::GetOrCreateCompileOnlyClient().ValueOrDie();
 
-  xla::ComputationBuilder builder(client, "aot_test_helper");
+  xla::XlaBuilder builder("aot_test_helper");
   auto opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
   auto opaque_param = builder.Parameter(0, opaque_shape, "x");
   auto r0f32 = xla::ShapeUtil::MakeShape(xla::F32, {});
   auto sum = builder.CustomCall("SumStructElements", {opaque_param}, r0f32);
-  builder.Call(Doubler(client), {sum});
+  builder.Call(Doubler(), {sum});
 
   if (argc != 2) {
     LOG(FATAL) << "local_client_aot_test_helper TARGET_CPU";
@@ -71,8 +76,8 @@ int main(int argc, char** argv) {
 
   llvm::Triple triple(xla::llvm_ir::AsStringRef(triple_string));
 
-  xla::Computation computation = builder.Build().ConsumeValueOrDie();
-  xla::CompileOnlyClient::AotComputationInstance instance{
+  xla::XlaComputation computation = builder.Build().ConsumeValueOrDie();
+  xla::CompileOnlyClient::AotXlaComputationInstance instance{
       &computation, /*argument_layouts=*/{&opaque_shape}, &r0f32};
 
   xla::cpu::CpuAotCompilationOptions options(

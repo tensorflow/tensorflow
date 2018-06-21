@@ -98,14 +98,17 @@ static void CreateLoopInvariantCopy(
 // Returns true if `instruction` is worth hoisting only if it lets us hoist some
 // instruction using it.  The rationale is that hoisting these instructions will
 // prevent simplification and fusion in the while body.
-static bool NotWorthHoistingIndividually(const HloInstruction& instruction) {
+bool WhileLoopInvariantCodeMotion::NotWorthHoistingIndividually(
+    const HloInstruction& instruction) {
   switch (instruction.opcode()) {
     default:
       return false;
 
+    case HloOpcode::kConstant:
+      return !hoist_constants_;
+
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
-    case HloOpcode::kConstant:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:
@@ -115,26 +118,8 @@ static bool NotWorthHoistingIndividually(const HloInstruction& instruction) {
   }
 }
 
-// Populates `gte_set` with the GetTupleElement instructions in `while_body`
-// that access elements in the parameter tuple that don't change across
-// iterations.  Assumes `while_body` is the body computation of the while loop
-// in question.
-static void GatherInvariantGTEs(HloComputation* while_body,
-                                FlatSet<HloInstruction*>* gte_set) {
-  const HloInstruction::InstructionVector root_operands =
-      while_body->root_instruction()->operands();
-  for (int i = 0; i < root_operands.size(); i++) {
-    HloInstruction* instr = root_operands[i];
-    if (instr->opcode() == HloOpcode::kGetTupleElement &&
-        instr->tuple_index() == i &&
-        instr->operand(0) == while_body->parameter_instruction(0) &&
-        ShapeUtil::IsArray(instr->shape())) {
-      InsertOrDie(gte_set, instr);
-    }
-  }
-}
-
-static StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
+StatusOr<bool>
+WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     HloInstruction* while_instr) {
   auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
 
@@ -172,14 +157,24 @@ static StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
   // unhoisted_invariant_instructions -- they can be legally hoisted, but there
   // is no benefit to hoisting them unless something that uses it is also
   // hoisted.
-  GatherInvariantGTEs(while_body, &unhoisted_invariant_instructions);
+  for (auto* instr : WhileUtil::GetInvariantGTEsForWhileBody(*while_body)) {
+    if (ShapeUtil::IsArray(instr->shape())) {
+      // TODO(b/79147885): We should try to generalize this to tuples for
+      // uniformity's sake, if nothing else.
+      InsertOrDie(&unhoisted_invariant_instructions, instr);
+    }
+  }
 
-  if (unhoisted_invariant_instructions.empty()) {
+  if (unhoisted_invariant_instructions.empty() && !hoist_constants_) {
     // There are no obviously loop invariant elements in the state being
     // threaded through the while loop so give up.  In theory this precondition
     // is too strong -- we could have code that e.g. permutes the elements in
     // the while state but uses a select to pick the same value on every
     // iteration.
+    //
+    // If we were asked to hoist constants, we need to scan the while body for
+    // constants even if we didn't find any loop invariant values in the while
+    // state tuple.
     return false;
   }
 
@@ -256,6 +251,9 @@ static StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
 }
 
 StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
+  VLOG(2) << "HLO module before WhileLoopConstantSinking:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
   for (auto* comp : module->computations()) {
@@ -283,6 +281,14 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
         TryHoistingInvariantInstructionsFromWhileBody(while_instr));
     changed |= result;
   }
+
+  if (changed) {
+    VLOG(2) << "HLO module after WhileLoopConstantSinking:";
+    XLA_VLOG_LINES(2, module->ToString());
+  } else {
+    VLOG(2) << "HLO module unchanged after WhileLoopConstantSinking";
+  }
+
   return changed;
 }
 }  // namespace xla

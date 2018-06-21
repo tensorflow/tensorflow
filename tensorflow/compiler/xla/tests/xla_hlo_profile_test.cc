@@ -84,8 +84,8 @@ Status ParseOneProfileOutputLine(
   string match_percentage = "\\d+\\.\\d\\d%";
   string match_cycles = "(\\d+) cycles +\\( *(" + match_percentage + ")\\)";
   string match_usecs = "([0-9.]+) usec";
-  string match_flops = "([^ ]+)";
-  string match_trops = "([^ ]+)";
+  string match_flops = "([^ ]*)";
+  string match_trops = "([^ ]*)";
   string match_bytes_per_sec = "([0-9.TGMKi]+)B/s";
   string match_bytes_per_cycle = "([0-9.TGMKi]+)B/cycle";
 

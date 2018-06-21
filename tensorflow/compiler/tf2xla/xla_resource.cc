@@ -26,8 +26,7 @@ limitations under the License.
 namespace tensorflow {
 
 XlaResource::XlaResource(Kind kind, int arg_num, string name, DataType type,
-                         TensorShape shape,
-                         const xla::ComputationDataHandle& initial_value,
+                         TensorShape shape, const xla::XlaOp& initial_value,
                          int64 tensor_array_size,
                          const std::set<string>& tensor_array_gradients)
     : kind_(kind),
@@ -41,11 +40,10 @@ XlaResource::XlaResource(Kind kind, int arg_num, string name, DataType type,
   CHECK(kind_ != kInvalid);
 
   for (const string& gradient : tensor_array_gradients) {
-    tensor_array_gradients_[gradient].reset(
-        new XlaResource(/*kind=*/kTensorArray, /*arg_num=*/-1,
-                        /*name=*/strings::StrCat("TensorArrayGrad: ", name_),
-                        type_, shape_, xla::ComputationDataHandle(),
-                        tensor_array_size_, /*tensor_array_gradients=*/{}));
+    tensor_array_gradients_[gradient].reset(new XlaResource(
+        /*kind=*/kTensorArray, /*arg_num=*/-1,
+        /*name=*/strings::StrCat("TensorArrayGrad: ", name_), type_, shape_,
+        xla::XlaOp(), tensor_array_size_, /*tensor_array_gradients=*/{}));
   }
 }
 
@@ -73,7 +71,7 @@ Status XlaResource::SetTypeAndShape(DataType type, const TensorShape& shape) {
   return Status::OK();
 }
 
-Status XlaResource::SetValue(const xla::ComputationDataHandle& value) {
+Status XlaResource::SetValue(const xla::XlaOp& value) {
   if (type_ == DT_INVALID) {
     return errors::InvalidArgument(
         "Resource '", name_,
@@ -83,7 +81,7 @@ Status XlaResource::SetValue(const xla::ComputationDataHandle& value) {
   return Status::OK();
 }
 
-Status XlaResource::SetZeroValue(xla::ComputationBuilder* builder) {
+Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
   if (type_ == DT_INVALID) {
     return errors::InvalidArgument(
         "Resource '", name_,
@@ -121,9 +119,9 @@ Status XlaResource::SetZeroValue(xla::ComputationBuilder* builder) {
   return Status::OK();
 }
 
-Status XlaResource::GetOrCreateTensorArrayGradient(
-    const string& source, xla::ComputationBuilder* builder,
-    XlaResource** gradient_out) {
+Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
+                                                   xla::XlaBuilder* builder,
+                                                   XlaResource** gradient_out) {
   VLOG(2) << "Gradient lookup for resource: " << name_
           << " gradient: " << source;
   TF_RET_CHECK(kind_ == kTensorArray);
@@ -132,7 +130,7 @@ Status XlaResource::GetOrCreateTensorArrayGradient(
     TensorShape ta_shape;
     ta_shape.AddDim(tensor_array_size_);
     ta_shape.AppendShape(shape_);
-    xla::ComputationDataHandle gradient_value = builder->Broadcast(
+    xla::XlaOp gradient_value = builder->Broadcast(
         XlaHelpers::Zero(builder, type_), ta_shape.dim_sizes());
     gradient.reset(
         new XlaResource(/*kind=*/kTensorArray, /*arg_num=*/-1,
@@ -144,13 +142,12 @@ Status XlaResource::GetOrCreateTensorArrayGradient(
   return Status::OK();
 }
 
-Status XlaResource::Pack(xla::ComputationDataHandle* pack,
-                         xla::ComputationBuilder* builder) const {
+Status XlaResource::Pack(xla::XlaOp* pack, xla::XlaBuilder* builder) const {
   if (tensor_array_gradients_.empty()) {
     *pack = value_;
   } else {
     TF_RET_CHECK(kind_ == kTensorArray);
-    std::vector<xla::ComputationDataHandle> elems;
+    std::vector<xla::XlaOp> elems;
     elems.push_back(value_);
     for (const auto& gradient : tensor_array_gradients_) {
       elems.push_back(gradient.second->value_);
@@ -161,8 +158,8 @@ Status XlaResource::Pack(xla::ComputationDataHandle* pack,
 }
 
 Status XlaResource::SetFromPack(const std::set<string>& gradient_sources,
-                                const xla::ComputationDataHandle& pack,
-                                xla::ComputationBuilder* builder) {
+                                const xla::XlaOp& pack,
+                                xla::XlaBuilder* builder) {
   if (gradient_sources.empty()) {
     if (!initialized()) {
       initial_value_ = pack;

@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -389,7 +389,7 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
       frame_children_[frame_ids[0]].insert(frame_ids[1]);
       frame_parent_[frame_ids.back()] = frame_ids[frame_ids.size() - 2];
     }
-    if (frame_ids.size() >= 1) {
+    if (!frame_ids.empty()) {
       frame_children_.insert(std::make_pair(frame_ids.back(), empty_set_));
       if (node->op() == "LoopCond") {
         if (loop_cond_.count(frame_ids.back())) {
@@ -408,7 +408,7 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
   }
 
   for (auto it = frame_children_.begin(); it != frame_children_.end(); ++it) {
-    if (it->second.size() == 0) {
+    if (it->second.empty()) {
       worklist.push_back(it->first);
     }
   }
@@ -421,7 +421,7 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
     if (parent_it != frame_parent_.end()) {
       int parent_id = parent_it->second;
       frame_children_[parent_id].erase(frame_id);
-      if (frame_children_[parent_id].size() == 0) {
+      if (frame_children_[parent_id].empty()) {
         worklist.push_back(parent_id);
       }
     }
@@ -474,15 +474,13 @@ std::vector<int> GetStackPushNodesToConvert(
   return nodes_to_convert;
 }
 
-Status RemoveStackOps(const GrapplerItem& item, GraphDef* optimized_graph) {
-  const std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
-  const GraphDef& graph = item.graph;
-  *optimized_graph = graph;
+Status RemoveStackOps(const std::unordered_set<string>& nodes_to_preserve,
+                      GraphDef* optimized_graph) {
   NodeMap node_map(optimized_graph);
   SimpleGraphView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.Initialize(graph));
-  for (int node_idx = 0; node_idx < graph.node_size(); ++node_idx) {
-    if (IsStackOp(graph.node(node_idx))) {
+  TF_RETURN_IF_ERROR(graph_view.Initialize(*optimized_graph));
+  for (int node_idx = 0; node_idx < optimized_graph->node_size(); ++node_idx) {
+    if (IsStackOp(optimized_graph->node(node_idx))) {
       for (int push_node_idx : GetStackPushNodesToConvert(
                graph_view, nodes_to_preserve, node_idx)) {
         // We found push nodes without corresponding pops. Convert them to
@@ -506,6 +504,144 @@ Status RemoveStackOps(const GrapplerItem& item, GraphDef* optimized_graph) {
   return Status::OK();
 }
 
+Status RemoveDeadBranches(const std::unordered_set<string>& nodes_to_preserve,
+                          GraphDef* optimized_graph) {
+  std::unordered_set<const NodeDef*> dead_nodes;
+  std::unordered_map<NodeDef*, std::set<int>> dead_merge_inputs;
+  // TODO(bsteiner): also rewrite switches as identity. For now we just record
+  // them
+  std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
+      identity_switches;
+
+  GraphView view(optimized_graph);
+  for (const NodeDef& node : optimized_graph->node()) {
+    if (!IsSwitch(node)) {
+      continue;
+    }
+    if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
+      continue;
+    }
+    GraphView::InputPort ctrl_port(&node, 1);
+    GraphView::OutputPort ctrl_node = view.GetRegularFanin(ctrl_port);
+    if (!IsConstant(*ctrl_node.node)) {
+      continue;
+    }
+    Tensor selector;
+    CHECK(selector.FromProto(ctrl_node.node->attr().at("value").tensor()));
+    const int dead_fanout = selector.scalar<bool>()() ? 0 : 1;
+    GraphView::OutputPort dead(const_cast<NodeDef*>(&node), dead_fanout);
+    identity_switches.insert(dead);
+
+    SetVector<GraphView::InputPort, GraphView::HashPort> zombie_inputs;
+    for (const GraphView::InputPort& port : view.GetFanout(dead)) {
+      if (dead_nodes.find(port.node) == dead_nodes.end()) {
+        zombie_inputs.PushBack(port);
+      }
+    }
+    // If we encounter a single node that must be preserved in the fanout of the
+    // switch node we need to preserve the entire switch fanout: we therefore
+    // work on a local copy that only gets committed to the master copy once the
+    // whole fanout has been explored.
+    std::unordered_set<const NodeDef*> local_dead_nodes = dead_nodes;
+    std::unordered_map<NodeDef*, std::set<int>> local_dead_merge_inputs =
+        dead_merge_inputs;
+    bool found_node_to_preserve = false;
+    while (!found_node_to_preserve && !zombie_inputs.Empty()) {
+      GraphView::InputPort dead = zombie_inputs.PopBack();
+      if (nodes_to_preserve.find(dead.node->name()) !=
+          nodes_to_preserve.end()) {
+        found_node_to_preserve = true;
+        break;
+      }
+
+      if (local_dead_nodes.find(dead.node) != local_dead_nodes.end()) {
+        continue;
+      }
+
+      if (IsMerge(*dead.node)) {
+        const int fanout = dead.node->attr().at("N").i();
+        if (fanout > 2) {
+          // This never happens in practice, so we'll just skip these to
+          // simplify the code for now.
+          found_node_to_preserve = true;
+          break;
+        }
+        GraphView::OutputPort value_index(dead.node, 1);
+        const std::unordered_set<GraphView::InputPort, GraphView::HashPort>&
+            index_fanout = view.GetFanout(value_index);
+        if (!index_fanout.empty()) {
+          // The 2nd output (that indicates which input is propagated) is
+          // connected. This never happens in practice, so we'll just skip this
+          // case to simplify the code for now.
+          found_node_to_preserve = true;
+          break;
+        }
+
+        bool fully_dead = false;
+        if (dead.port_id < 0) {
+          // If the control dependency never gets triggered the merge will also
+          // never get triggered.
+          local_dead_nodes.insert(dead.node);
+          fully_dead = true;
+        } else {
+          local_dead_merge_inputs[dead.node].insert(dead.port_id);
+          if (local_dead_merge_inputs[dead.node].size() ==
+              dead.node->attr().at("N").i()) {
+            fully_dead = true;
+          }
+          if (fully_dead) {
+            local_dead_nodes.insert(dead.node);
+            for (const GraphView::InputPort& port :
+                 view.GetFanouts(*dead.node, true)) {
+              zombie_inputs.PushBack(port);
+            }
+          }
+        }
+      } else if (dead.node->op() == "ControlTrigger") {
+        // Control trigger have different semantic, so don't touch them
+        found_node_to_preserve = true;
+        break;
+      } else {
+        if (local_dead_nodes.insert(dead.node).second) {
+          for (const GraphView::InputPort& dead_fanout :
+               view.GetFanouts(*dead.node, true)) {
+            zombie_inputs.PushBack(dead_fanout);
+          }
+        }
+      }
+    }
+    if (!found_node_to_preserve) {
+      std::swap(dead_nodes, local_dead_nodes);
+      std::swap(dead_merge_inputs, local_dead_merge_inputs);
+    }
+  }
+
+  int last = optimized_graph->node_size() - 1;
+  for (int i = optimized_graph->node_size() - 1; i >= 0; --i) {
+    NodeDef* node = optimized_graph->mutable_node(i);
+    if (dead_nodes.find(node) != dead_nodes.end()) {
+      optimized_graph->mutable_node()->SwapElements(i, last);
+      last--;
+    }
+  }
+  optimized_graph->mutable_node()->DeleteSubrange(last + 1, dead_nodes.size());
+
+  for (const auto& itr : dead_merge_inputs) {
+    NodeDef* dead_node = itr.first;
+    if (dead_nodes.find(dead_node) != dead_nodes.end()) {
+      // The node has been pruned since all its inputs are dead.
+      continue;
+    }
+    const std::set<int>& dead_inputs = itr.second;
+    for (int index : dead_inputs) {
+      dead_node->mutable_input()->DeleteSubrange(index, 1);
+    }
+    dead_node->set_op("Identity");
+    dead_node->mutable_attr()->erase("N");
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -517,7 +653,11 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(linm_optimizer.Optimize());
   }
   if (options_.enable_stack_push_removal) {
-    TF_RETURN_IF_ERROR(RemoveStackOps(item, optimized_graph));
+    TF_RETURN_IF_ERROR(RemoveStackOps(item.NodesToPreserve(), optimized_graph));
+  }
+  if (options_.enable_dead_branch_removal) {
+    TF_RETURN_IF_ERROR(
+        RemoveDeadBranches(item.NodesToPreserve(), optimized_graph));
   }
 
   return Status::OK();

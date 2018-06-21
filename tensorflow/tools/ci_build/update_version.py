@@ -248,6 +248,16 @@ def update_md_files(old_version, new_version):
     replace_string_in_line(r"<version>%s<\/version>" % old_version,
                            "<version>%s</version>" % new_version, filepath)
 
+  # Update any links to colab notebooks.
+  def colab_url(version):
+    version_string = "%s.%s.%s" % (version.major, version.minor, version.patch)
+    prefix = "https://colab.research.google.com/github/tensorflow/models/blob/r"
+    return prefix + version_string + "/"
+
+  replace_string_in_line(
+      colab_url(old_version), colab_url(new_version),
+      "%s/docs_src/get_started/eager.md" % TF_SRC_DIR)
+
 
 def major_minor_change(old_version, new_version):
   """Check if a major or minor change occurred."""

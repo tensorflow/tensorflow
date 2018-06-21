@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/contrib/tpu/profiler/op_profile.pb.h"
 #include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/contrib/tpu/profiler/trace_events_to_json.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -30,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/util/event.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
@@ -41,6 +38,7 @@ namespace {
 using ::tensorflow::io::JoinPath;
 using ::tensorflow::protobuf::util::JsonOptions;
 using ::tensorflow::protobuf::util::MessageToJsonString;
+using ::tensorflow::str_util::EndsWith;
 using ::tensorflow::strings::StrCat;
 
 constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
@@ -48,6 +46,9 @@ constexpr char kJsonOpProfileFileName[] = "op_profile.json";
 constexpr char kJsonTraceFileName[] = "trace.json.gz";
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";
 constexpr char kProtoTraceFileName[] = "trace";
+
+constexpr char kFlatProfilerFileName[] = "flat_profiler.pb";
+constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 
 Status WriteGzippedDataToFile(const string& filename, const string& data) {
   std::unique_ptr<WritableFile> file;
@@ -110,6 +111,10 @@ Status DumpToolDataToLogDirectory(StringPiece run_dir,
                                   const string& host_prefix,
                                   const tensorflow::ProfileToolData& tool,
                                   std::ostream* os) {
+  // Don't save the intermediate results for combining the per host tool data.
+  if (EndsWith(tool.name(), kFlatProfilerFileName) ||
+      EndsWith(tool.name(), kTfStatsHelperSuffix))
+    return Status::OK();
   string path = JoinPath(run_dir, StrCat(host_prefix, tool.name()));
   TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), path, tool.data()));
   if (os) {

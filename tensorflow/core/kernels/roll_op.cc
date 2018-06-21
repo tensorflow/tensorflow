@@ -84,7 +84,7 @@ void DoRoll(OpKernelContext* context, const int64 num_elements,
   // Shard
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
   // 15 - expiramentally determined with float and bool types
-  const int cost_per_element = 15 * sizeof(T);  // rough esitmate
+  const int cost_per_element = 15 * sizeof(T);  // rough estimate
   Shard(worker_threads->num_threads, worker_threads->workers, num_elements,
         cost_per_element, std::move(work));
 }
@@ -285,7 +285,7 @@ class RollOp : public OpKernel {
       dim_range[i] = dim_size_prod;
     }
 
-    Tensor* output = NULL;
+    Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
     auto input_flat = input.flat<T>().data();

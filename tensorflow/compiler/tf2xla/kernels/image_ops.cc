@@ -23,10 +23,9 @@ namespace {
 
 // Converts 'input' from RGB format to HSV format.
 // 'shape' is the shape of the red/green/blue tensors.
-std::array<xla::ComputationDataHandle, 3> RGBToHSV(
-    XlaOpKernelContext* ctx, xla::ComputationBuilder* b,
-    const std::array<xla::ComputationDataHandle, 3>& rgb, DataType dtype,
-    const TensorShape& shape) {
+std::array<xla::XlaOp, 3> RGBToHSV(XlaOpKernelContext* ctx, xla::XlaBuilder* b,
+                                   const std::array<xla::XlaOp, 3>& rgb,
+                                   DataType dtype, const TensorShape& shape) {
   auto zero = XlaHelpers::Zero(b, dtype);
   auto one = XlaHelpers::One(b, dtype);
 
@@ -54,12 +53,12 @@ std::array<xla::ComputationDataHandle, 3> RGBToHSV(
 }
 
 // Converts 'input' from HSV format to RGB format.
-std::array<xla::ComputationDataHandle, 3> HSVToRGB(
-    xla::ComputationBuilder* b,
-    const std::array<xla::ComputationDataHandle, 3>& hsv, DataType dtype) {
-  xla::ComputationDataHandle hue = hsv[0];
-  xla::ComputationDataHandle saturation = hsv[1];
-  xla::ComputationDataHandle value = hsv[2];
+std::array<xla::XlaOp, 3> HSVToRGB(xla::XlaBuilder* b,
+                                   const std::array<xla::XlaOp, 3>& hsv,
+                                   DataType dtype) {
+  xla::XlaOp hue = hsv[0];
+  xla::XlaOp saturation = hsv[1];
+  xla::XlaOp value = hsv[2];
   auto zero = XlaHelpers::Zero(b, dtype);
   auto one = XlaHelpers::FloatLiteral(b, dtype, 1.0);
   auto two = XlaHelpers::FloatLiteral(b, dtype, 2.0);
@@ -95,16 +94,16 @@ class RGBToHSVOp : public XlaOpKernel {
         errors::FailedPrecondition("input must have 3 channels but input has ",
                                    channels, " channels."));
 
-    xla::ComputationBuilder* b = context->builder();
-    xla::ComputationDataHandle input = context->Input(0);
+    xla::XlaBuilder* b = context->builder();
+    xla::XlaOp input = context->Input(0);
 
-    xla::ComputationDataHandle red =
+    xla::XlaOp red =
         b->SliceInDim(input, /*start_index=*/0, /*limit_index=*/1, /*stride=*/1,
                       /*dimno=*/channel_dim);
-    xla::ComputationDataHandle green =
+    xla::XlaOp green =
         b->SliceInDim(input, /*start_index=*/1, /*limit_index=*/2, /*stride=*/1,
                       /*dimno=*/channel_dim);
-    xla::ComputationDataHandle blue =
+    xla::XlaOp blue =
         b->SliceInDim(input, /*start_index=*/2, /*limit_index=*/3, /*stride=*/1,
                       /*dimno=*/channel_dim);
     TensorShape channel_shape = input_shape;
@@ -133,15 +132,15 @@ class HSVToRGBOp : public XlaOpKernel {
         errors::FailedPrecondition("input must have 3 channels but input has ",
                                    channels, " channels."));
 
-    xla::ComputationBuilder* b = context->builder();
-    xla::ComputationDataHandle input = context->Input(0);
-    xla::ComputationDataHandle hue =
+    xla::XlaBuilder* b = context->builder();
+    xla::XlaOp input = context->Input(0);
+    xla::XlaOp hue =
         b->SliceInDim(input, /*start_index=*/0, /*limit_index=*/1, /*stride=*/1,
                       /*dimno=*/channel_dim);
-    xla::ComputationDataHandle saturation =
+    xla::XlaOp saturation =
         b->SliceInDim(input, /*start_index=*/1, /*limit_index=*/2, /*stride=*/1,
                       /*dimno=*/channel_dim);
-    xla::ComputationDataHandle value =
+    xla::XlaOp value =
         b->SliceInDim(input, /*start_index=*/2, /*limit_index=*/3, /*stride=*/1,
                       /*dimno=*/channel_dim);
 
@@ -174,9 +173,9 @@ class AdjustContrastOpV2 : public XlaOpKernel {
                 errors::InvalidArgument("contrast_factor must be scalar: ",
                                         factor_shape.DebugString()));
 
-    xla::ComputationBuilder* b = context->builder();
-    xla::ComputationDataHandle input = context->Input(0);
-    xla::ComputationDataHandle factor = context->Input(1);
+    xla::XlaBuilder* b = context->builder();
+    xla::XlaOp input = context->Input(0);
+    xla::XlaOp factor = context->Input(1);
 
     DataType type = context->input_type(0);
 
@@ -221,19 +220,19 @@ class AdjustSaturationOp : public XlaOpKernel {
         errors::InvalidArgument("input must have 3 channels but instead has ",
                                 channels, " channels."));
 
-    xla::ComputationBuilder* b = context->builder();
-    xla::ComputationDataHandle input = context->Input(0);
-    xla::ComputationDataHandle scale = context->Input(1);
+    xla::XlaBuilder* b = context->builder();
+    xla::XlaOp input = context->Input(0);
+    xla::XlaOp scale = context->Input(1);
 
     DataType type = context->input_type(0);
 
-    xla::ComputationDataHandle red =
+    xla::XlaOp red =
         b->SliceInDim(input, /*start_index=*/0, /*limit_index=*/1, /*stride=*/1,
                       /*dimno=*/channel_dim);
-    xla::ComputationDataHandle green =
+    xla::XlaOp green =
         b->SliceInDim(input, /*start_index=*/1, /*limit_index=*/2, /*stride=*/1,
                       /*dimno=*/channel_dim);
-    xla::ComputationDataHandle blue =
+    xla::XlaOp blue =
         b->SliceInDim(input, /*start_index=*/2, /*limit_index=*/3, /*stride=*/1,
                       /*dimno=*/channel_dim);
     TensorShape channel_shape = input_shape;
@@ -271,19 +270,19 @@ class AdjustHueOp : public XlaOpKernel {
         errors::InvalidArgument("input must have 3 channels but instead has ",
                                 channels, " channels."));
 
-    xla::ComputationBuilder* b = context->builder();
-    xla::ComputationDataHandle input = context->Input(0);
-    xla::ComputationDataHandle delta = context->Input(1);
+    xla::XlaBuilder* b = context->builder();
+    xla::XlaOp input = context->Input(0);
+    xla::XlaOp delta = context->Input(1);
 
     DataType type = context->input_type(0);
 
-    xla::ComputationDataHandle red =
+    xla::XlaOp red =
         b->SliceInDim(input, /*start_index=*/0, /*limit_index=*/1, /*stride=*/1,
                       /*dimno=*/channel_dim);
-    xla::ComputationDataHandle green =
+    xla::XlaOp green =
         b->SliceInDim(input, /*start_index=*/1, /*limit_index=*/2, /*stride=*/1,
                       /*dimno=*/channel_dim);
-    xla::ComputationDataHandle blue =
+    xla::XlaOp blue =
         b->SliceInDim(input, /*start_index=*/2, /*limit_index=*/3, /*stride=*/1,
                       /*dimno=*/channel_dim);
     TensorShape channel_shape = input_shape;

@@ -22,12 +22,14 @@ import collections
 from six.moves import range
 
 from tensorflow.contrib.linear_optimizer.python.ops.sharded_mutable_dense_hashtable import ShardedMutableDenseHashTable
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.ops import internal_convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_sdca_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -42,9 +44,6 @@ __all__ = ['SdcaModel']
 # TODO(sibyl-Aix6ihai): add name_scope to appropriate methods.
 class SdcaModel(object):
   """Stochastic dual coordinate ascent solver for linear models.
-
-    This class currently only supports a single machine (multi-threaded)
-    implementation. We expect the weights and duals to fit in a single machine.
 
     Loss functions supported:
 
@@ -182,18 +181,41 @@ class SdcaModel(object):
 
   # TODO(sibyl-Aix6ihai): Use optimizer interface to make use of slot creation logic.
   def _create_slots(self):
-    # Make internal variables which have the updates before applying L1
-    # regularization.
+    """Make unshrinked internal variables (slots)."""
+    # Unshrinked variables have the updates before applying L1 regularization.
+    # Each unshrinked slot variable is either a `Variable` or list of
+    # `Variable`, depending on the value of its corresponding primary variable.
+    # We avoid using `PartitionedVariable` for the unshrinked slots since we do
+    # not need any of the extra information.
     self._slots = collections.defaultdict(list)
     for name in ['sparse_features_weights', 'dense_features_weights']:
       for var in self._variables[name]:
-        with ops.device(var.device):
-          # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109 is
-          # fixed
-          self._slots['unshrinked_' + name].append(
-              var_ops.Variable(
-                  array_ops.zeros_like(var.initialized_value(), dtypes.float32),
-                  name=var.op.name + '_unshrinked/SDCAOptimizer'))
+        # Our primary variable may be either a PartitionedVariable, or a list
+        # of Variables (each representing a partition).
+        if (isinstance(var, var_ops.PartitionedVariable) or
+            isinstance(var, list)):
+          var_list = []
+          # pylint: disable=protected-access
+          for v in var:
+            with ops.colocate_with(v):
+              # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109
+              # is fixed.
+              slot_var = var_ops.Variable(
+                  initial_value=array_ops.zeros_like(v.initialized_value(),
+                                                     dtypes.float32),
+                  name=v.op.name + '_unshrinked/SDCAOptimizer')
+              var_list.append(slot_var)
+          self._slots['unshrinked_' + name].append(var_list)
+          # pylint: enable=protected-access
+        else:
+          with ops.device(var.device):
+            # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109 is
+            # fixed.
+            self._slots['unshrinked_' + name].append(
+                var_ops.Variable(
+                    array_ops.zeros_like(var.initialized_value(),
+                                         dtypes.float32),
+                    name=var.op.name + '_unshrinked/SDCAOptimizer'))
 
   def _assertSpecified(self, items, check_in):
     for x in items:
@@ -205,16 +227,25 @@ class SdcaModel(object):
       if not isinstance(check_in[x], list):
         raise ValueError(x + ' must be a list.')
 
+  def _var_to_list(self, var):
+    """Wraps var in a list if it is not a list or PartitionedVariable."""
+    if not (isinstance(var, list) or
+            isinstance(var, var_ops.PartitionedVariable)):
+      var = [var]
+    return var
+
   def _l1_loss(self):
     """Computes the (un-normalized) l1 loss of the model."""
     with name_scope('sdca/l1_loss'):
       sums = []
       for name in ['sparse_features_weights', 'dense_features_weights']:
-        for weights in self._convert_n_to_tensor(self._variables[name]):
-          with ops.device(weights.device):
-            sums.append(
-                math_ops.reduce_sum(
-                    math_ops.abs(math_ops.cast(weights, dtypes.float64))))
+        for var in self._variables[name]:
+          for v in self._var_to_list(var):
+            weights = internal_convert_to_tensor(v)
+            with ops.device(weights.device):
+              sums.append(
+                  math_ops.reduce_sum(
+                      math_ops.abs(math_ops.cast(weights, dtypes.float64))))
       # SDCA L1 regularization cost is: l1 * sum(|weights|)
       return self._options['symmetric_l1_regularization'] * math_ops.add_n(sums)
 
@@ -223,17 +254,37 @@ class SdcaModel(object):
     with name_scope('sdca/l2_loss'):
       sums = []
       for name in ['sparse_features_weights', 'dense_features_weights']:
-        for weights in self._convert_n_to_tensor(self._variables[name]):
-          with ops.device(weights.device):
-            sums.append(
-                math_ops.reduce_sum(
-                    math_ops.square(math_ops.cast(weights, dtypes.float64))))
+        for var in self._variables[name]:
+          for v in self._var_to_list(var):
+            weights = internal_convert_to_tensor(v)
+            with ops.device(weights.device):
+              sums.append(math_ops.reduce_sum(math_ops.square(math_ops.cast(
+                  weights, dtypes.float64))))
       # SDCA L2 regularization cost is: l2 * sum(weights^2) / 2
       return l2 * math_ops.add_n(sums) / 2.0
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""
-    return [internal_convert_to_tensor(x, as_ref=as_ref) for x in input_list]
+    # input_list can be a list of Variables (that are implicitly partitioned),
+    # in which case the underlying logic in internal_convert_to_tensor will not
+    # concatenate the partitions together.  This method takes care of the
+    # concatenating (we only allow partitioning on the first axis).
+    output_list = []
+    for x in input_list:
+      tensor_to_convert = x
+      if isinstance(x, list) or isinstance(x, var_ops.PartitionedVariable):
+        # We only allow for partitioning on the first axis.
+        tensor_to_convert = array_ops.concat(x, axis=0)
+      output_list.append(internal_convert_to_tensor(
+          tensor_to_convert, as_ref=as_ref))
+    return output_list
+
+  def _get_first_dimension_size_statically(self, w, num_partitions):
+    """Compute the static size of the first dimension for a sharded variable."""
+    dim_0_size = w[0].get_shape()[0]
+    for p in range(1, num_partitions):
+      dim_0_size += w[p].get_shape()[0]
+    return dim_0_size
 
   def _linear_predictions(self, examples):
     """Returns predictions of the form w*x."""
@@ -286,6 +337,28 @@ class SdcaModel(object):
         result = math_ops.sigmoid(result)
     return result
 
+  def _get_partitioned_update_ops(self,
+                                  v_num,
+                                  num_partitions_by_var,
+                                  p_assignments_by_var,
+                                  gather_ids_by_var,
+                                  weights,
+                                  full_update,
+                                  p_assignments,
+                                  num_partitions):
+    """Get updates for partitioned variables."""
+    num_partitions = num_partitions_by_var[v_num]
+    p_assignments = p_assignments_by_var[v_num]
+    gather_ids = gather_ids_by_var[v_num]
+    updates = data_flow_ops.dynamic_partition(
+        full_update, p_assignments, num_partitions)
+    update_ops = []
+    for p in range(num_partitions):
+      with ops.colocate_with(weights[p]):
+        result = state_ops.scatter_add(weights[p], gather_ids[p], updates[p])
+      update_ops.append(result)
+    return update_ops
+
   def minimize(self, global_step=None, name=None):
     """Add operations to train a linear model by minimizing the loss function.
 
@@ -318,18 +391,89 @@ class SdcaModel(object):
       # Solver returns example_state_update, new delta sparse_feature_weights
       # and delta dense_feature_weights.
 
-      weights_tensor = self._convert_n_to_tensor(self._slots[
-          'unshrinked_sparse_features_weights'])
       sparse_weights = []
       sparse_indices = []
-      for w, i in zip(weights_tensor, sparse_feature_indices):
-        # Find the feature ids to lookup in the variables.
-        with ops.device(w.device):
-          sparse_indices.append(
-              math_ops.cast(
-                  array_ops.unique(math_ops.cast(i, dtypes.int32))[0],
-                  dtypes.int64))
-          sparse_weights.append(array_ops.gather(w, sparse_indices[-1]))
+      # If we have partitioned variables, keep a few lists of Tensors around
+      # that we need for the assign_add after the op call to
+      # gen_sdca_ops.sdca_optimizer().
+      num_partitions_by_var = []
+      p_assignments_by_var = []
+      gather_ids_by_var = []
+      for w, i in zip(self._slots['unshrinked_sparse_features_weights'],
+                      sparse_feature_indices):
+        # Append the sparse_indices (in full-variable space).
+        sparse_idx = math_ops.cast(
+            array_ops.unique(math_ops.cast(i, dtypes.int32))[0],
+            dtypes.int64)
+        sparse_indices.append(sparse_idx)
+        if isinstance(w, list) or isinstance(w, var_ops.PartitionedVariable):
+          num_partitions = len(w)
+          flat_ids = array_ops.reshape(sparse_idx, [-1])
+          # We use div partitioning, which is easiest to support downstream.
+          # Compute num_total_ids as the sum of dim-0 of w, then assign
+          # to partitions based on a constant number of ids per partition.
+          # Optimize if we already know the full shape statically.
+          dim_0_size = self._get_first_dimension_size_statically(
+              w, num_partitions)
+
+          if dim_0_size.value:
+            num_total_ids = constant_op.constant(dim_0_size.value,
+                                                 flat_ids.dtype)
+          else:
+            dim_0_sizes = []
+            for p in range(num_partitions):
+              if w[p].get_shape()[0].value is not None:
+                dim_0_sizes.append(w[p].get_shape()[0].value)
+              else:
+                with ops.colocate_with(w[p]):
+                  dim_0_sizes.append(array_ops.shape(w[p])[0])
+            num_total_ids = math_ops.reduce_sum(
+                math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
+          ids_per_partition = num_total_ids // num_partitions
+          extras = num_total_ids % num_partitions
+
+          p_assignments = math_ops.maximum(
+              flat_ids // (ids_per_partition + 1),
+              (flat_ids - extras) // ids_per_partition)
+
+          # Emulate a conditional using a boolean indicator tensor
+          new_ids = array_ops.where(p_assignments < extras,
+                                    flat_ids % (ids_per_partition + 1),
+                                    (flat_ids - extras) % ids_per_partition)
+
+          # Cast partition assignments to int32 for use in dynamic_partition.
+          # There really should not be more than 2^32 partitions.
+          p_assignments = math_ops.cast(p_assignments, dtypes.int32)
+          # Partition list of ids based on assignments into num_partitions
+          # separate lists.
+          gather_ids = data_flow_ops.dynamic_partition(new_ids,
+                                                       p_assignments,
+                                                       num_partitions)
+          # Append these to the lists for use in the later update.
+          num_partitions_by_var.append(num_partitions)
+          p_assignments_by_var.append(p_assignments)
+          gather_ids_by_var.append(gather_ids)
+
+          # Gather the weights from each partition.
+          partition_gathered_weights = []
+          for p in range(num_partitions):
+            with ops.colocate_with(w[p]):
+              partition_gathered_weights.append(
+                  array_ops.gather(w[p], gather_ids[p]))
+
+          # Stitch the weights back together in the same order they were before
+          # we dynamic_partitioned them.
+          condition_indices = data_flow_ops.dynamic_partition(
+              math_ops.range(array_ops.shape(new_ids)[0]),
+              p_assignments, num_partitions)
+          batch_gathered_weights = data_flow_ops.dynamic_stitch(
+              condition_indices, partition_gathered_weights)
+        else:
+          w_as_tensor = internal_convert_to_tensor(w)
+          with ops.device(w_as_tensor.device):
+            batch_gathered_weights = array_ops.gather(
+                w_as_tensor, sparse_idx)
+        sparse_weights.append(batch_gathered_weights)
 
       # pylint: disable=protected-access
       esu, sfw, dfw = gen_sdca_ops.sdca_optimizer(
@@ -355,12 +499,25 @@ class SdcaModel(object):
       with ops.control_dependencies([esu]):
         update_ops = [self._hashtable.insert(example_ids_hashed, esu)]
         # Update the weights before the proximal step.
-        for w, i, u in zip(self._slots['unshrinked_sparse_features_weights'],
-                           sparse_indices, sfw):
-          update_ops.append(state_ops.scatter_add(w, i, u))
+        for v_num, (w, i, u) in enumerate(
+            zip(self._slots['unshrinked_sparse_features_weights'],
+                sparse_indices, sfw)):
+          if (isinstance(w, var_ops.PartitionedVariable) or
+              isinstance(w, list)):
+            update_ops += self._get_partitioned_update_ops(
+                v_num, num_partitions_by_var, p_assignments_by_var,
+                gather_ids_by_var, w, u, p_assignments, num_partitions)
+          else:
+            update_ops.append(state_ops.scatter_add(w, i, u))
         for w, u in zip(self._slots['unshrinked_dense_features_weights'], dfw):
-          update_ops.append(w.assign_add(u))
-
+          if (isinstance(w, var_ops.PartitionedVariable) or
+              isinstance(w, list)):
+            split_updates = array_ops.split(
+                u, num_or_size_splits=[v.shape.as_list()[0] for v in w])
+            for v, split_update in zip(w, split_updates):
+              update_ops.append(state_ops.assign_add(v, split_update))
+          else:
+            update_ops.append(state_ops.assign_add(w, u))
       if not global_step:
         return control_flow_ops.group(*update_ops)
       with ops.control_dependencies(update_ops):
@@ -385,21 +542,22 @@ class SdcaModel(object):
       for name in ['sparse_features_weights', 'dense_features_weights']:
         for var, slot_var in zip(self._variables[name],
                                  self._slots['unshrinked_' + name]):
-          update_ops.append(var.assign(slot_var))
+          for v, sv in zip(self._var_to_list(var), self._var_to_list(slot_var)):
+            update_ops.append(v.assign(sv))
 
     # Apply proximal step.
     with ops.control_dependencies(update_ops):
       update_ops = []
       for name in ['sparse_features_weights', 'dense_features_weights']:
         for var in self._variables[name]:
-          with ops.device(var.device):
-            # pylint: disable=protected-access
-            update_ops.append(
-                gen_sdca_ops.sdca_shrink_l1(
-                    self._convert_n_to_tensor(
-                        [var], as_ref=True),
-                    l1=self._symmetric_l1_regularization(),
-                    l2=self._symmetric_l2_regularization()))
+          for v in self._var_to_list(var):
+            with ops.device(v.device):
+              # pylint: disable=protected-access
+              update_ops.append(
+                  gen_sdca_ops.sdca_shrink_l1(
+                      self._convert_n_to_tensor([v], as_ref=True),
+                      l1=self._symmetric_l1_regularization(),
+                      l2=self._symmetric_l2_regularization()))
       return control_flow_ops.group(*update_ops)
 
   def approximate_duality_gap(self):

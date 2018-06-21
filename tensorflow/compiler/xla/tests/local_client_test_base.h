@@ -46,10 +46,9 @@ class TestAllocator : public StreamExecutorMemoryAllocator {
             platform, PlatformUtil::GetStreamExecutors(platform).ValueOrDie()) {
   }
 
-  StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
-                                          bool retry_on_failure) override;
-  tensorflow::Status Deallocate(int device_ordinal,
-                                se::DeviceMemoryBase* mem) override;
+  StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+                                        bool retry_on_failure) override;
+  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   // Return the number of allocations that have been performed.
   int64 allocation_count() const;

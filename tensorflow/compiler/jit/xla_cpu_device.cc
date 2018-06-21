@@ -53,7 +53,9 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& options,
   TF_RETURN_IF_ERROR(XlaDevice::Create("Host", DEVICE_XLA_CPU, 0,
                                        DEVICE_CPU_XLA_JIT, options, name_prefix,
                                        registration,
-                                       /*transfer_as_literal=*/false, &device));
+                                       /*transfer_as_literal=*/false,
+                                       /*shape_representation_fn=*/{},
+                                       /*padded_shape_fn=*/{}, &device));
   devices->push_back(device.release());
   return Status::OK();
 }

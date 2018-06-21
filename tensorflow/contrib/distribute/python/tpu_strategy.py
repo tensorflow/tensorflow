@@ -33,7 +33,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.util import nest
 
 
-# TODO(isaprykin):  Consider whether inheriting is really appropriate.
 class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   """Experimental TPU distribution strategy implementation."""
 
@@ -73,7 +72,6 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     def infeed_input(i):
       """Get input, split it and then enqueue."""
       iteration_inputs = [f.get(i) for f in feeds()]
-
       infeed_inputs = [[inputs_per_core[core_id]
                         for inputs_per_core in iteration_inputs]
                        for core_id in range(self._num_cores_per_host)]
@@ -117,3 +115,14 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
           iterate_on_tpu, [], num_shards=self._num_cores_per_host)
 
     return control_flow_ops.group(tpu_result, enqueue_ops)
+
+  def _reduce(self, method_string, value, destinations):
+    del destinations  # TPU is graph mode only.  Rely on implicit Send/Recv.
+    if method_string == 'mean':
+      # TODO(jhseu):  Revisit once we support model-parallelism.
+      value *= (1. / self._num_cores_per_host)
+    return tpu_ops.cross_replica_sum(value)
+
+  @property
+  def num_towers(self):
+    return self._num_cores_per_host

@@ -45,17 +45,17 @@ public final class OvicClassifierTest {
   private ByteBuffer lowResTestImage = null;
   private OvicSingleImageResult testResult = null;
   private static final String LABELS_PATH =
-      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/labels.txt";
+      "tensorflow/contrib/lite/java/ovic/src/testdata/labels.txt";
   private static final String QUANTIZED_MODEL_PATH =
-      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/quantized_model.lite";
+      "external/tflite_ovic_testdata/quantized_model.lite";
   private static final String LOW_RES_MODEL_PATH =
-      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/low_res_model.lite";
+      "external/tflite_ovic_testdata/low_res_model.lite";
   private static final String FLOAT_MODEL_PATH =
-      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/float_model.lite";
+      "external/tflite_ovic_testdata/float_model.lite";
   private static final String TEST_IMAGE_PATH =
-      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/test_image_224.jpg";
+      "external/tflite_ovic_testdata/test_image_224.jpg";
   private static final String TEST_LOW_RES_IMAGE_PATH =
-      "third_party/tensorflow/contrib/lite/java/ovic/src/testdata/test_image_128.jpg";
+      "external/tflite_ovic_testdata/test_image_128.jpg";
   private static final int TEST_IMAGE_GROUNDTRUTH = 653; // "military uniform"
 
   @Before

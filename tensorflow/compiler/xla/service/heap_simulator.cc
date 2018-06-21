@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -28,11 +27,51 @@ using tensorflow::gtl::FlatMap;
 using tensorflow::gtl::FlatSet;
 
 /*static*/
+StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
+    const SequentialHloOrdering::HloModuleSequence& module_sequence,
+    const LogicalBuffer::SizeFunction& size_function) {
+  if (module_sequence.empty()) {
+    return 0;
+  }
+
+  const HloModule* module = module_sequence.begin()->first->parent();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
+                      TuplePointsToAnalysis::Run(module));
+
+  // The absolute minimum memory required for a given sequence of instructions
+  // is determined by the sequence of Alloc and Free calls on a simulated heap,
+  // ignoring fragmentation. We run the heap simulation on the whole module,
+  // rather than summing each computation, since it gives us a better lower
+  // bound, by minimizing the liveness of sub-computations.
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), *module,
+                         module_sequence, *points_to_analysis, size_function));
+  return result.heap_size;
+}
+
+/*static*/
+StatusOr<int64> HeapSimulator::MinimumMemoryForComputation(
+    const HloComputation& computation,
+    const std::vector<const HloInstruction*>& sequence,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+        memory_by_computation) {
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
+                         sequence, points_to_analysis, size_function,
+                         HeapSimulator::Options(), memory_by_computation));
+  return result.heap_size;
+}
+
+/*static*/
 StatusOr<HeapSimulator::Result> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm> algorithm, const HloModule& module,
     const SequentialHloOrdering::HloModuleSequence& module_sequence,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_fn, const Options& options) {
+    const BufferValue::SizeFunction& size_fn, const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options, &module_sequence);
   const HloComputation* entry_computation = module.entry_computation();
   const std::vector<const HloInstruction*>& instruction_sequence =
@@ -47,9 +86,11 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm> algorithm, const HloComputation& computation,
     const std::vector<const HloInstruction*>& instruction_sequence,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_fn, const Options& options) {
+    const BufferValue::SizeFunction& size_fn, const Options& options,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+        memory_by_computation) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
-                     /*module_sequence=*/nullptr);
+                     /*module_sequence=*/nullptr, memory_by_computation);
   TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
                                          points_to_analysis));
   return heap.Finish();
@@ -73,11 +114,11 @@ Status HeapSimulator::RunComputation(
   // 'used_buffers' is the reverse map - it tracks which buffers were used by an
   // instruction, so that we can remove the instructions from a buffer's live
   // set after they are visited.
-  FlatMap<const LogicalBuffer*, FlatSet<const HloInstruction*>> live_buffers;
-  FlatMap<const HloInstruction*, FlatSet<const LogicalBuffer*>> used_buffers;
+  FlatMap<const BufferValue*, FlatSet<const HloInstruction*>> live_buffers;
+  FlatMap<const HloInstruction*, FlatSet<const BufferValue*>> used_buffers;
   auto add_user_to_buffer = [this, &live_buffers, &used_buffers](
                                 const HloInstruction* user,
-                                const LogicalBuffer* buffer) {
+                                const BufferValue* buffer) {
     if (!IgnoreBuffer(buffer)) {
       VLOG(4) << "  Adding user " << user->name() << " to buffer "
               << buffer->ToString();
@@ -96,7 +137,7 @@ Status HeapSimulator::RunComputation(
     const PointsToSet::BufferSet& buffer_set = points_to.CreateFlattenedSet();
     for (const HloInstruction* user : instruction->users()) {
       if (user->opcode() != HloOpcode::kGetTupleElement) {
-        for (const LogicalBuffer* buffer : buffer_set) {
+        for (const BufferValue* buffer : buffer_set) {
           add_user_to_buffer(user, buffer);
         }
       } else {
@@ -104,12 +145,12 @@ Status HeapSimulator::RunComputation(
         // alive. It only needs the buffers that relate to the element its
         // extracting, and the tuple it's extracting from, but not the buffers
         // for the other elements.
-        for (const LogicalBuffer* buffer : points_to.element({})) {
+        for (const BufferValue* buffer : points_to.element({})) {
           add_user_to_buffer(user, buffer);
         }
         const PointsToSet& gte_points_to =
             points_to_analysis.GetPointsToSet(user);
-        for (const LogicalBuffer* buffer : gte_points_to.CreateFlattenedSet()) {
+        for (const BufferValue* buffer : gte_points_to.CreateFlattenedSet()) {
           add_user_to_buffer(user, buffer);
         }
       }
@@ -117,24 +158,25 @@ Status HeapSimulator::RunComputation(
   }
 
   const HloInstruction* root = computation.root_instruction();
-  auto output_source_buffers =
-      points_to_analysis.GetPointsToSet(root).CreateFlattenedSet();
+  BufferValueCompactPointerSet output_source_buffers =
+      ToBufferValueCompactPointerSet(
+          points_to_analysis.GetPointsToSet(root).CreateFlattenedSet());
 
-  std::vector<const LogicalBuffer*> dead_buffers_to_free;
-  std::vector<const LogicalBuffer*> operand_buffers_to_free;
+  std::vector<const BufferValue*> dead_buffers_to_free;
+  std::vector<const BufferValue*> operand_buffers_to_free;
   for (const HloInstruction* instruction : instruction_sequence) {
     const TuplePointsToAnalysis::BufferDefinitionVector&
         buffers_defined_by_instruction =
             points_to_analysis.GetBuffersDefinedByInstruction(instruction);
 
     VLOG(3) << "Instruction: " << instruction->ToString();
-    for (const LogicalBuffer* buffer : buffers_defined_by_instruction) {
+    for (const BufferValue* buffer : buffers_defined_by_instruction) {
       VLOG(4) << "  Defines: " << buffer->ToString()
               << (IgnoreBuffer(buffer) ? " (Ignored)" : "");
     }
 
     dead_buffers_to_free.clear();
-    for (const LogicalBuffer* buffer : buffers_defined_by_instruction) {
+    for (const BufferValue* buffer : buffers_defined_by_instruction) {
       if (IgnoreBuffer(buffer)) {
         continue;
       }
@@ -161,7 +203,7 @@ Status HeapSimulator::RunComputation(
     // have no instructions left to visit are moved from live_buffers to
     // operand_buffers_to_free.
     operand_buffers_to_free.clear();
-    for (const LogicalBuffer* operand_buffer : used_buffers[instruction]) {
+    for (const BufferValue* operand_buffer : used_buffers[instruction]) {
       if (IgnoreBuffer(operand_buffer)) {
         continue;
       }
@@ -177,7 +219,7 @@ Status HeapSimulator::RunComputation(
     }
     // Sort to get a deterministic iteration order.
     std::sort(operand_buffers_to_free.begin(), operand_buffers_to_free.end(),
-              [](const LogicalBuffer* x, const LogicalBuffer* y) {
+              [](const BufferValue* x, const BufferValue* y) {
                 return x->id() < y->id();
               });
 
@@ -188,7 +230,7 @@ Status HeapSimulator::RunComputation(
     //
     // INVARIANT: Either Alloc or ShareBuffer will be called for each buffer
     // that we should assign.
-    for (const LogicalBuffer* buffer : buffers_defined_by_instruction) {
+    for (const BufferValue* buffer : buffers_defined_by_instruction) {
       if (IgnoreBuffer(buffer)) {
         continue;
       }
@@ -199,12 +241,12 @@ Status HeapSimulator::RunComputation(
       // we must be the last user of the buffer.
       bool shared = false;
       if (options_.may_reuse_operand_buffers) {
-        for (const LogicalBuffer* operand_buffer : operand_buffers_to_free) {
+        for (const BufferValue* operand_buffer : operand_buffers_to_free) {
           if (buffer->instruction()->IsUserOf(operand_buffer->instruction()) &&
               buffer->instruction()->opcode() != HloOpcode::kCopy &&
-              CanShareOperandBufferWithUser(
+              points_to_analysis.CanShareOperandBufferWithUser(
                   operand_buffer->instruction(), operand_buffer->index(),
-                  buffer->instruction(), buffer->index(), points_to_analysis)) {
+                  buffer->instruction(), buffer->index())) {
             VLOG(3) << "  Sharing: " << buffer->ToString() << " with "
                     << operand_buffer->ToString();
             ShareBuffer(buffer, operand_buffer, instruction);
@@ -218,6 +260,12 @@ Status HeapSimulator::RunComputation(
         VLOG(3) << "  Allocating: " << buffer->ToString();
         Alloc(buffer, instruction);
       }
+    }
+    // Account for the memory used by subcomputations when estimating the
+    // current heap size.
+    if (memory_by_computation_ != nullptr) {
+      algorithm_->AccountForSubcomputationMemory(instruction,
+                                                 *memory_by_computation_);
     }
 
     // If the whole module is sequential, we can save memory by running the
@@ -248,11 +296,11 @@ Status HeapSimulator::RunComputation(
 
     // Free buffers that are no longer live.  This is the earliest point that we
     // can de-allocate; right after the last use of the buffer.
-    for (const LogicalBuffer* buffer : dead_buffers_to_free) {
+    for (const BufferValue* buffer : dead_buffers_to_free) {
       VLOG(3) << "  Freeing dead: " << buffer->ToString();
       Free(buffer, instruction);
     }
-    for (const LogicalBuffer* buffer : operand_buffers_to_free) {
+    for (const BufferValue* buffer : operand_buffers_to_free) {
       VLOG(3) << "  Freeing operand: " << buffer->ToString();
       Free(buffer, instruction);
     }
@@ -261,10 +309,10 @@ Status HeapSimulator::RunComputation(
   // Any remaining live buffers must be entry parameters or output source
   // buffers, which had a nullptr sentry added.  Free them now, in a
   // deterministic order.
-  std::vector<const LogicalBuffer*> to_free;
+  std::vector<const BufferValue*> to_free;
   to_free.reserve(live_buffers.size());
   for (const auto& buffer_pending : live_buffers) {
-    const LogicalBuffer* buffer = buffer_pending.first;
+    const BufferValue* buffer = buffer_pending.first;
     const FlatSet<const HloInstruction*>& pending = buffer_pending.second;
     CHECK_EQ(pending.size(), 1) << *buffer;
     CHECK(*pending.begin() == nullptr) << *buffer;
@@ -272,10 +320,10 @@ Status HeapSimulator::RunComputation(
   }
 
   std::sort(to_free.begin(), to_free.end(),
-            [](const LogicalBuffer* x, const LogicalBuffer* y) {
+            [](const BufferValue* x, const BufferValue* y) {
               return x->id() < y->id();
             });
-  for (const LogicalBuffer* buffer : to_free) {
+  for (const BufferValue* buffer : to_free) {
     VLOG(3) << "Freeing pending: " << buffer->ToString();
     Free(buffer, root);
   }
@@ -285,19 +333,22 @@ Status HeapSimulator::RunComputation(
 
 HeapSimulator::HeapSimulator(
     std::unique_ptr<HeapAlgorithm> algorithm,
-    const LogicalBuffer::SizeFunction& size_fn, const Options& options,
-    const SequentialHloOrdering::HloModuleSequence* module_sequence)
+    const BufferValue::SizeFunction& size_fn, const Options& options,
+    const SequentialHloOrdering::HloModuleSequence* module_sequence,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+        memory_by_computation)
     : no_fragmentation_stats_(MakeUnique<NoFragmentationStatsHeap>()),
       algorithm_(std::move(algorithm)),
       size_fn_(size_fn),
       options_(options),
-      module_sequence_(module_sequence) {
+      module_sequence_(module_sequence),
+      memory_by_computation_(memory_by_computation) {
   debug_trace_.set_whole_module_simulation(module_sequence_ != nullptr);
 }
 
 HeapSimulator::~HeapSimulator() {}
 
-bool HeapSimulator::IgnoreBuffer(const LogicalBuffer* buffer) const {
+bool HeapSimulator::IgnoreBuffer(const BufferValue* buffer) const {
   // Buffers for constants are ignored unless the alloc_constants option is
   // set. Also ignore buffers that we're not meant to assign.
   //
@@ -311,7 +362,7 @@ bool HeapSimulator::IgnoreBuffer(const LogicalBuffer* buffer) const {
 }
 
 // Alloc always calls the underlying heap algorithm.
-void HeapSimulator::Alloc(const LogicalBuffer* buffer,
+void HeapSimulator::Alloc(const BufferValue* buffer,
                           const HloInstruction* instruction) {
   CHECK(allocated_buffers_.count(buffer) == 0)
       << "Alloc called on allocated buffer: " << *buffer;
@@ -331,7 +382,7 @@ void HeapSimulator::Alloc(const LogicalBuffer* buffer,
 // buffers whose group liveness has expired.  Shared group liveness is tracked
 // by maintaining a refcount; the Free call on the last buffer in the group
 // causes Free to be called on the underlying algorithm.
-void HeapSimulator::Free(const LogicalBuffer* buffer,
+void HeapSimulator::Free(const BufferValue* buffer,
                          const HloInstruction* instruction) {
   auto shared_it = shared_buffers_.find(buffer);
   if (shared_it != shared_buffers_.end()) {
@@ -362,8 +413,8 @@ void HeapSimulator::Free(const LogicalBuffer* buffer,
 // The 'buffer' must be a non-allocated, non-freed buffer, just like in calls to
 // Alloc.  The 'shared' buffer must be a previously allocated or shared buffer.
 // Both 'buffer' and 'shared' will be associated with the same SharedGroup.
-void HeapSimulator::ShareBuffer(const LogicalBuffer* buffer,
-                                const LogicalBuffer* shared,
+void HeapSimulator::ShareBuffer(const BufferValue* buffer,
+                                const BufferValue* shared,
                                 const HloInstruction* instruction) {
   CHECK_LE(size_fn_(*buffer), size_fn_(*shared))
       << "ShareBuffer oversized buffer" << *buffer << " shared: " << *shared;
@@ -374,7 +425,7 @@ void HeapSimulator::ShareBuffer(const LogicalBuffer* buffer,
   CHECK(freed_buffers_.count(shared) == 0)
       << "ShareBuffer called on freed shared buffer: " << *shared;
 
-  const LogicalBuffer* canonical = nullptr;
+  const BufferValue* canonical = nullptr;
   auto shared_it = shared_buffers_.find(shared);
   if (shared_it != shared_buffers_.end()) {
     // The 'shared' buffer already has a group; it might be the canonical, but
@@ -408,7 +459,7 @@ HeapSimulator::Result HeapSimulator::Finish() {
   // collecting statistics, e.g. NoFragmentationStatsHeap.
   if (!result.chunk_map.empty()) {
     for (const auto& share_pair : shared_buffers_) {
-      const LogicalBuffer* buffer = share_pair.first;
+      const BufferValue* buffer = share_pair.first;
       std::shared_ptr<SharedGroup> group = share_pair.second;
       if (buffer != group->canonical) {
         // The canonical must already exist in the chunk_map, since we called
@@ -437,9 +488,9 @@ HeapSimulator::Result HeapSimulator::Finish() {
 }
 
 void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
-                                   const LogicalBuffer* buffer,
+                                   const BufferValue* buffer,
                                    const HloInstruction* instruction,
-                                   const LogicalBuffer* share_with_canonical) {
+                                   const BufferValue* share_with_canonical) {
   HeapSimulatorTrace::Event* event = debug_trace_.add_events();
   event->set_kind(kind);
   event->set_buffer_id(buffer->id());
@@ -453,14 +504,34 @@ void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
   }
 }
 
-void NoFragmentationStatsHeap::Alloc(const LogicalBuffer* buffer, int64 size) {
+void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size) {
   current_heap_size_ += size;
   if (current_heap_size_ > max_heap_size_) {
     max_heap_size_ = current_heap_size_;
   }
 }
 
-void NoFragmentationStatsHeap::Free(const LogicalBuffer* buffer, int64 size) {
+void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
+    const HloInstruction* instruction,
+    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+        memory_by_computation) {
+  // We only count the memory usage of the largest subcomputation, instead of
+  // adding them all, because subcomputations won't execute in parallel.
+  int64 max_subcomputation_bytes = 0;
+  for (const auto* c : instruction->called_computations()) {
+    auto it = memory_by_computation.find(c);
+    if (it != memory_by_computation.end()) {
+      int64 subcomputation_bytes = it->second;
+      if (subcomputation_bytes > max_subcomputation_bytes) {
+        max_subcomputation_bytes = subcomputation_bytes;
+      }
+    }
+  }
+  max_heap_size_ =
+      std::max(max_heap_size_, current_heap_size_ + max_subcomputation_bytes);
+}
+
+void NoFragmentationStatsHeap::Free(const BufferValue* buffer, int64 size) {
   current_heap_size_ -= size;
 }
 
@@ -472,12 +543,12 @@ HeapSimulator::Result NoFragmentationStatsHeap::Finish() {
   return result;
 }
 
-void DecreasingSizeRunsHeap::Alloc(const LogicalBuffer* buffer, int64 size) {
+void DecreasingSizeRunsHeap::Alloc(const BufferValue* buffer, int64 size) {
   SetMode(kAlloc);
   run_.emplace_back(Op{buffer, size});
 }
 
-void DecreasingSizeRunsHeap::Free(const LogicalBuffer* buffer, int64 size) {
+void DecreasingSizeRunsHeap::Free(const BufferValue* buffer, int64 size) {
   CHECK(mode_ != kInit) << "Free called on empty heap: " << *buffer;
   SetMode(kFree);
   run_.emplace_back(Op{buffer, size});
@@ -518,7 +589,7 @@ void DecreasingSizeRunsHeap::CallAndDrainRun() {
   run_.clear();
 }
 
-void LazyBestFitHeap::Alloc(const LogicalBuffer* buffer, int64 size) {
+void LazyBestFitHeap::Alloc(const BufferValue* buffer, int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
     result_.chunk_map.emplace(buffer, Chunk{0, 0});
@@ -586,7 +657,7 @@ void LazyBestFitHeap::Alloc(const LogicalBuffer* buffer, int64 size) {
   result_.chunk_map.emplace(buffer, Chunk{kLazyAllocOffset, size});
 }
 
-void LazyBestFitHeap::Free(const LogicalBuffer* buffer, int64 size) {
+void LazyBestFitHeap::Free(const BufferValue* buffer, int64 size) {
   auto alloc_it = result_.chunk_map.find(buffer);
   CHECK(alloc_it != result_.chunk_map.end())
       << "Free called on non-allocated buffer: " << *buffer;

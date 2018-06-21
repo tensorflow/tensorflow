@@ -102,7 +102,7 @@ class ScatterNdOp : public XlaOpKernel {
     OP_REQUIRES_OK(context, ValidateUpdateShape(buffer_shape, indices_shape,
                                                 updates_shape));
 
-    xla::ComputationBuilder* builder = context->builder();
+    xla::XlaBuilder* builder = context->builder();
     auto buffer = builder->Broadcast(XlaHelpers::Zero(builder, dtype),
                                      buffer_shape.dim_sizes());
     auto indices = context->Input(0);

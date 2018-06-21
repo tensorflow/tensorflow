@@ -38,6 +38,7 @@ from tensorflow.contrib.autograph.converters import logical_expressions
 from tensorflow.contrib.autograph.converters import name_scopes
 from tensorflow.contrib.autograph.converters import side_effect_guards
 from tensorflow.contrib.autograph.converters import single_return
+from tensorflow.contrib.autograph.converters import slices
 from tensorflow.contrib.autograph.impl import config
 from tensorflow.contrib.autograph.impl import naming
 from tensorflow.contrib.autograph.pyct import ast_util
@@ -371,6 +372,8 @@ def node_to_graph(node, ctx, nocompile_decorators):
   # TODO(mdan): Clean this up.
   # Some intermediate analyses are not required, and some comments got orphaned.
 
+  # TODO(mdan): We may assume all converters require analysis to be re-done.
+
   # Past this point, line numbers are no longer accurate so we ignore the
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
@@ -393,6 +396,8 @@ def node_to_graph(node, ctx, nocompile_decorators):
 
   node = _static_analysis_pass(node, ctx)
   node = lists.transform(node, ctx)
+  node = _static_analysis_pass(node, ctx)
+  node = slices.transform(node, ctx)
   node = builtin_functions.transform(node, ctx)
 
   node = _static_analysis_pass(node, ctx)

@@ -53,7 +53,7 @@ NameUniquer::NameUniquer(const string& separator) {
 }
 
 string NameUniquer::GetUniqueName(tensorflow::StringPiece prefix) {
-  string root = GetSanitizedName(prefix.empty() ? "name" : prefix.ToString());
+  string root = GetSanitizedName(prefix.empty() ? "name" : std::string(prefix));
 
   // Strip away numeric suffix (if any). Only recognize separator if it is in
   // the middle of the name.

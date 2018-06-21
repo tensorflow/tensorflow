@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/batch_dot.h"
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -65,9 +64,9 @@ xla::Array3D<float> BatchedAValsFull() {
 }
 
 XLA_TEST_F(UtilTest, Simple2dLookup) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, x, y;
+  xla::XlaOp a, x, y;
   auto a_data = CreateR2Parameter<float>(BValsRight(), 0, "a", &builder, &a);
   auto x_data = CreateR0Parameter<int>(2, 1, "x", &builder, &x);
   auto y_data = CreateR0Parameter<int>(1, 2, "y", &builder, &y);
@@ -80,9 +79,9 @@ XLA_TEST_F(UtilTest, Simple2dLookup) {
 }
 
 XLA_TEST_F(UtilTest, Simple3dLookup) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, index;
+  xla::XlaOp a, index;
   auto a_data =
       CreateR3Parameter<float>(BatchedAValsFull(), 0, "a", &builder, &a);
   auto index_data = CreateR0Parameter<int>(1, 1, "index", &builder, &index);
@@ -97,9 +96,9 @@ XLA_TEST_F(UtilTest, Simple3dLookup) {
 }
 
 XLA_TEST_F(UtilTest, SimpleSliceUpdate) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b, x, y;
+  xla::XlaOp a, b, x, y;
   auto a_data = CreateR2Parameter<float>(AValsFull(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>({{9, 1, -10}}, 1, "b", &builder, &b);
   auto x_data = CreateR0Parameter<int>(2, 2, "x", &builder, &x);
@@ -117,11 +116,11 @@ XLA_TEST_F(UtilTest, SimpleSliceUpdate) {
 }
 
 XLA_TEST_F(UtilTest, RowBatchDot) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
   int n = 4;
 
-  xla::ComputationDataHandle a, row, index;
+  xla::XlaOp a, row, index;
   auto a_data =
       CreateR3Parameter<float>(BatchedAValsFull(), 0, "a", &builder, &a);
   auto row_data = CreateR3Parameter<float>({{{9, 1, 0, 0}}, {{2, 4, 0, 0}}}, 1,

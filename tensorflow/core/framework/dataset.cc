@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
 
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 
@@ -268,5 +269,23 @@ void BinaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
 const char GraphDatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
 const char GraphDatasetBase::kDatasetGraphOutputNodeKey[] =
     "_DATASET_GRAPH_OUTPUT_NODE";
+
+namespace dataset {
+
+IteratorContext MakeIteratorContext(OpKernelContext* ctx) {
+  IteratorContext::Params params;
+  params.env = ctx->env();
+  params.runner = *(ctx->runner());
+  params.lib = ctx->function_library();
+  // Note: must use reinterpret_cast because function.h forward-declares Device.
+  DeviceBase* device =
+      reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
+  params.allocator_getter = [device](AllocatorAttributes attrs) {
+    return device->GetAllocator(attrs);
+  };
+  return IteratorContext(params);
+}
+
+}  // namespace dataset
 
 }  // namespace tensorflow

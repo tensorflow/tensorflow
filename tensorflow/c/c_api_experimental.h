@@ -87,14 +87,33 @@ TF_CAPI_EXPORT extern TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
     unsigned char is_mnist, TF_Status* status);
 
 // On success, dequeues a tensor from a TF-managed FifoQueue given by
-// `tensor_id`, associated with `session`. Caller must call TF_DeleteTensor()
-// over the returned tensor. If the queue is empty, this call is blocked.
+// `tensor_id`, associated with `session`. There must be a graph node named
+// "fifo_queue_dequeue_<tensor_id>", to be executed by this API call.
+
+// Caller must call TF_DeleteTensor() over the returned tensor. If the queue is
+// empty, this call is blocked.
 //
 // Tensors are enqueued via the corresponding TF enqueue op.
 // TODO(hongm): Add support for `timeout_ms`.
 TF_CAPI_EXPORT extern TF_Tensor* TF_DequeueNamedTensor(TF_Session* session,
                                                        int tensor_id,
                                                        TF_Status* status);
+
+// On success, enqueues `tensor` into a TF-managed FifoQueue given by
+// `tensor_id`, associated with `session`. There must be a graph node named
+// "fifo_queue_enqueue_<tensor_id>", to be executed by this API call. It reads
+// from a placeholder node "arg_tensor_enqueue_<tensor_id>".
+//
+// `tensor` is still owned by the caller. This call will be blocked if the queue
+// has reached its capacity, and will be unblocked when the queued tensors again
+// drop below the capacity due to dequeuing.
+//
+// Tensors are dequeued via the corresponding TF dequeue op.
+// TODO(hongm): Add support for `timeout_ms`.
+TF_CAPI_EXPORT extern void TF_EnqueueNamedTensor(TF_Session* session,
+                                                 int tensor_id,
+                                                 TF_Tensor* tensor,
+                                                 TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

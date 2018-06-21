@@ -26,7 +26,7 @@ limitations under the License.
 #endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
-#include "tensorflow/core/platform/windows/windows_file_system.h"
+#include "tensorflow/core/platform/windows/wide_char.h"
 #define PATH_MAX MAX_PATH
 #else
 #include <unistd.h>
@@ -92,7 +92,7 @@ Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   StringPiece scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
-  FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
+  FileSystem* file_system = file_system_registry_->Lookup(std::string(scheme));
   if (!file_system) {
     if (scheme.empty()) {
       scheme = "[local]";
@@ -166,7 +166,7 @@ bool Env::FilesExist(const std::vector<string>& files,
   for (const auto& file : files) {
     StringPiece scheme, host, path;
     io::ParseURI(file, &scheme, &host, &path);
-    files_per_fs[scheme.ToString()].push_back(file);
+    files_per_fs[std::string(scheme)].push_back(file);
   }
 
   std::unordered_map<string, Status> per_file_status;
@@ -311,7 +311,7 @@ string Env::GetExecutablePath() {
   HMODULE hModule = GetModuleHandleW(NULL);
   WCHAR wc_file_path[MAX_PATH] = {0};
   GetModuleFileNameW(hModule, wc_file_path, MAX_PATH);
-  string file_path = WindowsFileSystem::WideCharToUtf8(wc_file_path);
+  string file_path = WideCharToUtf8(wc_file_path);
   std::copy(file_path.begin(), file_path.end(), exe_path);
 #else
   CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));

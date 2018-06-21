@@ -45,6 +45,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
       break;
+    case TensorType_INT16:
+      *type = kTfLiteInt16;
+      break;
     case TensorType_INT32:
       *type = kTfLiteInt32;
       break;
@@ -184,8 +187,10 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();
   for (const OperatorCode* opcode : *opcodes) {
-    TfLiteRegistration* registration = nullptr;
+    const TfLiteRegistration* registration = nullptr;
     auto builtin_code = opcode->builtin_code();
+    int version = opcode->version();
+
     if (builtin_code > BuiltinOperator_MAX ||
         builtin_code < BuiltinOperator_MIN) {
       error_reporter_->Report(
@@ -194,8 +199,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
           builtin_code);
       status = kTfLiteError;
     } else if (builtin_code != BuiltinOperator_CUSTOM) {
-      flatbuffer_op_index_to_registration_types_.push_back(builtin_code);
-      registration = op_resolver_.FindOp(builtin_code);
+      registration = op_resolver_.FindOp(builtin_code, version);
       if (registration == nullptr) {
         error_reporter_->Report("Didn't find op for builtin opcode '%s'\n",
                                 EnumNameBuiltinOperator(builtin_code));
@@ -207,11 +211,13 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
       status = kTfLiteError;
     } else {
       const char* name = opcode->custom_code()->c_str();
-      registration = op_resolver_.FindOp(name);
+      registration = op_resolver_.FindOp(name, version);
       flatbuffer_op_index_to_registration_types_.push_back(
           BuiltinOperator_CUSTOM);
       if (registration == nullptr) {
-        error_reporter_->Report("Didn't find custom op for name '%s'\n", name);
+        error_reporter_->Report(
+            "Didn't find custom op for name '%s' with version %d\n", name,
+            version);
         status = kTfLiteError;
       }
     }
@@ -319,12 +325,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
 
   *builtin_data = nullptr;
   switch (op_type) {
-    case BuiltinOperator_CALL:
-      // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
-      // ok for now, since there is no call implementation either.
-      break;
-    case BuiltinOperator_CUSTOM:
-      break;
     case BuiltinOperator_CONV_2D: {
       TfLiteConvParams* params = MallocPOD<TfLiteConvParams>();
       if (auto* conv_params = op->builtin_options_as_Conv2DOptions()) {
@@ -333,25 +333,13 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->stride_height = conv_params->stride_h();
         params->activation =
             parse_activation(conv_params->fused_activation_function());
+
         params->dilation_width_factor = conv_params->dilation_w_factor();
         params->dilation_height_factor = conv_params->dilation_h_factor();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_TANH:
-    case BuiltinOperator_LOGISTIC:
-    case BuiltinOperator_RELU:
-    case BuiltinOperator_RELU_N1_TO_1:
-    case BuiltinOperator_RELU6:
-    case BuiltinOperator_CONCAT_EMBEDDINGS:
-    case BuiltinOperator_EXP:
-    case BuiltinOperator_TOPK_V2:
-    case BuiltinOperator_LOG_SOFTMAX:
-    case BuiltinOperator_DEQUANTIZE:
-    case BuiltinOperator_PRELU:
-    case BuiltinOperator_FLOOR:
-      break;
     case BuiltinOperator_CAST: {
       TfLiteCastParams* params = MallocPOD<TfLiteCastParams>();
       if (auto* schema_params = op->builtin_options_as_CastOptions()) {
@@ -439,9 +427,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_EMBEDDING_LOOKUP:
-      // no-op.
-      break;
     case BuiltinOperator_EMBEDDING_LOOKUP_SPARSE: {
       TfLiteEmbeddingLookupSparseParams* params =
           MallocPOD<TfLiteEmbeddingLookupSparseParams>();
@@ -552,6 +537,14 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             parse_activation(lstm_params->fused_activation_function());
         params->cell_clip = lstm_params->cell_clip();
         params->proj_clip = lstm_params->proj_clip();
+        switch (lstm_params->kernel_type()) {
+          case LSTMKernelType_FULL:
+            params->kernel_type = kTfLiteLSTMFullKernel;
+            break;
+          case LSTMKernelType_BASIC:
+            params->kernel_type = kTfLiteLSTMBasicKernel;
+            break;
+        }
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -563,9 +556,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->align_corners = schema_params->align_corners();
       }
       *builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_PAD: {
       break;
     }
     case BuiltinOperator_RESHAPE: {
@@ -607,15 +597,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_SPACE_TO_BATCH_ND: {
-      break;
-    }
-    case BuiltinOperator_BATCH_TO_SPACE_ND: {
-      break;
-    }
-    case BuiltinOperator_TRANSPOSE: {
-      break;
-    }
     case BuiltinOperator_MEAN: {
       auto* params = MallocPOD<TfLiteMeanParams>();
       if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
@@ -655,10 +636,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_MAXIMUM:
-    case BuiltinOperator_MINIMUM: {
-      break;
-    }
     case BuiltinOperator_ARG_MAX: {
       auto* params = MallocPOD<TfLiteArgMaxParams>();
       if (auto* schema_params = op->builtin_options_as_ArgMaxOptions()) {
@@ -668,7 +645,26 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_LESS: {
+    case BuiltinOperator_TRANSPOSE_CONV: {
+      TfLiteTransposeConvParams* params =
+          MallocPOD<TfLiteTransposeConvParams>();
+      if (auto* transpose_conv_params =
+              op->builtin_options_as_TransposeConvOptions()) {
+        params->padding = parse_padding(transpose_conv_params->padding());
+        params->stride_width = transpose_conv_params->stride_w();
+        params->stride_height = transpose_conv_params->stride_h();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_SPARSE_TO_DENSE: {
+      TfLiteSparseToDenseParams* params =
+          MallocPOD<TfLiteSparseToDenseParams>();
+      if (auto* sparse_to_dense_params =
+              op->builtin_options_as_SparseToDenseOptions()) {
+        params->validate_indices = sparse_to_dense_params->validate_indices();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_DELEGATE: {
@@ -676,6 +672,46 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
       return kTfLiteError;
     }
+
+    // Below are the ops with no builtin_data strcture.
+    case BuiltinOperator_BATCH_TO_SPACE_ND:
+    // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
+    // ok for now, since there is no call implementation either.
+    case BuiltinOperator_CALL:
+    case BuiltinOperator_CONCAT_EMBEDDINGS:
+    case BuiltinOperator_CUSTOM:
+    case BuiltinOperator_DEQUANTIZE:
+    case BuiltinOperator_EMBEDDING_LOOKUP:
+    case BuiltinOperator_EQUAL:
+    case BuiltinOperator_EXP:
+    case BuiltinOperator_EXPAND_DIMS:
+    case BuiltinOperator_FLOOR:
+    case BuiltinOperator_GREATER:
+    case BuiltinOperator_GREATER_EQUAL:
+    case BuiltinOperator_LESS:
+    case BuiltinOperator_LESS_EQUAL:
+    case BuiltinOperator_LOG:
+    case BuiltinOperator_LOGISTIC:
+    case BuiltinOperator_LOG_SOFTMAX:
+    case BuiltinOperator_MAXIMUM:
+    case BuiltinOperator_MINIMUM:
+    case BuiltinOperator_NEG:
+    case BuiltinOperator_NOT_EQUAL:
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_PADV2:
+    case BuiltinOperator_PRELU:
+    case BuiltinOperator_RELU:
+    case BuiltinOperator_RELU6:
+    case BuiltinOperator_RELU_N1_TO_1:
+    case BuiltinOperator_SELECT:
+    case BuiltinOperator_SIN:
+    case BuiltinOperator_SLICE:
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_TANH:
+    case BuiltinOperator_TILE:
+    case BuiltinOperator_TOPK_V2:
+    case BuiltinOperator_TRANSPOSE:
+      break;
   }
   return kTfLiteOk;
 }
@@ -695,27 +731,30 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       status = kTfLiteError;
       continue;
     }
-    const TfLiteRegistration* reg =
+
+    const TfLiteRegistration* registration =
         flatbuffer_op_index_to_registration_[op->opcode_index()];
-    if (reg == nullptr) {
+    if (registration == nullptr) {
       error_reporter_->Report("Skipping op for opcode_index %d\n", index);
       status = kTfLiteError;
       continue;
     }
 
-    auto op_type =
-        flatbuffer_op_index_to_registration_types_[op->opcode_index()];
+    BuiltinOperator op_type =
+        static_cast<BuiltinOperator>(registration->builtin_code);
+
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
       error_reporter_->Report(
           "Found builtin operator %s with custom options.\n",
           EnumNameBuiltinOperator(op_type));
     }
+
     if (op->custom_options()) {
       interpreter->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()),
           reinterpret_cast<const char*>(op->custom_options()->data()),
-          op->custom_options()->size(), nullptr, reg);
+          op->custom_options()->size(), nullptr, registration);
     } else {
       void* builtin_data = nullptr;
       TF_LITE_ENSURE_STATUS(
@@ -723,7 +762,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       interpreter->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()), nullptr, 0, builtin_data,
-          reg);
+          registration);
     }
   }
 
@@ -813,7 +852,16 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const char* buffer_ptr;
     TF_LITE_ENSURE_STATUS(get_readonly_data(&buffer_ptr, &buffer_size));
 
+    bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
+      if (is_variable) {
+        error_reporter_->Report(
+            "Tensor %d is a variable tensor with buffer. "
+            "It's not supported now.\n",
+            i);
+        status = kTfLiteError;
+      }
+
       if (interpreter->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_) != kTfLiteOk) {
@@ -822,8 +870,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      if (interpreter->SetTensorParametersReadWrite(
-              i, type, get_name(tensor), dims, quantization) != kTfLiteOk) {
+      if (interpreter->SetTensorParametersReadWrite(i, type, get_name(tensor),
+                                                    dims, quantization,
+                                                    is_variable) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;
@@ -906,6 +955,15 @@ TfLiteStatus InterpreterBuilder::operator()(
     return cleanup_and_error();
   if (ParseTensors(buffers, tensors, interpreter->get()) != kTfLiteOk)
     return cleanup_and_error();
+
+  std::vector<int> variables;
+  for (int i = 0; i < (*interpreter)->tensors_size(); ++i) {
+    auto* tensor = (*interpreter)->tensor(i);
+    if (tensor->is_variable) {
+      variables.push_back(i);
+    }
+  }
+  (**interpreter).SetVariables(variables);
 
   return kTfLiteOk;
 }

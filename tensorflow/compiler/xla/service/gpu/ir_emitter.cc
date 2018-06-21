@@ -94,7 +94,10 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
           << std::endl
           << "  its type: "
           << llvm_ir::DumpToString(*global_for_const->getType());
-  bindings_.BindHloToIrValue(*constant, global_for_const);
+  llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
+      global_for_const,
+      llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
+  bindings_.BindHloToIrValue(*constant, shape_constant);
   return Status::OK();
 }
 
@@ -607,7 +610,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
-  if (ShapeUtil::HasZeroElements(convolution->shape())) {
+  if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
     // Emit no code for an empty output.
     return Status::OK();
   }
@@ -617,7 +620,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 }
 
 Status IrEmitter::HandleFft(HloInstruction* fft) {
-  if (ShapeUtil::HasZeroElements(fft->shape())) {
+  if (ShapeUtil::IsZeroElementArray(fft->shape())) {
     // Emit no code for an empty output.
     return Status::OK();
   }

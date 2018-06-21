@@ -74,7 +74,7 @@ class ScanOp : public XlaOpKernel {
       return;
     }
 
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     std::vector<int64> window_strides(input_shape.dims(), 1);
     std::vector<int64> window_dims(input_shape.dims(), 1);
@@ -91,8 +91,8 @@ class ScanOp : public XlaOpKernel {
       std::swap(padding[axis].first, padding[axis].second);
     }
 
-    xla::ComputationDataHandle init;
-    const xla::Computation* reducer;
+    xla::XlaOp init;
+    const xla::XlaComputation* reducer;
     if (sum_) {
       init = XlaHelpers::Zero(builder, dtype);
       reducer = ctx->GetOrCreateAdd(dtype);

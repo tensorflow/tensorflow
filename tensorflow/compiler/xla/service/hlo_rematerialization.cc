@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -30,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
-#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -69,6 +70,20 @@ bool IsRematerializable(const HloInstruction* instruction) {
     default:
       return !instruction->HasSideEffect();
   }
+}
+
+// Checks whether an instruction can be rematerialized, by looking up the
+// cache before, and eventually calling the IsRematerializable() API.
+bool CanBeRematerialized(
+    const HloInstruction* instruction,
+    tensorflow::gtl::FlatMap<const HloInstruction*, bool>* remat_able) {
+  auto it = remat_able->find(instruction);
+  if (it != remat_able->end()) {
+    return it->second;
+  }
+  bool rematerializable = IsRematerializable(instruction);
+  (*remat_able)[instruction] = rematerializable;
+  return rematerializable;
 }
 
 // Type holding a unique identifier for each Buffer object.
@@ -273,9 +288,8 @@ ItemList GetUsers(const InstructionList& instruction_list,
   for (const BufferAlias& buffer_alias :
        points_to_analysis.GetBufferAliases(*logical_buffer)) {
     for (const HloInstruction* user : buffer_alias.instruction()->users()) {
-      if (DoesNotUseOperandBuffer(buffer_alias.instruction(),
-                                  buffer_alias.index(), user,
-                                  points_to_analysis)) {
+      if (points_to_analysis.DoesNotUseOperandBuffer(
+              buffer_alias.instruction(), buffer_alias.index(), user)) {
         // The alias may be an operand of 'user', but the LogicalBuffer cannot
         // possibly be used by the instruction so ignore 'user'. This is the
         // case, for example, for the tuple element buffers in a GetTupleElement
@@ -844,9 +858,10 @@ int64 RematerializationCost(const HloInstruction* instruction,
 // candidate which reduce memory use at the program point of the current
 // instruction as indicated by memory_tracker. nullptr is returned if no
 // candidate can be found.
-Item* PickRematerializationCandidate(const MemoryUsageTracker& memory_tracker,
-                                     const InstructionList& instruction_list,
-                                     int64 memory_limit_bytes) {
+Item* PickRematerializationCandidate(
+    const MemoryUsageTracker& memory_tracker,
+    const InstructionList& instruction_list, int64 memory_limit_bytes,
+    tensorflow::gtl::FlatMap<const HloInstruction*, bool>* remat_able) {
   Item* best_item = nullptr;
   int64 best_cost = 0;
 
@@ -870,8 +885,7 @@ Item* PickRematerializationCandidate(const MemoryUsageTracker& memory_tracker,
               << " is excluded from rematerialization";
       continue;
     }
-
-    if (!IsRematerializable(candidate)) {
+    if (!CanBeRematerialized(candidate, remat_able)) {
       VLOG(5) << "candidate " << candidate->name()
               << " not viable: is not rematerializable";
       continue;
@@ -975,6 +989,9 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   // blacklist.
   tensorflow::gtl::FlatSet<const HloInstruction*> remat_move_instructions;
 
+  // The map from instructions to their rematerializable status.
+  tensorflow::gtl::FlatMap<const HloInstruction*, bool> remat_able;
+
   // The peak memory of the computation at any point in the instruction
   // sequence.
   int64 peak_memory = memory_tracker.memory_usage();
@@ -1012,7 +1029,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
               << ", limit is " << HumanReadableNumBytes(memory_limit_bytes);
 
       Item* best_item = PickRematerializationCandidate(
-          memory_tracker, instruction_list, memory_limit_bytes);
+          memory_tracker, instruction_list, memory_limit_bytes, &remat_able);
 
       if (best_item == nullptr) {
         VLOG(3) << "Unable to find rematerialization candidate at program "
@@ -1185,7 +1202,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
 StatusOr<bool> HloRematerialization::Run(
     HloModule* module, SequentialHloOrdering::HloModuleSequence* sequence,
-    int64 memory_limit_bytes, RematerializationSizes* sizes) {
+    int64 memory_limit_bytes, RematerializationSizes* sizes,
+    bool run_copy_elision) {
   // The sequence is constructed entirely by this method.
   TF_RET_CHECK(sequence->empty());
 
@@ -1214,12 +1232,21 @@ StatusOr<bool> HloRematerialization::Run(
 
   XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
   // Create initial sequence of HLO instructions.
-  TF_ASSIGN_OR_RETURN(*sequence, CreateMemoryMinimizingSequence(
+  TF_ASSIGN_OR_RETURN(*sequence, ScheduleComputationsInModule(
                                      *module,
-                                     [this](const LogicalBuffer& buffer) {
+                                     [this](const BufferValue& buffer) {
                                        return size_function_(buffer.shape());
                                      },
                                      scheduler_algorithm_));
+  if (run_copy_elision) {
+    // We run a separate pass of copy elision here because the sequential
+    // ordering from the HLO schedule allows for more copies to be eliminated.
+    // TODO(b/80249101): Instead of a separate copy elision pass, use the
+    // ordering from the HLO schedule directly for copy insertion.
+    SequentialHloOrdering ordering(module, *sequence);
+    TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(ordering, {}, module));
+  }
+
   // Compute peak memory usage of all computations in the module called in a
   // sequential context.
   call_graph_ = CallGraph::Build(module);
@@ -1322,9 +1349,10 @@ StatusOr<bool> HloRematerialization::Run(
     int64 memory_limit_bytes, HloModule* hlo_module,
     MemorySchedulerAlgorithm scheduler_algorithm,
     SequentialHloOrdering::HloModuleSequence* sequence,
-    RematerializationSizes* sizes) {
+    RematerializationSizes* sizes, bool run_copy_elision) {
   HloRematerialization remat(scheduler_algorithm, size_function);
-  return remat.Run(hlo_module, sequence, memory_limit_bytes, sizes);
+  return remat.Run(hlo_module, sequence, memory_limit_bytes, sizes,
+                   run_copy_elision);
 }
 
 }  // namespace xla

@@ -59,6 +59,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/autograph/converters:converters",
     "//tensorflow/contrib/autograph/converters:test_lib",
     "//tensorflow/contrib/autograph/impl:impl",
+    "//tensorflow/contrib/autograph/operators:operators",
+    "//tensorflow/contrib/autograph/lang:lang",
     "//tensorflow/contrib/autograph/pyct:pyct",
     "//tensorflow/contrib/autograph/pyct/static_analysis:static_analysis",
     "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
@@ -173,9 +175,7 @@ sh_binary(
         "//conditions:default": COMMON_PIP_DEPS + [
             ":simple_console",
             "//tensorflow/contrib/lite/python:interpreter_test_data",
-            "//tensorflow/contrib/lite/python:tf_lite_py_pip",
-            "//tensorflow/contrib/lite/toco:toco",
-            "//tensorflow/contrib/lite/toco/python:toco_wrapper",
+            "//tensorflow/contrib/lite/python:tflite_convert",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]) + if_tensorrt([

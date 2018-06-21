@@ -33,9 +33,9 @@ class CastOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* builder = ctx->builder();
-    xla::ComputationDataHandle input = ctx->Input(0);
-    xla::ComputationDataHandle output;
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp input = ctx->Input(0);
+    xla::XlaOp output;
 
     if (src_dtype_ == dst_dtype_) {
       output = input;
@@ -72,9 +72,9 @@ class BitcastOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* builder = ctx->builder();
-    xla::ComputationDataHandle input = ctx->Input(0);
-    xla::ComputationDataHandle output;
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp input = ctx->Input(0);
+    xla::XlaOp output;
 
     if (src_dtype_ == dst_dtype_) {
       output = input;

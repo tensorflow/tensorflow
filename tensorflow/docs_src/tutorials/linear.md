@@ -17,7 +17,7 @@ tutorial walks through the code in greater detail.
 
 To understand this overview it will help to have some familiarity
 with basic machine learning concepts, and also with
-@{$get_started/premade_estimators$Estimators}.
+@{$premade_estimators$Estimators}.
 
 [TOC]
 

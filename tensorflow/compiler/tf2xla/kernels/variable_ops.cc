@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
@@ -48,7 +48,7 @@ class ReadVariableOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationDataHandle handle;
+    xla::XlaOp handle;
     OP_REQUIRES_OK(
         ctx, ctx->ReadVariableInput(0, dtype_, /*shape=*/nullptr, &handle));
     ctx->SetOutput(0, handle);
@@ -57,7 +57,7 @@ class ReadVariableOp : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(Name("ReadVariableOp"), ReadVariableOp);
+REGISTER_XLA_OP(Name("ReadVariableOp").CompilationOnly(), ReadVariableOp);
 
 class AssignVariableOp : public XlaOpKernel {
  public:
@@ -67,14 +67,14 @@ class AssignVariableOp : public XlaOpKernel {
                    ctx->AssignVariable(0, ctx->input_type(1), ctx->Input(1)));
   }
 };
-REGISTER_XLA_OP(Name("AssignVariableOp"), AssignVariableOp);
+REGISTER_XLA_OP(Name("AssignVariableOp").CompilationOnly(), AssignVariableOp);
 
 class AssignAddVariableOp : public XlaOpKernel {
  public:
   explicit AssignAddVariableOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
     DataType type = ctx->input_type(1);
-    xla::ComputationDataHandle handle;
+    xla::XlaOp handle;
     OP_REQUIRES_OK(ctx,
                    ctx->ReadVariableInput(0, type, /*shape=*/nullptr, &handle));
     handle = ctx->builder()->Add(handle, ctx->Input(1));
@@ -90,7 +90,7 @@ class AssignSubVariableOp : public XlaOpKernel {
   explicit AssignSubVariableOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
     DataType type = ctx->input_type(1);
-    xla::ComputationDataHandle handle;
+    xla::XlaOp handle;
     OP_REQUIRES_OK(ctx,
                    ctx->ReadVariableInput(0, type, /*shape=*/nullptr, &handle));
     handle = ctx->builder()->Sub(handle, ctx->Input(1));
@@ -105,19 +105,19 @@ class ResourceGatherOp : public XlaOpKernel {
  public:
   explicit ResourceGatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
     DataType type = ctx->expected_output_dtype(0);
 
     TensorShape resource_shape;
-    xla::ComputationDataHandle resource_handle;
+    xla::XlaOp resource_handle;
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &resource_shape,
                                                &resource_handle));
 
     auto indices = ctx->Input(1);
     auto indices_shape = ctx->InputShape(1);
     DataType index_type = ctx->input_type(1);
-    xla::ComputationDataHandle gather;
+    xla::XlaOp gather;
     OP_REQUIRES_OK(
         ctx, XlaGather(resource_handle, resource_shape, indices, indices_shape,
                        /*axis=*/0, /*indices_are_nd=*/false, type, index_type,

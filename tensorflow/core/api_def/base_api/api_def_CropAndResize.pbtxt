@@ -47,8 +47,9 @@ END
   attr {
     name: "method"
     description: <<END
-A string specifying the interpolation method. Only 'bilinear' is
-supported for now.
+A string specifying the sampling method for resizing. It can be either
+`"bilinear"` or `"nearest"` and default to `"bilinear"`. Currently two sampling
+methods are supported: Bilinear and Nearest Neighbor.
 END
   }
   attr {
@@ -57,18 +58,22 @@ END
 Value used for extrapolation, when applicable.
 END
   }
-  summary: "Extracts crops from the input image tensor and bilinearly resizes them (possibly"
+  summary: "Extracts crops from the input image tensor and resizes them."
   description: <<END
-with aspect ratio change) to a common output size specified by `crop_size`. This
-is more general than the `crop_to_bounding_box` op which extracts a fixed size
-slice from the input image and does not allow resizing or aspect ratio change.
+Extracts crops from the input image tensor and resizes them using bilinear
+sampling or nearest neighbor sampling (possibly with aspect ratio change) to a
+common output size specified by `crop_size`. This is more general than the
+`crop_to_bounding_box` op which extracts a fixed size slice from the input image
+and does not allow resizing or aspect ratio change.
 
 Returns a tensor with `crops` from the input `image` at positions defined at the
 bounding box locations in `boxes`. The cropped boxes are all resized (with
-bilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The
-result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`. The
-resizing is corner aligned. In particular, if `boxes = [[0, 0, 1, 1]]`, the
-method will give identical results to using `tf.image.resize_bilinear()`
-with `align_corners=True`.
+bilinear or nearest neighbor interpolation) to a fixed
+`size = [crop_height, crop_width]`. The result is a 4-D tensor
+`[num_boxes, crop_height, crop_width, depth]`. The resizing is corner aligned.
+In particular, if `boxes = [[0, 0, 1, 1]]`, the method will give identical
+results to using `tf.image.resize_bilinear()` or
+`tf.image.resize_nearest_neighbor()`(depends on the `method` argument) with
+`align_corners=True`.
 END
 }

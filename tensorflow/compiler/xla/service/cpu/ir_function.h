@@ -33,8 +33,8 @@ namespace cpu {
 // emitters for function and function argument access.
 // The llvm::Function is created with the standard function signature
 // used in the XLA CPU backend (see ir_function.cc for argument details).
-// In addtion IrFunction saves the callers IR insert point during contruction,
-// and restores it after desctruction.
+// In addition IrFunction saves the callers IR insert point during construction,
+// and restores it after destruction.
 //
 // Example usage:
 //

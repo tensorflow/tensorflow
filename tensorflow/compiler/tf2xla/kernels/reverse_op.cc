@@ -48,7 +48,7 @@ class ReverseOp : public XlaOpKernel {
       ctx->SetOutput(0, ctx->Input(0));
       return;
     }
-    // ComputationBuilder::Rev() requires concrete values for dimensions arg.
+    // XlaBuilder::Rev() requires concrete values for dimensions arg.
     xla::Literal lax;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(1, {x_shape.dims()}, &lax));
     std::vector<bool> revdims(x_shape.dims());
@@ -90,7 +90,7 @@ class ReverseV2Op : public XlaOpKernel {
       ctx->SetOutput(0, ctx->Input(0));
       return;
     }
-    // ComputationBuilder::Rev() requires concrete values for dimensions arg.
+    // XlaBuilder::Rev() requires concrete values for dimensions arg.
     std::vector<int64> axes;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &axes));
 

@@ -18,12 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 import numpy as np
 
+from tensorflow.contrib.timeseries.python.timeseries import ar_model
 from tensorflow.contrib.timeseries.python.timeseries import input_pipeline
 from tensorflow.contrib.timeseries.python.timeseries import test_utils
-from tensorflow.contrib.timeseries.python.timeseries.ar_model import AnomalyMixtureARModel
-from tensorflow.contrib.timeseries.python.timeseries.ar_model import ARModel
 from tensorflow.contrib.timeseries.python.timeseries.estimators import ARRegressor
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import PredictionFeatures
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import TrainEvalFeatures
@@ -91,7 +92,7 @@ class ARModelTest(test.TestCase):
     np.random.seed(3)
     data_noise_stddev = 0.2
     if max_loss is None:
-      if loss == ARModel.NORMAL_LIKELIHOOD_LOSS:
+      if loss == ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS:
         max_loss = 1.0
       else:
         max_loss = 0.05 / (data_noise_stddev ** 2)
@@ -137,7 +138,7 @@ class ARModelTest(test.TestCase):
     test_loss = test_evaluation["loss"]
     logging.info("Final test loss: %f", test_loss)
     self.assertLess(test_loss, max_loss)
-    if loss == ARModel.SQUARED_LOSS:
+    if loss == ar_model.ARModel.SQUARED_LOSS:
       # Test that the evaluation loss is reported without input scaling.
       self.assertAllClose(
           test_loss,
@@ -169,7 +170,7 @@ class ARModelTest(test.TestCase):
     predicted_mean = predictions["mean"][:, 0]
     true_values = predict_true_values[0, :, 0]
 
-    if loss == ARModel.NORMAL_LIKELIHOOD_LOSS:
+    if loss == ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS:
       variances = predictions["covariance"][:, 0]
       standard_deviations = np.sqrt(variances)
       # Note that we may get tighter bounds with more training steps.
@@ -180,26 +181,26 @@ class ARModelTest(test.TestCase):
   def test_time_regression_squared(self):
     self.train_helper(input_window_size=0,
                       train_steps=350,
-                      loss=ARModel.SQUARED_LOSS)
+                      loss=ar_model.ARModel.SQUARED_LOSS)
 
   def test_autoregression_squared(self):
     self.train_helper(input_window_size=15,
-                      loss=ARModel.SQUARED_LOSS)
+                      loss=ar_model.ARModel.SQUARED_LOSS)
 
   def test_autoregression_short_input_window(self):
     self.train_helper(input_window_size=8,
-                      loss=ARModel.SQUARED_LOSS)
+                      loss=ar_model.ARModel.SQUARED_LOSS)
 
   def test_autoregression_normal(self):
     self.train_helper(input_window_size=10,
-                      loss=ARModel.NORMAL_LIKELIHOOD_LOSS,
+                      loss=ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS,
                       train_steps=300,
                       max_loss=1.5,
                       anomaly_distribution=None)
 
   def test_autoregression_normal_multiple_periods(self):
     self.train_helper(input_window_size=10,
-                      loss=ARModel.NORMAL_LIKELIHOOD_LOSS,
+                      loss=ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS,
                       max_loss=2.0,
                       multiple_periods=True,
                       anomaly_distribution=None)
@@ -207,15 +208,15 @@ class ARModelTest(test.TestCase):
   def test_autoregression_normal_anomalies_normal(self):
     self.train_helper(
         input_window_size=10,
-        loss=ARModel.NORMAL_LIKELIHOOD_LOSS,
-        anomaly_distribution=AnomalyMixtureARModel.GAUSSIAN_ANOMALY)
+        loss=ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS,
+        anomaly_distribution=ar_model.AnomalyMixtureARModel.GAUSSIAN_ANOMALY)
 
   def test_autoregression_normal_anomalies_cauchy(self):
     self.train_helper(
         input_window_size=10,
         max_loss=1.5,
-        loss=ARModel.NORMAL_LIKELIHOOD_LOSS,
-        anomaly_distribution=AnomalyMixtureARModel.CAUCHY_ANOMALY)
+        loss=ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS,
+        anomaly_distribution=ar_model.AnomalyMixtureARModel.CAUCHY_ANOMALY)
 
   def test_wrong_window_size(self):
     estimator = ARRegressor(
@@ -237,15 +238,38 @@ class ARModelTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "requires a window of at least"):
       estimator.evaluate(input_fn=_bad_window_size_input_fn, steps=1)
 
-  def test_predictions_direct(self):
+  def test_predictions_direct_flat(self):
     g = ops.Graph()
     with g.as_default():
-      model = ARModel(periodicities=2,
-                      num_features=1,
-                      num_time_buckets=10,
-                      input_window_size=2,
-                      output_window_size=2,
-                      hidden_layer_sizes=[40, 10])
+      model = ar_model.ARModel(periodicities=2,
+                               num_features=1,
+                               num_time_buckets=10,
+                               input_window_size=2,
+                               output_window_size=2,
+                               prediction_model_factory=functools.partial(
+                                   ar_model.FlatPredictionModel,
+                                   hidden_layer_sizes=[40, 10]))
+      with session.Session():
+        predicted_values = model.predict({
+            PredictionFeatures.TIMES: [[4, 6, 10]],
+            PredictionFeatures.STATE_TUPLE: (
+                [[1, 2]], [[[1.], [2.]]], [[[], []]])
+        })
+        variables.global_variables_initializer().run()
+        self.assertAllEqual(predicted_values["mean"].eval().shape,
+                            [1, 3, 1])
+
+  def test_predictions_direct_lstm(self):
+    g = ops.Graph()
+    with g.as_default():
+      model = ar_model.ARModel(periodicities=2,
+                               num_features=1,
+                               num_time_buckets=10,
+                               input_window_size=2,
+                               output_window_size=2,
+                               prediction_model_factory=functools.partial(
+                                   ar_model.LSTMPredictionModel,
+                                   num_units=16))
       with session.Session():
         predicted_values = model.predict({
             PredictionFeatures.TIMES: [[4, 6, 10]],
@@ -259,11 +283,11 @@ class ARModelTest(test.TestCase):
   def test_long_eval(self):
     g = ops.Graph()
     with g.as_default():
-      model = ARModel(periodicities=2,
-                      num_features=1,
-                      num_time_buckets=10,
-                      input_window_size=2,
-                      output_window_size=1)
+      model = ar_model.ARModel(periodicities=2,
+                               num_features=1,
+                               num_time_buckets=10,
+                               input_window_size=2,
+                               output_window_size=1)
       raw_features = {
           TrainEvalFeatures.TIMES: [[1, 3, 5, 7, 11]],
           TrainEvalFeatures.VALUES: [[[1.], [2.], [3.], [4.], [5.]]]}
@@ -309,11 +333,11 @@ class ARModelTest(test.TestCase):
   def test_long_eval_discard_indivisible(self):
     g = ops.Graph()
     with g.as_default():
-      model = ARModel(periodicities=2,
-                      num_features=1,
-                      num_time_buckets=10,
-                      input_window_size=2,
-                      output_window_size=2)
+      model = ar_model.ARModel(periodicities=2,
+                               num_features=1,
+                               num_time_buckets=10,
+                               input_window_size=2,
+                               output_window_size=2)
       raw_features = {
           TrainEvalFeatures.TIMES: [[1, 3, 5, 7, 11]],
           TrainEvalFeatures.VALUES: [[[1.], [2.], [3.], [4.], [5.]]]}

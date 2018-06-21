@@ -21,6 +21,7 @@ wrapper.  An instance of an `AttentionMechanism` is constructed with a
 ### Attention Mechanisms
 
 The two basic attention mechanisms are:
+
 *   @{tf.contrib.seq2seq.BahdanauAttention} (additive attention,
     [ref.](https://arxiv.org/abs/1409.0473))
 *   @{tf.contrib.seq2seq.LuongAttention} (multiplicative attention,
@@ -118,14 +119,17 @@ outputs, _ = tf.contrib.seq2seq.dynamic_decode(
 ```
 
 ### Decoder base class and functions
+
 *   @{tf.contrib.seq2seq.Decoder}
 *   @{tf.contrib.seq2seq.dynamic_decode}
 
 ### Basic Decoder
+
 *   @{tf.contrib.seq2seq.BasicDecoderOutput}
 *   @{tf.contrib.seq2seq.BasicDecoder}
 
 ### Decoder Helpers
+
 *   @{tf.contrib.seq2seq.Helper}
 *   @{tf.contrib.seq2seq.CustomHelper}
 *   @{tf.contrib.seq2seq.GreedyEmbeddingHelper}

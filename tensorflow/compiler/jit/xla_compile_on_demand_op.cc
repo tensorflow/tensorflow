@@ -48,13 +48,12 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
                                  const XlaCompiler::CompilationResult* result,
                                  xla::LocalExecutable* executable) {
   std::map<int, OptionalTensor> variables = GetVariables(ctx);
-  int64 num_resource_args = variables.size();
 
   xla::LocalClient* client = metadata.client();
 
   // Builds an XLA allocator for the device.
   XlaComputationLaunchContext launch_context(
-      num_resource_args, client, client->backend().memory_allocator(), true);
+      client, client->backend().memory_allocator(), true);
 
   launch_context.PopulateInputs(ctx, result, variables);
 
@@ -152,16 +151,18 @@ Status XlaCompileOnDemandOp::Compile(
   core::ScopedUnref cache_ref(cache);
 
   XlaCompiler::Options options;
-  DeviceType device_type = metadata.jit_device_type();
-  options.device_type = &device_type;
+  options.device_type = metadata.jit_device_type();
   options.client = metadata.client();
   options.flib_def =
       new FunctionLibraryDefinition(OpRegistry::Global(), FunctionDefLibrary{});
+  options.shape_representation_fn = metadata.shape_representation_fn();
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
   return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,
-                                result, executable,
-                                /*compile_options=*/nullptr);
+                                result, executable, &compile_options);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

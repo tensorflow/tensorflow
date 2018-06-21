@@ -57,10 +57,10 @@ from tensorflow.python.training import moving_averages
 __all__ = [
     'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv2d', 'conv3d',
     'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
-    'convolution2d', 'convolution2d_in_plane', 'convolution2d_transpose',
-    'convolution3d', 'convolution3d_transpose', 'dense_to_sparse',
-    'dropout', 'elu', 'flatten', 'fully_connected', 'GDN', 'gdn',
-    'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
+    'convolution1d', 'convolution2d', 'convolution2d_in_plane',
+    'convolution2d_transpose', 'convolution3d', 'convolution3d_transpose',
+    'dense_to_sparse', 'dropout', 'elu', 'flatten', 'fully_connected', 'GDN',
+    'gdn', 'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
     'max_pool3d', 'one_hot_encoding', 'relu', 'relu6', 'repeat',
     'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
     'sequence_to_images', 'softmax', 'spatial_softmax', 'stack', 'unit_norm',
@@ -2022,6 +2022,7 @@ class GDN(base.Layer):
 
     def beta_initializer(shape, dtype=None, partition_info=None):
       del partition_info  # unused
+      pedestal = array_ops.constant(self._reparam_offset**2, dtype=self.dtype)
       return math_ops.sqrt(array_ops.ones(shape, dtype=dtype) + pedestal)
 
     def gamma_initializer(shape, dtype=None, partition_info=None):
@@ -2029,6 +2030,7 @@ class GDN(base.Layer):
       assert len(shape) == 2
       assert shape[0] == shape[1]
       eye = linalg_ops.eye(shape[0], dtype=dtype)
+      pedestal = array_ops.constant(self._reparam_offset**2, dtype=self.dtype)
       return math_ops.sqrt(self._gamma_init * eye + pedestal)
 
     beta = self.add_variable(

@@ -77,16 +77,16 @@ TfLiteStatus Resize(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumInputs(node) == 2 || NumInputs(node) == 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* hash = GetInput(context, node, 0);
+  const TfLiteTensor* hash = GetInput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, NumDimensions(hash), 2);
   // Support up to 32 bits.
   TF_LITE_ENSURE(context, SizeOfDimension(hash, 1) <= 32);
 
-  TfLiteTensor* input = GetInput(context, node, 1);
+  const TfLiteTensor* input = GetInput(context, node, 1);
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
   if (NumInputs(node) == 3) {
-    TfLiteTensor* weight = GetInput(context, node, 2);
+    const TfLiteTensor* weight = GetInput(context, node, 2);
     TF_LITE_ENSURE_EQ(context, NumDimensions(weight), 1);
     TF_LITE_ENSURE_EQ(context, SizeOfDimension(weight, 0),
                       SizeOfDimension(input, 0));
@@ -173,9 +173,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteLSHProjectionParams*>(node->builtin_data);
 
   int32_t* out_buf = GetOutput(context, node, 0)->data.i32;
-  TfLiteTensor* hash = GetInput(context, node, 0);
-  TfLiteTensor* input = GetInput(context, node, 1);
-  TfLiteTensor* weight =
+  const TfLiteTensor* hash = GetInput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 1);
+  const TfLiteTensor* weight =
       NumInputs(node) == 2 ? nullptr : GetInput(context, node, 2);
 
   switch (params->type) {

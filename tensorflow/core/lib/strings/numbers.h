@@ -115,13 +115,13 @@ bool safe_strtou64(StringPiece str, uint64* value);
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
 // Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
-bool safe_strtof(const char* str, float* value);
+bool safe_strtof(StringPiece str, float* value);
 
 // Convert strings to double precision floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
 // Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
-bool safe_strtod(const char* str, double* value);
+bool safe_strtod(StringPiece str, double* value);
 
 inline bool ProtoParseNumeric(StringPiece s, int32* value) {
   return safe_strto32(s, value);
@@ -140,11 +140,11 @@ inline bool ProtoParseNumeric(StringPiece s, uint64* value) {
 }
 
 inline bool ProtoParseNumeric(StringPiece s, float* value) {
-  return safe_strtof(s.ToString().c_str(), value);
+  return safe_strtof(std::string(s).c_str(), value);
 }
 
 inline bool ProtoParseNumeric(StringPiece s, double* value) {
-  return safe_strtod(s.ToString().c_str(), value);
+  return safe_strtod(std::string(s).c_str(), value);
 }
 
 // Convert strings to number of type T.

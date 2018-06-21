@@ -89,7 +89,7 @@ class BufferLiveness {
 
   // Perform buffer liveness analysis. This method must be called prior to
   // MayInterfere or MaybeLiveOut.
-  tensorflow::Status Analyze();
+  Status Analyze();
 
   // Returns true if the live range of the buffer of 'a' is strictly before the
   // live range of the buffer of 'b' (they do not overlap).

@@ -202,7 +202,7 @@ class CriticalSection(object):
         or lazy way that may cause a deadlock.
       ValueError: If `exclusive_resource_access` is not provided (is `True`) and
         another `CriticalSection` has an execution requesting the same
-        resources as in `*args`, `**kwargs`, and any additionaly captured
+        resources as in `*args`, `**kwargs`, and any additionally captured
         inputs in `fn`.  Note, even if `exclusive_resource_access` is `True`,
         if another execution in another `CriticalSection` was created without
         `exclusive_resource_access=True`, a `ValueError` will be raised.

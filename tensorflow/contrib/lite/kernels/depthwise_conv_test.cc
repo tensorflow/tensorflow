@@ -47,12 +47,6 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
     }
 
     output_ = AddOutput(output);
-    if (input.type != TensorType_FLOAT32) {
-      // The following is required by quantized inference. It is the unittest's
-      // responsibility to make sure the output scale falls into the correct
-      // range.
-      CHECK_LT(GetScale(input_) * GetScale(filter_), GetScale(output_));
-    }
 
     int input_depth = GetShape(input_)[3];
     int output_depth = GetShape(filter_)[3];
@@ -174,6 +168,43 @@ TEST(QuantizedDepthwiseConvolutionOpTest, SimpleTestQuantized) {
                                  198, 93, 226, 107,   //
                                  218, 101, 254, 123,  //
                              }));
+}
+
+TEST(QuantizedDepthwiseConvolutionOpTest,
+     SimpleTestQuantizedFilterMultiplierGreaterThan1) {
+  QuantizedDepthwiseConvolutionOpModel quant_op(
+      {TensorType_UINT8, {1, 3, 2, 2}, -63.5, 64},
+      {TensorType_UINT8, {1, 2, 2, 4}, -128.5, 128},
+      {TensorType_UINT8, {}, -127, 128});
+  DepthwiseConvolutionOpModel float_op({TensorType_FLOAT32, {1, 3, 2, 2}},
+                                       {TensorType_FLOAT32, {1, 2, 2, 4}},
+                                       {TensorType_FLOAT32, {}});
+
+  std::initializer_list<float> input = {
+      1, 2, 7,  8,   // column 1
+      3, 4, 9,  10,  // column 2
+      5, 6, 11, 12,  // column 3
+  };
+  std::initializer_list<float> filter = {
+      1,  2,   3,   4,    //
+      -9, 10,  -11, 12,   //
+      5,  6,   7,   8,    //
+      13, -14, 15,  -16,  //
+  };
+  std::initializer_list<float> bias = {1, 2, 3, 4};
+
+  quant_op.SetInput(input);
+  quant_op.SetFilter(filter);
+  quant_op.SetBias(bias);
+  quant_op.Invoke();
+
+  float_op.SetInput(input);
+  float_op.SetFilter(filter);
+  float_op.SetBias(bias);
+  float_op.Invoke();
+
+  EXPECT_THAT(quant_op.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
 }
 
 }  // namespace

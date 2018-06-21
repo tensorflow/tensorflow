@@ -41,6 +41,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    shard_count = 3,
 )
 
 cuda_py_test(
@@ -92,6 +93,7 @@ cuda_py_test(
     size = "small",
     srcs = ["categorical_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",

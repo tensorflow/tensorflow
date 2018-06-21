@@ -37,4 +37,7 @@ enum IODataType {
 
   // Int16, quantized
   QUANTIZED_INT16 = 6;
+
+  // Boolean
+  BOOL = 7;
 }

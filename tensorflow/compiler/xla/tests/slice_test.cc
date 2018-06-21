@@ -197,9 +197,10 @@ class SliceR1Test : public ClientLibraryTestBase,
     // vector<bool>.
     tensorflow::gtl::InlinedVector<NativeT, 1> input(spec.input_dim0);
     std::iota(input.begin(), input.end(), NativeT());
+    auto literal = Literal::CreateR1<NativeT>(input);
 
     XlaBuilder builder(TestName());
-    auto original = builder.ConstantR1<NativeT>(input);
+    auto original = builder.Parameter(0, literal->shape(), "p0");
     builder.Slice(original, {spec.slice_start}, {spec.slice_limit},
                   {spec.slice_stride});
 
@@ -210,7 +211,9 @@ class SliceR1Test : public ClientLibraryTestBase,
       expected.push_back(i);
     }
 
-    ComputeAndCompareR1<NativeT>(&builder, expected, {});
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
+                            client_->TransferToServer(*literal));
+    ComputeAndCompareR1<NativeT>(&builder, expected, {arg.get()});
   }
 };
 
@@ -365,15 +368,18 @@ XLA_TEST_P(SliceR2Test, DoIt) {
   const R2Spec& spec = GetParam();
   Array2D<int32> input(spec.input_dim0, spec.input_dim1);
   input.FillUnique();
+  auto literal = Literal::CreateR2FromArray2DWithLayout(
+      input, LayoutUtil::MakeLayout(spec.layout));
 
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR2FromArray2DWithLayout<int32>(
-      input, LayoutUtil::MakeLayout(spec.layout));
+  auto a = builder.Parameter(0, literal->shape(), "p0");
   builder.Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
 
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
+                          client_->TransferToServer(*literal));
   std::unique_ptr<Array2D<int32>> expected = ReferenceUtil::Slice2D(
       input, spec.slice_starts, spec.slice_limits, spec.slice_strides);
-  ComputeAndCompareR2<int32>(&builder, *expected, {});
+  ComputeAndCompareR2<int32>(&builder, *expected, {arg.get()});
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -453,7 +459,7 @@ class SliceR4Test : public ClientLibraryTestBase,
   void Run(const R4Spec& spec) {
     Array4D<float> values(spec.input_dims[0], spec.input_dims[1],
                           spec.input_dims[2], spec.input_dims[3]);
-    values.FillRandom(3.14f);
+    values.FillIota(3.14159);
     auto expected = ReferenceUtil::Slice4D(
         values, spec.slice_starts, spec.slice_limits, spec.slice_strides);
     XlaBuilder builder(TestName());

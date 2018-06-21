@@ -1,9 +1,9 @@
 path: "tensorflow.keras.layers.Bidirectional"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.wrappers.Bidirectional\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.wrappers.Wrapper\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.wrappers.Bidirectional\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.wrappers.Wrapper\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -119,7 +119,7 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\', \'training\', \'mask\', \'initial_state\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'inputs\', \'training\', \'mask\', \'initial_state\', \'constants\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"

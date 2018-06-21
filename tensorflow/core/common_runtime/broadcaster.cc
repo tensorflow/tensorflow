@@ -80,7 +80,7 @@ void Broadcaster::Run(StatusCallback done) {
 // continuing to occupy its current position.  Hence we calculate as
 // though each device's rank is actually r+1, then subtract 1 again to
 // get the descendent ranks.  If the source is not rank 0 then its
-// decendents include both {0,1} and the descendents of its current
+// descendants include both {0,1} and the descendents of its current
 // position.  Where a non-0-rank source is a descendent of another
 // device, no send to it is necessary.
 
@@ -115,7 +115,7 @@ void Broadcaster::TreeSendTo(const CollectiveParams& cp,
   DCHECK_NE(successor_rank, my_rank);
   if (cp.is_source && source_rank != 0) {
     // The source sends to rank 0,1 in addition to its positional
-    // decendents.
+    // descendants.
     if (cp.group.group_size > 1) {
       targets->push_back(0);
     }
@@ -134,7 +134,7 @@ void Broadcaster::TreeSendTo(const CollectiveParams& cp,
 // Execute a tree broadcast, i.e. each non-source device receives from
 // one other and sends to up-to two others.
 void Broadcaster::RunTree() {
-  mutex mu;
+  mutex mu;               // also guards status_ while callbacks are pending
   int pending_count = 0;  // GUARDED_BY(mu)
   condition_variable all_done;
   std::vector<int> send_to_ranks;
@@ -162,15 +162,13 @@ void Broadcaster::RunTree() {
         ++pending_count;
       }
       DispatchSend(
-          target_rank, output_,
+          target_rank, (is_source_ ? &ctx_->input(0) : output_),
           [this, target_rank, &mu, &pending_count, &all_done](const Status& s) {
+            mutex_lock l(mu);
             status_.Update(s);
-            {
-              mutex_lock l(mu);
-              --pending_count;
-              if (pending_count == 0) {
-                all_done.notify_all();
-              }
+            --pending_count;
+            if (pending_count == 0) {
+              all_done.notify_all();
             }
           });
     }
@@ -191,13 +189,11 @@ void Broadcaster::RunTree() {
           op_dev_ctx, op_dev_ctx, device_, device_, ctx_->input_alloc_attr(0),
           ctx_->output_alloc_attr(0), input, output_,
           [this, &mu, &pending_count, &all_done](const Status& s) {
+            mutex_lock l(mu);
             status_.Update(s);
-            {
-              mutex_lock l(mu);
-              --pending_count;
-              if (0 == pending_count) {
-                all_done.notify_all();
-              }
+            --pending_count;
+            if (0 == pending_count) {
+              all_done.notify_all();
             }
           });
     }

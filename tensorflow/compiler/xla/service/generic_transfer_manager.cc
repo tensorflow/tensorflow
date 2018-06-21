@@ -74,7 +74,7 @@ GenericTransferManager::TransferLiteralFromDevice(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_host_shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> Status {
-        if (!ShapeUtil::IsTuple(subshape)) {
+        if (ShapeUtil::IsArray(subshape)) {
           TF_RETURN_IF_ERROR(TransferBufferFromDevice(
               executor,
               /*source=*/device_buffer.buffer(index),
@@ -89,7 +89,7 @@ GenericTransferManager::TransferLiteralFromDevice(
 }
 
 Status GenericTransferManager::TransferLiteralToDevice(
-    se::StreamExecutor* executor, const Literal& literal,
+    se::StreamExecutor* executor, const LiteralSlice& literal,
     const ShapedBuffer& device_buffer) {
   const Shape& shape = literal.shape();
   VLOG(2) << "transferring literal shape to device: "
@@ -115,7 +115,7 @@ Status GenericTransferManager::TransferLiteralToDevice(
           TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
                        device_memory.size());
           // Element is array-shaped: transfer array data to device buffer.
-          const auto subliteral = LiteralView::Create(literal, index);
+          const auto subliteral = LiteralSlice(literal, index);
           std::unique_ptr<Literal> relayed_out_literal;
           const void* source;
           if (LayoutUtil::Equal(device_subshape.layout(),
@@ -137,7 +137,7 @@ Status GenericTransferManager::TransferLiteralToDevice(
 }
 
 Status GenericTransferManager::TransferLiteralToInfeed(
-    se::StreamExecutor* executor, const Literal& literal) {
+    se::StreamExecutor* executor, const LiteralSlice& literal) {
   return Unimplemented("Generic transfer to Infeed");
 }
 

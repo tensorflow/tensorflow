@@ -504,7 +504,7 @@ string Print(const NodeDef& n) {
   std::vector<string> dep;
   for (StringPiece s : n.input()) {
     if (str_util::ConsumePrefix(&s, "^")) {
-      dep.push_back(s.ToString());
+      dep.push_back(std::string(s));
     } else {
       dat.push_back(s);
     }
@@ -814,6 +814,10 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   if (!options.state_handle.empty()) {
     entries.push_back(
         strings::StrCat("_state_handle", "=", options.state_handle));
+  }
+  if (!options.executor_type.empty()) {
+    entries.push_back(
+        strings::StrCat("_executor_type", "=", options.executor_type));
   }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");

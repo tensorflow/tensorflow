@@ -43,8 +43,8 @@ def _clip(params, ids, max_norm):
   Args:
     params: A `Tensor` of embeddings retrieved by `gather`.
     ids: The `ids` argument that was passed to `gather`.
-    max_norm: If provided, the embeddings are l2-normalized to the value of
-      max_norm.
+    max_norm: If not `None`, each embedding is clipped if its l2-norm is
+      larger than this value.
 
   Returns:
     A `Tensor` with the same type as `params`.
@@ -290,8 +290,8 @@ def embedding_lookup(
       in `indices` are always validated to be within range.  If assigned to GPU,
       out-of-bound indices result in safe but unspecified behavior, which may
       include raising an error.
-    max_norm: If provided, embedding values are l2-normalized to the value of
-      max_norm.
+    max_norm: If not `None`, each embedding is clipped if its l2-norm is
+      larger than this value.
 
   Returns:
     A `Tensor` with the same type as the tensors in `params`.
@@ -346,8 +346,8 @@ def embedding_lookup_sparse(params,
       "mean" is the weighted sum divided by the total weight.
       "sqrtn" is the weighted sum divided by the square root of the sum of the
       squares of the weights.
-    max_norm: If provided, each embedding is normalized to have l2 norm equal
-      to max_norm before combining.
+    max_norm: If not `None`, each embedding is clipped if its l2-norm is
+      larger than this value, before combining.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -385,7 +385,7 @@ def embedding_lookup_sparse(params,
       ```
 
   Raises:
-    TypeError: If `sp_ids` is not a `SparseTensor`, or if `sp_weights` is 
+    TypeError: If `sp_ids` is not a `SparseTensor`, or if `sp_weights` is
       neither `None` nor `SparseTensor`.
     ValueError: If `combiner` is not one of {"mean", "sqrtn", "sum"}.
   """
@@ -421,10 +421,7 @@ def embedding_lookup_sparse(params,
       segment_ids = math_ops.cast(segment_ids, dtypes.int32)
 
     ids = sp_ids.values
-    if ignore_weights:
-      ids, idx = array_ops.unique(ids)
-    else:
-      idx = None
+    ids, idx = array_ops.unique(ids)
 
     embeddings = embedding_lookup(
         params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
@@ -432,6 +429,8 @@ def embedding_lookup_sparse(params,
       weights = sp_weights.values
       if weights.dtype != embeddings.dtype:
         weights = math_ops.cast(weights, embeddings.dtype)
+
+      embeddings = array_ops.gather(embeddings, idx)
 
       # Reshape weights to allow broadcast
       ones = array_ops.fill(

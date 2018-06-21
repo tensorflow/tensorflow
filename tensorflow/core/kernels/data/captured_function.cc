@@ -32,6 +32,20 @@ Status CapturedFunction::Create(
   return Status::OK();
 }
 
+/* static */
+Status CapturedFunction::Create(
+    const NameAttrList& func, OpKernelContext* ctx, const string& argument,
+    std::unique_ptr<CapturedFunction>* out_function) {
+  OpInputList argument_inputs;
+  TF_RETURN_IF_ERROR(ctx->input_list(argument, &argument_inputs));
+  std::vector<Tensor> arguments_t;
+  arguments_t.reserve(argument_inputs.size());
+  for (const Tensor& t : argument_inputs) {
+    arguments_t.push_back(t);
+  }
+  return CapturedFunction::Create(func, std::move(arguments_t), out_function);
+}
+
 CapturedFunction::~CapturedFunction() {
   if (lib_ != nullptr && f_handle_ != kInvalidHandle) {
     lib_->ReleaseHandle(f_handle_).IgnoreError();

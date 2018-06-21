@@ -119,7 +119,7 @@ class FrameTest(test.TestCase):
     frame_step = 1
     result = shape_ops.frame(signal, frame_length, frame_step,
                              pad_end=True, pad_value=99, axis=1)
-    self.assertEqual([1, None, None, 3, 4], result.shape.as_list())
+    self.assertEqual([1, 2, None, 3, 4], result.shape.as_list())
 
     result = shape_ops.frame(signal, frame_length, frame_step,
                              pad_end=False, axis=1)

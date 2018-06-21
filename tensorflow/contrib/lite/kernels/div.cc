@@ -57,8 +57,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
@@ -80,7 +80,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteDivParams* params, const OpData* data,
-               TfLiteTensor* input1, TfLiteTensor* input2,
+               const TfLiteTensor* input1, const TfLiteTensor* input2,
                TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRangeFloat(params->activation, &output_activation_min,
@@ -106,22 +106,21 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 #undef TF_LITE_DIV
 }
 
-
-
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteDivParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32) {
     EvalFloat<kernel_type>(context, node, params, data, input1, input2, output);
   } else {
-    context->ReportError(context,
-                         "Div only supports FLOAT32 and quantized UINT8 now.");
+    context->ReportError(
+        context, "Div only supports FLOAT32 and quantized UINT8 now, got %d.",
+        output->type);
     return kTfLiteError;
   }
 

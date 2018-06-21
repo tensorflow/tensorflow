@@ -71,7 +71,7 @@ TEST_F(InlinerTest, MapMax) {
   // Verify execution on CPU.
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
   auto expected = Literal::CreateR1<float>({4, 3, 3, 4});
-  LiteralTestUtil::ExpectEqual(*result, *expected);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *expected));
 }
 
 // Test that `constant` function is changed to `broadcast`.
@@ -105,7 +105,7 @@ TEST_F(InlinerTest, MapConstant) {
   // Verify execution on CPU.
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
   auto expected = Literal::CreateR2<float>({{2, 2, 2, 2}, {2, 2, 2, 2}});
-  LiteralTestUtil::ExpectEqual(*result, *expected);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *expected));
 }
 
 TEST_F(InlinerTest, MapSubtractOppositeOrder) {
@@ -143,7 +143,7 @@ TEST_F(InlinerTest, MapSubtractOppositeOrder) {
   // Verify execution on CPU.
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
   auto expected = Literal::CreateR1<float>({3, 1, -1, -3});
-  LiteralTestUtil::ExpectEqual(*result, *expected);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *expected));
 }
 
 

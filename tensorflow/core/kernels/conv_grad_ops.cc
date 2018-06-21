@@ -127,16 +127,17 @@ Status ConvBackpropComputeDimensionsV2(
   dims->in_depth = input_shape.dim_size(feature_dim);
   // The input and output feature dimensions are the second last and last
   // dimensions of the filter Tensor.
-  if (dims->in_depth != filter_shape.dim_size(num_dims - 2)) {
+  VLOG(2) << "input vs filter_in depth " << dims->in_depth << " "
+          << filter_shape.dim_size(num_dims - 2);
+  if (dims->in_depth % filter_shape.dim_size(num_dims - 2)) {
     return errors::InvalidArgument(
-        label, ": input and filter must have the same depth");
+        label, ": input depth must be evenly divisible by filter depth");
   }
   dims->out_depth = filter_shape.dim_size(num_dims - 1);
   if (dims->out_depth != out_backprop_shape.dim_size(feature_dim)) {
     return errors::InvalidArgument(
         label, ": filter and out_backprop must have the same out_depth");
   }
-
   dims->spatial_dims.resize(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
     int image_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);

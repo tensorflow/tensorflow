@@ -66,15 +66,15 @@ class PoolingOp : public XlaOpKernel {
   int num_dims() const { return num_spatial_dims_ + 2; }
 
   // Method that builds an initial value to use in reductions.
-  virtual xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b) = 0;
+  virtual xla::XlaOp InitValue(xla::XlaBuilder* b) = 0;
 
   // The reduction operation to apply to each window.
-  virtual const xla::Computation* Reduction(XlaOpKernelContext* ctx) = 0;
+  virtual const xla::XlaComputation* Reduction(XlaOpKernelContext* ctx) = 0;
 
   // A post-processing operation to apply on the outputs of the ReduceWindow.
-  virtual xla::ComputationDataHandle PostProcessOutput(
-      XlaOpKernelContext* ctx, const xla::ComputationDataHandle& output,
-      DataType dtype, const TensorShape& input_shape) = 0;
+  virtual xla::XlaOp PostProcessOutput(XlaOpKernelContext* ctx,
+                                       const xla::XlaOp& output, DataType dtype,
+                                       const TensorShape& input_shape) = 0;
 
   void Compile(XlaOpKernelContext* ctx) override {
     std::vector<int64> ksize = ksize_;
@@ -110,7 +110,7 @@ class PoolingOp : public XlaOpKernel {
                                         " operator must have ", num_dims(),
                                         " dimensions"));
 
-    xla::ComputationBuilder* const b = ctx->builder();
+    xla::XlaBuilder* const b = ctx->builder();
     auto input =
         XlaHelpers::ConvertElementType(b, ctx->Input(0), reduction_type_);
     auto reduce = ctx->builder()->ReduceWindow(
@@ -135,17 +135,17 @@ class MaxPoolOp : public PoolingOp {
       : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
                   /*reduction_type=*/ctx->input_type(0)) {}
 
-  xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b) override {
+  xla::XlaOp InitValue(xla::XlaBuilder* b) override {
     return XlaHelpers::MinValue(b, reduction_type_);
   }
 
-  const xla::Computation* Reduction(XlaOpKernelContext* ctx) override {
+  const xla::XlaComputation* Reduction(XlaOpKernelContext* ctx) override {
     return ctx->GetOrCreateMax(reduction_type_);
   }
 
-  xla::ComputationDataHandle PostProcessOutput(
-      XlaOpKernelContext* ctx, const xla::ComputationDataHandle& output,
-      DataType dtype, const TensorShape& input_shape) override {
+  xla::XlaOp PostProcessOutput(XlaOpKernelContext* ctx,
+                               const xla::XlaOp& output, DataType dtype,
+                               const TensorShape& input_shape) override {
     return output;
   }
 };
@@ -176,9 +176,9 @@ REGISTER_XLA_OP(Name("MaxPool3D"), MaxPool3DOp);
 // Common computation shared between AvgPool and AvgPoolGrad. Divide each
 // element of an image by the count of elements that contributed to that
 // element during pooling.
-static xla::ComputationDataHandle AvgPoolDivideByCount(
-    XlaOpKernelContext* ctx, const xla::ComputationDataHandle& output,
-    DataType dtype, const TensorShape& input_shape, xla::Padding padding,
+static xla::XlaOp AvgPoolDivideByCount(
+    XlaOpKernelContext* ctx, const xla::XlaOp& output, DataType dtype,
+    const TensorShape& input_shape, xla::Padding padding,
     const std::vector<int64>& ksize, const std::vector<int64>& stride,
     int num_spatial_dims, TensorFormat data_format) {
   if (padding == xla::Padding::kValid) {
@@ -234,17 +234,17 @@ class AvgPoolOp : public PoolingOp {
                   /*reduction_type=*/
                   XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
 
-  xla::ComputationDataHandle InitValue(xla::ComputationBuilder* b) override {
+  xla::XlaOp InitValue(xla::XlaBuilder* b) override {
     return XlaHelpers::Zero(b, reduction_type_);
   }
 
-  const xla::Computation* Reduction(XlaOpKernelContext* ctx) override {
+  const xla::XlaComputation* Reduction(XlaOpKernelContext* ctx) override {
     return ctx->GetOrCreateAdd(reduction_type_);
   }
 
-  xla::ComputationDataHandle PostProcessOutput(
-      XlaOpKernelContext* ctx, const xla::ComputationDataHandle& output,
-      DataType dtype, const TensorShape& input_shape) override {
+  xla::XlaOp PostProcessOutput(XlaOpKernelContext* ctx,
+                               const xla::XlaOp& output, DataType dtype,
+                               const TensorShape& input_shape) override {
     return AvgPoolDivideByCount(ctx, output, dtype, input_shape, padding_,
                                 ksize_, stride_, num_spatial_dims_,
                                 data_format_);
@@ -344,11 +344,10 @@ class MaxPoolGradOp : public XlaOpKernel {
 
     xla::PrimitiveType element_type;
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(2), &element_type));
-    xla::ComputationDataHandle init_value =
-        XlaHelpers::Zero(ctx->builder(), input_type(2));
+    xla::XlaOp init_value = XlaHelpers::Zero(ctx->builder(), input_type(2));
     auto select = CreateScalarGeComputation(element_type, ctx->builder());
     auto scatter = CreateScalarAddComputation(element_type, ctx->builder());
-    xla::ComputationDataHandle gradients = ctx->builder()->SelectAndScatter(
+    xla::XlaOp gradients = ctx->builder()->SelectAndScatter(
         input, select, ksize_, stride_, xla_padding, out_backprop, init_value,
         scatter);
 
@@ -462,7 +461,7 @@ class AvgPoolGradOp : public XlaOpKernel {
     // The input gradients are computed by a convolution of the output gradients
     // and the filter, with some appropriate padding. See the comment at the top
     // of conv_grad_ops.h for details.
-    xla::ComputationBuilder* const b = ctx->builder();
+    xla::XlaBuilder* const b = ctx->builder();
     auto out_backprop = ctx->Input(1);
     auto dtype = input_type(1);
     xla::Padding xla_padding =

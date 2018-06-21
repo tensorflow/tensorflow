@@ -27,22 +27,9 @@ namespace xla {
   return std::move(grpc_service);
 }
 
-::grpc::Status DelegateRPC(std::function<tensorflow::Status()> op) {
-  tensorflow::Status s = op();
+::grpc::Status DelegateRPC(std::function<Status()> op) {
+  Status s = op();
   return tensorflow::ToGrpcStatus(s);
-}
-
-::grpc::Status GRPCService::Computation(::grpc::ServerContext* context,
-                                        const ComputationRequest* arg,
-                                        ComputationResponse* result) {
-  return DelegateRPC(
-      [this, arg, result]() { return service_->Computation(arg, result); });
-}
-
-::grpc::Status GRPCService::CreateOp(::grpc::ServerContext* context,
-                                     const OpRequest* arg, OpResponse* result) {
-  return DelegateRPC(
-      [this, arg, result]() { return service_->Op(arg, result); });
 }
 
 ::grpc::Status GRPCService::Unregister(::grpc::ServerContext* context,
@@ -60,26 +47,11 @@ namespace xla {
   });
 }
 
-::grpc::Status GRPCService::SetReturnValue(::grpc::ServerContext* context,
-                                           const SetReturnValueRequest* arg,
-                                           SetReturnValueResponse* results) {
-  return DelegateRPC([this, arg, results]() {
-    return service_->SetReturnValue(arg, results);
-  });
-}
-
-::grpc::Status GRPCService::Execute(::grpc::ServerContext* context,
-                                    const ExecuteRequest* arg,
-                                    ExecuteResponse* result) {
+::grpc::Status GRPCService::ExecuteGraph(::grpc::ServerContext* /*context*/,
+                                         const ExecuteGraphRequest* arg,
+                                         ExecuteResponse* result) {
   return DelegateRPC(
-      [this, arg, result]() { return service_->Execute(arg, result); });
-}
-
-::grpc::Status GRPCService::ExecuteAsync(::grpc::ServerContext* context,
-                                         const ExecuteAsyncRequest* arg,
-                                         ExecuteAsyncResponse* result) {
-  return DelegateRPC(
-      [this, arg, result]() { return service_->ExecuteAsync(arg, result); });
+      [this, arg, result]() { return service_->ExecuteGraph(arg, result); });
 }
 
 ::grpc::Status GRPCService::WaitForExecution(::grpc::ServerContext* context,
@@ -129,64 +101,11 @@ namespace xla {
       [this, arg, result]() { return service_->ResetDevice(arg, result); });
 }
 
-::grpc::Status GRPCService::IsConstant(::grpc::ServerContext* context,
-                                       const IsConstantRequest* arg,
-                                       IsConstantResponse* result) {
-  return DelegateRPC(
-      [this, arg, result]() { return service_->IsConstant(arg, result); });
-}
-
-::grpc::Status GRPCService::ComputeConstant(::grpc::ServerContext* context,
-                                            const ComputeConstantRequest* arg,
-                                            ComputeConstantResponse* result) {
-  return DelegateRPC(
-      [this, arg, result]() { return service_->ComputeConstant(arg, result); });
-}
-
 ::grpc::Status GRPCService::GetShape(::grpc::ServerContext* context,
                                      const GetShapeRequest* arg,
                                      GetShapeResponse* result) {
   return DelegateRPC(
       [this, arg, result]() { return service_->GetShape(arg, result); });
-}
-
-::grpc::Status GRPCService::GetComputationShape(
-    ::grpc::ServerContext* context, const GetComputationShapeRequest* arg,
-    GetComputationShapeResponse* result) {
-  return DelegateRPC([this, arg, result]() {
-    return service_->GetComputationShape(arg, result);
-  });
-}
-
-::grpc::Status GRPCService::GetLocalShape(::grpc::ServerContext* context,
-                                          const GetLocalShapeRequest* arg,
-                                          GetLocalShapeResponse* result) {
-  return DelegateRPC(
-      [this, arg, result]() { return service_->GetLocalShape(arg, result); });
-}
-
-::grpc::Status GRPCService::GetComputationStats(
-    ::grpc::ServerContext* context, const ComputationStatsRequest* arg,
-    ComputationStatsResponse* result) {
-  return DelegateRPC([this, arg, result]() {
-    return service_->GetComputationStats(arg, result);
-  });
-}
-
-::grpc::Status GRPCService::SnapshotComputation(
-    ::grpc::ServerContext* context, const SnapshotComputationRequest* arg,
-    SnapshotComputationResponse* result) {
-  return DelegateRPC([this, arg, result]() {
-    return service_->SnapshotComputation(arg, result);
-  });
-}
-
-::grpc::Status GRPCService::LoadComputationSnapshot(
-    ::grpc::ServerContext* context, const LoadComputationSnapshotRequest* arg,
-    LoadComputationSnapshotResponse* result) {
-  return DelegateRPC([this, arg, result]() {
-    return service_->LoadComputationSnapshot(arg, result);
-  });
 }
 
 }  // namespace xla

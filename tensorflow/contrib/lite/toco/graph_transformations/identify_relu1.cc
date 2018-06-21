@@ -79,8 +79,9 @@ bool IdentifyRelu1::Run(Model* model, std::size_t op_index) {
   const auto* max_op =
       op_0->type == OperatorType::kTensorFlowMaximum ? op_0 : op_1;
 
-  CHECK_EQ(min_op->inputs.size(), 2);
-  CHECK_EQ(max_op->inputs.size(), 2);
+  if (min_op->inputs.size() != 2 || max_op->inputs.size() != 2) {
+    return false;
+  }
   if (min_op->outputs.size() != 1 || max_op->outputs.size() != 1) {
     return false;
   }

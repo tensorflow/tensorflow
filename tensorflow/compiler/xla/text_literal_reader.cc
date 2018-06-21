@@ -42,7 +42,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadPath(
       << "TextLiteralReader no longer supports reading .gz files";
   std::unique_ptr<tensorflow::RandomAccessFile> file;
   Status s =
-      tensorflow::Env::Default()->NewRandomAccessFile(path.ToString(), &file);
+      tensorflow::Env::Default()->NewRandomAccessFile(std::string(path), &file);
   if (!s.ok()) {
     return s;
   }
@@ -92,7 +92,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
 
   tensorflow::StringPiece sp(shape_string);
   if (tensorflow::str_util::RemoveWhitespaceContext(&sp) > 0) {
-    string tmp = sp.ToString();
+    string tmp = std::string(sp);
     shape_string = tmp;
   }
   TF_ASSIGN_OR_RETURN(Shape shape, ShapeUtil::ParseShapeString(shape_string));
@@ -124,10 +124,10 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
                              line.c_str());
     }
     float value;
-    if (!tensorflow::strings::safe_strtof(value_string.ToString().c_str(),
+    if (!tensorflow::strings::safe_strtof(std::string(value_string).c_str(),
                                           &value)) {
       return InvalidArgument("could not parse value as float: \"%s\"",
-                             value_string.ToString().c_str());
+                             std::string(value_string).c_str());
     }
     SplitByDelimToStringPieces(coordinates_string, ',', &coordinates);
     coordinate_values.clear();
@@ -136,7 +136,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
       if (!tensorflow::strings::safe_strto64(piece, &coordinate_value)) {
         return InvalidArgument(
             "could not parse coordinate member as int64: \"%s\"",
-            piece.ToString().c_str());
+            std::string(piece).c_str());
       }
       coordinate_values.push_back(coordinate_value);
     }

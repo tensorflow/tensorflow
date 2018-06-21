@@ -74,8 +74,10 @@ class OperatorTest : public ::testing::Test {
     auto new_toco_op = op.Deserialize(output_options->builtin_options(),
                                       output_options->custom_options());
 
-    CHECK(dynamic_cast<T*>(new_toco_op.get()))
-        << "Cannot cast " << HelpfulOperatorTypeName(*new_toco_op) << " to "
+    CHECK(new_toco_op->type == toco_op.type)
+        << "The type of the serialized and deserialized"
+        << HelpfulOperatorTypeName(*new_toco_op)
+        << " does not match the type of the original "
         << HelpfulOperatorTypeName(toco_op);
 
     return std::unique_ptr<T>(dynamic_cast<T*>(new_toco_op.release()));
@@ -115,6 +117,15 @@ TEST_F(OperatorTest, SimpleOperators) {
       "MINIMUM", OperatorType::kTensorFlowMinimum);
   CheckSimpleOperator<TensorFlowLessOperator>("LESS",
                                               OperatorType::kTensorFlowLess);
+  CheckSimpleOperator<NegOperator>("NEG", OperatorType::kNeg);
+  CheckSimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect);
+  CheckSimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice);
+  CheckSimpleOperator<SinOperator>("SIN", OperatorType::kSin);
+  CheckSimpleOperator<TensorFlowEqualOperator>("EQUAL",
+                                               OperatorType::kTensorFlowEqual);
+  CheckSimpleOperator<TensorFlowNotEqualOperator>(
+      "NOT_EQUAL", OperatorType::kTensorFlowNotEqual);
+  CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -402,6 +413,27 @@ TEST_F(OperatorTest, BuiltinArgMax) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("ARG_MAX", OperatorType::kArgMax), op);
   EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
+}
+
+TEST_F(OperatorTest, BuiltinTransposeConv) {
+  TransposeConvOperator op;
+  op.stride_width = 123;
+  op.stride_height = 124;
+  op.padding.type = PaddingType::kValid;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("TRANSPOSE_CONV", OperatorType::kTransposeConv), op);
+  EXPECT_EQ(op.stride_width, output_toco_op->stride_width);
+  EXPECT_EQ(op.stride_height, output_toco_op->stride_height);
+  EXPECT_EQ(op.padding.type, output_toco_op->padding.type);
+}
+
+TEST_F(OperatorTest, BuiltinSparseToDense) {
+  SparseToDenseOperator op;
+  op.validate_indices = false;
+  std::unique_ptr<toco::SparseToDenseOperator> output_toco_op =
+      SerializeAndDeserialize(
+          GetOperator("SPARSE_TO_DENSE", OperatorType::kSparseToDense), op);
+  EXPECT_EQ(op.validate_indices, output_toco_op->validate_indices);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

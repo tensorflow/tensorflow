@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 
 #include <algorithm>
 #include <list>
@@ -240,10 +241,18 @@ class TFAttrs {
     return attrs_.at(key);
   }
   template <typename T>
-  T get(string key) const;
+  T get(const string& key) const;
   template <typename T>
-  T get(string key, const T& default_value) const {
+  T get(const string& key, const T& default_value) const {
     return attrs_.count(key) ? this->get<T>(key) : default_value;
+  }
+
+  std::vector<string> GetAllAttrKey() {
+    std::vector<string> attr_list;
+    for (const auto& attr_item : attrs_) {
+      attr_list.emplace_back(attr_item.first);
+    }
+    return attr_list;
   }
 
  private:
@@ -252,23 +261,29 @@ class TFAttrs {
 };
 
 template <>
-string TFAttrs::get<string>(string key) const {
+string TFAttrs::get<string>(const string& key) const {
   return this->at(key)->s();
 }
 
 template <>
-std::vector<int> TFAttrs::get<std::vector<int>>(string key) const {
+std::vector<int> TFAttrs::get<std::vector<int>>(const string& key) const {
   auto attr = this->at(key)->list().i();
   return std::vector<int>(attr.begin(), attr.end());
 }
 
 template <>
-std::vector<string> TFAttrs::get<std::vector<string>>(string key) const {
+std::vector<float> TFAttrs::get<std::vector<float>>(const string& key) const {
+  auto attr = this->at(key)->list().f();
+  return std::vector<float>(attr.begin(), attr.end());
+}
+
+template <>
+std::vector<string> TFAttrs::get<std::vector<string>>(const string& key) const {
   auto attr = this->at(key)->list().s();
   return std::vector<string>(attr.begin(), attr.end());
 }
 template <>
-nvinfer1::Dims TFAttrs::get<nvinfer1::Dims>(string key) const {
+nvinfer1::Dims TFAttrs::get<nvinfer1::Dims>(const string& key) const {
   auto values = this->get<std::vector<int>>(key);
   nvinfer1::Dims dims;
   dims.nbDims = values.size();
@@ -278,24 +293,25 @@ nvinfer1::Dims TFAttrs::get<nvinfer1::Dims>(string key) const {
 }
 
 template <>
-nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(string key) const {
+nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(const string& key) const {
   nvinfer1::DataType trt_dtype(nvinfer1::DataType::kFLOAT);
   TF_CHECK_OK(ConvertDType(this->at(key)->type(), &trt_dtype));
   return trt_dtype;
 }
 
 template <>
-tensorflow::DataType TFAttrs::get<tensorflow::DataType>(string key) const {
+tensorflow::DataType TFAttrs::get<tensorflow::DataType>(
+    const string& key) const {
   return this->at(key)->type();
 }
 
 template <>
-float TFAttrs::get<float>(string key) const {
+float TFAttrs::get<float>(const string& key) const {
   return this->at(key)->f();
 }
 
 template <>
-bool TFAttrs::get<bool>(string key) const {
+bool TFAttrs::get<bool>(const string& key) const {
   return this->at(key)->b();
 }
 
@@ -346,10 +362,11 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
       break;
     }
     case tensorflow::DataType::DT_HALF: {
-      Reorder2({k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
-               istrides, static_cast<Eigen::half*>(
-                             const_cast<void*>(oweights->GetValues())),
-               ostrides);
+      Reorder2(
+          {k, c}, static_cast<Eigen::half const*>(iweights.GetValues()),
+          istrides,
+          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues())),
+          ostrides);
       break;
     }
     default:
@@ -424,6 +441,7 @@ using OpConverter =
 class Converter {
   std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
   std::unordered_map<string, OpConverter> op_registry_;
+  OpConverter plugin_converter_;
   nvinfer1::INetworkDefinition* trt_network_;
   std::list<std::vector<uint8_t>> temp_bufs_;
   tensorflow::tensorrt::TRTWeightStore* weight_store_;
@@ -481,7 +499,7 @@ class Converter {
     weights.SetValues(weight_store_->store_.back().data());
     return weights;
   }
-  bool isFP16() { return fp16_; };
+  bool isFP16() { return fp16_; }
   TRT_ShapedWeights get_temp_weights_like(const TRT_ShapedWeights& weights) {
     return this->get_temp_weights(weights.type_, weights.shape_);
   }
@@ -490,13 +508,17 @@ class Converter {
     std::vector<TRT_TensorOrWeights> inputs;
     TF_RETURN_IF_ERROR(this->get_inputs(node_def, &inputs));
     string op = node_def.op();
-    if (!op_registry_.count(op)) {
-      return tensorflow::errors::Unimplemented(
-          "No converter registered for op: " + op);
-    }
-    OpConverter op_converter = op_registry_.at(op);
     std::vector<TRT_TensorOrWeights> outputs;
-    TF_RETURN_IF_ERROR(op_converter(*this, node_def, inputs, &outputs));
+    if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) {
+      TF_RETURN_IF_ERROR(plugin_converter_(*this, node_def, inputs, &outputs));
+    } else {
+      if (!op_registry_.count(op)) {
+        return tensorflow::errors::Unimplemented(
+            "No converter registered for op: " + op);
+      }
+      OpConverter op_converter = op_registry_.at(op);
+      TF_RETURN_IF_ERROR(op_converter(*this, node_def, inputs, &outputs));
+    }
     for (size_t i = 0; i < outputs.size(); ++i) {
       TRT_TensorOrWeights output = outputs.at(i);
       // TODO(jie): tf protobuf seems to be omitting the :0 suffix
@@ -672,7 +694,7 @@ std::function<Eigen::half(Eigen::half)> LambdaFactory::unary<Eigen::half>() {
     case OP_CATEGORY::RSQRT: {
       VLOG(2) << "RSQRT GETS DONE";
       return [](Eigen::half t) -> Eigen::half {
-        return Eigen::half(1.0 / sqrt(float(t)));
+        return Eigen::half(1.0 / sqrt(static_cast<float>(t)));
       };
     }
     case OP_CATEGORY::NEG:
@@ -1170,6 +1192,45 @@ tensorflow::Status BinaryTensorOpTensor(
 
   // pass the output
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertPlugin(Converter& ctx,
+                                 const tensorflow::NodeDef& node_def,
+                                 const std::vector<TRT_TensorOrWeights>& inputs,
+                                 std::vector<TRT_TensorOrWeights>* outputs) {
+  // prepare input
+  std::vector<nvinfer1::ITensor*> all_inputs;
+  for (auto input : inputs) {
+    all_inputs.emplace_back(const_cast<nvinfer1::ITensor*>(input.tensor()));
+  }
+
+  // plugin is owned by PluginFactory
+  // TODO(jie): destroy plugins later (resource management)
+  PluginTensorRT* plugin =
+      PluginFactoryTensorRT::GetInstance()->CreatePlugin(node_def.op());
+
+  // passing attributes
+  // TODO(jie): support more general attribute
+  TFAttrs attrs(node_def);
+  auto attr_key_vector = attrs.GetAllAttrKey();
+  for (auto attr_key : attr_key_vector) {
+    // TODO(jie): support only list of float for toy example here.
+    auto data = attrs.get<std::vector<float>>(attr_key);
+    size_t size_data = data.size() * sizeof(float);
+    if (!plugin->SetAttribute(attr_key, static_cast<void*>(data.data()),
+                              size_data)) {
+      return tensorflow::errors::InvalidArgument("plugin SetAttribute failed");
+    }
+  }
+
+  nvinfer1::IPluginLayer* layer = ctx.network()->addPlugin(
+      &all_inputs[0], static_cast<int>(inputs.size()), *plugin);
+
+  for (int i = 0; i < layer->getNbOutputs(); i++) {
+    nvinfer1::ITensor* output_tensor = layer->getOutput(i);
+    outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  }
   return tensorflow::Status::OK();
 }
 
@@ -2073,12 +2134,12 @@ void Converter::register_op_converters() {
   op_registry_["Reshape"] = ConvertReshape;
   op_registry_["FusedBatchNorm"] = ConvertFusedBatchNorm;
   op_registry_["FusedBatchNormV2"] = ConvertFusedBatchNorm;
+
+  plugin_converter_ = ConvertPlugin;
 }
 
 }  // namespace
-tensorflow::Status GetTensorRTGraph(tensorrt::convert::SubGraphParams& s) {
-  return tensorflow::errors::Unimplemented("Not implemented yet");
-}
+
 tensorflow::Status ConvertCalibrationNodeToEngineNode(
     tensorflow::Graph& graph, tensorflow::Node* c_node) {
   const auto ndef = c_node->def();
@@ -2102,9 +2163,23 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   for (auto n : graph.op_nodes()) {
     node_maps.insert({n->name(), n});
   }
+  std::set<int> subgraph_ids;
+  for (const auto internal_node : segment_nodes) {
+    subgraph_ids.insert(node_maps.at(internal_node)->id());
+  }
+  if (VLOG_IS_ON(2)) {
+    string node_names = StrCat(c_node->name(), " segment nodes= ");
+
+    for (const auto& node_name : segment_nodes) {
+      StrAppend(&node_names, node_name, ", ");
+    }
+    VLOG(2) << node_names;
+  }
+
   VLOG(1) << "Output Nodes:";
   std::vector<tensorflow::DataType> out_types;
   std::vector<const tensorflow::Edge*> out_edges;
+
   for (auto& i : output_nodes) {
     auto node_port = tensorflow::str_util::Split(i, ":");
     VLOG(1) << " " << i << " in graph " << node_maps.count(i);
@@ -2124,18 +2199,24 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
         out_types.push_back(out_node->output_type(0));
       }
       for (auto out_edge : out_node->out_edges()) {
+        if (subgraph_ids.count(out_edge->dst()->id()))
+          continue;  // skip internal edges;
         if (out_edge->src_output() == port) {
           out_edges.push_back(out_edge);
-          break;
+          VLOG(1) << "OUTPUT EDGE " << out_edge->src()->name() << ":"
+                  << out_edge->src_output() << " -> " << out_edge->dst()->name()
+                  << ":" << out_edge->dst_input();
         }
       }
     } else {
       LOG(WARNING) << " couldn't find output node " << out_node_name;
     }
   }
-  VLOG(1) << "Input Nodes:";
-  for (auto& i : input_names) {
-    VLOG(1) << " " << i << " in graph " << node_maps.count(i);
+  if (VLOG_IS_ON(1)) {
+    VLOG(1) << c_node->name() << " Input Nodes:";
+    for (auto& i : input_names) {
+      VLOG(1) << " Input " << i << " in graph " << node_maps.count(i);
+    }
   }
   auto trt_rm = tensorflow::tensorrt::TRTResourceManager::instance();
   auto resmgr = trt_rm->getManager("TRTCalibOps");
@@ -2144,7 +2225,7 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   if (!status.ok() || !calib_res->calibrator_) {
     return tensorflow::errors::FailedPrecondition(
         "You must run calibration"
-        " and inference conversion in the same proces");
+        " and inference conversion in the same process");
   }
 
   calib_res->calibrator_->setDone();
@@ -2169,14 +2250,24 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   calib_res->builder_ = nullptr;
   tensorflow::NodeDefBuilder op_builder(engine_name, "TRTEngineOp");
   std::vector<tensorflow::NodeDefBuilder::NodeOut> income_edges;
+  income_edges.resize(c_node->num_inputs());
   for (const auto in_edge : c_node->in_edges()) {
     auto src = in_edge->src();
     int dest_port = in_edge->dst_input();
-    income_edges.emplace_back(src->name(), in_edge->src_output(),
-                              c_node->input_type(dest_port));
+    VLOG(1) << "Incoming connection " << src->name() << ":"
+            << in_edge->src_output() << " -> " << c_node->name() << ":"
+            << dest_port;
+    income_edges.at(dest_port) = {src->name(), in_edge->src_output(),
+                                  c_node->input_type(dest_port)};
   }
   tensorflow::gtl::ArraySlice<tensorflow::NodeDefBuilder::NodeOut> input_list(
       income_edges);
+  if (VLOG_IS_ON(2)) {
+    for (const auto& inp : input_list) {
+      VLOG(2) << " Input from inputlist " << inp.node << ":" << inp.index << " "
+              << tensorflow::DataTypeString(inp.data_type);
+    }
+  }
   op_builder.Input(input_list);
   tensorflow::NodeDef engine_node;
   const char* engine_plan_data = static_cast<const char*>(engine_plan->data());
@@ -2193,13 +2284,26 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   }
   auto trt_engine_node = graph.AddNode(engine_node, &status);
   TF_RETURN_IF_ERROR(status);
-  for (size_t i = 0; i < out_edges.size(); i++) {
-    VLOG(1) << "Connecting trt_engine_node output " << i << " with "
-            << out_edges.at(i)->dst()->name() << " port "
-            << out_edges.at(i)->dst_input();
-    TF_RETURN_IF_ERROR(graph.UpdateEdge(trt_engine_node, i,
-                                        out_edges.at(i)->dst(),
-                                        out_edges.at(i)->dst_input()));
+  std::map<string, int> port_map;
+  for (size_t t = 0; t < output_nodes.size(); t++) {
+    port_map.insert({output_nodes.at(t), t});
+  }
+  for (auto& i : out_edges) {
+    string s(i->src()->name());
+    if (i->src_output()) StrAppend(&s, ":", i->src_output());
+    int out_port = port_map.at(s);
+    VLOG(1) << "Connecting " << trt_engine_node->name() << ":" << out_port
+            << " -> " << i->dst()->name() << ":" << i->dst_input();
+    TF_RETURN_IF_ERROR(
+        graph.UpdateEdge(trt_engine_node, out_port, i->dst(), i->dst_input()));
+  }
+  for (const auto ed : trt_engine_node->in_edges()) {
+    VLOG(1) << "In Edge  " << ed->src()->name() << ":" << ed->src_output()
+            << " -> " << ed->dst()->name() << ":" << ed->dst_input();
+  }
+  for (const auto ed : trt_engine_node->out_edges()) {
+    VLOG(1) << "Out Edge " << ed->src()->name() << ":" << ed->src_output()
+            << " -> " << ed->dst()->name() << ":" << ed->dst_input();
   }
   VLOG(1) << "Segment nodes:";
   for (auto& i : segment_nodes) {
@@ -2213,60 +2317,64 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
-  // Visit nodes in reverse topological order and construct the TRT network.
-
-  // Toposort
+tensorflow::Status ReverseTopologicalSort(
+    const tensorrt::convert::SubGraphParams& s,
+    std::list<tensorflow::Node*>* order) {
   std::vector<tensorflow::Node*> order_vec;
   tensorflow::GetPostOrder(s.graph, &order_vec);
   // Select just the subgraph
-  std::list<tensorflow::Node*> order;
   for (tensorflow::Node* node : order_vec) {
     if (s.subgraph_node_ids.count(node->id())) {
-      order.push_front(node);  // we want topological order to construct the
+      // We want topological order to contstruct the
       // network layer by layer
+      order->push_front(node);
     }
   }
-  // topological order is needed to build TRT network
-  static int static_id = 0;
-  string subgraph_name_scope;
-  if (!order.empty()) {
-    subgraph_name_scope = order.front()->name();
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status SetInputList(
+    const tensorrt::convert::SubGraphParams& s,
+    tensorflow::NodeDefBuilder* op_builder,
+    const std::vector<string>* input_names,
+    std::vector<tensorflow::DataType>* input_dtypes) {
+  std::vector<tensorflow::NodeDefBuilder::NodeOut> income_edges;
+  VLOG(2) << "input edge size: " << input_names->size();
+  for (size_t i = 0; i < input_names->size(); ++i) {
+    VLOG(2) << "input edges: " << i << " " << input_names->at(i);
+    int output_idx = s.input_inds.at(i).second;
+    // we wired up the input here already, it is redundant to do it again in
+    //  ConvertSubGraphToTensorRT(convert_graph.cc)
+    auto incoming_edge = tensorflow::NodeDefBuilder::NodeOut(
+        input_names->at(i), output_idx, input_dtypes->at(i));
+    income_edges.push_back(incoming_edge);
   }
-  for (const tensorflow::Node* node : order) {
+  tensorflow::gtl::ArraySlice<tensorflow::NodeDefBuilder::NodeOut> input_list(
+      income_edges);
+  op_builder->Input(input_list);
+  return tensorflow::Status::OK();
+}
+
+string SubgraphNameScopeGenerator(const std::list<tensorflow::Node*>* order) {
+  string subgraph_name_scope;
+  if (!order->empty()) {
+    subgraph_name_scope = order->front()->name();
+  }
+  for (const tensorflow::Node* node : *order) {
     subgraph_name_scope = GetCommonNameScope(subgraph_name_scope, node->name());
   }
   // TODO(sami,ben,jie): proper naming!
-  string calib_op_name =
-      StrCat(subgraph_name_scope, "my_trt_calib_op_", static_id);
-  string engine_name = StrCat(subgraph_name_scope, "my_trt_op", static_id);
-  static_id++;
-  auto trt_rmgr = tensorflow::tensorrt::TRTResourceManager::instance();
-  auto op_rmgr = trt_rmgr->getManager("TRTCalibOps");
-  auto op_res = new tensorflow::tensorrt::TRTCalibrationResource();
-  TF_CHECK_OK(op_rmgr->Create(calib_op_name, calib_op_name, op_res));
-  op_res->logger_ = new tensorflow::tensorrt::Logger();
-  op_res->builder_ = nvinfer1::createInferBuilder(*(op_res->logger_));
+  return subgraph_name_scope;
+}
 
-  if (!op_res->builder_) {
-    return tensorflow::errors::Internal(
-        "failed to create TensorRT builder object");
-  }
-
-  op_res->network_ = op_res->builder_->createNetwork();
-  if (!op_res->network_) {
-    return tensorflow::errors::Internal(
-        "failed to create TensorRT network object");
-  }
-
-  // Build the network
-  auto weight_rmgr = trt_rmgr->getManager("WeightStore");
-  auto ws = new tensorflow::tensorrt::TRTWeightStore();
-  TF_CHECK_OK(weight_rmgr->Create(calib_op_name, calib_op_name, ws));
-  Converter converter(op_res->network_, ws, s.precision_mode == FP16MODE);
-
-  std::vector<string> input_names;
-  std::vector<tensorflow::DataType> input_dtypes;
+tensorflow::Status ConvertSubgraph(
+    Converter& converter, tensorrt::convert::SubGraphParams& s,
+    std::list<tensorflow::Node*>* order, std::vector<string>* input_names,
+    std::vector<tensorflow::DataType>* input_dtypes,
+    std::vector<string>* output_names,
+    std::vector<tensorflow::DataType>* output_dtypes,
+    const string& engine_name) {
+  std::set<string> added_tensors;
   for (const std::pair<int, int>& input : s.input_inds) {
     VLOG(2) << "parsing input. Node id= " << input.first;
     int node_id = input.first;
@@ -2309,22 +2417,20 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
 
     auto op_info = op_info_vec.at(shape_inference_output_idx);
     tensorflow::DataType tf_dtype = op_info.dtype();
-    input_dtypes.push_back(tf_dtype);
 
     nvinfer1::DataType dtype(nvinfer1::DataType::kFLOAT);
     auto type_status = ConvertDType(tf_dtype, &dtype);
     if (type_status != tensorflow::Status::OK()) {
-      LOG(WARNING) << "Data type conversion for input '" << node_name
-                   << "' failed";
+      LOG(WARNING) << "Type conversion failed for " << node_name;
       return type_status;
     }
 
-    VLOG(2) << "accessing output index of: " << output_idx
+    VLOG(2) << "Accessing output index of: " << output_idx
             << ", at node: " << node_name
-            << "with output entry from shape_map: " << op_info_vec.size();
+            << " with output entry from shape_map: " << op_info_vec.size();
     // TODO(ben,jie): update TRT input format/dimension
-    nvinfer1::DimsCHW input_dim_psuedo_chw;
-    for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
+    nvinfer1::DimsCHW input_dim_pseudo_chw;
+    for (int i = 0; i < 3; i++) input_dim_pseudo_chw.d[i] = 1;
 
     // TODO(jie): TRT 3.x only support 4 dimensional input tensor.
     //            update the code once TRT 4.0 comes out.
@@ -2338,7 +2444,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     for (int i = 1; i < op_info.shape().dim_size(); i++) {
       VLOG(2) << "dimension: " << i
               << " , size: " << op_info.shape().dim(i).size();
-      input_dim_psuedo_chw.d[i - 1] = op_info.shape().dim(i).size();
+      input_dim_pseudo_chw.d[i - 1] = op_info.shape().dim(i).size();
     }
 
     // TODO(ben,jie): proper way to restore input tensor name?
@@ -2346,35 +2452,34 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     if (output_idx != 0) {
       input_tensor_name = StrCat(node_name, ":", output_idx);
     }
-
-    input_names.push_back(input_tensor_name);
+    if (added_tensors.count(input_tensor_name)) continue;
+    added_tensors.insert(input_tensor_name);
+    input_names->push_back(input_tensor_name);
+    input_dtypes->push_back(tf_dtype);
     nvinfer1::ITensor* input_tensor = converter.network()->addInput(
-        input_tensor_name.c_str(), dtype, input_dim_psuedo_chw);
+        input_tensor_name.c_str(), dtype, input_dim_pseudo_chw);
 
     if (!input_tensor)
       return tensorflow::errors::InvalidArgument(
           "Failed to create Input layer");
-    VLOG(2) << "input tensor name :" << input_tensor_name;
+    VLOG(2) << "Input tensor name :" << input_tensor_name;
 
     if (!converter.insert_input_tensor(input_tensor_name, input_tensor))
       return tensorflow::errors::AlreadyExists(
-          "output tensor already exists for op: " + input_tensor_name);
+          "Output tensor already exists for op: " + input_tensor_name);
   }
 
-  VLOG(2) << "finished sorting";
-
-  for (const tensorflow::Node* node : order) {
+  for (const tensorflow::Node* node : *order) {
     const tensorflow::NodeDef& node_def = node->def();
-    VLOG(2) << "converting node: " << node_def.name() << " , " << node_def.op();
+    VLOG(2) << "Converting node: " << node_def.name() << " , " << node_def.op();
     TF_RETURN_IF_ERROR(converter.convert_node(node_def));
   }
 
-  VLOG(2) << "finished conversion";
+  VLOG(2) << "Finished conversion";
 
   // Gather output metadata
-  std::vector<string> output_names;
-  std::vector<tensorflow::DataType> output_dtypes;
   int trt_engine_op_output_idx = 0;
+  added_tensors.clear();
   for (const std::pair<int, int>& output : s.output_inds) {
     int node_id = output.first;
     int output_idx = output.second;
@@ -2388,14 +2493,15 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
              : StrCat(engine_name, ":", trt_engine_op_output_idx),
          {output_idx, tensor_name}});
     trt_engine_op_output_idx++;
-    if (output_idx != 0) {
-      tensor_name = StrCat(tensor_name, ":", output_idx);
-    }
-    VLOG(1) << "output tensor name: " << tensor_name;
-    output_names.push_back(tensor_name);
+    if (output_idx != 0)
+      tensorflow::strings::StrAppend(&tensor_name, ":", output_idx);
+    VLOG(2) << "Output tensor name: " << tensor_name;
+    if (added_tensors.count(tensor_name)) continue;
+    added_tensors.insert(tensor_name);
+    output_names->push_back(tensor_name);
     auto tensor_or_weights = converter.get_tensor(tensor_name);
     if (!tensor_or_weights.is_tensor()) {
-      return tensorflow::errors::InvalidArgument("Output node'" + tensor_name +
+      return tensorflow::errors::InvalidArgument("Output node '" + tensor_name +
                                                  "' is weights not tensor");
     }
     nvinfer1::ITensor* tensor = tensor_or_weights.tensor();
@@ -2405,11 +2511,64 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     }
     converter.network()->markOutput(*tensor);
     tensorflow::DataType tf_dtype = node->output_type(output_idx);
-    output_dtypes.push_back(tf_dtype);
+    output_dtypes->push_back(tf_dtype);
     nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT;
     TF_RETURN_IF_ERROR(ConvertDType(tf_dtype, &trt_dtype));
     tensor->setType(trt_dtype);
   }
+
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
+  // Visit nodes in reverse topological order and construct the TRT network.
+  // Toposort
+  std::list<tensorflow::Node*> order;
+  TF_RETURN_IF_ERROR(ReverseTopologicalSort(s, &order));
+
+  static int static_id = 0;
+  string subgraph_name_scope = SubgraphNameScopeGenerator(&order);
+  // TODO(sami,ben,jie): proper naming!
+  string calib_op_name =
+      StrCat(subgraph_name_scope, "my_trt_calib_op_", static_id);
+  string engine_name = StrCat(subgraph_name_scope, "my_trt_op", static_id);
+  static_id++;
+
+  auto trt_rmgr = tensorflow::tensorrt::TRTResourceManager::instance();
+  auto op_rmgr = trt_rmgr->getManager("TRTCalibOps");
+  auto op_res = new tensorflow::tensorrt::TRTCalibrationResource();
+  TF_CHECK_OK(op_rmgr->Create(calib_op_name, calib_op_name, op_res));
+  op_res->logger_ = new tensorflow::tensorrt::Logger();
+  cudaSetDevice(s.cuda_gpu_id_);
+  op_res->builder_ = nvinfer1::createInferBuilder(*(op_res->logger_));
+  op_res->allocator_ = s.allocator_;
+#if NV_TENSORRT_MAJOR > 3
+  op_res->builder_->setGpuAllocator(s.allocator_.get());
+#endif
+  if (!op_res->builder_) {
+    return tensorflow::errors::Internal(
+        "failed to create TensorRT builder object");
+  }
+
+  op_res->network_ = op_res->builder_->createNetwork();
+  if (!op_res->network_) {
+    return tensorflow::errors::Internal(
+        "failed to create TensorRT network object");
+  }
+
+  // Build the network
+  auto weight_rmgr = trt_rmgr->getManager("WeightStore");
+  auto ws = new tensorflow::tensorrt::TRTWeightStore();
+  TF_CHECK_OK(weight_rmgr->Create(calib_op_name, calib_op_name, ws));
+  Converter converter(op_res->network_, ws, s.precision_mode == FP16MODE);
+
+  std::vector<string> input_names;
+  std::vector<tensorflow::DataType> input_dtypes;
+  std::vector<string> output_names;
+  std::vector<tensorflow::DataType> output_dtypes;
+  TF_RETURN_IF_ERROR(ConvertSubgraph(converter, s, &order, &input_names,
+                                     &input_dtypes, &output_names,
+                                     &output_dtypes, engine_name));
 
   VLOG(2) << "Finished processing outputs";
 
@@ -2422,21 +2581,8 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   // Build the TRT op
   // TODO(sami,ben,jie): proper naming!
   tensorflow::NodeDefBuilder op_builder(calib_op_name, "TRTCalibOp");
-  std::vector<tensorflow::NodeDefBuilder::NodeOut> income_edges;
-  for (size_t i = 0; i < input_names.size(); ++i) {
-    int output_idx = s.input_inds.at(i).second;
-    // we wired up the input here already, it is redundant to do it again in
-    //  ConvertSubGraphToTensorRT(convert_graph.cc)
-    auto incoming_edge = tensorflow::NodeDefBuilder::NodeOut(
-        input_names.at(i), output_idx, input_dtypes.at(i));
-    VLOG(1) << calib_op_name << " input " << i << " = " << input_names.at(i)
-            << ":" << output_idx
-            << " dType= " << tensorflow::DataTypeString(input_dtypes.at(i));
-    income_edges.push_back(incoming_edge);
-  }
-  tensorflow::gtl::ArraySlice<tensorflow::NodeDefBuilder::NodeOut> input_list(
-      income_edges);
-  op_builder.Input(input_list);
+  TF_RETURN_IF_ERROR(SetInputList(s, &op_builder, &input_names, &input_dtypes));
+
   std::vector<string> segment_names;
   segment_names.reserve(s.subgraph_node_ids.size());
   for (int i : s.subgraph_node_ids) {
@@ -2460,46 +2606,29 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
 tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     tensorrt::convert::SubGraphParams& s) {
   // Visit nodes in reverse topological order and construct the TRT network.
-
-  // Toposort
-  std::vector<tensorflow::Node*> order_vec;
-  tensorflow::GetPostOrder(s.graph, &order_vec);
-  // Select just the subgraph
   std::list<tensorflow::Node*> order;
-  for (tensorflow::Node* node : order_vec) {
-    if (s.subgraph_node_ids.count(node->id())) {
-      // We want topological order to contstruct the
-      // network layer by layer
-      order.push_front(node);
-    }
-  }
-  // Topological order is needed to build TRT network
+  TF_RETURN_IF_ERROR(ReverseTopologicalSort(s, &order));
+
+  static int static_id = 0;
+  string subgraph_name_scope = SubgraphNameScopeGenerator(&order);
+  string engine_name = StrCat(subgraph_name_scope, "my_trt_op", static_id++);
 
   tensorflow::tensorrt::Logger trt_logger;
-
+  cudaSetDevice(s.cuda_gpu_id_);
   auto trt_builder = infer_object(nvinfer1::createInferBuilder(trt_logger));
   if (!trt_builder) {
     return tensorflow::errors::Internal(
         "Failed to create TensorRT builder object");
   }
-
+#if NV_TENSORRT_MAJOR > 3
+  trt_builder->setGpuAllocator(s.allocator_.get());
+#endif
   auto trt_network = infer_object(trt_builder->createNetwork());
   if (!trt_network) {
     return tensorflow::errors::Internal(
         "Failed to create TensorRT network object");
   }
 
-  string subgraph_name_scope;
-  if (!order.empty()) {
-    subgraph_name_scope = order.front()->name();
-  }
-  for (const tensorflow::Node* node : order) {
-    subgraph_name_scope = GetCommonNameScope(subgraph_name_scope, node->name());
-  }
-  static int static_id = 0;
-  // TODO(sami,ben,jie): proper naming!
-  string engine_name = StrCat(subgraph_name_scope, "my_trt_op");
-  engine_name = StrCat(engine_name, static_id++);
   auto trt_rmgr = tensorflow::tensorrt::TRTResourceManager::instance();
   auto weight_rmgr = trt_rmgr->getManager("WeightStore");
   auto ws = new tensorflow::tensorrt::TRTWeightStore();
@@ -2510,147 +2639,11 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 
   std::vector<string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
-  for (const std::pair<int, int>& input : s.input_inds) {
-    VLOG(2) << "parsing input. Node id= " << input.first;
-    int node_id = input.first;
-    int output_idx = input.second;
-    tensorflow::Node* node = s.graph.FindNodeId(node_id);
-    auto node_name = node->name();
-    // input_names should use the node name in the graph
-    // here it should be the input tensor name -> matching the binding
-    // insert original node name without port
-    auto tensor_name = node_name;
-    if (output_idx != 0) {
-      tensor_name = StrCat(tensor_name, ":", output_idx);
-    }
-
-    VLOG(2) << "input name: " << node_name << " tensor_name: " << tensor_name
-            << " idx: " << output_idx;
-
-    auto shape_inference_node_name = node_name;
-    auto shape_inference_output_idx = output_idx;
-    // rewire the shape inference to original node in the graph
-    if (s.output_edge_map->count(tensor_name)) {
-      shape_inference_node_name = s.output_edge_map->at(tensor_name).second;
-      shape_inference_output_idx = s.output_edge_map->at(tensor_name).first;
-    }
-    if (shape_inference_output_idx < 0) continue;
-    VLOG(2) << "shapeinference name: " << shape_inference_node_name
-            << " idx: " << shape_inference_output_idx;
-
-    if (!s.graph_properties.HasOutputProperties(shape_inference_node_name))
-      return tensorflow::errors::Internal("failed to find input node: " +
-                                          shape_inference_node_name);
-
-    auto op_info_vec =
-        s.graph_properties.GetOutputProperties(shape_inference_node_name);
-    if (static_cast<int>(op_info_vec.size()) <= shape_inference_output_idx)
-      return tensorflow::errors::Internal(
-          "accessing output index of: ", shape_inference_output_idx,
-          ", at node: ", shape_inference_node_name,
-          " with output entry from shape_map: ", op_info_vec.size());
-
-    auto op_info = op_info_vec.at(shape_inference_output_idx);
-    tensorflow::DataType tf_dtype = op_info.dtype();
-    input_dtypes.push_back(tf_dtype);
-
-    nvinfer1::DataType dtype(nvinfer1::DataType::kFLOAT);
-    auto type_status = ConvertDType(tf_dtype, &dtype);
-    if (type_status != tensorflow::Status::OK()) {
-      LOG(WARNING) << "Type conversion failed for " << node_name;
-      return type_status;
-    }
-
-    VLOG(2) << "Accessing output index of: " << output_idx
-            << ", at node: " << node_name
-            << " with output entry from shape_map: " << op_info_vec.size();
-    // TODO(ben,jie): update TRT input format/dimension
-    nvinfer1::DimsCHW input_dim_psuedo_chw;
-    for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
-
-    // TODO(jie): TRT 3.x only support 4 dimensional input tensor.
-    //            update the code once TRT 4.0 comes out.
-    if (op_info.shape().dim_size() != 4) {
-      string err_str = "Require 4 dimensional input.";
-      StrAppend(&err_str, " Got ", op_info.shape().dim_size(), " ",
-                shape_inference_node_name);
-      return tensorflow::errors::Unimplemented(err_str);
-    }
-
-    for (int i = 1; i < op_info.shape().dim_size(); i++) {
-      VLOG(2) << "dimension: " << i
-              << " , size: " << op_info.shape().dim(i).size();
-      input_dim_psuedo_chw.d[i - 1] = op_info.shape().dim(i).size();
-    }
-
-    // TODO(ben,jie): proper way to restore input tensor name?
-    auto input_tensor_name = node_name;
-    if (output_idx != 0) {
-      input_tensor_name = StrCat(node_name, ":", output_idx);
-    }
-
-    input_names.push_back(input_tensor_name);
-    nvinfer1::ITensor* input_tensor = converter.network()->addInput(
-        input_tensor_name.c_str(), dtype, input_dim_psuedo_chw);
-
-    if (!input_tensor)
-      return tensorflow::errors::InvalidArgument(
-          "Failed to create Input layer");
-    VLOG(2) << "Input tensor name :" << input_tensor_name;
-
-    if (!converter.insert_input_tensor(input_tensor_name, input_tensor))
-      return tensorflow::errors::AlreadyExists(
-          "Output tensor already exists for op: " + input_tensor_name);
-  }
-
-  VLOG(2) << "Finished sorting";
-
-  for (const tensorflow::Node* node : order) {
-    const tensorflow::NodeDef& node_def = node->def();
-    VLOG(2) << "Converting node: " << node_def.name() << " , " << node_def.op();
-    TF_RETURN_IF_ERROR(converter.convert_node(node_def));
-  }
-
-  VLOG(2) << "Finished conversion";
-
-  // Gather output metadata
   std::vector<string> output_names;
   std::vector<tensorflow::DataType> output_dtypes;
-  int trt_engine_op_output_idx = 0;
-  for (const std::pair<int, int>& output : s.output_inds) {
-    int node_id = output.first;
-    int output_idx = output.second;
-    tensorflow::Node* node = s.graph.FindNodeId(node_id);
-    string op_name = node->name();
-    string tensor_name = op_name;
-
-    s.output_edge_map->insert(
-        {trt_engine_op_output_idx == 0
-             ? engine_name
-             : StrCat(engine_name, ":", trt_engine_op_output_idx),
-         {output_idx, tensor_name}});
-    trt_engine_op_output_idx++;
-    if (output_idx != 0)
-      tensorflow::strings::StrAppend(&tensor_name, ":", output_idx);
-    VLOG(2) << "Output tensor name: " << tensor_name;
-    output_names.push_back(tensor_name);
-    auto tensor_or_weights = converter.get_tensor(tensor_name);
-    if (!tensor_or_weights.is_tensor()) {
-      return tensorflow::errors::InvalidArgument("Output node '" + tensor_name +
-                                                 "' is weights not tensor");
-    }
-    nvinfer1::ITensor* tensor = tensor_or_weights.tensor();
-    if (!tensor) {
-      return tensorflow::errors::NotFound("Output tensor not found: " +
-                                          tensor_name);
-    }
-    converter.network()->markOutput(*tensor);
-    tensorflow::DataType tf_dtype = node->output_type(output_idx);
-    output_dtypes.push_back(tf_dtype);
-    nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT;
-    TF_RETURN_IF_ERROR(ConvertDType(tf_dtype, &trt_dtype));
-    tensor->setType(trt_dtype);
-  }
+  TF_RETURN_IF_ERROR(ConvertSubgraph(converter, s, &order, &input_names,
+                                     &input_dtypes, &output_names,
+                                     &output_dtypes, engine_name));
 
   VLOG(2) << "Finished output";
 
@@ -2686,20 +2679,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 
   // Build the TRT op
   tensorflow::NodeDefBuilder op_builder(engine_name, "TRTEngineOp");
-  std::vector<tensorflow::NodeDefBuilder::NodeOut> income_edges;
-  VLOG(2) << "input edge size: " << input_names.size();
-  for (size_t i = 0; i < input_names.size(); ++i) {
-    VLOG(2) << "input edges: " << i << " " << input_names.at(i);
-    int output_idx = s.input_inds.at(i).second;
-    // we wired up the input here already, it is redundant to do it again in
-    //  ConvertSubGraphToTensorRT(convert_graph.cc)
-    auto incoming_edge = tensorflow::NodeDefBuilder::NodeOut(
-        input_names.at(i), output_idx, input_dtypes.at(i));
-    income_edges.push_back(incoming_edge);
-  }
-  tensorflow::gtl::ArraySlice<tensorflow::NodeDefBuilder::NodeOut> input_list(
-      income_edges);
-  op_builder.Input(input_list);
+  TF_RETURN_IF_ERROR(SetInputList(s, &op_builder, &input_names, &input_dtypes));
 
   VLOG(0) << "Finished op preparation";
 
@@ -2707,9 +2687,11 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
                     .Attr("input_nodes", input_names)
                     .Attr("output_nodes", output_names)
                     .Attr("OutT", output_dtypes)
+                    .Device(s.device_name_)
                     .Finalize(s.trt_node);
 
-  VLOG(0) << status.ToString() << " finished op building";
+  VLOG(0) << status.ToString() << " finished op building for " << engine_name
+          << " on device " << s.device_name_;
 
   return tensorflow::Status::OK();
 }

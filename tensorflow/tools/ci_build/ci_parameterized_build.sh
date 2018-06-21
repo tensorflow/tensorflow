@@ -94,10 +94,6 @@
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
-# TODO(jhseu): Temporary for the gRPC pull request due to the
-# protobuf -> protobuf_archive rename. Remove later.
-TF_BUILD_BAZEL_CLEAN=1
-
 # Helper function: Convert to lower case
 to_lower () {
   echo "$1" | tr '[:upper:]' '[:lower:]'
@@ -168,7 +164,6 @@ else
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_test"
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_sparse_test"
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:fully_connected_test"
-  # BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/testing:generated_examples_zip_test"
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:hashtable_lookup_test"
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:local_response_norm_test"
   BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:lsh_projection_test"
@@ -263,9 +258,9 @@ function set_script_variable() {
 
 
 # Process container type
-if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
+if [[ ${CTYPE} == cpu* ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
   :
-elif [[ ${CTYPE} == "gpu" ]]; then
+elif [[ ${CTYPE} == gpu* ]]; then
   set_script_variable TF_NEED_CUDA 1
 
   if [[ $TF_CUDA_CLANG == "1" ]]; then
@@ -423,12 +418,12 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
     BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}
   fi
 
-  if [[ ${CTYPE} == "cpu" ]] || \
+  if [[ ${CTYPE} == cpu* ]] || \
      [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
     # CPU only command, fully parallel.
     NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} -- "\
 "${BAZEL_TARGET}"
-  elif [[ ${CTYPE} == "gpu" ]]; then
+  elif [[ ${CTYPE} == gpu* ]]; then
     # GPU only command, run as many jobs as the GPU count only.
     NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
 "--local_test_jobs=${TF_GPU_COUNT} "\

@@ -85,6 +85,11 @@ int UnaryOpTest::inf<int>() {
 }
 
 template <>
+int64 UnaryOpTest::inf<int64>() {
+  return 0x7FFFFFFFFFFFFFFFl;
+}
+
+template <>
 void UnaryOpTest::AbsTestHelper<complex64>() {
   XlaBuilder builder(TestName());
   auto arg = builder.ConstantR1<complex64>({{-2, 0},
@@ -176,6 +181,7 @@ XLA_TEST_F(UnaryOpTest, SignTestR0) {
 
 XLA_TEST_F(UnaryOpTest, SignTestR1) {
   SignTestHelper<int>();
+  SignTestHelper<int64>();
   SignTestHelper<float>();
   SignTestHelper<complex64>();
 }

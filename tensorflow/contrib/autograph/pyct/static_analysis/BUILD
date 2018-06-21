@@ -19,6 +19,7 @@ py_library(
     srcs = [
         "activity.py",
         "annos.py",
+        "cfg.py",
         "live_values.py",
         "type_info.py",
     ],
@@ -33,6 +34,19 @@ py_library(
 py_test(
     name = "activity_test",
     srcs = ["activity_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        ":static_analysis",
+        "//tensorflow/contrib/autograph/pyct",
+        "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
+    ],
+)
+
+py_test(
+    name = "cfg_test",
+    srcs = ["cfg_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
     deps = [

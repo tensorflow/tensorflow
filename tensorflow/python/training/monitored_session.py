@@ -25,7 +25,6 @@ import sys
 import six
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.estimator import util
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,6 +40,7 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -298,7 +298,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              stop_grace_period_secs=120,
                              log_step_count_steps=100,
                              max_wait_secs=7200,
-                             save_checkpoint_steps=USE_DEFAULT):
+                             save_checkpoint_steps=USE_DEFAULT,
+                             summary_dir=None):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -348,6 +349,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       `save_checkpoint_steps` and `save_checkpoint_secs` are set to `None`, then
       the default checkpoint saver isn't used. If both are provided, then only
       `save_checkpoint_secs` is used. Default not enabled.
+    summary_dir: A string.  Optional path to a directory where to
+      save summaries. If None, checkpoint_dir is used instead.
 
   Returns:
     A `MonitoredSession` object.
@@ -388,11 +391,12 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       master=master,
       config=config)
 
-  if checkpoint_dir:
+  summary_dir = summary_dir or checkpoint_dir
+  if summary_dir:
     if log_step_count_steps and log_step_count_steps > 0:
       all_hooks.append(
           basic_session_run_hooks.StepCounterHook(
-              output_dir=checkpoint_dir, every_n_steps=log_step_count_steps))
+              output_dir=summary_dir, every_n_steps=log_step_count_steps))
 
     if (save_summaries_steps and save_summaries_steps > 0) or (
         save_summaries_secs and save_summaries_secs > 0):
@@ -400,7 +404,9 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
           scaffold=scaffold,
           save_steps=save_summaries_steps,
           save_secs=save_summaries_secs,
-          output_dir=checkpoint_dir))
+          output_dir=summary_dir))
+
+  if checkpoint_dir:
     if (save_checkpoint_secs and save_checkpoint_secs > 0) or (
         save_checkpoint_steps and save_checkpoint_steps > 0):
       all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
@@ -620,7 +626,7 @@ class _MonitoredSession(object):
         `step_context`. It may also optionally have `self` for cases when it
         belongs to an object.
     """
-    step_fn_arguments = util.fn_args(step_fn)
+    step_fn_arguments = function_utils.fn_args(step_fn)
     if step_fn_arguments != ('step_context',) and step_fn_arguments != (
         'self',
         'step_context',

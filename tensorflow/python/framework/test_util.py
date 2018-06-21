@@ -321,32 +321,6 @@ def NCHWToNHWC(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
-# TODO(skyewm): remove this eventually
-# pylint: disable=protected-access
-def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
-  prev_value = ops._USE_C_API
-  ops._USE_C_API = use_c_api
-  try:
-    # Reset the default graph so it has the C API enabled. We call
-    # reset_default_graph() instead of creating a new default Graph context to
-    # make this robust to tests that call reset_default_graph(), which requires
-    # that the current default graph isn't nested.
-    ops.reset_default_graph()
-    fn(*args, **kwargs)
-  finally:
-    ops._USE_C_API = prev_value
-    # Make sure default graph reflects prev_value in case next test doesn't call
-    # reset_default_graph().
-    ops.reset_default_graph()
-
-
-# pylint: disable=protected-access
-
-
-def c_api_and_cuda_enabled():
-  return ops._USE_C_API and IsGoogleCudaEnabled()
-
-
 def skip_if(condition):
   """Skips the decorated function if condition is or evaluates to True.
 
@@ -372,46 +346,6 @@ def skip_if(condition):
   return real_skip_if
 
 
-# TODO(skyewm): remove this eventually
-def disable_c_api(fn):
-  """Decorator for disabling the C API on a test.
-
-  Note this disables the C API after running the test class's setup/teardown
-  methods.
-
-  Args:
-    fn: the function to be wrapped
-
-  Returns:
-    The wrapped function
-  """
-
-  def wrapper(*args, **kwargs):
-    _use_c_api_wrapper(fn, False, *args, **kwargs)
-
-  return wrapper
-
-
-# TODO(skyewm): remove this eventually
-def enable_c_api(fn):
-  """Decorator for enabling the C API on a test.
-
-  Note this enables the C API after running the test class's setup/teardown
-  methods.
-
-  Args:
-    fn: the function to be wrapped
-
-  Returns:
-    The wrapped function
-  """
-
-  def wrapper(*args, **kwargs):
-    _use_c_api_wrapper(fn, True, *args, **kwargs)
-
-  return wrapper
-
-
 def enable_c_shapes(fn):
   """Decorator for enabling C shapes on a test.
 
@@ -425,44 +359,17 @@ def enable_c_shapes(fn):
     The wrapped function
   """
 
+  # pylint: disable=protected-access
   def wrapper(*args, **kwargs):
     prev_value = ops._USE_C_SHAPES
-    # Only use C shapes if the C API is already enabled.
-    ops._USE_C_SHAPES = ops._USE_C_API
+    ops._USE_C_SHAPES = True
     try:
       fn(*args, **kwargs)
     finally:
       ops._USE_C_SHAPES = prev_value
+  # pylint: enable=protected-access
 
   return wrapper
-
-
-# This decorator is a hacky way to run all the test methods in a decorated
-# class with and without C API enabled.
-# TODO(iga): Remove this and its uses once we switch to using C API by default.
-def with_c_api(cls):
-  """Adds methods that call original methods but with C API enabled.
-
-  Note this enables the C API in new methods after running the test class's
-  setup method. This can be a problem if some objects are created in it
-  before the C API is enabled.
-
-  Args:
-    cls: class to decorate
-
-  Returns:
-    cls with new test methods added
-  """
-  # If the C API is already enabled, don't do anything. Some tests break if the
-  # same test is run twice, so this allows us to turn on the C API by default
-  # without breaking these tests.
-  if ops._USE_C_API:
-    return cls
-
-  for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test"):
-      setattr(cls, name + "WithCApi", enable_c_api(value))
-  return cls
 
 
 def with_c_shapes(cls):
@@ -556,12 +463,16 @@ def assert_no_new_tensors(f):
 
     tensors_before = set(
         id(obj) for obj in gc.get_objects() if _is_tensorflow_object(obj))
-    outside_graph_key = ops.get_default_graph()._graph_key
-    with ops.Graph().as_default():
+    if context.executing_eagerly():
+      f(self, **kwargs)
+      ops.reset_default_graph()
+    else:
       # Run the test in a new graph so that collections get cleared when it's
       # done, but inherit the graph key so optimizers behave.
-      ops.get_default_graph()._graph_key = outside_graph_key
-      f(self, **kwargs)
+      outside_graph_key = ops.get_default_graph()._graph_key
+      with ops.Graph().as_default():
+        ops.get_default_graph()._graph_key = outside_graph_key
+        f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
     backprop._zeros_cache.flush()
@@ -639,6 +550,15 @@ def assert_no_garbage_created(f):
   return decorator
 
 
+def run_all_in_graph_and_eager_modes(cls):
+  """Execute all test methods in the given class with and without eager."""
+  base_decorator = run_in_graph_and_eager_modes()
+  for name, value in cls.__dict__.copy().items():
+    if callable(value) and name.startswith("test"):
+      setattr(cls, name, base_decorator(value))
+  return cls
+
+
 def run_in_graph_and_eager_modes(__unused__=None,
                                  config=None,
                                  use_gpu=True,
@@ -674,7 +594,7 @@ def run_in_graph_and_eager_modes(__unused__=None,
 
 
   Args:
-    __unused__: Prevents sliently skipping tests.
+    __unused__: Prevents silently skipping tests.
     config: An optional config_pb2.ConfigProto to use to configure the
       session when executing graphs.
     use_gpu: If True, attempt to run as many operations as possible on GPU.
@@ -719,12 +639,12 @@ def run_in_graph_and_eager_modes(__unused__=None,
           f(self, **kwargs)
 
       if assert_no_eager_garbage:
+        ops.reset_default_graph()
         run_eagerly = assert_no_new_tensors(
             assert_no_garbage_created(run_eagerly))
 
       with context.eager_mode():
-        with ops.Graph().as_default():
-          run_eagerly(self, **kwargs)
+        run_eagerly(self, **kwargs)
 
     return decorated
 
@@ -1019,7 +939,9 @@ class TensorFlowTestCase(googletest.TestCase):
           rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
-    if graph is None:
+    if context.executing_eagerly():
+      yield None
+    elif graph is None:
       if self._cached_session is None:
         self._cached_session = session.Session(
             graph=None, config=prepare_config(config))
@@ -1320,11 +1242,11 @@ class TensorFlowTestCase(googletest.TestCase):
             b,
             rtol=rtol,
             atol=atol,
-            msg="Mismatched value: a%s is different from b%s." % (path_str,
-                                                                  path_str))
+            msg=("Mismatched value: a%s is different from b%s. %s" %
+                 (path_str, path_str, msg)))
       except TypeError as e:
-        msg = "Error: a%s has %s, but b%s has %s" % (path_str, type(a),
-                                                     path_str, type(b))
+        msg = ("Error: a%s has %s, but b%s has %s. %s" %
+               (path_str, type(a), path_str, type(b), msg))
         e.args = ((e.args[0] + " : " + msg,) + e.args[1:])
         raise
 

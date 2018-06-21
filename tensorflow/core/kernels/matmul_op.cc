@@ -551,7 +551,8 @@ struct MatMulFunctor<SYCLDevice, T> {
                               .Label("cublas"),                    \
                           MatMulOp<GPUDevice, T, true /* cublas */>)
 
-#if defined(INTEL_MKL)
+#if defined(INTEL_MKL) && !defined(DO_NOT_USE_ML)
+
 // MKL does not support half and int32 types for matrix-multiplication, so
 // register the kernel to use default Eigen based implementations for these
 // types. Registration for NO-LABEL version is in mkl_matmul_op.cc
@@ -577,9 +578,7 @@ TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
-#if CUDA_VERSION >= 7050
 TF_CALL_half(REGISTER_GPU);
-#endif
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL

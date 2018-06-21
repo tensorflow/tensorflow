@@ -211,12 +211,6 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   // might as well calculate the output shape and ensure it matches the
   // specified one
 
-  // Check if we have already run.
-  auto& output_array = model->GetArray(op->outputs[0]);
-  if (output_array.has_shape()) {
-    return;
-  }
-
   // SPECIFIED OUTPUT SHAPE
   // The below is the specified, or prescribed output shape, _given_ to the
   // operator as an input.
@@ -278,13 +272,23 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
       << "TransposeConv input shape must have 4 dimensions. Input \""
       << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
       << toco::ShapeToString(weights_shape) << ".";
-  CHECK_EQ(input_shape.dims(3), weights_shape.dims(0))
+  CHECK_EQ(input_shape.dims(3), weights_shape.dims(3))
       << "Input shape depth and weight depth do not agree";
 
   // Set the output shape according to the specified output shape.
   std::vector<int32> const& specified_output_shape =
       specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+  auto& output_array = model->GetArray(op->outputs[0]);
   *(output_array.mutable_shape()->mutable_dims()) = specified_output_shape;
+
+  // Set im2col array dimensions if there is one.
+  if (op->outputs.size() == 2) {
+    const int input_depth = weights_shape.dims(3);
+    auto& im2col_array = model->GetArray(op->outputs[1]);
+    im2col_array.copy_shape(
+        Shape{specified_output_shape[0], specified_output_shape[1],
+              specified_output_shape[2], input_depth * kheight * kwidth});
+  }
 }
 
 void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
@@ -499,8 +503,8 @@ void ProcessTensorFlowReshapeOperator(Model* model,
       << op->outputs[0] << "\". Are your input shapes correct?";
 }
 
-void ProcessSimpleOperator(Model* model, Operator* op) {
-  const auto& input_array = model->GetArray(op->inputs[0]);
+void ProcessSimpleOperator(Model* model, Operator* op, int input_index) {
+  const auto& input_array = model->GetArray(op->inputs[input_index]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -527,6 +531,21 @@ void ProcessSimpleBinaryOperator(Model* model, Operator* op) {
   auto& output_array = model->GetArray(output_name);
   ComputeBinaryOperatorOutputSize(input0_array.shape(), input1_array.shape(),
                                   &output_array);
+}
+
+void ProcessSelectOperator(Model* model, SelectOperator* op) {
+  // Yield until all input dims have been resolved.
+  for (const auto& input : op->inputs) {
+    const auto& input_array = model->GetArray(input);
+    if (!input_array.has_shape()) {
+      return;
+    }
+  }
+
+  // Select's output matches the second and third output.
+  const auto& input1_array = model->GetArray(op->inputs[1]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  output_array.copy_shape(input1_array.shape());
 }
 
 void ProcessAddNOperator(Model* model, Operator* op) {
@@ -670,8 +689,7 @@ void ProcessConcatenationOperator(Model* model, ConcatenationOperator* op) {
   const auto& first_input_array = model->GetArray(op->inputs[0]);
   output_array.copy_shape(first_input_array.shape());
   // Negative axis means the count starts at the back of the dims().
-  int axis = op->axis;
-  if (axis < 0) axis += first_input_array.shape().dims().size();
+  if (op->axis < 0) op->axis += first_input_array.shape().dims().size();
   // Determine the concat size, and enfore that all inputs have
   // the same dimensions count.
   int concat_size = 0;
@@ -684,14 +702,14 @@ void ProcessConcatenationOperator(Model* model, ConcatenationOperator* op) {
     CHECK_EQ(input_array.shape().dimensions_count(),
              output_array.shape().dimensions_count());
     const std::vector<int>& input_dims = input_array.shape().dims();
-    CHECK_LT(axis, input_dims.size());
-    concat_size += input_dims[axis];
+    CHECK_LT(op->axis, input_dims.size());
+    concat_size += input_dims[op->axis];
   }
   // Write out the concat_size on the output array shape.
   auto& output_shape = *output_array.mutable_shape();
   auto& output_dims = *output_shape.mutable_dims();
-  CHECK_LT(axis, output_shape.dimensions_count());
-  output_dims[axis] = concat_size;
+  CHECK_LT(op->axis, output_shape.dimensions_count());
+  output_dims[op->axis] = concat_size;
 }
 
 void ProcessRangeOperator(Model* model, RangeOperator* op) {
@@ -1147,6 +1165,32 @@ void ProcessPadOperator(Model* model, PadOperator* op) {
   output_array.copy_shape(output_shape);
 }
 
+void ProcessPadV2Operator(Model* model, PadV2Operator* op) {
+  CHECK_EQ(op->inputs.size(), 3);
+  CHECK_EQ(op->outputs.size(), 1);
+
+  const auto& input_array = model->GetArray(op->inputs[0]);
+
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) return;
+
+  if (op->left_padding.empty()) return;
+  CHECK_EQ(op->left_padding.size(), op->right_padding.size());
+
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) return;
+
+  Shape output_shape = input_array.shape();
+  std::vector<int>& dims = *output_shape.mutable_dims();
+  CHECK_EQ(op->left_padding.size(), dims.size());
+
+  for (int i = 0; i < op->left_padding.size(); ++i) {
+    dims[i] += op->left_padding[i] + op->right_padding[i];
+  }
+
+  output_array.copy_shape(output_shape);
+}
+
 void ProcessRankOperator(Model* model, RankOperator* op) {
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
@@ -1437,6 +1481,76 @@ void ProcessArgMaxOperator(Model* model, ArgMaxOperator* op) {
   *output_array.mutable_shape()->mutable_dims() = output_dims;
 }
 
+void ProcessSparseToDenseOperator(Model* model, SparseToDenseOperator* op) {
+  CHECK_EQ(op->inputs.size(), 4);
+
+  const Array& output_shape_array = model->GetArray(op->inputs[1]);
+  if (!output_shape_array.has_shape()) return;
+  CHECK_EQ(output_shape_array.shape().dimensions_count(), 1);
+
+  // Output should not go over four dimensions.
+  CHECK_LE(output_shape_array.shape().dims(0), 4);
+
+  const string& output_name = op->outputs[0];
+  Array& output_array = model->GetArray(output_name);
+  if (output_array.has_shape()) return;
+
+  CHECK(output_shape_array.data_type == ArrayDataType::kInt32 ||
+        output_shape_array.data_type == ArrayDataType::kInt64);
+  if (output_shape_array.data_type == ArrayDataType::kInt32) {
+    *output_array.mutable_shape()->mutable_dims() =
+        output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+  } else {
+    const std::vector<int64>& output_shape_data =
+        output_shape_array.GetBuffer<ArrayDataType::kInt64>().data;
+    std::copy(
+        output_shape_data.begin(), output_shape_data.end(),
+        std::back_inserter(*output_array.mutable_shape()->mutable_dims()));
+  }
+}
+
+void ProcessTileOperator(Model* model, TensorFlowTileOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  CHECK_EQ(op->outputs.size(), 1);
+
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // We have already run.
+    return;
+  }
+
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  if (!input_array.has_shape()) {
+    // Yield until input dims have been resolved.
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+
+  auto& multiples_array = model->GetArray(op->inputs[1]);
+  if (!multiples_array.has_shape()) {
+    // Yield until multiples shape been resolved.
+    return;
+  }
+  if (!multiples_array.buffer) {
+    // Yield until the multiples is constant.
+    return;
+  }
+  CHECK(multiples_array.data_type == ArrayDataType::kInt32)
+      << "Tile multiples input must be int32";
+
+  std::vector<int32> const& multiples =
+      multiples_array.GetBuffer<ArrayDataType::kInt32>().data;
+  CHECK_EQ(multiples.size(), input_shape.dimensions_count())
+      << "Tile multiples input " << op->inputs[1]
+      << " must be same length as input dimensions";
+
+  auto* mutable_dims = output_array.mutable_shape()->mutable_dims();
+  mutable_dims->resize(multiples.size());
+  for (int i = 0; i < mutable_dims->size(); ++i) {
+    (*mutable_dims)[i] = input_shape.dims(i) * multiples[i];
+  }
+}
+
 }  // namespace
 
 bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
@@ -1474,7 +1588,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kCast:
     case OperatorType::kFloor:
     case OperatorType::kExp:
-      ProcessSimpleOperator(model, op);
+    case OperatorType::kSin:
+      ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:
       ProcessGatherOperator(model, static_cast<GatherOperator*>(op));
@@ -1494,6 +1609,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowMaximum:
     case OperatorType::kTensorFlowMinimum:
     case OperatorType::kTensorFlowGreaterEqual:
+    case OperatorType::kTensorFlowEqual:
+    case OperatorType::kTensorFlowNotEqual:
       ProcessSimpleBinaryOperator(model, op);
       break;
     case OperatorType::kAddN:
@@ -1545,19 +1662,13 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kMean:
       ProcessTensorFlowReductionOperator(model, op);
       break;
-
+    case OperatorType::kSelect:
+      ProcessSelectOperator(model, static_cast<SelectOperator*>(op));
+      break;
     case OperatorType::kSlice:
       ProcessSliceOperator(model, static_cast<SliceOperator*>(op));
       break;
 
-    case OperatorType::kTensorFlowTile:
-      // We don't currently implement the propagation of fixed sizes through
-      // a TensorFlow Tile.
-      //
-      // Fortunately, we don't need to: so far, we have only dealt with Tile
-      // or Slice ops in subgraphs that are identified as L2Normalization.
-      // See IdentifyL2Normalization.
-      break;
     case OperatorType::kTensorFlowSwitch:
       // We can't know the sizes of the outputs until we have resolved the
       // predicate, and once we have resolved the predicate, the whole
@@ -1629,6 +1740,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kPad:
       ProcessPadOperator(model, static_cast<PadOperator*>(op));
       break;
+    case OperatorType::kPadV2:
+      ProcessPadV2Operator(model, static_cast<PadV2Operator*>(op));
+      break;
     case OperatorType::kStridedSlice:
       ProcessStridedSliceOperator(model,
                                   static_cast<StridedSliceOperator*>(op));
@@ -1653,6 +1767,13 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kRandomUniform:
       CHECK_EQ(op->inputs.size(), 1);
       ProcessOpWithShapeInput(model, op);
+      break;
+    case OperatorType::kSparseToDense:
+      ProcessSparseToDenseOperator(model,
+                                   static_cast<SparseToDenseOperator*>(op));
+      break;
+    case OperatorType::kTensorFlowTile:
+      ProcessTileOperator(model, static_cast<TensorFlowTileOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

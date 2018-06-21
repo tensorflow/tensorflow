@@ -21,3 +21,13 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
+
+tf_proto_library(
+    name = "compilation_result_proto",
+    srcs = [
+        "compilation_result.proto",
+    ],
+    cc_api_version = 2,
+    protodeps = ["//tensorflow/core:protos_all"],
+    visibility = ["//visibility:public"],
+)

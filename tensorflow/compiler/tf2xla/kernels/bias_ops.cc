@@ -60,7 +60,7 @@ class BiasOp : public XlaOpKernel {
             "of the input tensor: ",
             bias_shape.DebugString(), " vs. ", input_shape.DebugString()));
 
-    xla::ComputationDataHandle result =
+    xla::XlaOp result =
         ctx->builder()->Add(ctx->Input(0), ctx->Input(1), {feature_dim});
     ctx->SetOutput(0, result);
   }
@@ -103,7 +103,7 @@ class BiasAddGradOp : public XlaOpKernel {
     std::iota(reduce_dims.begin(), reduce_dims.begin() + feature_dim, 0);
     std::iota(reduce_dims.begin() + feature_dim, reduce_dims.end(),
               feature_dim + 1);
-    xla::ComputationBuilder* const b = ctx->builder();
+    xla::XlaBuilder* const b = ctx->builder();
     const DataType accumulation_type =
         XlaHelpers::SumAccumulationType(input_type(0));
     auto converted =

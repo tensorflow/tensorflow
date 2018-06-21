@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
 #define PATH_MAX MAX_PATH
@@ -179,19 +176,11 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
 //                 would return /usr/bin.
 static string GetBinaryDir(bool strip_exe) {
   char exe_path[PATH_MAX] = {0};
-#if defined(__APPLE__)
-    uint32_t buffer_size = 0U;
-    _NSGetExecutablePath(nullptr, &buffer_size);
-    char unresolved_path[buffer_size];
-    _NSGetExecutablePath(unresolved_path, &buffer_size);
-    CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
-#else
 #if defined(PLATFORM_WINDOWS)
   HMODULE hModule = GetModuleHandle(NULL);
   GetModuleFileName(hModule, exe_path, MAX_PATH);
 #else
   CHECK_ERR(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
-#endif
 #endif
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
@@ -609,10 +598,10 @@ port::Status CUDAExecutor::WaitForEvent(Stream *stream, Event *event) {
                                     AsCUDAEvent(event)->cuda_event())) {
     return port::Status::OK();
   } else {
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
         port::Printf("error recording waiting for CUDA event on stream %p",
-                     stream)};
+                     stream));
   }
 }
 
@@ -854,10 +843,7 @@ CudaContext* CUDAExecutor::cuda_context() { return context_; }
 // For anything more complicated/prod-focused than this, you'll likely want to
 // turn to gsys' topology modeling.
 static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
-#if defined(__APPLE__)
-  LOG(INFO) << "OS X does not support NUMA - returning NUMA node zero";
-  return 0;
-#elif defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_WINDOWS)
   // Windows support for NUMA is not currently implemented. Return node 0.
   return 0;
 #elif defined(__aarch64__)

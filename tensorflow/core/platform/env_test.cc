@@ -357,7 +357,7 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   CHECK_EQ(error::OUT_OF_RANGE,
            file_to_read->Read(0 /* offset */, 1024 /* n */, &content, scratch)
                .code());
-  EXPECT_EQ("Null", content.ToString());
+  EXPECT_EQ("Null", content);
 
   // Delete the temporary file.
   TF_CHECK_OK(env->DeleteFile(filename));

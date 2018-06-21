@@ -325,7 +325,7 @@ def distributed_grads_only_and_ops_chief_worker(
 
   All workers perform gradient computation. Chief worker applies gradient after
   averaging the gradients obtained from all the workers. All workers block
-  execution untill the update is applied. Chief worker runs covariance and
+  execution until the update is applied. Chief worker runs covariance and
   inverse update ops. Covariance and inverse matrices are placed on parameter
   servers in a round robin manner. For further details on synchronous
   distributed optimization check `tf.train.SyncReplicasOptimizer`.

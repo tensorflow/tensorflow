@@ -38,7 +38,7 @@ enable TensorFlow for C:
          OS="linux" # Change to "darwin" for macOS
          TARGET_DIRECTORY="/usr/local"
          curl -L \
-           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-${OS}-x86_64-1.8.0-rc1.tar.gz" |
+           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-${OS}-x86_64-1.9.0-rc0.tar.gz" |
            sudo tar -C $TARGET_DIRECTORY -xz
 
      The `tar` command extracts the TensorFlow C library into the `lib`

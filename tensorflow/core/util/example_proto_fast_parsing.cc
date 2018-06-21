@@ -353,7 +353,7 @@ bool TestFastParse(const string& serialized, Example* example) {
     // I.e. last entry in the map overwrites all the previous ones.
     parsed::FeatureMapEntry& name_and_feature =
         parsed_example[parsed_example_size - i - 1];
-    string name = name_and_feature.first.ToString();
+    string name = std::string(name_and_feature.first);
     if ((*features.mutable_feature()).count(name) > 0) continue;
 
     auto& value = (*features.mutable_feature())[name];

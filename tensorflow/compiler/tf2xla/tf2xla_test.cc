@@ -69,7 +69,7 @@ TEST(ConvertGraphDefToXla, Sum) {
   tf2xla::Config config = SumConfig();
 
   xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
-  xla::Computation computation;
+  xla::XlaComputation computation;
   TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
 
   // Set up arguments.

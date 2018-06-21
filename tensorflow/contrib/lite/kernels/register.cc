@@ -60,6 +60,7 @@ TfLiteRegistration* Register_LSTM();
 TfLiteRegistration* Register_BIDIRECTIONAL_SEQUENCE_LSTM();
 TfLiteRegistration* Register_UNIDIRECTIONAL_SEQUENCE_LSTM();
 TfLiteRegistration* Register_PAD();
+TfLiteRegistration* Register_PADV2();
 TfLiteRegistration* Register_RESHAPE();
 TfLiteRegistration* Register_RESIZE_BILINEAR();
 TfLiteRegistration* Register_SKIP_GRAM();
@@ -72,6 +73,7 @@ TfLiteRegistration* Register_SQUEEZE();
 TfLiteRegistration* Register_STRIDED_SLICE();
 TfLiteRegistration* Register_EXP();
 TfLiteRegistration* Register_TOPK_V2();
+TfLiteRegistration* Register_LOG();
 TfLiteRegistration* Register_LOG_SOFTMAX();
 TfLiteRegistration* Register_CAST();
 TfLiteRegistration* Register_DEQUANTIZE();
@@ -79,8 +81,21 @@ TfLiteRegistration* Register_PRELU();
 TfLiteRegistration* Register_MAXIMUM();
 TfLiteRegistration* Register_MINIMUM();
 TfLiteRegistration* Register_ARG_MAX();
+TfLiteRegistration* Register_GREATER();
+TfLiteRegistration* Register_GREATER_EQUAL();
 TfLiteRegistration* Register_LESS();
+TfLiteRegistration* Register_LESS_EQUAL();
 TfLiteRegistration* Register_FLOOR();
+TfLiteRegistration* Register_TILE();
+TfLiteRegistration* Register_NEG();
+TfLiteRegistration* Register_SELECT();
+TfLiteRegistration* Register_SLICE();
+TfLiteRegistration* Register_SIN();
+TfLiteRegistration* Register_TRANSPOSE_CONV();
+TfLiteRegistration* Register_EXPAND_DIMS();
+TfLiteRegistration* Register_SPARSE_TO_DENSE();
+TfLiteRegistration* Register_EQUAL();
+TfLiteRegistration* Register_NOT_EQUAL();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -114,12 +129,14 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION());
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
              Register_LOCAL_RESPONSE_NORMALIZATION());
-  AddBuiltin(BuiltinOperator_LSTM, Register_LSTM());
+  AddBuiltin(BuiltinOperator_LSTM, Register_LSTM(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
              Register_BIDIRECTIONAL_SEQUENCE_LSTM());
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM());
   AddBuiltin(BuiltinOperator_PAD, Register_PAD());
+  AddBuiltin(BuiltinOperator_PADV2, Register_PADV2());
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR());
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
@@ -134,6 +151,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE());
   AddBuiltin(BuiltinOperator_EXP, Register_EXP());
   AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2());
+  AddBuiltin(BuiltinOperator_LOG, Register_LOG());
   AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX());
   AddBuiltin(BuiltinOperator_CAST, Register_CAST());
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE());
@@ -141,37 +159,27 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM());
   AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM());
   AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX());
+  AddBuiltin(BuiltinOperator_GREATER, Register_GREATER());
+  AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL());
   AddBuiltin(BuiltinOperator_LESS, Register_LESS());
+  AddBuiltin(BuiltinOperator_LESS_EQUAL, Register_LESS_EQUAL());
   AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
+  AddBuiltin(BuiltinOperator_NEG, Register_NEG());
+  AddBuiltin(BuiltinOperator_SELECT, Register_SELECT());
+  AddBuiltin(BuiltinOperator_SLICE, Register_SLICE());
+  AddBuiltin(BuiltinOperator_SIN, Register_SIN());
+  AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV());
+  AddBuiltin(BuiltinOperator_TILE, Register_TILE());
+  AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
+  AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE());
+  AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL());
+  AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
   AddCustom("AudioSpectrogram",
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
-}
-
-TfLiteRegistration* BuiltinOpResolver::FindOp(
-    tflite::BuiltinOperator op) const {
-  auto it = builtins_.find(op);
-  return it != builtins_.end() ? it->second : nullptr;
-}
-
-TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op) const {
-  auto it = custom_ops_.find(op);
-  return it != custom_ops_.end() ? it->second : nullptr;
-}
-
-void BuiltinOpResolver::AddBuiltin(tflite::BuiltinOperator op,
-                                   TfLiteRegistration* registration) {
-  registration->builtin_code = op;
-  builtins_.insert(std::make_pair(op, registration));
-}
-
-void BuiltinOpResolver::AddCustom(const char* name,
-                                  TfLiteRegistration* registration) {
-  registration->builtin_code = BuiltinOperator_CUSTOM;
-  custom_ops_.insert(std::make_pair(std::string(name), registration));
 }
 
 }  // namespace builtin

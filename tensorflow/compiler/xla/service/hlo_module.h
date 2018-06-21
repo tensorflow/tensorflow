@@ -26,12 +26,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
@@ -41,16 +42,20 @@ namespace xla {
 
 // Describes a compilation unit at the HLO level.
 //
-// A HLO module contains one or more HLO computations. The module contains one
-// "entry" computation which produces the result. The module also includes any
-// embedded computations used by instructions such as "map" and "reduce". All
-// computations are owned by the module.
+// HloModule is the top-level unit in the HLO IR.  It corresponds to a whole
+// "program".  Running a module, from beginning to end, is the only way to run
+// an XLA program.
+//
+// A module contains one "entry computation"; this HloComputation is like main()
+// in a C program.  The result of running the module is the result of running
+// this computation.
+//
+// A module also contains some number of "nested computations".  Each nested
+// computation is attached to an HloInstruction within some other computation.
+// The meaning of the nested computation depends on the instruction it's
+// attached to.
 class HloModule {
  public:
-  HloModule(const string& name,
-            const VersionedComputationHandle& entry_computation_handle,
-            const HloModuleConfig& config);
-
   // Constructor without a versioned computation handle. This constructor should
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
@@ -85,8 +90,10 @@ class HloModule {
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
 
   // Performs a deep clone of the computation, by recursively cloning all
-  // the called computations as well.
-  HloComputation* DeepCloneComputation(HloComputation* computation);
+  // the called computations as well. If the clone context is specified, it
+  // will be populated with the cloned object mappings.
+  HloComputation* DeepCloneComputation(HloComputation* computation,
+                                       HloCloneContext* context = nullptr);
 
   // Return a pointer to the entry computation of the module..
   const HloComputation* entry_computation() const {
@@ -98,16 +105,20 @@ class HloModule {
     return entry_computation_;
   }
 
-  ComputationLayout* mutable_entry_computation_layout() {
-    return config_.mutable_entry_computation_layout();
+  ComputationLayout* mutable_host_entry_computation_layout() {
+    return config_.mutable_host_entry_computation_layout();
   }
 
-  const ComputationLayout& entry_computation_layout() const {
-    return config_.entry_computation_layout();
+  const ComputationLayout& host_entry_computation_layout() const {
+    return config_.host_entry_computation_layout();
   }
 
-  const VersionedComputationHandle& entry_computation_handle() const {
-    return entry_computation_handle_;
+  ComputationLayout* mutable_device_entry_computation_layout() {
+    return config_.mutable_device_entry_computation_layout();
+  }
+
+  const ComputationLayout& device_entry_computation_layout() const {
+    return config_.device_entry_computation_layout();
   }
 
   // Gets the computations in this module.
@@ -129,6 +140,10 @@ class HloModule {
     return {MakeUnwrappingIterator(computations_.begin()),
             MakeUnwrappingIterator(computations_.end())};
   }
+
+  // Returns the computation in this module that has the name `name`.  Returns
+  // null if there is no such computation.
+  HloComputation* GetComputationWithName(tensorflow::StringPiece name);
 
   // Gets the number of computations in this module.
   int64 computation_count() const { return computations_.size(); }
@@ -164,9 +179,7 @@ class HloModule {
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
   static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
-      const HloModuleProto& proto, const HloModuleConfig& module_config,
-      const VersionedComputationHandle& entry_computation_handle =
-          VersionedComputationHandle());
+      const HloModuleProto& proto, const HloModuleConfig& module_config);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
@@ -204,6 +217,25 @@ class HloModule {
   // the lifetime of this process.
   int unique_id() const { return unique_id_; }
 
+  // Returns a non-const version of the passed-in const HloInstruction*. This is
+  // safe on the argument that if you have a non-const module, then you can
+  // access all instructions in the module as non-const.
+  //
+  // Returns an error if the passed-in instruction is not from this module,
+  // except that it is allowed to pass in a null pointer.
+  //
+  // TODO(b/78350259): Eliminate const laundering. The argument above is not
+  // reliable since at any time someone could add or discover a way for a
+  // non-const module to transitively contain a const HloInstruction. The
+  // reliable way to do this would be to create a const laundering map from a
+  // module, mapping each encountered HloInstruction to its non-const version
+  // and then look up each instruction in need of laundering in that map, but
+  // this is much more expensive and complicated. This returns a Status instead
+  // of doing a CHECK-failure in part to make it strongly apparent that this is
+  // something that can fail.
+  StatusOr<HloInstruction*> LaunderConstInstructionFromModule(
+      const HloInstruction* hlo);
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -220,10 +252,6 @@ class HloModule {
   // where we don't need deterministic execution.
   mutable std::mt19937_64 rng_{42};
   mutable tensorflow::mutex rng_mutex_;
-
-  // Versioned handle of the entry computation of the module.
-  bool has_entry_computation_handle_ = false;
-  VersionedComputationHandle entry_computation_handle_;
 
   // Unique name generator for computation and instruction names, which are
   // unique per module.

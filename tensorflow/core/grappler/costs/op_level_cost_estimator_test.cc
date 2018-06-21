@@ -128,6 +128,23 @@ OpContext DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2,
   return op_context;
 }
 
+// Describe DepthwiseConvolution constructs an OpContext for a
+// DepthwiseConv2dNative applied to an input
+// tensor with shape (batch, ix, iy, iz1) and a kernel tensor with shape
+// (kx, ky, iz2, cm). cm is channel multiplier
+
+OpContext DescribeDepthwiseConv2dNative(int batch, int ix, int iy, int iz1,
+                                        int iz2, int kx, int ky, int cm) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("DepthwiseConv2dNative");
+
+  DescribeTensor4D(batch, ix, iy, iz1, op_context.op_info.add_inputs());
+  DescribeTensor4D(kx, ky, iz2, cm, op_context.op_info.add_inputs());
+
+  return op_context;
+}
+
 // DescribeFusedConv2DBiasActivation constructs an OpContext for a
 // FusedConv2DBiasActivation applied to a convolution input tensor with shape
 // (batch, ix, iy, iz1), a kernel tensor with shape (kx, ky, iz2, oz), a
@@ -502,6 +519,15 @@ TEST_F(OpLevelCostEstimatorTest, Conv2DExecutionTime) {
   EXPECT_EQ(Costs::Duration(233780), cost.memory_time);
   EXPECT_EQ(Costs::Duration(354877440), cost.compute_time);
   EXPECT_EQ(Costs::Duration(355111220), cost.execution_time);
+  EXPECT_FALSE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, DepthwiseConv2dNativeExecutionTime) {
+  auto cost =
+      PredictCosts(DescribeDepthwiseConv2dNative(16, 19, 19, 48, 48, 5, 5, 3));
+  EXPECT_EQ(Costs::Duration(112340), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(4158720), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(4271060), cost.execution_time);
   EXPECT_FALSE(cost.inaccurate);
 }
 

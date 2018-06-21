@@ -161,7 +161,7 @@ Status GraphTransferer::LoadGraphFromProto(
 
   for (const string& output_node_name : output_node_names) {
     const TensorId tid = ParseTensorName(output_node_name);
-    const string node_name = tid.first.ToString();
+    const string node_name = std::string(tid.first);
     const int port = tid.second;
     const int node_id = node_name_to_id_cache_map_.at(node_name);
     const Node* node = node_name_cache_list_.at(node_id);

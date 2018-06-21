@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import numpy as np
+
 # normally we should do import tensorflow as tf and then
 # tf.placeholder, tf.constant, tf.nn.conv2d etc but
 # it looks like internal builds don't like it so
@@ -26,6 +28,7 @@ import numpy as np
 
 from tensorflow.contrib import tensorrt as trt
 from tensorflow.core.protobuf import config_pb2 as cpb2
+from tensorflow.core.protobuf import rewriter_config_pb2 as rwpb2
 from tensorflow.python.client import session as csess
 from tensorflow.python.framework import constant_op as cop
 from tensorflow.python.framework import dtypes as dtypes
@@ -59,9 +62,11 @@ def get_simple_graph_def():
   return g.as_graph_def()
 
 
-def run_graph(gdef, dumm_inp):
+def execute_graph(gdef, dumm_inp):
   """Run given graphdef once."""
+  print("executing")
   gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
+  sessconfig = cpb2.ConfigProto(gpu_options=gpu_options)
   ops.reset_default_graph()
   g = ops.Graph()
   with g.as_default():
@@ -69,15 +74,14 @@ def run_graph(gdef, dumm_inp):
         graph_def=gdef, return_elements=["input", "output"])
     inp = inp.outputs[0]
     out = out.outputs[0]
-  with csess.Session(
-      config=cpb2.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
+  with csess.Session(config=sessconfig, graph=g) as sess:
     val = sess.run(out, {inp: dumm_inp})
   return val
 
 
 # Use real data that is representative of the inference dataset
 # for calibration. For this test script it is random data.
-def run_calibration(gdef, dumm_inp):
+def execute_calibration(gdef, dumm_inp):
   """Run given calibration graph multiple times."""
   gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   ops.reset_default_graph()
@@ -96,7 +100,9 @@ def run_calibration(gdef, dumm_inp):
   return val
 
 
-if "__main__" in __name__:
+def user(run_graph=execute_graph, run_calibration=execute_calibration):
+  """Example function that converts a graph to TFTRT graph."""
+
   inp_dims = (100, 24, 24, 2)
   dummy_input = np.random.random_sample(inp_dims)
   orig_graph = get_simple_graph_def()  # use a frozen graph for inference
@@ -137,3 +143,51 @@ if "__main__" in __name__:
   assert np.allclose(o1, o4)
   assert np.allclose(o1, o5)
   print("Pass")
+
+
+def auto():
+  """Run the conversion as an optimization pass."""
+  inp_dims = (100, 24, 24, 2)
+  dummy_input = np.random.random_sample(inp_dims)
+  orig_graph = get_simple_graph_def()
+  opt_config = rwpb2.RewriterConfig()
+  opt_config.optimizers.extend(["constfold", "layout"])
+  custom_op = opt_config.custom_optimizers.add()
+  custom_op.name = "TensorRTOptimizer"
+  custom_op.parameter_map["minimum_segment_size"].i = 3
+  custom_op.parameter_map["precision_mode"].s = "FP32"
+  custom_op.parameter_map["max_batch_size"].i = inp_dims[0]
+  custom_op.parameter_map["max_workspace_size_bytes"].i = 1 << 25
+  print(custom_op)
+  gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
+  graph_options = cpb2.GraphOptions(rewrite_options=opt_config)
+  sessconfig = cpb2.ConfigProto(
+      gpu_options=gpu_options, graph_options=graph_options)
+  print(sessconfig)
+  g = ops.Graph()
+  ops.reset_default_graph()
+  with g.as_default():
+    inp, out = importer.import_graph_def(
+        graph_def=orig_graph, return_elements=["input", "output"])
+    inp = inp.outputs[0]
+    out = out.outputs[0]
+    with csess.Session(config=sessconfig, graph=g) as sess:
+      val = sess.run(out, {inp: dummy_input})
+  print(val.shape)
+
+
+if "__main__" in __name__:
+  P = argparse.ArgumentParser(
+      prog="tftrt_test",
+      description="Example utilization of TensorFlow-TensorRT integration")
+  P.add_argument(
+      "--automatic",
+      "-a",
+      action="store_true",
+      help="Do TRT conversion automatically",
+      default=False)
+  flags, unparsed = P.parse_known_args()
+  if flags.automatic:
+    auto()
+  else:
+    user()

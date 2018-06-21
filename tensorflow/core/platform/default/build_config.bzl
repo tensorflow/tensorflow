@@ -71,6 +71,8 @@ def pyx_library(
         name = filename + "_cython_translation",
         srcs = [filename],
         outs = [filename.split(".")[0] + ".cpp"],
+        # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
+        # works. Windows has issues with cython_binary so skip PYTHON_BIN_PATH.
         cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
         tools = ["@cython//:cython_binary"] + pxd_srcs,
     )
@@ -82,7 +84,7 @@ def pyx_library(
     native.cc_binary(
         name=shared_object_name,
         srcs=[stem + ".cpp"],
-        deps=deps + ["//util/python:python_headers"],
+        deps=deps + ["//third_party/python_runtime:headers"],
         linkshared = 1,
     )
     shared_objects.append(shared_object_name)
@@ -200,7 +202,10 @@ def cc_proto_library(
   )
 
   if use_grpc_plugin:
-    cc_libs += ["//external:grpc_lib"]
+    cc_libs += select({
+        "//tensorflow:linux_s390x": ["//external:grpc_lib_unsecure"],
+        "//conditions:default": ["//external:grpc_lib"],
+    })
 
   if default_header:
     header_only_name = name
@@ -304,6 +309,7 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
                         cc_grpc_version = None,
                         j2objc_api_version = 1,
                         cc_api_version = 2,
+                        dart_api_version = 2,
                         java_api_version = 2, py_api_version = 2,
                         js_api_version = 2, js_codegen = "jspb",
                         default_header = False):
@@ -335,6 +341,8 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
         name = cc_name,
         deps = cc_deps + ["@protobuf_archive//:protobuf_headers"] +
                if_static([name + "_cc_impl"]),
+        testonly = testonly,
+        visibility = visibility,
     )
     native.cc_library(
         name = cc_name + "_impl",
@@ -378,8 +386,10 @@ def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
     )
     native.py_library(
         name = py_name,
-        deps = py_deps + ["@protobuf_archive//:protobuf_python"])
-
+        deps = py_deps + ["@protobuf_archive//:protobuf_python"],
+        testonly = testonly,
+        visibility = visibility,
+    )
     return
 
   py_proto_library(
@@ -405,13 +415,14 @@ def tf_proto_library(name, srcs = [], has_services = None,
                      visibility = [], testonly = 0,
                      cc_libs = [],
                      cc_api_version = 2, cc_grpc_version = None,
-                     j2objc_api_version = 1,
+                     dart_api_version = 2, j2objc_api_version = 1,
                      java_api_version = 2, py_api_version = 2,
                      js_api_version = 2, js_codegen = "jspb",
+                     provide_cc_alias = False,
                      default_header = False):
   """Make a proto library, possibly depending on other proto libraries."""
-  js_api_version = js_api_version  # unused argument
-  js_codegen = js_codegen  # unused argument
+  _ignore = (js_api_version, js_codegen, provide_cc_alias)
+
   tf_proto_library_cc(
       name = name,
       srcs = srcs,
@@ -444,6 +455,16 @@ def tf_platform_srcs(files):
   base_set = ["platform/default/" + f for f in files]
   windows_set = base_set + ["platform/windows/" + f for f in files]
   posix_set = base_set + ["platform/posix/" + f for f in files]
+
+  # Handle cases where we must also bring the posix file in. Usually, the list
+  # of files to build on windows builds is just all the stuff in the
+  # windows_set. However, in some cases the implementations in 'posix/' are
+  # just what is necessary and historically we choose to simply use the posix
+  # file instead of making a copy in 'windows'.
+  for f in files:
+    if f == "error.cc":
+      windows_set.append("platform/posix/" + f)
+
   return select({
     "//tensorflow:windows" : native.glob(windows_set),
     "//tensorflow:windows_msvc" : native.glob(windows_set),
@@ -480,14 +501,6 @@ def tf_additional_lib_srcs(exclude = []):
       ], exclude = exclude),
   })
 
-# pylint: disable=unused-argument
-def tf_additional_framework_hdrs(exclude = []):
-  return []
-
-def tf_additional_framework_srcs(exclude = []):
-  return []
-# pylint: enable=unused-argument
-
 def tf_additional_minimal_lib_srcs():
   return [
       "platform/default/integral_types.h",
@@ -507,6 +520,9 @@ def tf_additional_proto_srcs():
   return [
       "platform/default/protobuf.cc",
   ]
+
+def tf_additional_human_readable_json_deps():
+  return []
 
 def tf_additional_all_protos():
   return ["//tensorflow/core:protos_all"]
@@ -621,6 +637,7 @@ def tf_additional_cloud_op_deps():
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
+        "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
       ],
       "//conditions:default": [],
   })
@@ -633,6 +650,7 @@ def tf_additional_cloud_kernel_deps():
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
+        "//tensorflow/contrib/cloud/kernels:gcs_config_ops",
       ],
       "//conditions:default": [],
   })

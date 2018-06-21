@@ -24,7 +24,9 @@ namespace grappler {
 
 // Compute a topological ordering for the graph nodes.
 Status ComputeTopologicalOrder(
-    const GraphDef& graph, std::unordered_map<const NodeDef*, int>* topo_order);
+    const GraphDef& graph, std::unordered_map<const NodeDef*, int>* topo_order,
+    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
+        extra_dependencies);
 
 // Sort a graph in topological order.
 Status TopologicalSort(GraphDef* graph);

@@ -22,7 +22,7 @@ py_library(
         "__init__.py",
         "control_flow.py",
         "data_structures.py",
-        "dispatch_context.py",
+        "slices.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
@@ -46,6 +46,16 @@ py_test(
 py_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":operators",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "slices_test",
+    srcs = ["slices_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":operators",

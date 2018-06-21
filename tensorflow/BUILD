@@ -19,6 +19,10 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_additional_binary_deps",
 )
+load(
+    "//tensorflow/tools/api/generator:api_gen.bzl",
+    "gen_api_init_files",  # @unused
+)
 
 # Config setting for determining if we are building for Android.
 config_setting(
@@ -147,6 +151,12 @@ config_setting(
 config_setting(
     name = "linux_ppc64le",
     values = {"cpu": "ppc"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_s390x",
+    values = {"cpu": "s390x"},
     visibility = ["//visibility:public"],
 )
 
@@ -420,6 +430,22 @@ filegroup(
     data = glob(["docs_src/**/*.md"]),
 )
 
+cc_library(
+    name = "grpc",
+    deps = select({
+        ":linux_s390x": ["@grpc//:grpc_unsecure"],
+        "//conditions:default": ["@grpc"],
+    }),
+)
+
+cc_library(
+    name = "grpc++",
+    deps = select({
+        ":linux_s390x": ["@grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@grpc//:grpc++"],
+    }),
+)
+
 # A shared object which includes registration mechanisms for ops and
 # kernels. Does not include the implementations of any ops or kernels. Instead,
 # the library which loads libtensorflow_framework.so
@@ -447,6 +473,15 @@ filegroup(
 tf_cc_shared_object(
     name = "libtensorflow_framework.so",
     framework_so = [],
+    linkopts = select({
+        "//tensorflow:darwin": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
+        "//conditions:default": [
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "$(location //tensorflow:tf_framework_version_script.lds)",
+        ],
+    }),
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
@@ -456,6 +491,7 @@ tf_cc_shared_object(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),
 )
 
@@ -471,7 +507,7 @@ tf_cc_shared_object(
 # excludes all but a subset of function names.
 # On MacOS, the linker does not support version_script, but has an
 # an "-exported_symbols_list" command.  -z defs disallows undefined
-# symbols in object files and -s strips the output.
+# symbols in object files.
 
 tf_cc_shared_object(
     name = "libtensorflow.so",
@@ -485,7 +521,6 @@ tf_cc_shared_object(
         "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
-            "-s",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "$(location //tensorflow/c:version_script.lds)",
         ],
@@ -511,7 +546,6 @@ tf_cc_shared_object(
         "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
-            "-s",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "$(location //tensorflow:tf_version_script.lds)",
         ],
@@ -536,13 +570,19 @@ exports_files(
     ],
 )
 
+gen_api_init_files(
+    name = "tensorflow_python_api_gen",
+    srcs = ["api_template.__init__.py"],
+    root_init_template = "api_template.__init__.py",
+)
+
 py_library(
     name = "tensorflow_py",
-    srcs = ["__init__.py"],
+    srcs = [
+        ":tensorflow_python_api_gen",
+        "//tensorflow/python/estimator/api:estimator_python_api_gen",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/python",
-        "//tensorflow/tools/api/generator:python_api",
-    ],
+    deps = ["//tensorflow/python"],
 )

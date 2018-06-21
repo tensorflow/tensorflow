@@ -33,7 +33,8 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
   for (HloInstruction* hlo :
        module->entry_computation()->MakeInstructionPostOrder()) {
     if (hlo->opcode() == HloOpcode::kConvolution &&
-        !PotentiallyImplementedAsEigenConvolution(*hlo)) {
+        !PotentiallyImplementedAsEigenConvolution(*hlo,
+                                                  target_machine_features_)) {
       const ConvolutionDimensionNumbers& dnums =
           hlo->convolution_dimension_numbers();
       auto input_batch_dim = dnums.input_batch_dimension();

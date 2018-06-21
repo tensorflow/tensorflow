@@ -25,6 +25,7 @@ using shape_inference::ShapeHandle;
 REGISTER_OP("TPUReplicateMetadata")
     .Attr("num_replicas: int >= 0")
     .Attr("topology: string = \"\"")
+    .Attr("use_tpu: bool = true")
     .Attr("device_assignment: list(int) = []")
     .Attr("computation_shape: list(int) = []")
     .Attr("host_compute_core: list(string) = []")
@@ -43,6 +44,27 @@ REGISTER_OP("TPUReplicatedInput")
                                         " with other shapes.");
       }
       c->set_output(0, cur);
+
+      // If this is a resource, unify the resource shapes.
+      DataType dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("T", &dtype));
+      if (dtype == DT_RESOURCE) {
+        const std::vector<shape_inference::ShapeAndType>* shapes_and_types =
+            nullptr;
+        for (int i = c->num_inputs() - 1; i >= 0; --i) {
+          if (shapes_and_types) {
+            if (!c->MergeInputHandleShapesAndTypes(i, *shapes_and_types)) {
+              return errors::InvalidArgument(
+                  "Incompatible resource shapes for replicated TPU input.");
+            }
+          } else {
+            shapes_and_types = c->input_handle_shapes_and_types(i);
+          }
+        }
+        if (shapes_and_types) {
+          c->set_output_handle_shapes_and_types(0, *shapes_and_types);
+        }
+      }
       return Status::OK();
     })
     .Doc(
@@ -64,10 +86,15 @@ REGISTER_OP("TPUReplicatedOutput")
         "Operator that connects the output of an N-way replicated TPU "
         "computation to N separate outputs.");
 
+REGISTER_OP("TPUCompilationResult")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("TPUReplicate")
     .Attr("computation: func")
     .Attr("num_replicas: int >= 1")
     .Attr("topology: string = \"\"")
+    .Attr("use_tpu: bool = true")
     .Attr("device_assignment: list(int) = []")
     .Attr("host_compute_core: list(string) = []")
     .Attr("computation_shape: list(int) = []")
@@ -89,6 +116,9 @@ computation: a function containing the computation to run.
 num_replicas: the number of replicas of the computation to run.
 topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU
 topology.
+use_tpu: a bool indicating if this computation will run on TPU or CPU/GPU.
+Currently, only supports a default placement (computation is placed on GPU
+if one is available, and on CPU if not).
 computation_shape: a [mesh_dimension] array describing the shape of each
   computation replica in numbers of cores in the TPU mesh.
 device_assignment: a flattened array with shape

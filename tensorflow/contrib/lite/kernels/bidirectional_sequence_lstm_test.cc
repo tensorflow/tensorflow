@@ -102,9 +102,6 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
       fw_projection_bias_ = AddNullInput();
     }
 
-    fw_scratch_buffer_ = AddOutput(TensorType_FLOAT32);
-    // TODO(ghodrat): Modify these states when we have a permanent solution for
-    // persistent buffer.
     fw_output_state_ = AddOutput(TensorType_FLOAT32);
     fw_cell_state_ = AddOutput(TensorType_FLOAT32);
     fw_output_ = AddOutput(TensorType_FLOAT32);
@@ -164,9 +161,6 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
       bw_projection_bias_ = AddNullInput();
     }
 
-    bw_scratch_buffer_ = AddOutput(TensorType_FLOAT32);
-    // TODO(ghodrat): Modify these states when we have a permanent solution for
-    // persistent buffer.
     bw_output_state_ = AddOutput(TensorType_FLOAT32);
     bw_cell_state_ = AddOutput(TensorType_FLOAT32);
     bw_output_ = AddOutput(TensorType_FLOAT32);
@@ -349,12 +343,10 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
   int fw_output_;
   int fw_output_state_;
   int fw_cell_state_;
-  int fw_scratch_buffer_;
 
   int bw_output_;
   int bw_output_state_;
   int bw_cell_state_;
-  int bw_scratch_buffer_;
 
   int n_batch_;
   int n_input_;

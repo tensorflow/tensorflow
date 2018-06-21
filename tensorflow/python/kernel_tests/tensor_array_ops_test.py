@@ -26,11 +26,13 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -438,7 +440,6 @@ class TensorArrayTest(test.TestCase):
           "Tried to read from index 3 but array size is: 3"):
         self.evaluate(ta.read(3))
 
-  @test_util.run_in_graph_and_eager_modes()
   def testTensorArrayWriteMultipleFails(self):
     with self.test_session(use_gpu=True):
       ta = tensor_array_ops.TensorArray(
@@ -549,6 +550,58 @@ class TensorArrayTest(test.TestCase):
     for dtype in (dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64,
                   dtypes.complex64, dtypes.complex128):
       self._testTensorArrayWriteGradientAddMultipleAdds(dtype)
+
+  def testTensorArrayGradWithShapeKnownElementShape(self):
+    with self.test_session(use_gpu=True) as sess:
+      ta = tensor_array_ops.TensorArray(
+          size=3,
+          dtype=dtypes.float32,
+          element_shape=tensor_shape.TensorShape([2, 3]))
+      handle, flow = data_flow_ops.tensor_array_grad_with_shape(
+          handle=ta.handle,
+          flow_in=ta.flow,
+          shape_to_prepend=tensor_shape.TensorShape([4, 5]),
+          source="source")
+      ta_grad = tensor_array_ops.TensorArray(
+          dtypes.float32, handle=handle, flow=flow)
+      value = array_ops.placeholder(dtypes.float32)
+      ta_grad = ta_grad.write(0, value)
+      read_value = ta_grad.read(0)
+
+      # Make sure shape inference worked.
+      self.assertAllEqual([None, None, 2, 3], read_value.shape.as_list())
+      # Writing with wrong shape should not work.
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Could not write to TensorArray"):
+        fed_value = np.random.random([2, 3])
+        sess.run(read_value, feed_dict={value: fed_value})
+      # Writing with correct shape should work.
+      fed_value = np.random.random([4, 5, 2, 3])
+      self.assertAllClose(fed_value,
+                          sess.run(read_value, feed_dict={value: fed_value}))
+
+  def testTensorArrayGradWithShapeUnknownElementShape(self):
+    with self.test_session(use_gpu=True) as sess:
+      ta = tensor_array_ops.TensorArray(
+          size=3, dtype=dtypes.float32,
+          element_shape=None)  # Note that element_shape is unknown
+      handle, flow = data_flow_ops.tensor_array_grad_with_shape(
+          handle=ta.handle,
+          flow_in=ta.flow,
+          shape_to_prepend=tensor_shape.TensorShape([4, 5]),
+          source="source")
+      ta_grad = tensor_array_ops.TensorArray(
+          dtypes.float32, handle=handle, flow=flow)
+      value = array_ops.placeholder(dtypes.float32)
+      ta_grad = ta_grad.write(0, value)
+      read_value = ta_grad.read(0)
+
+      # Make sure shape inference worked.
+      self.assertIsNone(read_value.shape.ndims)
+      # Write with some shape and check read value.
+      fed_value = np.random.random([4, 5, 7])
+      self.assertAllClose(fed_value,
+                          sess.run(read_value, feed_dict={value: fed_value}))
 
   @test_util.run_in_graph_and_eager_modes()
   def testMultiTensorArray(self):

@@ -26,10 +26,10 @@ import six
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import signature_def_utils
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 
-@tf_export('estimator.export.ExportOutput')
+@estimator_export('estimator.export.ExportOutput')
 class ExportOutput(object):
   """Represents an output of a model that can be served.
 
@@ -37,6 +37,8 @@ class ExportOutput(object):
   """
 
   __metaclass__ = abc.ABCMeta
+
+  _SEPARATOR_CHAR = '/'
 
   @abc.abstractmethod
   def as_signature_def(self, receiver_tensors):
@@ -51,8 +53,54 @@ class ExportOutput(object):
     """
     pass
 
+  def _check_output_key(self, key, error_label):
+    # For multi-head models, the key can be a tuple.
+    if isinstance(key, tuple):
+      key = self._SEPARATOR_CHAR.join(key)
 
-@tf_export('estimator.export.ClassificationOutput')
+    if not isinstance(key, six.string_types):
+      raise ValueError(
+          '{} output key must be a string; got {}.'.format(error_label, key))
+    return key
+
+  def _wrap_and_check_outputs(
+      self, outputs, single_output_default_name, error_label=None):
+    """Wraps raw tensors as dicts and checks type.
+
+    Note that we create a new dict here so that we can overwrite the keys
+    if necessary.
+
+    Args:
+      outputs: A `Tensor` or a dict of string to `Tensor`.
+      single_output_default_name: A string key for use in the output dict
+        if the provided `outputs` is a raw tensor.
+      error_label: descriptive string for use in error messages. If none,
+        single_output_default_name will be used.
+
+    Returns:
+      A dict of tensors
+
+    Raises:
+      ValueError: if the outputs dict keys are not strings or tuples of strings
+        or the values are not Tensors.
+    """
+    if not isinstance(outputs, dict):
+      outputs = {single_output_default_name: outputs}
+
+    output_dict = {}
+    for key, value in outputs.items():
+      error_name = error_label or single_output_default_name
+      key = self._check_output_key(key, error_name)
+      if not isinstance(value, ops.Tensor):
+        raise ValueError(
+            '{} output value must be a Tensor; got {}.'.format(
+                error_name, value))
+
+      output_dict[key] = value
+    return output_dict
+
+
+@estimator_export('estimator.export.ClassificationOutput')
 class ClassificationOutput(ExportOutput):
   """Represents the output of a classification head.
 
@@ -121,7 +169,7 @@ class ClassificationOutput(ExportOutput):
         examples, self.classes, self.scores)
 
 
-@tf_export('estimator.export.RegressionOutput')
+@estimator_export('estimator.export.RegressionOutput')
 class RegressionOutput(ExportOutput):
   """Represents the output of a regression head."""
 
@@ -154,10 +202,7 @@ class RegressionOutput(ExportOutput):
     return signature_def_utils.regression_signature_def(examples, self.value)
 
 
-_SINGLE_OUTPUT_DEFAULT_NAME = 'output'
-
-
-@tf_export('estimator.export.PredictOutput')
+@estimator_export('estimator.export.PredictOutput')
 class PredictOutput(ExportOutput):
   """Represents the output of a generic prediction head.
 
@@ -165,6 +210,7 @@ class PredictOutput(ExportOutput):
 
   Named outputs must be provided as a dict from string to `Tensor`,
   """
+  _SINGLE_OUTPUT_DEFAULT_NAME = 'output'
 
   def __init__(self, outputs):
     """Constructor for PredictOutput.
@@ -177,16 +223,9 @@ class PredictOutput(ExportOutput):
       ValueError: if the outputs is not dict, or any of its keys are not
           strings, or any of its values are not `Tensor`s.
     """
-    if not isinstance(outputs, dict):
-      outputs = {_SINGLE_OUTPUT_DEFAULT_NAME: outputs}
-    for key, value in outputs.items():
-      if not isinstance(key, six.string_types):
-        raise ValueError(
-            'Prediction output key must be a string; got {}.'.format(key))
-      if not isinstance(value, ops.Tensor):
-        raise ValueError(
-            'Prediction output value must be a Tensor; got {}.'.format(value))
-    self._outputs = outputs
+
+    self._outputs = self._wrap_and_check_outputs(
+        outputs, self._SINGLE_OUTPUT_DEFAULT_NAME, error_label='Prediction')
 
   @property
   def outputs(self):
@@ -195,3 +234,161 @@ class PredictOutput(ExportOutput):
   def as_signature_def(self, receiver_tensors):
     return signature_def_utils.predict_signature_def(receiver_tensors,
                                                      self.outputs)
+
+
+class _SupervisedOutput(ExportOutput):
+  """Represents the output of a supervised training or eval process."""
+  __metaclass__ = abc.ABCMeta
+
+  LOSS_NAME = 'loss'
+  PREDICTIONS_NAME = 'predictions'
+  METRICS_NAME = 'metrics'
+
+  METRIC_VALUE_SUFFIX = 'value'
+  METRIC_UPDATE_SUFFIX = 'update_op'
+
+  _loss = None
+  _predictions = None
+  _metrics = None
+
+  def __init__(self, loss=None, predictions=None, metrics=None):
+    """Constructor for SupervisedOutput (ie, Train or Eval output).
+
+    Args:
+      loss: dict of Tensors or single Tensor representing calculated loss.
+      predictions: dict of Tensors or single Tensor representing model
+        predictions.
+      metrics: dict of (metric_value, update_op) tuples, or a single tuple.
+        metric_value must be a Tensor, and update_op must be a Tensor or Op.
+
+    Raises:
+      ValueError: if any of the outputs' dict keys are not strings or tuples of
+        strings or the values are not Tensors (or Operations in the case of
+        update_op).
+    """
+
+    if loss is not None:
+      loss_dict = self._wrap_and_check_outputs(loss, self.LOSS_NAME)
+      self._loss = self._prefix_output_keys(loss_dict, self.LOSS_NAME)
+    if predictions is not None:
+      pred_dict = self._wrap_and_check_outputs(
+          predictions, self.PREDICTIONS_NAME)
+      self._predictions = self._prefix_output_keys(
+          pred_dict, self.PREDICTIONS_NAME)
+    if metrics is not None:
+      self._metrics = self._wrap_and_check_metrics(metrics)
+
+  def _prefix_output_keys(self, output_dict, output_name):
+    """Prepend output_name to the output_dict keys if it doesn't exist.
+
+    This produces predictable prefixes for the pre-determined outputs
+    of SupervisedOutput.
+
+    Args:
+      output_dict: dict of string to Tensor, assumed valid.
+      output_name: prefix string to prepend to existing keys.
+
+    Returns:
+      dict with updated keys and existing values.
+    """
+
+    new_outputs = {}
+    for key, val in output_dict.items():
+      key = self._prefix_key(key, output_name)
+      new_outputs[key] = val
+    return new_outputs
+
+  def _prefix_key(self, key, output_name):
+    if key.find(output_name) != 0:
+      key = output_name + self._SEPARATOR_CHAR + key
+    return key
+
+  def _wrap_and_check_metrics(self, metrics):
+    """Handle the saving of metrics.
+
+    Metrics is either a tuple of (value, update_op), or a dict of such tuples.
+    Here, we separate out the tuples and create a dict with names to tensors.
+
+    Args:
+      metrics: dict of (metric_value, update_op) tuples, or a single tuple.
+
+    Returns:
+      dict of output_names to tensors
+
+    Raises:
+      ValueError: if the dict key is not a string, or the metric values or ops
+        are not tensors.
+    """
+    if not isinstance(metrics, dict):
+      metrics = {self.METRICS_NAME: metrics}
+
+    outputs = {}
+    for key, (metric_val, metric_op) in metrics.items():
+      key = self._check_output_key(key, self.METRICS_NAME)
+      key = self._prefix_key(key, self.METRICS_NAME)
+
+      val_name = key + self._SEPARATOR_CHAR + self.METRIC_VALUE_SUFFIX
+      op_name = key + self._SEPARATOR_CHAR + self.METRIC_UPDATE_SUFFIX
+      if not isinstance(metric_val, ops.Tensor):
+        raise ValueError(
+            '{} output value must be a Tensor; got {}.'.format(
+                key, metric_val))
+      if (not isinstance(metric_op, ops.Tensor) and
+          not isinstance(metric_op, ops.Operation)):
+        raise ValueError(
+            '{} update_op must be a Tensor or Operation; got {}.'.format(
+                key, metric_op))
+      outputs[val_name] = metric_val
+      outputs[op_name] = metric_op
+
+    return outputs
+
+  @property
+  def loss(self):
+    return self._loss
+
+  @property
+  def predictions(self):
+    return self._predictions
+
+  @property
+  def metrics(self):
+    return self._metrics
+
+  @abc.abstractmethod
+  def _get_signature_def_fn(self):
+    """Returns a function that produces a SignatureDef given desired outputs."""
+    pass
+
+  def as_signature_def(self, receiver_tensors):
+    signature_def_fn = self._get_signature_def_fn()
+    return signature_def_fn(
+        receiver_tensors, self.loss, self.predictions, self.metrics)
+
+
+class TrainOutput(_SupervisedOutput):
+  """Represents the output of a supervised training process.
+
+  This class generates the appropriate signature def for exporting
+  training output by type-checking and wrapping loss, predictions, and metrics
+  values.
+  """
+
+  def _get_signature_def_fn(self):
+    return signature_def_utils.supervised_train_signature_def
+
+
+class EvalOutput(_SupervisedOutput):
+  """Represents the output of a supervised eval process.
+
+  This class generates the appropriate signature def for exporting
+  eval output by type-checking and wrapping loss, predictions, and metrics
+  values.
+  """
+
+  def _get_signature_def_fn(self):
+    return signature_def_utils.supervised_eval_signature_def
+
+
+
+

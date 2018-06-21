@@ -213,6 +213,7 @@ cc_library(
         "graph_transformations/convert_squeeze_to_reshape.cc",
         "graph_transformations/convert_trivial_addn_to_add.cc",
         "graph_transformations/convert_trivial_stack_to_reshape.cc",
+        "graph_transformations/convert_trivial_tile_to_concat.cc",
         "graph_transformations/convert_trivial_transpose_to_reshape.cc",
         "graph_transformations/create_im2col_arrays.cc",
         "graph_transformations/dequantize.cc",
@@ -224,6 +225,7 @@ cc_library(
         "graph_transformations/fuse_activation_functions.cc",
         "graph_transformations/fuse_binary_into_following_affine.cc",
         "graph_transformations/fuse_binary_into_preceding_affine.cc",
+        "graph_transformations/fuse_broadcast_into_following_binary.cc",
         "graph_transformations/graph_transformations.cc",
         "graph_transformations/hardcode_min_max.cc",
         "graph_transformations/identify_dilated_conv.cc",
@@ -245,6 +247,7 @@ cc_library(
         "graph_transformations/quantization_util.cc",
         "graph_transformations/quantization_util.h",
         "graph_transformations/quantize.cc",
+        "graph_transformations/quantize_weights.cc",
         "graph_transformations/read_fake_quant_min_max.cc",
         "graph_transformations/remove_final_dequantize_op.cc",
         "graph_transformations/remove_tensorflow_assert.cc",
@@ -273,6 +276,7 @@ cc_library(
         "graph_transformations/resolve_constant_range.cc",
         "graph_transformations/resolve_constant_reshape.cc",
         "graph_transformations/resolve_constant_shape_or_rank.cc",
+        "graph_transformations/resolve_constant_slice.cc",
         "graph_transformations/resolve_constant_stack.cc",
         "graph_transformations/resolve_constant_strided_slice.cc",
         "graph_transformations/resolve_constant_transpose.cc",
@@ -280,6 +284,7 @@ cc_library(
         "graph_transformations/resolve_mean_attributes.cc",
         "graph_transformations/resolve_multiply_by_zero.cc",
         "graph_transformations/resolve_pad_attributes.cc",
+        "graph_transformations/resolve_padv2_attributes.cc",
         "graph_transformations/resolve_reorder_axes.cc",
         "graph_transformations/resolve_reshape_attributes.cc",
         "graph_transformations/resolve_slice_attributes.cc",
@@ -290,7 +295,6 @@ cc_library(
         "graph_transformations/resolve_tensorflow_matmul.cc",
         "graph_transformations/resolve_tensorflow_merge.cc",
         "graph_transformations/resolve_tensorflow_switch.cc",
-        "graph_transformations/resolve_tensorflow_tile.cc",
         "graph_transformations/resolve_transpose_attributes.cc",
         "graph_transformations/unfuse_activation_functions.cc",
         "graph_transformations/unpartition_embedding_lookup.cc",
@@ -364,6 +368,19 @@ cc_library(
     }),
 )
 
+tf_cc_test(
+    name = "import_tensorflow_test",
+    srcs = ["import_tensorflow_test.cc"],
+    deps = [
+        ":toco_tooling",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "tooling_util",
     srcs = [
@@ -385,6 +402,7 @@ cc_library(
         ":types_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_googlesource_code_re2//:re2",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
@@ -395,6 +413,7 @@ tf_cc_test(
     deps = [
         ":model",
         ":tooling_util",
+        "//tensorflow/core:lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

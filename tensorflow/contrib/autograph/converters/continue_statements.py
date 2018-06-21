@@ -24,103 +24,115 @@ from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
+# Tags for local state.
+CONTROL_VAR_NAME = 'control_var_name'
+CONTINUE_USED = 'continue_used'
+GUARD_CREATED = 'guard_created'
+CREATE_GUARD_NEXT = 'create_guard_next'
+
+
 class ContinueCanonicalizationTransformer(transformer.Base):
   """Canonicalizes continue statements into additional conditionals."""
 
-  def __init__(self, context):
-    super(ContinueCanonicalizationTransformer, self).__init__(context)
-    # This is a stack structure, to correctly process nested loops.
-    self.continuation_uses = []
-
-  def _create_continuation_check(self):
-    template = """
-      if not var_name:
-        pass
-    """
-    cond, = templates.replace(template, var_name=self.continuation_uses[-1][1])
-    cond.body = []
-    return cond
-
-  def _create_continuation_trigger(self):
+  def visit_Continue(self, node):
+    self.set_local(CONTINUE_USED, True)
     template = """
       var_name = True
     """
-    assign, = templates.replace(
-        template, var_name=self.continuation_uses[-1][1])
-    return assign
+    return templates.replace(
+        template, var_name=self.get_local(CONTROL_VAR_NAME))
 
-  def _create_continuation_init(self):
-    template = """
-      var_name = False
-    """
-    assign, = templates.replace(
-        template, var_name=self.continuation_uses[-1][1])
-    return assign
+  def _postprocess_statement(self, node):
+    # Example of how the state machine below works:
+    #
+    #   1| stmt           # State: CONTINUE_USED = False
+    #    |                # Action: none
+    #   2| if cond:
+    #   3|   continue     # State: CONTINUE_USED = True,
+    #    |                #        GUARD_CREATED = False,
+    #    |                #        CREATE_GUARD_NEXT = False
+    #    |                # Action: set CREATE_GUARD_NEXT = True
+    #   4| stmt           # State: CONTINUE_USED = True,
+    #    |                #        GUARD_CREATED = False,
+    #    |                #        CREATE_GUARD_NEXT = True
+    #    |                # Action: create `if not continue_used`,
+    #    |                #         set GUARD_CREATED = True
+    #   5| stmt           # State: CONTINUE_USED = True, GUARD_CREATED = True
+    #    |                # Action: none (will be wrapped under previously
+    #    |                #         created if node)
 
-  def _visit_and_reindent_if_necessary(self, nodes):
-    reorganized_nodes = []
-    current_dest = reorganized_nodes
-    continue_used_in_block = False
-    for i, n in enumerate(nodes):
-      # TODO(mdan): This could be optimized if control structures are simple.
-      self.continuation_uses[-1][0] = False
-      n = self.visit(n)
-      current_dest.append(n)
-      if self.continuation_uses[-1][0]:
-        continue_used_in_block = True
-        if i < len(nodes) - 1:  # Last statement in block needs no protection.
-          cond = self._create_continuation_check()
-          current_dest.append(cond)
-          current_dest = cond.body
-    self.continuation_uses[-1][0] = continue_used_in_block
-    return reorganized_nodes
+    if self.get_local(CONTINUE_USED, False):
+      if self.get_local(GUARD_CREATED, False):
+        return node, None
 
-  def _process_loop_block(self, block, scope):
-    cont_var = self.context.namer.new_symbol('cont_requested', scope.referenced)
-    self.continuation_uses.append([False, cont_var])
-    block = self._visit_and_reindent_if_necessary(block)
-    if self.continuation_uses[-1][0]:
-      block.insert(0, self._create_continuation_init())
-    self.continuation_uses.pop()
-    return block
+      elif not self.get_local(CREATE_GUARD_NEXT, False):
+        self.set_local(CREATE_GUARD_NEXT, True)
+        return node, None
+
+      else:
+        self.set_local(GUARD_CREATED, True)
+        template = """
+          if not var_name:
+            original_node
+        """
+        cond, = templates.replace(
+            template,
+            var_name=self.get_local(CONTROL_VAR_NAME),
+            original_node=node)
+        return cond, cond.body
+    return node, None
+
+  def _visit_loop_body(self, node, nodes):
+    self.enter_local_scope()
+    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
+    continue_var = self.context.namer.new_symbol('continue_', scope.referenced)
+    self.set_local(CONTROL_VAR_NAME, continue_var)
+
+    nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
+
+    if self.get_local(CONTINUE_USED, False):
+      template = """
+        var_name = False
+      """
+      control_var_init = templates.replace(template, var_name=continue_var)
+      nodes = control_var_init + nodes
+
+    self.exit_local_scope()
+    return nodes
+
+  def _visit_non_loop_body(self, nodes):
+    self.enter_local_scope(inherit=(CONTROL_VAR_NAME,))
+    nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
+    continue_used = self.get_local(CONTINUE_USED, False)
+    self.exit_local_scope(keep=(CONTINUE_USED,))
+    return nodes, continue_used
 
   def visit_While(self, node):
-    self.generic_visit(node.test)
-    node.body = self._process_loop_block(node.body,
-                                         anno.getanno(node,
-                                                      NodeAnno.BODY_SCOPE))
-    for n in node.orelse:
-      self.generic_visit(n)
+    node.test = self.visit(node.test)
+    node.body = self._visit_loop_body(node, node.body)
+    # A continue in the else clause applies to the containing scope.
+    node.orelse, _ = self._visit_non_loop_body(node.orelse)
     return node
 
   def visit_For(self, node):
-    self.generic_visit(node.target)
-    self.generic_visit(node.iter)
-    node.body = self._process_loop_block(node.body,
-                                         anno.getanno(node,
-                                                      NodeAnno.BODY_SCOPE))
-    for n in node.orelse:
-      self.generic_visit(n)
+    node.target = self.generic_visit(node.target)
+    node.iter = self.generic_visit(node.iter)
+    node.body = self._visit_loop_body(node, node.body)
+    # A continue in the else clause applies to the containing scope.
+    node.orelse, _ = self._visit_non_loop_body(node.orelse)
     return node
 
   def visit_If(self, node):
-    if self.continuation_uses:
-      self.generic_visit(node.test)
-      node.body = self._visit_and_reindent_if_necessary(node.body)
-      continue_used_in_body = self.continuation_uses[-1][0]
-      node.orelse = self._visit_and_reindent_if_necessary(node.orelse)
-      self.continuation_uses[-1][0] = (
-          continue_used_in_body or self.continuation_uses[-1][0])
-    else:
-      node = self.generic_visit(node)
+    node.test = self.generic_visit(node.test)
+    node.body, continue_used_body = self._visit_non_loop_body(node.body)
+    node.orelse, continue_used_orelse = self._visit_non_loop_body(node.orelse)
+    self.set_local(CONTINUE_USED, continue_used_body or continue_used_orelse)
     return node
 
-  def visit_Continue(self, node):
-    self.continuation_uses[-1][0] = True
-    return self._create_continuation_trigger()
-
-  def visit_Break(self, node):
-    assert False, 'break statement should be desugared at this point'
+  def visit_With(self, node):
+    node.items = self.visit_block(node.items)
+    node.body, _ = self._visit_non_loop_body(node.body)
+    return node
 
 
 def transform(node, namer):

@@ -466,7 +466,7 @@ REGISTER_OP("BroadcastTo")
           // so no check needed.
           if (i >= in_offset) {
             DimensionHandle in_dim = c->Dim(in, i - in_offset);
-            if (c->ValueKnown(in_dim)) {
+            if (c->ValueKnown(in_dim) && c->Value(in_dim) != 0) {
               if (c->Value(dim) % c->Value(in_dim) != 0) {
                 return errors::InvalidArgument(
                     "Cannot broadcast a tensor with shape ", c->DebugString(in),

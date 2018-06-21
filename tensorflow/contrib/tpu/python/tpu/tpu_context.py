@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===================================================================
-"""TPU system metdata and associated tooling."""
+"""TPU system metadata and associated tooling."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -35,7 +35,98 @@ _DEFAULT_COORDINATOR_JOB_NAME = 'coordinator'
 _LOCAL_MASTERS = ('', 'local')
 
 
-class _TPUContext(object):
+class TPUContext(object):
+  """The context of current input_fn invocation."""
+
+  def __init__(self, internal_ctx, input_device=None, invocation_index=None):
+    self._internal_ctx = internal_ctx
+    self._input_device = input_device
+    self._invocation_index = invocation_index
+
+  def current_input_fn_deployment(self):
+    """The configuration of the current input_fn invocation.
+
+    The configuration depends on `TPUConfig.per_host_input_for_training`. See
+    `TPUConfig` for details.
+
+    Only set in params dict of input_fn
+
+    Returns:
+      A tuple of
+        1. Device spec string: String, is the current CPU host where the
+           input_fn is invoked.
+        2. Current invocation index: Int, 0-based index of the input_fn
+           invocation. See next item for details.
+        3. Total invocation count: Int, the total number of times to invoke the
+           input_fn on all CPU hosts. Each invocation will be passed with a new
+           `TPUContext` instance with current invocation index set properly.
+        4. Total number of replicas consumed by current_invocation: Int, the
+           number of replicas fed by the data returned by current input_fn. For
+           example, for per_core input pipeline deployment
+           and non-model-parallelism, total invocation count is equal to
+           the number of cores in the system and num replicas consumed by
+           current invocation is 1. For per-host v2 input pipeline deployment,
+           total invocation count is equal to the number of hosts in the system
+           and num replicas consumed by current invocation is equal to number of
+           cores per host.
+    """
+    if self._internal_ctx.is_input_sharded_per_core():
+      total_invocation_count = (self._internal_ctx.num_hosts
+                                * self._internal_ctx.num_of_replicas_per_host)
+      replicas_consumed = 1
+    else:
+      total_invocation_count = self._internal_ctx.num_hosts
+      replicas_consumed = self._internal_ctx.num_of_replicas_per_host
+    return (self._input_device, self._invocation_index,
+            total_invocation_count, replicas_consumed)
+
+  @property
+  def num_replicas(self):
+    """The total number of replicas.
+
+    For non-model-parallelism, num_replicas should be the total num of TPU
+    cores in the system.
+
+    Returns:
+      The number of replicas.
+    """
+    return self._internal_ctx.num_replicas
+
+  def device_for_replica(self, replica_id):
+    """Returns the tuple of (CPU device and device ordinal) for replica.
+
+    This should be used for full replicate for non-model-parallelism.
+
+    Args:
+       replica_id: Int, the replica index.
+
+    Returns:
+       A tuple of device spec for CPU device and int device ordinal.
+    """
+    # Note that: For the non-model parallelism, the mapping could be
+    # a random permutation. The order should not matter in most cases
+    # as far as model is replicated to all cores in the system.
+
+    # If the precise replica_id to device mapping is required, please
+    # set the computation_shape as [1,1,1] in TPUConfig to enable
+    # the model parallelism.
+    if self._internal_ctx.model_parallelism_enabled:
+      return RuntimeError(
+          'device_for_replica is not yet implemented for model parallelism. '
+          'b/79689078.')
+
+    master = self._internal_ctx.master_job
+    job_device = '' if master is None else ('/job:%s' % master)
+
+    num_of_replicas_per_host = self._internal_ctx.num_of_replicas_per_host
+    host_id = replica_id / num_of_replicas_per_host
+    ordinal_id = replica_id % num_of_replicas_per_host
+
+    host_device = '%s/task:%d/device:CPU:0' % (job_device, host_id)
+    return (host_device, ordinal_id)
+
+
+class _InternalTPUContext(object):
   """A context holds immutable states of TPU computation.
 
   This immutable object holds TPUEstimator config, train/eval batch size, and
@@ -44,9 +135,13 @@ class _TPUContext(object):
   information commonly required by TPU computation, such as TPU device names,
   TPU hosts, shard batch size, etc.
 
+  if eval_on_tpu is False, then execution of eval on TPU is disabled.
+  if eval_on_tpu is True, but use_tpu is False, a warning is issued,
+  and TPU execution is disabled for all modes.
+
   N.B. As `mode` is not immutable state in Estimator, but essential to
   distinguish between TPU training and evaluation, a common usage for
-  _TPUContext with `mode` is as follows:
+  _InternalTPUContext with `mode` is as follows:
   ```
   with _ctx.with_mode(mode) as ctx:
     if ctx.is_running_on_cpu():
@@ -55,12 +150,17 @@ class _TPUContext(object):
   """
 
   def __init__(self, config, train_batch_size, eval_batch_size,
-               predict_batch_size, use_tpu):
+               predict_batch_size, use_tpu, eval_on_tpu=True):
     self._config = config
     self._train_batch_size = train_batch_size
     self._eval_batch_size = eval_batch_size
     self._predict_batch_size = predict_batch_size
     self._use_tpu = use_tpu
+    logging.info('_TPUContext: eval_on_tpu %s', eval_on_tpu)
+    if not use_tpu and eval_on_tpu:
+      logging.warning('eval_on_tpu ignored because use_tpu is False.')
+
+    self._eval_on_tpu = eval_on_tpu
     self._model_parallelism_enabled = (
         use_tpu and config.tpu_config.computation_shape)
     self._mode = None
@@ -246,6 +346,10 @@ class _TPUContext(object):
     if not self._use_tpu:
       return True
 
+    if mode == model_fn_lib.ModeKeys.EVAL and not self._eval_on_tpu:
+      logging.info('_is_running_on_cpu: eval_on_tpu disabled')
+      return True
+
     if mode != model_fn_lib.ModeKeys.PREDICT:
       return False
 
@@ -345,6 +449,7 @@ class _TPUContext(object):
   @property
   def tpu_host_placement_function(self):
     """Returns the TPU host place function."""
+
     master = self.master_job
 
     def _placement_function(_sentinal=None, core_id=None, host_id=None):  # pylint: disable=invalid-name
@@ -473,8 +578,8 @@ class _TPUContext(object):
     self._lazy_validation_dict[mode] = True
 
 
-class _OneCoreTPUContext(_TPUContext):
-  """Special _TPUContext for one core usage."""
+class _OneCoreTPUContext(_InternalTPUContext):
+  """Special _InternalTPUContext for one core usage."""
 
   def __init__(self, config, train_batch_size, eval_batch_size,
                predict_batch_size, use_tpu):
@@ -503,8 +608,8 @@ class _OneCoreTPUContext(_TPUContext):
 
 
 def _get_tpu_context(config, train_batch_size, eval_batch_size,
-                     predict_batch_size, use_tpu):
-  """Returns an instance of `_TPUContext`."""
+                     predict_batch_size, use_tpu, eval_on_tpu):
+  """Returns an instance of `_InternalTPUContext`."""
 
   if (config.tpu_config.num_shards == 1 and
       config.tpu_config.computation_shape is None):
@@ -514,5 +619,5 @@ def _get_tpu_context(config, train_batch_size, eval_batch_size,
     return _OneCoreTPUContext(config, train_batch_size, eval_batch_size,
                               predict_batch_size, use_tpu)
 
-  return _TPUContext(config, train_batch_size, eval_batch_size,
-                     predict_batch_size, use_tpu)
+  return _InternalTPUContext(config, train_batch_size, eval_batch_size,
+                             predict_batch_size, use_tpu, eval_on_tpu)
