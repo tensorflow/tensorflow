@@ -97,9 +97,13 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
                                         **kwargs_):
 
   def Test(self):
+    # rocBLAS on ROCm stack does not support TRSM yet
+    if test_lib.is_built_with_rocm():
+      use_gpu = False
+    else:
     # TODO(rmlarsen): Debug illegal address bug on CUDA and re-enable
     # GPU test for matrix_solve.
-    use_gpu = False if functor_ == linalg_ops.matrix_solve else True
+      use_gpu = False if functor_ == linalg_ops.matrix_solve else True
 
     with self.test_session(use_gpu=use_gpu):
       np.random.seed(1)
