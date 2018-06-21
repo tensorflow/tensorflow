@@ -105,7 +105,7 @@ RUN tensorflow/tools/ci_build/builds/configured CPU \
     bazel --bazelrc=/root/.bazelrc build -c opt \
         tensorflow/tools/pip_package:build_pip_package && \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package "${WHL_DIR}" && \
-    ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}/tensorflow-*.whl" && \
+    ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}"/tensorflow-*.whl && \
     rm -rf /root/.cache
 # Clean up Bazel cache when done.
 
