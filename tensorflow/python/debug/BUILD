@@ -167,6 +167,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -802,6 +803,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//third_party/py/numpy",
     ],
 )
 

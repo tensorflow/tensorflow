@@ -210,6 +210,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | **`config`** | | **Set or show persistent TFDBG UI configuration.** | |
 | | `set` | Set the value of a config item: {`graph_recursion_depth`, `mouse_mode`}. | `config set graph_recursion_depth 3` |
 | | `show` | Show current persistent UI configuration. | `config show` |
+| **`version`** | | **Print the version of TensorFlow and its key dependencies.** | `version` |
 | **`help`** | | **Print general help information** | `help` |
 | | `help <command>` | Print help for given command. | `help lt` |
 
