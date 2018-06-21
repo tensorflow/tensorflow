@@ -119,10 +119,6 @@ def batch_function(num_batch_threads,
             raise ValueError("All arguments to functions decorated with "
                              "`batch_function`  are supposed to be Tensors; "
                              "found %s" % repr(a))
-        for inp in computation.captured_inputs:
-          print("inp: %s" % inp)
-          for op in inp.consumers():
-            print("op: %s" % op)
         return gen_batch_ops.batch_function(
             num_batch_threads=num_batch_threads,
             max_batch_size=max_batch_size,
