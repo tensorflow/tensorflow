@@ -24,7 +24,6 @@ from tensorflow.contrib.data.python.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -171,10 +170,7 @@ class DirectedInterleaveDataset(dataset_ops.Dataset):
     return gen_dataset_ops.directed_interleave_dataset(
         self._selector_input._as_variant_tensor(),
         [data_input._as_variant_tensor() for data_input in self._data_inputs],
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
+        **dataset_ops.flat_structure(self))
     # pylint: enable=protected-access
 
   @property

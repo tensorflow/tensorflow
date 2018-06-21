@@ -264,6 +264,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     DisableAllStages(optimizer);
     optimizer->options_.simplify_aggregation = true;
   }
+
+  void EnableOnlyLog1p(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.convert_log1p = true;
+  }
 };
 
 TEST_F(ArithmeticOptimizerTest, NoOp) {
@@ -1510,7 +1515,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesThroughChain) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  ArithmeticOptimizer optimizer;
+  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
   EnableOnlyRemoveIdentityTranspose(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
@@ -2482,6 +2487,43 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   AddNode("out_.5", "Rsqrt", {"x", AsControlDependency("y_.5")}, {}, &want);
   AddNode("out_1", "Reciprocal", {"x", AsControlDependency("y_1")}, {}, &want);
   AddNode("out", "Pow", {"x", "y"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ArithmeticOptimizerTest, Log1p) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto x1 = ops::Const(s.WithOpName("x1"), {1.0f, 1.0f}, {1, 2});
+  auto x2 = ops::Const(s.WithOpName("x2"), {2.0f, 2.0f}, {1, 2});
+  auto x3 = ops::Const(s.WithOpName("x3"), {3.0f, 3.0f}, {1, 2});
+  auto a12 = ops::Add(s.WithOpName("a12").WithControlDependencies(x3), x1, x2);
+  auto a23 = ops::Add(s.WithOpName("a23"), x2, x3);
+  Output out1 = ops::Log(s.WithOpName("out1"), a12);
+  Output out2 = ops::Log(s.WithOpName("out2"), a23);
+
+  GrapplerItem item;
+  item.fetch = {"out1", "out2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(2, tensors_expected.size());
+
+  GraphDef got;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyLog1p(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &got);
+  auto tensors = EvaluateNodes(got, item.fetch);
+  EXPECT_EQ(2, tensors.size());
+
+  GraphDef want;
+  AddNode("x1", "Const", {}, {}, &want);
+  AddNode("x2", "Const", {}, {}, &want);
+  AddNode("x3", "Const", {}, {}, &want);
+  AddNode("a23", "Add", {"x2", "x3"}, {}, &want);
+  AddNode("out1", "Log1p",
+          {"x2", AsControlDependency("x1"), AsControlDependency("x3")}, {},
+          &want);
+  AddNode("out2", "Log", {"a23"}, {}, &want);
 
   CompareGraphs(want, got);
 }

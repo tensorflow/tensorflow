@@ -183,6 +183,10 @@ class DependencyHloOrdering : public PredecessorHloOrdering {
 // interference is reduced relative to DependencyHloOrdering.
 class SequentialHloOrdering : public HloOrdering {
  public:
+  // TODO(dimvar): HloModuleSequence is not a good name because it sounds like
+  // a sequence of modules, instead of a map of schedules for all computations
+  // in a module. We should change it at some point.
+  //
   // A sequence of instructions for each computation in the module.
   using HloModuleSequence =
       tensorflow::gtl::FlatMap<const HloComputation*,

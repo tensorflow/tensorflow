@@ -79,12 +79,14 @@ def _parse_saved_model(export_dir):
                    constants.SAVED_MODEL_FILENAME_PB))
 
 
-def _get_asset_tensors(export_dir, meta_graph_def_to_load):
+def _get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
   """Gets the asset tensors, if defined in the meta graph def to load.
 
   Args:
     export_dir: Directory where the SavedModel is located.
     meta_graph_def_to_load: The meta graph def from the SavedModel to be loaded.
+    import_scope: Optional `string` -- if specified, prepend this followed by
+        '/' to all returned asset tensor names.
 
   Returns:
     A dictionary of asset tensors, keyed by the name of the asset tensor. The
@@ -104,7 +106,10 @@ def _get_asset_tensors(export_dir, meta_graph_def_to_load):
     for asset_any_proto in assets_any_proto:
       asset_proto = meta_graph_pb2.AssetFileDef()
       asset_any_proto.Unpack(asset_proto)
-      asset_tensor_dict[asset_proto.tensor_info.name] = os.path.join(
+      tensor_name = asset_proto.tensor_info.name
+      if import_scope:
+        tensor_name = "%s/%s" % (import_scope, tensor_name)
+      asset_tensor_dict[tensor_name] = os.path.join(
           compat.as_bytes(assets_directory),
           compat.as_bytes(asset_proto.filename))
   return asset_tensor_dict
@@ -179,7 +184,7 @@ def maybe_saved_model_directory(export_dir):
 
 
 @tf_export("saved_model.loader.load")
-def load(sess, tags, export_dir, **saver_kwargs):
+def load(sess, tags, export_dir, import_scope=None, **saver_kwargs):
   """Loads the model from a SavedModel as specified by tags.
 
   Args:
@@ -189,6 +194,10 @@ def load(sess, tags, export_dir, **saver_kwargs):
         SavedModel `save()` API.
     export_dir: Directory in which the SavedModel protocol buffer and variables
         to be loaded are located.
+    import_scope: Optional `string` -- if specified, prepend this string
+        followed by '/' to all loaded tensor names. This scope is applied to
+        tensor instances loaded into the passed session, but it is *not* written
+        through to the static `MetaGraphDef` protocol buffer that is returned.
     **saver_kwargs: Optional keyword arguments passed through to Saver.
 
   Returns:
@@ -216,7 +225,8 @@ def load(sess, tags, export_dir, **saver_kwargs):
       )
 
     # Build a saver by importing the meta graph def to load.
-    saver = tf_saver.import_meta_graph(meta_graph_def_to_load, **saver_kwargs)
+    saver = tf_saver.import_meta_graph(
+        meta_graph_def_to_load, import_scope=import_scope, **saver_kwargs)
 
     if saver:
       # Build the checkpoint path where the variables are located.
@@ -232,8 +242,8 @@ def load(sess, tags, export_dir, **saver_kwargs):
                       "checkpoints were restored.")
 
     # Get asset tensors, if any.
-    asset_tensors_dictionary = _get_asset_tensors(export_dir,
-                                                  meta_graph_def_to_load)
+    asset_tensors_dictionary = _get_asset_tensors(
+        export_dir, meta_graph_def_to_load, import_scope=import_scope)
 
     main_op_tensor = (
         _get_main_op_tensor(meta_graph_def_to_load) or

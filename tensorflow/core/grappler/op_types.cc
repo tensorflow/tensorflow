@@ -193,6 +193,8 @@ bool IsLess(const NodeDef& node) { return node.op() == "Less"; }
 
 bool IsLessEqual(const NodeDef& node) { return node.op() == "LessEqual"; }
 
+bool IsLog(const NodeDef& node) { return node.op() == "Log"; }
+
 bool IsLogicalAnd(const NodeDef& node) { return node.op() == "LogicalAnd"; }
 
 bool IsLogicalNot(const NodeDef& node) { return node.op() == "LogicalNot"; }

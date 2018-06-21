@@ -232,7 +232,6 @@ tf_proto_library(
     name = "protos_all",
     srcs = [],
     cc_api_version = 2,
-    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -879,6 +878,7 @@ cc_library(
     hdrs = [
         "util/stats_calculator.h",
     ],
+    copts = tf_copts(),
 )
 
 cc_library(
@@ -2237,7 +2237,6 @@ tf_proto_library(
     name = "error_codes_proto",
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
-    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -2260,7 +2259,6 @@ tf_proto_library(
     name = "protos_all_proto",
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
-    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,

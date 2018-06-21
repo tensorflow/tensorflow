@@ -923,6 +923,40 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
       *HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op1, op2)));
 }
 
+TEST_F(HloInstructionTest, IdenticalCallInstructions) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+subcomp1 (x: f32[]) -> f32[] {
+  x = f32[] parameter(0)
+  ROOT n = f32[] sine(x)
+}
+
+subcomp2 (x: f32[]) -> f32[] {
+  x = f32[] parameter(0)
+  ROOT n = f32[] cosine(x)
+}
+
+ENTRY entry (param: f32[]) -> (f32[], f32[], f32[]) {
+  p = f32[] parameter(0)
+  t1 = f32[] call(p), to_apply=subcomp1
+  t2 = f32[] call(p), to_apply=subcomp1
+  t3 = f32[] call(p), to_apply=subcomp2
+  ROOT t = (f32[], f32[], f32[]) tuple(t1, t2, t3)
+ }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto* t1 = root->operand(0);
+  auto* t2 = root->operand(1);
+  auto* t3 = root->operand(2);
+
+  EXPECT_TRUE(StructuralEqual(*t1, *t2));
+  EXPECT_FALSE(StructuralEqual(*t1, *t3));
+}
+
 TEST_F(HloInstructionTest, FunctionVisitor) {
   // Verify the function visitor HloInstruction::Accept visits all instructions
   // from a root properly given the following graph:
