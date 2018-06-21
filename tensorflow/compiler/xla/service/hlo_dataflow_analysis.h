@@ -63,6 +63,8 @@ class HloDataflowAnalysis {
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false);
 
+  static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
+
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
   bool ValueIsDefinedAt(const HloInstruction* instruction,

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -121,7 +122,6 @@ void PointsToSet::add_tuple_source(const ShapeIndex& index,
 }
 
 namespace {
-
 // Gather fusion instructions from 'instruction' into 'fusion_instructions'.
 void GatherFusionInstructions(
     HloInstruction* instruction,
@@ -723,7 +723,8 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
     return false;
   }
   if (user->opcode() == HloOpcode::kFusion) {
-    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
+        user->fusion_kind() == HloInstruction::FusionKind::kInput) {
       if (user->fused_expression_root()->opcode() ==
           HloOpcode::kDynamicUpdateSlice) {
         // Loop fusion with kDynamicUpdateSlice fused root.
@@ -732,6 +733,11 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
         // 'operand_index', and this singleton use is the fused root at operand
         // index 0.
         return HasUniqueFusedUseOfOperandAt(operand, operand_index, user, 0);
+      } else {
+        HloInstruction* fusion_param =
+            user->fused_parameter(user->operand_index(operand));
+        return HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
+            fusion_param);
       }
     } else if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
                user->fused_expression_root()->opcode() == HloOpcode::kAdd) {

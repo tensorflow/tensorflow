@@ -1998,7 +1998,7 @@ TEST_F(CanShareOperandBufferWithUserTest,
 }
 
 TEST_F(CanShareOperandBufferWithUserTest,
-       MultiOutputFusionCantAliasOperandBuffer) {
+       MultiOutputFusionCanAliasOperandBuffer) {
   auto builder = HloComputation::Builder(TestName());
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
@@ -2022,14 +2022,14 @@ TEST_F(CanShareOperandBufferWithUserTest,
       {tuple, copy1, copy0}, HloInstruction::FusionKind::kLoop);
   RunAnalysis();
 
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
-                                                                 fusion, {0}));
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
-                                                                 fusion, {1}));
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
-                                                                 fusion, {0}));
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
-                                                                 fusion, {1}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                fusion, {0}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                fusion, {1}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {0}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {1}));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest,
@@ -2055,6 +2055,31 @@ TEST_F(CanShareOperandBufferWithUserTest,
 
   EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(operand, {},
                                                                 fusion, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       CanShareOperandWhenDynamicUpdateSliceIsFedByDynamicSliceWithSameIndex) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {1, 2});
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape, "param0"));
+  auto index = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int64>({0, 0})));
+  auto ds = builder.AddInstruction(
+      HloInstruction::CreateDynamicSlice(slice_shape, param, index, {1, 2, 2}));
+
+  auto dus = builder.AddInstruction(
+      HloInstruction::CreateDynamicUpdateSlice(data_shape, param, ds, index));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {dus, ds, index}, HloInstruction::FusionKind::kLoop);
+  RunAnalysis();
+
+  EXPECT_TRUE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(param, {}, fusion, {}));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
