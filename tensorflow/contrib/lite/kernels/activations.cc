@@ -84,6 +84,38 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
                                      &data->input_left_shift);
     data->input_range_radius =
         CalculateInputRadius(kInputIntegerBits, data->input_left_shift);
+  } else if (input->type == kTfLiteInt16) {
+    static constexpr int kInputIntegerBits = 3;
+    static constexpr int kOutputFractionalBits = 15;
+
+    // These operators are implemented in fixed-point arithmetic,
+    // which intrinsically wants symmetric ranges (zero_point==0)
+    // and power-of-two scales (power-of-two is abbreviated below as POT).
+    // While more general support would be possible by means of rescaling,
+    // that would add some overhead and some loss of accuracy and wouldn't
+    // be used at the moment as current quantized LSTM applications are
+    // happy with symmetric, power-of-two-scales quantization. So we just
+    // implement that narrow case only for now.
+
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+
+    int input_scale_log2_rounded;
+    TF_LITE_ENSURE(context,
+                   CheckedLog2(input->params.scale, &input_scale_log2_rounded));
+
+    int output_scale_log2_rounded;
+    TF_LITE_ENSURE(
+        context, CheckedLog2(output->params.scale, &output_scale_log2_rounded));
+    TF_LITE_ENSURE_EQ(context, output_scale_log2_rounded,
+                      -kOutputFractionalBits);
+
+    data->input_left_shift =
+        (15 - kInputIntegerBits) + input_scale_log2_rounded;
+    // Support for shifts is limited until we have a parameterized version of
+    // SaturatingRoundingMultiplyByPOT().
+    TF_LITE_ENSURE(context, data->input_left_shift >= 0);
+    TF_LITE_ENSURE(context, data->input_left_shift <= 1);
   }
 
   return context->ResizeTensor(context, output,
@@ -114,6 +146,30 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
                                      &data->input_left_shift);
     data->input_range_radius =
         CalculateInputRadius(kInputIntegerBits, data->input_left_shift);
+  } else if (input->type == kTfLiteInt16) {
+    static constexpr int kInputIntegerBits = 3;
+    static constexpr int kOutputFractionalBits = 15;
+
+    // See comments in TanhPrepare about requiring zero_point==0
+    // and a power-of-two ("POT") scale.
+
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+
+    int input_scale_log2_rounded;
+    TF_LITE_ENSURE(context,
+                   CheckedLog2(input->params.scale, &input_scale_log2_rounded));
+
+    int output_scale_log2_rounded;
+    TF_LITE_ENSURE(
+        context, CheckedLog2(output->params.scale, &output_scale_log2_rounded));
+    TF_LITE_ENSURE_EQ(context, output_scale_log2_rounded,
+                      -kOutputFractionalBits);
+
+    data->input_left_shift =
+        (15 - kInputIntegerBits) + input_scale_log2_rounded;
+    // The int16 logistic implementation does not support shifting of the input.
+    TF_LITE_ENSURE_EQ(context, data->input_left_shift, 0);
   }
 
   return context->ResizeTensor(context, output,
@@ -250,6 +306,13 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       for (; in < in_end; in++, out++) *out = std::tanh(*in);
       return kTfLiteOk;
     } break;
+    case kTfLiteInt16: {
+      optimized_ops::Tanh(GetTensorData<int16_t>(input), GetTensorShape(input),
+                          data->input_left_shift,
+                          GetTensorData<int16_t>(output),
+                          GetTensorShape(output));
+      return kTfLiteOk;
+    } break;
     case kTfLiteUInt8: {
       optimized_ops::Tanh(GetTensorData<uint8_t>(input), GetTensorShape(input),
                           input->params.zero_point, data->input_range_radius,
@@ -278,6 +341,12 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
       float* in_end = in + elements;
       float* out = output->data.f;
       for (; in < in_end; in++, out++) *out = 1.f / (1.f + std::exp(-*in));
+      break;
+    }
+    case kTfLiteInt16: {
+      optimized_ops::Logistic(
+          GetTensorData<int16>(input), GetTensorShape(input),
+          GetTensorData<int16_t>(output), GetTensorShape(output));
       break;
     }
     case kTfLiteUInt8: {
