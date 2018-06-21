@@ -203,6 +203,7 @@ cc_library(
         ":driver",
         ":ops",
         ":kernels",
+        ":poplar_backend",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
         "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -217,6 +218,24 @@ cc_library(
         ":tf_graph_program",
         ":protos_py",
         "@local_config_poplar//poplar:poplar_lib",
+    ],
+    linkstatic=1,
+    alwayslink = True,
+)
+
+cc_library(
+    name = "poplar_backend",
+    srcs = [
+        "driver/xla_ipu_backend.cc",
+    ],
+    hdrs = [
+        "driver/xla_ipu_common.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
     ],
     linkstatic=1,
     alwayslink = True,

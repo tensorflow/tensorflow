@@ -57,6 +57,7 @@ cc_library(
 cc_library(
     name = "plugin_backend",
     deps = [
+        "//tensorflow/compiler/plugin/poplar:poplar_backend",
         #"//tensorflow/compiler/plugin/example:example_backend",
     ],
 )
