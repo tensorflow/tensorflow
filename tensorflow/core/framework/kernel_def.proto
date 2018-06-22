@@ -34,3 +34,8 @@ message KernelDef {
   // value matching this.
   string label = 5;
 }
+
+// A collection of KernelDefs
+message KernelList {
+  repeated KernelDef kernel = 1;
+};
