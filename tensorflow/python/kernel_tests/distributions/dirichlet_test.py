@@ -20,6 +20,7 @@ import importlib
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -263,6 +264,15 @@ class DirichletTest(test.TestCase):
               stats.beta(
                   a=1., b=2.).cdf)[0],
           0.01)
+
+  def testDirichletFullyReparameterized(self):
+    alpha = constant_op.constant([1.0, 2.0, 3.0])
+    with backprop.GradientTape() as tape:
+      tape.watch(alpha)
+      dirichlet = dirichlet_lib.Dirichlet(alpha)
+      samples = dirichlet.sample(100)
+    grad_alpha = tape.gradient(samples, alpha)
+    self.assertIsNotNone(grad_alpha)
 
   def testDirichletDirichletKL(self):
     conc1 = np.array([[1., 2., 3., 1.5, 2.5, 3.5],
