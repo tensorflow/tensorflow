@@ -35,7 +35,13 @@ tf_gen_op_libs(
 
 cc_library(
     name = "dataset_kernels",
-    srcs = ["kernels/kafka_dataset_ops.cc"],
+    srcs = [
+        "kernels/kafka_dataset_ops.cc",
+        "kernels/ignite_binary_object_parser.h",
+        "kernels/ignite_binary_object_parser.cpp",
+        "kernels/ignite_client.h",
+        "kernels/ignite_client.cpp"
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",

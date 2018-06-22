@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "src-cpp/rdkafkacpp.h"
 
+#include "ignite_client.h"
+
 namespace tensorflow {
 
 class KafkaDatasetOp : public DatasetOpKernel {
@@ -60,25 +62,37 @@ class KafkaDatasetOp : public DatasetOpKernel {
       explicit Iterator(const Params& params) : DatasetIterator<Dataset>(params) {}
 
       Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors, bool* end_of_sequence) override {
+        ignite::client client;
+
+        client.scan_query("MNIST_CACHE", out_tensors); 
+
+        // Tensor lb = out_tensors->back();
+        // out_tensors->pop_back();
+        // Tensor pixels = out_tensors->back();
+        // out_tensors->pop_back();
+
+        // out_tensors->emplace_back(lb);
+        // out_tensors->emplace_back(pixels);
+
         // Create tensor for key.
-	Tensor key_tensor(cpu_allocator(), DT_INT32, {});
-        key_tensor.scalar<int32>()() = 42;
+      	// Tensor key_tensor(cpu_allocator(), DT_INT32, {});
+       //        key_tensor.scalar<int32>()() = 42;
 
-	// Create tensor for pixels.
-	Tensor pixels_tensor(cpu_allocator(), DT_DOUBLE, TensorShape({784}));
+      	// // Create tensor for pixels.
+      	// Tensor pixels_tensor(cpu_allocator(), DT_DOUBLE, TensorShape({784}));
 
-	for (int i = 0; i < 784; i++) {
-		pixels_tensor.vec<double>()(1) = 0.42;
-	}
+      	// for (int i = 0; i < 784; i++) {
+      	// 	pixels_tensor.vec<double>()(i) = 0.42;
+      	// }
 
-	// Create tensor for label.
-	Tensor lb_tensor(cpu_allocator(), DT_INT32, {});
-	lb_tensor.scalar<int32>()() = 3;
+      	// // Create tensor for label.
+      	// Tensor lb_tensor(cpu_allocator(), DT_INT32, {});
+      	// lb_tensor.scalar<int32>()() = 3;
 
-	// Pack all tensors together.
-        out_tensors->emplace_back(std::move(key_tensor));
-        out_tensors->emplace_back(std::move(lb_tensor));
-	out_tensors->emplace_back(std::move(pixels_tensor));
+      	// // Pack all tensors together.
+       //        out_tensors->emplace_back(std::move(key_tensor));
+       //        out_tensors->emplace_back(std::move(lb_tensor));
+      	// out_tensors->emplace_back(std::move(pixels_tensor));
 
         *end_of_sequence = false;
 
