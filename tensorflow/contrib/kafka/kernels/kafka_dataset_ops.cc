@@ -38,12 +38,12 @@ class KafkaDatasetOp : public DatasetOpKernel {
     }
 
     const DataTypeVector& output_dtypes() const override {
-      static DataTypeVector* dtypes = new DataTypeVector({DT_INT32, DT_FLOAT64, DT_INT32});
+      static DataTypeVector* dtypes = new DataTypeVector({DT_INT32, DT_INT32, DT_DOUBLE});
       return *dtypes;
     }
 
     const std::vector<PartialTensorShape>& output_shapes() const override {
-      static std::vector<PartialTensorShape>* shapes = new std::vector<PartialTensorShape>({{}, {784}, {}});
+      static std::vector<PartialTensorShape>* shapes = new std::vector<PartialTensorShape>({{}, {}, {784}});
       return *shapes;
     }
 
@@ -65,10 +65,10 @@ class KafkaDatasetOp : public DatasetOpKernel {
         key_tensor.scalar<int32>()() = 42;
 
 	// Create tensor for pixels.
-	Tensor pixels_tensor(cpu_allocator(), DT_FLOAT64, TensorShape({4}));
+	Tensor pixels_tensor(cpu_allocator(), DT_DOUBLE, TensorShape({784}));
 
 	for (int i = 0; i < 784; i++) {
-		pixels_tensor.vec<float64>()(i) = 0.42;
+		pixels_tensor.vec<double>()(1) = 0.42;
 	}
 
 	// Create tensor for label.
@@ -77,8 +77,8 @@ class KafkaDatasetOp : public DatasetOpKernel {
 
 	// Pack all tensors together.
         out_tensors->emplace_back(std::move(key_tensor));
-        out_tensors->emplace_back(std::move(pixels_tensor));
         out_tensors->emplace_back(std::move(lb_tensor));
+	out_tensors->emplace_back(std::move(pixels_tensor));
 
         *end_of_sequence = false;
 

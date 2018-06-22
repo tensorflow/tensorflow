@@ -52,7 +52,7 @@ class KafkaDataset(Dataset):
     return {
 	'key' : tensor_shape.scalar(),
         'val' : {
-            'pixels' : tensor_shape.TensorShape([4]),
+            'pixels' : tensor_shape.TensorShape([784]),
 	    'lb' : tensor_shape.scalar()
         }
     }
@@ -62,7 +62,7 @@ class KafkaDataset(Dataset):
     return {
     	'key' : dtypes.int32,
         'val' : {
-           'pixels' : dtypes.float64,
+           'pixels' : dtypes.double,
            'lb' : dtypes.int32
         }
     }
