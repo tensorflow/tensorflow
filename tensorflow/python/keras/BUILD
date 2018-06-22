@@ -859,7 +859,7 @@ py_test(
 
 py_test(
     name = "backend_test",
-    size = "small",
+    size = "medium",
     srcs = ["backend_test.py"],
     srcs_version = "PY2AND3",
     deps = [
