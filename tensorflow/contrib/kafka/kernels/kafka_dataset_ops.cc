@@ -38,12 +38,15 @@ class KafkaDatasetOp : public DatasetOpKernel {
     }
 
     const DataTypeVector& output_dtypes() const override {
-      static DataTypeVector* dtypes = new DataTypeVector({DT_STRING});
+      static DataTypeVector* dtypes = new DataTypeVector({DT_STRING, DT_INT32, DT_INT64});
       return *dtypes;
     }
 
     const std::vector<PartialTensorShape>& output_shapes() const override {
-      static std::vector<PartialTensorShape>* shapes = new std::vector<PartialTensorShape>({{}});
+      static std::vector<PartialTensorShape>* shapes = new std::vector<PartialTensorShape>({{}, {4}, {}});
+      // shapes->emplace_back(0);
+      // shapes->emplace_back(1);
+      // shapes->emplace_back(0);
       return *shapes;
     }
 

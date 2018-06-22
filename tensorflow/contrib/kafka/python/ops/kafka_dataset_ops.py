@@ -39,14 +39,20 @@ class KafkaDataset(Dataset):
 
   @property
   def output_classes(self):
-    return ops.Tensor
+    return {
+	'a' : ops.Tensor,
+	'b' : {
+	    'b1' : ops.Tensor,
+	    'b2' : ops.Tensor
+	}
+    }
 
   @property
   def output_shapes(self):
     return {
 	'a' : tensor_shape.scalar(),
         'b' : {
-            'b1' : tensor_shape.TensorShape([None]),
+            'b1' : tensor_shape.TensorShape([4]),
 	    'b2' : tensor_shape.scalar()
         }
     }
