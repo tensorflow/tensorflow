@@ -506,6 +506,11 @@ class LayoutAssignment : public HloPassInterface {
   // case we have to undo operations due to the multiple passes over the
   // computations/instructions.
   ChannelLayoutConstraints channel_constraints_;
+
+  // The set of HLO instructions which lacked any layout constraint, thus
+  // receiving propagated default layouts.
+  tensorflow::gtl::FlatSet<const HloInstruction*>
+      unconstrained_layout_instructions_;
 };
 
 }  // namespace xla
