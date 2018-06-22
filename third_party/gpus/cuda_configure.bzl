@@ -59,6 +59,7 @@ CUDA_LIB_PATHS = [
 CUPTI_HEADER_PATHS = [
   "extras/CUPTI/include/",
   "include/cuda/CUPTI/",
+  "include/",
 ]
 
 # Lookup paths for the cupti library, relative to the
@@ -94,6 +95,7 @@ CUDNN_INCLUDE_PATHS = [
 NVVM_LIBDEVICE_PATHS = [
   "nvvm/libdevice/",
   "share/cuda/",
+  "lib/nvidia-cuda-toolkit/libdevice/",
 ]
 
 load("//third_party/clang_toolchain:download_clang.bzl", "download_clang")
