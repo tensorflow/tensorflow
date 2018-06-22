@@ -134,11 +134,11 @@ def build_toco_convert_protos(input_tensors,
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.get_shape()` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
-    inference_type: Target data type of arrays in the output file. Currently
-      must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
-    inference_input_type: Target data type of input arrays. Allows for a
-      different type for input arrays in the case of quantization. Currently
-      must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
+    inference_type: Target data type of real-number arrays in the output file.
+      Must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+    inference_input_type: Target data type of real-number input arrays. Allows
+      for a different type for input arrays in the case of quantization.
+      Must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
     input_format: Type of data to read Currently must be
       `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
     output_format: Output file format. Currently must be `{TFLITE,
