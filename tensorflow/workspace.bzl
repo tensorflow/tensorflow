@@ -416,12 +416,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   tf_http_archive(
       name = "curl",
-      sha256 = "ff3e80c1ca6a068428726cd7dd19037a47cc538ce58ef61c59587191039b2ca6",
+      sha256 = "e9c37986337743f37fd14fe8737f246e97aec94b39d1b71e8a5973f72a9fc4f5",
       urls = [
-          "https://mirror.bazel.build/curl.haxx.se/download/curl-7.49.1.tar.gz",
-          "https://curl.haxx.se/download/curl-7.49.1.tar.gz",
+          "https://mirror.bazel.build/curl.haxx.se/download/curl-7.60.0.tar.gz",
+          "https://curl.haxx.se/download/curl-7.60.0.tar.gz",
       ],
-      strip_prefix = "curl-7.49.1",
+      strip_prefix = "curl-7.60.0",
       build_file = clean_dep("//third_party:curl.BUILD"),
   )
 
