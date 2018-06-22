@@ -378,6 +378,18 @@ __device__ T GpuShuffleXorSync(unsigned mask, T value, int lane_mask,
 #endif
 }
 
+
+#if TENSORFLOW_USE_ROCM
+template<>
+__device__ inline Eigen::half GpuShuffleXorSync(unsigned mask, Eigen::half value, int lane_mask,
+                                int width) {
+  assert(!(width & width - 1));
+  assert(detail::GpuValidateShuffleSyncMask(
+      mask, detail::GpuShuffleXorGetSrcLane(lane_mask, width)));
+  return static_cast<Eigen::half>(__shfl_xor(static_cast<float>(value), lane_mask, width));
+}
+#endif
+   
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // See b/69446944.
