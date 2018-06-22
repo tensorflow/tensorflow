@@ -12,22 +12,55 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Base class for testing reader datasets."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gzip
 import os
+import zlib
 
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers as core_readers
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.lib.io import python_io
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
+
+
+class FixedLengthRecordDatasetTestBase(test.TestCase):
+  """Base class for setting up and testing FixedLengthRecordDataset."""
+
+  def setUp(self):
+    super(FixedLengthRecordDatasetTestBase, self).setUp()
+    self._num_files = 2
+    self._num_records = 7
+    self._header_bytes = 5
+    self._record_bytes = 3
+    self._footer_bytes = 2
+
+  def _record(self, f, r):
+    return compat.as_bytes(str(f * 2 + r) * self._record_bytes)
+
+  def _createFiles(self):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(), "fixed_length_record.%d.txt" % i)
+      filenames.append(fn)
+      with open(fn, "wb") as f:
+        f.write(b"H" * self._header_bytes)
+        for j in range(self._num_records):
+          f.write(self._record(i, j))
+        f.write(b"F" * self._footer_bytes)
+    return filenames
 
 
 class ReadBatchFeaturesTestBase(test.TestCase):
@@ -216,3 +249,83 @@ class ReadBatchFeaturesTestBase(test.TestCase):
       actual_batch = self._next_actual_batch(sess)
       for i in range(len(expected_batch)):
         self.assertAllEqual(expected_batch[i], actual_batch[i])
+
+
+class TextLineDatasetTestBase(test.TestCase):
+  """Base class for setting up and testing TextLineDataset."""
+
+  def _lineText(self, f, l):
+    return compat.as_bytes("%d: %d" % (f, l))
+
+  def _createFiles(self,
+                   num_files,
+                   num_lines,
+                   crlf=False,
+                   compression_type=None):
+    filenames = []
+    for i in range(num_files):
+      fn = os.path.join(self.get_temp_dir(), "text_line.%d.txt" % i)
+      filenames.append(fn)
+      contents = []
+      for j in range(num_lines):
+        contents.append(self._lineText(i, j))
+        # Always include a newline after the record unless it is
+        # at the end of the file, in which case we include it
+        if j + 1 != num_lines or i == 0:
+          contents.append(b"\r\n" if crlf else b"\n")
+      contents = b"".join(contents)
+
+      if not compression_type:
+        with open(fn, "wb") as f:
+          f.write(contents)
+      elif compression_type == "GZIP":
+        with gzip.GzipFile(fn, "wb") as f:
+          f.write(contents)
+      elif compression_type == "ZLIB":
+        contents = zlib.compress(contents)
+        with open(fn, "wb") as f:
+          f.write(contents)
+      else:
+        raise ValueError("Unsupported compression_type", compression_type)
+
+    return filenames
+
+
+class TFRecordDatasetTestBase(test.TestCase):
+  """Base class for setting up and testing TFRecordDataset."""
+
+  def setUp(self):
+    super(TFRecordDatasetTestBase, self).setUp()
+    self._num_files = 2
+    self._num_records = 7
+
+    self.test_filenames = self._createFiles()
+
+    self.filenames = array_ops.placeholder(dtypes.string, shape=[None])
+    self.num_epochs = array_ops.placeholder_with_default(
+        constant_op.constant(1, dtypes.int64), shape=[])
+    self.compression_type = array_ops.placeholder_with_default("", shape=[])
+    self.batch_size = array_ops.placeholder(dtypes.int64, shape=[])
+
+    repeat_dataset = core_readers.TFRecordDataset(
+        self.filenames, self.compression_type).repeat(self.num_epochs)
+    batch_dataset = repeat_dataset.batch(self.batch_size)
+
+    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
+    self.init_op = iterator.make_initializer(repeat_dataset)
+    self.init_batch_op = iterator.make_initializer(batch_dataset)
+    self.get_next = iterator.get_next()
+
+  def _record(self, f, r):
+    return compat.as_bytes("Record %d of file %d" % (r, f))
+
+  def _createFiles(self):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(), "tf_record.%d.txt" % i)
+      filenames.append(fn)
+      writer = python_io.TFRecordWriter(fn)
+      for j in range(self._num_records):
+        writer.write(self._record(i, j))
+      writer.close()
+    return filenames

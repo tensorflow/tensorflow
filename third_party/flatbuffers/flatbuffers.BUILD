@@ -98,6 +98,8 @@ cc_binary(
         "grpc/src/compiler/cpp_generator.h",
         "grpc/src/compiler/go_generator.cc",
         "grpc/src/compiler/go_generator.h",
+        "grpc/src/compiler/java_generator.cc",
+        "grpc/src/compiler/java_generator.h",
         "grpc/src/compiler/schema_interface.h",
         "src/flatc_main.cpp",
         "src/idl_gen_cpp.cpp",

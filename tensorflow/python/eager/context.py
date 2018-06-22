@@ -143,7 +143,11 @@ class Context(object):
 
   # TODO(agarwal): create and link in some documentation for `execution_mode`.
   # pylint: disable=redefined-outer-name
-  def __init__(self, config=None, device_policy=None, execution_mode=None):
+  def __init__(self,
+               config=None,
+               device_policy=None,
+               execution_mode=None,
+               server_def=None):
     """Creates a new Context.
 
     Args:
@@ -192,6 +196,7 @@ class Context(object):
     if execution_mode is None:
       execution_mode = SYNC
     self._execution_mode = execution_mode
+    self._server_def = server_def
 
   # pylint: enable=redefined-outer-name
 
@@ -231,6 +236,9 @@ class Context(object):
               opts, self._device_policy)
         if self._execution_mode == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
+        if self._server_def is not None:
+          server_def_str = self._server_def.SerializeToString()
+          pywrap_tensorflow.TFE_ContextOptionsSetServerDef(opts, server_def_str)
         self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)

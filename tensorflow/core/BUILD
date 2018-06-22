@@ -89,6 +89,7 @@ load(
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_android",
+    "tf_features_nomodules_if_android",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
@@ -232,7 +233,6 @@ tf_proto_library(
     name = "protos_all",
     srcs = [],
     cc_api_version = 2,
-    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -879,6 +879,7 @@ cc_library(
     hdrs = [
         "util/stats_calculator.h",
     ],
+    copts = tf_copts(),
 )
 
 cc_library(
@@ -998,6 +999,7 @@ tf_gen_op_libs(
         "nn_ops",
         "no_op",
         "parsing_ops",
+        "random_grad",
         "random_ops",
         "remote_fused_graph_ops",
         "resource_variable_ops",
@@ -2237,7 +2239,6 @@ tf_proto_library(
     name = "error_codes_proto",
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
-    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -2260,7 +2261,6 @@ tf_proto_library(
     name = "protos_all_proto",
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
-    dart_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
@@ -2341,6 +2341,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
 FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/op_segment.h",
     "framework/rendezvous.h",  # only needed for tests
+    "framework/resource_var.h",
     "framework/tensor_reference.h",
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
@@ -3371,6 +3372,7 @@ tf_cc_tests(
         "framework/bfloat16_test.cc",
         "framework/cancellation_test.cc",
         "framework/common_shape_fns_test.cc",
+        "framework/device_base_test.cc",
         "framework/function_test.cc",
         "framework/graph_def_util_test.cc",
         "framework/graph_to_functiondef_test.cc",

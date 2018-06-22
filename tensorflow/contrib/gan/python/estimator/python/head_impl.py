@@ -24,6 +24,7 @@ from tensorflow.contrib.gan.python import namedtuples as tfgan_tuples
 from tensorflow.contrib.gan.python import train as tfgan_train
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.canned import head
+from tensorflow.python.estimator.export import export_output
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import metrics as metrics_lib
 
@@ -182,7 +183,10 @@ class GANHead(head._Head):  # pylint: disable=protected-access
       if mode == model_fn_lib.ModeKeys.PREDICT:
         return model_fn_lib.EstimatorSpec(
             mode=model_fn_lib.ModeKeys.PREDICT,
-            predictions=gan_model.generated_data)
+            predictions=gan_model.generated_data,
+            export_outputs={
+                'predict': export_output.PredictOutput(gan_model.generated_data)
+            })
       elif mode == model_fn_lib.ModeKeys.EVAL:
         gan_loss = self.create_loss(
             features=None, mode=mode, logits=gan_model, labels=None)

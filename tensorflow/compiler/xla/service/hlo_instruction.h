@@ -435,16 +435,17 @@ class HloInstruction {
   // For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
   // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
   //
-  // `channel_id`: for Allreduce nodes from different models, if they have the
-  // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
-  // applied cross models.
+  // `all_reduce_id`: for Allreduce nodes from different modules, if they have
+  // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
+  // not be applied cross modules.
   //
   // TODO(b/79737069): Rename this to AllReduce.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       HloComputation* reduce_computation,
-      tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
-      const tensorflow::gtl::optional<int64>& channel_id =
+      tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+      tensorflow::StringPiece barrier,
+      const tensorflow::gtl::optional<int64>& all_reduce_id =
           tensorflow::gtl::nullopt);
 
   // Creates a conversion instruction, where operand is the data to convert and
@@ -823,13 +824,6 @@ class HloInstruction {
   // root to new_producer.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
 
-  // Detaches an instruction from its operands. That is, remove the instruction
-  // from each operand's user set. This should only be called prior to
-  // deallocating the instruction.
-  //
-  // TODO(b/78305363): Make this automatic when deleting an instruction.
-  void DetachFromOperands();
-
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
   // complete. If ignore_control_predecessors is true, instructions only
@@ -875,27 +869,6 @@ class HloInstruction {
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
 
-  // Returns the literal associated with this instruction.
-  //
-  // Note: only constant and parameter opcodes have an associated literal.
-  const Literal& literal() const;
-
-  // Returns whether there is literal associated with this instruction.
-  bool HasLiteral() const;
-
-  // Returns the parameter number associated with this instruction.
-  //
-  // Note: only parameter opcodes have an associated parameter number.
-  int64 parameter_number() const {
-    CHECK_EQ(HloOpcode::kParameter, opcode_);
-    return parameter_number_;
-  }
-
-  // Returns the tuple index associated with this instruction.
-  //
-  // Precondition: opcode() == HloOpcode::kGetTupleElement
-  int64 tuple_index() const;
-
   // Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
   // If the first non-GTE ancestor is tuple-shaped, populates 'index' with the
   // (possibly nested) tuple indices used on the path from ancestor to 'hlo'.
@@ -923,18 +896,6 @@ class HloInstruction {
   HloComputation* to_apply() const;
   void set_to_apply(HloComputation* to_apply);
 
-  // Returns the custom_call_target for CustomCall.
-  // Precondition: opcode() == HloOpcode::kCustomCall
-  const string& custom_call_target() const;
-
-  // Returns the config for the Outfeed instruction.
-  // Precondition: opcode() == HloOpcode::kOutfeed
-  const string& outfeed_config() const;
-
-  // Returns the shape for the Outfeed instruction.
-  // Precondition: opcode() == HloOpcode::kOutfeed
-  const Shape& outfeed_shape() const;
-
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
   //
@@ -943,15 +904,6 @@ class HloInstruction {
   HloComputation* while_body() const;
   void set_while_condition(HloComputation* while_condition);
   void set_while_body(HloComputation* while_body);
-
-  // Gets/sets the select or scatter HloComputation for SelectAndScatter. The
-  // setters should only be called by HloModule or HloComputation methods.
-  //
-  // Precondition: opcode() == HloOpcode::kSelectAndScatter.
-  HloComputation* select() const;
-  HloComputation* scatter() const;
-  void set_select(HloComputation* select);
-  void set_scatter(HloComputation* scatter);
 
   // Gets/sets the true and false HloComputation for Conditional. The setters
   // should only be called by HloModule or HloComputation methods.
@@ -994,7 +946,7 @@ class HloInstruction {
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
-  string ToCategory() const;
+  virtual string ToCategory() const;
 
   // Returns a logging instruction, if the output of this instruction is logged.
   //
@@ -1002,89 +954,13 @@ class HloInstruction {
   HloInstruction* tracing() const;
   void set_tracing(HloInstruction* trace_instruction);
 
-  // Returns the channel name associated with the instruction. The name is
-  // used to identify host Send/Recv operations.
-  //
-  // Precondition: opcode() == HloOpcode::kHostCompute
-  string channel_name() const { return channel_name_; }
-
-  // Returns the infeed configuration string. The infeed configuration includes
-  // any metadata needed for the backend compiler (e.g., infeed buffer address)
-  // and is target-dependent.
-  string infeed_config() const { return infeed_config_; }
-  void set_infeed_config(const string& config) { infeed_config_ = config; }
-
-  // Returns a tag to be used in tracing.
-  //
-  // Precondition: opcode() == HloOpcode::kTrace
-  string TracingTag() const;
-
-  // Returns whether the instruction is a constant.
-  bool IsConstant() const;
-
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
   bool IsFused() const;
 
-  // Returns the computation for this fused instruction.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  HloComputation* fused_instructions_computation() const;
-
   // Returns true if this instruction can be legally fused into a fusion
   // instruction.
   bool IsFusable() const;
-
-  // Returns the root instruction of the fused expression contained within this
-  // fusion instruction.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  HloInstruction* fused_expression_root() const;
-
-  // Returns the list of fused instructions inside this fusion instruction.  The
-  // returned type is a range of HloInstruction*s.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  const tensorflow::gtl::iterator_range<UnwrappingIterator<
-      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
-  fused_instructions() const;
-
-  const tensorflow::gtl::iterator_range<
-      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
-  fused_instructions();
-
-  // Gets the number of instructions inside this fusion instruction.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  int64 fused_instruction_count() const;
-
-  // Returns the fused parameter instruction in this fusion instruction
-  // corresponding to the given parameter number.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  HloInstruction* fused_parameter(int64 parameter_number) const;
-
-  // Returns the vector of fused parameters inside this fusion instruction.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  const std::vector<HloInstruction*>& fused_parameters() const;
-
-  // Returns true if this instruction is a fusion instruction that generates
-  // multiple outputs.
-  const bool IsMultiOutputFusion() const {
-    return opcode() == HloOpcode::kFusion &&
-           fused_expression_root()->opcode() == HloOpcode::kTuple;
-  }
-
-  FusionKind fusion_kind() const {
-    CHECK_EQ(HloOpcode::kFusion, opcode_);
-    return fusion_kind_;
-  }
-
-  void set_fusion_kind(FusionKind kind) {
-    CHECK_EQ(HloOpcode::kFusion, opcode_);
-    fusion_kind_ = kind;
-  }
 
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
@@ -1144,115 +1020,17 @@ class HloInstruction {
   // instruction.
   void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
 
-  // Adds a new operand the fusion instruction.
-  HloInstruction* AddFusionOperand(HloInstruction* new_operand);
-
-  // Merges the fused instructions from 'instruction_to_merge' into the
-  // fused instruction set of 'this', updating operands as necessary.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  // Predondition: 'instruction_to_merge' must be an operand of 'this'.
-  void MergeFusionInstruction(HloInstruction* instruction_to_merge);
-
-  // Merges the fused instructions from instruction_to_merge into the fused
-  // instruction set of 'this' and generates multioutput fusion instructions.
-  // All the users of instruction_to_merge will be redirected to 'this'
-  // instruction. instruction_to_merge will be removed from its parent
-  // computation.
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  void MergeFusionInstructionIntoMultiOutput(
-      HloInstruction* instruction_to_merge);
-
-  // Fuses the given instruction in this fusion instruction. instruction_to_fuse
-  // is cloned and the clone is placed in the fusion
-  // instruction. instruction_to_fuse is unchanged. Instruction is cloned rather
-  // than moved to cleanly handle the case where the instruction has a use
-  // outside the fusion instruction. Moving such an instruction into a fusion
-  // instruction would violate the single-result invariant of HLO instructions
-  // and significantly complicate code generation.
-  //
-  // Precondition: this->opcode() == HloOpcode::kFusion
-  HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse) {
-    return FuseInstructionInternal(instruction_to_fuse);
+  // TODO(b/80249101): Remove these methods once HLO scheduling and copy
+  // insertion are integrated, and we don't need to run a separate pass
+  // of copy elision anymore.
+  bool CopyElisionAllowed() const {
+    CHECK_EQ(HloOpcode::kCopy, opcode_);
+    return copy_elision_allowed_;
   }
 
-  // Fuses the given instruction in this fusion instruction and generate
-  // multioutput fusion instruction. A clone of the instruction_to_fuse will
-  // be part of the output of fusion instructions. The users of
-  // instruction_to_fuse will be redirected to this fusion instructions.
-  // instruction_to_fuse will be removed from its parent computation.
-  //
-  // Precondition: this->opcode() == HloOpcode::kFusion
-  HloInstruction* FuseInstructionIntoMultiOutput(
-      HloInstruction* instruction_to_fuse) {
-    return FuseInstructionInternal(instruction_to_fuse, /* add_output */ true);
-  }
-
-  // Returns the size of the slice in the given dimension for a dynamic
-  // slice node.
-  //
-  // Precondition: opcode() == HloOpcode::kDynamicSlice
-  int64 slice_sizes(int64 dimension) const {
-    CHECK_EQ(HloOpcode::kDynamicSlice, opcode_);
-    return dynamic_slice_sizes_[dimension];
-  }
-  const std::vector<int64>& dynamic_slice_sizes() const {
-    CHECK_EQ(HloOpcode::kDynamicSlice, opcode_);
-    return dynamic_slice_sizes_;
-  }
-
-  // Returns the number of exponent bits for a reduce-precision node.
-  //
-  // Precondition: opcode() == HloOpcode::kReducePrecision
-  int32 exponent_bits() const {
-    CHECK_EQ(HloOpcode::kReducePrecision, opcode_);
-    return exponent_bits_;
-  }
-
-  // Returns the number of mantissa bits for a reduce-precision node.
-  //
-  // Precondition: opcode() == HloOpcode::kReducePrecision
-  int32 mantissa_bits() const {
-    CHECK_EQ(HloOpcode::kReducePrecision, opcode_);
-    return mantissa_bits_;
-  }
-
-  // Returns data on the window in a windowed operation such as
-  // convolution.
-  const Window& window() const {
-    CHECK(window_ != nullptr);
-    return *window_;
-  }
-
-  // Sets the window data in a windowed operation such as convolution.
-  void set_window(const Window& window) {
-    window_ = MakeUnique<Window>(window);
-  }
-
-  // Returns the padding configuration for a pad node.
-  //
-  // Precondition: opcode() == HloOpcode::kPad
-  const PaddingConfig& padding_config() const {
-    CHECK(padding_config_ != nullptr);
-    return *padding_config_;
-  }
-
-  // Returns data on the dimension numbers used for a convolution operation,
-  // which may be a kConvolution instruction or a kCustomCall that implements a
-  // convolution.
-  const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
-    CHECK(convolution_dimension_numbers_ != nullptr);
-    return *convolution_dimension_numbers_;
-  }
-
-  // Sets the convolution dimension numbers on this instruction.  In general you
-  // shouldn't need to call this; instead, specify the convolution dimension
-  // numbers when you create the instruction.
-  void set_convolution_dimension_numbers(
-      const ConvolutionDimensionNumbers& dnums) {
-    convolution_dimension_numbers_ =
-        MakeUnique<ConvolutionDimensionNumbers>(dnums);
+  void SetCopyElisionAllowed(bool value) {
+    CHECK_EQ(HloOpcode::kCopy, opcode_);
+    copy_elision_allowed_ = value;
   }
 
   // Returns data on the dimension numbers used for a dot operation.
@@ -1276,11 +1054,6 @@ class HloInstruction {
 
   // Returns the dump string of the gather dimension numbers.
   string GatherDimensionNumbersToString() const;
-
-  // Returns the random distribution for this rng node.
-  //
-  // Precondition: opcode() == HloOpcode::kRng
-  RandomDistribution random_distribution() const;
 
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
@@ -1334,7 +1107,7 @@ class HloInstruction {
   bool IsElementwiseOnOperand(int64 operand_idx) const;
 
   // Returns true if this instruction is elementwise on all its operands.
-  virtual bool IsElementwise() const;
+  bool IsElementwise() const;
 
   // Returns true if this elementwise instruction implicitly broadcasts operand
   // `operand_idx`.
@@ -1452,12 +1225,6 @@ class HloInstruction {
   void set_outer_dimension_partitions(
       const std::vector<int64>& outer_dimension_partitions);
 
-  // Change the layout for an Constant Hlo instruction to match new_layout.  For
-  // tuple shaped constants shape_index is the path to the internal array
-  // subshape whose layout needs to be changed.
-  void RelayoutConstant(const Layout& new_layout,
-                        const ShapeIndex& shape_index = {});
-
   // Old methods kept for smooth subclassing transition BEGIN.
   // TODO(b/80131774): Remove this code.
 
@@ -1504,9 +1271,163 @@ class HloInstruction {
 
   // Delegates to HloSliceInstruction::IsInPlaceSlice.
   bool IsInPlaceSlice() const;
+
+  // Returns the literal associated with this instruction.
+  const Literal& literal() const;
+
+  // Returns whether the instruction is a constant.
+  bool IsConstant() const;
+
+  // Delegate to HloConstantInstruction::RelayoutConstant.
+  void RelayoutConstant(const Layout& new_layout,
+                        const ShapeIndex& shape_index = {});
+
+  // Delegates to HloTraceInstruction::TracingTag.
+  string TracingTag() const;
+
+  // Delegates to HloFusionInstruction::AddFusionOperand.
+  HloInstruction* AddFusionOperand(HloInstruction* new_operand);
+
+  // Delegates to HloFusionInstruction::MergeFusionInstruction.
+  void MergeFusionInstruction(HloInstruction* instruction_to_merge);
+
+  // Delegates to HloFusionInstruction::MergeFusionInstructionIntoMultiOutput.
+  void MergeFusionInstructionIntoMultiOutput(
+      HloInstruction* instruction_to_merge);
+
+  // Delegates to HloFusionInstruction::FuseInstruction.
+  HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse);
+
+  // Delegates to HloFusionInstruction::FuseInstructionIntoMultiOutput.
+  HloInstruction* FuseInstructionIntoMultiOutput(
+      HloInstruction* instruction_to_fuse);
+
+  // Delegates to HloFusionInstruction::fused_instruction.
+  HloComputation* fused_instructions_computation() const;
+
+  // Delegates to HloFusionInstruction::fused_expression_root.
+  HloInstruction* fused_expression_root() const;
+
+  // Delegates to HloFusionInstruction::fused_instructions.
+  const tensorflow::gtl::iterator_range<UnwrappingIterator<
+      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
+  fused_instructions() const;
+
+  const tensorflow::gtl::iterator_range<
+      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+  fused_instructions();
+
+  // Delegates to HloFusionInstruction::fused_instruction_count.
+  int64 fused_instruction_count() const;
+
+  // Delegates to HloFusionInstruction::fused_parameter.
+  HloInstruction* fused_parameter(int64 parameter_number) const;
+
+  // Delegates to HloFusionInstruction::fused_parameters.
+  const std::vector<HloInstruction*>& fused_parameters() const;
+
+  // Returns true if this instruction is a fusion instruction that generates
+  // multiple outputs.
+  const bool IsMultiOutputFusion() const;
+
+  // Delegates to HloFusionInstruction::fusion_kind.
+  FusionKind fusion_kind() const;
+
+  // Delegates to HloFusionInstruction::set_fusion_kind.
+  void set_fusion_kind(FusionKind kind);
+
+  // Delegates to HloRngInstruction::random_distribution.
+  RandomDistribution random_distribution() const;
+
+  // Delegates to HloParameterInstruction::parameter_number.
+  int64 parameter_number() const;
+
+  // Delegates to HloGetTupleElementInstruction::tuple_index.
+  int64 tuple_index() const;
+
+  // Delegates to HloReducePrecisionInstruction::exponent_bits.
+  int32 exponent_bits() const;
+
+  // Delegates to HloReducePrecisionInstruction::mantissa_bits.
+  int32 mantissa_bits() const;
+
+  // Delegates to HloInfeedInstruction::infeed_config.
+  string infeed_config() const;
+
+  // Delegates to HloInfeedInstruction::set_infeed_config.
+  void set_infeed_config(const string& config);
+
+  // Returns the config for the Outfeed instruction.
+  const string& outfeed_config() const;
+
+  // Returns the shape for the Outfeed instruction.
+  const Shape& outfeed_shape() const;
+
+  // Delegates to HloAllReduceInstruction::replica_group_ids.
+  const std::vector<int64>& replica_group_ids() const;
+
+  // Delegates to HloAllReduceInstruction::cross_replica_sum_barrier.
+  string cross_replica_sum_barrier() const;
+  void set_cross_replica_sum_barrier(const string& barrier);
+
+  // Delegates to HloAllReduceInstruction::all_reduce_id.
+  tensorflow::gtl::optional<int64> all_reduce_id() const;
+
+  // Returns data on the window in a windowed operation such as
+  // convolution.
+  virtual const Window& window() const {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Sets the window data in a windowed operation such as convolution.
+  virtual void set_window(const Window& window) {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Returns data on the dimension numbers used for a convolution operation,
+  // which may be a kConvolution instruction or a kCustomCall that implements a
+  // convolution.
+  const ConvolutionDimensionNumbers& convolution_dimension_numbers() const;
+
+  // Sets the convolution dimension numbers on this instruction.  In general you
+  // shouldn't need to call this; instead, specify the convolution dimension
+  // numbers when you create the instruction.
+  void set_convolution_dimension_numbers(
+      const ConvolutionDimensionNumbers& dnums);
+
+  // Delegates to HloSelectAndScatterInstruction::select.
+  HloComputation* select() const;
+
+  // Delegates to HloSelectAndScatterInstruction::scatter.
+  HloComputation* scatter() const;
+
+  // Delegates to HloSelectAndScatterInstruction::set_select.
+  void set_select(HloComputation* computation);
+
+  // Delegates to HloSelectAndScatterInstruction::set_scatter.
+  void set_scatter(HloComputation* computation);
+
+  // Delegates to HloCustomCallInstruction::custom_call_target.
+  const string& custom_call_target() const;
+
+  // Delegates to HloHostComputeInstruction::channel_name.
+  const string& channel_name() const;
+
+  // Delegates to HloPadInstruction::padding_config.
+  const PaddingConfig& padding_config() const;
+
+  // Delegates to HloDynamicSliceInstruction::slice_sizes.
+  int64 slice_sizes(int64 dimension) const;
+
+  // Delegates to HloDynamicSliceInstruction::dynamic_slice_sizes.
+  const std::vector<int64>& dynamic_slice_sizes() const;
   // Old methods kept for smooth subclassing transition END.
 
  protected:
+  enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
+  // Helper class for computing OperandElementUse for kFusion.
+  class FusionReusesParamElements;
+
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
@@ -1515,9 +1436,34 @@ class HloInstruction {
   // of the operand.
   void AppendOperand(HloInstruction* operand);
 
+  void RemoveOperandAt(int index) {
+    operands_.erase(operands_.begin() + index);
+  }
+
   void AppendComputation(HloComputation* computation) {
     called_computations_.push_back(computation);
   }
+
+  void DetachFrom(HloInstruction* usee) { usee->RemoveUser(this); }
+
+  void set_called_computation(int index, HloComputation* computation) {
+    called_computations_[index] = computation;
+  }
+  // Indices of computations in called_computations_ for instructions which call
+  // multiple computations.
+  enum {
+    // kWhile computations.
+    kBodyComputationIndex = 0,
+    kConditionComputationIndex = 1,
+
+    // kSelectAndScatter computations.
+    kSelectComputationIndex = 0,
+    kScatterComputationIndex = 1,
+
+    // kConditional computations.
+    kTrueComputationIndex = 0,
+    kFalseComputationIndex = 1,
+  };
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -1534,6 +1480,14 @@ class HloInstruction {
       const HloPrintOptions& options) const {
     return {};
   }
+
+  // Implementation for IsElementwise if operand_idx is nullopt and for
+  // IsElementwiseOnOperand if otherwise.
+  //
+  // NOTE: For all instructions other than kFusion, being elementwise on one of
+  // the operands is equivalent to being elementwise on all the operands.
+  virtual bool IsElementwiseImpl(
+      const tensorflow::gtl::optional<int64>& operand_idx) const;
   // Prints an instruction to a string.
   //
   // The canonical string representation needs to name operands and instruction
@@ -1544,18 +1498,13 @@ class HloInstruction {
       CanonicalNameMap* canonical_name_map) const;
 
   // Prints an operand to a string.
-  string OperandsToStringWithCanonicalNameMap(
+  virtual string OperandsToStringWithCanonicalNameMap(
       const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
 
   // Allow HloInstruction to access the ToStringWithCanonicalNameMap() and
   // OperandsToStringWithCanonicalNameMap() functions.
   friend class HloComputation;
-
-  enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
-
-  // Helper class for computing OperandElementUse for kFusion.
-  class FusionReusesParamElements;
 
   // See comments on Identical().
   virtual bool IdenticalSlowPath(
@@ -1573,34 +1522,6 @@ class HloInstruction {
 
   // Removes a user for this instruction.
   void RemoveUser(HloInstruction* user);
-
-  // Fuses the given instruction into this fusion instruction. When add_output
-  // is false (which is the default), instruction_to_fuse is cloned and the
-  // clone is placed in the fusion instruction. instruction_to_fuse is
-  // unchanged.
-  //
-  // When add_output is true, a clone of the instruction_to_fuse will be part
-  // of the output of fusion instructions. The users of instruction_to_fuse
-  // will be redirected to this fusion instructions. instruction_to_fuse will
-  // be removed from its parent computation.
-  //
-  // Precondition: this->opcode() == HloOpcode::kFusion
-  HloInstruction* FuseInstructionInternal(HloInstruction* instruction_to_fuse,
-                                          bool add_output = false);
-
-  // Clones the given instruction_to_fuse and insert the clone into this fusion
-  // instruction. If add_output is true, a clone of instruction_to_fuse will
-  // be in the output of the this fusion instruction (part of the tuple of the
-  // fusion root).
-  //
-  // Precondition: opcode() == HloOpcode::kFusion
-  HloInstruction* CloneAndFuseInternal(HloInstruction* instruction_to_fuse,
-                                       bool add_output = false);
-
-  // Clones a fusion instruction with a new shape and operands.
-  std::unique_ptr<HloInstruction> CloneFusionWithNewOperands(
-      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloCloneContext* context = nullptr) const;
 
   // Returns how this instruction uses elements of its `i`th operand.
   UseKind OperandElementUse(int64 i) const;
@@ -1633,23 +1554,8 @@ class HloInstruction {
   // The computation in which this instruction is contained.
   HloComputation* parent_ = nullptr;
 
-  // Shape of outfeed request.
-  Shape outfeed_shape_;
-
   // Result shape of this instruction.
   Shape shape_;
-
-  // Literal, only present for kConstant.
-  std::unique_ptr<Literal> literal_;
-
-  // Constant index, only present for kGetTupleElement.
-  int64 tuple_index_ = -1;
-
-  // Describes the window in a windowed operation such as convolution.
-  std::unique_ptr<Window> window_;
-
-  // Describes the dimension numbers used for a convolution.
-  std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
 
   // Describes the dimension numbers used for a dot.
   std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
@@ -1657,20 +1563,8 @@ class HloInstruction {
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_window_bounds_;
 
-  // The bit sizes for a reduce-precision operation.
-  int32 exponent_bits_ = 0;
-  int32 mantissa_bits_ = 0;
-
-  // Describes the [start, start + size) range size for a dynamic slice
-  // ('start' is specified dynamically in the second operand of the operation).
-  std::vector<int64> dynamic_slice_sizes_;
-
-  // The padding configuration that describes the edge padding and interior
-  // padding of this pad instruction. Only set for pad instructions.
-  std::unique_ptr<PaddingConfig> padding_config_;
-
-  // The type of the fusion. Used by kFusion only.
-  FusionKind fusion_kind_;
+  // Used to tag kCopy instructions that are eligible for copy elision.
+  bool copy_elision_allowed_ = true;
 
   // The sharding, if one exists.
   std::unique_ptr<HloSharding> sharding_;
@@ -1679,52 +1573,14 @@ class HloInstruction {
   std::unique_ptr<DomainMetadata> operand_side_metadata_;
   std::unique_ptr<DomainMetadata> user_side_metadata_;
 
-  // For parameter instructions this field holds the parameter number.
-  int64 parameter_number_ = 0;
-
-  // Name of a global symbol to call, only present for kCustomCall.
-  string custom_call_target_;
-
-  // Name to use for host send/recv channels, only present for kHostCompute.
-  string channel_name_;
-
-  // Estimate of the duration of a host computation in nanoseconds.
-  int64 cost_estimate_ns_ = 0;
-
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;
-
-  // Indices of computations in called_computations_ for instructions which call
-  // multiple computations.
-  enum {
-    // kWhile computations.
-    kBodyComputationIndex = 0,
-    kConditionComputationIndex = 1,
-
-    // kSelectAndScatter computations.
-    kSelectComputationIndex = 0,
-    kScatterComputationIndex = 1,
-
-    // kConditional computations.
-    kTrueComputationIndex = 0,
-    kFalseComputationIndex = 1,
-  };
-
-  // Outfeed configuration information, only present for kOutfeed.
-  string outfeed_config_;
 
   // A trace instruction that consumes this instruction.
   //
   // Invariant: if trace_instruction_ != nullptr, trace_instruction has this as
   // an operand.
   HloInstruction* trace_instruction_ = nullptr;
-
-  // The distribution requested for random number generation.
-  // Only present for kRng.
-  RandomDistribution distribution_;
-
-  // The string representation of the infeed configuration.
-  string infeed_config_;
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().

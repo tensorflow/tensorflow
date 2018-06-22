@@ -589,6 +589,5 @@ class BaseLayerTest(test.TestCase):
         ValueError, 'Input graph and Layer graph are not the same'):
       layer.apply(constant_op.constant([[1.]]))
 
-
 if __name__ == '__main__':
   test.main()

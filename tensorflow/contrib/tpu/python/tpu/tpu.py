@@ -591,16 +591,22 @@ def split_compile_and_replicate(computation,
     with tpu_function.tpu_shard_context(
         num_replicas), ops.control_dependencies([metadata]):
 
-      # The EncapsulateTPUComputations rewrite needs to identify the
-      # replicated arguments inside each computation. Adds identity operators
-      # tagged with an attribute _tpu_replicated_input to identify the
-      # replicated inputs.
+      # For backward compatibility reasons, we tag replicated inputs with the
+      # _tpu_replicated_input attribute. This does nothing and exists only for
+      # backward compatibility.
+      # TODO(phawkins): delete the attr_scope after 6/28/2018.
       # pylint: disable=protected-access
-      with graph._attr_scope({"_tpu_replicated_input":
-                              attr_value_pb2.AttrValue(b=True)}):
+      with graph._attr_scope({
+          "_tpu_replicated_input": attr_value_pb2.AttrValue(b=True)
+      }):
+        # Add identity ops so even unused inputs are "consumed" by the
+        # computation. This is to avoid orphaned TPUReplicatedInput nodes.
+        # TODO(phawkins): consider instead pruning unused TPUReplicatedInput
+        # and eliding trivial TPUReplicatedInput/TPUReplicatedOutput pairs.
         computation_inputs = [
             array_ops.identity(x, name="replicated_input_{}".format(i))
-            for i, x in enumerate(computation_inputs)]
+            for i, x in enumerate(computation_inputs)
+        ]
       # pylint: enable=protected-access
 
       # If there is an infeed queue, adds the dequeued values to the
@@ -623,15 +629,16 @@ def split_compile_and_replicate(computation,
 
       vscope.set_use_resource(saved_use_resource)
 
-    # If the computation returns `None`, add `no_op` here so that when user
-    # fetches `no_op` returned by this function, the TPUExecute node will be
-    # triggered.
+    # If the computation returns `None`, make it an empty tuple.
     if outputs is None:
-      outputs = (control_flow_ops.no_op(),)
+      outputs = tuple()
     # If the computation only returned one value, makes it a tuple.
     if not isinstance(outputs, (list, tuple)):
       outputs = (outputs,)
 
+    # Append `no_op` here so that fetching any return value of this function
+    # will trigger TPUExecute node.
+    outputs += (control_flow_ops.no_op(),)
     try:
       with ops.device(core(0)):
         outputs = [

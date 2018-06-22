@@ -8,7 +8,7 @@ load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite"
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_linkopts")
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
 
-common_copts = ["-Wall"]
+common_copts = ["-Wall"] + tflite_copts()
 
 cc_binary(
     name = "benchmark_model",
@@ -16,14 +16,11 @@ cc_binary(
         "benchmark_main.cc",
         "logging.h",
     ],
-    copts = tflite_copts() + common_copts,
-    linkopts = select({
+    copts = common_copts,
+    linkopts = tflite_linkopts() + select({
         "//tensorflow:android": [
-            "-pie",
-            "-landroid",
-            "-lm",
-            "-z defs",
-            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
+            "-pie",  # Android 5.0 and later supports only PIE
+            "-lm",  # some builtin ops, e.g., tanh, need -lm
         ],
         "//conditions:default": [],
     }),
@@ -37,7 +34,6 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = common_copts,
-    visibility = ["//visibility:private"],
 )
 
 cc_test(
@@ -60,7 +56,6 @@ cc_library(
     ],
     hdrs = ["benchmark_tflite_model.h"],
     copts = common_copts,
-    linkopts = tflite_linkopts(),
     deps = [
         ":benchmark_model_lib",
         "//tensorflow/contrib/lite:framework",
@@ -72,6 +67,16 @@ cc_library(
 )
 
 cc_library(
+    name = "benchmark_params",
+    srcs = [
+        "benchmark_params.cc",
+        "logging.h",
+    ],
+    hdrs = ["benchmark_params.h"],
+    copts = common_copts,
+)
+
+cc_library(
     name = "benchmark_model_lib",
     srcs = [
         "benchmark_model.cc",
@@ -80,6 +85,7 @@ cc_library(
     hdrs = ["benchmark_model.h"],
     copts = common_copts,
     deps = [
+        ":benchmark_params",
         ":command_line_flags",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",

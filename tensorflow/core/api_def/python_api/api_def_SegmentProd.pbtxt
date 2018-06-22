@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "SegmentProd"
+  endpoint {
+    name: "math.segment_prod"
+  }
+  endpoint {
+    name: "segment_prod"
+    deprecation_message: "tf.segment_prod is deprecated, please use tf.math.segment_prod instead."
+  }
+}

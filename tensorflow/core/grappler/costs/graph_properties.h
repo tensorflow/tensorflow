@@ -91,6 +91,11 @@ class GraphProperties {
           resource_handles,
       SymbolicShapeRefiner* shape_refiner, bool* new_shapes);
 
+  // Update the shapes and types of the Queue node, if not set by Enqueue node.
+  static Status UpdateQueue(const NodeDef* queue_node,
+                            SymbolicShapeRefiner* shape_refiner,
+                            bool* new_shapes);
+
   // Update the output shapes of a Merge node, and enqueue its fanout in
   // new_shapes if needed.
   Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,

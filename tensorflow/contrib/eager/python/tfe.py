@@ -68,6 +68,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@async_clear_error
 
 @@run_test_in_graph_and_eager_modes
+@@run_all_tests_in_graph_and_eager_modes
 
 @@DEVICE_PLACEMENT_EXPLICIT
 @@DEVICE_PLACEMENT_WARN

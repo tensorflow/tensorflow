@@ -995,6 +995,7 @@ class DepthwiseConv2DTest(test.TestCase):
               'bias_regularizer': 'l2',
               'activity_regularizer': 'l2',
               'depthwise_constraint': 'unit_norm',
+              'use_bias': True,
               'strides': (2, 2),
              }
     self._run_test(kwargs, 'depth_multiplier', [1])

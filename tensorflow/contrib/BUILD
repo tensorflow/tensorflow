@@ -33,7 +33,6 @@ py_library(
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/autograph",
         "//tensorflow/contrib/constrained_optimization",
-        "//tensorflow/contrib/control_flow",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
@@ -115,6 +114,7 @@ py_library(
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
+        "//tensorflow/python/estimator:estimator_py",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
         "//tensorflow/contrib/tensorrt:init_py",
     ]) + select({
