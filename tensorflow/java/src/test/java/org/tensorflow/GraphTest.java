@@ -22,6 +22,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -130,24 +131,76 @@ public class GraphTest {
       // expected exception.
     }
   }
-  
+
   @Test
-  public void addGradientsComputationOpsToGraph() {
-    try (Graph g = new Graph()) {
-      Output<Integer> a = TestUtil.constant(g, "A", new int[][] {{1},{2}});
-      Output<Integer> b = TestUtil.placeholder(g, "B", Integer.class);
-      Output<Integer> c = TestUtil.placeholder(g, "C", Integer.class);
-      Output<Integer> ab = TestUtil.matmul(g, "AxB", a, b, false, false);
-      Output<Integer> abc = TestUtil.matmul(g, "AxBxC", ab, c, false, false);
+  public void addGradientsToGraph() {
+    try (Graph g = new Graph();
+         Session s = new Session(g)) {
+
+      Output<Float> x1 = TestUtil.placeholder(g, "x1", Float.class);
+      Output<Float> x2 = TestUtil.placeholder(g, "x2", Float.class);
+      Output<Float> y0 = TestUtil.square(g, "y0", x1);
+      Output<Float> y1 = TestUtil.addN(g, y0, x2);
       
-      Output<?>[] grad = g.addGradients(new Output<?>[] {abc}, new Output<?>[] {b, c}, null);
-      
-      assertNotNull(grad);
-      assertEquals(2, grad.length);
-      assertNotNull(grad[0]);
-      assertEquals(DataType.INT32, grad[0].dataType());
-      assertNotNull(grad[1]);
-      assertEquals(DataType.INT32, grad[1].dataType());
+      Output<?>[] grads = g.addGradients(y1, toArray(x1, x2));
+      assertNotNull(grads);
+      assertEquals(2, grads.length);
+      assertEquals(DataType.FLOAT, grads[0].dataType());
+      assertEquals(DataType.FLOAT, grads[1].dataType());
+
+      List<Tensor<?>> outputs = s.runner()
+          .feed(x1, Tensors.create(3.0f))
+          .feed(x2, Tensors.create(2.0f))
+          .fetch(grads[0])
+          .fetch(grads[1])
+          .run();
+     
+      assertEquals(6.0f, outputs.get(0).floatValue(), 0.0f);
+      assertEquals(1.0f, outputs.get(1).floatValue(), 0.0f);
     }
+  }
+
+  @Test
+  public void addGradientSumsToGraph() {
+    try (Graph g = new Graph();
+         Session s = new Session(g)) {
+
+      Output<Float> x = TestUtil.placeholder(g, "x", Float.class);
+      Output<Float> y0 = TestUtil.square(g, "y0", x);
+      Output<Float> y1 = TestUtil.square(g, "y1", y0);
+      
+      Output<?>[] grads = g.addGradients(toArray(y0, y1), toArray(x), null);
+
+      List<Tensor<?>> outputs = s.runner()
+          .feed(x, Tensors.create(3.0f))
+          .fetch(grads[0])
+          .run();
+     
+      assertEquals(114.0f, outputs.get(0).floatValue(), 0.0f);
+    }
+  }
+
+  @Test
+  public void addGradientsWithInitialValuesToGraph() {
+    try (Graph g = new Graph();
+         Session s = new Session(g)) {
+
+      Output<Float> x = TestUtil.placeholder(g, "x", Float.class);
+      Output<Float> y = TestUtil.square(g, "y", x);
+      Output<Float> dx = TestUtil.constant(g, "dx", 18.0f);
+      
+      Output<?>[] grads = g.addGradients(toArray(y), toArray(x), toArray(dx));
+
+      List<Tensor<?>> outputs = s.runner()
+          .feed(x, Tensors.create(3.0f))
+          .fetch(grads[0])
+          .run();
+     
+      assertEquals(108.0f, outputs.get(0).floatValue(), 0.0f);
+    }
+  }
+  
+  private static Output<?>[] toArray(Output<?>... outputs) {
+    return outputs;
   }
 }
