@@ -40,7 +40,7 @@ import org.tensorflow.op.annotation.Operator;
  * <p>
  * Example of usage:
  * <pre>{@code
- * AddGradients gradients = AddGradients.create(scope, Arrays.asList(loss), Arrays.asList(w, b));
+ * Gradients gradients = Gradients.create(scope, Arrays.asList(loss), Arrays.asList(w, b));
  * 
  * Constant<Float> alpha = ops.constant(1.0f, Float.class);
  * ApplyGradientDescent.create(scope, w, alpha, gradients.<Float>dy(0));
@@ -48,10 +48,10 @@ import org.tensorflow.op.annotation.Operator;
  * }</pre>
  */
 @Operator
-public class AddGradients implements Op, Iterable<Operand<?>> {
+public class Gradients implements Op, Iterable<Operand<?>> {
 
   /**
-   * Optional attributes for {@link AddGradients}
+   * Optional attributes for {@link Gradients}
    */
   public static class Options {
     
@@ -74,12 +74,12 @@ public class AddGradients implements Op, Iterable<Operand<?>> {
    * Adds gradients computation ops to the graph according to scope.
    * 
    * @param scope current graph scope
-   * @param y 
-   * @param x
-   * @param dx
-   * @return a new instance of {@code AddGradients}
+   * @param y outputs of the function to derive
+   * @param x inputs of the function for which partial derivatives are computed
+   * @param options carries optional attributes values
+   * @return a new instance of {@code Gradients}
    */
-  public static AddGradients create(Scope scope, Iterable<Operand<?>> y, Iterable<Operand<?>> x, Options... options) {
+  public static Gradients create(Scope scope, Iterable<Operand<?>> y, Iterable<Operand<?>> x, Options... options) {
     Output<?>[] dx = null;
     if (options != null) {
       for (Options opts : options) {
@@ -89,7 +89,24 @@ public class AddGradients implements Op, Iterable<Operand<?>> {
       }
     }
     Output<?>[] gradOutputs = scope.graph().addGradients(Operands.asOutputs(y), Operands.asOutputs(x), dx);
-    return new AddGradients(Arrays.asList(gradOutputs));
+    return new Gradients(Arrays.asList(gradOutputs));
+  }
+
+  /**
+   * Adds gradients computation ops to the graph according to scope.
+   * 
+   * This is a simplified version of {@link #create(Scope, Iterable, Iterable, Options...)} where {@code y} is
+   * a single output.
+   * 
+   * @param scope current graph scope
+   * @param y output of the function to derive
+   * @param x inputs of the function for which partial derivatives are computed
+   * @param options carries optional attributes values
+   * @return a new instance of {@code Gradients}
+   */
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  public static Gradients create(Scope scope, Operand<?> y, Iterable<Operand<?>> x, Options... options) {
+    return create(scope, (Iterable) Arrays.asList(y), x, options);
   }
 
   /**
@@ -107,8 +124,7 @@ public class AddGradients implements Op, Iterable<Operand<?>> {
   }
   
   /**
-   * {@code dy} of size {@code x}, i.e. the outputs of the operations added to the graph to compute gradients for each
-   * {@code x} nodes respectively.
+   * Partial derivatives of {@code y}s w.r.t. {@code x}s, with the size of {@code x}
    */
   public List<Output<?>> dy() {
     return dy;
@@ -131,7 +147,7 @@ public class AddGradients implements Op, Iterable<Operand<?>> {
 
   private List<Output<?>> dy;
   
-  private AddGradients(List<Output<?>> dy) {
+  private Gradients(List<Output<?>> dy) {
     this.dy = dy;
   }
 }
