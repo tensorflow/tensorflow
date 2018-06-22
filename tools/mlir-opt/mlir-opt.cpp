@@ -22,7 +22,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Module.h"
+#include "mlir/Parser.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -56,13 +58,27 @@ int main(int argc, char **argv) {
 
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
 
-  // Instantiate an IR object.
-  Module m;
-  m.functionList.push_back(new Function("foo"));
-  m.functionList.push_back(new Function("bar"));
+  // Set up the input file.
+  auto fileOrErr = MemoryBuffer::getFileOrSTDIN(inputFilename);
+  if (std::error_code error = fileOrErr.getError()) {
+    llvm::errs() << argv[0] << ": could not open input file '" << inputFilename
+                 << "': " << error.message() << "\n";
+    return 1;
+  }
+
+  // Tell sourceMgr about this buffer, which is what the parser will pick up.
+  SourceMgr sourceMgr;
+  sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), SMLoc());
+
+  // Parse the input file and emit any errors.
+  std::unique_ptr<Module> module(parseSourceFile(sourceMgr));
+  if (!module) return 1;
 
   // Print the output.
   auto output = getOutputStream();
-  m.print(output->os());
+  module->print(output->os());
   output->keep();
+
+  // Success.
+  return 0;
 }
