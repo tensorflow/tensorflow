@@ -44,6 +44,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   libboost-filesystem-dev \
   rpm \
   libnuma-dev \
+  pciutils \
   virtualenv \
   python-pip \
   python3-pip \
@@ -60,9 +61,9 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Workaround: use HIP PR#457 and then build from source
-RUN cd ~ && git clone https://github.com/GPUOpen-ProfessionalCompute-Tools/HIP.git
-RUN cd ~/HIP && git fetch origin pull/457/head:pr457 && git checkout pr457 && mkdir -p build && cd build && cmake .. && make package -j && dpkg -i *.deb
+# Workaround: build HIP from source using fork that holds roc-1.8.x with merged PR457
+RUN cd ~ && git clone -b roc-1.8.x-pr457 https://github.com/parallelo/HIP.git 
+RUN cd ~/HIP && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i *.deb
 
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip

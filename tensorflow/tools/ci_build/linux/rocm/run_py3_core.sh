@@ -19,9 +19,10 @@ set -e
 set -x
 
 N_JOBS=$(grep -c ^processor /proc/cpuinfo)
+N_GPUS=$(lspci|grep 'AMD/ATI'|wc -l)
 
 echo ""
-echo "Bazel will use ${N_JOBS} concurrent job(s)."
+echo "Bazel will use ${N_JOBS} concurrent build job(s) and ${N_GPUS} concurrent test job(s)."
 echo ""
 
 # Run configure.
@@ -29,15 +30,17 @@ export PYTHON_BIN_PATH=`which python3`
 export CC_OPT_FLAGS='-mavx'
 
 export TF_NEED_ROCM=1
+export TF_GPU_COUNT=${N_GPUS}
 
 yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchmark-test -k \
     --test_lang_filters=py --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
-    --build_tests_only --test_output=errors --local_test_jobs=4 --config=opt \
+    --build_tests_only --test_output=errors --local_test_jobs=${TF_GPU_COUNT} --config=opt \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
+    -//tensorflow/python:optimizer_test \
     -//tensorflow/python/estimator:boosted_trees_test   \
     -//tensorflow/python/feature_column:feature_column_test \
     -//tensorflow/python/keras:activations_test \
