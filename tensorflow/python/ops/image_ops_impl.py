@@ -2116,8 +2116,8 @@ def non_max_suppression_with_overlaps(overlaps,
       score corresponding to each box (each row of boxes).
     max_output_size: A scalar integer `Tensor` representing the maximum number
       of boxes to be selected by non max suppression.
-    overlap_threshold: A float representing the threshold for deciding whether boxes
-      overlap too much with respect to the provided overlap values.
+    overlap_threshold: A float representing the threshold for deciding whether
+      boxes overlap too much with respect to the provided overlap values.
     score_threshold: A float representing the threshold for deciding when to
       remove boxes based on score.
     name: A name for the operation (optional).
@@ -2127,10 +2127,13 @@ def non_max_suppression_with_overlaps(overlaps,
       selected indices from the overlaps tensor, where `M <= max_output_size`.
   """
   with ops.name_scope(name, 'non_max_suppression_overlaps'):
-    overlap_threshold = ops.convert_to_tensor(overlap_threshold, name='overlap_threshold')
+    overlap_threshold = ops.convert_to_tensor(overlap_threshold,
+                                              name='overlap_threshold')
     # pylint: disable=protected-access
-    return gen_image_ops._non_max_suppression_v3(overlaps, scores, max_output_size,
-                                                 overlap_threshold, score_threshold)
+    return gen_image_ops._non_max_suppression_v3(overlaps,
+                                                 scores, max_output_size,
+                                                 overlap_threshold,
+                                                 score_threshold)
     # pylint: enable=protected-access
 
 _rgb_to_yiq_kernel = [[0.299, 0.59590059,
