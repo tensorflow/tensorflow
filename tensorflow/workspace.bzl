@@ -393,12 +393,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   tf_http_archive(
       name = "pcre",
-      sha256 = "ccdf7e788769838f8285b3ee672ed573358202305ee361cfec7a4a4fb005bbc7",
+      sha256 = "69acbc2fbdefb955d42a4c606dfde800c2885711d2979e356c0636efde9ec3b5",
       urls = [
-          "https://mirror.bazel.build/ftp.exim.org/pub/pcre/pcre-8.39.tar.gz",
-          "http://ftp.exim.org/pub/pcre/pcre-8.39.tar.gz",
+          "https://mirror.bazel.build/ftp.exim.org/pub/pcre/pcre-8.42.tar.gz",
+          "http://ftp.exim.org/pub/pcre/pcre-8.42.tar.gz",
       ],
-      strip_prefix = "pcre-8.39",
+      strip_prefix = "pcre-8.42",
       build_file = clean_dep("//third_party:pcre.BUILD"),
   )
 
