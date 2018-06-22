@@ -99,7 +99,7 @@ class EstimatorSpec(
     ignored in eval and infer modes. Example:
 
     ```python
-    def my_model_fn(mode, features, labels):
+    def my_model_fn(features, labels, mode):
       predictions = ...
       loss = ...
       train_op = ...
@@ -114,7 +114,7 @@ class EstimatorSpec(
     given mode. Example:
 
     ```python
-    def my_model_fn(mode, features, labels):
+    def my_model_fn(features, labels, mode):
       if (mode == tf.estimator.ModeKeys.TRAIN or
           mode == tf.estimator.ModeKeys.EVAL):
         loss = ...
