@@ -113,7 +113,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "8bbe676d69e7f59070c83a949454b8b6344034e0ebbf686b337528e5dc04c7de",
       strip_prefix = "eigen-eigen-e5e305a158a0",
       build_file = clean_dep("//third_party:eigen.BUILD"),
-      patch_file = clean_dep("//third_party:eigen_fix_cuda_compilation.patch")
   )
 
   tf_http_archive(
