@@ -344,7 +344,12 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
 
 
 if __name__ == "__main__":
-  for dtype_ in [np.float32, np.float64, np.complex64, np.complex128]:
+  dtypes_to_test = [np.float32, np.float64, np.complex64, np.complex128]
+  if test_lib.is_built_with_rocm():
+    # rocBLAS on ROCm stack does not support batched GEMM for complex types
+    # rocBLAS on ROCm stack doesn not support TRSM for fp64
+    dtypes_to_test = [np.float32]
+  for dtype_ in dtypes_to_test:
     for use_placeholder_ in [True, False]:
       for fast_ in [True, False]:
         l2_regularizers = [0] if dtype_ == np.complex128 else [0, 0.1]
@@ -358,7 +363,7 @@ if __name__ == "__main__":
                                                              l2_regularizer_)
             _AddTest(MatrixSolveLsOpTest, "MatrixSolveLsOpTest", name,
                      test_case)
-  for dtype_ in [np.float32, np.float64, np.complex64, np.complex128]:
+  for dtype_ in dtypes_to_test:
     for test_case in _GetLargeMatrixSolveLsOpTests(dtype_, False, True, 0.0):
       name = "%s_%s" % (test_case.__name__, dtype_.__name__)
       _AddTest(MatrixSolveLsOpTest, "MatrixSolveLsOpTest", name, test_case)

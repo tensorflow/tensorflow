@@ -52,7 +52,8 @@ class CholeskySolveTest(test.TestCase):
   def test_works_with_five_different_random_pos_def_matrices(self):
     for n in range(1, 6):
       for np_type, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
-        with self.test_session(use_gpu=True):
+        # rocBLAS on ROCm stack does not support TRSM for fp32/fp64 yet
+        with self.test_session(use_gpu=True and not test.is_built_with_rocm()):
           # Create 2 x n x n matrix
           array = np.array(
               [_RandomPDMatrix(n, self.rng),
@@ -180,11 +181,12 @@ def _GetEyeTest(num_rows, num_columns, batch_shape, dtype):
 
 
 if __name__ == "__main__":
+  dtypes_to_test = [dtypes.int32, dtypes.int64, dtypes.float32,
+                    dtypes.float64, dtypes.complex64, dtypes.complex128]
   for _num_rows in 0, 1, 2, 5:
     for _num_columns in None, 0, 1, 2, 5:
       for _batch_shape in None, [], [2], [2, 3]:
-        for _dtype in (dtypes.int32, dtypes.int64, dtypes.float32,
-                       dtypes.float64, dtypes.complex64, dtypes.complex128):
+        for _dtype in dtypes_to_test:
           name = "dtype_%s_num_rows_%s_num_column_%s_batch_shape_%s_" % (
               _dtype.name, _num_rows, _num_columns, _batch_shape)
           _AddTest(EyeTest, "EyeTest", name,

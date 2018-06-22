@@ -213,9 +213,14 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
 if __name__ == "__main__":
   sizes = [1, 3, 5]
   trans_options = [[False, False], [True, False], [False, True]]
+  dtypes_to_test = [np.int32, np.float16, np.float32, np.float64, np.complex64,
+                  np.complex128]
+  if test_lib.is_built_with_rocm():
+    # rocBLAS on ROCm stack does not support GEMV for complex types
+    # rocBLAS on ROCm stack does not support SGEMM for fp16 types
+    dtypes_to_test = [np.int32, np.float32, np.float64]
   for use_static_shape in [False, True]:
-    for dtype in (np.int32, np.float16, np.float32, np.float64, np.complex64,
-                  np.complex128):
+    for dtype in dtypes_to_test:
       if not use_static_shape and dtype == np.int32:
         # TODO(rmlarsen): Re-enable this test when we have fixed the underlying
         # bug in Windows (b/35935459).
