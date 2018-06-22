@@ -347,8 +347,7 @@ if __name__ == "__main__":
   dtypes_to_test = [np.float32, np.float64, np.complex64, np.complex128]
   if test_lib.is_built_with_rocm():
     # rocBLAS on ROCm stack does not support batched GEMM for complex types
-    # rocBLAS on ROCm stack doesn not support TRSM for fp64
-    dtypes_to_test = [np.float32]
+    dtypes_to_test = [np.float32, np.float64]
   for dtype_ in dtypes_to_test:
     for use_placeholder_ in [True, False]:
       for fast_ in [True, False]:
