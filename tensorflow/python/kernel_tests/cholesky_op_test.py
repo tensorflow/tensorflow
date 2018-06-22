@@ -110,7 +110,7 @@ class CholeskyOpTest(test.TestCase):
 
   def _verifyCholesky(self, x):
     # Verify that LL^T == x.
-    # rocBLAS on ROCm stack does not support TRSM yet
+    # rocBLAS on ROCm stack does not support complex<float> dgemv yet
     with self.test_session(use_gpu=True and not test.is_built_with_rocm()) as sess:
       chol = linalg_ops.cholesky(x)
       verification = math_ops.matmul(chol, chol, adjoint_b=True)
@@ -256,7 +256,7 @@ class CholeskyGradTest(test.TestCase):
                            dtypes=(dtypes_lib.float32, dtypes_lib.float64,
                                    dtypes_lib.complex64, dtypes_lib.complex128),
                            scalarTest=False):
-    # rocBLAS on ROCm stack does not support TRSM yet
+    # rocBLAS on ROCm stack does not support complex<float> GEMV yet
     with self.test_session(use_gpu=True and not test.is_built_with_rocm()):
       for shape in shapes:
         for batch in False, True:
