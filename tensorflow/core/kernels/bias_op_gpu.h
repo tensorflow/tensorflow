@@ -95,12 +95,7 @@ class BiasAddParams {
     hash_code_ = Hash64Combine(hash_code_, device_id);
   }
   bool operator==(const BiasAddParams& other) const {
-    // return this->get_data_as_tuple() == other.get_data_as_tuple();
-    return
-        this->in_shape_ == other.in_shape_ &&
-        this->data_format_ == other.data_format_ &&
-        this->dtype_ == other.dtype_ &&
-        this->device_id_ == other.device_id_;
+    return this->get_data_as_tuple() == other.get_data_as_tuple();
   }
 
   bool operator!=(const BiasAddParams& other) const {
@@ -119,9 +114,9 @@ class BiasAddParams {
  protected:
   using ParamsDataType = std::tuple<SpatialArray, TensorFormat, DataType, int>;
 
-  // ParamsDataType get_data_as_tuple() const {
-  //   return std::make_tuple(in_shape_, data_format_, dtype_, device_id_);
-  // }
+  ParamsDataType get_data_as_tuple() const {
+    return std::make_tuple(in_shape_, data_format_, dtype_, device_id_);
+  }
 
   uint64 hash_code_ = 0;
 
