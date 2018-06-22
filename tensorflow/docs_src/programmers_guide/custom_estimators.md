@@ -362,10 +362,10 @@ model's loss. This is the
 that will be optimized.
 
 We can calculate the loss by calling @{tf.losses.sparse_softmax_cross_entropy}.
-When the value returned by this function will be lowest, approximately 0,
-probability of the correct class (at index `label`) is near 1.0. The loss value
-returned is progressively larger as the probability of the correct class
-decreases.
+The value returned by this function will be approximately 0 at lowest,
+when the probability of the correct class (at index label') is near 1.0.
+The loss value returned is progressively larger as the probability of the
+correct class decreases.
 
 This function returns the average over the whole batch.
 
