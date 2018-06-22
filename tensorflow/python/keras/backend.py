@@ -2761,7 +2761,7 @@ class Function(object):
       updates: Additional update ops to be run at function call.
       name: A name to help users identify what this function does.
       session_kwargs: Arguments to `tf.Session.run()`:
-                      `fetches`, `feed_dict`, `options`.
+                      `fetches`, `feed_dict`, `options`, `run_metadata`.
   """
 
   def __init__(self, inputs, outputs, updates=None, name=None,
@@ -2796,6 +2796,7 @@ class Function(object):
     if not isinstance(self.fetches, list):
       self.fetches = [self.fetches]
     self.run_options = session_kwargs.pop('options', None)
+    self.run_metadata = session_kwargs.pop('run_metadata', None)
     # The main use case of `fetches` being passed to a model is the ability
     # to run custom updates (since the outputs of fetches are never returned).
     # This requires us to wrap fetches in `identity` ops.
@@ -2903,7 +2904,11 @@ class Function(object):
         session != self._session):
       self._make_callable(feed_arrays, feed_symbols, symbol_vals, session)
 
-    fetched = self._callable_fn(*array_vals)
+    if self.run_metadata:
+      fetched = self._callable_fn(*array_vals,
+                                  run_metadata=self.run_metadata)
+    else:
+      fetched = self._callable_fn(*array_vals)
     return fetched[:len(self.outputs)]
 
 

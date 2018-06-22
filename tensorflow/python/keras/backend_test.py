@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 import scipy.sparse
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
@@ -275,6 +276,29 @@ class BackendUtilsTest(test.TestCase):
       self.assertEqual(output, [21.])
       self.assertEqual(
           keras.backend.get_session().run(fetches=[x, y]), [30., 40.])
+
+  def test_function_tf_run_options_with_run_metadata(self):
+    with self.test_session():
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
+      # enable run_options.
+      f = keras.backend.function(inputs=[x_placeholder, y_placeholder],
+                                 outputs=[x_placeholder + y_placeholder],
+                                 options=run_options,
+                                 run_metadata=run_metadata)
+      output = f([10., 20.])
+      self.assertEqual(output, [30.])
+      self.assertGreater(len(run_metadata.partition_graphs), 0)
+      # disable run_options.
+      f1 = keras.backend.function(inputs=[x_placeholder, y_placeholder],
+                                  outputs=[x_placeholder + y_placeholder],
+                                  run_metadata=run_metadata)
+      output1 = f1([10., 20.])
+      self.assertEqual(output1, [30.])
+      self.assertEqual(len(run_metadata.partition_graphs), 0)
 
 
 class BackendVariableTest(test.TestCase):
