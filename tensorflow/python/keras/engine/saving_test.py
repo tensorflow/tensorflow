@@ -587,7 +587,7 @@ class SubclassedModel(training.Model):
 
 class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_tensorflow_format_overwrite(self):
     with self.test_session() as session:
       model = SubclassedModel()
@@ -676,7 +676,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       restore_on_create_y = self.evaluate(restore_on_create_y_tensor)
       self.assertAllClose(ref_y, restore_on_create_y)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_weight_loading_graph_model(self):
     def _make_graph_model():
       a = keras.layers.Input(shape=(2,))
@@ -686,7 +686,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
     self._weight_loading_test_template(_make_graph_model)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_weight_loading_subclassed_model(self):
     self._weight_loading_test_template(SubclassedModel)
 
@@ -720,7 +720,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       y = self.evaluate(model(x))
       self.assertAllClose(ref_y, y)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_weight_loading_graph_model_added_layer(self):
     def _save_graph_model():
       a = keras.layers.Input(shape=(2,))
@@ -740,7 +740,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         _save_graph_model, _restore_graph_model,
         _restore_init_fn)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_weight_loading_graph_model_added_no_weight_layer(self):
     def _save_graph_model():
       a = keras.layers.Input(shape=(2,))
@@ -761,7 +761,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         _save_graph_model, _restore_graph_model,
         _restore_init_fn)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_weight_loading_subclassed_model_added_layer(self):
 
     class SubclassedModelRestore(training.Model):

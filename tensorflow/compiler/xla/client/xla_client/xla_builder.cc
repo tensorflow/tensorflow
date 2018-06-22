@@ -1120,11 +1120,9 @@ XlaOp XlaBuilder::Or(const XlaOp& lhs, const XlaOp& rhs,
   return BinaryOp(HloOpcode::kOr, lhs, rhs, broadcast_dimensions);
 }
 
-// TODO(b/65209188): Create a dedicated lowering for Xor.
 XlaOp XlaBuilder::Xor(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return Or(And(Not(lhs), rhs, broadcast_dimensions),
-            And(lhs, Not(rhs), broadcast_dimensions));
+  return BinaryOp(HloOpcode::kXor, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Not(const XlaOp& operand) {

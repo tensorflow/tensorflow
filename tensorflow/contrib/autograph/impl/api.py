@@ -35,6 +35,7 @@ from tensorflow.contrib.autograph.pyct import inspect_utils
 from tensorflow.contrib.autograph.utils import builtins
 from tensorflow.contrib.autograph.utils import py_func
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 # TODO(mdan): Properly document the type hints.
@@ -69,6 +70,8 @@ def convert(recursive=False, verbose=False, arg_types=None):
     @wraps(f)
     def wrapper(*args, **kwargs):
       return converted_call(f, recursive, verbose, arg_types, *args, **kwargs)
+
+    wrapper = tf_decorator.make_decorator(f, wrapper)
 
     # Sometimes the decorator is just desugared, making it impossible to detect.
     # This attribute makes detection easier.

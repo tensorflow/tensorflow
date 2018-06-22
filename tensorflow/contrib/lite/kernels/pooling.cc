@@ -80,24 +80,24 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Matching GetWindowedOutputSize in TensorFlow.
   auto padding = params->padding;
-  auto computeOutSize = [padding](int imageSize, int filterSize,
-                                  int stride) -> int {
+  auto compute_out_size = [padding](int image_size, int filter_size,
+                                    int stride) -> int {
     return padding == kTfLitePaddingSame
-               ? (imageSize + stride - 1) / stride
+               ? (image_size + stride - 1) / stride
                : padding == kTfLitePaddingValid
-                     ? (imageSize - filterSize + stride) / stride
+                     ? (image_size - filter_size + stride) / stride
                      : 0;
   };
 
-  int outWidth =
-      computeOutSize(width, params->filter_width, params->stride_width);
-  int outHeight =
-      computeOutSize(height, params->filter_height, params->stride_height);
+  int out_width =
+      compute_out_size(width, params->filter_width, params->stride_width);
+  int out_height =
+      compute_out_size(height, params->filter_height, params->stride_height);
 
   data->padding.height = ComputePadding(params->stride_height, 1, height,
-                                        params->filter_height, outHeight);
+                                        params->filter_height, out_height);
   data->padding.width = ComputePadding(params->stride_width, 1, width,
-                                       params->filter_width, outWidth);
+                                       params->filter_width, out_width);
 
   if (input->type == kTfLiteUInt8) {
     if (pool_type == kAverage || pool_type == kMax) {
@@ -111,12 +111,12 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  TfLiteIntArray* outputSize = TfLiteIntArrayCreate(4);
-  outputSize->data[0] = batches;
-  outputSize->data[1] = outHeight;
-  outputSize->data[2] = outWidth;
-  outputSize->data[3] = channels_out;
-  return context->ResizeTensor(context, output, outputSize);
+  TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
+  output_size->data[0] = batches;
+  output_size->data[1] = out_height;
+  output_size->data[2] = out_width;
+  output_size->data[3] = channels_out;
+  return context->ResizeTensor(context, output, output_size);
 }
 
 template <KernelType kernel_type>

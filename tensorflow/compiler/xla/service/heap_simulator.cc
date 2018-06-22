@@ -230,6 +230,9 @@ Status HeapSimulator::RunComputation(
     //
     // INVARIANT: Either Alloc or ShareBuffer will be called for each buffer
     // that we should assign.
+
+    // Make sure each buffer get reused at most once.
+    FlatSet<const BufferValue*> reused_buffers;
     for (const BufferValue* buffer : buffers_defined_by_instruction) {
       if (IgnoreBuffer(buffer)) {
         continue;
@@ -242,6 +245,9 @@ Status HeapSimulator::RunComputation(
       bool shared = false;
       if (options_.may_reuse_operand_buffers) {
         for (const BufferValue* operand_buffer : operand_buffers_to_free) {
+          if (reused_buffers.count(operand_buffer) != 0) {
+            continue;
+          }
           if (buffer->instruction()->IsUserOf(operand_buffer->instruction()) &&
               buffer->instruction()->opcode() != HloOpcode::kCopy &&
               points_to_analysis.CanShareOperandBufferWithUser(
@@ -251,6 +257,7 @@ Status HeapSimulator::RunComputation(
                     << operand_buffer->ToString();
             ShareBuffer(buffer, operand_buffer, instruction);
             shared = true;
+            reused_buffers.insert(operand_buffer);
             break;
           }
         }

@@ -83,13 +83,13 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
       self.skipTest("Not GPU test")
     self.assertEqual(2, self._get_distribution_strategy().num_towers)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCallAndMergeExceptions(self):
     if not GPU_TEST:
       self.skipTest("Not GPU test")
     self._test_call_and_merge_exceptions(self._get_distribution_strategy())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testRunRegroupError(self):
 
     def run_fn(device_id):
@@ -101,7 +101,7 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
     with dist.scope(), self.assertRaises(AssertionError):
       dist.call_for_each_tower(run_fn, dist.worker_device_index)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testReduceToCpu(self):
     if not GPU_TEST:
       self.skipTest("Not GPU test")

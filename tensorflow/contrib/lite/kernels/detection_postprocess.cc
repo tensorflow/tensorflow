@@ -250,36 +250,38 @@ TfLiteStatus DecodeCenterSizeBoxes(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE_EQ(context, input_box_encodings->dims->data[0], kBatchSize);
   const int num_boxes = input_box_encodings->dims->data[1];
   TF_LITE_ENSURE_EQ(context, input_box_encodings->dims->data[2], kNumCoordBox);
+  const TfLiteTensor* input_anchors =
+      GetInput(context, node, kInputTensorAnchors);
 
   // Decode the boxes to get (ymin, xmin, ymax, xmax) based on the anchors
   CenterSizeEncoding box_centersize;
   CenterSizeEncoding scale_values = op_data->scale_values;
-  const float quant_zero_point =
-      static_cast<float>(input_box_encodings->params.zero_point);
-  const float quant_scale =
-      static_cast<float>(input_box_encodings->params.scale);
+  CenterSizeEncoding anchor;
   for (int idx = 0; idx < num_boxes; ++idx) {
     switch (input_box_encodings->type) {
         // Quantized
       case kTfLiteUInt8:
-        DequantizeBoxEncodings(input_box_encodings, idx, quant_zero_point,
-                               quant_scale, &box_centersize);
+        DequantizeBoxEncodings(
+            input_box_encodings, idx,
+            static_cast<float>(input_box_encodings->params.zero_point),
+            static_cast<float>(input_box_encodings->params.scale),
+            &box_centersize);
+        DequantizeBoxEncodings(
+            input_anchors, idx,
+            static_cast<float>(input_anchors->params.zero_point),
+            static_cast<float>(input_anchors->params.scale), &anchor);
         break;
         // Float
       case kTfLiteFloat32:
         box_centersize = ReInterpretTensor<const CenterSizeEncoding*>(
             input_box_encodings)[idx];
+        anchor =
+            ReInterpretTensor<const CenterSizeEncoding*>(input_anchors)[idx];
         break;
       default:
         // Unsupported type.
         return kTfLiteError;
     }
-
-    const TfLiteTensor* input_anchors =
-        GetInput(context, node, kInputTensorAnchors);
-
-    const auto& anchor =
-        ReInterpretTensor<const CenterSizeEncoding*>(input_anchors)[idx];
 
     float ycenter = box_centersize.y / scale_values.y * anchor.h + anchor.y;
     float xcenter = box_centersize.x / scale_values.x * anchor.w + anchor.x;
@@ -388,19 +390,19 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
   DecreasingPartialArgSort(keep_scores.data(), num_scores_kept, num_scores_kept,
                            sorted_indices.data());
 
-  const int num_boxes_kept = keep_scores.size();
+  const int num_boxes_kept = num_scores_kept;
   const int output_size = std::min(num_boxes_kept, max_detections);
   selected->clear();
   TfLiteTensor* active_candidate =
       &context->tensors[op_data->active_candidate_index];
   TF_LITE_ENSURE(context, (active_candidate->dims->data[0]) == num_boxes);
-  int num_active_candidate = num_boxes;
+  int num_active_candidate = num_boxes_kept;
   uint8_t* active_box_candidate = (active_candidate->data.uint8);
-  for (int row = 0; row < num_boxes; row++) {
+  for (int row = 0; row < num_boxes_kept; row++) {
     active_box_candidate[row] = 1;
   }
 
-  for (int i = 0; i < num_boxes; ++i) {
+  for (int i = 0; i < num_boxes_kept; ++i) {
     if (num_active_candidate == 0 || selected->size() >= output_size) break;
     if (active_box_candidate[i] == 1) {
       selected->push_back(keep_indices[sorted_indices[i]]);
@@ -409,7 +411,7 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
     } else {
       continue;
     }
-    for (int j = i + 1; j < num_boxes; ++j) {
+    for (int j = i + 1; j < num_boxes_kept; ++j) {
       if (active_box_candidate[j] == 1) {
         float intersection_over_union = ComputeIntersectionOverUnion(
             decoded_boxes, keep_indices[sorted_indices[i]],

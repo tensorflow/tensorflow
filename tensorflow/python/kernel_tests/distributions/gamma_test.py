@@ -284,11 +284,11 @@ class GammaTest(test.TestCase):
           sample_values.mean(axis=0),
           stats.gamma.mean(
               alpha_bc, scale=1 / beta_bc),
-          rtol=.035)
+          atol=0., rtol=.05)
       self.assertAllClose(
           sample_values.var(axis=0),
           stats.gamma.var(alpha_bc, scale=1 / beta_bc),
-          atol=4.5)
+          atol=10.0, rtol=0.)
       fails = 0
       trials = 0
       for ai, a in enumerate(np.reshape(alpha_v, [-1])):
@@ -400,7 +400,7 @@ class GammaTest(test.TestCase):
                    + alpha0 * (beta1 / beta0 - 1.))
 
     self.assertAllClose(kl_expected, kl_actual_, atol=0., rtol=1e-6)
-    self.assertAllClose(kl_sample_, kl_actual_, atol=0., rtol=1e-2)
+    self.assertAllClose(kl_sample_, kl_actual_, atol=0., rtol=1e-1)
 
 
 if __name__ == "__main__":

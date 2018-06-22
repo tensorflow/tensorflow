@@ -183,6 +183,9 @@ class DfsHloVisitorBase {
   virtual Status HandleOr(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
+  virtual Status HandleXor(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
+  }
   virtual Status HandleShiftLeft(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }

@@ -106,6 +106,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:batch_dot",
         "//tensorflow/compiler/tf2xla/lib:cholesky",
+        "//tensorflow/compiler/tf2xla/lib:random",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/lib:triangular_solve",
         "//tensorflow/compiler/tf2xla/lib:util",

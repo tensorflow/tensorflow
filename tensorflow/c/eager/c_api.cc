@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -108,7 +109,8 @@ tensorflow::Status GetAllRemoteDevices(
 }
 
 tensorflow::Status CreateRemoteContexts(
-    const std::vector<string>& remote_workers,
+    const std::vector<string>& remote_workers, int64 rendezvous_id,
+    const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
     tensorflow::gtl::FlatMap<string, tensorflow::uint64>* remote_contexts) {
   for (int i = 0; i < remote_workers.size(); i++) {
@@ -116,12 +118,14 @@ tensorflow::Status CreateRemoteContexts(
 
     tensorflow::eager::CreateContextRequest request;
     tensorflow::eager::CreateContextResponse response;
+    request.set_rendezvous_id(rendezvous_id);
     tensorflow::DeviceNameUtils::ParsedName parsed_name;
     if (!tensorflow::DeviceNameUtils::ParseFullName(remote_worker,
                                                     &parsed_name)) {
       return tensorflow::errors::InvalidArgument(
           "Unable to parse ", remote_worker, " as a device name");
     }
+    *request.mutable_server_def() = server_def;
     request.mutable_server_def()->set_job_name(parsed_name.job);
     request.mutable_server_def()->set_task_index(parsed_name.task);
     request.set_async(async);
@@ -175,6 +179,8 @@ tensorflow::Status NewRemoteAwareTFE_Context(const TFE_ContextOptions* opts,
 
   LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
+  int64 rendezvous_id = tensorflow::random::New64();
+
   std::vector<string> remote_workers;
   grpc_server->master_env()->worker_cache->ListWorkers(&remote_workers);
   remote_workers.erase(
@@ -193,12 +199,24 @@ tensorflow::Status NewRemoteAwareTFE_Context(const TFE_ContextOptions* opts,
 
   // Initialize remote eager workers.
   tensorflow::gtl::FlatMap<string, tensorflow::uint64> remote_contexts;
-  LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(remote_workers,
-                                               remote_eager_workers.get(),
-                                               opts->async, &remote_contexts));
+  LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
+      remote_workers, rendezvous_id, opts->server_def,
+      remote_eager_workers.get(), opts->async, &remote_contexts));
 
   tensorflow::RemoteRendezvous* r =
-      grpc_server->worker_env()->rendezvous_mgr->Find(0);
+      grpc_server->worker_env()->rendezvous_mgr->Find(rendezvous_id);
+
+  auto session_name = tensorflow::strings::StrCat("eager_", rendezvous_id);
+  TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
+      session_name, opts->server_def, true));
+
+  std::shared_ptr<tensorflow::WorkerSession> worker_session;
+  TF_RETURN_IF_ERROR(
+      grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
+          session_name, &worker_session));
+
+  // Initialize remote tensor communication based on worker session.
+  TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
   *ctx = new TFE_Context(opts->session_options.options, opts->policy,

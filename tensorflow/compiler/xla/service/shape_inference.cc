@@ -885,6 +885,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
       if (lhs.element_type() != PRED &&
           !primitive_util::IsIntegralType(lhs.element_type())) {
         return InvalidArgument(

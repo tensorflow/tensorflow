@@ -755,7 +755,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "fused_batchnorm_test",
-    size = "small",
+    size = "medium",
     srcs = ["fused_batchnorm_test.py"],
     deps = [
         ":xla_test",
@@ -767,6 +767,7 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
