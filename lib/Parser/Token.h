@@ -36,16 +36,34 @@ public:
     at_identifier,      // @foo
     // TODO: @@foo, etc.
 
+    integer,            // 42
+
     // Punctuation.
+    arrow,              // ->
+    comma,              // ,
+    question,           // ?
+    questionquestion,   // ??
     l_paren, r_paren,   // ( )
     less, greater,      // < >
     // TODO: More punctuation.
 
     // Keywords.
+    kw_bf16,
     kw_cfgfunc,
     kw_extfunc,
+    kw_f16,
+    kw_f32,
+    kw_f64,
+    kw_i1,
+    kw_i16,
+    kw_i32,
+    kw_i64,
+    kw_i8,
+    kw_int,
+    kw_memref,
     kw_mlfunc,
-    // TODO: More keywords.
+    kw_tensor,
+    kw_vector,
   };
 
   Token(TokenKind kind, StringRef spelling)
@@ -78,8 +96,13 @@ public:
     return !isAny(k1, k2, others...);
   }
 
+  // Helpers to decode specific sorts of tokens.
 
-  /// Location processing.
+  /// For an integer token, return its value as an unsigned.  If it doesn't fit,
+  /// return None.
+  Optional<unsigned> getUnsignedIntegerValue();
+
+  // Location processing.
   llvm::SMLoc getLoc() const;
   llvm::SMLoc getEndLoc() const;
   llvm::SMRange getLocRange() const;

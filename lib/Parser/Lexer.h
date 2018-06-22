@@ -46,6 +46,11 @@ public:
 
   Token lexToken();
 
+  /// Change the position of the lexer cursor.  The next token we lex will start
+  /// at the designated point in the input.
+  void resetPointer(const char *newPointer) {
+    curPtr = newPointer;
+  }
 private:
   // Helpers.
   Token formToken(Token::TokenKind kind, const char *tokStart) {
@@ -58,6 +63,7 @@ private:
   Token lexComment();
   Token lexBareIdentifierOrKeyword(const char *tokStart);
   Token lexAtIdentifier(const char *tokStart);
+  Token lexNumber(const char *tokStart);
 };
 
 } // end namespace mlir

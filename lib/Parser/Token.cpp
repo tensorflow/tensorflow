@@ -35,3 +35,15 @@ SMLoc Token::getEndLoc() const {
 SMRange Token::getLocRange() const {
   return SMRange(getLoc(), getEndLoc());
 }
+#include "llvm/Support/raw_ostream.h"
+
+/// For an integer token, return its value as an unsigned.  If it doesn't fit,
+/// return None.
+Optional<unsigned> Token::getUnsignedIntegerValue() {
+  bool isHex = spelling.size() > 1 && spelling[1] == 'x';
+
+  unsigned result = 0;
+  if (spelling.getAsInteger(isHex ? 0 : 10, result))
+    return None;
+  return result;
+}
