@@ -62,21 +62,11 @@ py_test(
 )
 
 py_library(
-    name = "data_structures_base",
-    srcs = ["data_structures_base.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":base",
-    ],
-)
-
-py_library(
     name = "data_structures",
     srcs = ["data_structures.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":base",
-        ":data_structures_base",
     ],
 )
 
