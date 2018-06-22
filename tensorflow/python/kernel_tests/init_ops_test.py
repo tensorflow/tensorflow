@@ -376,7 +376,7 @@ class VarianceScalingInitializationTest(test.TestCase):
           random_ops, 'truncated_normal', wraps=random_ops.truncated_normal) \
           as mock_truncated_normal:
       x = init(shape).eval()
-      mock_truncated_normal.assert_called()
+      self.assertTrue(mock_truncated_normal.called)
 
     self.assertNear(np.mean(x), expect_mean, err=1e-2)
     self.assertNear(np.var(x), expect_var, err=1e-2)
@@ -392,7 +392,7 @@ class VarianceScalingInitializationTest(test.TestCase):
           random_ops, 'truncated_normal', wraps=random_ops.truncated_normal) \
           as mock_truncated_normal:
       x = init(shape).eval()
-      mock_truncated_normal.assert_called()
+      self.assertTrue(mock_truncated_normal.called)
 
     self.assertNear(np.mean(x), expect_mean, err=1e-2)
     self.assertNear(np.var(x), expect_var, err=1e-2)
@@ -409,7 +409,7 @@ class VarianceScalingInitializationTest(test.TestCase):
           random_ops, 'random_normal', wraps=random_ops.random_normal) \
           as mock_random_normal:
       x = init(shape).eval()
-      mock_random_normal.assert_called()
+      self.assertTrue(mock_random_normal.called)
 
     self.assertNear(np.mean(x), expect_mean, err=1e-2)
     self.assertNear(np.var(x), expect_var, err=1e-2)
