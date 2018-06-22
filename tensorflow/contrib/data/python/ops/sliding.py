@@ -23,7 +23,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.platform import tf_logging as logging
 
 
 class _SlideDataset(dataset_ops.Dataset):
@@ -93,7 +92,6 @@ def sliding_window_batch(window_size, stride=1):
     A `Dataset` transformation function, which can be passed to
     @{tf.data.Dataset.apply}.
   """
-
   def _apply_fn(dataset):
     return _SlideDataset(dataset, window_size, stride)
 
