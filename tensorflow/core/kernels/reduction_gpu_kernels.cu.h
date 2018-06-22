@@ -151,7 +151,9 @@ struct DividesBy<std::complex<double>> {
   }
 };
 
-template <>
+#endif
+
+ template <>
 struct DividesBy<float, Eigen::half> {
   float divisor;
 
@@ -161,7 +163,6 @@ struct DividesBy<float, Eigen::half> {
     return Eigen::half(x / divisor);
   }
 };
-#endif
 
 struct HalfToFloat {
   __host__ __device__ float operator()(const Eigen::half& x) const {
