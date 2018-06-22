@@ -269,15 +269,7 @@ Status GrpcServer::Init(
   LocalMaster::Register(target(), master_impl_.get(),
                         config.operation_timeout_in_ms());
 
-  // Generate a dummy worker session that is used to register the
-  // Rendezvous for eager (we use Step 0 for eager).
-  worker_session_ = WorkerSession::CreateWithBorrowedDeviceMgr(
-      "", name_prefix,
-      std::unique_ptr<WorkerCacheInterface>(
-          new WorkerCacheWrapper(master_env_.worker_cache)),
-      worker_env_.device_mgr, {});
-  auto* r = worker_env()->rendezvous_mgr->Find(0);
-  return r->Initialize(worker_session_.get());
+  return Status::OK();
 }
 
 Status GrpcServer::Init(

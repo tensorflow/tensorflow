@@ -538,6 +538,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kRemainder:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical: {

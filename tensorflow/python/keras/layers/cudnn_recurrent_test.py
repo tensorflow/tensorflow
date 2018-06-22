@@ -30,7 +30,7 @@ from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 class CuDNNTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_cudnn_rnn_basics(self):
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
@@ -58,7 +58,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
                           'go_backwards': go_backwards},
                   input_shape=(num_samples, timesteps, input_size))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_trainability(self):
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
@@ -288,7 +288,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(
             model.predict(inputs), cudnn_model.predict(inputs), atol=1e-4)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_cudnnrnn_bidirectional(self):
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):

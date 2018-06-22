@@ -1292,11 +1292,11 @@ void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
 }
 
 // Internal function doing the actual arithmetic work for
-// ExperimentalShuffledFullyConnected.
+// ShuffledFullyConnected.
 // May be called either directly by it (single-threaded case) or may be used
 // as the 'task' for worker threads to run (multi-threaded case, see
-// ExperimentalShuffledFullyConnectedWorkerTask below).
-inline void ExperimentalShuffledFullyConnectedWorkerImpl(
+// ShuffledFullyConnectedWorkerTask below).
+inline void ShuffledFullyConnectedWorkerImpl(
     const uint8* shuffled_input_workspace_data,
     const int8* shuffled_weights_data, int batches, int output_depth,
     int output_stride, int accum_depth, const int32* bias_data,
@@ -1570,14 +1570,16 @@ inline void ExperimentalShuffledFullyConnectedWorkerImpl(
 #endif
 }
 
-// Wraps ExperimentalShuffledFullyConnectedWorkerImpl into a Task class
+// Wraps ShuffledFullyConnectedWorkerImpl into a Task class
 // to allow using gemmlowp's threadpool.
-struct ExperimentalShuffledFullyConnectedWorkerTask : gemmlowp::Task {
-  ExperimentalShuffledFullyConnectedWorkerTask(
-      const uint8* input_data, const int8* shuffled_weights_data, int batches,
-      int output_depth, int output_stride, int accum_depth,
-      const int32* bias_data, int32 output_multiplier, int output_shift,
-      int16* output_data)
+struct ShuffledFullyConnectedWorkerTask : gemmlowp::Task {
+  ShuffledFullyConnectedWorkerTask(const uint8* input_data,
+                                   const int8* shuffled_weights_data,
+                                   int batches, int output_depth,
+                                   int output_stride, int accum_depth,
+                                   const int32* bias_data,
+                                   int32 output_multiplier, int output_shift,
+                                   int16* output_data)
       : input_data_(input_data),
         shuffled_weights_data_(shuffled_weights_data),
         batches_(batches),
@@ -1590,7 +1592,7 @@ struct ExperimentalShuffledFullyConnectedWorkerTask : gemmlowp::Task {
         output_data_(output_data) {}
 
   void Run() override {
-    ExperimentalShuffledFullyConnectedWorkerImpl(
+    ShuffledFullyConnectedWorkerImpl(
         input_data_, shuffled_weights_data_, batches_, output_depth_,
         output_stride_, accum_depth_, bias_data_, output_multiplier_,
         output_shift_, output_data_);
@@ -1608,15 +1610,14 @@ struct ExperimentalShuffledFullyConnectedWorkerTask : gemmlowp::Task {
   int16* output_data_;
 };
 
-inline void ExperimentalShuffledFullyConnected(
+inline void ShuffledFullyConnected(
     const uint8* input_data, const Dims<4>& input_dims,
     const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
     const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
     int output_shift, int32 output_activation_min, int32 output_activation_max,
     int16* output_data, const Dims<4>& output_dims,
     uint8* shuffled_input_workspace_data, gemmlowp::GemmContext* gemm_context) {
-  gemmlowp::ScopedProfilingLabel label(
-      "ExperimentalShuffledFullyConnected/8bit");
+  gemmlowp::ScopedProfilingLabel label("ShuffledFullyConnected/8bit");
   (void)gemm_context;  // only used in optimized code.
   TFLITE_DCHECK_EQ(output_activation_min, -32768);
   TFLITE_DCHECK_EQ(output_activation_max, 32767);
@@ -1700,7 +1701,7 @@ inline void ExperimentalShuffledFullyConnected(
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
-    ExperimentalShuffledFullyConnectedWorkerImpl(
+    ShuffledFullyConnectedWorkerImpl(
         shuffled_input_workspace_data, int8_shuffled_weights_data, batches,
         output_depth, output_depth, accum_depth, bias_data, output_multiplier,
         output_shift, output_data);
@@ -1715,7 +1716,7 @@ inline void ExperimentalShuffledFullyConnected(
   int row_start = 0;
   for (int i = 0; i < thread_count; i++) {
     int row_end = std::min(output_depth, row_start + kRowsPerWorker);
-    tasks[i] = new ExperimentalShuffledFullyConnectedWorkerTask(
+    tasks[i] = new ShuffledFullyConnectedWorkerTask(
         shuffled_input_workspace_data,
         int8_shuffled_weights_data + row_start * accum_depth, batches,
         row_end - row_start, output_depth, accum_depth, bias_data + row_start,

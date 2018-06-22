@@ -1006,7 +1006,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDenseShape(self):
     t_value = [[0, 42], [24, 0]]
     self.assertAllEqual((2, 2), self.evaluate(array_ops.shape(t_value)))
@@ -1018,7 +1018,7 @@ class ShapeSizeRankTest(test_util.TensorFlowTestCase):
     self.assertEqual(4, self.evaluate(array_ops.size(t)))
     self.assertEqual(2, self.evaluate(array_ops.rank(t)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSparseShape(self):
     sp_value = sparse_tensor.SparseTensorValue(
         indices=((0, 1), (1, 0)), values=(42, 24), dense_shape=(2, 2))
@@ -1031,7 +1031,7 @@ class ShapeSizeRankTest(test_util.TensorFlowTestCase):
     self.assertEqual(4, self.evaluate(array_ops.size(sp)))
     self.assertEqual(2, self.evaluate(array_ops.rank(sp)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSizeDtype(self):
     tensor = [1]
     self.assertEqual(dtypes.int32, self.evaluate(array_ops.size(tensor)).dtype)
@@ -1123,7 +1123,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConcatSlice(self):
     r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
     r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")

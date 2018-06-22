@@ -443,7 +443,7 @@ class RNNCellTest(test.TestCase):
           self.assertTrue(
               float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) < 1e-6)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testWrapperCheckpointing(self):
     for wrapper_type in [
         rnn_cell_impl.DropoutWrapper,

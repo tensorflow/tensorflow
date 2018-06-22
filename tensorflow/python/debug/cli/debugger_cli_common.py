@@ -23,9 +23,11 @@ import re
 import sre_constants
 import traceback
 
+import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python import pywrap_tensorflow_internal
 from tensorflow.python.platform import gfile
 
 HELP_INDENT = "  "
@@ -129,6 +131,25 @@ def rich_text_lines_from_rich_line_list(rich_text_list, annotations=None):
     else:
       lines.append(rl)
   return RichTextLines(lines, font_attr_segs, annotations=annotations)
+
+
+def get_tensorflow_version_lines(include_dependency_versions=False):
+  """Generate RichTextLines with TensorFlow version info.
+
+  Args:
+    include_dependency_versions: Include the version of TensorFlow's key
+      dependencies, such as numpy.
+
+  Returns:
+    A formatted, multi-line `RichTextLines` object.
+  """
+  lines = ["TensorFlow version: %s" % pywrap_tensorflow_internal.__version__]
+  lines.append("")
+  if include_dependency_versions:
+    lines.append("Dependency version(s):")
+    lines.append("  numpy: %s" % np.__version__)
+    lines.append("")
+  return RichTextLines(lines)
 
 
 class RichTextLines(object):
@@ -538,6 +559,8 @@ class CommandHandlerRegistry(object):
 
   HELP_COMMAND = "help"
   HELP_COMMAND_ALIASES = ["h"]
+  VERSION_COMMAND = "version"
+  VERSION_COMMAND_ALIASES = ["ver"]
 
   def __init__(self):
     # A dictionary from command prefix to handler.
@@ -561,6 +584,13 @@ class CommandHandlerRegistry(object):
         self._help_handler,
         "Print this help message.",
         prefix_aliases=self.HELP_COMMAND_ALIASES)
+
+    # Register a default handler for the command "version".
+    self.register_command_handler(
+        self.VERSION_COMMAND,
+        self._version_handler,
+        "Print the versions of TensorFlow and its key dependencies.",
+        prefix_aliases=self.VERSION_COMMAND_ALIASES)
 
   def register_command_handler(self,
                                prefix,
@@ -762,6 +792,11 @@ class CommandHandlerRegistry(object):
       return self.get_help(args[0])
     else:
       return RichTextLines(["ERROR: help takes only 0 or 1 input argument."])
+
+  def _version_handler(self, args, screen_info=None):
+    del args  # Unused currently.
+    del screen_info  # Unused currently.
+    return get_tensorflow_version_lines(include_dependency_versions=True)
 
   def _resolve_prefix(self, token):
     """Resolve command prefix from the prefix itself or its alias.

@@ -127,7 +127,7 @@ class RNNTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInvalidSequenceLengthShape(self):
     cell = Plus1RNNCell()
     if context.executing_eagerly():
@@ -141,7 +141,7 @@ class RNNTest(test.TestCase):
           dtype=dtypes.float32,
           sequence_length=[[4]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBatchSizeFromInput(self):
     cell = Plus1RNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -181,7 +181,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(None, outputs.shape[0].value)
       self.assertEqual(None, state.shape[0].value)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScalarStateIsAccepted(self):
     cell = ScalarStateRNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -201,7 +201,7 @@ class RNNTest(test.TestCase):
     self.assertAllEqual([[[1], [2], [3], [4]]], outputs)
     self.assertAllEqual(4, state)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUnbalancedOutputIsAccepted(self):
     cell = UnbalancedOutputRNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -223,7 +223,7 @@ class RNNTest(test.TestCase):
     self.assertAllEqual([[[1, 1], [2, 2], [3, 3], [4, 4]]], outputs[1])
     self.assertAllEqual(4, state)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testTensorArrayStateIsAccepted(self):
     cell = TensorArrayStateRNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -256,7 +256,7 @@ class RNNTest(test.TestCase):
     cell_output, _ = cell(array_ops.zeros(in_shape, dtype), state_output)
     self.assertAllEqual([batch_size, out_size], cell_output.shape.as_list())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCellsBuild(self):
     f32 = dtypes.float32
     f64 = dtypes.float64

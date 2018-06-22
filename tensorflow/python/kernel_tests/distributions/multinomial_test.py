@@ -312,10 +312,10 @@ class MultinomialTest(test.TestCase):
           dist.covariance(),
       ])
       self.assertAllEqual([4, 3, 2], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.07)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.10)
       self.assertAllEqual([4, 3, 2, 2], sample_covariance.get_shape())
       self.assertAllClose(
-          actual_covariance_, sample_covariance_, atol=0., rtol=0.10)
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
 
   def testSampleUnbiasedScalarBatch(self):
     with self.test_session() as sess:
@@ -340,10 +340,10 @@ class MultinomialTest(test.TestCase):
           dist.covariance(),
       ])
       self.assertAllEqual([4], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.07)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.10)
       self.assertAllEqual([4, 4], sample_covariance.get_shape())
       self.assertAllClose(
-          actual_covariance_, sample_covariance_, atol=0., rtol=0.10)
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
 
   def testNotReparameterized(self):
     total_count = constant_op.constant(5.0)

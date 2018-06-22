@@ -575,44 +575,6 @@ class GradientBoostedDecisionTreeModel(object):
         self._dense_floats + self._sparse_float_indices +
         self._sparse_int_indices)
     worker_device = input_deps[0].device
-    # Create ensemble stats variables.
-    num_layer_examples = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64),
-        name="num_layer_examples",
-        trainable=False)
-    num_layer_steps = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64),
-        name="num_layer_steps",
-        trainable=False)
-    num_layers = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64),
-        name="num_layers",
-        trainable=False)
-    active_tree = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64),
-        name="active_tree",
-        trainable=False)
-    active_layer = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64),
-        name="active_layer",
-        trainable=False)
-    # Variable that becomes false once bias centering is done.
-    continue_centering = variables.Variable(
-        initial_value=self._center_bias,
-        name="continue_centering",
-        trainable=False)
-    # Create bias stats accumulator.
-    bias_stats_accumulator = stats_accumulator_ops.StatsAccumulator(
-        stamp_token=0,
-        gradient_shape=self._gradient_shape,
-        hessian_shape=self._hessian_shape,
-        name="BiasAccumulator")
-    # Create steps accumulator.
-    steps_accumulator = stats_accumulator_ops.StatsAccumulator(
-        stamp_token=0,
-        gradient_shape=tensor_shape.scalar(),
-        hessian_shape=tensor_shape.scalar(),
-        name="StepsAccumulator")
 
     # Get tensors relevant for training and form the loss.
     predictions = predictions_dict[PREDICTIONS]
@@ -748,6 +710,44 @@ class GradientBoostedDecisionTreeModel(object):
                 init_stamp_token=init_stamp_token))
         fc_name_idx += 1
 
+      # Create ensemble stats variables.
+      num_layer_examples = variables.Variable(
+          initial_value=array_ops.zeros([], dtypes.int64),
+          name="num_layer_examples",
+          trainable=False)
+      num_layer_steps = variables.Variable(
+          initial_value=array_ops.zeros([], dtypes.int64),
+          name="num_layer_steps",
+          trainable=False)
+      num_layers = variables.Variable(
+          initial_value=array_ops.zeros([], dtypes.int64),
+          name="num_layers",
+          trainable=False)
+      active_tree = variables.Variable(
+          initial_value=array_ops.zeros([], dtypes.int64),
+          name="active_tree",
+          trainable=False)
+      active_layer = variables.Variable(
+          initial_value=array_ops.zeros([], dtypes.int64),
+          name="active_layer",
+          trainable=False)
+      # Variable that becomes false once bias centering is done.
+      continue_centering = variables.Variable(
+          initial_value=self._center_bias,
+          name="continue_centering",
+          trainable=False)
+      # Create bias stats accumulator.
+      bias_stats_accumulator = stats_accumulator_ops.StatsAccumulator(
+          stamp_token=0,
+          gradient_shape=self._gradient_shape,
+          hessian_shape=self._hessian_shape,
+          name="BiasAccumulator")
+      # Create steps accumulator.
+      steps_accumulator = stats_accumulator_ops.StatsAccumulator(
+          stamp_token=0,
+          gradient_shape=tensor_shape.scalar(),
+          hessian_shape=tensor_shape.scalar(),
+          name="StepsAccumulator")
     # Create ensemble stats summaries.
     summary.scalar("layer_stats/num_examples", num_layer_examples)
     summary.scalar("layer_stats/num_steps", num_layer_steps)

@@ -60,6 +60,11 @@ message CreateContextRequest {
 
   // This is the version for all the ops that will be enqueued by the client.
   VersionDef version_def = 4;
+
+  // This ID will be used for all future communications. It is essential that
+  // both ends use this ID for selecting a rendezvous to get everything to
+  // match.
+  int64 rendezvous_id = 5;
 }
 
 message CreateContextResponse {
