@@ -1195,6 +1195,7 @@ class SeparableConv(Conv):
         dilation_rate=dilation_rate,
         activation=activations.get(activation),
         use_bias=use_bias,
+        bias_initializer=initializers.get(bias_initializer),
         bias_regularizer=regularizers.get(bias_regularizer),
         activity_regularizer=regularizers.get(activity_regularizer),
         bias_constraint=bias_constraint,
