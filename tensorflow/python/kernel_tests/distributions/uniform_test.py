@@ -22,6 +22,7 @@ import importlib
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
@@ -298,6 +299,18 @@ class UniformTest(test.TestCase):
       pdf = uniform.prob(uniform.sample())
       expected_pdf = [1.0, 0.1]
       self.assertAllClose(expected_pdf, self.evaluate(pdf))
+
+  def testFullyReparameterized(self):
+    a = constant_op.constant(0.1)
+    b = constant_op.constant(0.8)
+    with backprop.GradientTape() as tape:
+      tape.watch(a)
+      tape.watch(b)
+      uniform = uniform_lib.Uniform(a, b)
+      samples = uniform.sample(100)
+    grad_a, grad_b = tape.gradient(samples, [a, b])
+    self.assertIsNotNone(grad_a)
+    self.assertIsNotNone(grad_b)
 
   # Eager doesn't pass due to a type mismatch in one of the ops.
   def testUniformFloat64(self):

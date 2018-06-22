@@ -21,9 +21,9 @@ import importlib
 
 import numpy as np
 
-from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import gamma as gamma_lib
@@ -45,6 +45,7 @@ special = try_import("scipy.special")
 stats = try_import("scipy.stats")
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class GammaTest(test.TestCase):
 
   def testGammaShape(self):
@@ -53,9 +54,9 @@ class GammaTest(test.TestCase):
       beta = constant_op.constant(11.0)
       gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
 
-      self.assertEqual(gamma.batch_shape_tensor().eval(), (5,))
+      self.assertEqual(self.evaluate(gamma.batch_shape_tensor()), (5,))
       self.assertEqual(gamma.batch_shape, tensor_shape.TensorShape([5]))
-      self.assertAllEqual(gamma.event_shape_tensor().eval(), [])
+      self.assertAllEqual(self.evaluate(gamma.event_shape_tensor()), [])
       self.assertEqual(gamma.event_shape, tensor_shape.TensorShape([]))
 
   def testGammaLogPDF(self):
@@ -74,8 +75,8 @@ class GammaTest(test.TestCase):
       if not stats:
         return
       expected_log_pdf = stats.gamma.logpdf(x, alpha_v, scale=1 / beta_v)
-      self.assertAllClose(log_pdf.eval(), expected_log_pdf)
-      self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
+      self.assertAllClose(self.evaluate(log_pdf), expected_log_pdf)
+      self.assertAllClose(self.evaluate(pdf), np.exp(expected_log_pdf))
 
   def testGammaLogPDFMultidimensional(self):
     with self.test_session():
@@ -87,10 +88,10 @@ class GammaTest(test.TestCase):
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
       gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
       log_pdf = gamma.log_prob(x)
-      log_pdf_values = log_pdf.eval()
+      log_pdf_values = self.evaluate(log_pdf)
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       pdf = gamma.prob(x)
-      pdf_values = pdf.eval()
+      pdf_values = self.evaluate(pdf)
       self.assertEqual(pdf.get_shape(), (6, 2))
       if not stats:
         return
@@ -108,10 +109,10 @@ class GammaTest(test.TestCase):
       x = np.array([[2.5, 2.5, 4.0, 0.1, 1.0, 2.0]], dtype=np.float32).T
       gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
       log_pdf = gamma.log_prob(x)
-      log_pdf_values = log_pdf.eval()
+      log_pdf_values = self.evaluate(log_pdf)
       self.assertEqual(log_pdf.get_shape(), (6, 2))
       pdf = gamma.prob(x)
-      pdf_values = pdf.eval()
+      pdf_values = self.evaluate(pdf)
       self.assertEqual(pdf.get_shape(), (6, 2))
 
       if not stats:
@@ -135,7 +136,7 @@ class GammaTest(test.TestCase):
       if not stats:
         return
       expected_cdf = stats.gamma.cdf(x, alpha_v, scale=1 / beta_v)
-      self.assertAllClose(cdf.eval(), expected_cdf)
+      self.assertAllClose(self.evaluate(cdf), expected_cdf)
 
   def testGammaMean(self):
     with self.test_session():
@@ -146,7 +147,7 @@ class GammaTest(test.TestCase):
       if not stats:
         return
       expected_means = stats.gamma.mean(alpha_v, scale=1 / beta_v)
-      self.assertAllClose(gamma.mean().eval(), expected_means)
+      self.assertAllClose(self.evaluate(gamma.mean()), expected_means)
 
   def testGammaModeAllowNanStatsIsFalseWorksWhenAllBatchMembersAreDefined(self):
     with self.test_session():
@@ -155,7 +156,7 @@ class GammaTest(test.TestCase):
       gamma = gamma_lib.Gamma(concentration=alpha_v, rate=beta_v)
       expected_modes = (alpha_v - 1) / beta_v
       self.assertEqual(gamma.mode().get_shape(), (3,))
-      self.assertAllClose(gamma.mode().eval(), expected_modes)
+      self.assertAllClose(self.evaluate(gamma.mode()), expected_modes)
 
   def testGammaModeAllowNanStatsFalseRaisesForUndefinedBatchMembers(self):
     with self.test_session():
@@ -166,7 +167,7 @@ class GammaTest(test.TestCase):
                               rate=beta_v,
                               allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
-        gamma.mode().eval()
+        self.evaluate(gamma.mode())
 
   def testGammaModeAllowNanStatsIsTrueReturnsNaNforUndefinedBatchMembers(self):
     with self.test_session():
@@ -179,7 +180,7 @@ class GammaTest(test.TestCase):
       expected_modes = (alpha_v - 1) / beta_v
       expected_modes[0] = np.nan
       self.assertEqual(gamma.mode().get_shape(), (3,))
-      self.assertAllClose(gamma.mode().eval(), expected_modes)
+      self.assertAllClose(self.evaluate(gamma.mode()), expected_modes)
 
   def testGammaVariance(self):
     with self.test_session():
@@ -190,7 +191,7 @@ class GammaTest(test.TestCase):
       if not stats:
         return
       expected_variances = stats.gamma.var(alpha_v, scale=1 / beta_v)
-      self.assertAllClose(gamma.variance().eval(), expected_variances)
+      self.assertAllClose(self.evaluate(gamma.variance()), expected_variances)
 
   def testGammaStd(self):
     with self.test_session():
@@ -201,7 +202,7 @@ class GammaTest(test.TestCase):
       if not stats:
         return
       expected_stddev = stats.gamma.std(alpha_v, scale=1. / beta_v)
-      self.assertAllClose(gamma.stddev().eval(), expected_stddev)
+      self.assertAllClose(self.evaluate(gamma.stddev()), expected_stddev)
 
   def testGammaEntropy(self):
     with self.test_session():
@@ -212,10 +213,10 @@ class GammaTest(test.TestCase):
       if not stats:
         return
       expected_entropy = stats.gamma.entropy(alpha_v, scale=1 / beta_v)
-      self.assertAllClose(gamma.entropy().eval(), expected_entropy)
+      self.assertAllClose(self.evaluate(gamma.entropy()), expected_entropy)
 
   def testGammaSampleSmallAlpha(self):
-    with session.Session():
+    with self.test_session():
       alpha_v = 0.05
       beta_v = 1.0
       alpha = constant_op.constant(alpha_v)
@@ -223,7 +224,7 @@ class GammaTest(test.TestCase):
       n = 100000
       gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
       samples = gamma.sample(n, seed=137)
-      sample_values = samples.eval()
+      sample_values = self.evaluate(samples)
       self.assertEqual(samples.get_shape(), (n,))
       self.assertEqual(sample_values.shape, (n,))
       self.assertTrue(self._kstest(alpha_v, beta_v, sample_values))
@@ -240,7 +241,7 @@ class GammaTest(test.TestCase):
           atol=.15)
 
   def testGammaSample(self):
-    with session.Session():
+    with self.test_session():
       alpha_v = 4.0
       beta_v = 3.0
       alpha = constant_op.constant(alpha_v)
@@ -248,7 +249,7 @@ class GammaTest(test.TestCase):
       n = 100000
       gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
       samples = gamma.sample(n, seed=137)
-      sample_values = samples.eval()
+      sample_values = self.evaluate(samples)
       self.assertEqual(samples.get_shape(), (n,))
       self.assertEqual(sample_values.shape, (n,))
       self.assertTrue(self._kstest(alpha_v, beta_v, sample_values))
@@ -265,13 +266,13 @@ class GammaTest(test.TestCase):
           atol=.15)
 
   def testGammaSampleMultiDimensional(self):
-    with session.Session():
+    with self.test_session():
       alpha_v = np.array([np.arange(1, 101, dtype=np.float32)])  # 1 x 100
       beta_v = np.array([np.arange(1, 11, dtype=np.float32)]).T  # 10 x 1
       gamma = gamma_lib.Gamma(concentration=alpha_v, rate=beta_v)
       n = 10000
       samples = gamma.sample(n, seed=137)
-      sample_values = samples.eval()
+      sample_values = self.evaluate(samples)
       self.assertEqual(samples.get_shape(), (n, 10, 100))
       self.assertEqual(sample_values.shape, (n, 10, 100))
       zeros = np.zeros_like(alpha_v + beta_v)  # 10 x 100
@@ -306,12 +307,12 @@ class GammaTest(test.TestCase):
     return ks < 0.02
 
   def testGammaPdfOfSampleMultiDims(self):
-    with session.Session() as sess:
+    with self.test_session():
       gamma = gamma_lib.Gamma(concentration=[7., 11.], rate=[[5.], [6.]])
       num = 50000
       samples = gamma.sample(num, seed=137)
       pdfs = gamma.prob(samples)
-      sample_vals, pdf_vals = sess.run([samples, pdfs])
+      sample_vals, pdf_vals = self.evaluate([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))
       self.assertEqual(pdfs.get_shape(), (num, 2, 2))
       self._assertIntegral(sample_vals[:, 0, 0], pdf_vals[:, 0, 0], err=0.02)
@@ -345,18 +346,18 @@ class GammaTest(test.TestCase):
     with self.test_session():
       alpha_v = constant_op.constant(0.0, name="alpha")
       beta_v = constant_op.constant(1.0, name="beta")
-      gamma = gamma_lib.Gamma(concentration=alpha_v,
-                              rate=beta_v,
-                              validate_args=True)
-      with self.assertRaisesOpError("alpha"):
-        gamma.mean().eval()
+      with self.assertRaisesOpError("x > 0"):
+        gamma = gamma_lib.Gamma(concentration=alpha_v,
+                                rate=beta_v,
+                                validate_args=True)
+        self.evaluate(gamma.mean())
       alpha_v = constant_op.constant(1.0, name="alpha")
       beta_v = constant_op.constant(0.0, name="beta")
-      gamma = gamma_lib.Gamma(concentration=alpha_v,
-                              rate=beta_v,
-                              validate_args=True)
-      with self.assertRaisesOpError("beta"):
-        gamma.mean().eval()
+      with self.assertRaisesOpError("x > 0"):
+        gamma = gamma_lib.Gamma(concentration=alpha_v,
+                                rate=beta_v,
+                                validate_args=True)
+        self.evaluate(gamma.mean())
 
   def testGammaWithSoftplusConcentrationRate(self):
     with self.test_session():
@@ -364,10 +365,10 @@ class GammaTest(test.TestCase):
       beta_v = constant_op.constant([1.0, -3.6], name="beta")
       gamma = gamma_lib.GammaWithSoftplusConcentrationRate(
           concentration=alpha_v, rate=beta_v)
-      self.assertAllEqual(nn_ops.softplus(alpha_v).eval(),
-                          gamma.concentration.eval())
-      self.assertAllEqual(nn_ops.softplus(beta_v).eval(),
-                          gamma.rate.eval())
+      self.assertAllEqual(self.evaluate(nn_ops.softplus(alpha_v)),
+                          self.evaluate(gamma.concentration))
+      self.assertAllEqual(self.evaluate(nn_ops.softplus(beta_v)),
+                          self.evaluate(gamma.rate))
 
   def testGammaGammaKL(self):
     alpha0 = np.array([3.])
@@ -377,15 +378,15 @@ class GammaTest(test.TestCase):
     beta1 = np.array([0.5, 1., 1.5, 2., 2.5, 3.])
 
     # Build graph.
-    with self.test_session() as sess:
+    with self.test_session():
       g0 = gamma_lib.Gamma(concentration=alpha0, rate=beta0)
       g1 = gamma_lib.Gamma(concentration=alpha1, rate=beta1)
       x = g0.sample(int(1e4), seed=0)
       kl_sample = math_ops.reduce_mean(g0.log_prob(x) - g1.log_prob(x), 0)
       kl_actual = kullback_leibler.kl_divergence(g0, g1)
 
-    # Execute graph.
-    [kl_sample_, kl_actual_] = sess.run([kl_sample, kl_actual])
+      # Execute graph.
+      [kl_sample_, kl_actual_] = self.evaluate([kl_sample, kl_actual])
 
     self.assertEqual(beta0.shape, kl_actual.get_shape())
 

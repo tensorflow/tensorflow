@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "DecodeJSONExample"
+  endpoint {
+    name: "io.decode_json_example"
+  }
+  endpoint {
+    name: "decode_json_example"
+    deprecation_message: "tf.decode_json_example is deprecated, please use tf.io.decode_json_example instead."
+  }
+}

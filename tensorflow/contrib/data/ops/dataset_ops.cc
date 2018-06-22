@@ -158,6 +158,7 @@ REGISTER_OP("ThreadPoolHandle")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)
     .Attr("num_threads: int")
+    .Attr("max_intra_op_parallelism: int = 1")
     .Attr("display_name: string")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -166,6 +167,8 @@ Creates a custom thread pool with the given number of threads.
 
 handle: A resource that can be consumed by one or more ThreadPoolDataset ops.
 num_threads: The number of threads in the thread pool.
+max_intra_op_parallelism: The maximum degree of parallelism to use within
+  operations that execute on this threadpool.
 display_name: A human-readable name for the threads that may be visible in
   some visualizations.
 )doc");

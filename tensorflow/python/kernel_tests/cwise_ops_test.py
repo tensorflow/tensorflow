@@ -96,7 +96,8 @@ class UnaryOpTest(test.TestCase):
     np_ans = np_func(x)
     with self.test_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
-      if x.dtype in (np.float32, np.float64):
+      if x.dtype in (np.float32, np.float64,
+                     dtypes_lib.bfloat16.as_numpy_dtype):
         y = 1.1 * tf_func(inx)
         np_ans *= 1.1
       else:
@@ -105,6 +106,8 @@ class UnaryOpTest(test.TestCase):
       self.assertShapeEqual(np_ans, y)
       if x.dtype == np.float16:
         self.assertAllClose(np_ans, tf_cpu, rtol=1e-3, atol=1e-3)
+      elif x.dtype == dtypes_lib.bfloat16.as_numpy_dtype:
+        self.assertAllClose(np_ans, tf_cpu, rtol=1e-2, atol=1e-2)
       else:
         self.assertAllClose(np_ans, tf_cpu)
 

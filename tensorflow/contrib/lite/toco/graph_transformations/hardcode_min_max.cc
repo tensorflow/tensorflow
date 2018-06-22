@@ -353,7 +353,7 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       changed = HardcodeMinMaxForConcatenation(model, op);
       break;
 
-    case OperatorType::kTensorFlowSplit:
+    case OperatorType::kSplit:
       changed = HardcodeMinMaxForSplit(model, op);
       break;
 
@@ -366,7 +366,7 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSlice:
     case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
-    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kReshape:
     case OperatorType::kPad:
     case OperatorType::kGather:
     case OperatorType::kTranspose:

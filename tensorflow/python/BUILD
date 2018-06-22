@@ -4,14 +4,16 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-package(default_visibility = [
+visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//tensorflow:internal",
     "//tensorflow/contrib/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
-])
+]
+
+package(default_visibility = visibility)
 
 licenses(["notice"])  # Apache 2.0
 
@@ -55,12 +57,12 @@ py_library(
         "//tensorflow/contrib/lite/toco/python:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/tools/api/generator:__pkg__",
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
         ":no_contrib",
         "//tensorflow/contrib:contrib_py",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -126,7 +128,6 @@ py_library(
         ":weights_broadcast_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data",
-        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/distributions",
@@ -358,6 +359,9 @@ cc_library(
     name = "ndarray_tensor",
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
+    visibility = visibility + [
+        "//learning/deepmind/courier:__subpackages__",
+    ],
     deps = [
         ":bfloat16_lib",
         ":ndarray_tensor_bridge",
