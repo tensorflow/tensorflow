@@ -79,10 +79,10 @@ class GraphConstructor {
                      : in.prefix + "/"),
           uniquify_names(in.uniquify_names),
           uniquify_prefix(in.uniquify_prefix),
-          input_map(in.input_map),
+          input_map(in.input_map.begin(), in.input_map.end()),
           skip_mapped_nodes(in.skip_mapped_nodes),
           control_dependencies(in.control_dependencies),
-          return_tensors(in.return_tensors),
+          return_tensors(in.return_tensors.begin(), in.return_tensors.end()),
           return_nodes(in.return_nodes),
           importing(true),
           validate_colocation_constraints(in.validate_colocation_constraints),
@@ -121,7 +121,7 @@ class GraphConstructor {
       const FunctionDefLibrary* library, Graph* g, ShapeRefiner* refiner,
       std::vector<std::pair<Node*, int>>* return_tensors,
       std::vector<Node*>* return_nodes,
-      std::vector<TensorId>* missing_unused_input_map_keys) {
+      std::vector<SafeTensorId>* missing_unused_input_map_keys) {
     if (versions) {
       TF_RETURN_IF_ERROR(CheckVersions(*versions, TF_GRAPH_DEF_VERSION,
                                        TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
@@ -142,7 +142,7 @@ class GraphConstructor {
                    ShapeRefiner* refiner,
                    std::vector<std::pair<Node*, int>>* return_tensors,
                    std::vector<Node*>* return_nodes,
-                   std::vector<TensorId>* missing_unused_input_map_keys)
+                   std::vector<SafeTensorId>* missing_unused_input_map_keys)
       : opts_(opts),
         node_defs_(node_defs),
         versions_(versions),
@@ -251,7 +251,7 @@ class GraphConstructor {
   std::vector<Node*>* return_nodes_;
 
   // May be null. Not owned.
-  std::vector<TensorId>* missing_unused_input_map_keys_;
+  std::vector<SafeTensorId>* missing_unused_input_map_keys_;
 
   // Intermediate datastructure used to populate
   // `missing_unused_input_map_keys_`.
