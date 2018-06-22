@@ -28,7 +28,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
 
   for (auto* computation : module->MakeNonfusionComputations()) {
     computation_ = computation;
-    reachability_ = computation_->ComputeReachability();
+    RecomputeReachability();
     candidates_.clear();
     candidates_index_.clear();
     all_fusion_candidates_.clear();
@@ -151,6 +151,22 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
   return remaining;
 }
 
+bool MultiOutputFusion::IsProfitableOperand(HloInstruction* instr) {
+  // kConstant instruction will not have memory reads, so it won't be a profit
+  // source. Skip them.
+  if (instr->opcode() == HloOpcode::kConstant &&
+      ShapeUtil::IsEffectiveScalar(instr->shape())) {
+    return false;
+  }
+  // We don't target to fuse producer/consumer instructions -- this should
+  // be taken care of by the instruction_fusion pass. If instr has only
+  // one user, it will not have sibling instructions. We won't consider it.
+  if (instr->user_count() < 2) {
+    return false;
+  }
+  return true;
+}
+
 void MultiOutputFusion::Update(HloInstruction* instr1, HloInstruction* instr2) {
   HloInstruction* fusion = instr1;
   HloInstruction* fused = instr2;
@@ -261,6 +277,10 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   return true;
 }
 
+void MultiOutputFusion::RecomputeReachability() {
+  reachability_ = computation_->ComputeReachability();
+}
+
 void MultiOutputFusion::UpdateReachability(
     HloInstruction* instr1, HloInstruction* instr2,
     tensorflow::gtl::ArraySlice<HloInstruction*> instrs_to_update,
@@ -329,14 +349,11 @@ bool MultiOutputFusion::Perform() {
       --fuel_;
     }
   }
-  if (DoProducerConsumerMultiOutputFusion(computation_)) {
+  if (DoProducerConsumerMultiOutputFusion()) {
     changed = true;
   }
   return changed;
 }
 
-bool MultiOutputFusion::DoProducerConsumerMultiOutputFusion(
-    HloComputation* /*computation*/) {
-  return false;
-}
+bool MultiOutputFusion::DoProducerConsumerMultiOutputFusion() { return false; }
 }  // namespace xla

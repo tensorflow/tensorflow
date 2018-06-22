@@ -226,10 +226,13 @@ Status IrEmitter::HandleCopy(HloInstruction* copy) {
     // kCopy shallow copies a tuple so just memcpy the top-level buffer.
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(copy));
     return EmitMemcpy(*(copy->operand(0)), *copy);
-  } else {
-    // Use the elemental emitter for non-tuple shapes.
+  } else if (ShapeUtil::IsArray(copy->shape())) {
+    // Use the elemental emitter for array shapes.
     return DefaultAction(copy);
   }
+  return Unimplemented(
+      "unsupported operand type %s for copy instruction",
+      PrimitiveType_Name(copy->shape().element_type()).c_str());
 }
 
 // Calculate the alignment of a buffer allocated for a given primitive type.
@@ -560,7 +563,8 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &ir_builder_);
 
-        llvm_ir::IrArray::Index input_index(index.size());
+        llvm_ir::IrArray::Index input_index(ir_builder_.getInt64Ty(),
+                                            index.size());
         llvm::Value* in_bounds_condition = nullptr;
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* strided_index = ir_builder_.CreateNSWMul(
@@ -691,7 +695,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // Compute the operand index to visit and evaluate the condition whether the
   // operand index is within the bounds. The unsigned comparison includes
   // checking whether the operand index >= 0.
-  llvm_ir::IrArray::Index operand_index(source_index.size());
+  llvm_ir::IrArray::Index operand_index(ir_builder_.getInt64Ty(),
+                                        source_index.size());
   llvm::Value* in_bounds_condition = ir_builder_.getTrue();
   for (int64 i = 0; i < rank; ++i) {
     llvm::Value* strided_index = ir_builder_.CreateNSWMul(
@@ -765,7 +770,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // value and the current output value.
   SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(),
                         &ir_builder_);
-  llvm_ir::IrArray::Index selected_index;
+  llvm_ir::IrArray::Index selected_index(source_index.GetType());
   for (int64 i = 0; i < rank; ++i) {
     llvm::Value* selected_index_address_slot = ir_builder_.CreateInBoundsGEP(
         selected_index_address, {ir_builder_.getInt32(i)});
@@ -1107,7 +1112,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 
         // We are not in the padding, so carry out the computation.
         int num_dims = num_spatial_dims + 2;
-        llvm_ir::IrArray::Index input_index(num_dims);
+        llvm_ir::IrArray::Index input_index(ir_builder_.getInt64Ty(), num_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
           input_index[dnums.input_spatial_dimensions(i)] = input_spatial[i];
         }
@@ -1115,7 +1120,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         input_index[dnums.input_batch_dimension()] = batch;
 
         llvm_ir::IrArray kernel_array(GetIrArrayFor(rhs));
-        llvm_ir::IrArray::Index kernel_index(num_dims);
+        llvm_ir::IrArray::Index kernel_index(ir_builder_.getInt64Ty(),
+                                             num_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
           kernel_index[dnums.kernel_spatial_dimensions(i)] =
               window.dimensions(i).window_reversal()
@@ -1682,7 +1688,8 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   //  }
 
   llvm_ir::ForLoopNest loop_nest(IrName(reduce), &ir_builder_);
-  llvm_ir::IrArray::Index array_index(reduce->shape().dimensions_size());
+  llvm_ir::IrArray::Index array_index(ir_builder_.getInt64Ty(),
+                                      reduce->shape().dimensions_size());
   for (int i = LayoutUtil::MinorToMajor(reduce->shape()).size() - 1; i > 0;
        --i) {
     int64 dimension = LayoutUtil::Minor(reduce->shape().layout(), i);
@@ -1873,7 +1880,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(slice));
 
-  if (ShapeUtil::HasZeroElements(slice->shape())) {
+  if (ShapeUtil::IsZeroElementArray(slice->shape())) {
     return Status::OK();
   }
 
@@ -2066,7 +2073,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   // Compute the output index the operand element should be assigned to.
   // output_index := edge_padding_low + operand_index * (interior_padding + 1)
   const PaddingConfig& padding_config = pad->padding_config();
-  llvm_ir::IrArray::Index output_index;
+  llvm_ir::IrArray::Index output_index(operand_index.GetType());
   for (size_t i = 0; i < operand_index.size(); ++i) {
     llvm::Value* offset = ir_builder_.CreateMul(
         operand_index[i],
@@ -2528,6 +2535,13 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleGenerateToken(HloInstruction* gen_token) {
+  TF_RET_CHECK(ByteSizeOf(gen_token->shape()) == 0);
+  // No code to generate, but we need to emit an address for book-keeping.
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(gen_token));
+  return Status::OK();
+}
+
 Status IrEmitter::FinishVisit(HloInstruction* root) {
   // When this method is called, we should have already emitted an IR value for
   // the root (return) op. The IR value holds the address of the buffer holding
@@ -2809,7 +2823,10 @@ Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
     // For the root node, we write directly to the output buffer of the
     // function.
     llvm::Argument* retval = compute_function_->result_arg();
-    if (!ShapeUtil::IsNil(target_shape)) {
+    if ((ShapeUtil::IsArray(target_shape) &&
+         !ShapeUtil::IsZeroElementArray(target_shape)) ||
+        (ShapeUtil::IsTuple(target_shape) &&
+         !ShapeUtil::IsEmptyTuple(target_shape))) {
       llvm::AttrBuilder attr_builder;
       attr_builder.addAlignmentAttr(MinimumAlignmentForShape(target_shape));
       attr_builder.addDereferenceableAttr(ByteSizeOf(target_shape));

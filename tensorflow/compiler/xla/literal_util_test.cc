@@ -334,6 +334,22 @@ TEST_F(LiteralUtilTest, NonScalarEquality) {
   EXPECT_EQ(nil, nil);
 }
 
+TEST_F(LiteralUtilTest, TokenEquality) {
+  auto token0 = Literal::CreateToken();
+  auto token1 = Literal::CreateToken();
+  auto scalar = Literal::CreateR0<float>(1.0);
+
+  EXPECT_EQ(*token0, *token1);
+  EXPECT_NE(*token0, *scalar);
+
+  EXPECT_EQ(*Literal::MakeTuple({token0.get()}),
+            *Literal::MakeTuple({token0.get()}));
+  EXPECT_EQ(*Literal::MakeTuple({token0.get(), scalar.get()}),
+            *Literal::MakeTuple({token1.get(), scalar.get()}));
+  EXPECT_NE(*Literal::MakeTuple({token0.get(), scalar.get()}),
+            *Literal::MakeTuple({scalar.get(), token1.get()}));
+}
+
 TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   // Test equality with literals which have different layouts.
   auto colmajor =

@@ -31,11 +31,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import adam
 
 
 class EagerTest(XLATestCase):
@@ -46,6 +48,21 @@ class EagerTest(XLATestCase):
       five = constant_op.constant(5)
       product = three * five
       self.assertAllEqual(15, product)
+
+  def testGradientTape(self):
+    with self.test_scope():
+
+      x = constant_op.constant(1.0)
+      y = constant_op.constant(10.0)
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(x)
+        tape.watch(y)
+        a = x + y + x * y
+      da_dx = tape.gradient(a, x)
+      da_dy = tape.gradient(a, y)
+
+    self.assertEqual(11.0, da_dx.numpy())
+    self.assertEqual(2.0, da_dy.numpy())
 
   def testExecuteListOutputLen0(self):
     with self.test_scope():
@@ -231,12 +248,49 @@ class EagerTest(XLATestCase):
           2, array_ops.rank(
               constant_op.constant([[1.0, 2.0], [3.0, 4.0]])).numpy())
 
+  def testAdam(self):
+    with self.test_scope():
+      optimizer = adam.AdamOptimizer(0.1)
+      x = resource_variable_ops.ResourceVariable(10.0)
+      with backprop.GradientTape() as tape:
+        y = x * x
+      dy_dx = tape.gradient(y, x)
+      optimizer.apply_gradients([(dy_dx, x)])
+      self.assertAlmostEqual(9.9, x.numpy(), places=3)
+
+  def testAdamSparse(self):
+    with ops.device('/cpu:0'):
+      # Create 2-D embedding for 3 objects on CPU because sparse/sliced updates
+      # are not implemented on TPU.
+      embedding_matrix = resource_variable_ops.ResourceVariable(
+          array_ops.ones([3, 2]))
+
+    with self.test_scope():
+      with backprop.GradientTape() as tape:
+        embedding = embedding_ops.embedding_lookup(embedding_matrix, [1])
+        y = math_ops.reduce_sum(embedding)
+      dy_dx = tape.gradient(y, embedding_matrix)
+      self.assertIsInstance(dy_dx, ops.IndexedSlices)
+      optimizer = adam.AdamOptimizer(0.1)
+      # The gradient application operations will run on CPU because optimizer
+      # updates are always collocated with the variable.
+      optimizer.apply_gradients([(dy_dx, embedding_matrix)])
+
+      # This assign_add will run on CPU because when an input to an
+      # operation is a resource, this operation is placed on the resource's
+      # device by the eager runtime.
+      embedding_matrix.assign_add(array_ops.ones([3, 2]))
+
+    self.assertAllClose([[2.0, 2.0],
+                         [1.9, 1.9],
+                         [2.0, 2.0]], embedding_matrix.numpy())
+
 
 class EagerFunctionTest(XLATestCase):
 
   def testBasic(self):
     with self.test_scope():
-      matmul = function.defun(math_ops.matmul, compiled=True)
+      matmul = function.defun(math_ops.matmul)
       t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
       sq = matmul(t, t, transpose_a=True)
       self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
@@ -258,7 +312,7 @@ class EagerFunctionTest(XLATestCase):
       def model(x):
         x = conv(x)
         return pool(x)
-      model = function.defun(model, compiled=True)
+      model = function.defun(model)
 
       x = array_ops.ones([1, 4, 4, 1])
       y = model(x)
@@ -268,7 +322,7 @@ class EagerFunctionTest(XLATestCase):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(1.0)
 
-      @function.defun(compiled=True)
+      @function.defun
       def f():
         return v.read_value()
 
@@ -283,7 +337,7 @@ class EagerFunctionTest(XLATestCase):
         v.assign_add(1.0)
         return v
 
-      f = function.defun(f, compiled=True)
+      f = function.defun(f)
 
       var = f(v)
       self.assertEqual(2.0, var.numpy())
@@ -311,7 +365,7 @@ class EagerFunctionTest(XLATestCase):
         d = r2 * v2
         return a, b, c, d
 
-      foo = function.defun(foo, compiled=True)
+      foo = function.defun(foo)
 
       c1 = [0, 0]
       c2 = array_ops.ones([2], dtype=dtypes.int32)
@@ -333,7 +387,7 @@ class EagerFunctionTest(XLATestCase):
     with self.test_scope():
       v0 = resource_variable_ops.ResourceVariable(5.0)
 
-      @function.defun(compiled=True)
+      @function.defun
       def f(x):
         x = v0 * v0 * x
         return x
@@ -345,6 +399,24 @@ class EagerFunctionTest(XLATestCase):
 
     self.assertEqual(75, y.numpy())
     self.assertEqual(30, dy.numpy())
+
+  def testSliceInDefun(self):
+    with self.test_scope():
+
+      @function.defun(compiled=True)
+      def f(x, y):
+        return x[0::2, y:, ...]
+
+      x = array_ops.ones([2, 3, 4])
+      y = array_ops.ones([], dtype=dtypes.int32)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        tape.watch(y)
+        z = f(x, y)
+      dz = tape.gradient(z, x)
+
+      self.assertAllEqual(np.ones([1, 2, 4]), z.numpy())
+      self.assertAllEqual((2, 3, 4), dz.shape.as_list())
 
 
 class ExcessivePaddingTest(XLATestCase):
@@ -378,7 +450,7 @@ class ExcessivePaddingTest(XLATestCase):
   def testAsFunctionInput(self):
     with self.test_scope():
 
-      @function.defun(compiled=True)
+      @function.defun
       def f(x):
         return math_ops.reduce_sum(x, axis=2)
 
@@ -389,7 +461,7 @@ class ExcessivePaddingTest(XLATestCase):
   def testAsFunctionOutput(self):
     with self.test_scope():
 
-      @function.defun(compiled=True)
+      @function.defun
       def f(x):
         return x * constant_op.constant(100 * [[[10.0, 2.0]]])
 

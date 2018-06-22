@@ -620,29 +620,59 @@ def _DigammaGrad(op, grad):
     return grad * math_ops.polygamma(array_ops.constant(1, dtype=x.dtype), x)
 
 
+@ops.RegisterGradient("BesselI0e")
+def _BesselI0eGrad(op, grad):
+  """Compute gradient of bessel_i0e(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * (math_ops.bessel_i1e(x) - math_ops.sign(x) * y)
+
+
+@ops.RegisterGradient("BesselI1e")
+def _BesselI1eGrad(op, grad):
+  """Compute gradient of bessel_i1e(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    # For x = 0, the correct gradient is 0.5.
+    # However, the main branch gives NaN because of the division by x, so
+    # we impute the gradient manually.
+    # An alternative solution is to express the gradient via bessel_i0e and
+    # bessel_i2e, but the latter is not yet implemented in Eigen.
+    eps = np.finfo(x.dtype.as_numpy_dtype).eps
+    zeros = array_ops.zeros_like(x)
+    x_is_not_tiny = math_ops.abs(x) > eps
+    safe_x = array_ops.where(x_is_not_tiny, x, eps + zeros)
+    dy_dx = math_ops.bessel_i0e(safe_x) - y * (
+        math_ops.sign(safe_x) + math_ops.reciprocal(safe_x))
+    return grad * array_ops.where(x_is_not_tiny, dy_dx, 0.5 + zeros)
+
+
 @ops.RegisterGradient("Igamma")
 def _IgammaGrad(op, grad):
-  """Returns gradient of igamma(a, x) with respect to x."""
-  # TODO(ebrevdo): Perhaps add the derivative w.r.t. a
+  """Returns gradient of igamma(a, x) with respect to a and x."""
   a = op.inputs[0]
   x = op.inputs[1]
   sa = array_ops.shape(a)
   sx = array_ops.shape(x)
-  unused_ra, rx = gen_array_ops.broadcast_gradient_args(sa, sx)
+  ra, rx = gen_array_ops.broadcast_gradient_args(sa, sx)
 
-  # Perform operations in log space before summing, because Gamma(a)
-  # and Gamma'(a) can grow large.
-  partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x) - math_ops.lgamma(a))
-  # TODO(b/36815900): Mark None return values as NotImplemented
-  return (None, array_ops.reshape(
-      math_ops.reduce_sum(partial_x * grad, rx), sx))
+  with ops.control_dependencies([grad]):
+    partial_a = gen_math_ops.igamma_grad_a(a, x)
+    # Perform operations in log space before summing, because Gamma(a)
+    # and Gamma'(a) can grow large.
+    partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x)
+                             - math_ops.lgamma(a))
+    return (array_ops.reshape(math_ops.reduce_sum(partial_a * grad, ra), sa),
+            array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Igammac")
 def _IgammacGrad(op, grad):
-  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. x."""
-  _, igamma_grad_x = _IgammaGrad(op, grad)
-  return None, -igamma_grad_x
+  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. a and x."""
+  igamma_grad_a, igamma_grad_x = _IgammaGrad(op, grad)
+  return (-igamma_grad_a, -igamma_grad_x)
 
 
 @ops.RegisterGradient("Betainc")

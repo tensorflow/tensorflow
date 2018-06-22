@@ -1,0 +1,27 @@
+FROM nvidia/cuda-ppc64le:9.0-cudnn7-devel-ubuntu16.04
+
+LABEL maintainer="William Irons <wdirons@us.ibm.com>"
+
+# In the Ubuntu 16.04 images, cudnn is placed in system paths. Move them to
+# /usr/local/cuda
+RUN cp -P /usr/include/cudnn.h /usr/local/cuda/include
+RUN cp -P /usr/lib/powerpc64le-linux-gnu/libcudnn* /usr/local/cuda/lib64
+
+# Copy and run the install scripts.
+COPY install/*.sh /install/
+ARG DEBIAN_FRONTEND=noninteractive
+RUN /install/install_bootstrap_deb_packages.sh
+RUN add-apt-repository -y ppa:openjdk-r/ppa
+RUN /install/install_deb_packages.sh
+RUN apt-get update && apt-get install -y libopenblas-dev
+RUN /install/install_pip_packages.sh
+RUN /install/install_bazel_from_source.sh
+RUN /install/install_golang_ppc64le.sh
+
+# Set up the master bazelrc configuration file.
+COPY install/.bazelrc /etc/bazel.bazelrc
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+
+# Configure the build for our CUDA configuration.
+ENV TF_NEED_CUDA 1
+ENV TF_CUDA_COMPUTE_CAPABILITIES 3.0

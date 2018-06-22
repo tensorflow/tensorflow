@@ -1,0 +1,19 @@
+FROM ubuntu:16.04
+
+LABEL maintainer="William Irons <wdirons@us.ibm.com>"
+
+# Copy and run the install scripts.
+COPY install/*.sh /install/
+RUN /install/install_bootstrap_deb_packages.sh
+RUN add-apt-repository -y ppa:openjdk-r/ppa
+RUN /install/install_deb_packages.sh
+RUN apt-get update && apt-get install -y libopenblas-dev
+RUN /install/install_pip_packages.sh
+RUN /install/install_bazel_from_source.sh
+RUN /install/install_proto3.sh
+RUN /install/install_buildifier_from_source.sh
+RUN /install/install_auditwheel.sh
+RUN /install/install_golang_ppc64le.sh
+
+# Set up the master bazelrc configuration file.
+COPY install/.bazelrc /etc/bazel.bazelrc

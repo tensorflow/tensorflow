@@ -93,6 +93,7 @@ cuda_py_test(
     size = "small",
     srcs = ["categorical_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
@@ -133,6 +134,10 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+    ],
+    tags = [
+        "noguitar",  # b/110489471
+        "notap",  # b/110489471
     ],
 )
 

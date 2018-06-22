@@ -74,7 +74,7 @@ Status XlaTransferManager::TransferLiteralToDevice(
       XlaTensor::FromTensor(device_tensor)->shaped_buffer();
   VLOG(1) << "Transfer to device as literal: " << literal.ToString() << " "
           << shaped_buffer.ToString();
-  return transfer_manager_->TransferLiteralToDevice(stream_->parent(), literal,
+  return transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                     shaped_buffer);
 }
 
@@ -83,9 +83,9 @@ Status XlaTransferManager::TransferLiteralFromDevice(
   const xla::ShapedBuffer& shaped_buffer =
       XlaTensor::FromTensor(&device_tensor)->shaped_buffer();
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Literal> literal,
-                      transfer_manager_->TransferLiteralFromDevice(
-                          stream_->parent(), shaped_buffer));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::Literal> literal,
+      transfer_manager_->TransferLiteralFromDevice(stream_, shaped_buffer));
   VLOG(1) << "Transfer from device as literal: " << literal->ToString() << " "
           << shaped_buffer.ToString();
   Tensor tensor;

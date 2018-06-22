@@ -23,6 +23,12 @@ limitations under the License.
 #include "tensorflow/contrib/lite/testing/util.h"
 
 namespace tflite {
+namespace ops {
+namespace builtin {
+TfLiteRegistration* Register_PADV2();
+TfLiteRegistration* Register_NEG();
+}  // namespace builtin
+}  // namespace ops
 namespace {
 
 // Make an interpreter that has no tensors and no nodes
@@ -106,10 +112,9 @@ TEST(BasicInterpreter, CheckAllocate) {
     TfLiteType type;
     size_t size;
   } cases[] = {
-      {kTfLiteFloat32, sizeof(float)},
-      {kTfLiteInt32, sizeof(int32_t)},
-      {kTfLiteUInt8, sizeof(uint8_t)},
-      {kTfLiteInt64, sizeof(int64_t)},
+      {kTfLiteFloat32, sizeof(float)}, {kTfLiteInt32, sizeof(int32_t)},
+      {kTfLiteUInt8, sizeof(uint8_t)}, {kTfLiteInt64, sizeof(int64_t)},
+      {kTfLiteInt16, sizeof(int16_t)},
   };
 
   for (auto test : cases) {
@@ -134,6 +139,7 @@ TEST(BasicInterpreter, CheckResize) {
   const int32_t int32s[] = {-3, -4};
   const uint8_t uint8s[] = {3, 4};
   const int64_t int64s[] = {6, -7};
+  const int16_t int16s[] = {8, -9};
 
   struct {
     TfLiteType type;
@@ -144,6 +150,7 @@ TEST(BasicInterpreter, CheckResize) {
       {kTfLiteInt32, sizeof(int32_t), reinterpret_cast<const char*>(int32s)},
       {kTfLiteUInt8, sizeof(uint8_t), reinterpret_cast<const char*>(uint8s)},
       {kTfLiteInt64, sizeof(int64_t), reinterpret_cast<const char*>(int64s)},
+      {kTfLiteInt16, sizeof(int16_t), reinterpret_cast<const char*>(int16s)},
   };
 
   for (auto test : cases) {
@@ -179,10 +186,8 @@ TEST(BasicInterpreter, CheckAlignment) {
   struct {
     TfLiteType type;
   } cases[] = {
-      {kTfLiteFloat32},
-      {kTfLiteInt32},
-      {kTfLiteUInt8},
-      {kTfLiteInt64},
+      {kTfLiteFloat32}, {kTfLiteInt32}, {kTfLiteUInt8},
+      {kTfLiteInt64},   {kTfLiteInt16},
   };
 
   for (auto test : cases) {
@@ -211,7 +216,7 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
   TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
 
   std::vector<int> sizes{2048, 4096, 1023, 2047, 1021,
-                         2047, 1023, 2046, 1021, 2048};
+                         2047, 1023, 2046, 0,    2048};
   for (int i = 0; i < sizes.size(); ++i) {
     interpreter.SetTensorParametersReadWrite(i, kTfLiteUInt8, "", {sizes[i]},
                                              quant);
@@ -228,6 +233,7 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
 
   ASSERT_EQ(interpreter.tensor(0)->data.raw, interpreter.tensor(4)->data.raw);
   ASSERT_EQ(interpreter.tensor(1)->data.raw, interpreter.tensor(7)->data.raw);
+  ASSERT_EQ(interpreter.tensor(8)->data.raw, nullptr);
 
   ASSERT_LT(interpreter.tensor(4)->data.raw, interpreter.tensor(1)->data.raw);
   ASSERT_LT(interpreter.tensor(6)->data.raw, interpreter.tensor(1)->data.raw);
@@ -312,6 +318,18 @@ TEST(BasicInterpreter, ResizingTensors) {
 
   ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 4}), kTfLiteOk);
   EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 1 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {0}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 0);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 0}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 0);
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
   // TODO(ahentz): We shouldn't have to force reallocation, but
@@ -601,6 +619,59 @@ TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
                                               &registration),
             kTfLiteOk);
   EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteError);
+}
+
+TEST(BasicInterpreter, DynamicTensorsResizeDescendants) {
+  // Assemble a graph with a node that has dynamically sized output (via the
+  // pad op), followed by a node with a standard element-wise op (negate).
+  Interpreter interpreter;
+  interpreter.AddTensors(4);
+  interpreter.SetInputs({0, 1});
+  interpreter.SetOutputs({3});
+  TfLiteQuantizationParams quant;
+  interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {2, 2, 1, 1},
+                                           quant);
+  interpreter.SetTensorParametersReadWrite(1, kTfLiteInt32, "", {4, 2}, quant);
+  interpreter.SetTensorParametersReadWrite(2, kTfLiteFloat32, "", {}, quant);
+  interpreter.SetTensorParametersReadWrite(3, kTfLiteFloat32, "", {}, quant);
+
+  TfLiteRegistration* pad_op = tflite::ops::builtin::Register_PADV2();
+  TfLiteRegistration* neg_op = tflite::ops::builtin::Register_NEG();
+  interpreter.AddNodeWithParameters({0, 1}, {2}, nullptr, 0, nullptr, pad_op);
+  interpreter.AddNodeWithParameters({2}, {3}, nullptr, 0, nullptr, neg_op);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Configure [[2,2],[4,4]] padding and execute the graph.
+  interpreter.typed_tensor<int>(1)[0] = 2;
+  interpreter.typed_tensor<int>(1)[1] = 2;
+  interpreter.typed_tensor<int>(1)[2] = 2;
+  interpreter.typed_tensor<int>(1)[3] = 2;
+  interpreter.typed_tensor<int>(1)[4] = 0;
+  interpreter.typed_tensor<int>(1)[5] = 0;
+  interpreter.typed_tensor<int>(1)[6] = 0;
+  interpreter.typed_tensor<int>(1)[7] = 0;
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  // Both the output and intermediate tensor sizes should reflect the output
+  // from the dynamic pad operation.
+  ASSERT_EQ(interpreter.tensor(2)->bytes, sizeof(float) * 6 * 6);
+  ASSERT_EQ(interpreter.tensor(3)->bytes, sizeof(float) * 6 * 6);
+
+  // Now configure [[4,4],[6,6]] padding and execute the graph.
+  interpreter.typed_tensor<int>(1)[0] = 4;
+  interpreter.typed_tensor<int>(1)[1] = 4;
+  interpreter.typed_tensor<int>(1)[2] = 6;
+  interpreter.typed_tensor<int>(1)[3] = 6;
+  interpreter.typed_tensor<int>(1)[4] = 0;
+  interpreter.typed_tensor<int>(1)[5] = 0;
+  interpreter.typed_tensor<int>(1)[6] = 0;
+  interpreter.typed_tensor<int>(1)[7] = 0;
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  // Again, the output and intermediate tensor sizes should reflect the *new*
+  // resize from the latest pad operation.
+  ASSERT_EQ(interpreter.tensor(2)->bytes, sizeof(float) * 10 * 14);
+  ASSERT_EQ(interpreter.tensor(3)->bytes, sizeof(float) * 10 * 14);
 }
 
 TEST(InterpreterTensorsCapacityTest, TestWithinHeadroom) {

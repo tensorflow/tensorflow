@@ -22,6 +22,7 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 @@Interpreter
 @@OpHint
 @@convert_op_hints_to_stubs
+@@build_toco_convert_protos
 
 @@FLOAT
 @@QUANTIZED_UINT8
@@ -38,6 +39,7 @@ from six import PY3
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
+from tensorflow.contrib.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert import tensor_name
 from tensorflow.contrib.lite.python.convert import toco_convert
 from tensorflow.contrib.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
@@ -54,6 +56,7 @@ from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops.variables import global_variables_initializer
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+# from tensorflow.python.util.all_util import remove_undocumented
 
 
 class TocoConverter(object):
@@ -388,3 +391,5 @@ def _freeze_graph(sess, output_tensors):
                                                         output_arrays)
   else:
     return sess.graph_def
+
+# remove_undocumented(__name__)

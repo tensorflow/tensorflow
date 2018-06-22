@@ -234,7 +234,10 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
           next_id++;
         };
 
-    auto add_add_params = [&add_scalar_int32]() { add_scalar_int32(0); };
+    auto add_add_params = [&add_scalar_int32](void* data) {
+      auto* builtin = reinterpret_cast<TfLiteAddParams*>(data);
+      add_scalar_int32(builtin->activation);
+    };
 
     auto add_pooling_params = [&add_scalar_int32](void* data) {
       auto builtin = reinterpret_cast<TfLitePoolParams*>(data);
@@ -309,7 +312,7 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
     };
 
     auto add_mean_params = [&add_scalar_int32](void* data) {
-      auto builtin = reinterpret_cast<TfLiteMeanParams*>(data);
+      auto builtin = reinterpret_cast<TfLiteReducerParams*>(data);
       add_scalar_int32(builtin->keep_dims);
     };
 
@@ -345,11 +348,11 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
     switch (builtin) {
       case tflite::BuiltinOperator_ADD:
         nn_op_type = ANEURALNETWORKS_ADD;
-        add_add_params();
+        add_add_params(node.builtin_data);
         break;
       case tflite::BuiltinOperator_MUL:
         nn_op_type = ANEURALNETWORKS_MUL;
-        add_add_params();
+        add_add_params(node.builtin_data);
         break;
       case tflite::BuiltinOperator_AVERAGE_POOL_2D:
         add_pooling_params(node.builtin_data);
@@ -497,6 +500,10 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_SPARSE_TO_DENSE:
       case tflite::BuiltinOperator_EQUAL:
       case tflite::BuiltinOperator_NOT_EQUAL:
+      case tflite::BuiltinOperator_SUM:
+      case tflite::BuiltinOperator_SQRT:
+      case tflite::BuiltinOperator_RSQRT:
+      case tflite::BuiltinOperator_SHAPE:
         FATAL("Op code %d is currently not delegated to NNAPI", builtin);
         nn_op_type = -1;  // set to invalid
         break;

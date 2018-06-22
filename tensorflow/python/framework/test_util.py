@@ -61,13 +61,13 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
 
@@ -619,6 +619,11 @@ def run_in_graph_and_eager_modes(__unused__=None,
   assert not __unused__, "Add () after run_in_graph_and_eager_modes."
 
   def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError(
+          "`run_test_in_graph_and_eager_modes` only supports test methods. "
+          "Did you mean to use `run_all_tests_in_graph_and_eager_modes`?")
+
     def decorated(self, **kwargs):
       with context.graph_mode():
         with self.test_session(use_gpu=use_gpu):
@@ -830,14 +835,13 @@ class TensorFlowTestCase(googletest.TestCase):
   def _eval_tensor(self, tensor):
     if tensor is None:
       return None
-    elif isinstance(tensor, ops.EagerTensor):
-      return tensor.numpy()
-    elif isinstance(tensor, resource_variable_ops.ResourceVariable):
-      return tensor.read_value().numpy()
     elif callable(tensor):
       return self._eval_helper(tensor())
     else:
-      raise ValueError("Unsupported type %s." % type(tensor))
+      try:
+        return tensor.numpy()
+      except AttributeError as e:
+        six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
 
   def _eval_helper(self, tensors):
     if tensors is None:
@@ -1242,11 +1246,11 @@ class TensorFlowTestCase(googletest.TestCase):
             b,
             rtol=rtol,
             atol=atol,
-            msg="Mismatched value: a%s is different from b%s." % (path_str,
-                                                                  path_str))
+            msg=("Mismatched value: a%s is different from b%s. %s" %
+                 (path_str, path_str, msg)))
       except TypeError as e:
-        msg = "Error: a%s has %s, but b%s has %s" % (path_str, type(a),
-                                                     path_str, type(b))
+        msg = ("Error: a%s has %s, but b%s has %s. %s" %
+               (path_str, type(a), path_str, type(b), msg))
         e.args = ((e.args[0] + " : " + msg,) + e.args[1:])
         raise
 

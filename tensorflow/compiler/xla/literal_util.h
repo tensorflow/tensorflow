@@ -917,6 +917,9 @@ class Literal : public LiteralBase {
     return MakeTupleOwned(std::move(v));
   }
 
+  // Create a constant token literal. Token types have no value.
+  static std::unique_ptr<Literal> CreateToken();
+
   // Returns a vector containing the tuple elements of this Literal as separate
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
   // elements are moved into the new Literals; no data is copied. Upon return
@@ -1456,7 +1459,7 @@ void LiteralBase::EachCell(
     std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
                        NativeT value)>
         per_cell) const {
-  if (ShapeUtil::HasZeroElements(shape())) {
+  if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
   std::vector<int64> indices(ShapeUtil::Rank(shape()), 0);

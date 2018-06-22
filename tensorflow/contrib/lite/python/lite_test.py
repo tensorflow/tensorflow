@@ -267,7 +267,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(num_items_graphviz_video > num_items_graphviz)
 
   def testInferenceInputType(self):
-    in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3], dtype=dtypes.uint8)
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
 
@@ -286,14 +287,13 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual('Placeholder', input_details[0]['name'])
     self.assertEqual(np.uint8, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
-    self.assertEqual((0., 0.), input_details[0]['quantization'])
+    self.assertEqual((1., 0.), input_details[0]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual('add', output_details[0]['name'])
-    self.assertEqual(np.uint8, output_details[0]['dtype'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
-    self.assertEqual((0., 0.), input_details[0]['quantization'])
 
   def testDefaultRangesStats(self):
     in_tensor = array_ops.placeholder(

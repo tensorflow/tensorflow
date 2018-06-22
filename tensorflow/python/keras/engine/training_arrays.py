@@ -185,6 +185,7 @@ def fit_loop(model,
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     if steps_per_epoch is not None:
+      # Step-wise fit loop.
       for step_index in range(steps_per_epoch):
         batch_logs = {}
         batch_logs['batch'] = step_index
@@ -215,7 +216,6 @@ def fit_loop(model,
             val_inputs,
             val_targets,
             sample_weights=val_sample_weights,
-            batch_size=batch_size,
             steps=validation_steps,
             verbose=0)
         if not isinstance(val_outs, list):
@@ -224,6 +224,7 @@ def fit_loop(model,
         for l, o in zip(out_labels, val_outs):
           epoch_logs['val_' + l] = o
     else:
+      # Sample-wise fit loop.
       if shuffle == 'batch':
         index_array = training_utils.batch_shuffle(index_array, batch_size)
       elif shuffle:

@@ -210,8 +210,7 @@ cc_library(
     hdrs = ["graph_optimizer_stage.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
@@ -225,6 +224,7 @@ tf_cuda_cc_test(
     deps = [
         ":graph_optimizer_stage",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
@@ -679,6 +679,7 @@ cc_library(
     deps = [
         ":constant_folding",
         ":graph_optimizer",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",

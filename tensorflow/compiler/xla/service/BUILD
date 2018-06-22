@@ -1101,6 +1101,7 @@ tf_cc_test(
     srcs = ["hlo_scheduling_test.cc"],
     deps = [
         ":buffer_value",
+        ":heap_simulator",
         ":hlo",
         ":hlo_ordering",
         ":hlo_scheduling",
@@ -2123,6 +2124,7 @@ cc_library(
         ":buffer_liveness",
         ":buffer_value",
         ":call_graph",
+        ":copy_insertion",
         ":flatten_call_graph",
         ":hlo",
         ":hlo_dce",
@@ -2130,6 +2132,7 @@ cc_library(
         ":hlo_scheduling",
         ":logical_buffer",
         ":tuple_points_to_analysis",
+        ":tuple_simplifier",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -2143,6 +2146,7 @@ tf_cc_test(
     name = "hlo_rematerialization_test",
     srcs = ["hlo_rematerialization_test.cc"],
     deps = [
+        ":flatten_call_graph",
         ":hlo",
         ":hlo_matchers",
         ":hlo_ordering",
@@ -2379,7 +2383,6 @@ cc_library(
         ":hlo_graph_dumper",
         ":hlo_pass",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
 )
@@ -2396,6 +2399,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
@@ -2543,7 +2547,6 @@ cc_library(
     name = "hlo_tfgraph_builder",
     srcs = ["hlo_tfgraph_builder.cc"],
     hdrs = ["hlo_tfgraph_builder.h"],
-    visibility = ["//tensorflow/compiler/xla/tools:__pkg__"],
     deps = [
         ":hlo",
         "//tensorflow/compiler/xla:literal_util",
@@ -2574,6 +2577,7 @@ cc_library(
     hdrs = ["hlo_graph_dumper.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_execution_profile",
         ":hlo_tfgraph_builder",
         "//tensorflow/compiler/xla:literal_util",

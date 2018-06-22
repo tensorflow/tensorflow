@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/tf2xla/validate_control_flow.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -1439,7 +1440,9 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
   // invariant.
   std::vector<ControlFlowInfo> cf_info;
   std::vector<string> unreachable_nodes;
-  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph, &cf_info, &unreachable_nodes));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      BuildAndValidateControlFlowInfo(graph, &cf_info, &unreachable_nodes),
+      "FunctionalizeControlFlow failed");
   if (!unreachable_nodes.empty()) {
     return errors::InvalidArgument(
         "The following nodes are unreachable from the source in the graph: ",
@@ -1464,10 +1467,6 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
       frame.parent = parent;
       frame.name = cf.frame_name;
       ++parent->num_children;
-    } else if (frame.parent != parent) {
-      return errors::InvalidArgument("Mismatched parent frames for ",
-                                     cf.frame->id(), ": ", parent->name, " vs ",
-                                     frame.parent->name);
     }
 
     if (IsEnter(node)) {
@@ -1477,12 +1476,6 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
                                      &arg.is_loop_invariant));
       frame.args.push_back(arg);
     } else if (IsLoopCond(node)) {
-      if (frame.loop_cond) {
-        return errors::InvalidArgument(
-            "Loop ", cf.frame_name,
-            " has more than one LoopCond node: ", node->name(), " and ",
-            frame.loop_cond->name());
-      }
       frame.loop_cond = node;
     }
     frame.nodes.insert(node);
