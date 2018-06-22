@@ -147,7 +147,7 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
                                       output->dimension(0), gpu_device);
 
   if (fixed_size) {
-    GPU_LAUNCH_KERNEL(concat_fixed_kernel<T, IntType>,
+    GPU_LAUNCH_KERNEL((concat_fixed_kernel<T, IntType>),
         dim3(config.block_count), dim3(config.thread_per_block), 0,
         gpu_device.stream(),
         input_ptrs,
@@ -164,13 +164,13 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
     // 4096 inputs is a lot, most code will take the smem path
     const int32 kMaxSmemBytesPerformance = 16384;
     if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance) {
-      GPU_LAUNCH_KERNEL(concat_variable_kernel<T, IntType, true>,
+      GPU_LAUNCH_KERNEL((concat_variable_kernel<T, IntType, true>),
           dim3(config.block_count), dim3(config.thread_per_block), smem_usage,
           gpu_device.stream(),
           input_ptrs, output_scan, output->dimension(0), output->dimension(1),
           output->data());
     } else {
-      GPU_LAUNCH_KERNEL(concat_variable_kernel<T, IntType, false>,
+      GPU_LAUNCH_KERNEL((concat_variable_kernel<T, IntType, false>),
           dim3(config.block_count), dim3(config.thread_per_block), 0,
           gpu_device.stream(),
           input_ptrs, output_scan, output->dimension(0), output->dimension(1),

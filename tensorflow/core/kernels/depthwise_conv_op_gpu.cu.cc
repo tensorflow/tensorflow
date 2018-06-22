@@ -711,11 +711,7 @@ void LaunchDepthwiseConv2dGPU(const GpuDevice& device,
   const int max_block_count = kKnownFilterWidth < 0 || kKnownFilterHeight < 0 ||
                                       kKnownDepthMultiplier < 0
                                   ? std::numeric_limits<int>::max()
-#if GOOGLE_CUDA
-                                  : device.getNumCudaMultiProcessors();
-#elif TENSORFLOW_USE_ROCM
-                                  : device.getNumHipMultiProcessors();
-#endif
+                                  : device.getNumGpuMultiProcessors();
   GPU_LAUNCH_KERNEL(kernel,
            dim3(std::min(max_block_count, config.block_count)),
            dim3(config.thread_per_block), 0, device.stream(),

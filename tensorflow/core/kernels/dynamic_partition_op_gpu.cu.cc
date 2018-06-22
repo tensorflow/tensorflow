@@ -114,7 +114,7 @@ void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
                       T* out, int64 gather_dim_size, int64 indices_size,
                       int64 slice_size, int64 out_size) {
   GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);  
-  GPU_LAUNCH_KERNEL(GatherOpKernel<T, int32, true>,
+  GPU_LAUNCH_KERNEL((GatherOpKernel<T, int32, true>),
           dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
           params, indices, out, gather_dim_size, indices_size, slice_size,
           out_size);

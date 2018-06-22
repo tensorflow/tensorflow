@@ -514,7 +514,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
   if (in_size <= 4096) {
     const int num_blocks = 1;
     const int num_threads = 256;
-    GPU_LAUNCH_KERNEL(BlockReduceKernel<IN_T, OUT_T, num_threads>,
+    GPU_LAUNCH_KERNEL((BlockReduceKernel<IN_T, OUT_T, num_threads>),
         dim3(num_blocks), dim3(num_threads), 0, cu_stream, in, out, in_size, op, init);
     return;
   } else if (in_size <= 1 << 19) {
@@ -534,7 +534,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
             DT_INT8, TensorShape({static_cast<int64>(num_blocks * sizeof(T))}),
             &temp_storage));
 
-    GPU_LAUNCH_KERNEL(BlockReduceKernel<IN_T, T*, num_threads>,
+    GPU_LAUNCH_KERNEL((BlockReduceKernel<IN_T, T*, num_threads>),
         dim3(num_blocks), dim3(num_threads), 0, cu_stream,
             in, (T*)temp_storage.flat<int8_t>().data(), in_size, op, init);
 
@@ -542,7 +542,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     // TODO(eriche): CUB currently has a bug in HeadSegmentedReduce that
     // requires it to be used with a full warp.  Can reduce TF_RED_WARPSIZE -> num_blocks
     // when this is fixed.
-    GPU_LAUNCH_KERNEL(CleanupSegments<T*,OUT_T,Op>, dim3(1), dim3(TF_RED_WARPSIZE), 0, cu_stream,
+    GPU_LAUNCH_KERNEL((CleanupSegments<T*,OUT_T,Op>), dim3(1), dim3(TF_RED_WARPSIZE), 0, cu_stream,
         ((T*)temp_storage.flat<int8_t>().data()), out, 1, 1, num_blocks, op,
         init);
     return;
@@ -645,7 +645,7 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
 
     dim3 new_grid_dim((grid_dim.y * extent_y + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, 1, 1);
     dim3 num_threads(128, 1, 1);
-    GPU_LAUNCH_KERNEL(CleanupSegments<T*,OUT_T,Op>,new_grid_dim, num_threads, 0, cu_stream,
+    GPU_LAUNCH_KERNEL((CleanupSegments<T*,OUT_T,Op>),new_grid_dim, num_threads, 0, cu_stream,
         ((T*)temp_storage.flat<int8_t>().data()), out, extent_x, extent_y,
         grid_dim.y, op, init);
   }
@@ -666,7 +666,7 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    GPU_LAUNCH_KERNEL(ColumnReduceKernel<IN_T, OUT_T, Op>, grid_dim, block_dim, 0, cu_stream,
+    GPU_LAUNCH_KERNEL((ColumnReduceKernel<IN_T, OUT_T, Op>), grid_dim, block_dim, 0, cu_stream,
         in, out, extent_x, extent_y, op, init);
   } else {
     Tensor temp_storage;
@@ -676,13 +676,13 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
 
-    GPU_LAUNCH_KERNEL(ColumnReduceKernel<IN_T, T*, Op>, grid_dim, block_dim, 0, cu_stream,
+    GPU_LAUNCH_KERNEL((ColumnReduceKernel<IN_T, T*, Op>), grid_dim, block_dim, 0, cu_stream,
         in, (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op,
         init);
 
     dim3 new_grid_dim((grid_dim.y * extent_y + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, 1, 1);
     dim3 num_threads(128, 1, 1);
-     GPU_LAUNCH_KERNEL(CleanupSegments<T*,OUT_T,Op>, new_grid_dim, num_threads, 0, cu_stream,
+     GPU_LAUNCH_KERNEL((CleanupSegments<T*,OUT_T,Op>), new_grid_dim, num_threads, 0, cu_stream,
         ((T*)temp_storage.flat<int8_t>().data()), out, extent_x, extent_y,
         grid_dim.y, op, init);
   }

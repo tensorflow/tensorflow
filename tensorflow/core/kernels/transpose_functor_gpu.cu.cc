@@ -80,7 +80,7 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
   GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
-  GPU_LAUNCH_KERNEL(TransposeKernel<T, conjugate>,
+  GPU_LAUNCH_KERNEL((TransposeKernel<T, conjugate>),
       dim3(cfg.block_count), dim3(cfg.thread_per_block), 0, d.stream(),
           cfg.virtual_thread_count, p, reinterpret_cast<const int32*>(dev_buf),
           ndims, q);

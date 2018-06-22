@@ -217,17 +217,10 @@ void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
     OpKernelContext*, const GPUDevice& d, random::PhiloxRandom gen,
     typename Distribution::ResultElementType* data, int64 size,
     Distribution dist) {
-#if GOOGLE_CUDA
-  const int32 block_size = d.maxCudaThreadsPerBlock();
+  const int32 block_size = d.maxGpuThreadsPerBlock();
   const int32 num_blocks =
-      (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
+      (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
       block_size;
-#elif TENSORFLOW_USE_ROCM
-  const int32 block_size = d.maxHipThreadsPerBlock();
-  const int32 num_blocks =
-      (d.getNumHipMultiProcessors() * d.maxHipThreadsPerMultiProcessor()) /
-      block_size;
-#endif
 
   GPU_LAUNCH_KERNEL(FillPhiloxRandomKernelLaunch<Distribution>,
       dim3(num_blocks), dim3(block_size), 0, d.stream(),

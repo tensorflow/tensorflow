@@ -229,7 +229,11 @@ class MomentumOptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testMinimizeSparseResourceVariable(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+    dtypes_to_test = [dtypes.half, dtypes.float32, dtypes.float64]
+    if test.is_built_with_rocm():
+      # rocBLAS on ROCM stack doesn't support fp16 sgemm yet
+      dtypes_to_test = [dtypes.float32, dtypes.float64]
+    for dtype in dtypes_to_test:
       # This test invokes the ResourceSparseApplyMomentum operation, which
       # did not have a registered GPU kernel as of April 2018. With graph
       # execution, the placement algorithm notices this and automatically
