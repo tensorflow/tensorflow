@@ -22,6 +22,7 @@ import importlib
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -271,6 +272,16 @@ class BernoulliTest(test.TestCase):
       # owing to mismatched types. b/30940152
       dist = bernoulli.Bernoulli(np.log([.2, .4]))
       self.assertAllEqual((1, 2), dist.sample(1, seed=42).get_shape().as_list())
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNotReparameterized(self):
+    p = constant_op.constant([0.2, 0.6])
+    with backprop.GradientTape() as tape:
+      tape.watch(p)
+      dist = bernoulli.Bernoulli(probs=p)
+      samples = dist.sample(100)
+    grad_p = tape.gradient(samples, p)
+    self.assertIsNone(grad_p)
 
   def testSampleActsLikeSampleN(self):
     with self.test_session() as sess:

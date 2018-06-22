@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import functools
 import json
 import os
 import weakref
@@ -1300,7 +1301,11 @@ class Network(base_layer.Layer):
       with h5py.File(filepath, 'w') as f:
         saving.save_weights_to_hdf5_group(f, self.layers)
     else:
-      self._checkpointable_saver.save(filepath)
+      if context.executing_eagerly():
+        session = None
+      else:
+        session = backend.get_session()
+      self._checkpointable_saver.save(filepath, session=session)
 
   def load_weights(self, filepath, by_name=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
@@ -1360,7 +1365,8 @@ class Network(base_layer.Layer):
             'loading TensorFlow-formatted weights (got by_name=True to '
             'load_weights).')
       if not context.executing_eagerly():
-        finalizer = status.run_restore_ops
+        session = backend.get_session()
+        finalizer = functools.partial(status.run_restore_ops, session=session)
         if self.built:
           finalizer()
         else:

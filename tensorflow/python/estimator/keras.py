@@ -45,7 +45,6 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
-from tensorflow.python.util.tf_export import tf_export
 
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -446,7 +445,6 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
         saver.save(sess, os.path.join(estimator.model_dir, 'keras_model.ckpt'))
 
 
-@tf_export('keras.estimator.model_to_estimator')
 def model_to_estimator(keras_model=None,
                        keras_model_path=None,
                        custom_objects=None,

@@ -47,6 +47,8 @@ cc_library(
         "eager_service_impl.h",
     ],
     deps = [
+        "//tensorflow:grpc",
+        "//tensorflow:grpc++",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu_internal",
@@ -65,8 +67,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
-        "@grpc//:grpc++_unsecure",
-        "@grpc//:grpc_unsecure",
     ],
 )
 

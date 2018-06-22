@@ -21,11 +21,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
-
 from tensorflow.contrib import tpu
 from tensorflow.contrib.distribute.python import one_device_strategy
-from tensorflow.contrib.distribute.python import values
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -36,85 +33,82 @@ from tensorflow.python.util import nest
 class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   """Experimental TPU distribution strategy implementation."""
 
-  def __init__(self,
-               num_cores_per_host=2,
-               iterations_per_step=2):
+  def __init__(self, num_cores_per_host=2):
     # TODO(isaprykin): Generalize the defaults.  They are currently tailored for
     # the unit test.
     super(TPUStrategy, self).__init__('/cpu:0')
     # TODO(isaprykin): Auto-detect number of cores and hosts.
     self._num_cores_per_host = num_cores_per_host
-    # TODO(isaprykin): This might have to be per-call.
-    self._iterations_per_step = iterations_per_step
+    # TODO(priyag): This should not be hardcoded here.
+    self._host = '/task:0/device:CPU:0'
 
   def distribute_dataset(self, dataset_fn):
-    return values.PerIterationDataset(
-        self._call_dataset_fn(dataset_fn), self._iterations_per_step,
-        self._num_cores_per_host)
+    # TODO(priyag): Perhaps distribute across cores here.
+    return self._call_dataset_fn(dataset_fn)
 
-  def _call_for_each_tower(self, fn, *args, **kwargs):
-    kwargs.pop('run_concurrently', None)
-
-    inputs = {'args': args, 'kwargs': kwargs}
-    flat_inputs = nest.flatten(inputs)
-
-    feed_mask = [isinstance(f, values.PerIteration) for f in flat_inputs]
-
-    feeds = lambda: itertools.compress(flat_inputs, feed_mask)
-    shapes = [f.get_shape() for f in feeds()]
+  # TODO(priyag): Deal with OutOfRange errors.
+  def run_steps_on_dataset(self, fn, iterator, iterations):
+    # Enqueue ops
+    shapes = nest.flatten(iterator.output_shapes)
     if any([not s.is_fully_defined() for s in shapes]):
       raise ValueError(
           'TPU currently requires fully defined shapes. Either use '
           'set_shape() on the input tensors or use '
           'dataset.apply(map_and_batch(..., drop_remainder=True)).')
-    types = [f.get_dtype() for f in feeds()]
+    types = nest.flatten(iterator.output_types)
 
-    def infeed_input(i):
-      """Get input, split it and then enqueue."""
-      iteration_inputs = [f.get(i) for f in feeds()]
-      infeed_inputs = [[inputs_per_core[core_id]
-                        for inputs_per_core in iteration_inputs]
-                       for core_id in range(self._num_cores_per_host)]
+    def enqueue_ops_fn():
+      """Enqueue ops for one iteration."""
+      control_deps = []
+      sharded_inputs = []
+      with ops.device(self._host):
+        for _ in range(self._num_cores_per_host):
+          # Use control dependencies to ensure a deterministic ordering.
+          with ops.control_dependencies(control_deps):
+            inputs = nest.flatten(iterator.get_next())
+            control_deps.extend(inputs)
+            sharded_inputs.append(inputs)
 
-      infeed_ops = []
-      for core_id, infeed_input in enumerate(infeed_inputs):
-        infeed_ops.append(
+      enqueue_ops = []
+      for core_id, shard_input in enumerate(sharded_inputs):
+        enqueue_ops.append(
             tpu_ops.infeed_enqueue_tuple(
-                inputs=infeed_input, shapes=shapes, device_ordinal=core_id))
+                inputs=shard_input, shapes=shapes, device_ordinal=core_id))
+      return enqueue_ops
 
-      with ops.control_dependencies(infeed_ops):
+    def enqueue_ops_loop_body(i):
+      with ops.control_dependencies(enqueue_ops_fn()):
         return i + 1
 
-    with ops.device('/task:0/device:CPU:0'):
+    with ops.device(self._host):
       enqueue_ops = control_flow_ops.while_loop(
-          lambda i: i < self._iterations_per_step,
-          infeed_input, [constant_op.constant(0)],
+          lambda i: i < iterations,
+          enqueue_ops_loop_body,
+          [constant_op.constant(0)],
           parallel_iterations=1)
 
-    def dequeueing_fn(*args, **kwargs):
-      """Dequeue input arguments and supply them to `fn`."""
-      del args, kwargs
+    # Dequeue ops
+    def dequeue_fn():
       dequeued = tpu.infeed_dequeue_tuple(dtypes=types, shapes=shapes)
-      dequeued = iter(dequeued)
+      return nest.pack_sequence_as(iterator.output_shapes, dequeued)
 
-      fn_inputs = []
-      for inp, is_feed in zip(flat_inputs, feed_mask):
-        if is_feed:
-          fn_inputs.append(next(dequeued))
-        else:
-          fn_inputs.append(inp)
+    # Wrap `fn` for repeat.
+    run_fn = lambda: fn(dequeue_fn())
 
-      fn_inputs = nest.pack_sequence_as(inputs, fn_inputs)
-      return fn(*fn_inputs['args'], **fn_inputs['kwargs'])
-
+    # Repeat
     def iterate_on_tpu():
-      return tpu.repeat(self._iterations_per_step, dequeueing_fn, [])
+      return tpu.repeat(iterations, run_fn, [])
 
-    with one_device_strategy._OneDeviceTowerContext(self):  # pylint: disable=protected-access
-      tpu_result = tpu.batch_parallel(
-          iterate_on_tpu, [], num_shards=self._num_cores_per_host)
+    # Re-write and distribute computation.
+    tpu_result = tpu.batch_parallel(
+        iterate_on_tpu, [], num_shards=self._num_cores_per_host)
 
     return control_flow_ops.group(tpu_result, enqueue_ops)
+
+  def _call_for_each_tower(self, fn, *args, **kwargs):
+    kwargs.pop('run_concurrently', None)
+    with one_device_strategy._OneDeviceTowerContext(self):  # pylint: disable=protected-access
+      return fn(*args, **kwargs)
 
   def _reduce(self, method_string, value, destinations):
     del destinations  # TPU is graph mode only.  Rely on implicit Send/Recv.

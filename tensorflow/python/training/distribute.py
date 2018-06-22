@@ -528,6 +528,8 @@ class DistributionStrategy(object):
   * `d.update_non_slot(d.non_slot_devices(), fn)`: in cross-tower
     context, like `d.update()` except with locality N.
   * `d.fetch(t)`: Copy `t` with any locality to the client's CPU device.
+    TODO(josh11b): Deprecate `fetch`, switch to `read_var` for
+    reading tower-local variables.
 
   The standard pattern for updating variables is to:
 
@@ -614,8 +616,8 @@ class DistributionStrategy(object):
 
     There will still be one component variable per tower, but there is
     no requirement that they stay in sync. Instead, when saving them
-    or calling `fetch()`, we use the value that results when calling
-    `reduce()` on all the towers' variables.
+    or calling `fetch()/read_var()`, we use the value that
+    results when calling `reduce()` on all the towers' variables.
 
     Note: tower-local implies not trainable. Instead, it is expected
     that each tower will directly update (using `assign_add()` or
@@ -645,6 +647,21 @@ class DistributionStrategy(object):
 
     _require_distribution_strategy_scope(self)
     return variable_scope.variable_creator_scope(create_tower_local_variable)
+
+  def read_var(self, v):
+    """Reads the value of a variable.
+
+    Returns the aggregate value of a tower-local variable, or the
+    (read-only) value of any other variable.
+
+    Args:
+      v: A variable allocated within the scope of this `DistributionStrategy`.
+
+    Returns:
+      A tensor representing the value of `v`, aggregated across towers if
+      necessary.
+    """
+    raise NotImplementedError("must be implemented in descendants")
 
   def colocate_vars_with(self, colocate_with_variable):
     """Scope that controls which devices variables will be created on.
@@ -904,6 +921,8 @@ class DistributionStrategy(object):
     will attempt to avoid a copy by checking if the value is already
     on the destination device.
 
+    TODO(josh11b): Switch to `read_var`.
+
     Args:
       val: Value (which may be mirrored) to copy.
       destination: A device string to copy the value to.
@@ -946,7 +965,7 @@ class DistributionStrategy(object):
       return control_flow_ops.group(value, name=name)
     # Special handling for the common case of one op.
     v, = value
-    if isinstance(v, ops.Tensor):
+    if hasattr(v, "op"):
       v = v.op
     return v
 
@@ -1196,6 +1215,9 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     # once that value is used for something.
     with ops.colocate_with(colocate_with), UpdateContext(colocate_with):
       return fn(*args, **kwargs)
+
+  def read_var(self, tower_local_var):
+    return array_ops.identity(tower_local_var)
 
   def _fetch(self, var, destination, fn):
     with ops.colocate_with(var):

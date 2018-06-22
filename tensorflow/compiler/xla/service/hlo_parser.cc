@@ -327,22 +327,15 @@ bool HloParser::ParseComputations() {
     // set the layouts to what the hlo text says.
     for (int p = 0; p < computation->num_parameters(); p++) {
       const Shape& param_shape = computation->parameter_instruction(p)->shape();
-      TF_CHECK_OK(module_->mutable_host_entry_computation_layout()
-                      ->mutable_parameter_layout(p)
-                      ->CopyLayoutFromShape(param_shape));
-      TF_CHECK_OK(module_->mutable_device_entry_computation_layout()
+      TF_CHECK_OK(module_->mutable_entry_computation_layout()
                       ->mutable_parameter_layout(p)
                       ->CopyLayoutFromShape(param_shape));
     }
     const Shape& result_shape = computation->root_instruction()->shape();
-    TF_CHECK_OK(module_->mutable_host_entry_computation_layout()
-                    ->mutable_result_layout()
-                    ->CopyLayoutFromShape(result_shape));
-    TF_CHECK_OK(module_->mutable_device_entry_computation_layout()
+    TF_CHECK_OK(module_->mutable_entry_computation_layout()
                     ->mutable_result_layout()
                     ->CopyLayoutFromShape(result_shape));
   }
-
   return true;
 }
 
@@ -587,11 +580,31 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kCrossReplicaSum: {
+      optional<HloComputation*> to_apply;
+      optional<std::vector<int64>> replica_group_ids;
+      optional<string> barrier;
+      optional<int64> all_reduce_id;
+      attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
+                           &to_apply};
+      attrs["replica_group_ids"] = {
+          /*required=*/false, AttrTy::kBracedInt64List, &replica_group_ids};
+      attrs["barrier"] = {/*required=*/false, AttrTy::kString, &barrier};
+      attrs["all_reduce_id"] = {/*required=*/false, AttrTy::kInt64,
+                                &all_reduce_id};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateCrossReplicaSum(shape, operands));
+      if (replica_group_ids) {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
+                shape, operands, *to_apply, *replica_group_ids,
+                barrier ? *barrier : "", all_reduce_id));
+      } else {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
+                shape, operands, *to_apply, {}, barrier ? *barrier : "",
+                all_reduce_id));
+      }
       break;
     }
     case HloOpcode::kReshape: {
@@ -601,6 +614,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(
           HloInstruction::CreateReshape(shape, operands[0]));
+      break;
+    }
+    case HloOpcode::kGenerateToken: {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateGenerateToken(operands));
       break;
     }
     case HloOpcode::kTuple: {
@@ -774,6 +795,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
+      optional<std::vector<tensorflow::int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                             &dimensions};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1134,7 +1158,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
                                HloOpcodeString(opcode)));
   }
 
-  instruction->set_name(name);
+  instruction->SetAndSanitizeName(name);
+  if (instruction->name() != name) {
+    return Error(name_loc,
+                 StrCat("illegal instruction name: ", name,
+                        "; suggest renaming to: ", instruction->name()));
+  }
 
   // Add shared attributes like metadata to the instruction, if they were seen.
   if (sharding) {

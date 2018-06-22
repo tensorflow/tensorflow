@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Maximum"
+  endpoint {
+    name: "math.maximum"
+  }
+  endpoint {
+    name: "maximum"
+    deprecation_message: "tf.maximum is deprecated, please use tf.math.maximum instead."
+  }
+}

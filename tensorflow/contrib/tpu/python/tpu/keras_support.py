@@ -51,6 +51,7 @@ import collections
 import re
 import time
 
+from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_resolver
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
@@ -368,10 +369,27 @@ class TPUFunction(object):
 
 
 @experimental
-def setup_tpu_session(master):
-  """Initializes and returns a Keras/TF session connected the TPU `master`."""
+def setup_tpu_session(tpu_name_or_address):
+  """Initializes and returns a Keras/TF session connected the TPU `master`.
+
+  Args:
+    tpu_name_or_address: A string that is either the name of the Cloud TPU,
+      the grpc address of the Cloud TPU, or (Googlers only) the BNS name of the
+      Cloud TPU. If tpu_name_or_address is None, the TPUClusterResolver will
+      examine the environment to determine a potential Cloud TPU to use.
+
+  Returns:
+    A `tf.Session`.
+  """
+  cluster_resolver = tpu_cluster_resolver.TPUClusterResolver(
+      tpu_name_or_address)
+  cluster_spec = cluster_resolver.cluster_spec()
   session = tf_session.Session(
-      target=master, config=config_pb2.ConfigProto(isolate_session_state=True))
+      target=cluster_resolver.master(),
+      config=config_pb2.ConfigProto(
+          isolate_session_state=True))
+  if cluster_spec:
+    session.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
   K.set_session(session)
   K.get_session().run(tpu.initialize_system())
   return session

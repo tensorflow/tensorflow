@@ -61,12 +61,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
 
-  // TODO(ahentz): Our current implementations only support float32.
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
   // ResizeBilinear creates a float tensor even when the input is made of
   // integers.
-  output->type = kTfLiteFloat32;
+  output->type = input->type;
 
   if (!IsConstantTensor(size)) {
     SetTensorToDynamic(output);
@@ -90,17 +88,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (output->type == kTfLiteFloat32) {
-#define TF_LITE_RESIZE_BILINEAR(type)                                       \
-  type::ResizeBilinear(GetTensorData<float>(input), GetTensorDims(input),   \
-                       GetTensorData<int32>(size), GetTensorDims(size),     \
-                       GetTensorData<float>(output), GetTensorDims(output), \
+#define TF_LITE_RESIZE_BILINEAR(type, datatype)                                \
+  type::ResizeBilinear(GetTensorData<datatype>(input), GetTensorDims(input),   \
+                       GetTensorData<int32>(size), GetTensorDims(size),        \
+                       GetTensorData<datatype>(output), GetTensorDims(output), \
                        params->align_corners)
 
     if (kernel_type == kReference) {
-      TF_LITE_RESIZE_BILINEAR(reference_ops);
+      TF_LITE_RESIZE_BILINEAR(reference_ops, float);
     }
     if (kernel_type == kGenericOptimized || kernel_type == kNeonOptimized) {
-      TF_LITE_RESIZE_BILINEAR(optimized_ops);
+      TF_LITE_RESIZE_BILINEAR(optimized_ops, float);
+    }
+  } else if (output->type == kTfLiteUInt8) {
+    if (kernel_type == kReference) {
+      TF_LITE_RESIZE_BILINEAR(reference_ops, uint8_t);
+    }
+    if (kernel_type == kGenericOptimized || kernel_type == kNeonOptimized) {
+      TF_LITE_RESIZE_BILINEAR(optimized_ops, uint8_t);
     }
 #undef TF_LITE_RESIZE_BILINEAR
   } else {

@@ -176,7 +176,7 @@ TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(mul));
   HloInstruction* call = module->OutlineExpressionFromComputation(
-      {add, sub, mul}, "", entry_computation);
+      {add, sub, mul}, "entry", entry_computation);
   EXPECT_EQ(call, entry_computation->root_instruction());
   HloComputation* callee_computation = call->to_apply();
   // The arguments to the call should be const1, const2, and const3.

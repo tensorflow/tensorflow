@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -69,6 +70,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                     bool is_partial, WorkerCacheInterface* worker_cache,
                     bool should_deregister)
       : session_handle_(handle),
+        bg_opts_(bopts),
         client_graph_(std::move(cg)),
         session_opts_(session_opts),
         is_partial_(is_partial),
@@ -99,6 +101,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const ClientGraph* client_graph() { return client_graph_.get(); }
 
   const CallableOptions& callable_options() { return callable_opts_; }
+
+  const BuildGraphOptions& build_graph_options() { return bg_opts_; }
 
   std::unique_ptr<ProfileHandler> GetProfileHandler(uint64 step,
                                                     int64 execution_count,
@@ -225,6 +229,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
  private:
   const string session_handle_;
+  const BuildGraphOptions bg_opts_;
   const std::unique_ptr<ClientGraph> client_graph_;
   const SessionOptions session_opts_;
   const bool is_partial_;
@@ -444,6 +449,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
     *c->req.mutable_debug_options() =
         callable_opts_.run_options().debug_options();
+    c->req.set_collective_graph_key(bg_opts_.collective_graph_key);
     VLOG(2) << "Register " << c->req.graph_def().DebugString();
     auto cb = [c, &done](const Status& s) {
       c->status = s;
@@ -1065,6 +1071,9 @@ void BuildBuildGraphOptions(const RunStepRequestWrapper& req,
     *callable_opts->mutable_run_options()->mutable_debug_options() =
         req.options().debug_options();
   }
+
+  opts->collective_graph_key =
+      req.options().experimental().collective_graph_key();
 }
 
 void BuildBuildGraphOptions(const PartialRunSetupRequest& req,
@@ -1102,6 +1111,10 @@ uint64 HashBuildGraphOptions(const BuildGraphOptions& opts) {
     h = Hash64(watch_summary.c_str(), watch_summary.size(), h);
   }
 
+  if (opts.collective_graph_key != BuildGraphOptions::kNoCollectiveGraphKey) {
+    h = Hash64Combine(opts.collective_graph_key, h);
+  }
+
   return h;
 }
 
@@ -1117,6 +1130,9 @@ string BuildGraphOptionsString(const BuildGraphOptions& opts) {
   strings::StrAppend(&buf, "\n");
   for (const string& name : opts.callable_options.fetch()) {
     strings::StrAppend(&buf, " FeE: ", name);
+  }
+  if (opts.collective_graph_key != BuildGraphOptions::kNoCollectiveGraphKey) {
+    strings::StrAppend(&buf, "\nGK: ", opts.collective_graph_key);
   }
   strings::StrAppend(&buf, "\n");
   return buf;
@@ -1430,11 +1446,35 @@ void MasterSession::ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
   rcg_map->clear();
 }
 
-namespace {
-uint64 MakeStepId() {
-  return (random::New64() & ((1uLL << 56) - 1)) | (1uLL << 56);
+uint64 MasterSession::NewStepId(int64 graph_key) {
+  if (graph_key == BuildGraphOptions::kNoCollectiveGraphKey) {
+    // StepId must leave the most-significant 7 bits empty for future use.
+    return random::New64() & (((1uLL << 56) - 1) | (1uLL << 56));
+  } else {
+    uint64 step_id = env_->collective_executor_mgr->NextStepId(graph_key);
+    int32 retry_count = 0;
+    while (step_id == CollectiveExecutor::kInvalidId) {
+      Notification note;
+      Status status;
+      env_->collective_executor_mgr->RefreshStepIdSequenceAsync(
+          graph_key, [&status, &note](const Status& s) {
+            status = s;
+            note.Notify();
+          });
+      note.WaitForNotification();
+      if (!status.ok()) {
+        LOG(ERROR) << "Bad status from "
+                      "collective_executor_mgr->RefreshStepIdSequence: "
+                   << status << ".  Retrying.";
+        int64 delay_micros = std::min(60000000LL, 1000000LL * ++retry_count);
+        Env::Default()->SleepForMicroseconds(delay_micros);
+      } else {
+        step_id = env_->collective_executor_mgr->NextStepId(graph_key);
+      }
+    }
+    return step_id;
+  }
 }
-}  // namespace
 
 Status MasterSession::PartialRunSetup(const PartialRunSetupRequest* req,
                                       PartialRunSetupResponse* resp) {
@@ -1456,15 +1496,13 @@ Status MasterSession::PartialRunSetup(const PartialRunSetupRequest* req,
   // Prepare.
   BuildGraphOptions opts;
   BuildBuildGraphOptions(*req, &opts);
-  int64 count;
+  int64 count = 0;
   TF_RETURN_IF_ERROR(StartStep(opts, true, &rcg, &count));
-  // Keeps the highest 8 bits 0x01: we reserve some bits of the
-  // step_id for future use.
-  const uint64 step_id = MakeStepId();
-  TRACEPRINTF("stepid %llu", step_id);
 
   rcg->Ref();
-  RunState* run_state = new RunState(inputs, outputs, rcg, step_id, count);
+  RunState* run_state =
+      new RunState(inputs, outputs, rcg,
+                   NewStepId(BuildGraphOptions::kNoCollectiveGraphKey), count);
   {
     mutex_lock l(mu_);
     partial_runs_.emplace(
@@ -1565,6 +1603,13 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
           "Must run PartialRunSetup before performing partial runs");
     }
     run_state = it->second.get();
+  }
+  // CollectiveOps are not supported in partial runs.
+  if (req.options().experimental().collective_graph_key() !=
+      BuildGraphOptions::kNoCollectiveGraphKey) {
+    return errors::InvalidArgument(
+        "PartialRun does not support Collective ops.  collective_graph_key "
+        "must be kNoCollectiveGraphKey.");
   }
 
   // If this is the first partial run, initialize the PerStepState.
@@ -1743,7 +1788,11 @@ Status MasterSession::PostRunCleanup(MasterSession::ReffedClientGraph* rcg,
   Status s = run_status;
   if (s.ok()) {
     pss->end_micros = Env::Default()->NowMicros();
-
+    if (rcg->build_graph_options().collective_graph_key !=
+        BuildGraphOptions::kNoCollectiveGraphKey) {
+      env_->collective_executor_mgr->RetireStepId(
+          rcg->build_graph_options().collective_graph_key, step_id);
+    }
     // Schedule post-processing and cleanup to be done asynchronously.
     rcg->ProcessStats(step_id, pss, ph.get(), run_options, out_run_metadata);
   } else if (errors::IsCancelled(s)) {
@@ -1801,7 +1850,7 @@ Status MasterSession::DoRunWithLocalExecution(
 
   // Keeps the highest 8 bits 0x01: we reserve some bits of the
   // step_id for future use.
-  const uint64 step_id = MakeStepId();
+  uint64 step_id = NewStepId(bgopts.collective_graph_key);
   TRACEPRINTF("stepid %llu", step_id);
 
   std::unique_ptr<ProfileHandler> ph;
@@ -1865,9 +1914,8 @@ Status MasterSession::DoRunCallable(CallOptions* opts, ReffedClientGraph* rcg,
   // Prepare.
   int64 count = rcg->get_and_increment_execution_count();
 
-  // Keeps the highest 8 bits 0x01: we reserve some bits of the
-  // step_id for future use.
-  const uint64 step_id = MakeStepId();
+  const uint64 step_id =
+      NewStepId(rcg->build_graph_options().collective_graph_key);
   TRACEPRINTF("stepid %llu", step_id);
 
   const RunOptions& run_options = rcg->callable_options().run_options();

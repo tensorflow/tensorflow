@@ -16,9 +16,11 @@ limitations under the License.
 // Native XLA implementations of simple unary Ops
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
@@ -184,6 +186,50 @@ XLAJIT_MAKE_UNARY(Real, b->Real(x));
 XLAJIT_MAKE_UNARY(Imag, b->Imag(x));
 
 #undef XLAJIT_MAKE_UNARY
+
+// Erf/Erfc.  For x in (-1, 1), the erf approximation is used; erfc polynomial
+// is used outside of this range.
+class ErfOp : public XlaOpKernel {
+ public:
+  explicit ErfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* b = ctx->builder();
+    xla::PrimitiveType primitive_type;
+    xla::XlaOp one = XlaHelpers::One(b, input_type(0));
+    xla::XlaOp x = ctx->Input(0);
+    xla::XlaOp abs_x = b->Abs(x);
+
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(input_type(0), &primitive_type));
+
+    auto y =
+        b->Select(b->Gt(abs_x, one), b->Sub(one, Erfc(b, x, primitive_type)),
+                  Erf(b, x, primitive_type));
+    ctx->SetOutput(0, y);
+  }
+};
+REGISTER_XLA_OP(Name("Erf"), ErfOp);
+
+class ErfcOp : public XlaOpKernel {
+ public:
+  explicit ErfcOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* b = ctx->builder();
+    xla::XlaOp one = XlaHelpers::One(b, input_type(0));
+    xla::XlaOp x = ctx->Input(0);
+    xla::XlaOp abs_x = b->Abs(x);
+
+    xla::PrimitiveType primitive_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(input_type(0), &primitive_type));
+
+    auto y =
+        b->Select(b->Lt(abs_x, one), b->Sub(one, Erf(b, x, primitive_type)),
+                  Erfc(b, x, primitive_type));
+    ctx->SetOutput(0, y);
+  }
+};
+REGISTER_XLA_OP(Name("Erfc"), ErfcOp);
 
 }  // namespace
 }  // namespace tensorflow

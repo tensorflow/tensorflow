@@ -21,9 +21,9 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.autograph.pyct import anno
-from tensorflow.contrib.autograph.pyct import context
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
+from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.qual_names import QN
 from tensorflow.contrib.autograph.pyct.static_analysis import activity
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
@@ -112,18 +112,16 @@ class ActivityAnalyzerTest(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
     node, source = parser.parse_entity(test_fn)
-    ctx = context.EntityContext(
-        namer=None,
+    entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
         namespace={},
         arg_values=None,
         arg_types=None,
-        owner_type=None,
-        recursive=True)
+        owner_type=None)
     node = qual_names.resolve(node)
-    node = activity.resolve(node, ctx)
-    return node, ctx
+    node = activity.resolve(node, entity_info)
+    return node, entity_info
 
   def test_local_markers(self):
 

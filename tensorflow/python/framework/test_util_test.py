@@ -595,6 +595,14 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertIs(test_util.get_node_def_from_graph("foo", graph_def), node_foo)
     self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
 
+  def testRunInGraphAndEagerModesOnTestCase(self):
+    msg = "`run_test_in_graph_and_eager_modes` only supports test methods.*"
+    with self.assertRaisesRegexp(ValueError, msg):
+      @test_util.run_in_graph_and_eager_modes()
+      class Foo(object):
+        pass
+      del Foo  # Make pylint unused happy.
+
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 

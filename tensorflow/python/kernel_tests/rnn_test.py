@@ -81,6 +81,25 @@ class ScalarStateRNNCell(rnn_cell_impl.RNNCell):
     return (input_, state + 1)
 
 
+class UnbalancedOutputRNNCell(rnn_cell_impl.RNNCell):
+  """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
+
+  @property
+  def output_size(self):
+    return  tensor_shape.TensorShape(1), tensor_shape.TensorShape((2))
+
+  @property
+  def state_size(self):
+    return tensor_shape.TensorShape([])
+
+  def zero_state(self, batch_size, dtype):
+    return array_ops.zeros([], dtype=dtypes.int32)
+
+  def call(self, input_, state, scope=None):
+    concatenated = array_ops.concat((input_, input_), axis=-1)
+    return (input_, concatenated), state + 1
+
+
 class TensorArrayStateRNNCell(rnn_cell_impl.RNNCell):
   """RNN Cell its state as a TensorArray."""
 
@@ -180,6 +199,28 @@ class RNNTest(test.TestCase):
             [outputs, state], feed_dict={inputs: [[[1], [2], [3], [4]]]})
 
     self.assertAllEqual([[[1], [2], [3], [4]]], outputs)
+    self.assertAllEqual(4, state)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testUnbalancedOutputIsAccepted(self):
+    cell = UnbalancedOutputRNNCell()
+    in_eager_mode = context.executing_eagerly()
+
+    if in_eager_mode:
+      inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+    else:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
+
+    with self.test_session() as sess:
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32, sequence_length=[4])
+      if not in_eager_mode:
+        outputs, state = sess.run(
+            [outputs, state], feed_dict={inputs: [[[1], [2], [3], [4]]]})
+
+    self.assertIsInstance(outputs, tuple)
+    self.assertAllEqual([[[1], [2], [3], [4]]], outputs[0])
+    self.assertAllEqual([[[1, 1], [2, 2], [3, 3], [4, 4]]], outputs[1])
     self.assertAllEqual(4, state)
 
   @test_util.run_in_graph_and_eager_modes()

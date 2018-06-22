@@ -90,6 +90,11 @@ class Dirichlet(distribution.Distribution):
   Distribution parameters are automatically broadcast in all functions; see
   examples for details.
 
+  Warning: Some components of the samples can be zero due to finite precision.
+  This happens more often when some of the concentrations are very small.
+  Make sure to round the samples to `np.finfo(dtype).tiny` before computing the
+  density.
+
   #### Examples
 
   ```python
@@ -290,10 +295,8 @@ class Dirichlet(distribution.Distribution):
     if not self.validate_args:
       return x
     return control_flow_ops.with_dependencies([
-        check_ops.assert_positive(
-            x,
-            message="samples must be positive"),
-        distribution_util.assert_close(
+        check_ops.assert_positive(x, message="samples must be positive"),
+        check_ops.assert_near(
             array_ops.ones([], dtype=self.dtype),
             math_ops.reduce_sum(x, -1),
             message="sample last-dimension must sum to `1`"),

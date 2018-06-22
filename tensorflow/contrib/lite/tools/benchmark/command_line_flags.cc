@@ -15,6 +15,7 @@ limitations under the License.
 #include <cstring>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace tflite {
@@ -35,7 +36,7 @@ bool ParseFlag(const std::string& arg, const std::string& flag,
   if (arg.find(flag_prefix) != 0) {
     return false;
   }
-  bool has_value = (arg.size() >= flag_prefix.size() + 1);
+  bool has_value = arg.size() >= flag_prefix.size();
   *value_parsing_ok = has_value;
   if (has_value) {
     *value_parsing_ok = parse_func(arg.substr(flag_prefix.size()));
@@ -44,76 +45,79 @@ bool ParseFlag(const std::string& arg, const std::string& flag,
 }
 
 template <typename T>
-bool ParseFlag(const std::string& flag_value, T* value) {
+bool ParseFlag(const std::string& flag_value,
+               const std::function<void(const T&)>& hook) {
   std::istringstream stream(flag_value);
   T read_value;
   stream >> read_value;
   if (!stream.eof() && !stream.good()) {
     return false;
   }
-  *value = read_value;
+  hook(read_value);
   return true;
 }
 
-bool ParseBoolFlag(const std::string& flag_value, bool* value) {
+bool ParseBoolFlag(const std::string& flag_value,
+                   const std::function<void(const bool&)>& hook) {
   if (flag_value != "true" && flag_value != "false") {
     return false;
   }
 
-  *value = (flag_value == "true");
+  hook(flag_value == "true");
   return true;
 }
-
-bool ParseStringFlag(const std::string& flag_value, std::string* value) {
-  *value = flag_value;
-  return true;
-}
-
 }  // namespace
 
-Flag::Flag(const char* name, int32_t* dst, const std::string& usage_text)
+Flag::Flag(const char* name, const std::function<void(const int32_t&)>& hook,
+           int32_t default_value, const std::string& usage_text)
     : name_(name),
       type_(TYPE_INT32),
-      value_hook_([dst](const std::string& flag_value) {
-        return ParseFlag<int32_t>(flag_value, dst);
+      value_hook_([hook](const std::string& flag_value) {
+        return ParseFlag<int32_t>(flag_value, hook);
       }),
-      default_for_display_(ToString(*dst)),
+      default_for_display_(ToString(default_value)),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, int64_t* dst, const std::string& usage_text)
+Flag::Flag(const char* name, const std::function<void(const int64_t&)>& hook,
+           int64_t default_value, const std::string& usage_text)
     : name_(name),
       type_(TYPE_INT64),
-      value_hook_([dst](const std::string& flag_value) {
-        return ParseFlag<int64_t>(flag_value, dst);
+      value_hook_([hook](const std::string& flag_value) {
+        return ParseFlag<int64_t>(flag_value, hook);
       }),
-      default_for_display_(ToString(*dst)),
+      default_for_display_(ToString(default_value)),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, float* dst, const std::string& usage_text)
+Flag::Flag(const char* name, const std::function<void(const float&)>& hook,
+           float default_value, const std::string& usage_text)
     : name_(name),
       type_(TYPE_FLOAT),
-      value_hook_([dst](const std::string& flag_value) {
-        return ParseFlag<float>(flag_value, dst);
+      value_hook_([hook](const std::string& flag_value) {
+        return ParseFlag<float>(flag_value, hook);
       }),
-      default_for_display_(ToString(*dst)),
+      default_for_display_(ToString(default_value)),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, bool* dst, const std::string& usage_text)
+Flag::Flag(const char* name, const std::function<void(const bool&)>& hook,
+           bool default_value, const std::string& usage_text)
     : name_(name),
       type_(TYPE_BOOL),
-      value_hook_([dst](const std::string& flag_value) {
-        return ParseBoolFlag(flag_value, dst);
+      value_hook_([hook](const std::string& flag_value) {
+        return ParseBoolFlag(flag_value, hook);
       }),
-      default_for_display_((*dst) ? "true" : "false"),
+      default_for_display_(default_value ? "true" : "false"),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, std::string* dst, const std::string& usage_text)
+Flag::Flag(const char* name,
+           const std::function<void(const std::string&)>& hook,
+           const std::string& default_value, const std::string& usage_text)
     : name_(name),
       type_(TYPE_STRING),
-      value_hook_([dst](const std::string& flag_value) {
-        return ParseStringFlag(flag_value, dst);
+      value_hook_([hook](const std::string& flag_value) {
+        hook(flag_value);
+        return true;
       }),
-      default_for_display_(*dst),
+      default_for_display_(default_value),
       usage_text_(usage_text) {}
 
 bool Flag::Parse(const std::string& arg, bool* value_parsing_ok) const {

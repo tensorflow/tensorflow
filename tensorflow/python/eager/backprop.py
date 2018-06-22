@@ -196,11 +196,11 @@ def implicit_val_and_grad(f):
   # TODO(cais): Remove calls to tf.constant() once the gradients functions
   # accept lists and np.ndarrays.
 
-  def grad_fn(*args):
+  def grad_fn(*args, **kwds):
     """Computes the gradient of the wrapped function."""
     this_tape = tape.push_new_tape()
     try:
-      end_node = f(*args)
+      end_node = f(*args, **kwds)
       if end_node is None:
         raise ValueError("Cannot differentiate a function that returns None; "
                          "did you forget to return a value from {}?".format(

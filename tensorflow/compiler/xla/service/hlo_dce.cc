@@ -85,8 +85,7 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
   }
 
   // Remove dead computations.
-  std::list<HloComputation*> computations = module->MakeComputationPostOrder();
-  for (auto* computation : computations) {
+  for (auto* computation : module->MakeComputationPostOrder()) {
     if (live_computations.count(computation) == 0) {
       TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
       changed = true;

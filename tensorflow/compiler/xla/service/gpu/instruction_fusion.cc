@@ -40,6 +40,7 @@ bool IsFusile(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kDynamicSlice ||
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
          hlo.opcode() == HloOpcode::kFusion ||
+         hlo.opcode() == HloOpcode::kGather ||
          hlo.opcode() == HloOpcode::kPad ||
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||
@@ -77,15 +78,14 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Check if we can use output fusion for (A @ B) * alpha
-  if (consumer->operand_count() == 2 &&
-      (producer->opcode() == HloOpcode::kDot ||
-       (producer->opcode() == HloOpcode::kFusion &&
-        producer->fused_expression_root()->opcode() == HloOpcode::kDot))) {
+  if (producer->opcode() == HloOpcode::kDot ||
+      (producer->opcode() == HloOpcode::kFusion &&
+       producer->fused_expression_root()->opcode() == HloOpcode::kDot)) {
     int64 other_operand_index = 1 - operand_index;
-    const HloInstruction* alpha = consumer->operand(other_operand_index);
     HloInstruction* op1 = nullptr;
     HloInstruction* op2 = nullptr;
-    if (consumer->opcode() == HloOpcode::kFusion &&
+    if (consumer->operand_count() == 1 &&
+        consumer->opcode() == HloOpcode::kFusion &&
         consumer->fusion_kind() == HloInstruction::FusionKind::kLoop &&
         Match(consumer->fused_expression_root(),
               match::Op()
@@ -103,10 +103,12 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
           op2->opcode() != HloOpcode::kBroadcast) {
         return false;
       }
-      if (IsIEEEFloatingPointScalarConstant(alpha)) {
+      if (IsIEEEFloatingPointScalarConstant(op2->operand(0))) {
         return true;
       }
-    } else if (consumer->opcode() == HloOpcode::kMultiply) {
+    } else if (consumer->operand_count() == 2 &&
+               consumer->opcode() == HloOpcode::kMultiply) {
+      const HloInstruction* alpha = consumer->operand(other_operand_index);
       // Fuse if 'alpha' is a broadcast of a scalar constant.
       if (alpha->opcode() == HloOpcode::kBroadcast &&
           alpha->dimensions().empty() &&
@@ -171,6 +173,14 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
       consumer->ReusesOperandElements(operand_index) &&
       is_expensive(*producer)) {
     return false;
+  }
+
+  // Fuse scalar constants into loop fusion nodes, this reduces the number of
+  // parameters and makes matching scalar broadcasts easier.
+  if (ShapeUtil::IsEffectiveScalar(producer->shape()) &&
+      consumer->opcode() == HloOpcode::kFusion &&
+      producer->opcode() == HloOpcode::kConstant) {
+    return true;
   }
 
   return IsFusile(*producer) && IsFusile(*consumer) &&

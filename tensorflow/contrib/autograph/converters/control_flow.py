@@ -20,11 +20,11 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import ast_util
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis import cfg
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
@@ -45,9 +45,8 @@ class SymbolNamer(object):
     raise NotImplementedError()
 
 
-class ControlFlowTransformer(transformer.Base):
+class ControlFlowTransformer(converter.Base):
   """Transforms control flow structures like loops an conditionals."""
-
   def _create_cond_branch(self, body_name, aliased_orig_names,
                           aliased_new_names, body, returns):
     if aliased_orig_names:
@@ -141,10 +140,10 @@ class ControlFlowTransformer(transformer.Base):
     aliased_orelse_orig_names = tuple(orelse_scope.modified -
                                       orelse_scope.created)
     aliased_body_new_names = tuple(
-        self.context.namer.new_symbol(s.ssf(), body_scope.referenced)
+        self.ctx.namer.new_symbol(s.ssf(), body_scope.referenced)
         for s in aliased_body_orig_names)
     aliased_orelse_new_names = tuple(
-        self.context.namer.new_symbol(s.ssf(), orelse_scope.referenced)
+        self.ctx.namer.new_symbol(s.ssf(), orelse_scope.referenced)
         for s in aliased_orelse_orig_names)
 
     alias_body_map = dict(zip(aliased_body_orig_names, aliased_body_new_names))
@@ -165,9 +164,8 @@ class ControlFlowTransformer(transformer.Base):
     else:
       results = gast.Tuple([s.ast() for s in modified], None)
 
-    body_name = self.context.namer.new_symbol('if_true', body_scope.referenced)
-    orelse_name = self.context.namer.new_symbol('if_false',
-                                                orelse_scope.referenced)
+    body_name = self.ctx.namer.new_symbol('if_true', body_scope.referenced)
+    orelse_name = self.ctx.namer.new_symbol('if_false', orelse_scope.referenced)
     if modified:
 
       def build_returns(aliased_names, alias_map, scope):
@@ -235,7 +233,7 @@ class ControlFlowTransformer(transformer.Base):
       raise ValueError('cannot convert while loop: no outputs')
 
     state_ssf = [
-        self.context.namer.new_symbol(s.ssf(), all_referenced) for s in state
+        self.ctx.namer.new_symbol(s.ssf(), all_referenced) for s in state
     ]
     ssf_map = {
         name: ssf
@@ -267,11 +265,9 @@ class ControlFlowTransformer(transformer.Base):
         state=state,
         state_ssf=state_ssf,
         state_ast_tuple=state_ast_tuple,
-        test_name=self.context.namer.new_symbol('loop_test',
-                                                body_scope.referenced),
+        test_name=self.ctx.namer.new_symbol('loop_test', body_scope.referenced),
         test=test,
-        body_name=self.context.namer.new_symbol('loop_body',
-                                                body_scope.referenced),
+        body_name=self.ctx.namer.new_symbol('loop_body', body_scope.referenced),
         body=node_body,
         extra_deps=tuple(s.ast() for s in cond_closure),
     )
@@ -288,7 +284,7 @@ class ControlFlowTransformer(transformer.Base):
     state = list(body_closure)
 
     state_ssf = [
-        self.context.namer.new_symbol(s.ssf(), all_referenced) for s in state
+        self.ctx.namer.new_symbol(s.ssf(), all_referenced) for s in state
     ]
     ssf_map = {
         name: ssf
@@ -326,17 +322,16 @@ class ControlFlowTransformer(transformer.Base):
         state_ast_tuple=state_ast_tuple,
         iter_=node.iter,
         iterate=node.target,
-        extra_test_name=self.context.namer.new_symbol('extra_test',
-                                                      all_referenced),
+        extra_test_name=self.ctx.namer.new_symbol('extra_test', all_referenced),
         extra_test_expr=extra_test,
-        body_name=self.context.namer.new_symbol('loop_body', all_referenced),
+        body_name=self.ctx.namer.new_symbol('loop_body', all_referenced),
         body=node_body)
 
     return node
 
 
-def transform(node, context):
-  cfg.run_analyses(node, cfg.Liveness(context))
-  cfg.run_analyses(node, cfg.Defined(context))
-  node = ControlFlowTransformer(context).visit(node)
+def transform(node, ctx):
+  cfg.run_analyses(node, cfg.Liveness(ctx.info))
+  cfg.run_analyses(node, cfg.Defined(ctx.info))
+  node = ControlFlowTransformer(ctx).visit(node)
   return node

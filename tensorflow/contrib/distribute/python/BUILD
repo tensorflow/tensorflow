@@ -77,6 +77,7 @@ py_library(
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
@@ -148,6 +149,7 @@ py_library(
     ],
     deps = [
         ":mirrored_strategy",
+        ":multi_worker_strategy",
         ":one_device_strategy",
         ":tpu_strategy",
         "//tensorflow/contrib/optimizer_v2:training",
@@ -311,7 +313,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
-        "noguitar",  # TODO(b/109653107): test is flaky.
     ],
 )
 
@@ -447,8 +448,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":values",
+        "//tensorflow/contrib/all_reduce:all_reduce_py",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
     ],
@@ -496,6 +499,7 @@ cuda_py_test(
     additional_deps = [
         ":combinations",
         ":cross_tower_ops",
+        ":multi_worker_test_base",
         ":values",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
@@ -505,6 +509,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
+    shard_count = 15,
     tags = [
         "multi_and_single_gpu",
         "no_pip",
@@ -583,5 +588,24 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "notsan",
+    ],
+)
+
+cuda_py_test(
+    name = "metrics_v1_test",
+    srcs = ["metrics_v1_test.py"],
+    additional_deps = [
+        ":combinations",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
     ],
 )

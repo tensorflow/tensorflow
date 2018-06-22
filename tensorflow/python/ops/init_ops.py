@@ -551,7 +551,9 @@ class ConvolutionDeltaOrthogonal(Initializer):
 
   The shape of the tensor must have length 3, 4 or 5. The number of input
   filters must not exceed the number of output filters. The center pixels of the
-  tensor form an orthogonal matrix. Other pixels are set to be zero.
+  tensor form an orthogonal matrix. Other pixels are set to be zero. See
+  algorithm 2 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
+
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
@@ -672,6 +674,7 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
   filters must not exceed the number of output filters.
   The orthogonality(==isometry) is exact when the inputs are circular padded.
   There are finite-width effects with non-circular padding (e.g. zero padding).
+  See algorithm 1 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
@@ -807,6 +810,7 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
   filters must not exceed the number of output filters.
   The orthogonality(==isometry) is exact when the inputs are circular padded.
   There are finite-width effects with non-circular padding (e.g. zero padding).
+  See algorithm 1 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
@@ -923,6 +927,7 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
   filters must not exceed the number of output filters.
   The orthogonality(==isometry) is exact when the inputs are circular padded.
   There are finite-width effects with non-circular padding (e.g. zero padding).
+  See algorithm 1 [Xiao et al., 2018] in: https://arxiv.org/abs/1806.05393
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.

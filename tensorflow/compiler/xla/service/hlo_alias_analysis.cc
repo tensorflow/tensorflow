@@ -493,6 +493,16 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
 bool HloAliasAnalysis::HasLiveRangeInterference(
     const HloOrdering& ordering) const {
   for (const HloBuffer& buffer : buffers()) {
+    CHECK(!buffer.values().empty());
+    if (ShapeUtil::IsToken(buffer.values().front()->shape())) {
+      // Tokens have no on-device representation and cannot interfere.
+      for (const HloValue* value : buffer.values()) {
+        // If one of the values is a token, all values must be a token.
+        DCHECK(ShapeUtil::IsToken(value->shape()));
+      }
+      continue;
+    }
+
     // Check that the values in the buffer are totally ordered with respect to
     // 'ordering'. Begin by sorting the values with respect to 'ordering' with a
     // tie-break using value ID. The tie-break is necessary because we need a
@@ -517,7 +527,6 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
     // a buffer and A interferes with C, then necessarily A also interferes
     // with B. So to check interference you only need to check interference
     // between A and B, and between B and C.
-    CHECK(!values.empty());
     for (int i = 1; i < values.size(); ++i) {
       if (!ordering.IsDefinedBefore(*values[i - 1], *values[i])) {
         VLOG(1) << values[i - 1]->ToShortString() << " and "

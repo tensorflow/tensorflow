@@ -181,6 +181,7 @@ cc_library(
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
+        "//tensorflow/core/kernels:shape_ops",
         "//tensorflow/core/kernels:variable_ops",
     ],
 )
@@ -316,11 +317,11 @@ cc_library(
         ":xla_cluster_util",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
-        "//tensorflow/compiler/jit/legacy_flags:encapsulate_subgraphs_pass_flags",
         "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/compiler/jit/ops:parallel_check_op",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:dump_graph",
+        "//tensorflow/compiler/tf2xla:validate_control_flow",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -342,6 +343,7 @@ cc_library(
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:bounds_check",
     ],
 )

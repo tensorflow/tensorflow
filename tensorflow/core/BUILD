@@ -72,24 +72,24 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
     "full_path",
     "if_android",
-    "if_not_android_mips_and_mips64",
     "if_ios",
     "if_linux_x86_64",
     "if_mobile",
     "if_not_mobile",
-    "if_windows",
     "if_not_windows",
-    "tf_copts",
+    "if_windows",
     "tf_cc_test",
     "tf_cc_tests",
+    "tf_copts",
     "tf_cuda_library",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_android",
-    "cc_header_only_library",
+    "tf_features_nomodules_if_android",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
@@ -113,11 +113,11 @@ load(
     "tf_additional_human_readable_json_deps",
     "tf_additional_lib_defines",
     "tf_additional_lib_deps",
+    "tf_additional_lib_hdrs",
+    "tf_additional_lib_srcs",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
     "tf_additional_libdevice_srcs",
-    "tf_additional_lib_hdrs",
-    "tf_additional_lib_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
     "tf_additional_proto_hdrs",
@@ -141,8 +141,8 @@ load(
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
     "if_static",
+    "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
@@ -879,6 +879,7 @@ cc_library(
     hdrs = [
         "util/stats_calculator.h",
     ],
+    copts = tf_copts(),
 )
 
 cc_library(
@@ -888,6 +889,12 @@ cc_library(
         ":framework_lite",
         ":lib",
     ],
+)
+
+cc_library(
+    name = "exec_on_stall",
+    hdrs = ["util/exec_on_stall.h"],
+    deps = [":framework_lite"],
 )
 
 cc_library(
@@ -992,6 +999,7 @@ tf_gen_op_libs(
         "nn_ops",
         "no_op",
         "parsing_ops",
+        "random_grad",
         "random_ops",
         "remote_fused_graph_ops",
         "resource_variable_ops",
@@ -1442,6 +1450,7 @@ filegroup(
             "lib/png/**/*",
             "lib/gif/**/*",
             "util/events_writer.*",
+            "util/stats_calculator.*",
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
             "platform/default/test_benchmark.*",
@@ -1525,6 +1534,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc_impl",
+        ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
@@ -1565,6 +1575,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc_impl",
+        ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
@@ -2330,6 +2341,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
 FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/op_segment.h",
     "framework/rendezvous.h",  # only needed for tests
+    "framework/resource_var.h",
     "framework/tensor_reference.h",
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
@@ -2625,6 +2637,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/dma_helper.h",
     "common_runtime/eigen_thread_pool.h",
     "common_runtime/executor.h",
+    "common_runtime/executor_factory.h",
     "common_runtime/graph_optimizer.h",
     "common_runtime/local_device.h",
     "common_runtime/lower_if_op.h",
@@ -2674,6 +2687,7 @@ tf_cuda_library(
         "common_runtime/device_resolver_local.cc",
         "common_runtime/device_set.cc",
         "common_runtime/executor.cc",
+        "common_runtime/executor_factory.cc",
         "common_runtime/function.cc",
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
@@ -3256,6 +3270,18 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "exec_on_stall_test",
+    size = "small",
+    srcs = ["util/exec_on_stall_test.cc"],
+    deps = [
+        ":exec_on_stall",
+        ":framework_lite",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "lib_jpeg_jpeg_mem_unittest",
     srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
     data = glob(["lib/jpeg/testdata/*.jpg"]),
@@ -3346,6 +3372,7 @@ tf_cc_tests(
         "framework/bfloat16_test.cc",
         "framework/cancellation_test.cc",
         "framework/common_shape_fns_test.cc",
+        "framework/device_base_test.cc",
         "framework/function_test.cc",
         "framework/graph_def_util_test.cc",
         "framework/graph_to_functiondef_test.cc",

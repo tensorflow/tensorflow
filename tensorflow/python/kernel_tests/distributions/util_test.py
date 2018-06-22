@@ -59,65 +59,6 @@ def _logit(x):
 
 class AssertCloseTest(test.TestCase):
 
-  def testAssertCloseIntegerDtype(self):
-    x = array_ops.placeholder(dtypes.int32)
-    y = x
-    z = array_ops.placeholder(dtypes.int32)
-    feed_dict = {x: [1, 5, 10, 15, 20], z: [2, 5, 10, 15, 20]}
-    with self.test_session():
-      with ops.control_dependencies([du.assert_close(x, y)]):
-        array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with ops.control_dependencies([du.assert_close(y, x)]):
-        array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(x, z)]):
-          array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(y, z)]):
-          array_ops.identity(y).eval(feed_dict=feed_dict)
-
-  def testAssertCloseNonIntegerDtype(self):
-    x = array_ops.placeholder(dtypes.float32)
-    y = x + 1e-8
-    z = array_ops.placeholder(dtypes.float32)
-    feed_dict = {x: [1., 5, 10, 15, 20], z: [2., 5, 10, 15, 20]}
-    with self.test_session():
-      with ops.control_dependencies([du.assert_close(x, y)]):
-        array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with ops.control_dependencies([du.assert_close(y, x)]):
-        array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(x, z)]):
-          array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(y, z)]):
-          array_ops.identity(y).eval(feed_dict=feed_dict)
-
-  @test_util.run_in_graph_and_eager_modes()
-  def testAssertCloseEpsilon(self):
-    x = [0., 5, 10, 15, 20]
-    # x != y
-    y = [0.1, 5, 10, 15, 20]
-    # x = z
-    z = [1e-8, 5, 10, 15, 20]
-    with self.test_session():
-      with ops.control_dependencies([du.assert_close(x, z)]):
-        self.evaluate(array_ops.identity(x))
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(x, y)]):
-          self.evaluate(array_ops.identity(x))
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(y, z)]):
-          self.evaluate(array_ops.identity(y))
-
   def testAssertIntegerForm(self):
     # This should only be detected as an integer.
     x = array_ops.placeholder(dtypes.float32)

@@ -851,14 +851,15 @@ class ResourceVariable(variables.Variable):
       operator: string. The operator name.
     """
 
+    tensor_oper = getattr(ops.Tensor, operator)
     def _run_op(a, *args):
       # pylint: disable=protected-access
       value = a._AsTensor()
-      return getattr(ops.Tensor, operator)(value, *args)
+      return tensor_oper(value, *args)
 
     # Propagate __doc__ to wrapper
     try:
-      _run_op.__doc__ = getattr(ops.Tensor, operator).__doc__
+      _run_op.__doc__ = tensor_oper.__doc__
     except AttributeError:
       pass
 
@@ -1066,6 +1067,10 @@ class _UnreadVariable(ResourceVariable):
     else:
       self._graph_element = self.read_value()
     self._handle_deleter = deleter
+
+  @property
+  def name(self):
+    return self._parent_op.name
 
   def value(self):
     return self._read_variable_op()

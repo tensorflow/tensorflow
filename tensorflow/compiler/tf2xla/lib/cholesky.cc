@@ -110,7 +110,6 @@ xla::StatusOr<xla::XlaOp> CholeskyUnblocked(xla::XlaBuilder* builder,
         FloatLiteral(body_builder, a_shape.element_type(), 0.5));
 
     // a[..., i+1:, i]
-    auto ip1 = body_builder->Add(i, body_builder->ConstantR0<int32>(1));
     // select the whole i-th column, then mask out all rows above i+1
     TF_ASSIGN_OR_RETURN(
         auto a_0i, DynamicSliceInMinorDims(body_builder, body_a, {i}, {1}));
