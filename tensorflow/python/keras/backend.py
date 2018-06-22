@@ -2904,11 +2904,8 @@ class Function(object):
         session != self._session):
       self._make_callable(feed_arrays, feed_symbols, symbol_vals, session)
 
-    if self.run_metadata:
-      fetched = self._callable_fn(*array_vals,
-                                  run_metadata=self.run_metadata)
-    else:
-      fetched = self._callable_fn(*array_vals)
+    fetched = self._callable_fn(*array_vals,
+                                run_metadata=self.run_metadata)
     return fetched[:len(self.outputs)]
 
 
