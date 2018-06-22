@@ -18,9 +18,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CASTING_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CASTING_UTILS_H_
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include <type_traits>
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+
+class HloInstruction;
 
 template <class T>
 using EnableIfDerivedFromHlo =

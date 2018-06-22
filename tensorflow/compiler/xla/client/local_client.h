@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -78,11 +79,10 @@ class LocalExecutable {
   // proto.
   Status RecordArguments(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      SessionModule* session_module);
+      HloSnapshot* hlo_snapshot);
 
   // Records the result of the computation in a SessionModule proto.
-  Status RecordResult(const ShapedBuffer* result,
-                      SessionModule* session_module);
+  Status RecordResult(const ShapedBuffer* result, HloSnapshot* hlo_snapshot);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(

@@ -276,9 +276,9 @@ class Forward(object):
       taken).
   """
 
-  def __init__(self, label, context, transfer_fn=operator.or_):
+  def __init__(self, label, source_info, transfer_fn=operator.or_):
     self.transfer_fn = transfer_fn
-    self.context = context
+    self.source_info = source_info
     self.out_label = label + '_out'
     self.in_label = label + '_in'
     self.gen_label = label + '_gen'
@@ -286,7 +286,7 @@ class Forward(object):
 
   # TODO(alexbw): see if we can simplify by visiting breadth-first
   def visit(self, node):
-    """Depth-first walking the CFG, applying dataflow information propagtion."""
+    """Depth-first walking the CFG, applying dataflow information propagation."""
     # node.value is None only for the exit CfgNode.
     if not node.value:
       return
@@ -399,18 +399,18 @@ class Liveness(Backward):
   later in the program.
   """
 
-  def __init__(self, context):
-    super(Liveness, self).__init__('live', context)
+  def __init__(self, source_info):
+    super(Liveness, self).__init__('live', source_info)
 
   def get_gen_kill(self, node, _):
     # A variable's parents are live if it is live
     # e.g. x is live if x.y is live. This means gen needs to return
     # all parents of a variable (if it's an Attribute or Subscript).
     # This doesn't apply to kill (e.g. del x.y doesn't affect liveness of x)
-    gen = activity.get_read(node.value, self.context)
+    gen = activity.get_read(node.value, self.source_info)
     gen = functools.reduce(lambda left, right: left | right.support_set, gen,
                            gen)
-    kill = activity.get_updated(node.value, self.context)
+    kill = activity.get_updated(node.value, self.source_info)
     return gen, kill
 
 
@@ -420,11 +420,11 @@ class ReachingDefinitions(Forward):
   Each statement is annotated with a set of (variable, definition) pairs.
   """
 
-  def __init__(self, context):
-    super(ReachingDefinitions, self).__init__('definitions', context)
+  def __init__(self, source_info):
+    super(ReachingDefinitions, self).__init__('definitions', source_info)
 
   def get_gen_kill(self, node, incoming):
-    definitions = activity.get_updated(node.value, self.context)
+    definitions = activity.get_updated(node.value, self.source_info)
     gen = frozenset((id_, node.value) for id_ in definitions)
     kill = frozenset(def_ for def_ in incoming if def_[0] in definitions)
     return gen, kill
@@ -437,9 +437,10 @@ class Defined(Forward):
   be defined at that point.
   """
 
-  def __init__(self, context):
-    super(Defined, self).__init__('defined', context, transfer_fn=operator.and_)
+  def __init__(self, source_info):
+    super(Defined, self).__init__(
+        'defined', source_info, transfer_fn=operator.and_)
 
   def get_gen_kill(self, node, _):
-    gen = activity.get_updated(node.value, self.context)
+    gen = activity.get_updated(node.value, self.source_info)
     return gen, frozenset()

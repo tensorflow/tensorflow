@@ -44,147 +44,18 @@ namespace xla {
 
 namespace {
 
-// Return the UnaryOperation proto enum value associated with the given HLO
-// opcode.
-UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
-  switch (opcode) {
-    case HloOpcode::kAbs:
-      return UNOP_ABS;
-    case HloOpcode::kCeil:
-      return UNOP_CEIL;
-    case HloOpcode::kClz:
-      return UNOP_CLZ;
-    case HloOpcode::kCos:
-      return UNOP_COS;
-    case HloOpcode::kExp:
-      return UNOP_EXP;
-    case HloOpcode::kExpm1:
-      return UNOP_EXPM1;
-    case HloOpcode::kFloor:
-      return UNOP_FLOOR;
-    case HloOpcode::kImag:
-      return UNOP_IMAG;
-    case HloOpcode::kIsFinite:
-      return UNOP_IS_FINITE;
-    case HloOpcode::kLog:
-      return UNOP_LOG;
-    case HloOpcode::kLog1p:
-      return UNOP_LOG1P;
-    case HloOpcode::kNot:
-      return UNOP_NOT;
-    case HloOpcode::kNegate:
-      return UNOP_NEGATE;
-    case HloOpcode::kReal:
-      return UNOP_REAL;
-    case HloOpcode::kRoundNearestAfz:
-      return UNOP_ROUND_NEAREST_AFZ;
-    case HloOpcode::kSign:
-      return UNOP_SIGN;
-    case HloOpcode::kSin:
-      return UNOP_SIN;
-    case HloOpcode::kSort:
-      return UNOP_SORT;
-    case HloOpcode::kTanh:
-      return UNOP_TANH;
-    default:
-      LOG(FATAL) << "Unhandled opcode for conversion to unary operation: "
-                 << opcode;
-  }
-}
-
-// Return the BinaryOperation proto enum value associated with the given HLO
-// opcode.
-BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
-  switch (opcode) {
-    case HloOpcode::kAtan2:
-      return BINOP_ATAN2;
-    case HloOpcode::kComplex:
-      return BINOP_COMPLEX;
-    case HloOpcode::kMultiply:
-      return BINOP_MUL;
-    case HloOpcode::kAdd:
-      return BINOP_ADD;
-    case HloOpcode::kSubtract:
-      return BINOP_SUB;
-    case HloOpcode::kDivide:
-      return BINOP_DIV;
-    case HloOpcode::kEq:
-      return BINOP_EQ;
-    case HloOpcode::kGe:
-      return BINOP_GE;
-    case HloOpcode::kGt:
-      return BINOP_GT;
-    case HloOpcode::kLe:
-      return BINOP_LE;
-    case HloOpcode::kLt:
-      return BINOP_LT;
-    case HloOpcode::kNe:
-      return BINOP_NE;
-    case HloOpcode::kMaximum:
-      return BINOP_MAX;
-    case HloOpcode::kMinimum:
-      return BINOP_MIN;
-    case HloOpcode::kPower:
-      return BINOP_POW;
-    case HloOpcode::kRemainder:
-      return BINOP_REM;
-    case HloOpcode::kOr:
-      return BINOP_OR;
-    case HloOpcode::kAnd:
-      return BINOP_AND;
-    case HloOpcode::kShiftLeft:
-      return BINOP_SHIFT_LEFT;
-    case HloOpcode::kShiftRightArithmetic:
-      return BINOP_SHIFT_RIGHT_ARITHMETIC;
-    case HloOpcode::kShiftRightLogical:
-      return BINOP_SHIFT_RIGHT_LOGICAL;
-    default:
-      LOG(FATAL) << "unhandled opcode " << opcode;
-  }
-}
-
-// Return the TernaryOperation proto enum value associated with the given HLO
-// opcode.
-TernaryOperation OpcodeToTernaryOperation(HloOpcode opcode) {
-  switch (opcode) {
-    case HloOpcode::kClamp:
-      return TRIOP_CLAMP;
-    case HloOpcode::kSelect:
-      return TRIOP_SELECT;
-    default:
-      LOG(FATAL) << "unhandled opcode " << opcode;
-  }
-}
-
-// Return the VariadicOperation proto enum value associated with the given HLO
-// opcode.
-VariadicOperation OpcodeToVariadicOperation(HloOpcode opcode) {
-  switch (opcode) {
-    case HloOpcode::kTuple:
-      return VAROP_TUPLE;
-    default:
-      LOG(FATAL) << "unhandled opcode " << opcode;
-  }
-}
-
 // Returns true if no element is present in slice more than once.
 bool AllUnique(tensorflow::gtl::ArraySlice<int64> slice) {
   return std::set<int64>(slice.begin(), slice.end()).size() == slice.size();
 }
 
-Status ExpectNotTupleOrOpaque(const Shape& shape,
-                              tensorflow::StringPiece op_type) {
-  if (ShapeUtil::IsTuple(shape)) {
-    return InvalidArgument("Expected non-tuple argument for %s, but got %s.",
+Status ExpectArray(const Shape& shape, tensorflow::StringPiece op_type) {
+  if (!ShapeUtil::IsArray(shape)) {
+    return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type).c_str(),
                            ShapeUtil::HumanString(shape).c_str());
-  } else if (ShapeUtil::IsOpaque(shape)) {
-    return InvalidArgument("Expected non-opaque argument for %s, but got %s.",
-                           std::string(op_type).c_str(),
-                           ShapeUtil::HumanString(shape).c_str());
-  } else {
-    return Status::OK();
   }
+  return Status::OK();
 }
 
 Status VerifyReducerShape(const ProgramShape& reducer_shape,
@@ -321,84 +192,80 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     return shape;
   }
 
-  return InferUnaryOpShape(OpcodeToUnaryOperation(opcode), shape);
-}
+  TF_RETURN_IF_ERROR(ExpectArray(shape, "operand of unary operation"));
 
-/* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
-    UnaryOperation operation, const Shape& arg) {
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(arg, "operand of unary operation"));
-
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(arg));
-  switch (operation) {
-    case UNOP_FLOOR:
-    case UNOP_CEIL:
-      if (!ShapeUtil::ElementIsFloating(arg)) {
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+  switch (opcode) {
+    case HloOpcode::kFloor:
+    case HloOpcode::kCeil:
+      if (!ShapeUtil::ElementIsFloating(shape)) {
         return InvalidArgument(
             "Expected element type in shape to be floating for floor/ceil "
             "operation; got %s.",
-            PrimitiveType_Name(arg.element_type()).c_str());
+            PrimitiveType_Name(shape.element_type()).c_str());
       }
-      return arg;
-    case UNOP_COS:
-    case UNOP_SIN:
-    case UNOP_EXP:
-    case UNOP_EXPM1:
-    case UNOP_LOG:
-    case UNOP_LOG1P:
-    case UNOP_TANH:
-      if (!ShapeUtil::ElementIsFloating(arg) &&
-          !ShapeUtil::ElementIsComplex(arg)) {
+      return shape;
+    case HloOpcode::kCos:
+    case HloOpcode::kSin:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
+    case HloOpcode::kTanh:
+      if (!ShapeUtil::ElementIsFloating(shape) &&
+          !ShapeUtil::ElementIsComplex(shape)) {
         return InvalidArgument(
             "Expected element type in shape to be floating or complex for "
             "sin/cos/exp/log/tanh operation; got %s.",
-            PrimitiveType_Name(arg.element_type()).c_str());
+            PrimitiveType_Name(shape.element_type()).c_str());
       }
-      return arg;
-    case UNOP_REAL:
-    case UNOP_IMAG:
-      if (!ShapeUtil::ElementIsComplex(arg)) {
+      return shape;
+    case HloOpcode::kReal:
+    case HloOpcode::kImag:
+      if (!ShapeUtil::ElementIsComplex(shape)) {
         return InvalidArgument(
             "Expected element type in shape to be complex for real/imag "
             "operation; got %s.",
-            PrimitiveType_Name(arg.element_type()).c_str());
+            PrimitiveType_Name(shape.element_type()).c_str());
       }
-      return ShapeUtil::ChangeElementType(arg, F32);
-    case UNOP_ABS:
-      if (ShapeUtil::ElementIsComplex(arg)) {
+      return ShapeUtil::ChangeElementType(shape, F32);
+    case HloOpcode::kAbs:
+      if (ShapeUtil::ElementIsComplex(shape)) {
         return ShapeUtil::ChangeElementType(
-            arg, primitive_util::ComplexComponentType(arg.element_type()));
+            shape, primitive_util::ComplexComponentType(shape.element_type()));
       }
-      return arg;
-    case UNOP_CLZ:
-    case UNOP_NEGATE:
-    case UNOP_ROUND_NEAREST_AFZ:
-    case UNOP_SIGN:
-    case UNOP_SORT:
-      return arg;
+      return shape;
+    case HloOpcode::kClz:
+    case HloOpcode::kNegate:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kSign:
+    case HloOpcode::kSort:
+      return shape;
 
-    case UNOP_NOT:
-      if (arg.element_type() != PRED &&
-          !primitive_util::IsIntegralType(arg.element_type())) {
+    case HloOpcode::kNot:
+      if (shape.element_type() != PRED &&
+          !primitive_util::IsIntegralType(shape.element_type())) {
         return InvalidArgument(
             "Expected pred or an integral element type in argument to Not "
             "operation; got %s.",
-            PrimitiveType_Name(arg.element_type()).c_str());
+            PrimitiveType_Name(shape.element_type()).c_str());
       }
-      return arg;
+      return shape;
 
-    case UNOP_IS_FINITE:
-      if (!ShapeUtil::ElementIsFloating(arg)) {
+    case HloOpcode::kIsFinite:
+      if (!ShapeUtil::ElementIsFloating(shape)) {
         return InvalidArgument(
-            "Expected element type in shape to be floating point for IsFinite "
+            "Expected element type in shape to be floating "
+            "point for IsFinite "
             "operation; got %s.",
-            PrimitiveType_Name(arg.element_type()).c_str());
+            PrimitiveType_Name(shape.element_type()).c_str());
       }
-      return ShapeUtil::ChangeElementType(arg, PRED);
+      return ShapeUtil::ChangeElementType(shape, PRED);
 
     default:
       return InvalidArgument(
           "Unknown operation for unary shape inference: \"%s\".",
-          UnaryOperation_Name(operation).c_str());
+          HloOpcodeString(opcode).c_str());
   }
 }
 
@@ -415,8 +282,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   const Shape* arg_shape = nullptr;
   PrimitiveType element_type = PRIMITIVE_TYPE_INVALID;
   for (const Shape* shape : arg_shapes) {
-    TF_RETURN_IF_ERROR(
-        ExpectNotTupleOrOpaque(*shape, "operand of concatenation"));
+    TF_RETURN_IF_ERROR(ExpectArray(*shape, "operand of concatenation"));
     if (!arg_shape) {
       arg_shape = shape;
       element_type = arg_shape->element_type();
@@ -463,6 +329,17 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   return ShapeUtil::MakeShape(element_type, new_dimensions);
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferGenerateTokenShape(
+    tensorflow::gtl::ArraySlice<const Shape*> arg_shapes) {
+  for (const Shape* arg_shape : arg_shapes) {
+    if (arg_shape->element_type() != TOKEN) {
+      return InvalidArgument(
+          "Operands of token instructions must be TOKEN types.");
+    }
+  }
+  return ShapeUtil::MakeTokenShape();
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
   auto old_element_type = operand_shape.element_type();
@@ -473,12 +350,13 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
         ShapeUtil::HumanString(operand_shape).c_str(),
         PrimitiveType_Name(new_element_type).c_str());
   }
-  if (ShapeUtil::IsTuple(operand_shape) || new_element_type == TUPLE) {
+  if (!ShapeUtil::IsArray(operand_shape) ||
+      !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
     // are valid. For now we just reject them, though.
     return InvalidArgument(
-        "Convert does not allow tuples, so cannot convert from %s to %s.",
+        "Convert does not allow non-arrays, so cannot convert from %s to %s.",
         ShapeUtil::HumanString(operand_shape).c_str(),
         PrimitiveType_Name(new_element_type).c_str());
   }
@@ -495,7 +373,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                            ShapeUtil::HumanString(operand_shape).c_str(),
                            PrimitiveType_Name(new_element_type).c_str());
   }
-  if (ShapeUtil::IsTuple(operand_shape) || new_element_type == TUPLE) {
+  if (!ShapeUtil::IsArray(operand_shape) ||
+      !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
     // are valid. For now we just reject them, though.
@@ -542,7 +421,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 /* static */ StatusOr<Shape> ShapeInference::InferPadShape(
     const Shape& operand_shape, const Shape& padding_value_shape,
     const PaddingConfig& padding_config) {
-  if (ShapeUtil::IsTuple(operand_shape)) {
+  if (!ShapeUtil::IsArray(operand_shape)) {
     return InvalidArgument(
         "Pad operation does not support tuple-shape operands.");
   }
@@ -681,8 +560,8 @@ Status ValidateDotDimensionNumbers(
 /* static */ StatusOr<Shape> ShapeInference::InferDotOpShape(
     const Shape& lhs, const Shape& rhs,
     const DotDimensionNumbers& dimension_numbers) {
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(lhs, "lhs of dot"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(rhs, "rhs of dot"));
+  TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
+  TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
 
   auto fail = [lhs, rhs](const string& addendum) -> Status {
     string message = tensorflow::strings::Printf(
@@ -768,8 +647,9 @@ Status ValidateDotDimensionNumbers(
 }
 
 /* static */ StatusOr<Shape>
-ShapeInference::InferDegenerateDimensionBroadcastShape(
-    BinaryOperation operation, const Shape& lhs, const Shape& rhs) {
+ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
+                                                       const Shape& lhs,
+                                                       const Shape& rhs) {
   TF_RET_CHECK(ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs));
 
   // The shapes have to be compatible. That is, if some dimension d has a
@@ -787,7 +667,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     } else {
       return InvalidArgument(
           "Binary op %s with incompatible shapes: %s and %s.",
-          BinaryOperation_Name(operation).c_str(),
+          HloOpcodeString(operation).c_str(),
           ShapeUtil::HumanString(lhs).c_str(),
           ShapeUtil::HumanString(rhs).c_str());
     }
@@ -797,8 +677,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferInDimBroadcastShape(
-    BinaryOperation operation, const Shape& smaller_shape,
-    const Shape& larger_shape,
+    const Shape& smaller_shape, const Shape& larger_shape,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
   if (broadcast_dimensions.empty() && !ShapeUtil::IsScalar(smaller_shape)) {
     // Reject "magic" inference for binops on different shapes, requiring
@@ -899,18 +778,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferElementwiseBinaryOpShape(
-    BinaryOperation operation, const Shape& lhs, const Shape& rhs,
+    HloOpcode operation, const Shape& lhs, const Shape& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(lhs, "lhs of elementwise binary operation"));
-  TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(rhs, "rhs of elementwise binary operation"));
+  TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of elementwise binary operation"));
+  TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of elementwise binary operation"));
 
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
         "Binary op %s with different element types: %s and %s.",
-        BinaryOperation_Name(operation).c_str(),
-        ShapeUtil::HumanString(lhs).c_str(),
+        HloOpcodeString(operation).c_str(), ShapeUtil::HumanString(lhs).c_str(),
         ShapeUtil::HumanString(rhs).c_str());
   }
 
@@ -943,10 +819,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         ShapeUtil::Rank(lhs) > ShapeUtil::Rank(rhs) ? rhs : lhs;
 
     // After InDim broadcasting, perform degenerate dimensions broadcasting.
-    TF_ASSIGN_OR_RETURN(
-        Shape indim_broadcast_shape,
-        InferInDimBroadcastShape(operation, smaller_shape, larger_shape,
-                                 broadcast_dimensions));
+    TF_ASSIGN_OR_RETURN(Shape indim_broadcast_shape,
+                        InferInDimBroadcastShape(smaller_shape, larger_shape,
+                                                 broadcast_dimensions));
 
     return InferDegenerateDimensionBroadcastShape(
         operation, indim_broadcast_shape, larger_shape);
@@ -955,51 +830,44 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
 /* static */ StatusOr<Shape> ShapeInference::InferBinaryOpShape(
     HloOpcode opcode, const HloInstruction* lhs, const HloInstruction* rhs) {
-  return InferBinaryOpShape(OpcodeToBinaryOperation(opcode), lhs->shape(),
-                            rhs->shape(), /*broadcast_dimensions=*/{});
+  return InferBinaryOpShape(opcode, lhs->shape(), rhs->shape(),
+                            /*broadcast_dimensions=*/{});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBinaryOpShape(
     HloOpcode opcode, const Shape& lhs, const Shape& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return InferBinaryOpShape(OpcodeToBinaryOperation(opcode), lhs, rhs,
-                            broadcast_dimensions);
-}
-
-/* static */ StatusOr<Shape> ShapeInference::InferBinaryOpShape(
-    BinaryOperation operation, const Shape& lhs, const Shape& rhs,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
   VLOG(2) << tensorflow::strings::Printf(
       "inferring shape for <%s>(%s, %s) with broadcast_dimensions={%s}",
-      BinaryOperation_Name(operation).c_str(),
-      ShapeUtil::HumanString(lhs).c_str(), ShapeUtil::HumanString(rhs).c_str(),
+      HloOpcodeString(opcode).c_str(), ShapeUtil::HumanString(lhs).c_str(),
+      ShapeUtil::HumanString(rhs).c_str(),
       Join(broadcast_dimensions, ", ").c_str());
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
-      lhs, tensorflow::strings::StrCat("lhs of binary operation ",
-                                       BinaryOperation_Name(operation))));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
-      rhs, tensorflow::strings::StrCat("rhs of binary operation ",
-                                       BinaryOperation_Name(operation))));
-  switch (operation) {
-    case BINOP_MAX:
-    case BINOP_MIN:
-    case BINOP_SUB:
-    case BINOP_ADD:
-    case BINOP_ATAN2:
-    case BINOP_POW:
-    case BINOP_DIV:
-    case BINOP_REM:
-    case BINOP_MUL:
-    case BINOP_SHIFT_LEFT:
-    case BINOP_SHIFT_RIGHT_ARITHMETIC:
-    case BINOP_SHIFT_RIGHT_LOGICAL:
-      return InferElementwiseBinaryOpShape(operation, lhs, rhs,
+  TF_RETURN_IF_ERROR(
+      ExpectArray(lhs, tensorflow::strings::StrCat("lhs of binary operation ",
+                                                   HloOpcodeString(opcode))));
+  TF_RETURN_IF_ERROR(
+      ExpectArray(rhs, tensorflow::strings::StrCat("rhs of binary operation ",
+                                                   HloOpcodeString(opcode))));
+  switch (opcode) {
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kAdd:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kPower:
+    case HloOpcode::kDivide:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+      return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
 
-    case BINOP_COMPLEX: {
+    case HloOpcode::kComplex: {
       if (!ShapeUtil::ElementIsFloating(lhs)) {
         return InvalidArgument(
             "Expected element type in shape to be floating for complex compose "
@@ -1007,7 +875,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
             PrimitiveType_Name(lhs.element_type()).c_str());
       }
       TF_ASSIGN_OR_RETURN(const Shape& shape,
-                          InferElementwiseBinaryOpShape(operation, lhs, rhs,
+                          InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                                         broadcast_dimensions));
       if (lhs.element_type() == F32 && rhs.element_type() == F32) {
         return ShapeUtil::ChangeElementType(shape, C64);
@@ -1015,8 +883,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         return Unimplemented("Complex component type is not implemented.");
       }
     }
-    case BINOP_AND:
-    case BINOP_OR:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
       if (lhs.element_type() != PRED &&
           !primitive_util::IsIntegralType(lhs.element_type())) {
         return InvalidArgument(
@@ -1024,24 +892,24 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
             "got %s.",
             PrimitiveType_Name(lhs.element_type()).c_str());
       }
-      return InferElementwiseBinaryOpShape(operation, lhs, rhs,
+      return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
-    case BINOP_EQ:
-    case BINOP_GE:
-    case BINOP_GT:
-    case BINOP_LE:
-    case BINOP_LT:
-    case BINOP_NE: {
+    case HloOpcode::kEq:
+    case HloOpcode::kGe:
+    case HloOpcode::kGt:
+    case HloOpcode::kLe:
+    case HloOpcode::kLt:
+    case HloOpcode::kNe: {
       TF_ASSIGN_OR_RETURN(const Shape& shape,
-                          InferElementwiseBinaryOpShape(operation, lhs, rhs,
+                          InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                                         broadcast_dimensions));
       return ShapeUtil::ChangeElementType(shape, PRED);
     }
     default:
       return Unimplemented(
           "Binary op shape inference: %s; lhs: %s; rhs: %s is not implemented.",
-          BinaryOperation_Name(operation).c_str(),
-          lhs.ShortDebugString().c_str(), rhs.ShortDebugString().c_str());
+          HloOpcodeString(opcode).c_str(), lhs.ShortDebugString().c_str(),
+          rhs.ShortDebugString().c_str());
   }
 }
 
@@ -1053,23 +921,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
 /* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
     HloOpcode opcode, const Shape& lhs, const Shape& rhs, const Shape& ehs) {
-  return InferTernaryOpShape(OpcodeToTernaryOperation(opcode), lhs, rhs, ehs);
-}
-
-/* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
-    TernaryOperation operation, const Shape& lhs, const Shape& rhs,
-    const Shape& ehs) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(ehs));
-  switch (operation) {
-    case TRIOP_CLAMP:
+  switch (opcode) {
+    case HloOpcode::kClamp:
       return InferClampShape(lhs, rhs, ehs);
-    case TRIOP_SELECT:
+    case HloOpcode::kSelect:
       return InferSelectShape(lhs, rhs, ehs);
     default:
       return InvalidArgument("Unknown operation %s.",
-                             TernaryOperation_Name(operation).c_str());
+                             HloOpcodeString(opcode).c_str());
   }
 }
 
@@ -1077,6 +939,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     HloOpcode opcode,
     tensorflow::gtl::ArraySlice<const HloInstruction*> operands) {
   std::vector<const Shape*> operand_shapes;
+  operand_shapes.reserve(operands.size());
   for (const HloInstruction* operand : operands) {
     operand_shapes.push_back(&operand->shape());
   }
@@ -1086,19 +949,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferVariadicOpShape(
     HloOpcode opcode,
     tensorflow::gtl::ArraySlice<const Shape*> operand_shapes) {
-  return InferVariadicOpShape(OpcodeToVariadicOperation(opcode),
-                              operand_shapes);
-}
-
-/* static */ StatusOr<Shape> ShapeInference::InferVariadicOpShape(
-    VariadicOperation operation,
-    tensorflow::gtl::ArraySlice<const Shape*> operand_shapes) {
   for (const Shape* shape : operand_shapes) {
     TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(*shape));
   }
-  switch (operation) {
-    case VAROP_TUPLE: {
+  switch (opcode) {
+    case HloOpcode::kTuple: {
       Shape result = ShapeUtil::MakeTupleShape({});
+      result.mutable_tuple_shapes()->Reserve(operand_shapes.size());
       for (const Shape* shape : operand_shapes) {
         ShapeUtil::AppendShapeToTuple(*shape, &result);
       }
@@ -1106,7 +963,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     }
     default:
       return InvalidArgument("Unknown operation %s.",
-                             VariadicOperation_Name(operation).c_str());
+                             HloOpcodeString(opcode).c_str());
   }
 }
 
@@ -1121,15 +978,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   // All arguments must have the same shape.
   const Shape* arg_shape = arg_shapes[0];
   for (size_t i = 1; i < arg_shapes.size(); ++i) {
-    TF_RETURN_IF_ERROR(
-        ExpectNotTupleOrOpaque(*arg_shapes[i], "operand of map"));
+    TF_RETURN_IF_ERROR(ExpectArray(*arg_shapes[i], "operand of map"));
 
     if (ShapeUtil::CompatibleIgnoringFpPrecision(*arg_shapes[i], *arg_shape)) {
       continue;
     }
-    if (!ShapeUtil::IsTuple(*arg_shapes[i]) &&
-        !ShapeUtil::IsTuple(*arg_shape) &&
-        ShapeUtil::SameElementTypeIgnoringFpPrecision(*arg_shapes[i],
+    if (ShapeUtil::SameElementTypeIgnoringFpPrecision(*arg_shapes[i],
                                                       *arg_shape)) {
       if (ShapeUtil::IsScalar(*arg_shapes[i])) {
         continue;
@@ -1212,11 +1066,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const Shape& operand_shape, const Shape& scale_shape,
     const Shape& offset_shape, int64 feature_index) {
   TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm training"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
-      offset_shape, "offset input of batch norm training"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
-      scale_shape, "scale input of batch norm training"));
+      ExpectArray(operand_shape, "operand of batch norm training"));
+  TF_RETURN_IF_ERROR(
+      ExpectArray(offset_shape, "offset input of batch norm training"));
+  TF_RETURN_IF_ERROR(
+      ExpectArray(scale_shape, "scale input of batch norm training"));
 
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape) ==
                Status::OK());
@@ -1318,11 +1172,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const Shape& offset_shape, const Shape& mean_shape,
     const Shape& variance_shape, int64 feature_index) {
   TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm inference"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
-      offset_shape, "offset input of batch norm inference"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
-      scale_shape, "scale input of batch norm inference"));
+      ExpectArray(operand_shape, "operand of batch norm inference"));
+  TF_RETURN_IF_ERROR(
+      ExpectArray(offset_shape, "offset input of batch norm inference"));
+  TF_RETURN_IF_ERROR(
+      ExpectArray(scale_shape, "scale input of batch norm inference"));
 
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape) ==
                Status::OK());
@@ -1465,16 +1319,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const Shape& operand_shape, const Shape& scale_shape,
     const Shape& mean_shape, const Shape& var_shape,
     const Shape& output_grad_shape, int64 feature_index) {
+  TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of batch norm grad"));
   TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm grad"));
+      ExpectArray(scale_shape, "scale input of batch norm grad"));
+  TF_RETURN_IF_ERROR(ExpectArray(mean_shape, "mean input of batch norm grad"));
+  TF_RETURN_IF_ERROR(ExpectArray(var_shape, "var input of batch norm grad"));
   TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(scale_shape, "scale input of batch norm grad"));
-  TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(mean_shape, "mean input of batch norm grad"));
-  TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(var_shape, "var input of batch norm grad"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
-      output_grad_shape, "output_grad input of batch norm grad"));
+      ExpectArray(output_grad_shape, "output_grad input of batch norm grad"));
 
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(mean_shape));
@@ -1623,8 +1474,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
     const Shape& lhs, const Shape& rhs, const Window& window,
     const ConvolutionDimensionNumbers& dnums) {
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(lhs, "lhs of convolution"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(rhs, "rhs of convolution"));
+  TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
+  TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
@@ -1859,7 +1710,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     tensorflow::gtl::ArraySlice<const Shape*> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {
     TF_RETURN_IF_ERROR(
-        ExpectNotTupleOrOpaque(*operand_shape, "operand of cross replica sum"));
+        ExpectArray(*operand_shape, "operand of cross replica sum"));
   }
   if (operand_shapes.size() == 1) {
     return *operand_shapes[0];
@@ -1901,8 +1752,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferReduceWindowShape(
     const Shape& operand_shape, const Shape& init_value_shape,
     const Window& window, const ProgramShape& to_apply_shape) {
-  TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(operand_shape, "operand of reduce-window"));
+  TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reduce-window"));
   TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, init_value_shape,
                                         operand_shape.element_type()));
   return InferWindowOutputShape(operand_shape, window,
@@ -1915,7 +1765,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const Window& window, const Shape& source_shape,
     const Shape& init_value_shape, const ProgramShape& scatter_shape) {
   TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(operand_shape, "operand of select-and-scatter"));
+      ExpectArray(operand_shape, "operand of select-and-scatter"));
 
   // Check if the select function has a proper shape of (T,T) -> PRED.
   if (select_shape.parameters_size() != 2) {
@@ -1980,7 +1830,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         Join(starts, ",").c_str(), Join(limits, ",").c_str(),
         Join(strides, ",").c_str());
   };
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(arg, "operand of slice"));
+  TF_RETURN_IF_ERROR(ExpectArray(arg, "operand of slice"));
   VLOG(2) << tensorflow::strings::Printf(
       "slicing shape %s starts={%s} limits={%s}",
       ShapeUtil::HumanString(arg).c_str(), Join(starts, ", ").c_str(),
@@ -2039,10 +1889,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferDynamicSliceShape(
     const Shape& operand_shape, const Shape& start_indices_shape,
     tensorflow::gtl::ArraySlice<int64> slice_sizes) {
+  TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of dynamic slice"));
   TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(operand_shape, "operand of dynamic slice"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(start_indices_shape,
-                                            "start indices of dynamic slice"));
+      ExpectArray(start_indices_shape, "start indices of dynamic slice"));
 
   VLOG(2) << tensorflow::strings::Printf(
       "slicing shape %s at dynamic start_indices %s with slice_sizes={%s}",
@@ -2100,11 +1949,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const Shape& operand_shape, const Shape& update_shape,
     const Shape& start_indices_shape) {
   TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(operand_shape, "operand of dynamic update slice"));
+      ExpectArray(operand_shape, "operand of dynamic update slice"));
   TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(update_shape, "update of dynamic update slice"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
-      start_indices_shape, "start indices of dynamic update slice"));
+      ExpectArray(update_shape, "update of dynamic update slice"));
+  TF_RETURN_IF_ERROR(ExpectArray(start_indices_shape,
+                                 "start indices of dynamic update slice"));
 
   VLOG(2) << tensorflow::strings::Printf(
       "updating slice of shape %s at dynamic start_indices %s with update "
@@ -2172,8 +2021,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
 /*static */ StatusOr<Shape> ShapeInference::InferReverseShape(
     const Shape& operand_shape, tensorflow::gtl::ArraySlice<int64> dimensions) {
-  TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(operand_shape, "operand of reverse"));
+  TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reverse"));
   if (!AllUnique(dimensions)) {
     return InvalidArgument("a dimension number is duplicated in reverse");
   }
@@ -2303,7 +2151,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
     const Shape& operand, tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(operand, "operand of broadcast"));
+  TF_RETURN_IF_ERROR(ExpectArray(operand, "operand of broadcast"));
   for (int64 size : broadcast_sizes) {
     if (size < 0) {
       return InvalidArgument("Broadcast with negative dimension size %lld.",
@@ -2322,7 +2170,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferReshapeShape(
     const Shape& operand, tensorflow::gtl::ArraySlice<int64> dimensions,
     tensorflow::gtl::ArraySlice<int64> new_sizes) {
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(operand, "reshape"));
+  TF_RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
 
   Shape inferred_shape =
       ShapeUtil::MakeShape(operand.element_type(), new_sizes);
@@ -2354,7 +2202,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
 /* static */ StatusOr<Shape> ShapeInference::InferTransposeShape(
     const Shape& operand, tensorflow::gtl::ArraySlice<int64> dimensions) {
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(operand, "transpose"));
+  TF_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
   std::vector<int64> indices(ShapeUtil::Rank(operand));
   std::iota(indices.begin(), indices.end(), 0);
@@ -2375,9 +2223,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 // "degenerate" cases, as with binary elementwise ops.
 /* static */ StatusOr<Shape> ShapeInference::InferClampShape(
     const Shape& min, const Shape& operand, const Shape& max) {
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(min, "clamp min"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(operand, "clamp operand"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(max, "clamp max"));
+  TF_RETURN_IF_ERROR(ExpectArray(min, "clamp min"));
+  TF_RETURN_IF_ERROR(ExpectArray(operand, "clamp operand"));
+  TF_RETURN_IF_ERROR(ExpectArray(max, "clamp max"));
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(min, operand) ||
       !ShapeUtil::SameElementTypeIgnoringFpPrecision(max, operand)) {
     return InvalidArgument("Clamp with different operand types: %s, %s, %s.",
@@ -2576,9 +2424,9 @@ static Status ValidateGatherDimensionNumbers(
     const GatherDimensionNumbers& gather_dim_numbers,
     tensorflow::gtl::ArraySlice<int64> window_bounds) {
   TF_RETURN_IF_ERROR(
-      ExpectNotTupleOrOpaque(input_shape, "input tensor operand gather op"));
-  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
-      gather_indices_shape, "gather indices operand of gather op"));
+      ExpectArray(input_shape, "input tensor operand gather op"));
+  TF_RETURN_IF_ERROR(
+      ExpectArray(gather_indices_shape, "gather indices operand of gather op"));
 
   if (!ShapeUtil::ElementIsIntegral(gather_indices_shape)) {
     return InvalidArgument(

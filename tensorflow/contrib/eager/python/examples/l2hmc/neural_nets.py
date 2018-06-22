@@ -57,8 +57,6 @@ class GenericNet(tf.keras.Model):
         initial_value=tf.zeros([1, x_dim]),
         name='coeff_transformation',
         trainable=True)
-    # TODO(lxuechen): Remove this after model.add_weight is in place
-    self.vars_not_in_layers = [self.coeff_scale, self.coeff_transformation]
 
   def call(self, inputs):
     v, x, t = inputs

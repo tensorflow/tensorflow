@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace cpu {
@@ -316,6 +317,21 @@ class ScalarVariable : public LlvmVariable {
                      vector_support->ir_builder()) {
     Set(initial_value);
   }
+};
+
+// This wraps a set of alloca-backed stack variables that can, as a whole, store
+// a tile.  A "tile" is a sequence of vectors that is typically used as a 2D
+// grid of scalar values (e.g. for tiled GEMMs).
+class TileVariable {
+ public:
+  TileVariable(VectorSupportLibrary* vector_support,
+               std::vector<llvm::Value*> initial_value);
+
+  std::vector<llvm::Value*> Get() const;
+  void Set(tensorflow::gtl::ArraySlice<llvm::Value*> value);
+
+ private:
+  std::vector<VectorVariable> storage_;
 };
 }  // namespace cpu
 }  // namespace xla

@@ -730,15 +730,15 @@ class Optimizer(
     if not named_slots:
       return None
 
-    if hasattr(var, "_mirrored_container"):
+    if hasattr(var, "_distributed_container"):
       # NOTE: If this isn't patched, then there is no `handle` in
       # `_resource_apply_dense`.
-      mirrored_container = var._mirrored_container()
-      assert mirrored_container is not None
+      distributed_container = var._distributed_container()
+      assert distributed_container is not None
       if context.executing_eagerly():
-        key = mirrored_container._unique_id
+        key = distributed_container._unique_id
       else:
-        key = (mirrored_container.graph, mirrored_container._shared_name)
+        key = (distributed_container.graph, distributed_container._shared_name)
       # pylint: enable=protected-access
       mirrored_slot = named_slots.get(key, None)
       if mirrored_slot is None: return None
@@ -839,7 +839,7 @@ class Optimizer(
 
   def _get_non_slot_variable(self, name, graph=None):
     non_slot = self._non_slot_dict.get((name, graph), None)
-    if hasattr(non_slot, "_mirrored_container"):
+    if hasattr(non_slot, "_distributed_container"):
       # This is a mirrored non-slot.  In order to enable code like `_finish`
       # to assign to a non-slot, return the current context replica.
       return non_slot.get()
@@ -1211,3 +1211,7 @@ class Optimizer(
       self._deferred_slot_restorations.setdefault(
           slot_name, {}).setdefault(variable_key, []).append(
               slot_variable_position)
+
+  def _call_if_callable(self, param):
+    """Call the function if param is callable."""
+    return param() if callable(param) else param

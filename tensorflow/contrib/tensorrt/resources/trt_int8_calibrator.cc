@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 
 #include <atomic>
-#include <chrono>
 #include <unordered_map>
 
 #include "tensorflow/core/platform/logging.h"
@@ -37,15 +36,22 @@ TRTInt8Calibrator::TRTInt8Calibrator(
     : batch_size_(batch_size),
       done_(false),
       dev_buffers_(dev_buffers),
-      calib_running_(false),
+      calib_running_(true),
       batch_is_set_(false),
       engine_name_(engine_name) {}
+
+TRTInt8Calibrator::TRTInt8Calibrator(const string& calib_data)
+    : batch_size_(0),
+      done_(false),
+      calib_running_(false),
+      batch_is_set_(false),
+      calibration_table_(calib_data) {}
 
 bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
                                  const cudaStream_t stream) {
   tensorflow::mutex_lock lock(cond_mtx_);
-  while ((calib_running_ || batch_is_set_) &&
-         !done_) {  // wait while calibration is running
+  // wait while calibration is running.
+  while ((calib_running_ || batch_is_set_) && !done_) {
     cond_.wait(lock);
   }
   if (done_) return false;
@@ -59,8 +65,6 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
     }
     const auto& d = devptr->second;
 
-    // TODO(aaroey): we should not use sync copy on default stream. Make sure
-    // stream->ThenMemcpy() is used in future PRs.
     // TODO(sami,aaroey): Need to figure out a way to ensure synchronization
     // between stream, perhaps using a tensor?
     auto status = cudaMemcpyAsync(d.first, it.second, d.second,
@@ -84,13 +88,11 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
   tensorflow::mutex_lock lock(cond_mtx_);
   calib_running_ = false;
   cond_.notify_all();
-  while ((!batch_is_set_ && !done_)) {  // wait until new batch arrives
+  // wait until new batch arrives
+  while ((!batch_is_set_ && !done_)) {
     cond_.wait(lock);
-
   }
-  if (done_) {
-    return false;
-  }
+  if (done_) return false;
 
   for (int i = 0; i < num_bindings; i++) {
     auto it = dev_buffers_.find(names[i]);
@@ -107,7 +109,9 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
 }
 
 const void* TRTInt8Calibrator::readCalibrationCache(std::size_t& length) {
-  return nullptr;
+  if (calibration_table_.empty()) return nullptr;
+  length = calibration_table_.size();
+  return calibration_table_.data();
 }
 
 void TRTInt8Calibrator::setDone() {
@@ -117,7 +121,11 @@ void TRTInt8Calibrator::setDone() {
 }
 
 void TRTInt8Calibrator::writeCalibrationCache(const void* ptr,
-                                              std::size_t length) {}
+                                              std::size_t length) {
+  calibration_table_ = string((const char*)ptr, length);
+  VLOG(1) << "Got calibration data for " << engine_name_ << " @" << ptr
+          << " length=" << length;
+}
 TRTInt8Calibrator::~TRTInt8Calibrator() {
   VLOG(1) << "Destroying calibrator for " << engine_name_;
 }

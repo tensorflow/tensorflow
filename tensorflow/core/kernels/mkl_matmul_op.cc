@@ -23,7 +23,7 @@ limitations under the License.
 // and when it is undefined at build time, this file becomes an empty
 // compilation unit
 
-#if defined(INTEL_MKL)
+#if defined(INTEL_MKL) && !defined(DO_NOT_USE_ML)
 
 #include "mkl_cblas.h"
 #include "tensorflow/core/framework/op.h"

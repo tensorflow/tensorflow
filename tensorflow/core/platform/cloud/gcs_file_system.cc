@@ -804,7 +804,9 @@ void GcsFileSystem::ResetFileBlockCache(size_t block_size_bytes,
   mutex_lock l(block_cache_lock_);
   file_block_cache_ =
       MakeFileBlockCache(block_size_bytes, max_bytes, max_staleness_secs);
-  stats_->Configure(this, &throttle_, file_block_cache_.get());
+  if (stats_ != nullptr) {
+    stats_->Configure(this, &throttle_, file_block_cache_.get());
+  }
 }
 
 // A helper function to build a FileBlockCache for GcsFileSystem.

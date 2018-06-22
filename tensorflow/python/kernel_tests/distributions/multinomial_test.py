@@ -18,6 +18,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -342,6 +344,20 @@ class MultinomialTest(test.TestCase):
       self.assertAllEqual([4, 4], sample_covariance.get_shape())
       self.assertAllClose(
           actual_covariance_, sample_covariance_, atol=0., rtol=0.10)
+
+  def testNotReparameterized(self):
+    total_count = constant_op.constant(5.0)
+    p = constant_op.constant([0.2, 0.6])
+    with backprop.GradientTape() as tape:
+      tape.watch(total_count)
+      tape.watch(p)
+      dist = multinomial.Multinomial(
+          total_count=total_count,
+          probs=p)
+      samples = dist.sample(100)
+    grad_total_count, grad_p = tape.gradient(samples, [total_count, p])
+    self.assertIsNone(grad_total_count)
+    self.assertIsNone(grad_p)
 
 
 if __name__ == "__main__":

@@ -21,8 +21,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.autograph import utils
+from tensorflow.contrib.autograph.core import config
 from tensorflow.contrib.autograph.impl import api
-from tensorflow.contrib.autograph.impl import config
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.utils import py_func
 from tensorflow.python.framework import constant_op

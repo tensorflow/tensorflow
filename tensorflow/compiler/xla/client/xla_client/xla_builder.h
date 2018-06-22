@@ -528,9 +528,35 @@ class XlaBuilder {
       tensorflow::gtl::ArraySlice<int64> window_strides,
       tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
 
-  // Returns the sum of the operand value across all replicas. All replicas
-  // supply one input to the sum and all replicas receive the resulting sum.
-  XlaOp CrossReplicaSum(const XlaOp& operand);
+  // Returns the sum of the operand value within each subgroup of replicas. All
+  // replicas supply one input to the sum and all replicas receive the resulting
+  // sum for each subgroup.
+  XlaOp CrossReplicaSum(
+      const XlaOp& operand,
+      tensorflow::gtl::ArraySlice<int64> replica_group_ids = {});
+
+  // Enqueues an operation that do an AllReduce of the operand cross cores. Here
+  // AllReduce means doing a reduction on the input operand cross cores and then
+  // broadcasting the reduction result to those cores. The reduction function is
+  // defined by `computation`, which should be a commutative computation on
+  // scalars, e.g., add, min, or max. The way that AllReduce is applied is
+  // configured by:
+  //
+  // - `replica_group_ids`: maps replica ids to subgroup ids. If empty, all
+  // replicas belong to one group. Allreduce will be applied within subgroups.
+  // For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
+  // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
+  //
+  // - `channel_id`: for Allreduce nodes from different models, if they have the
+  // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
+  // applied cross models.
+  //
+  // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
+  XlaOp CrossReplicaSum(
+      const XlaOp& operand, const XlaComputation& computation,
+      tensorflow::gtl::ArraySlice<int64> replica_group_ids = {},
+      const tensorflow::gtl::optional<ChannelHandle>& channel_id =
+          tensorflow::gtl::nullopt);
 
   // Enqueues an operation that scatters the `source` array to the selected
   // indices of each window.

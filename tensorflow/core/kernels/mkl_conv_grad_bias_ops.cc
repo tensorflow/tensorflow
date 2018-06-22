@@ -39,8 +39,10 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#ifdef INTEL_MKL_ML
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
+#endif
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {

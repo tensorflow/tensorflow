@@ -61,14 +61,24 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   TF_RET_CHECK(stream);
 
-  VLOG(2) << "Executing computation.";
+  VLOG(2) << "Executing computation: " << name();
+  for (const xla::ShapedBuffer* arg : launch_context.arguments()) {
+    VLOG(2) << name() << ": " << *arg;
+  }
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
   run_options.set_allocator(client->backend().memory_allocator());
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(ctx->step_id());
 
-  auto run_result = executable->Run(launch_context.arguments(), run_options);
+  xla::StatusOr<xla::ScopedShapedBuffer> run_result;
+  {
+    // TODO(b/110383871): fix concurrency problems and remove this mutex.
+    static mutex* mu = new mutex;
+    mutex_lock lock(*mu);
+
+    run_result = executable->Run(launch_context.arguments(), run_options);
+  }
   TF_RETURN_IF_ERROR(run_result.status());
 
   launch_context.PopulateOutputs(ctx, result, run_result.ConsumeValueOrDie());

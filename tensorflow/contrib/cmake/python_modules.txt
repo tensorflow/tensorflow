@@ -35,6 +35,7 @@ tensorflow/python/keras
 tensorflow/python/keras/applications
 tensorflow/python/keras/datasets
 tensorflow/python/keras/engine
+tensorflow/python/keras/estimator
 tensorflow/python/keras/layers
 tensorflow/python/keras/preprocessing
 tensorflow/python/keras/utils
@@ -129,6 +130,7 @@ tensorflow/contrib/data
 tensorflow/contrib/data/kernels
 tensorflow/contrib/data/python
 tensorflow/contrib/data/python/kernel_tests
+tensorflow/contrib/data/python/kernel_tests/serialization
 tensorflow/contrib/data/python/ops
 tensorflow/contrib/decision_trees
 tensorflow/contrib/decision_trees/proto

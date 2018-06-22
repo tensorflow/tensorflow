@@ -98,6 +98,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
           node_costs.compute_time.asMicroSeconds().count());
       cost_node->set_memory_time(
           node_costs.memory_time.asMicroSeconds().count());
+      cost_node->set_inaccurate(node_costs.inaccurate);
       for (const auto& output : op_context.op_info.outputs()) {
         auto output_info = cost_node->add_output_info();
         output_info->set_dtype(output.dtype());

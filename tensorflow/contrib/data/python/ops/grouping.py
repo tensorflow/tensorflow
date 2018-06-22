@@ -21,12 +21,9 @@ import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -58,7 +55,7 @@ def group_by_reducer(key_func, reducer):
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return GroupByReducerDataset(dataset, key_func, reducer)
+    return _GroupByReducerDataset(dataset, key_func, reducer)
 
   return _apply_fn
 
@@ -116,8 +113,8 @@ def group_by_window(key_func,
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return GroupByWindowDataset(dataset, key_func, reduce_func,
-                                window_size_func)
+    return _GroupByWindowDataset(dataset, key_func, reduce_func,
+                                 window_size_func)
 
   return _apply_fn
 
@@ -257,12 +254,12 @@ class _VariantDataset(dataset_ops.Dataset):
     return self._output_types
 
 
-class GroupByReducerDataset(dataset_ops.Dataset):
+class _GroupByReducerDataset(dataset_ops.Dataset):
   """A `Dataset` that groups its input and performs a reduction."""
 
   def __init__(self, input_dataset, key_func, reducer):
     """See `group_by_reducer()` for details."""
-    super(GroupByReducerDataset, self).__init__()
+    super(_GroupByReducerDataset, self).__init__()
 
     self._input_dataset = input_dataset
 
@@ -273,67 +270,27 @@ class GroupByReducerDataset(dataset_ops.Dataset):
 
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping Defun for key_func."""
-
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
-    def tf_key_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      # pylint: disable=protected-access
-      if dataset_ops._should_unpack_args(nested_args):
-        ret = key_func(*nested_args)
-      # pylint: enable=protected-access
-      else:
-        ret = key_func(nested_args)
-      ret = ops.convert_to_tensor(ret)
-      if ret.dtype != dtypes.int64 or ret.get_shape() != tensor_shape.scalar():
-        raise ValueError(
-            "`key_func` must return a single tf.int64 tensor. "
-            "Got type=%s and shape=%s" % (ret.dtype, ret.get_shape()))
-      return ret
-
-    self._key_func = tf_key_func
-    self._key_func.add_to_graph(ops.get_default_graph())
+    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+        key_func, "tf.contrib.data.group_by_reducer()", input_dataset)
+    if not (
+        wrapped_func.output_types == dtypes.int64 and
+        wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
+      raise ValueError(
+          "`key_func` must return a single tf.int64 tensor. "
+          "Got type=%s and shape=%s"
+          % (wrapped_func.output_types, wrapped_func.output_shapes))
+    self._key_func = wrapped_func.function
 
   def _make_init_func(self, init_func):
     """Make wrapping Defun for init_func."""
-
-    @function.Defun(dtypes.int64)
-    def tf_init_func(key):
-      """A wrapper for Defun that facilitates shape inference."""
-      key.set_shape([])
-      ret = init_func(key)
-      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
-      # values to tensors.
-      ret = nest.pack_sequence_as(ret, [
-          sparse_tensor.SparseTensor.from_value(t)
-          if sparse_tensor.is_sparse(t) else ops.convert_to_tensor(t)
-          for t in nest.flatten(ret)
-      ])
-
-      self._state_classes = sparse.get_classes(ret)
-      self._state_shapes = nest.pack_sequence_as(
-          ret, [t.get_shape() for t in nest.flatten(ret)])
-      self._state_types = nest.pack_sequence_as(
-          ret, [t.dtype for t in nest.flatten(ret)])
-
-      # Serialize any sparse tensors.
-      ret = nest.pack_sequence_as(
-          ret, [t for t in nest.flatten(sparse.serialize_sparse_tensors(ret))])
-      return nest.flatten(ret)
-
-    self._init_func = tf_init_func
-    self._init_func.add_to_graph(ops.get_default_graph())
+    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+        init_func, "tf.contrib.data.group_by_reducer()",
+        input_classes=ops.Tensor, input_shapes=tensor_shape.scalar(),
+        input_types=dtypes.int64)
+    self._init_func = wrapped_func.function
+    self._state_classes = wrapped_func.output_classes
+    self._state_shapes = wrapped_func.output_shapes
+    self._state_types = wrapped_func.output_types
 
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping Defun for reduce_func."""
@@ -343,83 +300,47 @@ class GroupByReducerDataset(dataset_ops.Dataset):
     need_to_rerun = True
     while need_to_rerun:
 
-      # Create a list in which `tf_reduce_func` will store the new shapes.
-      flat_new_state_shapes = []
+      wrapped_func = dataset_ops.StructuredFunctionWrapper(
+          reduce_func, "tf.contrib.data.group_by_reducer()",
+          input_classes=(self._state_classes, input_dataset.output_classes),
+          input_shapes=(self._state_shapes, input_dataset.output_shapes),
+          input_types=(self._state_types, input_dataset.output_types),
+          add_to_graph=False)
 
-      @function.Defun(*(nest.flatten(
-          sparse.as_dense_types(
-              self._state_types, self._state_classes)) + nest.flatten(
-                  sparse.as_dense_types(input_dataset.output_types,
-                                        input_dataset.output_classes))))
-      def tf_reduce_func(*args):
-        """A wrapper for Defun that facilitates shape inference."""
-        for arg, shape in zip(
-            args,
-            nest.flatten(
-                sparse.as_dense_shapes(self._state_shapes, self._state_classes))
-            + nest.flatten(
-                sparse.as_dense_shapes(input_dataset.output_shapes,
-                                       input_dataset.output_classes))):
-          arg.set_shape(shape)
+      # Extract and validate class information from the returned values.
+      for new_state_class, state_class in zip(
+          nest.flatten(wrapped_func.output_classes),
+          nest.flatten(self._state_classes)):
+        if not issubclass(new_state_class, state_class):
+          raise TypeError(
+              "The element classes for the new state must match the initial "
+              "state. Expected %s; got %s." %
+              (self._state_classes, wrapped_func.output_classes))
 
-        pivot = len(nest.flatten(self._state_shapes))
-        nested_state_args = nest.pack_sequence_as(self._state_types,
-                                                  args[:pivot])
-        nested_state_args = sparse.deserialize_sparse_tensors(
-            nested_state_args, self._state_types, self._state_shapes,
-            self._state_classes)
-        nested_input_args = nest.pack_sequence_as(input_dataset.output_types,
-                                                  args[pivot:])
-        nested_input_args = sparse.deserialize_sparse_tensors(
-            nested_input_args, input_dataset.output_types,
-            input_dataset.output_shapes, input_dataset.output_classes)
+      # Extract and validate type information from the returned values.
+      for new_state_type, state_type in zip(
+          nest.flatten(wrapped_func.output_types),
+          nest.flatten(self._state_types)):
+        if new_state_type != state_type:
+          raise TypeError(
+              "The element types for the new state must match the initial "
+              "state. Expected %s; got %s." %
+              (self._state_types, wrapped_func.output_types))
 
-        ret = reduce_func(nested_state_args, nested_input_args)
-
-        # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
-        # values to tensors.
-        ret = nest.pack_sequence_as(ret, [
-            sparse_tensor.SparseTensor.from_value(t)
-            if sparse_tensor.is_sparse(t) else ops.convert_to_tensor(t)
-            for t in nest.flatten(ret)
-        ])
-
-        # Extract shape information from the returned values.
-        flat_new_state = nest.flatten(ret)
-        flat_new_state_shapes.extend([t.get_shape() for t in flat_new_state])
-
-        # Extract and validate type information from the returned values.
-        for t, dtype in zip(flat_new_state, nest.flatten(self._state_types)):
-          if t.dtype != dtype:
-            raise TypeError(
-                "The element types for the new state must match the initial "
-                "state. Expected %s; got %s." %
-                (self._state_types,
-                 nest.pack_sequence_as(self._state_types,
-                                       [t.dtype for t in flat_new_state])))
-
-        # Serialize any sparse tensors.
-        ret = nest.pack_sequence_as(
-            ret,
-            [t for t in nest.flatten(sparse.serialize_sparse_tensors(ret))])
-        return nest.flatten(ret)
-
-      # Use the private method that will execute `tf_reduce_func` but delay
-      # adding it to the graph in case we need to rerun the function.
-      tf_reduce_func._create_definition_if_needed()  # pylint: disable=protected-access
-
+      # Extract shape information from the returned values.
       flat_state_shapes = nest.flatten(self._state_shapes)
+      flat_new_state_shapes = nest.flatten(wrapped_func.output_shapes)
       weakened_state_shapes = [
-          old.most_specific_compatible_shape(new)
-          for old, new in zip(flat_state_shapes, flat_new_state_shapes)
+          original.most_specific_compatible_shape(new)
+          for original, new in zip(flat_state_shapes, flat_new_state_shapes)
       ]
 
       need_to_rerun = False
-      for old_shape, weakened_shape in zip(flat_state_shapes,
-                                           weakened_state_shapes):
-        if old_shape.ndims is not None and (
+      for original_shape, weakened_shape in zip(flat_state_shapes,
+                                                weakened_state_shapes):
+        if original_shape.ndims is not None and (
             weakened_shape.ndims is None or
-            old_shape.as_list() != weakened_shape.as_list()):
+            original_shape.as_list() != weakened_shape.as_list()):
           need_to_rerun = True
           break
 
@@ -427,50 +348,19 @@ class GroupByReducerDataset(dataset_ops.Dataset):
         self._state_shapes = nest.pack_sequence_as(self._state_shapes,
                                                    weakened_state_shapes)
 
-    self._reduce_func = tf_reduce_func
+    self._reduce_func = wrapped_func.function
     self._reduce_func.add_to_graph(ops.get_default_graph())
 
   def _make_finalize_func(self, finalize_func):
     """Make wrapping Defun for finalize_func."""
-
-    @function.Defun(*(nest.flatten(
-        sparse.as_dense_types(self._state_types, self._state_classes))))
-    def tf_finalize_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      for arg, shape in zip(
-          args,
-          nest.flatten(
-              sparse.as_dense_shapes(self._state_shapes, self._state_classes))):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(self._state_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, self._state_types, self._state_shapes,
-          self._state_classes)
-
-      ret = finalize_func(nested_args)
-
-      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
-      # values to tensors.
-      ret = nest.pack_sequence_as(ret, [
-          sparse_tensor.SparseTensor.from_value(t)
-          if sparse_tensor.is_sparse(t) else ops.convert_to_tensor(t)
-          for t in nest.flatten(ret)
-      ])
-
-      self._output_classes = sparse.get_classes(ret)
-      self._output_shapes = nest.pack_sequence_as(
-          ret, [t.get_shape() for t in nest.flatten(ret)])
-      self._output_types = nest.pack_sequence_as(
-          ret, [t.dtype for t in nest.flatten(ret)])
-
-      # Serialize any sparse tensors.
-      ret = nest.pack_sequence_as(
-          ret, [t for t in nest.flatten(sparse.serialize_sparse_tensors(ret))])
-      return nest.flatten(ret)
-
-    self._finalize_func = tf_finalize_func
-    self._finalize_func.add_to_graph(ops.get_default_graph())
+    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+        finalize_func, "tf.contrib.data.group_by_reducer()",
+        input_classes=self._state_classes, input_shapes=self._state_shapes,
+        input_types=self._state_types)
+    self._finalize_func = wrapped_func.function
+    self._output_classes = wrapped_func.output_classes
+    self._output_shapes = wrapped_func.output_shapes
+    self._output_types = wrapped_func.output_types
 
   @property
   def output_classes(self):
@@ -495,18 +385,15 @@ class GroupByReducerDataset(dataset_ops.Dataset):
         init_func=self._init_func,
         reduce_func=self._reduce_func,
         finalize_func=self._finalize_func,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
 
-class GroupByWindowDataset(dataset_ops.Dataset):
+class _GroupByWindowDataset(dataset_ops.Dataset):
   """A `Dataset` that groups its input and performs a windowed reduction."""
 
   def __init__(self, input_dataset, key_func, reduce_func, window_size_func):
     """See `group_by_window()` for details."""
-    super(GroupByWindowDataset, self).__init__()
+    super(_GroupByWindowDataset, self).__init__()
 
     self._input_dataset = input_dataset
 
@@ -516,64 +403,39 @@ class GroupByWindowDataset(dataset_ops.Dataset):
 
   def _make_window_size_func(self, window_size_func):
     """Make wrapping Defun for window_size_func."""
-
-    @function.Defun(dtypes.int64)
-    def tf_window_size_func(key):
-      key.set_shape([])
-      window_size = ops.convert_to_tensor(
-          window_size_func(key), dtype=dtypes.int64)
-      if window_size.dtype != dtypes.int64:
-        raise ValueError(
-            "`window_size_func` must return a single tf.int64 tensor.")
-      return window_size
-
-    self._window_size_func = tf_window_size_func
-    self._window_size_func.add_to_graph(ops.get_default_graph())
+    def window_size_func_wrapper(key):
+      return ops.convert_to_tensor(window_size_func(key), dtype=dtypes.int64)
+    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+        window_size_func_wrapper, "tf.contrib.data.group_by_window()",
+        input_classes=ops.Tensor, input_shapes=tensor_shape.scalar(),
+        input_types=dtypes.int64)
+    if not (
+        wrapped_func.output_types == dtypes.int64 and
+        wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
+      raise ValueError(
+          "`window_size_func` must return a single tf.int64 scalar tensor.")
+    self._window_size_func = wrapped_func.function
 
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping Defun for key_func."""
-
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
-    def tf_key_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      # pylint: disable=protected-access
-      if dataset_ops._should_unpack_args(nested_args):
-        ret = key_func(*nested_args)
-      # pylint: enable=protected-access
-      else:
-        ret = key_func(nested_args)
-      ret = ops.convert_to_tensor(ret, dtype=dtypes.int64)
-      if ret.dtype != dtypes.int64:
-        raise ValueError("`key_func` must return a single tf.int64 tensor.")
-      return ret
-
-    self._key_func = tf_key_func
-    self._key_func.add_to_graph(ops.get_default_graph())
+    def key_func_wrapper(*args):
+      return ops.convert_to_tensor(key_func(*args), dtype=dtypes.int64)
+    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+        key_func_wrapper, "tf.contrib.data.group_by_window()", input_dataset)
+    if not (
+        wrapped_func.output_types == dtypes.int64 and
+        wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
+      raise ValueError(
+          "`key_func` must return a single tf.int64 scalar tensor.")
+    self._key_func = wrapped_func.function
 
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping Defun for reduce_func."""
-
-    @function.Defun(dtypes.int64, dtypes.variant)
-    def tf_reduce_func(key, window_dataset_variant):
-      """A wrapper for Defun that facilitates shape inference."""
-      key.set_shape([])
+    def reduce_func_wrapper(key, window_dataset_variant):
+      """Wrapper that converts between tf.variant and Dataset objects."""
       window_dataset = _VariantDataset(
           window_dataset_variant, input_dataset.output_types,
           input_dataset.output_shapes, input_dataset.output_classes)
-      if not isinstance(window_dataset, dataset_ops.Dataset):
-        raise TypeError("`window_dataset` must return a `Dataset` object.")
       output_dataset = reduce_func(key, window_dataset)
       if not isinstance(output_dataset, dataset_ops.Dataset):
         raise TypeError("`reduce_func` must return a `Dataset` object.")
@@ -582,8 +444,12 @@ class GroupByWindowDataset(dataset_ops.Dataset):
       self._output_shapes = output_dataset.output_shapes
       return output_dataset._as_variant_tensor()  # pylint: disable=protected-access
 
-    self._reduce_func = tf_reduce_func
-    self._reduce_func.add_to_graph(ops.get_default_graph())
+    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+        reduce_func_wrapper, "tf.contrib.data.reduce_by_window()",
+        input_classes=(ops.Tensor, ops.Tensor),
+        input_shapes=(tensor_shape.scalar(), tensor_shape.scalar()),
+        input_types=(dtypes.int64, dtypes.variant))
+    self._reduce_func = wrapped_func.function
 
   @property
   def output_classes(self):
@@ -606,10 +472,7 @@ class GroupByWindowDataset(dataset_ops.Dataset):
         key_func=self._key_func,
         reduce_func=self._reduce_func,
         window_size_func=self._window_size_func,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
 
 
 class Reducer(object):

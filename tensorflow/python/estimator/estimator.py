@@ -66,14 +66,14 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'self', 'config'])
 
 
-@tf_export('estimator.Estimator')
+@estimator_export('estimator.Estimator')
 class Estimator(object):
   """Estimator class to train and evaluate TensorFlow models.
 
@@ -103,6 +103,15 @@ class Estimator(object):
   None of `Estimator`'s methods can be overridden in subclasses (its
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
+
+  @compatbility(eager)
+  Calling methods of `Estimator` will work while eager execution is enabled.
+  However, the `model_fn` and `input_fn` is not executed eagerly, `Estimator`
+  will switch to graph model before calling all user-provided functions (incl.
+  hooks), so their code has to be compatible with graph mode execution. Note
+  that `input_fn` code using `tf.data` generally works in both graph and eager
+  modes.
+  @end_compatibility
   """
 
   def __init__(self, model_fn, model_dir=None, config=None, params=None,
@@ -566,7 +575,8 @@ class Estimator(object):
     allowed_overrides = set([
         '_call_input_fn', '_create_global_step',
         '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
-        '_tf_api_names', '_validate_features_in_predict_input',
+        '_tf_api_names', '_estimator_api_names', '_estimator_api_constants',
+        '_validate_features_in_predict_input',
         '_call_model_fn', '_add_meta_graph_for_mode'
     ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
@@ -893,11 +903,14 @@ class Estimator(object):
             estimator_spec.scaffold.local_init_op or
             monitored_session.Scaffold.default_local_init_op())
 
-        saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
-            sharded=True)
+        # This saver will be used both for restoring variables now,
+        # and in saving out the metagraph below. This ensures that any
+        # Custom Savers stored with the Scaffold are passed through to the
+        # SavedModel for restore later.
+        graph_saver = estimator_spec.scaffold.saver or saver.Saver(sharded=True)
 
         try:
-          saver_for_restore.restore(session, checkpoint_path)
+          graph_saver.restore(session, checkpoint_path)
         except errors.NotFoundError as e:
           msg = ('Could not load all requested variables from the checkpoint. '
                  'Please make sure your model_fn does not expect variables '
@@ -918,7 +931,8 @@ class Estimator(object):
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
             strip_default_attrs=strip_default_attrs,
-            legacy_init_op=local_init_op)
+            legacy_init_op=local_init_op,
+            saver=graph_saver)
 
         if save_variables:
           builder.add_meta_graph_and_variables(
@@ -1145,13 +1159,10 @@ class Estimator(object):
                 input_fn, model_fn_lib.ModeKeys.TRAIN))
         worker_hooks.extend(input_hooks)
         global_step_tensor = self._create_and_assert_global_step(g)
-        # The default destination for the global_step_tensor fetch call is the
-        # CPU.
-        global_step_read_tensor = self._distribution.fetch(global_step_tensor)
         # we want to add to the global collection in the main thread not the
         # tower threads.
         ops.add_to_collection(training_util.GLOBAL_STEP_READ_KEY,
-                              global_step_read_tensor)
+                              self._distribution.read_var(global_step_tensor))
         grouped_estimator_spec = self._distribution.call_for_each_tower(
             self._call_model_fn,
             features,
@@ -1249,7 +1260,7 @@ class Estimator(object):
             training_chief_hooks=training_chief_hooks,
             scaffold=scaffold)
         return self._train_with_estimator_spec(estimator_spec, worker_hooks,
-                                               hooks, global_step_read_tensor,
+                                               hooks, global_step_tensor,
                                                saving_listeners)
 
   def _train_with_estimator_spec(self, estimator_spec, worker_hooks, hooks,
@@ -1630,11 +1641,12 @@ def _has_dataset_or_queue_runner(maybe_tensor):
   # Now, check queue.
   return ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS)
 
+
 VocabInfo = warm_starting_util.VocabInfo  # pylint: disable=invalid-name
-tf_export('estimator.VocabInfo', allow_multiple_exports=True)(VocabInfo)
+estimator_export('estimator.VocabInfo')(VocabInfo)
 
 
-@tf_export('estimator.WarmStartSettings')
+@estimator_export('estimator.WarmStartSettings')
 class WarmStartSettings(
     collections.namedtuple('WarmStartSettings', [
         'ckpt_to_initialize_from',

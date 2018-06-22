@@ -138,7 +138,8 @@ out = tf.fake_quant_with_min_max_args(val, min=0., max=1., name="output")
 with tf.Session() as sess:
   converter = tf.contrib.lite.TocoConverter.from_session(sess, [img], [out])
   converter.inference_type = tf.contrib.lite.constants.QUANTIZED_UINT8
-  converter.quantized_input_stats = {"img" : (0., 1.)}  # mean, std_dev
+  input_arrays = converter.get_input_arrays()
+  converter.quantized_input_stats = {input_arrays[0] : (0., 1.)}  # mean, std_dev
   tflite_model = converter.convert()
   open("converted_model.tflite", "wb").write(tflite_model)
 ```

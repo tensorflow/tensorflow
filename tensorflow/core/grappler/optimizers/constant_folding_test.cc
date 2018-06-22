@@ -3000,6 +3000,10 @@ TEST_F(ConstantFoldingTest, Enter) {
 TEST_F(ConstantFoldingTest, TensorArraySize) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   Output size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+  Output placeholder =
+      ops::Placeholder(scope.WithOpName("placeholder"), DT_RESOURCE,
+                       ops::Placeholder::Shape(TensorShape({2})));
+  Output foo = ops::Const(scope.WithOpName("foo"), 5.0f, TensorShape({}));
   auto dynamic_array =
       ops::TensorArray(scope.WithOpName("dynamic"), size, DT_FLOAT,
                        ops::TensorArray::DynamicSize(true));
@@ -3010,6 +3014,8 @@ TEST_F(ConstantFoldingTest, TensorArraySize) {
       scope.WithOpName("dynamic_sz"), dynamic_array.handle, dynamic_array.flow);
   auto static_sz = ops::TensorArraySize(scope.WithOpName("static_sz"),
                                         static_array.handle, static_array.flow);
+  auto placeholder_sz = ops::TensorArraySize(scope.WithOpName("placeholder_sz"),
+                                             placeholder, foo);
 
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
@@ -3026,11 +3032,13 @@ TEST_F(ConstantFoldingTest, TensorArraySize) {
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(5, output.node_size());
-  EXPECT_EQ("dynamic_sz", output.node(3).name());
-  EXPECT_EQ("TensorArraySizeV3", output.node(3).op());
-  EXPECT_EQ("static_sz", output.node(4).name());
-  EXPECT_EQ("Const", output.node(4).op());
+  EXPECT_EQ(8, output.node_size());
+  EXPECT_EQ("dynamic_sz", output.node(5).name());
+  EXPECT_EQ("TensorArraySizeV3", output.node(5).op());
+  EXPECT_EQ("static_sz", output.node(6).name());
+  EXPECT_EQ("Const", output.node(6).op());
+  EXPECT_EQ("placeholder_sz", output.node(7).name());
+  EXPECT_EQ("TensorArraySizeV3", output.node(7).op());
 
   auto tensors_actual = EvaluateNodes(output, {"dynamic_sz", "static_sz"});
   EXPECT_EQ(2, tensors_expected.size());

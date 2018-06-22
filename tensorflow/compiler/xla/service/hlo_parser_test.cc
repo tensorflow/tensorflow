@@ -765,7 +765,7 @@ add_F32.v3 {
 ENTRY MapBinaryAdder.v3 {
   param0 = f32[4]{0} parameter(0)
   param1 = f32[4]{0} parameter(1)
-  ROOT map = f32[4]{0} map(param0, param1), to_apply=add_F32.v3
+  ROOT map = f32[4]{0} map(param0, param1), dimensions={0}, to_apply=add_F32.v3
 }
 
 )"
@@ -900,6 +900,42 @@ ENTRY Gather {
 
 )"
 },
+// cross-replica-sum
+{
+"CrossReplicaSum",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT crs = f32[8]{0} cross-replica-sum(input), replica_group_ids={}, to_apply=add
+}
+
+)"
+},
+// cross-replica-sum with subgroups
+{
+"CrossReplicaSumWithSubgroups",
+R"(HloModule CRS_Subgroups
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CrossReplicaSumWithSubgroups {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_group_ids={0,0,1,1}, barrier="abc", to_apply=add
+}
+
+)"
+}
   });
   // clang-format on
 }
@@ -1266,7 +1302,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   auto module = ParseHloString(original);
   TF_ASSERT_OK(module.status());
-  auto program_layout = module.ValueOrDie()->host_entry_computation_layout();
+  auto program_layout = module.ValueOrDie()->entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
   auto param_layout = program_layout.parameter_layout(0).layout();
   auto result_layout = program_layout.result_layout().layout();

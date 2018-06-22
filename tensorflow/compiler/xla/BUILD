@@ -53,7 +53,6 @@ xla_proto_library(
     deps = [
         ":xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/compiler/xla/service:session_proto",
     ],
 )
 
@@ -310,7 +309,6 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
 )

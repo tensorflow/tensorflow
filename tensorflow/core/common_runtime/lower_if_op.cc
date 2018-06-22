@@ -187,8 +187,7 @@ Status CondBuilder::AddOutputs() {
     } else {
       // Feed the outputs directly from the merge nodes so that downstream ops
       // can start before all the outputs have been computed.
-      graph_->AddEdge(merges[e->src_output()], e->src_output(), e->dst(),
-                      e->dst_input());
+      graph_->AddEdge(merges[e->src_output()], 0, e->dst(), e->dst_input());
     }
   }
   return Status::OK();
@@ -207,7 +206,7 @@ Status InlineCallInGraph(Node* n, Graph* g) {
                               &fbody));
   // TODO(jpienaar): Improve this interface to make the need to delete it
   // explicit.
-  InlineFunctionBody(g->flib_def(), g, n, fbody);
+  InlineFunctionBody(g->flib_def(), g, n, fbody, false);
   delete fbody;
   return Status::OK();
 }

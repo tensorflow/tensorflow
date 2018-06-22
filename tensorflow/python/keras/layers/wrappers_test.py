@@ -23,8 +23,10 @@ import copy
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
+from tensorflow.python.training.checkpointable import util as checkpointable_util
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
@@ -85,6 +87,10 @@ class TimeDistributedTest(test.TestCase):
     # test config
     model.get_config()
 
+    checkpointed_objects = set(checkpointable_util.list_objects(model))
+    for v in model.variables:
+      self.assertIn(v, checkpointed_objects)
+
   def test_timedistributed_static_batch_size(self):
     model = keras.models.Sequential()
     model.add(
@@ -96,6 +102,13 @@ class TimeDistributedTest(test.TestCase):
         np.random.random((10, 3, 2)),
         epochs=1,
         batch_size=10)
+
+  def test_timedistributed_invalid_init(self):
+    x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Please initialize `TimeDistributed` layer with a `Layer` instance.'):
+      keras.layers.TimeDistributed(x)
 
   def test_timedistributed_conv2d(self):
     with self.test_session():
@@ -219,6 +232,13 @@ class BidirectionalTest(test.TestCase):
         model.get_config()
         model = keras.models.model_from_json(model.to_json())
         model.summary()
+
+  def test_bidirectional_invalid_init(self):
+    x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Please initialize `Bidirectional` layer with a `Layer` instance.'):
+      keras.layers.Bidirectional(x)
 
   def test_bidirectional_weight_loading(self):
     rnn = keras.layers.SimpleRNN
@@ -423,6 +443,42 @@ class BidirectionalTest(test.TestCase):
       assert not layer.trainable_weights
       layer.trainable = True
       assert len(layer.trainable_weights) == 6
+
+  def test_Bidirectional_updates(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3, 2))
+      x_reachable_update = x * x
+      layer = keras.layers.Bidirectional(keras.layers.SimpleRNN(3))
+      _ = layer(x)
+      assert not layer.updates
+      assert not layer.get_updates_for(None)
+      assert not layer.get_updates_for(x)
+      layer.forward_layer.add_update(x_reachable_update, inputs=x)
+      layer.forward_layer.add_update(1, inputs=None)
+      layer.backward_layer.add_update(x_reachable_update, inputs=x)
+      layer.backward_layer.add_update(1, inputs=None)
+      assert len(layer.updates) == 4
+      assert len(layer.get_updates_for(None)) == 2
+      assert len(layer.get_updates_for(x)) == 2
+
+  def test_Bidirectional_losses(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3, 2))
+      x_reachable_loss = x * x
+      layer = keras.layers.Bidirectional(
+          keras.layers.SimpleRNN(
+              3, kernel_regularizer='l1', bias_regularizer='l1'))
+      _ = layer(x)
+      assert len(layer.losses) == 4
+      assert len(layer.get_losses_for(None)) == 4
+      assert not layer.get_losses_for(x)
+      layer.forward_layer.add_loss(x_reachable_loss, inputs=x)
+      layer.forward_layer.add_loss(1, inputs=None)
+      layer.backward_layer.add_loss(x_reachable_loss, inputs=x)
+      layer.backward_layer.add_loss(1, inputs=None)
+      assert len(layer.losses) == 8
+      assert len(layer.get_losses_for(None)) == 6
+      assert len(layer.get_losses_for(x)) == 2
 
   def test_Bidirectional_with_constants(self):
     with self.test_session():

@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Atan"
+  endpoint {
+    name: "math.atan"
+  }
+  endpoint {
+    name: "atan"
+    deprecation_message: "tf.atan is deprecated, please use tf.math.atan instead."
+  }
+}

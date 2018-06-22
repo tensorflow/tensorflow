@@ -407,11 +407,38 @@ cc_library(
 )
 
 cc_library(
+    name = "validate_control_flow",
+    srcs = ["validate_control_flow.cc"],
+    hdrs = ["validate_control_flow.h"],
+    deps = [
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "validate_control_flow_test",
+    srcs = ["validate_control_flow_test.cc"],
+    deps = [
+        ":validate_control_flow",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:while_loop",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "functionalize_control_flow",
     srcs = ["functionalize_control_flow.cc"],
     hdrs = ["functionalize_control_flow.h"],
     deps = [
         ":tf2xla_util",
+        ":validate_control_flow",
         "//tensorflow/compiler/jit:union_find",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
@@ -460,5 +487,15 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_op_registry_test",
+    srcs = ["xla_op_registry_test.cc"],
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

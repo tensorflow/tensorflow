@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
-#include "tensorflow/core/distributed_runtime/rpc/eager/eager_grpc_server_lib.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -147,46 +148,66 @@ tensorflow::Status CreateRemoteContexts(
 
 tensorflow::Status NewRemoteAwareTFE_Context(const TFE_ContextOptions* opts,
                                              TFE_Context** ctx) {
+  // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
+  // server object (which currently CHECK-fails) and we miss the error, instead,
+  // we log the error, and then return to allow the user to see the error
+  // message.
+#define LOG_AND_RETURN_IF_ERROR(...)                     \
+  do {                                                   \
+    const ::tensorflow::Status _status = (__VA_ARGS__);  \
+    LOG(ERROR) << _status.error_message();               \
+    if (TF_PREDICT_FALSE(!_status.ok())) return _status; \
+  } while (0)
+
   string worker_name = tensorflow::strings::StrCat(
       "/job:", opts->server_def.job_name(),
       "/replica:0/task:", opts->server_def.task_index());
-  std::unique_ptr<tensorflow::eager::EagerGrpcServer> server;
-  TF_RETURN_IF_ERROR(
-      tensorflow::eager::EagerGrpcServer::Create(opts->server_def, &server));
 
-  TF_RETURN_IF_ERROR(server->Start());
+  std::unique_ptr<tensorflow::ServerInterface> server;
+  LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(opts->server_def, &server));
+
+  tensorflow::GrpcServer* grpc_server =
+      dynamic_cast<tensorflow::GrpcServer*>(server.get());
+  if (grpc_server == nullptr) {
+    LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
+        "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
+  }
+
+  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
   std::vector<string> remote_workers;
-  server->master_env()->worker_cache->ListWorkers(&remote_workers);
+  grpc_server->master_env()->worker_cache->ListWorkers(&remote_workers);
   remote_workers.erase(
       std::remove(remote_workers.begin(), remote_workers.end(), worker_name),
       remote_workers.end());
 
   std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr;
-  TF_RETURN_IF_ERROR(GetAllRemoteDevices(
-      remote_workers, server->master_env()->worker_cache, &remote_device_mgr));
+  LOG_AND_RETURN_IF_ERROR(GetAllRemoteDevices(
+      remote_workers, grpc_server->master_env()->worker_cache,
+      &remote_device_mgr));
 
   std::shared_ptr<tensorflow::GrpcChannelCache> channel_cache =
-      server->channel_cache();
+      grpc_server->channel_cache();
   std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers(
       tensorflow::eager::NewGrpcEagerClientCache(channel_cache));
 
   // Initialize remote eager workers.
   tensorflow::gtl::FlatMap<string, tensorflow::uint64> remote_contexts;
-  TF_RETURN_IF_ERROR(CreateRemoteContexts(remote_workers,
-                                          remote_eager_workers.get(),
-                                          opts->async, &remote_contexts));
+  LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(remote_workers,
+                                               remote_eager_workers.get(),
+                                               opts->async, &remote_contexts));
 
   tensorflow::RemoteRendezvous* r =
-      server->worker_env()->rendezvous_mgr->Find(0);
+      grpc_server->worker_env()->rendezvous_mgr->Find(0);
 
-  auto* device_mgr = server->worker_env()->device_mgr;
+  auto* device_mgr = grpc_server->worker_env()->device_mgr;
   *ctx = new TFE_Context(opts->session_options.options, opts->policy,
                          opts->async, device_mgr, r, std::move(server),
                          std::move(remote_eager_workers),
                          std::move(remote_device_mgr), remote_contexts);
 
   return tensorflow::Status::OK();
+#undef LOG_AND_RETURN_IF_ERROR
 }
 }  // namespace
 
@@ -421,8 +442,11 @@ TF_AttrType TFE_OpNameGetAttrType(TFE_Context* ctx,
   return ret;
 }
 
-void TFE_OpSetAttrString(TFE_Op* op, const char* attr_name, const char* value) {
-  op->operation.MutableAttrs()->Set(attr_name, value);
+void TFE_OpSetAttrString(TFE_Op* op, const char* attr_name, const void* value,
+                         size_t length) {
+  op->operation.MutableAttrs()->Set(
+      attr_name,
+      tensorflow::StringPiece(static_cast<const char*>(value), length));
 }
 
 void TFE_OpSetAttrInt(TFE_Op* op, const char* attr_name, int64_t value) {
@@ -473,16 +497,22 @@ void TFE_OpSetAttrFunction(TFE_Op* op, const char* attr_name,
   op->operation.MutableAttrs()->Set(attr_name, attr_value);
 }
 
-#define TFE_OP_SET_ATTR_LIST(fn, type)                                \
-  void fn(TFE_Op* op, const char* attr_name, const type* values,      \
-          int num_values) {                                           \
-    op->operation.MutableAttrs()->Set(                                \
-        attr_name,                                                    \
-        tensorflow::gtl::ArraySlice<const type>(values, num_values)); \
+void TFE_OpSetAttrStringList(TFE_Op* op, const char* attr_name,
+                             const void* const* values, const size_t* lengths,
+                             int num_values) {
+  std::vector<tensorflow::StringPiece> v(num_values);
+  for (int i = 0; i < num_values; ++i) {
+    v[i] = tensorflow::StringPiece(static_cast<const char*>(values[i]),
+                                   lengths[i]);
   }
-TFE_OP_SET_ATTR_LIST(TFE_OpSetAttrStringList, char*)
-TFE_OP_SET_ATTR_LIST(TFE_OpSetAttrFloatList, float)
-#undef TFE_OP_SET_ATTR_LIST
+  op->operation.MutableAttrs()->Set(attr_name, v);
+}
+
+void TFE_OpSetAttrFloatList(TFE_Op* op, const char* attr_name,
+                            const float* values, int num_values) {
+  op->operation.MutableAttrs()->Set(
+      attr_name, tensorflow::gtl::ArraySlice<const float>(values, num_values));
+}
 
 void TFE_OpSetAttrIntList(TFE_Op* op, const char* attr_name,
                           const int64_t* values, int num_values) {
@@ -655,9 +685,11 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const tensorflow::AttrValue& default_value,
                           const char* attr_name, TF_Status* status) {
   switch (default_value.value_case()) {
-    case tensorflow::AttrValue::kS:
-      TFE_OpSetAttrString(op, attr_name, default_value.s().data());
+    case tensorflow::AttrValue::kS: {
+      const string& v = default_value.s();
+      TFE_OpSetAttrString(op, attr_name, v.data(), v.size());
       break;
+    }
     case tensorflow::AttrValue::kI:
       TFE_OpSetAttrInt(op, attr_name, static_cast<int64_t>(default_value.i()));
       break;

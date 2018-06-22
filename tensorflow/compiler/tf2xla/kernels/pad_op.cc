@@ -63,8 +63,8 @@ class PadOp : public XlaOpKernel {
       int before = pad_literal.Get<int32>({i, 0});
       int after = pad_literal.Get<int32>({i, 1});
       OP_REQUIRES(ctx, before >= 0 && after >= 0,
-                  errors::InvalidArgument("Paddings must be non-negative: ",
-                                          before, " ", after));
+                  errors::InvalidArgument(
+                      "Paddings must be non-negative: ", before, " ", after));
       dim->set_edge_padding_low(before);
       dim->set_edge_padding_high(after);
     }

@@ -92,7 +92,7 @@ void XlaContext::AddRetval(int retval_index, DataType type,
 }
 
 Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
-                                  const xla::Literal& literal) {
+                                  const xla::LiteralSlice& literal) {
   VLOG(1) << "Adding retval index " << retval_index
           << " with non-data-dependent tensor to XLA computation";
   if (retvals_.size() <= retval_index) {

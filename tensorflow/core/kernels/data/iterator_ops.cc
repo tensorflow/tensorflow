@@ -207,12 +207,6 @@ class IteratorResource : public ResourceBase {
     return Status::OK();
   }
 
-
-  std::shared_ptr<StatsAggregator> stats_aggregator() {
-    tf_shared_lock l(mu_);
-    return stats_aggregator_;
-  }
-
   string DebugString() override { return "Iterator resource"; }
 
   const DataTypeVector& output_dtypes() const { return output_dtypes_; }
@@ -231,7 +225,6 @@ class IteratorResource : public ResourceBase {
   FunctionLibraryRuntime* lib_ = nullptr;  // not owned.
   std::shared_ptr<IteratorBase> iterator_;
   mutex mu_;
-  std::shared_ptr<StatsAggregator> stats_aggregator_ GUARDED_BY(mu_);
   std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
@@ -782,11 +775,11 @@ class OneShotIteratorOp : public AsyncOpKernel {
         return;
       }
     }
-    ProduceOutput(ctx, std::move(done));
+    ProduceOutput(ctx, done);
   }
 
  private:
-  void Init(OpKernelContext* ctx, DoneCallback done) {
+  void Init(OpKernelContext* ctx, const DoneCallback& done) {
     IteratorResource* iterator = nullptr;
     ContainerInfo cinfo;
     Status s = TryInit(ctx, &iterator, &cinfo);
@@ -803,9 +796,9 @@ class OneShotIteratorOp : public AsyncOpKernel {
     }
 
     for (auto&& ctx_done : callbacks_to_run) {
-      ProduceOutput(ctx_done.first, std::move(ctx_done.second));
+      ProduceOutput(ctx_done.first, ctx_done.second);
     }
-    ProduceOutput(ctx, std::move(done));
+    ProduceOutput(ctx, done);
   }
 
   Status TryInit(OpKernelContext* ctx, IteratorResource** iterator,
@@ -944,9 +937,6 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
           IteratorContext::Params params;
           params.env = ctx->env();
-          params.stats_aggregator_getter = [iterator]() {
-            return iterator->stats_aggregator();
-          };
           params.runner = *(ctx->runner());
           params.function_library = iterator->function_library();
           DeviceBase* device = ctx->function_library()->device();
@@ -995,9 +985,6 @@ class IteratorGetNextSyncOp : public OpKernel {
 
     IteratorContext::Params params;
     params.env = ctx->env();
-    params.stats_aggregator_getter = [iterator]() {
-      return iterator->stats_aggregator();
-    };
     params.runner = *(ctx->runner());
     params.function_library = iterator->function_library();
     DeviceBase* device = ctx->function_library()->device();

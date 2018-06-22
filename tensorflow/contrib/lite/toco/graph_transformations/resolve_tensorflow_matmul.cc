@@ -26,7 +26,7 @@ namespace toco {
 
 bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
   auto matmul_it = model->operators.begin() + op_index;
-  if (matmul_it->get()->type != OperatorType::kTensorFlowMatMul) {
+  if (matmul_it->get()->type != OperatorType::kMatMul) {
     return false;
   }
   const auto* matmul_op =
@@ -97,7 +97,7 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
   // MatMul op as a FullyConnected. However, TensorFlow skips the Reshape ops if
   // the input doesn't need reshaping, so we can't just match (Reshape, MatMul)
   // pairs.
-  if (previous_op && previous_op->type == OperatorType::kTensorFlowReshape) {
+  if (previous_op && previous_op->type == OperatorType::kReshape) {
     AddMessageF("Combining %s and %s into %s", LogName(*previous_op),
                 LogName(*matmul_op), LogName(*fc_op));
     const auto& previous_op_output = previous_op->outputs[0];

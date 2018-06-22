@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "FakeQuantWithMinMaxArgs"
+  endpoint {
+    name: "quantization.fake_quant_with_min_max_args"
+  }
+  endpoint {
+    name: "fake_quant_with_min_max_args"
+    deprecation_message: "tf.fake_quant_with_min_max_args is deprecated, please use tf.quantization.fake_quant_with_min_max_args instead."
+  }
+}

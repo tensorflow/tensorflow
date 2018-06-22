@@ -86,6 +86,9 @@ def _convert_model(flags):
 
   Args:
     flags: argparse.Namespace object.
+
+  Raises:
+    ValueError: Invalid flags.
   """
   # Create converter.
   converter = _get_toco_converter(flags)
@@ -99,12 +102,22 @@ def _convert_model(flags):
         flags.output_format)
 
   if flags.mean_values and flags.std_dev_values:
-    input_arrays = _parse_array(flags.input_arrays)
+    input_arrays = converter.get_input_arrays()
     std_dev_values = _parse_int_array(flags.std_dev_values)
     mean_values = _parse_int_array(flags.mean_values)
     quant_stats = zip(mean_values, std_dev_values)
+    if ((not flags.input_arrays and len(input_arrays) > 1) or
+        (len(input_arrays) != len(quant_stats))):
+      raise ValueError("Mismatching --input_arrays, --std_dev_values, and "
+                       "--mean_values. The flags must have the same number of "
+                       "items. The current input arrays are '{0}'. "
+                       "--input_arrays must be present when specifying "
+                       "--std_dev_values and --mean_values with multiple input "
+                       "tensors in order to map between names and "
+                       "values.".format(",".join(input_arrays)))
     converter.quantized_input_stats = dict(zip(input_arrays, quant_stats))
-  if flags.default_ranges_min and flags.default_ranges_max:
+  if (flags.default_ranges_min is not None) and (flags.default_ranges_max is
+                                                 not None):
     converter.default_ranges_stats = (flags.default_ranges_min,
                                       flags.default_ranges_max)
 
@@ -116,6 +129,12 @@ def _convert_model(flags):
     converter.change_concat_input_ranges = flags.change_concat_input_ranges
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
+  if flags.quantize_weights:
+    converter.quantize_weights = flags.quantize_weights
+  if flags.dump_graphviz_dir:
+    converter.dump_graphviz_dir = flags.dump_graphviz_dir
+  if flags.dump_graphviz_video:
+    converter.dump_graphviz_vode = flags.dump_graphviz_video
 
   # Convert model.
   output_data = converter.convert()
@@ -147,9 +166,14 @@ def _check_flags(flags, unparsed):
     output = ""
     for flag in unparsed:
       output += _get_message_unparsed(flag, "--input_file", "--graph_def_file")
+      output += _get_message_unparsed(flag, "--savedmodel_directory",
+                                      "--saved_model_dir")
       output += _get_message_unparsed(flag, "--std_value", "--std_dev_values")
       output += _get_message_unparsed(flag, "--batch_size", "--input_shapes")
-    raise ValueError(output)
+      output += _get_message_unparsed(flag, "--dump_graphviz",
+                                      "--dump_graphviz_dir")
+    if output:
+      raise ValueError(output)
 
   # Check that flags are valid.
   if flags.graph_def_file and (not flags.input_arrays or
@@ -168,15 +192,11 @@ def _check_flags(flags, unparsed):
     if bool(flags.std_dev_values) != bool(flags.mean_values):
       raise ValueError("--std_dev_values and --mean_values must be used "
                        "together")
-    if not flags.input_arrays:
-      raise ValueError("--std_dev_values and --mean_values must be used with "
-                       "--input_arrays")
-    if (flags.std_dev_values.count(",") != flags.mean_values.count(",") or
-        flags.std_dev_values.count(",") != flags.input_arrays.count(",")):
-      raise ValueError("--std_dev_values, --mean_values, and --input_arrays "
-                       "must have the same number of items")
+    if flags.std_dev_values.count(",") != flags.mean_values.count(","):
+      raise ValueError("--std_dev_values, --mean_values must have the same "
+                       "number of items")
 
-  if bool(flags.default_ranges_min) != bool(flags.default_ranges_max):
+  if (flags.default_ranges_min is None) != (flags.default_ranges_max is None):
     raise ValueError("--default_ranges_min and --default_ranges_max must be "
                      "used together")
 
@@ -208,17 +228,17 @@ def run_main(_):
   # Model format flags.
   parser.add_argument(
       "--output_format",
-      type=str,
+      type=str.upper,
       choices=["TFLITE", "GRAPHVIZ_DOT"],
       help="Output file format.")
   parser.add_argument(
       "--inference_type",
-      type=str,
+      type=str.upper,
       choices=["FLOAT", "QUANTIZED_UINT8"],
       help="Target data type of arrays in the output file.")
   parser.add_argument(
       "--inference_input_type",
-      type=str,
+      type=str.upper,
       choices=["FLOAT", "QUANTIZED_UINT8"],
       help=("Target data type of input arrays. Allows for a different type for "
             "input arrays in the case of quantization."))
@@ -273,17 +293,23 @@ def run_main(_):
       help=("Default value for max bound of min/max range values used for all "
             "arrays without a specified range, Intended for experimenting with "
             "quantization via \"dummy quantization\". (default None)"))
+  parser.add_argument(
+      "--quantize_weights",
+      type=bool,
+      help=("Store float weights as quantized weights followed by dequantize "
+            "operations. Inference is still done in FLOAT, but reduces model "
+            "size (at the cost of accuracy and latency)."))
 
   # Graph manipulation flags.
   parser.add_argument(
       "--drop_control_dependency",
-      type=bool,
+      action="store_true",
       help=("Boolean indicating whether to drop control dependencies silently. "
             "This is due to TensorFlow not supporting control dependencies. "
             "(default True)"))
   parser.add_argument(
       "--reorder_across_fake_quant",
-      type=bool,
+      action="store_true",
       help=("Boolean indicating whether to reorder FakeQuant nodes in "
             "unexpected locations. Used when the location of the FakeQuant "
             "nodes is preventing graph transformations necessary to convert "
@@ -292,18 +318,32 @@ def run_main(_):
             "behavior. (default False)"))
   parser.add_argument(
       "--change_concat_input_ranges",
-      type=bool,
+      action="store_true",
       help=("Boolean to change behavior of min/max ranges for inputs and "
             "outputs of the concat operator for quantized models. Changes the "
             "ranges of concat operator overlap when true. (default False)"))
   parser.add_argument(
       "--allow_custom_ops",
-      type=bool,
+      action="store_true",
       help=("Boolean indicating whether to allow custom operations. When false "
             "any unknown operation is an error. When true, custom ops are "
             "created for any op that is unknown. The developer will need to "
             "provide these to the TensorFlow Lite runtime with a custom "
             "resolver. (default False)"))
+
+  # Logging flags.
+  parser.add_argument(
+      "--dump_graphviz_dir",
+      type=str,
+      help=("Full filepath of folder to dump the graphs at various stages of "
+            "processing GraphViz .dot files. Preferred over --output_format="
+            "GRAPHVIZ_DOT in order to keep the requirements of the output "
+            "file."))
+  parser.add_argument(
+      "--dump_graphviz_video",
+      action="store_true",
+      help=("Boolean indicating whether to dump the graph after every graph "
+            "transformation"))
 
   tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])
   try:

@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "DecodeBase64"
+  endpoint {
+    name: "io.decode_base64"
+  }
+  endpoint {
+    name: "decode_base64"
+    deprecation_message: "tf.decode_base64 is deprecated, please use tf.io.decode_base64 instead."
+  }
+}

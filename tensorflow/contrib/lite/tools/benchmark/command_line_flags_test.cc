@@ -34,15 +34,15 @@ TEST(CommandLineFlagsTest, BasicUsage) {
                                 "--some_name=somethingelse",
                                 "--some_float=42.0"};
   int argc = 6;
-  bool parsed_ok =
-      Flags::Parse(&argc, reinterpret_cast<const char**>(argv_strings),
-                   {
-                       Flag("some_int32", &some_int32, "some int32"),
-                       Flag("some_int64", &some_int64, "some int64"),
-                       Flag("some_switch", &some_switch, "some switch"),
-                       Flag("some_name", &some_name, "some name"),
-                       Flag("some_float", &some_float, "some float"),
-                   });
+  bool parsed_ok = Flags::Parse(
+      &argc, reinterpret_cast<const char**>(argv_strings),
+      {
+          Flag::CreateFlag("some_int32", &some_int32, "some int32"),
+          Flag::CreateFlag("some_int64", &some_int64, "some int64"),
+          Flag::CreateFlag("some_switch", &some_switch, "some switch"),
+          Flag::CreateFlag("some_name", &some_name, "some name"),
+          Flag::CreateFlag("some_float", &some_float, "some float"),
+      });
 
   EXPECT_EQ(true, parsed_ok);
   EXPECT_EQ(20, some_int32);
@@ -53,13 +53,26 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   EXPECT_EQ(argc, 1);
 }
 
+TEST(CommandLineFlagsTest, EmptyStringFlag) {
+  int argc = 2;
+  std::string some_string = "invalid";
+  const char* argv_strings[] = {"program_name", "--some_string="};
+  bool parsed_ok = Flags::Parse(
+      &argc, reinterpret_cast<const char**>(argv_strings),
+      {Flag::CreateFlag("some_string", &some_string, "some string")});
+
+  EXPECT_EQ(true, parsed_ok);
+  EXPECT_EQ(some_string, "");
+  EXPECT_EQ(argc, 1);
+}
+
 TEST(CommandLineFlagsTest, BadIntValue) {
   int some_int = 10;
   int argc = 2;
   const char* argv_strings[] = {"program_name", "--some_int=notanumber"};
   bool parsed_ok =
       Flags::Parse(&argc, reinterpret_cast<const char**>(argv_strings),
-                   {Flag("some_int", &some_int, "some int")});
+                   {Flag::CreateFlag("some_int", &some_int, "some int")});
 
   EXPECT_EQ(false, parsed_ok);
   EXPECT_EQ(10, some_int);
@@ -70,9 +83,9 @@ TEST(CommandLineFlagsTest, BadBoolValue) {
   bool some_switch = false;
   int argc = 2;
   const char* argv_strings[] = {"program_name", "--some_switch=notabool"};
-  bool parsed_ok =
-      Flags::Parse(&argc, reinterpret_cast<const char**>(argv_strings),
-                   {Flag("some_switch", &some_switch, "some switch")});
+  bool parsed_ok = Flags::Parse(
+      &argc, reinterpret_cast<const char**>(argv_strings),
+      {Flag::CreateFlag("some_switch", &some_switch, "some switch")});
 
   EXPECT_EQ(false, parsed_ok);
   EXPECT_EQ(false, some_switch);
@@ -85,7 +98,7 @@ TEST(CommandLineFlagsTest, BadFloatValue) {
   const char* argv_strings[] = {"program_name", "--some_float=notanumber"};
   bool parsed_ok =
       Flags::Parse(&argc, reinterpret_cast<const char**>(argv_strings),
-                   {Flag("some_float", &some_float, "some float")});
+                   {Flag::CreateFlag("some_float", &some_float, "some float")});
 
   EXPECT_EQ(false, parsed_ok);
   EXPECT_NEAR(-23.23f, some_float, 1e-5f);
@@ -121,12 +134,13 @@ TEST(CommandLineFlagsTest, UsageString) {
   std::string some_name = "something";
   // Don't test float in this case, because precision is hard to predict and
   // match against, and we don't want a flakey test.
-  const string tool_name = "some_tool_name";
-  string usage = Flags::Usage(tool_name + " <flags>",
-                              {Flag("some_int", &some_int, "some int"),
-                               Flag("some_int64", &some_int64, "some int64"),
-                               Flag("some_switch", &some_switch, "some switch"),
-                               Flag("some_name", &some_name, "some name")});
+  const std::string tool_name = "some_tool_name";
+  std::string usage = Flags::Usage(
+      tool_name + " <flags>",
+      {Flag::CreateFlag("some_int", &some_int, "some int"),
+       Flag::CreateFlag("some_int64", &some_int64, "some int64"),
+       Flag::CreateFlag("some_switch", &some_switch, "some switch"),
+       Flag::CreateFlag("some_name", &some_name, "some name")});
   // Match the usage message, being sloppy about whitespace.
   const char* expected_usage =
       " usage: some_tool_name <flags>\n"
