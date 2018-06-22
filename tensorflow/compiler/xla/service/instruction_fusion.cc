@@ -238,6 +238,30 @@ InstructionFusion::ComputeGloballyUnfusable(
       if (EffectivelyAtMostUnary(producer)) {
         continue;
       }
+
+      // If the total size of the inputs is less than or equal to the total size
+      // of the outputs for the producer then duplicating it won't increase the
+      // memory traffic. In that case, we do not forbid fusion of the operation
+      // here.
+      auto total_size = [](const Shape& shape) {
+        int64 size = 0;
+        ShapeUtil::ForEachSubshape(
+            shape,
+            [&size](const Shape& subshape, const ShapeIndex& shape_index) {
+              if (ShapeUtil::IsArray(subshape)) {
+                size += ShapeUtil::ElementsIn(subshape);
+              }
+            });
+        return size;
+      };
+      int64 operands_size = 0;
+      for (const HloInstruction* op : producer->operands()) {
+        operands_size += total_size(op->shape());
+      }
+      if (operands_size <= total_size(producer->shape())) {
+        continue;
+      }
+
       // Otherwise we will forbid fusing the op unless we can fuse it into
       // all of its consumers on all paths.
       //
