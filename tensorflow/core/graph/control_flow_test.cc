@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/validate_control_flow.h"
+#include "tensorflow/core/graph/control_flow.h"
 
 #include <string>
 #include <vector>
@@ -58,7 +58,7 @@ TEST(ValidateControlFlowTest, InputsFromDifferentFrames) {
   // {inner/Enter', 'outer/Switch'} --> 'inner/Merge'. 'inner/Enter' is in frame
   // 'inner_loop'. 'outer/Switch' is in frame 'outer_loop'.
   std::vector<ControlFlowInfo> info;
-  Status status = BuildAndValidateControlFlowInfo(graph.get(), &info);
+  Status status = BuildControlFlowInfo(graph.get(), &info);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(str_util::StrContains(status.error_message(),
                                     "has inputs from different frames"))
@@ -97,7 +97,7 @@ TEST(ValidateControlFlowTest, MismatchedParentFrames) {
   // For node 'Enter', the parent frame of "test_loop" is empty.
   // For node 'Enter2', the parent frame of "test_loop" is "test_loop".
   std::vector<ControlFlowInfo> info;
-  status = BuildAndValidateControlFlowInfo(graph.get(), &info);
+  status = BuildControlFlowInfo(graph.get(), &info);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(
       str_util::StrContains(status.error_message(), "Mismatched parent frames"))
@@ -120,7 +120,7 @@ TEST(ValidateControlFlowTest, TwoLoopCond) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
   std::vector<ControlFlowInfo> info;
-  Status status = BuildAndValidateControlFlowInfo(graph.get(), &info);
+  Status status = BuildControlFlowInfo(graph.get(), &info);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(str_util::StrContains(status.error_message(),
                                     "more than one LoopCond node"))

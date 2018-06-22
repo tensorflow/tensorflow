@@ -171,7 +171,7 @@ class SaverTest(test.TestCase):
   def testBasic(self):
     self.basicSaveRestore(variables.Variable)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testResourceBasic(self):
     self.basicSaveRestore(resource_variable_ops.ResourceVariable)
 
@@ -252,7 +252,7 @@ class SaverTest(test.TestCase):
         self.assertAllEqual(w3.eval(), 3.0)
         self.assertAllEqual(w4.eval(), 4.0)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testResourceSaveRestoreCachingDevice(self):
     save_path = os.path.join(self.get_temp_dir(), "resource_cache")
     with self.test_session(graph=ops_lib.Graph()) as sess:
@@ -671,7 +671,7 @@ class SaverTest(test.TestCase):
       save.restore(sess, save_path)
       self.assertAllClose([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], var.eval())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSaveWithGlobalStep(self, pad_step_number=False):
     save_path = os.path.join(self.get_temp_dir(), "ckpt_with_global_step")
     global_step_int = 5
@@ -1395,7 +1395,7 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
     gfile.MakeDirs(test_dir)
     return test_dir
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   @test.mock.patch.object(saver_module, "time")
   def testNonSharded(self, mock_time):
     save_dir = self._get_test_dir("keep_checkpoint_every_n_hours")
@@ -1515,7 +1515,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
       self.assertEqual(10.0, self.evaluate(v0))
       self.assertEqual(20.0, self.evaluate(v1))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNonReshapeResourceVariable(self):
     self._testNonReshape(resource_variable_ops.ResourceVariable)
 
@@ -3021,7 +3021,7 @@ class MyModel(training.Model):
 class CheckpointableCompatibilityTests(test.TestCase):
 
   # TODO(allenl): Track down python3 reference cycles in these tests.
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNotSaveableButIsCheckpointable(self):
     v = _OwnsAVariableSimple()
     saver = saver_module.Saver(var_list=[v])
@@ -3034,7 +3034,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual(42., self.evaluate(v.non_dep_variable))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMoreComplexSaveableReturned(self):
     v = _OwnsMirroredVariables()
     saver = saver_module.Saver(var_list=[v])

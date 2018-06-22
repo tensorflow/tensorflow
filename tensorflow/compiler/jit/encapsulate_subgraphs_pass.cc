@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/validate_control_flow.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -1505,11 +1504,9 @@ Status Encapsulator::SplitIntoSubgraphs() {
   for (auto& entry : subgraphs_) {
     Subgraph& subgraph = entry.second;
     FixupSourceAndSinkEdges(subgraph.GetGraph());
-    // Verify that the graph has well-formed control flow structure to be
-    // functionalized.
+    // Verify that the graph has well-formed control flow structure.
     std::vector<ControlFlowInfo> dummy;
-    TF_RETURN_IF_ERROR(
-        BuildAndValidateControlFlowInfo(subgraph.GetGraph(), &dummy));
+    TF_RETURN_IF_ERROR(BuildControlFlowInfo(subgraph.GetGraph(), &dummy));
   }
 
   return s;

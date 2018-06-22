@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 
 class LocallyConnectedLayersTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_locallyconnected_1d(self):
     num_samples = 2
     num_steps = 8
@@ -92,7 +92,7 @@ class LocallyConnectedLayersTest(test.TestCase):
         self.assertEqual(layer.kernel.constraint, k_constraint)
         self.assertEqual(layer.bias.constraint, b_constraint)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_locallyconnected_2d(self):
     num_samples = 8
     filters = 3
@@ -118,7 +118,7 @@ class LocallyConnectedLayersTest(test.TestCase):
             },
             input_shape=(num_samples, num_row, num_col, stack_size))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_locallyconnected_2d_channels_first(self):
     num_samples = 8
     filters = 3

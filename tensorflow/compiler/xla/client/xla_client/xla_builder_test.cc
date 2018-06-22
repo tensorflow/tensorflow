@@ -221,19 +221,5 @@ TEST_F(XlaBuilderTest, Transpose) {
   EXPECT_THAT(root, op::Transpose(op::Parameter()));
 }
 
-// TODO(b/65209188): Create a dedicated lowering for Xor.
-TEST_F(XlaBuilderTest, Xor) {
-  XlaBuilder b(TestName());
-  auto x = b.Parameter(0, ShapeUtil::MakeShape(PRED, {}), "x");
-  auto y = b.Parameter(1, ShapeUtil::MakeShape(PRED, {}), "y");
-  b.Xor(x, y);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
-  auto root = module->entry_computation()->root_instruction();
-  LOG(ERROR) << module->ToString();
-  EXPECT_THAT(root,
-              op::Or(op::And(op::Not(op::Parameter(0)), op::Parameter(1)),
-                     op::And(op::Parameter(0), op::Not(op::Parameter(1)))));
-}
-
 }  // namespace
 }  // namespace xla

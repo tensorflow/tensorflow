@@ -2873,7 +2873,7 @@ class EstimatorHookOrderingTest(test.TestCase):
 
 class EstimatorIntegrationTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_complete_flow_with_a_simple_linear_model(self):
 
     def _model_fn(features, labels, mode):

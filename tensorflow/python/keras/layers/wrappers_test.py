@@ -71,7 +71,7 @@ class _RNNCellWithConstants(keras.layers.Layer):
 
 class TimeDistributedTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_timedistributed_dense(self):
     model = keras.models.Sequential()
     model.add(
