@@ -50,13 +50,12 @@ TRTInt8Calibrator::TRTInt8Calibrator(const string& calib_data)
 bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
                                  const cudaStream_t stream) {
   tensorflow::mutex_lock lock(cond_mtx_);
-  // wait while calibration is running.
-  while ((calib_running_ || batch_is_set_) && !done_) {
-    cond_.wait(lock);
-  }
+  // Wait while the queue is full or calibration is running.
+  while ((calib_running_ || batch_is_set_) && !done_) cond_.wait(lock);
   if (done_) return false;
   CHECK(!calib_running_ && !batch_is_set_);
   VLOG(1) << "Set Batch Waiting finished";
+  // Sets the batch.
   for (const auto it : data) {
     auto devptr = dev_buffers_.find(it.first);
     if (devptr == dev_buffers_.end()) {
@@ -76,8 +75,8 @@ bool TRTInt8Calibrator::setBatch(const std::unordered_map<string, void*>& data,
   }
 
   // TODO(Sami, aaorey): Find an alternative way!
-  cudaStreamSynchronize(
-      stream);  // we have to wait for the stream before returning!
+  // we have to wait for the stream before returning!
+  cudaStreamSynchronize(stream);
   batch_is_set_ = true;
   cond_.notify_all();
   return true;
@@ -88,19 +87,16 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
   tensorflow::mutex_lock lock(cond_mtx_);
   calib_running_ = false;
   cond_.notify_all();
-  // wait until new batch arrives
-  while ((!batch_is_set_ && !done_)) {
-    cond_.wait(lock);
-  }
+  // Wait until new batch arrives
+  while ((!batch_is_set_ && !done_)) cond_.wait(lock);
   if (done_) return false;
-
+  // Gets the batch
   for (int i = 0; i < num_bindings; i++) {
     auto it = dev_buffers_.find(names[i]);
     if (it == dev_buffers_.end()) {
       LOG(FATAL) << "Calibration engine asked for unknown tensor name '"
                  << names[i] << "' at position " << i;
     }
-
     bindings[i] = it->second.first;
   }
   batch_is_set_ = false;
@@ -116,6 +112,9 @@ const void* TRTInt8Calibrator::readCalibrationCache(std::size_t& length) {
 
 void TRTInt8Calibrator::setDone() {
   tensorflow::mutex_lock lock(cond_mtx_);
+  // Wait while the queue is full or calibration is running, so we don't miss
+  // the last batch.
+  while (calib_running_ || batch_is_set_) cond_.wait(lock);
   done_ = true;
   cond_.notify_all();
 }
