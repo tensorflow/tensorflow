@@ -528,6 +528,28 @@ class Network(base_layer.Layer):
     raise ValueError('No such layer: ' + name)
 
   @property
+  def _unfiltered_updates(self):
+    if context.executing_eagerly():
+      return []
+    updates = []
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        updates += layer._unfiltered_updates
+      else:
+        updates += layer.updates
+    return updates
+
+  @property
+  def _unfiltered_losses(self):
+    losses = []
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        losses += layer._unfiltered_losses
+      else:
+        losses += layer.losses
+    return losses
+
+  @property
   def updates(self):
     """Retrieves the network's updates.
 
@@ -535,6 +557,8 @@ class Network(base_layer.Layer):
     unconditional, or conditional on inputs to this model
     (e.g. will not include updates that were created by layers of this model
     outside of the model).
+
+    When the network has no registered inputs, all updates are returned.
 
     Effectively, `network.updates` behaves like `layer.updates`.
 
@@ -581,22 +605,20 @@ class Network(base_layer.Layer):
     if not self.trainable and not self.stateful:
       return []
 
-    updates = []
-    for layer in self.layers:
-      updates += layer.updates
+    updates = self._unfiltered_updates
 
     # `updates` might contain irrelevant updates, so it needs to be filtered
     # with respect to inputs the model has been called on.
-    if self.inputs:
-      relevant_inputs = self.inputs[:]
-    else:
-      relevant_inputs = []
-    for i in range(1, len(self._inbound_nodes)):
+    relevant_inputs = []
+    for i in range(0, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
         relevant_inputs += inputs
       else:
         relevant_inputs.append(inputs)
+    if not relevant_inputs:
+      return updates
+
     reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, updates)
     relevant_conditional_updates = [x for x in updates if x in reachable]
     unconditional_updates = [
@@ -615,25 +637,25 @@ class Network(base_layer.Layer):
     (e.g. will not include losses that depend on tensors
     that aren't inputs to this model).
 
+    When the network has no registered inputs, all losses are returned.
+
     Returns:
         A list of loss tensors.
     """
-    losses = []
-    for layer in self.layers:
-      losses += layer.losses
+    losses = self._unfiltered_losses
     if context.executing_eagerly():
       return losses
 
-    if self.inputs:
-      relevant_inputs = self.inputs[:]
-    else:
-      relevant_inputs = []
-    for i in range(1, len(self._inbound_nodes)):
+    relevant_inputs = []
+    for i in range(0, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
         relevant_inputs += inputs
       else:
         relevant_inputs.append(inputs)
+    if not relevant_inputs:
+      return losses
+
     reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, losses)
     relevant_conditional_losses = [x for x in losses if x in reachable]
     unconditional_losses = [

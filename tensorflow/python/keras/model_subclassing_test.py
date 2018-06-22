@@ -352,6 +352,73 @@ class ModelSubclassingTest(test.TestCase):
     y_new = model.predict(x)
     self.assertGreater(np.sum(np.abs(y_ref - y_new)), 0.1)
 
+  def test_updates_and_losses_for_nested_models_in_subclassed_model(self):
+
+    # Case 1: deferred-build sequential nested in subclass.
+    class TestModel1(keras.Model):
+
+      def __init__(self):
+        super(TestModel1, self).__init__()
+        self.fc = keras.layers.Dense(10, input_shape=(784,),
+                                     activity_regularizer='l1')
+        self.bn = keras.Sequential([keras.layers.BatchNormalization(axis=1)])
+
+      def call(self, x):
+        return self.bn(self.fc(x))
+
+    with self.test_session():
+      model = TestModel1()
+
+      x = array_ops.ones(shape=[100, 784], dtype='float32')
+      model(x)
+      self.assertEqual(len(model.get_updates_for(x)), 2)
+      self.assertEqual(len(model.get_losses_for(x)), 1)
+
+    # Case 2: placeholder-sequential nested in subclass.
+    class TestModel2(keras.Model):
+
+      def __init__(self):
+        super(TestModel2, self).__init__()
+        self.fc = keras.layers.Dense(10, input_shape=(784,),
+                                     activity_regularizer='l1')
+        self.bn = keras.Sequential(
+            [keras.layers.BatchNormalization(axis=1, input_shape=(10,))])
+
+      def call(self, x):
+        return self.bn(self.fc(x))
+
+    with self.test_session():
+      model = TestModel2()
+
+      x = array_ops.ones(shape=[100, 784], dtype='float32')
+      model(x)
+      self.assertEqual(len(model.get_updates_for(x)), 2)
+      self.assertEqual(len(model.get_losses_for(x)), 1)
+
+    # Case 3: functional-API model nested in subclass.
+    inputs = keras.Input((10,))
+    outputs = keras.layers.BatchNormalization(axis=1)(inputs)
+    bn = keras.Model(inputs, outputs)
+
+    class TestModel3(keras.Model):
+
+      def __init__(self):
+        super(TestModel3, self).__init__()
+        self.fc = keras.layers.Dense(10, input_shape=(784,),
+                                     activity_regularizer='l1')
+        self.bn = bn
+
+      def call(self, x):
+        return self.bn(self.fc(x))
+
+    with self.test_session():
+      model = TestModel3()
+
+      x = array_ops.ones(shape=[100, 784], dtype='float32')
+      model(x)
+      self.assertEqual(len(model.get_updates_for(x)), 2)
+      self.assertEqual(len(model.get_losses_for(x)), 1)
+
   @test_util.run_in_graph_and_eager_modes()
   def test_training_and_inference_behavior(self):
     # test that dropout is applied in training and not inference
