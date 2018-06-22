@@ -42,7 +42,6 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
     ]) + if_android([
         "//tensorflow/core:android_tensorflow_lib",
     ]),
