@@ -1681,7 +1681,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
     # e should be dominated by c.
     self.assertEqual(e.op.control_inputs, [])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEager(self):
     def future():
       future.calls += 1
@@ -1866,7 +1866,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
 class OpScopeTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNames(self):
     with ops.name_scope("foo") as foo:
       self.assertEqual("foo/", foo)
@@ -1897,7 +1897,7 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope("a//b/c") as foo10:
       self.assertEqual("a//b/c/", foo10)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerDefaultScopeName(self):
     with ops.name_scope(None, "default") as scope:
       self.assertEqual(scope, "default/")

@@ -206,7 +206,7 @@ class MetricsTest(test.TestCase):
       sess.run(accumulate, feed_dict={p: 7})
       self.assertAllEqual(m.result().eval(), 7)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGraphAndEagerTensor(self):
     m = metrics.Mean()
     inputs = ops.convert_to_tensor([1.0, 2.0])
@@ -254,7 +254,7 @@ class MetricsTest(test.TestCase):
       self.assertAllEqual(m2.result().eval(), 2.0)
       self.assertAllEqual(m1.result().eval(), 1.0)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSaveRestore(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
