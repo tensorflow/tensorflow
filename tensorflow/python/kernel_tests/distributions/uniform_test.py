@@ -169,9 +169,9 @@ class UniformTest(test.TestCase):
       sample_values = self.evaluate(samples)
       self.assertEqual(sample_values.shape, (100000, 2))
       self.assertAllClose(
-          sample_values[::, 0].mean(), (b_v + a1_v) / 2, atol=1e-2)
+          sample_values[::, 0].mean(), (b_v + a1_v) / 2, atol=1e-1, rtol=0.)
       self.assertAllClose(
-          sample_values[::, 1].mean(), (b_v + a2_v) / 2, atol=1e-2)
+          sample_values[::, 1].mean(), (b_v + a2_v) / 2, atol=1e-1, rtol=0.)
       self.assertFalse(
           np.any(sample_values[::, 0] < a1_v) or np.any(sample_values >= b_v))
       self.assertFalse(

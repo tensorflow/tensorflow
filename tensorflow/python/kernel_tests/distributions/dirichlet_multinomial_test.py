@@ -253,10 +253,10 @@ class DirichletMultinomialTest(test.TestCase):
           dist.variance(),
           dist.stddev(),
       ])
-      self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.06)
-      self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.07)
-      self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.07)
-      self.assertAllClose(sample_stddev_, analytic_stddev, atol=0., rtol=0.02)
+      self.assertAllClose(sample_mean_, analytic_mean, atol=0.04, rtol=0.)
+      self.assertAllClose(sample_cov_, analytic_cov, atol=0.05, rtol=0.)
+      self.assertAllClose(sample_var_, analytic_var, atol=0.05, rtol=0.)
+      self.assertAllClose(sample_stddev_, analytic_stddev, atol=0.02, rtol=0.)
 
   def testCovariance(self):
     # Shape [2]
@@ -445,7 +445,7 @@ class DirichletMultinomialTest(test.TestCase):
           dist.covariance(),
       ])
       self.assertAllEqual([4, 3, 2], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.15)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.20)
       self.assertAllEqual([4, 3, 2, 2], sample_covariance.get_shape())
       self.assertAllClose(
           actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
@@ -473,10 +473,10 @@ class DirichletMultinomialTest(test.TestCase):
           dist.covariance(),
       ])
       self.assertAllEqual([4], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.05)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.20)
       self.assertAllEqual([4, 4], sample_covariance.get_shape())
       self.assertAllClose(
-          actual_covariance_, sample_covariance_, atol=0., rtol=0.15)
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
 
   def testNotReparameterized(self):
     total_count = constant_op.constant(5.0)

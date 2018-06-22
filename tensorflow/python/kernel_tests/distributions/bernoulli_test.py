@@ -293,9 +293,9 @@ class BernoulliTest(test.TestCase):
           self.evaluate(dist.sample(n, seed)),
           self.evaluate(dist.sample(n, seed)))
       n = array_ops.placeholder(dtypes.int32)
-      sample, sample = sess.run([dist.sample(n, seed), dist.sample(n, seed)],
-                                feed_dict={n: 1000})
-      self.assertAllEqual(sample, sample)
+      sample1, sample2 = sess.run([dist.sample(n, seed), dist.sample(n, seed)],
+                                  feed_dict={n: 1000})
+      self.assertAllEqual(sample1, sample2)
 
   @test_util.run_in_graph_and_eager_modes
   def testMean(self):

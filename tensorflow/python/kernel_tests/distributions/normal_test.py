@@ -240,7 +240,7 @@ class NormalTest(test.TestCase):
       if not stats:
         return
       expected_cdf = stats.norm(mu, sigma).logcdf(x)
-      self.assertAllClose(expected_cdf, self.evaluate(cdf), atol=0, rtol=1e-5)
+      self.assertAllClose(expected_cdf, self.evaluate(cdf), atol=0, rtol=1e-3)
 
   def testFiniteGradientAtDifficultPoints(self):
     for dtype in [np.float32, np.float64]:
