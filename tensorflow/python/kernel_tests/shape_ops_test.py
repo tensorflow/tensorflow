@@ -650,8 +650,8 @@ class TileTest(test.TestCase):
                                [1, 5, 9, 3, 7, 2, 2, 2])
     with self.test_session():
       error = gradient_checker.compute_gradient_error(
-        inputs, inputs.get_shape().as_list(),
-        outputs, outputs.get_shape().as_list())
+          inputs, inputs.get_shape().as_list(),
+          outputs, outputs.get_shape().as_list())
       self.assertLess(error, 1e-4)
 
   def testShapeFunctionEdgeCases(self):
