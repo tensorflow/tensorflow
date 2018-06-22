@@ -2971,14 +2971,11 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::Diagonal diag, uint64 m, uint64 n, float alpha,
                           const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *b, int ldb) {
-  LOG(ERROR) << "rocBLAS does not currently support the TRSM operation "
-	     << "for the \"float\" dataype" ;
-  return false;
-  //return DoBlasInternal(wrap::rocblas_strsm, stream,
-  //                      true /* = pointer_mode_host */, ROCMBlasSide(side),
-  //                      ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
-  //                      ROCMBlasDiagonal(diag), m, n, &alpha, ROCMMemory(a),
-  //                      lda, ROCMMemoryMutable(b), ldb);
+  return DoBlasInternal(wrap::rocblas_strsm, stream,
+                        true /* = pointer_mode_host */, ROCMBlasSide(side),
+                        ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
+                        ROCMBlasDiagonal(diag), m, n, &alpha, const_cast<float*>(ROCMMemory(a)),
+                        lda, ROCMMemoryMutable(b), ldb);
 }
 
 bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
@@ -2986,14 +2983,11 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::Diagonal diag, uint64 m, uint64 n, double alpha,
                           const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *b, int ldb) {
-  LOG(ERROR) << "rocBLAS does not currently support the TRSM operation "
-	     << "for the \"double\" dataype" ;
-  return false;
-  //return DoBlasInternal(wrap::rocblas_dtrsm, stream,
-  //                      true /* = pointer_mode_host */, ROCMBlasSide(side),
-  //                      ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
-  //                      ROCMBlasDiagonal(diag), m, n, &alpha, ROCMMemory(a),
-  //                      lda, ROCMMemoryMutable(b), ldb);
+  return DoBlasInternal(wrap::rocblas_dtrsm, stream,
+                        true /* = pointer_mode_host */, ROCMBlasSide(side),
+                        ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
+                        ROCMBlasDiagonal(diag), m, n, &alpha, const_cast<double*>(ROCMMemory(a)),
+                        lda, ROCMMemoryMutable(b), ldb);
 }
 
 bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
