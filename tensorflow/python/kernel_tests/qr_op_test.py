@@ -121,7 +121,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
 
-    # rocBLAS on ROCm stack does not support TRSM yet
+    # rocBLAS on ROCm stack does not support complex<double> GEMM yet
     with self.test_session(use_gpu=True and not test.is_built_with_rocm()) as sess:
       if use_static_shape_:
         x_tf = constant_op.constant(x_np)
@@ -174,7 +174,7 @@ def _GetQrGradOpTest(dtype_, shape_, full_matrices_):
       tol = 3e-2
     else:
       tol = 1e-6
-    # rocBLAS on ROCm stack does not support TRSM yet
+    # rocBLAS on ROCm stack does not support QR yet
     with self.test_session(use_gpu=True and not test.is_built_with_rocm()):
       tf_a = constant_op.constant(a)
       tf_b = linalg_ops.qr(tf_a, full_matrices=full_matrices_)
