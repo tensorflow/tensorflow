@@ -254,13 +254,13 @@ class SparseSliceOpTest(test.TestCase):
 
     with self.test_session(use_gpu=False):
       for start, size in start_and_size:
-          sp_output = sparse_ops.sparse_slice(sp_input, start, size)
-          nnz_in = len(sp_input.values.eval())
-          nnz_out = len(sp_output.values.eval())
+        sp_output = sparse_ops.sparse_slice(sp_input, start, size)
+        nnz_in = len(sp_input.values.eval())
+        nnz_out = len(sp_output.values.eval())
 
-          err = gradient_checker.compute_gradient_error(
+        err = gradient_checker.compute_gradient_error(
             [sp_input.values], [(nnz_in,)], sp_output.values, (nnz_out,))
-          self.assertLess(err, 1e-3)
+        self.assertLess(err, 1e-3)
 
 
 if __name__ == '__main__':

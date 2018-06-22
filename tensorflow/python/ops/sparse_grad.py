@@ -139,7 +139,7 @@ def _SparseSliceGrad(op, *grads):
   output_indices = op.outputs[0]
 
   val_grad = gen_sparse_ops.sparse_slice_grad(
-    backprop_val_grad, input_indices, input_start, output_indices)
+      backprop_val_grad, input_indices, input_start, output_indices)
   val_grad.set_shape(op.inputs[1].get_shape())
   # (indices, values, shape, start, size)
   return (None, val_grad, None, None, None)
