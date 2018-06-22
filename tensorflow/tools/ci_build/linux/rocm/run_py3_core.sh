@@ -40,6 +40,7 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     --build_tests_only --test_output=errors --local_test_jobs=${TF_GPU_COUNT} --config=opt \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
+    -//tensorflow/python:optimizer_test \
     -//tensorflow/python/eager:backprop_test \
     -//tensorflow/python/eager:function_test \
     -//tensorflow/python/estimator:boosted_trees_test   \
