@@ -38,15 +38,12 @@ class KafkaDatasetOp : public DatasetOpKernel {
     }
 
     const DataTypeVector& output_dtypes() const override {
-      static DataTypeVector* dtypes = new DataTypeVector({DT_STRING, DT_INT32, DT_INT64});
+      static DataTypeVector* dtypes = new DataTypeVector({DT_INT32, DT_FLOAT64, DT_INT32});
       return *dtypes;
     }
 
     const std::vector<PartialTensorShape>& output_shapes() const override {
-      static std::vector<PartialTensorShape>* shapes = new std::vector<PartialTensorShape>({{}, {4}, {}});
-      // shapes->emplace_back(0);
-      // shapes->emplace_back(1);
-      // shapes->emplace_back(0);
+      static std::vector<PartialTensorShape>* shapes = new std::vector<PartialTensorShape>({{}, {784}, {}});
       return *shapes;
     }
 
@@ -63,24 +60,28 @@ class KafkaDatasetOp : public DatasetOpKernel {
       explicit Iterator(const Params& params) : DatasetIterator<Dataset>(params) {}
 
       Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors, bool* end_of_sequence) override {
-        Tensor line_tensor(cpu_allocator(), DT_STRING, {});
-        line_tensor.scalar<string>()() = "Hello, world!";
+        // Create tensor for key.
+	Tensor key_tensor(cpu_allocator(), DT_INT32, {});
+        key_tensor.scalar<int32>()() = 42;
 
-	Tensor arr_tensor(cpu_allocator(), DT_INT32, TensorShape({4}));
-	int arr [4] = {1, 2, 3, 4};
-	arr_tensor.vec<int32>()(0) = 22;
-	arr_tensor.vec<int32>()(1) = 23;
-	arr_tensor.vec<int32>()(2) = 24;
-	arr_tensor.vec<int32>()(3) = 25;
+	// Create tensor for pixels.
+	Tensor pixels_tensor(cpu_allocator(), DT_FLOAT64, TensorShape({4}));
 
-	Tensor num_tensor(cpu_allocator(), DT_INT64, {});
-	num_tensor.scalar<int64>()() = 42;
+	for (int i = 0; i < 784; i++) {
+		pixels_tensor.vec<float64>()(i) = 0.42;
+	}
 
-        out_tensors->emplace_back(std::move(line_tensor));
-        out_tensors->emplace_back(std::move(arr_tensor));
-        out_tensors->emplace_back(std::move(num_tensor));
+	// Create tensor for label.
+	Tensor lb_tensor(cpu_allocator(), DT_INT32, {});
+	lb_tensor.scalar<int32>()() = 3;
+
+	// Pack all tensors together.
+        out_tensors->emplace_back(std::move(key_tensor));
+        out_tensors->emplace_back(std::move(pixels_tensor));
+        out_tensors->emplace_back(std::move(lb_tensor));
 
         *end_of_sequence = false;
+
         return Status::OK();
       }
 
