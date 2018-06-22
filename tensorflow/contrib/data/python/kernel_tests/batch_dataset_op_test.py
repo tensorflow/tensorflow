@@ -641,6 +641,54 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
                                    "number of elements does not match"):
         sess.run(get_next)
 
+  def testMapAndBatchImplicitDispose(self):
+    # Tests whether a map and batch dataset will be cleaned up correctly when
+    # the pipeline does not run it until exhaustion.
+    # The pipeline is TensorSliceDataset -> RepeatDataset(1000) ->
+    # MapAndBatchDataset(f=square_3, batch_size=100).
+    components = (np.arange(1000),
+                  np.array([[1, 2, 3]]) * np.arange(1000)[:, np.newaxis],
+                  np.array(37.0) * np.arange(1000))
+
+    def _map_fn(x, y, z):
+      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).repeat(
+        1000).apply(batching.map_and_batch(_map_fn, batch_size=100))
+    dataset = dataset.prefetch(5)
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      for _ in range(3):
+        sess.run(get_next)
+
+  @parameterized.parameters(0, 5, 10, 90, 95, 99)
+  def testMapAndBatchOutOfRangeError(self, threshold):
+
+    def raising_py_fn(i):
+      if i >= threshold:
+        raise StopIteration()
+      else:
+        return i
+
+    iterator = (
+        dataset_ops.Dataset.range(100).apply(
+            batching.map_and_batch(
+                lambda x: script_ops.py_func(raising_py_fn, [x], dtypes.int64),
+                batch_size=10)).make_one_shot_iterator())
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      for i in range(threshold // 10):
+        self.assertAllEqual([i * 10 + j for j in range(10)], sess.run(get_next))
+      if threshold % 10 != 0:
+        self.assertAllEqual(
+            [threshold // 10 * 10 + j for j in range(threshold % 10)],
+            sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 class RestructuredDatasetTest(test.TestCase):
 
