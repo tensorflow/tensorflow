@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -42,6 +43,15 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(
         ctx, stride > 0,
         errors::InvalidArgument("Stride must be greater than zero."));
+    if (stride == window_size) {
+      LOG(WARNING) << "stride: " << stride
+                   << " is equal to window_size: " << window_size
+                   << ", to use `batch` instead.";
+    } else if (stride > window_size) {
+      LOG(WARNING) << "stride: " << stride
+                   << " is greater than window_size: " << window_size
+                   << ", you will lose some data.";
+    }
 
     *output = new Dataset(ctx, window_size, stride, input);
   }
