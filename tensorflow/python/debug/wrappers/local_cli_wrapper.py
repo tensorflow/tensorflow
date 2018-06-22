@@ -290,6 +290,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if self._run_call_count == 1:
       # Show logo at the onset of the first run.
       help_intro.extend(cli_shared.get_tfdbg_logo())
+      help_intro.extend(debugger_cli_common.get_tensorflow_version_lines())
     help_intro.extend(debugger_cli_common.RichTextLines("Upcoming run:"))
     help_intro.extend(self._run_info)
 
@@ -466,6 +467,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     if self._run_call_count == 1:
       output.extend(cli_shared.get_tfdbg_logo())
+      output.extend(debugger_cli_common.get_tensorflow_version_lines())
     output.extend(self._run_info)
 
     if (not self._is_run_start and

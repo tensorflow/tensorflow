@@ -263,7 +263,11 @@ tensorflow::Status ImportQuint8Array(const TensorProto& input_tensor,
       output_array->GetMutableBuffer<ArrayDataType::kUint8>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
   CHECK_GE(output_int_data.size(), input_flat_size);
-  if (input_tensor.int_val_size()) {
+  if (input_tensor.int_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_int_data[i] = input_tensor.int_val(0);
+    }
+  } else if (input_tensor.int_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.int_val_size(); i++) {
       output_int_data[i] = input_tensor.int_val(i);
     }
@@ -296,7 +300,11 @@ tensorflow::Status ImportInt32Array(const TensorProto& input_tensor,
       output_array->GetMutableBuffer<ArrayDataType::kInt32>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
   CHECK_GE(output_int_data.size(), input_flat_size);
-  if (input_tensor.int_val_size()) {
+  if (input_tensor.int_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_int_data[i] = input_tensor.int_val(0);
+    }
+  } else if (input_tensor.int_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.int_val_size(); i++) {
       output_int_data[i] = input_tensor.int_val(i);
     }
@@ -328,8 +336,12 @@ tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
       output_array->GetMutableBuffer<ArrayDataType::kInt64>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
   CHECK_GE(output_int_data.size(), input_flat_size);
-  if (input_tensor.int64_val_size()) {
-    for (int i = 0; i < input_tensor.int64_val_size(); i++) {
+  if (input_tensor.int64_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_int_data[i] = input_tensor.int64_val(0);
+    }
+  } else if (input_tensor.int64_val_size() == input_flat_size) {
+    for (int i = 0; i < input_tensor.float_val_size(); i++) {
       output_int_data[i] = input_tensor.int64_val(i);
     }
   } else if (input_tensor.tensor_content().size() ==
@@ -362,7 +374,11 @@ tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,
   output_bool_data.resize(RequiredBufferSizeForShape(output_array->shape()),
                           false);
   CHECK_GE(output_bool_data.size(), input_flat_size);
-  if (input_tensor.bool_val_size()) {
+  if (input_tensor.bool_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_bool_data[i] = input_tensor.bool_val(0);
+    }
+  } else if (input_tensor.int_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.bool_val_size(); i++) {
       output_bool_data[i] = input_tensor.bool_val(i);
     }
