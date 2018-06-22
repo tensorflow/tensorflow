@@ -31,7 +31,6 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import device_util
@@ -286,8 +285,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def map(self, map_over, fn, *args, **kwargs):
     # TODO(josh11b): In eager mode, use one thread per device.
     index = {}
-    i = 0
-    for m in map_over:
+    for i, m in enumerate(map_over):
       d = self._devices[i % len(self._devices)]
       with ops.device(d):
         l = index.get(d, [])
@@ -349,7 +347,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def read_var(self, tower_local_var):
     """Read the aggregate value of a tower-local variable."""
     if isinstance(tower_local_var, values.TowerLocalVariable):
-      return math_ops.add_n(self.unwrap(tower_local_var))
+      return tower_local_var._get_cross_tower()  # pylint: disable=protected-access
     assert isinstance(tower_local_var, values.Mirrored)
     return array_ops.identity(tower_local_var.get())
 

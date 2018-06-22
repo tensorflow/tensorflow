@@ -3348,12 +3348,6 @@ def group(*inputs, **kwargs):
       if not hasattr(inp, "device"):
         raise TypeError("Expected tf.group() expected Tensor arguments not "
                         "'%s' with type '%s'" % (inp, type(inp)))
-      if not hasattr(inp, "device"):
-        if isinstance(inp, list):
-          raise TypeError("To call tf.group() with a list, use "
-                          "tf.group(*[...]) not tf.group([...]).")
-        raise TypeError("Expected tf.group() expected Tensor arguments not "
-                        "'%s' with type '%s'" % (inp, type(inp)))
       dev = inp.device
       if dev in ops_on_device:
         ops_on_device[dev].append(inp)

@@ -90,8 +90,8 @@ void ChangeArrayDataType(GraphTransformation* transformation, Array* array,
 bool DoesOpBlockBackwardPropagation(const Operator& op) {
   switch (op.type) {
     case OperatorType::kConcatenation:
-    case OperatorType::kTensorFlowConcat:
-    case OperatorType::kTensorFlowConcatV2:
+    case OperatorType::kConcat:
+    case OperatorType::kConcatV2:
       // Concat shouldn't block propagation, but we do expect that all inputs
       // have the same range.
       return false;
@@ -100,10 +100,10 @@ bool DoesOpBlockBackwardPropagation(const Operator& op) {
       // FakeQuant so make sure we move across them.
     case OperatorType::kGather:
       // Gathers need their parameters changed to the appropriate data type.
-    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kReshape:
     case OperatorType::kTranspose:
     case OperatorType::kSelect:
-    case OperatorType::kTensorFlowTile:
+    case OperatorType::kTile:
       // Reshapes and transposes don't change values.
       return false;
     default:
@@ -121,11 +121,11 @@ bool DoesOpInputBlockBackwardPropagation(const Operator& op, int input_index) {
       // Ignore gather indices.
       return input_index != 0;
       break;
-    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kReshape:
     case OperatorType::kTranspose:
       // Ignore reshape/transpose shapes/dimensions.
       return input_index != 0;
-    case OperatorType::kTensorFlowTile:
+    case OperatorType::kTile:
       // Ignore tile multiples.
       return input_index != 0;
     default:

@@ -309,12 +309,20 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "debugging"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "distributions"
     mtype: "<type \'module\'>"
   }
   member {
     name: "double"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "dtypes"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "errors"
@@ -379,6 +387,10 @@ tf_module {
   member {
     name: "int8"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "io"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "keras"
@@ -455,6 +467,10 @@ tf_module {
   member {
     name: "qint8"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "quantization"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "quint16"

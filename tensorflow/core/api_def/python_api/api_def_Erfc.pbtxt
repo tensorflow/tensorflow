@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Erfc"
+  endpoint {
+    name: "math.erfc"
+  }
+  endpoint {
+    name: "erfc"
+    deprecation_message: "tf.erfc is deprecated, please use tf.math.erfc instead."
+  }
+}

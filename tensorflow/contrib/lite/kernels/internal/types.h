@@ -296,6 +296,50 @@ inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
 
 // Flat size calculation, checking that dimensions match with one or more other
 // arrays.
+inline int MatchingFlatSize(const RuntimeShape& shape,
+                            const RuntimeShape& check_shape_0) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+  }
+  return shape.FlatSize();
+}
+
+inline int MatchingFlatSize(const RuntimeShape& shape,
+                            const RuntimeShape& check_shape_0,
+                            const RuntimeShape& check_shape_1) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+  }
+  return MatchingFlatSize(shape, check_shape_1);
+}
+
+inline int MatchingFlatSize(const RuntimeShape& shape,
+                            const RuntimeShape& check_shape_0,
+                            const RuntimeShape& check_shape_1,
+                            const RuntimeShape& check_shape_2) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+  }
+  return MatchingFlatSize(shape, check_shape_1, check_shape_2);
+}
+
+inline int MatchingFlatSize(const RuntimeShape& shape,
+                            const RuntimeShape& check_shape_0,
+                            const RuntimeShape& check_shape_1,
+                            const RuntimeShape& check_shape_2,
+                            const RuntimeShape& check_shape_3) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+  }
+  return MatchingFlatSize(shape, check_shape_1, check_shape_2, check_shape_3);
+}
+
+// Flat size calculation, checking that dimensions match with one or more other
+// arrays.
 template <int N>
 inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0) {
   for (int i = 0; i < N; ++i) {
@@ -320,7 +364,7 @@ inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
   for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
-  return FlatSize(dims, check_dims_1, check_dims_2);
+  return MatchingFlatSize(dims, check_dims_1, check_dims_2);
 }
 
 template <int N>
@@ -331,7 +375,7 @@ inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
   for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
-  return FlatSize(dims, check_dims_1, check_dims_2, check_dims_3);
+  return MatchingFlatSize(dims, check_dims_1, check_dims_2, check_dims_3);
 }
 
 // Data is required to be contiguous, and so many operators can use either the
