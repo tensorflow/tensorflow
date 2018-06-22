@@ -407,10 +407,6 @@ class UniformUnitScaling(Initializer):
 
 @tf_export("keras.initializers.VarianceScaling",
            "initializers.variance_scaling", "variance_scaling_initializer")
-@deprecated_arg_values(
-  None,
-  "`normal` is a deprecated alias for `truncated_normal`",
-  distribution="normal")
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
 
@@ -440,6 +436,10 @@ class VarianceScaling(Initializer):
       "distribution" arguments.
   """
 
+  @deprecated_arg_values(
+    None,
+    "`normal` is a deprecated alias for `truncated_normal`",
+    distribution="normal")
   def __init__(self,
                scale=1.0,
                mode="fan_in",
