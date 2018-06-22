@@ -61,6 +61,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.summary import summary_iterator
@@ -2828,6 +2829,45 @@ class EstimatorExportTest(test.TestCase):
 
     # Clean up.
     gfile.DeleteRecursively(tmpdir)
+
+  def test_export_savedmodel_no_export_outputs(self):
+    """Ensure that an EstimatorSpec without outputs defined can be exported."""
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='weight')
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=constant_op.constant(10.),
+          loss=constant_op.constant(1.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(input_fn=dummy_input_fn, steps=1)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('no_export_outputs'))
+    export_dir = est.export_savedmodel(
+        export_dir_base, _get_serving_input_receiver_fn())
+
+    # Check that all the files are in the right places.
+    self.assertTrue(gfile.Exists(export_dir_base))
+    self._validate_exported_files(export_dir)
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        meta_graph = loader.load(sess, [tag_constants.SERVING], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('weight' in graph_ops)
+
+        sig_def = meta_graph.signature_def
+        self.assertEqual(len(sig_def), 1)
+        sig_outputs = sig_def[
+            signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY].outputs
+        self.assertEqual(sig_outputs['output'].name, 'Const:0')
 
 
 class EstimatorHookOrderingTest(test.TestCase):
