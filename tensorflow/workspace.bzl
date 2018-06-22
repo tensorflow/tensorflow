@@ -695,11 +695,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   tf_http_archive(
       name = "flatbuffers",
-      strip_prefix = "flatbuffers-971a68110e4fc1bace10fcb6deeb189e7e1a34ce",
-      sha256 = "874088d2ee0d9f8524191f77209556415f03dd44e156276edf19e5b90ceb5f55",
+      strip_prefix = "flatbuffers-1.9.0",
+      sha256 = "5ca5491e4260cacae30f1a5786d109230db3f3a6e5a0eb45d0d0608293d247e3",
       urls = [
-          "https://mirror.bazel.build/github.com/google/flatbuffers/archive/971a68110e4fc1bace10fcb6deeb189e7e1a34ce.tar.gz",
-          "https://github.com/google/flatbuffers/archive/971a68110e4fc1bace10fcb6deeb189e7e1a34ce.tar.gz",
+          "https://mirror.bazel.build/github.com/google/flatbuffers/archive/v1.9.0.tar.gz",
+          "https://github.com/google/flatbuffers/archive/v1.9.0.tar.gz",
       ],
       build_file = clean_dep("//third_party/flatbuffers:flatbuffers.BUILD"),
   )
