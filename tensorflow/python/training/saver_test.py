@@ -79,7 +79,8 @@ from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable_base
+from tensorflow.python.training.checkpointable import tracking as checkpointable_tracking
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import compat
 
@@ -2939,7 +2940,7 @@ class ScopedGraphTest(test.TestCase):
       self.assertEqual(2.0, var_dict2["variable2:0"].eval())
 
 
-class _OwnsAVariableSimple(checkpointable.CheckpointableBase):
+class _OwnsAVariableSimple(checkpointable_base.CheckpointableBase):
   """A Checkpointable object which can be saved using a tf.train.Saver."""
 
   def __init__(self):
@@ -2947,7 +2948,7 @@ class _OwnsAVariableSimple(checkpointable.CheckpointableBase):
         name="non_dep_variable", initializer=6., use_resource=True)
 
   def _gather_saveables_for_checkpoint(self):
-    return {checkpointable.VARIABLE_VALUE_KEY: self.non_dep_variable}
+    return {checkpointable_base.VARIABLE_VALUE_KEY: self.non_dep_variable}
 
   # The Saver sorts by name before parsing, so we need a name property.
   @property
@@ -2972,7 +2973,7 @@ class _MirroringSaveable(
         self._mirrored_variable.assign(tensor))
 
 
-class _OwnsMirroredVariables(checkpointable.CheckpointableBase):
+class _OwnsMirroredVariables(checkpointable_base.CheckpointableBase):
   """A Checkpointable object which returns a more complex SaveableObject."""
 
   def __init__(self):
@@ -2987,7 +2988,7 @@ class _OwnsMirroredVariables(checkpointable.CheckpointableBase):
           primary_variable=self.non_dep_variable,
           mirrored_variable=self.mirrored,
           name=name)
-    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
+    return {checkpointable_base.VARIABLE_VALUE_KEY: _saveable_factory}
 
   # The Saver sorts by name before parsing, so we need a name property.
   @property
@@ -2995,7 +2996,7 @@ class _OwnsMirroredVariables(checkpointable.CheckpointableBase):
     return self.non_dep_variable.name
 
 
-class NonLayerCheckpointable(checkpointable.Checkpointable):
+class NonLayerCheckpointable(checkpointable_tracking.Checkpointable):
 
   def __init__(self):
     super(NonLayerCheckpointable, self).__init__()
