@@ -19,7 +19,7 @@ fast prototyping, advanced research, and production, with three key advantages:
 [Keras API specification](https://keras.io){:.external}. This is a high-level
 API to build and train models that includes first-class support for
 TensorFlow-specific functionality, such as [eager execution](#eager_execution),
-`tf.data` pipelines, and [Estimators](/programmers_guide/estimators).
+`tf.data` pipelines, and [Estimators](./estimators.md).
 `tf.keras` makes TensorFlow easier to use without sacrificing flexibility and
 performance.
 
@@ -35,8 +35,8 @@ from tensorflow import keras
 * The `tf.keras` version in the latest TensorFlow release might not be the same
   as the latest `keras` version from PyPI. Check `tf.keras.__version__`.
 * When [saving a model's weights](#weights_only), `tf.keras` defaults to the
-  [checkpoint format](/get_started/checkpoints). Pass `save_format='h5'` to use
-  HDF5.
+  [checkpoint format](../get_started/checkpoints.md). Pass `save_format='h5'` to
+  use HDF5.
 
 ## Build a simple model
 
@@ -179,7 +179,7 @@ model.fit(data, labels, epochs=10, batch_size=32,
 
 ### Input tf.data datasets
 
-Use the [Datasets API](/programmers_guide/datasets) to scale to large datasets
+Use the [Datasets API](./datasets.md) to scale to large datasets
 or multi-device training. Pass a `tf.data.Dataset` instance to the `fit`
 method:
 
@@ -285,7 +285,7 @@ your own forward pass. Create layers in the `__init__` method and set them as
 attributes of the class instance. Define the forward pass in the `call` method.
 
 Model subclassing is particularly useful when
-[eager execution](/programmers_guide/eager) is enabled since the forward pass
+[eager execution](./eager.md) is enabled since the forward pass
 can be written imperatively.
 
 Key Point: Use the right API for the job. While model subclassing offers
@@ -410,7 +410,7 @@ during training. You can write your own custom callback, or use the built-in
 * `tf.keras.callbacks.EarlyStopping`: Interrupt training when validation
   performance has stopped improving.
 * `tf.keras.callbacks.TensorBoard`: Monitor the model's behavior using
-  [TensorBoard](/programmers_guide/summaries_and_tensorboard).
+  [TensorBoard](./summaries_and_tensorboard.md).
 
 To use a `tf.keras.callbacks.Callback`, pass it to the model's `fit` method:
 
@@ -442,8 +442,8 @@ model.load_weights('my_model')
 ```
 
 By default, this saves the model's weights in the
-[TensorFlow checkpoint](/get_started/checkpoints) file format. Weights can also
-be saved to the Keras HDF5 format (the default for the multi-backend
+[TensorFlow checkpoint](../get_started/checkpoints.md) file format. Weights can
+also be saved to the Keras HDF5 format (the default for the multi-backend
 implementation of Keras):
 
 ```python
@@ -509,7 +509,7 @@ model = keras.models.load_model('my_model.h5')
 
 ## Eager execution
 
-[Eager execution](/programmers_guide/eager) is an imperative programming
+[Eager execution](./eager.md) is an imperative programming
 environment that evaluates operations immediately. This is not required for
 Keras, but is supported by `tf.keras` and useful for inspecting your program and
 debugging.
@@ -520,7 +520,7 @@ especially benefits *model subclassing* and building *custom layers*—the APIs
 that require you to write the forward pass as code (instead of the APIs that
 create models by assembling existing layers).
 
-See the [eager execution guide](/programmers_guide/eager#build_a_model) for
+See the [eager execution guide](./eager.md#build_a_model) for
 examples of using Keras models with custom training loops and `tf.GradientTape`.
 
 
@@ -528,14 +528,14 @@ examples of using Keras models with custom training loops and `tf.GradientTape`.
 
 ### Estimators
 
-The [Estimators](/programmers_guide/estimators) API is used for training models
+The [Estimators](./estimators.md) API is used for training models
 for distributed environments. This targets industry use cases such as
 distributed training on large datasets that can export a model for production.
 
 A `tf.keras.Model` can be trained with the `tf.estimator` API by converting the
 model to an `tf.estimator.Estimator` object with
 `tf.keras.estimator.model_to_estimator`. See
-[Creating Estimators from Keras models](/programmers_guide/estimators#creating_estimators_from_keras_models).
+[Creating Estimators from Keras models](./estimators.md#creating_estimators_from_keras_models).
 
 ```python
 model = keras.Sequential([layers.Dense(10,activation='softmax'),
@@ -548,8 +548,8 @@ model.compile(optimizer=tf.train.RMSPropOptimizer(0.001),
 estimator = keras.estimator.model_to_estimator(model)
 ```
 
-Note: Enable [eager execution](/programmers_guide/eager) for debugging
-[Estimator input functions](/programmers_guide/premade_estimators#create_input_functions)
+Note: Enable [eager execution](./eager.md) for debugging
+[Estimator input functions](./premade_estimators.md#create_input_functions)
 and inspecting data.
 
 ### Multiple GPUs

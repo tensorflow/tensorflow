@@ -91,8 +91,8 @@ print(mnist_ds)
 ```
 
 This will print the following line, showing the
-@{$programmers_guide/tensors#shapes$shapes} and
-@{$programmers_guide/tensors#data_types$types} of the items in
+@{$guide/tensors#shapes$shapes} and
+@{$guide/tensors#data_types$types} of the items in
 the dataset. Note that a `Dataset` does not know how many items it contains.
 
 ``` None
@@ -128,7 +128,7 @@ print(dataset)
 
 Here we see that when a `Dataset` contains structured elements, the `shapes`
 and `types` of the `Dataset` take on the same structure. This dataset contains
-dictionaries of @{$programmers_guide/tensors#rank$scalars}, all of type
+dictionaries of @{$guide/tensors#rank$scalars}, all of type
 `tf.float64`.
 
 The first line of the iris `train_input_fn` uses the same functionality, but
@@ -382,6 +382,6 @@ Estimator. Consider the following documents next:
 * The @{$low_level_intro#datasets$Low Level Introduction}, which demonstrates
   how to experiment directly with `tf.data.Datasets` using TensorFlow's low
   level APIs.
-* @{$programmers_guide/datasets} which goes into great detail about additional
+* @{$guide/datasets} which goes into great detail about additional
   functionality of `Datasets`.
 

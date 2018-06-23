@@ -467,7 +467,7 @@ answered questions, and were part of inspiring discussions.
 
 ## Major Features And Improvements
 * `tf.keras` is now part of the core TensorFlow API.
-* [`tf.data`](http://tensorflow.org/programmers_guide/datasets) is now part of
+* [`tf.data`](http://tensorflow.org/guide/datasets) is now part of
   the core TensorFlow API.
   * The API is now subject to backwards compatibility guarantees.
 
@@ -495,7 +495,7 @@ answered questions, and were part of inspiring discussions.
 * TensorFlow Debugger (tfdbg):
   * Add `eval` command to allow evaluation of arbitrary Python/numpy expressions
     in tfdbg command-line interface. See
-    [Debugging TensorFlow Programs](https://www.tensorflow.org/programmers_guide/debugger)
+    [Debugging TensorFlow Programs](https://www.tensorflow.org/guide/debugger)
     for more details.
   * Usability improvement: The frequently used tensor filter `has_inf_or_nan` is
     now added to `Session` wrappers and hooks by default. So there is no need
@@ -782,7 +782,7 @@ answered questions, and were part of inspiring discussions.
 * Support client-provided ClusterSpec's and propagate them to all workers to enable the creation of dynamic TensorFlow clusters.
 * TensorFlow C library now available for Windows.
 * We released a new open-source version of TensorBoard.
-* [`SavedModel CLI`](https://www.tensorflow.org/versions/master/programmers_guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
+* [`SavedModel CLI`](https://www.tensorflow.org/versions/master/guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
 * Android releases of TensorFlow are now pushed to jcenter for easier
   integration into apps. See
   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md
