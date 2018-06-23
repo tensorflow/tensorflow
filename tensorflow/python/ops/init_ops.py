@@ -44,7 +44,7 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.util.deprecation import (
-  deprecated, deprecated_arg_values)
+    deprecated, deprecated_arg_values)
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -437,9 +437,9 @@ class VarianceScaling(Initializer):
   """
 
   @deprecated_arg_values(
-    None,
-    "`normal` is a deprecated alias for `truncated_normal`",
-    distribution="normal")
+      None,
+      "`normal` is a deprecated alias for `truncated_normal`",
+      distribution="normal")
   def __init__(self,
                scale=1.0,
                mode="fan_in",
