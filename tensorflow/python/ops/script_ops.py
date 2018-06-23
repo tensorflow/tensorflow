@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Script Language Operators. See the @{$python/script_ops} guide."""
 
 # pylint: disable=g-bad-name
@@ -30,30 +29,55 @@ import numpy as np
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+
+# Map from EagerPyFunc token to tuple (tape, eager args, eager outputs);
+# used for differentiation.
+tape_cache = {}
 
 
 class EagerFunc(object):
   """A wrapper for a function owned by an EagerPyFunc."""
 
-  def __init__(self, func, Tout):
+  def __init__(self, func, Tout, is_grad_func):
     """Constructs an EagerFunc.
 
     Args:
       func: The function to wrap.
       Tout: A list of datatypes for the output; an empty list if the output is
             None.
+      is_grad_func: Whether this EagerFunc is the gradient of another
+        EagerPyFunc.
     """
     self._func = func
     self._out_dtypes = Tout
+    self._is_grad_func = is_grad_func
 
   def _convert(self, value, dtype):
+    """Converts `value` to a tensor of type `dtype`, with error checking.
+
+    Args:
+      value: The tensor to convert.
+      dtype: The desired dtype.
+
+    Returns:
+      A tensor of type `dtype`, or a zeros tensor if value is None and
+      this function is in fact a grdient function.
+
+    Raises:
+      RuntimeError: if `value` is a variable.
+    """
+
     if isinstance(value, resource_variable_ops.ResourceVariable):
       raise RuntimeError(
           "Attempting to return a variable from an eagerly executed py_func. "
@@ -61,22 +85,39 @@ class EagerFunc(object):
           "be returned; to return the value of a variable, make sure to obtain "
           "the Tensor backing it by calling `.read_value()` on the variable in "
           "question: %s" % value)
+    if value is None and self._is_grad_func:
+      # Gradient functions may legitimately return a list that contains
+      # both Tensors and Python Nones. Unfortuantely this breaks the
+      # OpKernel, so for now we replace None objects with zeros, which is
+      # mathematically correct but will prevent short-circuiting gradient
+      # computations.
+      #
+      # TODO(akshayka): Make it possible to return a list of both Tensors and
+      # Nones from an EagerPyFunc.
+      return constant_op.constant(0.0, dtype=dtype)
     return ops.convert_to_tensor(value, dtype=dtype)
 
-  def __call__(self, on_gpu, args):
+  def __call__(self, device, token, args):
     """Passes `args` to `self._func`, which is executed eagerly."""
-    with context.eager_mode():
+
+    with context.eager_mode(), backprop.GradientTape() as tape:
+      for tensor in args:
+        tape.watch(tensor)
       ret = self._func(*args)
-      maybe_copy_to_gpu = lambda x: x if not on_gpu else x.gpu()
-      if isinstance(ret, (tuple, list)):
-        return [
-            maybe_copy_to_gpu(self._convert(x, dtype=dtype))
-            for (x, dtype) in zip(ret, self._out_dtypes)
-        ]
-      elif ret is None:
-        return ret
-      else:
-        return maybe_copy_to_gpu(self._convert(ret, dtype=self._out_dtypes[0]))
+      # Use tf.identity to copy the returned tensors to device if neccesary.
+      with ops.device(device):
+        if isinstance(ret, (tuple, list)):
+          outputs = [
+              array_ops.identity(self._convert(x, dtype=dtype))
+              for (x, dtype) in zip(ret, self._out_dtypes)
+          ]
+        elif ret is None:
+          outputs = None
+        else:
+          outputs = array_ops.identity(
+              self._convert(ret, dtype=self._out_dtypes[0]))
+    tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
+    return outputs
 
 
 class FuncRegistry(object):
@@ -133,14 +174,14 @@ class FuncRegistry(object):
     else:
       return result
 
-  def __call__(self, token, on_gpu, args):
+  def __call__(self, token, device, args):
     """Calls the registered function for `token` with args.
 
     Args:
       token: A key into this `FuncRegistry` identifying which function to call.
-      on_gpu: A boolean indicating whether or not `token`'s corresponding
-        operation was placed on GPU; only used if the function registered for
-        `token` is an `EagerPyFunc`.
+      device: Name of the device on which outputs of `token`'s corresponding
+        operation should be placed. Used iff the function registered for `token`
+        is an EagerPyFunc.
       args: The arguments to pass to the function registered for `token`.
 
     Returns:
@@ -153,7 +194,14 @@ class FuncRegistry(object):
     if func is None:
       raise ValueError("callback %s is not found" % token)
     if isinstance(func, EagerFunc):
-      return func(on_gpu, args)
+      # NB: Different invocations of the same py_func will share the same
+      # token, and the entries they stash in the tape_cache will collide.
+      # In practice, when executing a graph, this should only happen if
+      # the py_func is in a while_loop whose iterations are run in parallel
+      # or if the graph is being driven by concurrent session.run() calls.
+      #
+      # TODO(akshayka): Key the tape cache in a thread-safe way.
+      return func(device, token, args)
     else:
       ret = func(*args)
       # Strings seem to lead to a memory leak here if they're not wrapped in a
@@ -184,7 +232,13 @@ _py_funcs = FuncRegistry()
 pywrap_tensorflow.InitializePyTrampoline(_py_funcs)
 
 
-def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
+def _internal_py_func(func,
+                      inp,
+                      Tout,
+                      stateful=None,
+                      eager=False,
+                      is_grad_func=False,
+                      name=None):
   """See documentation for py_func and eager_py_func."""
 
   is_list_or_tuple = False
@@ -194,7 +248,7 @@ def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
     Tout = [Tout]
 
   if eager:
-    func = EagerFunc(func, Tout)
+    func = EagerFunc(func, Tout, is_grad_func)
 
   token = _py_funcs.insert(func)
   # We tie the registered function's lifetime with the current default graph,
@@ -231,34 +285,56 @@ def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
   return result if is_list_or_tuple else result[0]
 
 
+# TODO(akshayka): Implement higher-order derivatives.
+@ops.RegisterGradient("EagerPyFunc")
+def _EagerPyFuncGrad(op, dy):
+  """Computes the gradient of an EagerPyFunc."""
+
+  token = op.get_attr("token")
+
+  def eagerly_executed_grad(dy):
+    tape, eager_inputs, eager_outputs = tape_cache.pop(compat.as_bytes(token))
+    return tape.gradient(eager_outputs, eager_inputs, output_gradients=dy)
+
+  with ops.control_dependencies(op.outputs):
+    return _internal_py_func(
+        func=eagerly_executed_grad,
+        inp=[dy] if isinstance(dy, ops.Tensor) else dy,
+        Tout=[tensor.dtype for tensor in op.inputs],
+        eager=True,
+        is_grad_func=True)
+
+
 def eager_py_func(func, inp, Tout, name=None):
   """Wraps a python function into a TensorFlow op that executes it eagerly.
 
   This function allows expressing computations in a TensorFlow graph as
   Python functions. In particular, it wraps a Python function `func`
-  in a TensorFlow operation that executes it with eager exeuction enabled. As a
-  consequence, `tf.contrib.eager.py_func` makes it possible to express control
-  flow using Python constructs (`if`, `while`, `for`, etc.), instead of
-  TensorFlow control flow constructs (@{tf.cond}, @{tf.while_loop}). For
-  example, you might use `tf.contrib.eager.py_func` to implement the log huber
-  function:
+  in a once-differentiable TensorFlow operation that executes it with eager
+  exeuction enabled. As a consequence, `tf.contrib.eager.py_func` makes it
+  possible to express control flow using Python constructs (`if`, `while`,
+  `for`, etc.), instead of TensorFlow control flow constructs (@{tf.cond},
+  @{tf.while_loop}). For example, you might use `tf.contrib.eager.py_func` to
+  implement the log huber function:
 
   ```python
   def log_huber(x, m):
     if tf.abs(x) <= m:
-      return x ** 2
+      return x**2
     else:
-      return m ** 2 * (1 - 2 * tf.log(m) + tf.log(x ** 2))
+      return m**2 * (1 - 2 * tf.log(m) + tf.log(x**2))
 
   x = tf.placeholder(tf.float32)
   m = tf.placeholder(tf.float32)
 
   y = tf.contrib.eager.py_func(func=log_huber, inp=[x, m], Tout=tf.float32)
+  dy_dx = tf.gradients(y, x)[0]
 
   with tf.Session() as sess:
     # The session executes `log_huber` eagerly. Given the feed values below,
-    # it will take the second branch, so `output` evaluates to 7.24372.
-    output = sess.run(y, feed_dict={x: 3.0, m: 2.0})
+    # it will take the first branch, so `y` evaluates to 1.0 and
+    # `dy_dx` evaluates to 2.0.
+    y, dy_dx = sess.run([y, dy_dx], feed_dict={x: 1.0, m: 2.0})
   ```
 
   You can also use `tf.contrib.eager.py_func` to debug your models at runtime
@@ -276,10 +352,6 @@ def eager_py_func(func, inp, Tout, name=None):
   outputs, `tf.contrib.eager.py_func` can be placed on GPUs and wraps functions
   that take Tensors as inputs, execute TensorFlow operations in their bodies,
   and return Tensors as outputs.
-
-  `tf.contrib.eager.py_func` is not differentiable, though a gradient may be
-  implemented in the future; if you would like to differentiate through it,
-  please file an issue on Github.
 
   Like @{tf.py_func}, `tf.contrib.eager.py_func` has the following limitations
   with respect to serialization and distribution:

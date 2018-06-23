@@ -33,7 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_parsing_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -76,7 +76,7 @@ class CsvDatasetOpTest(test.TestCase):
     filenames = self.setup_files(inputs)
     dataset_expected = core_readers.TextLineDataset(filenames)
     dataset_expected = dataset_expected.map(
-        lambda l: gen_parsing_ops.decode_csv(l, **kwargs))
+        lambda l: parsing_ops.decode_csv(l, **kwargs))
     dataset_actual = readers.CsvDataset(filenames, **kwargs)
     return (dataset_actual, dataset_expected)
 
@@ -162,9 +162,28 @@ class CsvDatasetOpTest(test.TestCase):
         expected_err_re='Unquoted fields cannot have quotes inside',
         record_defaults=record_defaults)
 
+  def testCsvDataset_errWithUnescapedQuotes(self):
+    record_defaults = [['']] * 3
+    inputs = [['"a"b","c","d"']]
+    self._test_dataset(
+        inputs,
+        expected_err_re=
+        'Quote inside a string has to be escaped by another quote',
+        record_defaults=record_defaults)
+
+  def testCsvDataset_ignoreErrWithUnescapedQuotes(self):
+    record_defaults = [['']] * 3
+    inputs = [['1,"2"3",4', '1,"2"3",4",5,5', 'a,b,"c"d"', 'e,f,g']]
+    filenames = self.setup_files(inputs)
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
+        dataset = dataset.apply(error_ops.ignore_errors())
+        self._verify_output_or_err(sess, dataset, [['e', 'f', 'g']])
+
   def testCsvDataset_ignoreErrWithUnquotedQuotes(self):
     record_defaults = [['']] * 3
-    inputs = [['1,2"3,4', 'a,b,c"d', 'e,f,g']]
+    inputs = [['1,2"3,4', 'a,b,c"d', '9,8"7,6,5', 'e,f,g']]
     filenames = self.setup_files(inputs)
     with ops.Graph().as_default() as g:
       with self.test_session(graph=g) as sess:
@@ -562,7 +581,7 @@ class CsvDatasetBenchmark(test.Benchmark):
       num_cols = self._num_cols[i]
       kwargs = {'record_defaults': [[0.0]] * num_cols}
       dataset = core_readers.TextLineDataset(self._filenames[i]).repeat()
-      dataset = dataset.map(lambda l: gen_parsing_ops.decode_csv(l, **kwargs))  # pylint: disable=cell-var-from-loop
+      dataset = dataset.map(lambda l: parsing_ops.decode_csv(l, **kwargs))  # pylint: disable=cell-var-from-loop
       self._runBenchmark(dataset, num_cols, 'csv_float_map_decode_csv')
     self._tearDown()
 
@@ -572,7 +591,7 @@ class CsvDatasetBenchmark(test.Benchmark):
       num_cols = self._num_cols[i]
       kwargs = {'record_defaults': [['']] * num_cols}
       dataset = core_readers.TextLineDataset(self._filenames[i]).repeat()
-      dataset = dataset.map(lambda l: gen_parsing_ops.decode_csv(l, **kwargs))  # pylint: disable=cell-var-from-loop
+      dataset = dataset.map(lambda l: parsing_ops.decode_csv(l, **kwargs))  # pylint: disable=cell-var-from-loop
       self._runBenchmark(dataset, num_cols, 'csv_strings_map_decode_csv')
     self._tearDown()
 

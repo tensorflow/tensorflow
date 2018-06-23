@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/util/util.h"
 
 #ifndef IS_MOBILE_PLATFORM
-#include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
@@ -476,21 +475,15 @@ Status GraphExecutionState::OptimizeGraph(
       }
     }
 
-    std::unordered_map<string, DeviceProperties> device_map;
     Device* cpu_device = nullptr;
     for (const auto& device : device_set_->devices()) {
-      DeviceProperties props = grappler::GetDeviceInfo(device->parsed_name());
-      if (props.type() == "UNKNOWN") {
-        continue;
-      }
-      device_map[device->name()] = props;
       if (device->parsed_name().id == 0 &&
           StringPiece(device->parsed_name().type) == "CPU" &&
           device->GetAllocator(AllocatorAttributes()) != nullptr) {
         cpu_device = device;
       }
     }
-    grappler::VirtualCluster cluster(device_map, device_set_);
+    grappler::VirtualCluster cluster(device_set_);
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
         item, rewrite_options, cpu_device, &cluster, &new_graph));

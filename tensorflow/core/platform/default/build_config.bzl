@@ -202,7 +202,10 @@ def cc_proto_library(
   )
 
   if use_grpc_plugin:
-    cc_libs += ["//external:grpc_lib"]
+    cc_libs += select({
+        "//tensorflow:linux_s390x": ["//external:grpc_lib_unsecure"],
+        "//conditions:default": ["//external:grpc_lib"],
+    })
 
   if default_header:
     header_only_name = name
@@ -634,6 +637,7 @@ def tf_additional_cloud_op_deps():
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
+        "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
       ],
       "//conditions:default": [],
   })
@@ -646,6 +650,7 @@ def tf_additional_cloud_kernel_deps():
       "//tensorflow:with_gcp_support_ios_override": [],
       "//tensorflow:with_gcp_support": [
         "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
+        "//tensorflow/contrib/cloud/kernels:gcs_config_ops",
       ],
       "//conditions:default": [],
   })

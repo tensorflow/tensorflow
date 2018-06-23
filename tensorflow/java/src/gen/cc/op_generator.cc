@@ -35,22 +35,21 @@ namespace tensorflow {
 namespace java {
 namespace {
 
-const char* kLicense =
-    "/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.\n"
-    "\n"
-    "Licensed under the Apache License, Version 2.0 (the \"License\");\n"
-    "you may not use this file except in compliance with the License.\n"
-    "You may obtain a copy of the License at\n"
-    "\n"
-    "    http://www.apache.org/licenses/LICENSE-2.0\n"
-    "\n"
-    "Unless required by applicable law or agreed to in writing, software\n"
-    "distributed under the License is distributed on an \"AS IS\" BASIS,\n"
-    "WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n"
-    "See the License for the specific language governing permissions and\n"
-    "limitations under the License.\n"
-    "=======================================================================*/"
-    "\n";
+constexpr const char kLicense[] =
+  "/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.\n"
+  "\n"
+  "Licensed under the Apache License, Version 2.0 (the \"License\");\n"
+  "you may not use this file except in compliance with the License.\n"
+  "You may obtain a copy of the License at\n"
+  "\n"
+  "    http://www.apache.org/licenses/LICENSE-2.0\n"
+  "\n"
+  "Unless required by applicable law or agreed to in writing, software\n"
+  "distributed under the License is distributed on an \"AS IS\" BASIS,\n"
+  "WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n"
+  "See the License for the specific language governing permissions and\n"
+  "limitations under the License.\n"
+  "=======================================================================*/\n";
 
 // There is three different modes to render an op class, depending on the
 // number and type of outputs it has:
@@ -376,9 +375,6 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
     }
   }
   // op annotations
-  op_class.add_annotation(
-      Annotation::Create("Generated", "javax.annotation")
-          .attributes("value = \"TensorFlow Java Op Generator\""));
   if (endpoint.deprecated()) {
     op_class.add_annotation(Annotation::Create("Deprecated"));
     string explanation;
@@ -394,9 +390,12 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
   }
   if (!op.hidden()) {
     // expose the op in the Ops Graph API only if it is visible
-    op_class.add_annotation(
-        Annotation::Create("Operator", "org.tensorflow.op.annotation")
-            .attributes("group = \"" + endpoint.package() + "\""));
+    Annotation oper_annot =
+        Annotation::Create("Operator", "org.tensorflow.op.annotation");
+    if (endpoint.package() != kDefaultEndpointPackage) {
+      oper_annot.attributes("group = \"" + endpoint.package() + "\"");
+    }
+    op_class.add_annotation(oper_annot);
   }
   // create op class file
   const string op_dir_name = io::JoinPath(
@@ -415,8 +414,12 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
   SourceFileWriter writer(op_file.get());
   std::list<Type> dependencies;
   CollectOpDependencies(op, mode, &dependencies);
-  writer.Write(kLicense).EndLine().BeginType(op_class, PUBLIC | FINAL,
-                                             &dependencies, &op_javadoc);
+  writer.Write(kLicense)
+      .EndLine()
+      .Write("// This class has been generated, DO NOT EDIT!")
+      .EndLine()
+      .EndLine()
+      .BeginType(op_class, PUBLIC | FINAL, &dependencies, &op_javadoc);
   if (!op.optional_attributes().empty()) {
     RenderOptionsClass(op, op_class, &writer);
   }

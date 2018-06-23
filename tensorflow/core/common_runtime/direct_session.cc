@@ -447,18 +447,22 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   // Create a run state and start execution.
   RunState run_state(step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
+#ifndef __ANDROID__
   // Set up for collectives if the RunOption declares a key.
   if (run_options.experimental().collective_graph_key() > 0) {
     if (!collective_executor_mgr_) {
-      DeviceResolverLocal* drl = new DeviceResolverLocal(device_mgr_.get());
+      std::unique_ptr<DeviceResolverInterface> drl(
+          new DeviceResolverLocal(device_mgr_.get()));
+      std::unique_ptr<ParamResolverInterface> cprl(
+          new CollectiveParamResolverLocal(device_mgr_.get(), drl.get(),
+                                           "/job:localhost/replica:0/task:0"));
       collective_executor_mgr_.reset(new CollectiveExecutorMgr(
-          options_.config, device_mgr_.get(), drl,
-          new CollectiveParamResolverLocal(device_mgr_.get(), drl,
-                                           "/job:localhost/replica:0/task:0")));
+          options_.config, device_mgr_.get(), std::move(drl), std::move(cprl)));
     }
     run_state.collective_executor.reset(new CollectiveExecutor::Handle(
         collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));
   }
+#endif
 
   // Start parallel Executors.
   const size_t num_executors = executors_and_keys->items.size();

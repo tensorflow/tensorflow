@@ -26,14 +26,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/allocation_tracker.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
-#include "tensorflow/compiler/xla/service/compilation_cache.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/execution_tracker.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -195,9 +193,6 @@ class Service : public ServiceInterface {
       const ExecutionOptions& execution_options,
       tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments);
 
-  // Assert that host- and device-shapes are in a consistent state.
-  Status ValidateEntryComputationLayout(HloModule* module);
-
  protected:
   friend class LocalExecutable;
 
@@ -268,11 +263,11 @@ class Service : public ServiceInterface {
   // will be the result of this computation.
   Status ExecuteOneToN(const ExecuteGraphRequest* arg, ExecuteResponse* result);
 
-  // Convenience function which checks whether the given shape_with_layout
+  // Convenience function which checks whether the given client_shape
   // (presumably passed by the client to set the result layout) is valid for the
   // given computation result shape.
-  Status ValidateResultShapeWithLayout(const Shape& shape_with_layout,
-                                       const Shape& result_shape) const;
+  Status ValidateResultShape(const Shape& client_shape,
+                             const Shape& result_shape) const;
 
   // Returns the stream executors assigned to the replicas represented by the
   // given device handle. Each device_handle is a virtual replicated device that
@@ -296,9 +291,6 @@ class Service : public ServiceInterface {
 
   // Tracks asynchronously launched executions via the API.
   ExecutionTracker execution_tracker_;
-
-  // Cache containing previously built Executables.
-  CompilationCache compilation_cache_;
 
   // Backend to compile and execute computations on.
   std::unique_ptr<Backend> execute_backend_;

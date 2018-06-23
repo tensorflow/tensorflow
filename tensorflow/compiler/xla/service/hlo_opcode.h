@@ -81,6 +81,7 @@ namespace xla {
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                 \
   V(kGather, "gather")                                       \
   V(kGe, "greater-than-or-equal-to", kHloOpcodeIsComparison) \
+  V(kGenerateToken, "generate-token", kHloOpcodeIsVariadic)  \
   V(kGetTupleElement, "get-tuple-element")                   \
   V(kGt, "greater-than", kHloOpcodeIsComparison)             \
   V(kHostCompute, "host-compute")                            \
@@ -93,6 +94,7 @@ namespace xla {
   V(kAnd, "and")                                             \
   V(kNot, "not")                                             \
   V(kOr, "or")                                               \
+  V(kXor, "xor")                                             \
   V(kLt, "less-than", kHloOpcodeIsComparison)                \
   V(kMap, "map", kHloOpcodeIsVariadic)                       \
   V(kMaximum, "maximum")                                     \

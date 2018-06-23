@@ -134,7 +134,7 @@ class SplitVOp : public XlaOpKernel {
         errors::InvalidArgument(
             "Number of ways to split should be > 0, but got ", num_split));
 
-    // check that sizes are correct
+    // Check that sizes are correct.
     int total_split_size = 0;
     int neg_one_dim = -1;
     std::vector<int64> split_sizes_vec(num_split, -1);
@@ -148,7 +148,7 @@ class SplitVOp : public XlaOpKernel {
                     " number of elements as the output. Got ",
                     split_size_shape.dims(), "-D and ",
                     split_size_shape.num_elements(), " elements"));
-    // get the dimension of this split
+    // Get the dimension of this split.
     xla::Literal split_size_literal;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &split_size_literal));
 

@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.autograph.converters import break_statements
-from tensorflow.contrib.autograph.converters import converter_test_base
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.platform import test
 
 
-class BreakCanonicalizationTest(converter_test_base.TestCase):
+class BreakCanonicalizationTest(converter_testing.TestCase):
 
   def test_basic_while(self):
 

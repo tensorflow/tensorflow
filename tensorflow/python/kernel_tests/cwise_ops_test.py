@@ -96,7 +96,8 @@ class UnaryOpTest(test.TestCase):
     np_ans = np_func(x)
     with self.test_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
-      if x.dtype in (np.float32, np.float64):
+      if x.dtype in (np.float32, np.float64,
+                     dtypes_lib.bfloat16.as_numpy_dtype):
         y = 1.1 * tf_func(inx)
         np_ans *= 1.1
       else:
@@ -105,6 +106,8 @@ class UnaryOpTest(test.TestCase):
       self.assertShapeEqual(np_ans, y)
       if x.dtype == np.float16:
         self.assertAllClose(np_ans, tf_cpu, rtol=1e-3, atol=1e-3)
+      elif x.dtype == dtypes_lib.bfloat16.as_numpy_dtype:
+        self.assertAllClose(np_ans, tf_cpu, rtol=1e-2, atol=1e-2)
       else:
         self.assertAllClose(np_ans, tf_cpu)
 
@@ -241,6 +244,12 @@ class UnaryOpTest(test.TestCase):
                       math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -286,6 +295,12 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.arcsin, math_ops.asin)
     self._compareBoth(x, np.arccos, math_ops.acos)
     self._compareBoth(x, np.arctan, math_ops.atan)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -334,6 +349,12 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(k, np.arcsin, math_ops.asin)
     self._compareBoth(k, np.arccos, math_ops.acos)
     self._compareBoth(k, np.tan, math_ops.tan)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -370,6 +391,12 @@ class UnaryOpTest(test.TestCase):
                       math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+      self._compareBoth(x, special.i0e, math_ops.bessel_i0e)
+      self._compareBoth(x, special.i1e, math_ops.bessel_i1e)
+    except ImportError as e:
+      tf_logging.warn("Cannot test special functions: %s" % str(e))
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -644,12 +671,11 @@ class BinaryOpTest(test.TestCase):
     self._compareCpu(x, y, np_func, tf_func, also_compare_variables)
     if x.dtype in (np.float16, np.float32, np.float64, np.complex64,
                    np.complex128):
-      if tf_func not in (_FLOORDIV, math_ops.floordiv, math_ops.igamma,
-                         math_ops.igammac, math_ops.zeta, math_ops.polygamma):
+      if tf_func not in (_FLOORDIV, math_ops.floordiv, math_ops.zeta,
+                         math_ops.polygamma):
         self._compareGradientX(x, y, np_func, tf_func)
         self._compareGradientY(x, y, np_func, tf_func)
-      if tf_func in (math_ops.igamma, math_ops.igammac, math_ops.zeta,
-                     math_ops.polygamma):
+      if tf_func in (math_ops.zeta, math_ops.polygamma):
         # These methods only support gradients in the second parameter
         self._compareGradientY(x, y, np_func, tf_func)
       self._compareGpu(x, y, np_func, tf_func)

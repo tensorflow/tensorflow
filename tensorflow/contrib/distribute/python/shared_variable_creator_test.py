@@ -46,7 +46,7 @@ class CanonicalizeVariableNameTest(test.TestCase):
 
 class SharedVariableCreatorTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSharedVariable(self):
 
     shared_variable_store = {}

@@ -43,11 +43,17 @@ class DependencyOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  // Returns true if bypassing node does not increase the number of edges or
+  // number of edges crossing a device boundary.
+  bool BypassingNodeIsBeneficial(
+      const NodeDef& node, const std::vector<NodeDef*>& input_nodes,
+      const std::vector<NodeDef*>& output_nodes) const;
+
   // Returns true if node is not an Identity node or if it is an Identity
   // that is safe to remove.
-  bool SafeToRemoveIdentity(const NodeDef& node);
+  bool SafeToRemoveIdentity(const NodeDef& node) const;
   // Returns true if it is safe to convert node to NoOp.
-  bool SafeToConvertToNoOp(const NodeDef& node);
+  bool SafeToConvertToNoOp(const NodeDef& node) const;
   // Removes all duplicate control dependencies.
   void CleanControlInputs();
   // Builds a map from the &optimized_graph_->node(i) to i.

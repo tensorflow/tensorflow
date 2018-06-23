@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -89,8 +88,7 @@ class Executable {
   // called explicitly for other (async, for example) variants after the stream
   // has completed.
   virtual Status PopulateExecutionProfile(
-      HloExecutionProfile* hlo_execution_profile,
-      se::StreamExecutor* executor) {
+      HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
     return Status::OK();
   }
 
@@ -131,17 +129,15 @@ class Executable {
 
   const HloModuleConfig& module_config() const { return hlo_module_->config(); }
 
-  // Returns the versioned computation handle of the computation computed by
-  // this executable.
-  const VersionedComputationHandle& entry_computation_handle() const {
-    return hlo_module_->entry_computation_handle();
-  }
-
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
-  const Shape& host_result_shape() const {
-    return hlo_module_->config().host_entry_computation_layout().result_shape();
+  const Shape& result_shape() const {
+    return hlo_module_->config().entry_computation_layout().result_shape();
   }
+
+  // Returns the size of the executable in bytes. Returns -1 by default if the
+  // method is not overridden to support this kind of query.
+  virtual int64 SizeInBytes();
 
   // Dumping helpers.
   void set_hlo_snapshot(std::unique_ptr<xla::HloSnapshot> hlo_snapshot) {
