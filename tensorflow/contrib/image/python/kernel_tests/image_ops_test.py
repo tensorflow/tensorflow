@@ -30,7 +30,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 _DTYPES = set(
-    [dtypes.uint8, dtypes.int32, dtypes.int64, dtypes.float16, dtypes.float32, dtypes.float64])
+    [dtypes.uint8, dtypes.int32, dtypes.int64,
+     dtypes.float16, dtypes.float32, dtypes.float64])
 
 
 class ImageOpsTest(test_util.TensorFlowTestCase):
