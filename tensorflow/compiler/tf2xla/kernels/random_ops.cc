@@ -18,6 +18,7 @@ limitations under the License.
 // TODO(misard,phawkins): add tests.
 
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -76,32 +77,14 @@ class RandomShuffleOp : public XlaOpKernel {
       ctx->SetOutput(0, input);
     } else {
       // Generate the random swaps for the indices.
-      auto zero = builder->Broadcast(
-          builder->ConstantLiteral(xla::Literal::Zero(xla::S32)),
-          gtl::ArraySlice<int64>({n}));
-      auto n_maxval = builder->Broadcast(builder->ConstantR0<int32>(n),
-                                         gtl::ArraySlice<int64>({n}));
       auto swaps_shape = xla::ShapeUtil::MakeShape(xla::S32, {n});
-      auto swaps = builder->RngUniform(zero, n_maxval, swaps_shape);
+      auto swaps =
+          builder->RngUniform(builder->ConstantR0<int32>(0),
+                              builder->ConstantR0<int32>(n), swaps_shape);
 
       // Generate range(n) as the initial value for the indices to be swapped.
-      auto index_init_body_fn = [&](xla::XlaOp i,
-                                    gtl::ArraySlice<xla::XlaOp> loop_vars,
-                                    xla::XlaBuilder* builder)
-          -> xla::StatusOr<std::vector<xla::XlaOp>> {
-        auto indices = loop_vars[0];
-        i = builder->Reshape(i, {}, {1});
-        // indices[i] = i
-        indices = builder->DynamicUpdateSlice(indices, i, i);
-        return std::vector<xla::XlaOp>{indices};
-      };
-      // for i in range(n):
-      xla::XlaOp index_zeros = Zeros(builder, swaps_shape);
-      auto index_init_loop_result =
-          XlaForEachIndex(n, xla::S32, index_init_body_fn, {index_zeros},
-                          "index_init_loop", builder)
-              .ValueOrDie();
-      auto indices = index_init_loop_result[0];
+      xla::XlaOp indices;
+      TF_CHECK_OK(XlaHelpers::Iota(builder, DataType::DT_INT32, n, &indices));
 
       // Swap the indices at i and swaps[i].
       auto swap_body_fn = [&](xla::XlaOp i,
@@ -110,7 +93,7 @@ class RandomShuffleOp : public XlaOpKernel {
           -> xla::StatusOr<std::vector<xla::XlaOp>> {
         auto swaps = loop_vars[0];
         auto indices = loop_vars[1];
-        i = builder->Reshape(i, {}, {1});
+        i = builder->Reshape(i, {1});
         // temp = indices[i]
         auto temp = builder->DynamicSlice(indices, i, {1});
         // swap_index = swaps[i]
@@ -223,58 +206,19 @@ class TruncatedNormalOp : public XlaOpKernel {
 
     xla::XlaBuilder* b = ctx->builder();
 
-    auto two_sd = [dtype](bool negate, xla::XlaBuilder* b) {
-      return XlaHelpers::FloatLiteral(b, dtype, negate ? -2.0 : 2.0);
-    };
-    auto out_of_range_mask = [two_sd](xla::XlaOp candidate,
-                                      xla::XlaBuilder* b) {
-      xla::XlaOp too_large = b->Gt(candidate, two_sd(false, b));
-      xla::XlaOp too_small = b->Lt(candidate, two_sd(true, b));
-      return b->Or(too_large, too_small);
-    };
-
-    // The algorithm we're using is roughly:
-    //
-    // while (any(candidate < mean-2*sd || candidate > mean+2*sd)) {
-    //   out_of_range_mask := candidate < mean-2*sd || candidate > mean+2*sd
-    //   candidate = select(out_of_range_mask, rng_normal(), candidate)
-    // }
-    std::vector<xla::XlaOp> initial_values = {
-        // The current candidate.
-        b->Broadcast(XlaHelpers::Zero(b, dtype), shape.dim_sizes()),
-        // The to_resample mask, where 'true' identifies a location in the
-        // current candidate that is out of range and must be regenerated.
-        b->Broadcast(b->ConstantR0<bool>(true), shape.dim_sizes()),
-        // Is any element in the mask true?
-        b->ConstantR0<bool>(true)};
-    auto condition = [&](gtl::ArraySlice<xla::XlaOp> values,
-                         xla::XlaBuilder* b) -> xla::StatusOr<xla::XlaOp> {
-      // Continue while any element in the mask is true.
-      return values[2];
-    };
-    auto body =
-        [&](gtl::ArraySlice<xla::XlaOp> values,
-            xla::XlaBuilder* b) -> xla::StatusOr<std::vector<xla::XlaOp>> {
-      xla::XlaOp candidate = values[0];
-      xla::XlaOp to_resample = values[1];
-      xla::XlaOp mean = XlaHelpers::Zero(b, dtype);
-      xla::XlaOp stddev = XlaHelpers::One(b, dtype);
-      candidate = b->Select(to_resample, b->RngNormal(mean, stddev, xla_shape),
-                            candidate);
-      // Compute a new to_resample mask, and determine whether any value is
-      // still out of range.
-      to_resample = out_of_range_mask(candidate, b);
-      TF_ASSIGN_OR_RETURN(xla::XlaOp done, Any(to_resample, b));
-      return std::vector<xla::XlaOp>{candidate, to_resample, done};
-    };
-    auto result =
-        XlaWhileLoop(condition, body, initial_values, "truncated_normal", b);
-    OP_REQUIRES_OK(ctx, result.status());
-    ctx->SetOutput(0, result.ValueOrDie()[0]);
+    xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype, 1.0);
+    xla::XlaOp min_positive =
+        XlaHelpers::FloatLiteral(b, dtype, std::numeric_limits<float>::min());
+    auto uniform = b->RngUniform(min_positive, one, xla_shape);
+    auto truncated_normal_or_status = TruncatedNormal(dtype, uniform, b);
+    OP_REQUIRES_OK(ctx, truncated_normal_or_status.status());
+    ctx->SetOutput(0, truncated_normal_or_status.ValueOrDie());
   }
 };
 
-REGISTER_XLA_OP(Name("TruncatedNormal").CompileTimeConstInput("shape"),
+REGISTER_XLA_OP(Name("TruncatedNormal")
+                    .CompileTimeConstInput("shape")
+                    .TypeConstraint("dtype", DT_FLOAT),
                 TruncatedNormalOp);
 
 }  // anonymous namespace

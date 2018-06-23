@@ -71,8 +71,8 @@ xla::StatusOr<xla::XlaOp> BatchDot(xla::XlaBuilder* builder, xla::XlaOp x,
   }
 
   // Check for zero lhs/rhs dim size.
-  if (xla::ShapeUtil::HasZeroElements(x_shape) ||
-      xla::ShapeUtil::HasZeroElements(y_shape)) {
+  if (xla::ShapeUtil::IsZeroElementArray(x_shape) ||
+      xla::ShapeUtil::IsZeroElementArray(y_shape)) {
     std::vector<int64> dimensions(batch_dimension_numbers.size());
     for (int i = 0; i < batch_dimension_numbers.size(); ++i) {
       dimensions[i] = x_shape.dimensions(batch_dimension_numbers[i]);

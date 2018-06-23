@@ -39,7 +39,7 @@ class LiveValueResolver(transformer.Base):
 
   def visit_ClassDef(self, node):
     self.generic_visit(node)
-    anno.setanno(node, 'live_val', self.context.namespace[node.name])
+    anno.setanno(node, 'live_val', self.entity_info.namespace[node.name])
     return node
 
   def visit_Name(self, node):
@@ -55,8 +55,8 @@ class LiveValueResolver(transformer.Base):
       if not symbol_is_local and not symbol_is_param:
         if node.id in self.literals:
           anno.setanno(node, 'live_val', self.literals[node.id])
-        elif node.id in self.context.namespace:
-          obj = self.context.namespace[node.id]
+        elif node.id in self.entity_info.namespace:
+          obj = self.entity_info.namespace[node.id]
           anno.setanno(node, 'live_val', obj)
           if hasattr(obj, '__name__'):
             anno.setanno(node, 'fqn', (obj.__name__,))
@@ -80,8 +80,8 @@ class LiveValueResolver(transformer.Base):
         # TODO(mdan): Use type annotations as fallback.
 
       if not symbol_is_modified:
-        if node.id in self.context.arg_values:
-          obj = self.context.arg_values[node.id]
+        if node.id in self.entity_info.arg_values:
+          obj = self.entity_info.arg_values[node.id]
           anno.setanno(node, 'live_val', obj)
           anno.setanno(node, 'fqn', (obj.__class__.__name__,))
     return node

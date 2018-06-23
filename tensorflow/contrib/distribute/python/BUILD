@@ -77,6 +77,7 @@ py_library(
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
@@ -312,7 +313,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
-        "noguitar",  # TODO(b/109653107): test is flaky.
     ],
 )
 
@@ -587,7 +587,25 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-        "noguitar",
         "notsan",
+    ],
+)
+
+cuda_py_test(
+    name = "metrics_v1_test",
+    srcs = ["metrics_v1_test.py"],
+    additional_deps = [
+        ":combinations",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
     ],
 )

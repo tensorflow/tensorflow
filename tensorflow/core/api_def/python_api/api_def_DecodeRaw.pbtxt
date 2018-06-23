@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "DecodeRaw"
+  endpoint {
+    name: "io.decode_raw"
+  }
+  endpoint {
+    name: "decode_raw"
+    deprecation_message: "tf.decode_raw is deprecated, please use tf.io.decode_raw instead."
+  }
+}

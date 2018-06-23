@@ -59,6 +59,7 @@ limitations under the License.
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
 %rename("%s") TFE_ContextOptionsSetAsync;
+%rename("%s") TFE_ContextOptionsSetServerDef;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
 %rename("%s") TFE_Py_TensorShapeOnDevice;

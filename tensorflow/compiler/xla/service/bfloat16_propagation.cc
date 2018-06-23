@@ -204,6 +204,12 @@ void BFloat16Propagation::DetermineWhileComputationsPrecision(
 
 bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
                                               const ShapeIndex& index) const {
+  // If the subshape isn't floating point then none of the users will be BF16.
+  const Shape& subshape = ShapeUtil::GetSubshape(hlo.shape(), index);
+  if (subshape.element_type() != BF16 && subshape.element_type() != F32) {
+    return false;
+  }
+
   auto& value_set = dataflow_->GetValueSet(&hlo, index);
   for (const HloValue* value : value_set.values()) {
     if (ContainsKey(values_that_must_be_kept_as_f32_, value)) {
@@ -257,23 +263,34 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
       // If the op propagates precision and it outputs a BF16, then it's OK to
       // supply BF16 also as the input. In the backward pass, the users shapes
       // should have already been processed.
-      PrimitiveType user_output_type = PRIMITIVE_TYPE_INVALID;
-      if (use.instruction->opcode() == HloOpcode::kTuple ||
-          (use.instruction->opcode() == HloOpcode::kCrossReplicaSum &&
-           ShapeUtil::IsTuple(use.instruction->shape()))) {
-        ShapeIndex use_output_index{use.operand_number};
-        for (int64 i : use.operand_index) {
-          use_output_index.push_back(i);
-        }
-        user_output_type =
-            OutputTypeAfterChange(use.instruction, use_output_index);
-      } else {
-        user_output_type = OutputTypeAfterChange(use.instruction, {});
-      }
       if (bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(
-              *use.instruction, use.operand_number) &&
-          user_output_type == BF16) {
-        continue;
+              *use.instruction, use.operand_number)) {
+        if (use.instruction->opcode() == HloOpcode::kTuple ||
+            (use.instruction->opcode() == HloOpcode::kCrossReplicaSum &&
+             ShapeUtil::IsTuple(use.instruction->shape()))) {
+          ShapeIndex use_output_index{use.operand_number};
+          for (int64 i : use.operand_index) {
+            use_output_index.push_back(i);
+          }
+          if (OutputTypeAfterChange(use.instruction, use_output_index) ==
+              BF16) {
+            continue;
+          }
+        } else if (use.instruction->opcode() == HloOpcode::kGetTupleElement) {
+          ShapeIndex use_output_index;
+          for (int64 i = 1; i < use.operand_index.size(); ++i) {
+            use_output_index.push_back(use.operand_index[i]);
+          }
+          if (OutputTypeAfterChange(use.instruction, use_output_index) ==
+              BF16) {
+            continue;
+          }
+        } else {
+          if (OutputTypeAfterChange(use.instruction, use.operand_index) ==
+              BF16) {
+            continue;
+          }
+        }
       }
       return false;
     }
@@ -368,6 +385,7 @@ bool BFloat16Propagation::InstructionIsCandidateForBF16Output(
   if (!bfloat16_support_->SupportsMixedPrecisions(*hlo) &&
       hlo->opcode() != HloOpcode::kTuple &&
       hlo->opcode() != HloOpcode::kGetTupleElement &&
+      hlo->opcode() != HloOpcode::kDomain &&
       hlo->shape().element_type() != BF16) {
     for (int64 i = 0; i < hlo->operand_count(); ++i) {
       if (!bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(*hlo,
@@ -559,7 +577,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
 
 void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
     HloModule* module) {
-  std::list<HloComputation*> computations_topological_order =
+  const auto& computations_topological_order =
       module->MakeComputationPostOrder();
   tensorflow::gtl::FlatSet<const HloComputation*> resolved;
   for (auto comp_it = computations_topological_order.rbegin();
@@ -631,7 +649,7 @@ Status BFloat16Propagation::ResolveInconsistentFusions(HloModule* module) {
                   subshape, converted_outputs.element(parent_index),
                   output_index.back()));
         }
-        if (ShapeUtil::IsTuple(subshape)) {
+        if (!ShapeUtil::IsArray(subshape)) {
           continue;
         }
         if (!ShapeUtil::Compatible(
@@ -742,7 +760,7 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
 
   TF_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
 
-  std::list<HloComputation*> computations_topological_order =
+  const auto& computations_topological_order =
       module->MakeComputationPostOrder();
   // The first step is a forward pass (parameters to root), where we determine
   // the potential candidate instructions to use bfloat16 in the outputs that

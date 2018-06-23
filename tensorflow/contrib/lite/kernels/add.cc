@@ -39,6 +39,23 @@ constexpr int kOutputTensor = 0;
 
 struct OpData {
   bool requires_broadcast;
+
+  // These fields are used in both the general 8-bit -> 8bit quantized path,
+  // and the special 16-bit -> 16bit quantized path
+  int input1_shift;
+  int input2_shift;
+  int32 output_activation_min;
+  int32 output_activation_max;
+
+  // These fields are used only in the general 8-bit -> 8bit quantized path
+  int32 input1_multiplier;
+  int32 input2_multiplier;
+  int32 output_multiplier;
+  int output_shift;
+  int left_shift;
+  int32 input1_offset;
+  int32 input2_offset;
+  int32 output_offset;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -52,6 +69,7 @@ void Free(TfLiteContext* context, void* buffer) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  auto* params = reinterpret_cast<TfLiteAddParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
@@ -72,6 +90,80 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                    context, input1, input2, &output_size));
   } else {
     output_size = TfLiteIntArrayCopy(input1->dims);
+  }
+
+  if (output->type == kTfLiteUInt8) {
+    // 8bit -> 8bit general quantized path, with general rescalings
+    data->input1_offset = -input1->params.zero_point;
+    data->input2_offset = -input2->params.zero_point;
+    data->output_offset = output->params.zero_point;
+    data->left_shift = 20;
+    const double twice_max_input_scale =
+        2 * std::max(input1->params.scale, input2->params.scale);
+    const double real_input1_multiplier =
+        input1->params.scale / twice_max_input_scale;
+    const double real_input2_multiplier =
+        input2->params.scale / twice_max_input_scale;
+    const double real_output_multiplier =
+        twice_max_input_scale /
+        ((1 << data->left_shift) * output->params.scale);
+
+    QuantizeMultiplierSmallerThanOneExp(
+        real_input1_multiplier, &data->input1_multiplier, &data->input1_shift);
+    data->input1_shift *= -1;
+
+    QuantizeMultiplierSmallerThanOneExp(
+        real_input2_multiplier, &data->input2_multiplier, &data->input2_shift);
+    data->input2_shift *= -1;
+
+    QuantizeMultiplierSmallerThanOneExp(
+        real_output_multiplier, &data->output_multiplier, &data->output_shift);
+    data->output_shift *= -1;
+
+    CalculateActivationRangeUint8(params->activation, output,
+                                  &data->output_activation_min,
+                                  &data->output_activation_max);
+
+  } else if (output->type == kTfLiteInt16) {
+    // 16bit -> 16bit special quantized path, supporting only a rather
+    // narrow case of quantization parameters: zero_points must all be 0
+    // ("symmetric quantization") and scales must be power-of-two (which
+    // we abbreviate as "POT" below). The intended use case for this path
+    // is in LSTM cells, where, due to the constraints of implementing
+    // some of the math in these LSTM cells in fixed-point arithmetic,
+    // we need to have such symmetric, power-of-two quantization
+    // (Fixed-point formats are inherently symmetric, power-of-two).
+    TF_LITE_ENSURE_EQ(context, input1->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, input2->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+
+    int input1_scale_log2_rounded;
+    bool input1_scale_is_pot =
+        CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
+    TF_LITE_ENSURE(context, input1_scale_is_pot);
+
+    int input2_scale_log2_rounded;
+    bool input2_scale_is_pot =
+        CheckedLog2(input2->params.scale, &input2_scale_log2_rounded);
+    TF_LITE_ENSURE(context, input2_scale_is_pot);
+
+    int output_scale_log2_rounded;
+    bool output_scale_is_pot =
+        CheckedLog2(output->params.scale, &output_scale_log2_rounded);
+    TF_LITE_ENSURE(context, output_scale_is_pot);
+
+    data->input1_shift = output_scale_log2_rounded - input1_scale_log2_rounded;
+    data->input2_shift = output_scale_log2_rounded - input2_scale_log2_rounded;
+
+    // Shifting of one input is supported. The graph quantization should ensure
+    // that the other input matches the output.
+    TF_LITE_ENSURE(context, data->input1_shift == 0 || data->input2_shift == 0);
+    TF_LITE_ENSURE(context, data->input1_shift >= 0);
+    TF_LITE_ENSURE(context, data->input2_shift >= 0);
+
+    CalculateActivationRangeQuantized(context, params->activation, output,
+                                      &data->output_activation_min,
+                                      &data->output_activation_max);
   }
 
   return context->ResizeTensor(context, output, output_size);
@@ -107,56 +199,47 @@ void EvalAddFloat(TfLiteContext* context, TfLiteNode* node,
 }
 
 template <KernelType kernel_type>
-void EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
-                      TfLiteAddParams* params, const OpData* data,
-                      const TfLiteTensor* input1, const TfLiteTensor* input2,
-                      TfLiteTensor* output) {
-  auto input1_offset = -input1->params.zero_point;
-  auto input2_offset = -input2->params.zero_point;
-  auto output_offset = output->params.zero_point;
-  const int left_shift = 20;
-  const double twice_max_input_scale =
-      2 * std::max(input1->params.scale, input2->params.scale);
-  const double real_input1_multiplier =
-      input1->params.scale / twice_max_input_scale;
-  const double real_input2_multiplier =
-      input2->params.scale / twice_max_input_scale;
-  const double real_output_multiplier =
-      twice_max_input_scale / ((1 << left_shift) * output->params.scale);
-
-  int32 input1_multiplier;
-  int input1_shift;
-  QuantizeMultiplierSmallerThanOne(real_input1_multiplier, &input1_multiplier,
-                                   &input1_shift);
-  int32 input2_multiplier;
-  int input2_shift;
-  QuantizeMultiplierSmallerThanOne(real_input2_multiplier, &input2_multiplier,
-                                   &input2_shift);
-  int32 output_multiplier;
-  int output_shift;
-  QuantizeMultiplierSmallerThanOne(real_output_multiplier, &output_multiplier,
-                                   &output_shift);
-
-  int32 output_activation_min, output_activation_max;
-  CalculateActivationRangeUint8(params->activation, output,
-                                &output_activation_min, &output_activation_max);
-
-#define TF_LITE_ADD(type, opname)                                            \
-  type::opname(left_shift, GetTensorData<uint8_t>(input1),                   \
-               GetTensorDims(input1), input1_offset, input1_multiplier,      \
-               input1_shift, GetTensorData<uint8_t>(input2),                 \
-               GetTensorDims(input2), input2_offset, input2_multiplier,      \
-               input2_shift, output_offset, output_multiplier, output_shift, \
-               output_activation_min, output_activation_max,                 \
-               GetTensorData<uint8_t>(output), GetTensorDims(output));
-  // The quantized version of Add doesn't support activations, so we
-  // always use BroadcastAdd.
-  if (kernel_type == kReference) {
-    TF_LITE_ADD(reference_ops, BroadcastAdd);
-  } else {
-    TF_LITE_ADD(optimized_ops, BroadcastAdd);
-  }
+TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
+                              TfLiteAddParams* params, const OpData* data,
+                              const TfLiteTensor* input1,
+                              const TfLiteTensor* input2,
+                              TfLiteTensor* output) {
+  if (output->type == kTfLiteUInt8) {
+#define TF_LITE_ADD(type, opname)                                              \
+  type::opname(                                                                \
+      data->left_shift, GetTensorData<uint8_t>(input1), GetTensorDims(input1), \
+      data->input1_offset, data->input1_multiplier, data->input1_shift,        \
+      GetTensorData<uint8_t>(input2), GetTensorDims(input2),                   \
+      data->input2_offset, data->input2_multiplier, data->input2_shift,        \
+      data->output_offset, data->output_multiplier, data->output_shift,        \
+      data->output_activation_min, data->output_activation_max,                \
+      GetTensorData<uint8_t>(output), GetTensorDims(output));
+    // The quantized version of Add doesn't support activations, so we
+    // always use BroadcastAdd.
+    if (kernel_type == kReference) {
+      TF_LITE_ADD(reference_ops, BroadcastAdd);
+    } else {
+      TF_LITE_ADD(optimized_ops, BroadcastAdd);
+    }
 #undef TF_LITE_ADD
+  } else if (output->type == kTfLiteInt16) {
+#define TF_LITE_ADD(type, opname)                                        \
+  type::opname(GetTensorData<int16_t>(input1), GetTensorDims(input1),    \
+               data->input1_shift, GetTensorData<int16_t>(input2),       \
+               GetTensorDims(input2), data->input2_shift,                \
+               data->output_activation_min, data->output_activation_max, \
+               GetTensorData<int16_t>(output), GetTensorDims(output));
+    // The quantized version of Add doesn't support activations, so we
+    // always use BroadcastAdd.
+    if (kernel_type == kReference) {
+      TF_LITE_ADD(reference_ops, Add);
+    } else {
+      TF_LITE_ADD(optimized_ops, Add);
+    }
+#undef TF_LITE_ADD
+  }
+
+  return kTfLiteOk;
 }
 
 template <KernelType kernel_type>
@@ -171,12 +254,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (output->type == kTfLiteFloat32) {
     EvalAddFloat<kernel_type>(context, node, params, data, input1, input2,
                               output);
-  } else if (output->type == kTfLiteUInt8) {
-    EvalAddQuantized<kernel_type>(context, node, params, data, input1, input2,
-                                  output);
+  } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_OK(context,
+                      EvalAddQuantized<kernel_type>(context, node, params, data,
+                                                    input1, input2, output));
   } else {
     context->ReportError(context,
-                         "Inputs and outputs not all float|uint8 types.");
+                         "Inputs and outputs not all float|uint8|int16 types.");
     return kTfLiteError;
   }
 

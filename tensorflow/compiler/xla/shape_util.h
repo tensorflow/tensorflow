@@ -62,6 +62,8 @@ class ShapeIndex {
  public:
   ShapeIndex() = default;
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
+  template <typename InputIt>
+  ShapeIndex(InputIt start, InputIt end) : indices_(start, end) {}
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
@@ -132,6 +134,7 @@ class ShapeIndexView {
     ++new_begin;
     return ShapeIndexView(new_begin, end_);
   }
+  ShapeIndex ToShapeIndex() const { return ShapeIndex(begin_, end_); }
 
   bool operator==(const ShapeIndexView& other) const;
   bool operator!=(const ShapeIndexView& other) const;
@@ -172,8 +175,11 @@ class ShapeUtil {
   // Precondition: IsArray(shape)
   static int64 ElementsIn(const Shape& shape);
 
-  // Returns true if 'shape' has zero elements.
-  static bool HasZeroElements(const Shape& shape);
+  // As ElementsIn(), but recurses through tuples.
+  static int64 ElementsInRecursive(const Shape& shape);
+
+  // Returns true if 'shape' is an array with zero elements.
+  static bool IsZeroElementArray(const Shape& shape);
 
   // Returns the number of bytes required for an allocation of shape.  The
   // |pointer_size| parameter is used for calculating the size of tuple
@@ -333,7 +339,7 @@ class ShapeUtil {
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 
-  // Returns an empty tuple shape. Can be used to indicate side-effects.
+  // Returns an empty tuple shape. Can be used as a sentinel Shape value.
   static Shape MakeNil() { return MakeTupleShape({}); }
 
   // Checks whether the shape is initialized.
@@ -443,7 +449,7 @@ class ShapeUtil {
   // Returns true if shape is an empty tuple.
   static bool IsEmptyTuple(const Shape& shape);
 
-  // Returns true if shape is an empty tuple, or is an array with no elements.
+  // Returns true if shape is the nil shape (an empty tuple).
   static bool IsNil(const Shape& shape);
 
   // Returns the number of elements in the given tuple shape.
@@ -453,6 +459,9 @@ class ShapeUtil {
   // Returns the tuple element shape at given index.
   // Precondition: IsTuple(shape) && TupleElementCount(shape) > index
   static const Shape& GetTupleElementShape(const Shape& shape, int64 index);
+
+  // Returns the number of elements, recursively, in the given shape.
+  static int64 SubshapeCount(const Shape& shape);
 
   // Slices tuple elements in the range [start, limit) and returns a new tuple
   // shape. E.g. a tuple like (f32, s32, u32) would slice via 1,3 to (s32, u32).
@@ -473,8 +482,11 @@ class ShapeUtil {
   static bool IndexIsValid(const Shape& shape, ShapeIndexView index);
 
   // GetSubshape and GetMutableSubshape return a particular nested Shape within
-  // the given Shape argument.
+  // the given Shape argument. The non-Try variants check fail if index is
+  // invalid.
   static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);
+  static StatusOr<const Shape*> TryGetSubshape(const Shape& shape,
+                                               ShapeIndexView index);
   static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);
 
   // Returns whether the given index in the given shape is a leaf element of the
@@ -510,25 +522,9 @@ class ShapeUtil {
   static Status ForEachMutableSubshapeWithStatus(
       Shape* shape, const MutatingStatusVisitorFunction& func);
 
-  // Removes all degenerate dimensions (size one) from the given shape. The
-  // stripped minor_to_major preserves the relative ordering of non-degenerate
-  // dimensions. The stripped shape has the property that the underlying
-  // representation (bits in memory) for the stripped shape is the same as the
-  // original shape modulo padding. Examples:
-  //
-  // input shape:    F32 [1, 2, 1], minor_to_major = {0, 1, 2}
-  // stripped shape: F32 [2], minor_to_major = {0}
-  //
-  // input shape:    F32 [6, 1, 5], minor_to_major = {2, 0, 1}
-  // stripped shape: F32 [6, 5], minor_to_major = {1, 0}
-  //
-  // input shape:    F32 [1, 7, 1, 6, 5, 1], minor_to_major = {0, 2, 5, 4, 3, 1}
-  // stripped shape: F32 [7, 6, 5], minor_to_major = {0, 2, 1}
-  //
-  // input shape:    F32 [1, 1], minor_to_major = {0, 1}
-  // stripped shape: F32 [], minor_to_major = {}
-  // Precondition: !ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)
-  static Shape StripDegenerateDimensions(const Shape& shape);
+  // Returns true if `shape` (which must be an array) with degenerate dimensions
+  // (dimensions with bound 1).
+  static bool HasDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[permutation[i]] = argument.dimensions[i]
@@ -714,7 +710,7 @@ class ShapeUtil {
                                      tensorflow::gtl::ArraySlice<int64> incr,
                                      const FnType& visitor_function,
                                      bool parallel = false) {
-    if (ShapeUtil::HasZeroElements(shape)) {
+    if (ShapeUtil::IsZeroElementArray(shape)) {
       return Status::OK();
     }
     CHECK_EQ(Rank(shape), base.size());

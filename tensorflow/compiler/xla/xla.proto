@@ -225,14 +225,6 @@ message ExecutionOptions {
   repeated DeviceHandle device_handles = 5;
 }
 
-message SnapshotComputationRequest {
-  ComputationHandle computation = 1;
-}
-
-message LoadComputationSnapshotResponse {
-  ComputationHandle computation = 1;
-}
-
 message GetDeviceHandlesRequest {
   int64 device_count = 1;
 }
@@ -291,11 +283,6 @@ message ResetDeviceRequest {
 message ResetDeviceResponse {
 }
 
-message ComputationStatsRequest {
-  ComputationHandle computation = 1;
-  DebugOptions debug_options = 2;
-}
-
 message ComputationGraphStatsRequest {
   HloModuleProto computation = 1;
   DebugOptions debug_options = 2;
@@ -303,14 +290,6 @@ message ComputationGraphStatsRequest {
 
 message ComputationStatsResponse {
   ComputationStats stats = 1;
-}
-
-message ComputationRequest {
-  string name = 1;
-}
-
-message ComputationResponse {
-  ComputationHandle computation = 1;
 }
 
 message CreateChannelHandleRequest {
@@ -327,34 +306,12 @@ message UnregisterRequest {
 message UnregisterResponse {
 }
 
-message SetReturnValueRequest {
-  ComputationHandle computation = 1;
-  ComputationDataHandle operand = 2;
-}
-
-message SetReturnValueResponse {
-}
-
-message ExecuteRequest {
-  reserved 3, 4;
-
-  ComputationHandle computation = 1;
-  repeated GlobalDataHandle arguments = 2;
-
-  // Options that affect how XLA compiles and runs code to service this request.
-  ExecutionOptions execution_options = 5;
-}
-
 message ExecuteGraphRequest {
   HloModuleProto computation = 1;
   repeated GlobalDataHandle arguments = 2;
 
   // Options that affect how XLA compiles and runs code to service this request.
   ExecutionOptions execution_options = 3;
-}
-
-message ExecuteParallelRequest {
-  repeated ExecuteRequest requests = 1;
 }
 
 message ExecuteGraphParallelRequest {
@@ -370,21 +327,6 @@ message ExecuteParallelResponse {
   repeated ExecuteResponse responses = 1;
 }
 
-message ExecuteAsyncRequest {
-  reserved 3, 4;
-
-  ComputationHandle computation = 1;
-  repeated GlobalDataHandle arguments = 2;
-
-  // Options that affect how XLA compiles and runs code to service this request.
-  ExecutionOptions execution_options = 6;
-}
-
-message ExecuteAsyncResponse {
-  // A handle to the execution launched asynchronously.
-  ExecutionHandle execution = 1;
-}
-
 message WaitForExecutionRequest {
   ExecutionHandle execution = 1;
 }
@@ -394,31 +336,13 @@ message WaitForExecutionResponse {
   ExecutionProfile profile = 2;
 }
 
-message IsConstantRequest {
-  ComputationHandle computation = 1;
-  ComputationDataHandle operand = 2;
-  int64 num_parameters = 3;
-}
-
-message IsConstantResponse {
-  bool is_constant = 1;
-}
-
-message ComputeConstantRequest {
-  ComputationHandle computation = 1;
-  ComputationDataHandle operand = 2;
-  Layout output_layout = 3;
-  repeated LiteralProto parameters = 4;
-}
-
 message ComputeConstantGraphRequest {
   HloModuleProto computation = 1;
   Layout output_layout = 2;
 }
 
 message ComputeConstantResponse {
-  // A LiteralProto is returned directly for this request, instead of a
-  // ComputationDataHandle.
+  // A LiteralProto is returned directly for this request.
   LiteralProto literal = 1;
 }
 
@@ -460,28 +384,12 @@ message LoadDataResponse {
   int64 nanoseconds = 5;
 }
 
-message SpecializeRequest {
-  ComputationHandle computation = 1;
-  repeated GlobalDataHandle arguments = 2;
-}
-
-message SpecializeResponse {
-}
-
 message GetShapeRequest {
   GlobalDataHandle data = 1;
 }
 
 message GetShapeResponse {
   Shape shape = 1;
-}
-
-message GetComputationShapeRequest {
-  ComputationHandle computation = 1;
-}
-
-message GetComputationShapeResponse {
-  ProgramShape program_shape = 1;
 }
 
 message UnpackRequest {

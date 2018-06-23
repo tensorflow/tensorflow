@@ -220,6 +220,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
+  # TODO(nupurgarg): Verify value of contents in GraphViz.
   def testGraphviz(self):
     in_tensor = array_ops.placeholder(
         shape=[1, 16, 16, 3], dtype=dtypes.float32)
@@ -232,8 +233,42 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     graphviz_output = converter.convert()
     self.assertTrue(graphviz_output)
 
+  # TODO(nupurgarg): Verify value of contents in GraphViz.
+  def testDumpGraphviz(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    graphviz_dir = self.get_temp_dir()
+    converter.dump_graphviz_dir = graphviz_dir
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure interpreter is able to allocate and check graphviz data.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    num_items_graphviz = len(os.listdir(graphviz_dir))
+    self.assertTrue(num_items_graphviz)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    graphviz_dir = self.get_temp_dir()
+    converter.dump_graphviz_dir = graphviz_dir
+    converter.dump_graphviz_video = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure graphviz folder has more data after using video flag.
+    num_items_graphviz_video = len(os.listdir(graphviz_dir))
+    self.assertTrue(num_items_graphviz_video > num_items_graphviz)
+
   def testInferenceInputType(self):
-    in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3], dtype=dtypes.uint8)
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor
     sess = session.Session()
 
@@ -252,14 +287,13 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual('Placeholder', input_details[0]['name'])
     self.assertEqual(np.uint8, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
-    self.assertEqual((0., 0.), input_details[0]['quantization'])
+    self.assertEqual((1., 0.), input_details[0]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual('add', output_details[0]['name'])
-    self.assertEqual(np.uint8, output_details[0]['dtype'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
-    self.assertEqual((0., 0.), input_details[0]['quantization'])
 
   def testDefaultRangesStats(self):
     in_tensor = array_ops.placeholder(
@@ -401,7 +435,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError) as error:
       lite.TocoConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
                                            ['add'])
-    self.assertEqual('Please freeze the graph using freeze_graph.py',
+    self.assertEqual('Please freeze the graph using freeze_graph.py.',
                      str(error.exception))
 
   def testPbtxt(self):

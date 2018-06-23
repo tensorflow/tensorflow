@@ -334,6 +334,22 @@ TEST_F(LiteralUtilTest, NonScalarEquality) {
   EXPECT_EQ(nil, nil);
 }
 
+TEST_F(LiteralUtilTest, TokenEquality) {
+  auto token0 = Literal::CreateToken();
+  auto token1 = Literal::CreateToken();
+  auto scalar = Literal::CreateR0<float>(1.0);
+
+  EXPECT_EQ(*token0, *token1);
+  EXPECT_NE(*token0, *scalar);
+
+  EXPECT_EQ(*Literal::MakeTuple({token0.get()}),
+            *Literal::MakeTuple({token0.get()}));
+  EXPECT_EQ(*Literal::MakeTuple({token0.get(), scalar.get()}),
+            *Literal::MakeTuple({token1.get(), scalar.get()}));
+  EXPECT_NE(*Literal::MakeTuple({token0.get(), scalar.get()}),
+            *Literal::MakeTuple({scalar.get(), token1.get()}));
+}
+
 TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   // Test equality with literals which have different layouts.
   auto colmajor =
@@ -1431,7 +1447,7 @@ TEST_F(LiteralUtilTest, LiteralSliceOfALiteralSlice) {
   EXPECT_EQ(matrix_view, *Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}));
 }
 
-TEST_F(LiteralUtilTest, BorrowingLiteralFromOneBufferPtrTest) {
+TEST_F(LiteralUtilTest, BorrowingLiteralFromOneBufferPtr) {
   std::vector<int64> int64_values = {1, 2, 3};
   const Shape literal_shape = ShapeUtil::MakeShape(S64, {3});
 
@@ -1443,7 +1459,7 @@ TEST_F(LiteralUtilTest, BorrowingLiteralFromOneBufferPtrTest) {
   EXPECT_EQ(literal.Get<int64>({2}), 3);
 }
 
-TEST_F(LiteralUtilTest, BorrowingLiteralFromMultipleBufferPtrsTest) {
+TEST_F(LiteralUtilTest, BorrowingLiteralFromMultipleBufferPtrs) {
   std::vector<int64> one_two_three = {1, 2, 3};
   const Shape one_two_three_shape = ShapeUtil::MakeShape(S64, {3});
 

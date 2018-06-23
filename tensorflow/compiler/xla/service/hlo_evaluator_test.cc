@@ -206,6 +206,15 @@ TEST_P(HloEvaluatorTest, DoesOr) {
                std::move(rhs));
 }
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
+// element-wise or with 2 operands.
+TEST_P(HloEvaluatorTest, DoesXor) {
+  auto lhs = Literal::CreateR2<int64>({{1, 0}, {-100, 4}});
+  auto rhs = Literal::CreateR2<int64>({{2, 4}, {4, 4}});
+  auto expected = Literal::CreateR2<int64>({{3, 4}, {-104, 0}});
+  TestBinaryOp(HloOpcode::kXor, std::move(expected), std::move(lhs),
+               std::move(rhs));
+}
+// Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise multiply with 2 operands.
 TEST_P(HloEvaluatorTest, DoesMultiply) {
   auto lhs = Literal::CreateR2<int32>({{-1, 0}, {-100, 4}});
@@ -1248,7 +1257,7 @@ void BM_ReducePrecisely(int num_iters) {
   HloComputation::Builder b("BM_ReducePrecisely");
   HloModuleConfig config;
   config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-  HloModule module("BM_ReducePrecisely", VersionedComputationHandle(), config);
+  HloModule module("BM_ReducePrecisely", config);
 
   constexpr int kNumElements = 1 << 25;  // float += 1 saturates at 1<<24
   std::vector<float> v(kNumElements, 1.0f);

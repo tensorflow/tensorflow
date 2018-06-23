@@ -144,8 +144,12 @@ class DotOpEmitter {
   }
 
   std::tuple<int64, int64, int64> GetGemmTileSize() const {
+    // Tuned for broadwell - Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz
+    //
+    // TODO(b/80093688): Tune for other architectures and centralize this
+    // information in one place.
     const std::tuple<int64, int64, int64> kDefaultTileSize =
-        std::tuple<int64, int64, int64>(3, 5, 1);
+        std::tuple<int64, int64, int64>(11, 9, 1);
     return options::LlvmIrGemmTileSize(hlo_module_config_)
         .value_or(kDefaultTileSize);
   }

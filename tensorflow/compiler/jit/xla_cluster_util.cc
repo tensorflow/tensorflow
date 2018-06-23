@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -66,6 +67,9 @@ string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
   }
   return description;
 }
+
+bool AlwaysForwardsRefInput(const Node& node) { return node.IsIdentity(); }
+
 }  // namespace
 
 Status DeviceToDeviceType(const string& device, DeviceType* device_type) {
@@ -75,6 +79,24 @@ Status DeviceToDeviceType(const string& device, DeviceType* device_type) {
   }
   *device_type = DeviceType(parsed.type);
   return Status::OK();
+}
+
+bool HasForwardedRefInput(const Node& node) {
+  if (AlwaysForwardsRefInput(node)) {
+    for (const Edge* incoming_edge : node.in_edges()) {
+      if (incoming_edge->IsControlEdge()) {
+        continue;
+      }
+
+      Node* incoming_node = incoming_edge->src();
+      if (IsRefType(incoming_node->output_type(incoming_edge->src_output()))) {
+        VLOG(2) << "Node " << node.def().ShortDebugString() << " has ref input "
+                << incoming_node->name() << " " << incoming_node->type_string();
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
@@ -117,27 +139,32 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
   };
 
   for (Edge const* edge : graph->edges()) {
-    if (edge->dst()->IsEnter()) {
-      // Lift edges to an "Enter" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->dst()->id()].frame_name;
-      int dst = GetOrAddFrameNodeId(frame_name);
-      if (!cycles->InsertEdge(edge->src()->id(), dst)) {
-        return errors::Internal(
-            "Cycle detected when adding enter->frame edge: ",
-            DescribeCycle(cycles, *graph, edge->src()->id(), dst));
+    if (edge->dst()->IsEnter() || edge->src()->IsExit()) {
+      const char* src_type = "pre-enter";
+      const char* dst_type = "post-exit";
+      int src = edge->src()->id();
+      int dst = edge->dst()->id();
+
+      if (edge->dst()->IsEnter()) {
+        // Lift edges to an "Enter" node to the corresponding frame node.
+        const string& frame_name =
+            control_flow_info[edge->dst()->id()].frame_name;
+        dst = GetOrAddFrameNodeId(frame_name);
+        dst_type = "frame";
       }
-      continue;
-    }
-    if (edge->src()->IsExit()) {
-      // Lift edges from an "Exit" node to the corresponding frame node.
-      const string& frame_name =
-          control_flow_info[edge->src()->id()].frame_name;
-      int src = GetOrAddFrameNodeId(frame_name);
-      if (!cycles->InsertEdge(src, edge->dst()->id())) {
+
+      if (edge->src()->IsExit()) {
+        // Lift edges from an "Exit" node to the corresponding frame node.
+        const string& frame_name =
+            control_flow_info[edge->src()->id()].frame_name;
+        src = GetOrAddFrameNodeId(frame_name);
+        src_type = "frame";
+      }
+
+      if (!cycles->InsertEdge(src, dst)) {
         return errors::Internal(
-            "Cycle detected when adding frame->exit edge: ",
-            DescribeCycle(cycles, *graph, src, edge->dst()->id()));
+            "Cycle detected when adding ", src_type, "->", dst_type,
+            " edge: ", DescribeCycle(cycles, *graph, src, dst));
       }
       // Drop the original edge.
       continue;

@@ -321,10 +321,6 @@ default_strategy = NamedDistribution(
 one_device_strategy = NamedDistribution(
     "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
     required_gpus=None)
-tpu_strategy_single_iteration = NamedDistribution(
-    "TPUSingleIteration",
-    lambda: tpu_lib.TPUStrategy(iterations_per_step=1),
-    required_tpu=True)
 tpu_strategy = NamedDistribution("TPU", tpu_lib.TPUStrategy, required_tpu=True)
 # Note that we disable prefetching for testing since prefetching makes
 # the input non-deterministic.

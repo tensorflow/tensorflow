@@ -922,7 +922,7 @@ class DeferredModeTest(test.TestCase):
     self.assertEqual(repr(x),
                      '<DeferredTensor \'x\' shape=(?, 2) dtype=float32>')
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSimpleNetworkBuilding(self):
     inputs = keras.engine.Input(shape=(32,))
     if context.executing_eagerly():
@@ -947,7 +947,7 @@ class DeferredModeTest(test.TestCase):
       outputs = network(inputs)
       self.assertEqual(outputs.shape.as_list(), [10, 4])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMultiIONetworkbuilding(self):
     input_a = keras.engine.Input(shape=(32,))
     input_b = keras.engine.Input(shape=(16,))

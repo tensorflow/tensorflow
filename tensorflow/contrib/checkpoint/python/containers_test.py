@@ -32,7 +32,7 @@ from tensorflow.python.training.checkpointable import util as checkpointable_uti
 
 class UniqueNameTrackerTests(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNames(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
@@ -65,7 +65,7 @@ class UniqueNameTrackerTests(test.TestCase):
     self.assertEqual(4., self.evaluate(restore_slots.x_1_1))
     self.assertEqual(5., self.evaluate(restore_slots.y))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testExample(self):
     class SlotManager(checkpointable.Checkpointable):
 
@@ -97,7 +97,7 @@ class UniqueNameTrackerTests(test.TestCase):
         dependency_names,
         ["x", "x_1", "y", "slot_manager", "slotdeps", "save_counter"])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLayers(self):
     tracker = containers.UniqueNameTracker()
     tracker.track(layers.Dense(3), "dense")

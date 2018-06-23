@@ -27,7 +27,7 @@ class MirrorPadOp : public XlaOpKernel {
 
   xla::StatusOr<xla::XlaOp> DoMirrorPad(const xla::XlaOp& t,
                                         const xla::Shape& original_shape,
-                                        const xla::Literal& pad_literal,
+                                        const xla::LiteralSlice& pad_literal,
                                         xla::XlaBuilder* b) {
     xla::XlaOp accum = t;
     for (int64 dimno = xla::ShapeUtil::Rank(original_shape) - 1; dimno >= 0;

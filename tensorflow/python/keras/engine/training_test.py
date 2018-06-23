@@ -129,8 +129,10 @@ class TrainingTest(test.TestCase):
           {
               'input_a': input_a_np,
               'input_b': input_b_np
-          }, {'dense': output_d_np,
-              'dropout': output_e_np},
+          }, {
+              'dense': output_d_np,
+              'dropout': output_e_np
+          },
           epochs=1,
           batch_size=5,
           verbose=0)
@@ -138,8 +140,10 @@ class TrainingTest(test.TestCase):
           {
               'input_a': input_a_np,
               'input_b': input_b_np
-          }, {'dense': output_d_np,
-              'dropout': output_e_np},
+          }, {
+              'dense': output_d_np,
+              'dropout': output_e_np
+          },
           epochs=1,
           batch_size=5,
           verbose=1)
@@ -147,8 +151,10 @@ class TrainingTest(test.TestCase):
           {
               'input_a': input_a_np,
               'input_b': input_b_np
-          }, {'dense': output_d_np,
-              'dropout': output_e_np},
+          }, {
+              'dense': output_d_np,
+              'dropout': output_e_np
+          },
           validation_data=({
               'input_a': input_a_np,
               'input_b': input_b_np
@@ -162,8 +168,10 @@ class TrainingTest(test.TestCase):
       model.train_on_batch({
           'input_a': input_a_np,
           'input_b': input_b_np
-      }, {'dense': output_d_np,
-          'dropout': output_e_np})
+      }, {
+          'dense': output_d_np,
+          'dropout': output_e_np
+      })
 
       # Test with lists for loss, metrics
       loss = ['mae', 'mse']
@@ -285,16 +293,20 @@ class TrainingTest(test.TestCase):
           {
               'input_a': input_a_np,
               'input_b': input_b_np
-          }, {'dense': output_d_np,
-              'dropout': output_e_np},
+          }, {
+              'dense': output_d_np,
+              'dropout': output_e_np
+          },
           batch_size=5,
           verbose=0)
       model.evaluate(
           {
               'input_a': input_a_np,
               'input_b': input_b_np
-          }, {'dense': output_d_np,
-              'dropout': output_e_np},
+          }, {
+              'dense': output_d_np,
+              'dropout': output_e_np
+          },
           batch_size=5,
           verbose=1)
 
@@ -349,9 +361,11 @@ class TrainingTest(test.TestCase):
 
     with self.test_session():
       test_inputs = [
-          scipy_sparse.random(6, 3, density=0.25).tocsr() for _ in range(2)]
+          scipy_sparse.random(6, 3, density=0.25).tocsr() for _ in range(2)
+      ]
       test_outputs = [
-          scipy_sparse.random(6, i, density=0.25).tocsr() for i in range(3, 5)]
+          scipy_sparse.random(6, i, density=0.25).tocsr() for i in range(3, 5)
+      ]
       in1 = keras.layers.Input(shape=(3,))
       in2 = keras.layers.Input(shape=(3,))
       out1 = keras.layers.Dropout(0.5, name='dropout')(in1)
@@ -1682,7 +1696,7 @@ class TestTrainingWithDataTensors(test.TestCase):
       model.train_on_batch([input_a_np, input_b_np],
                            [output_a_np, output_b_np])
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_metric_names_are_identical_in_graph_and_eager(self):
     a = keras.layers.Input(shape=(3,), name='input_a')
     b = keras.layers.Input(shape=(3,), name='input_b')
@@ -1709,7 +1723,7 @@ class TestTrainingWithDataTensors(test.TestCase):
 
 class TestTrainingWithDatasetIterators(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_training_and_eval_methods_on_iterators_single_io(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -1721,8 +1735,8 @@ class TestTrainingWithDatasetIterators(test.TestCase):
       metrics = ['mae']
       model.compile(optimizer, loss, metrics=metrics)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
+      inputs = np.zeros((10, 3))
+      targets = np.zeros((10, 4))
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
@@ -1786,8 +1800,8 @@ class TestTrainingWithDatasetIterators(test.TestCase):
       metrics = ['mae']
       model.compile(optimizer, loss, metrics=metrics)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
+      inputs = np.zeros((10, 3))
+      targets = np.zeros((10, 4))
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
@@ -1799,7 +1813,7 @@ class TestTrainingWithDatasetIterators(test.TestCase):
       ops.get_default_graph().finalize()
       model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=1)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_iterators_running_out_of_data(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -1811,8 +1825,8 @@ class TestTrainingWithDatasetIterators(test.TestCase):
       metrics = ['mae']
       model.compile(optimizer, loss, metrics=metrics)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
+      inputs = np.zeros((10, 3))
+      targets = np.zeros((10, 4))
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(2)
       dataset = dataset.batch(10)
@@ -1838,8 +1852,8 @@ class TestTrainingWithDataset(test.TestCase):
       metrics = ['mae']
       model.compile(optimizer, loss, metrics=metrics)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
+      inputs = np.zeros((10, 3))
+      targets = np.zeros((10, 4))
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
@@ -1853,7 +1867,7 @@ class TestTrainingWithDataset(test.TestCase):
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 validation_data=dataset, validation_steps=2)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_training_and_eval_methods_on_dataset(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -1865,8 +1879,8 @@ class TestTrainingWithDataset(test.TestCase):
       metrics = ['mae']
       model.compile(optimizer, loss, metrics=metrics)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
+      inputs = np.zeros((10, 3))
+      targets = np.zeros((10, 4))
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
@@ -1928,8 +1942,8 @@ class TestTrainingWithDataset(test.TestCase):
       model.compile(optimizer, loss)
 
       # User forgets to batch the dataset
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
+      inputs = np.zeros((10, 3))
+      targets = np.zeros((10, 4))
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
 
@@ -1938,8 +1952,8 @@ class TestTrainingWithDataset(test.TestCase):
         model.train_on_batch(dataset)
 
       # Wrong input shape
-      inputs = np.zeros((10, 5), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
+      inputs = np.zeros((10, 5))
+      targets = np.zeros((10, 4))
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)

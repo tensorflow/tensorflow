@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Dequantize"
+  endpoint {
+    name: "quantization.dequantize"
+  }
+  endpoint {
+    name: "dequantize"
+    deprecation_message: "tf.dequantize is deprecated, please use tf.quantization.dequantize instead."
+  }
+}
