@@ -85,7 +85,6 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   if (env_ == nullptr || env_->rendezvous_mgr == nullptr) {
     return tensorflow::errors::Internal("invalid eager env_ or env_->rendezvous_mgr.");
   } 
-  tensorflow::RemoteRendezvous* r = env_->rendezvous_mgr->Find(0);
   std::vector<tensorflow::Device*> devices;
 
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
