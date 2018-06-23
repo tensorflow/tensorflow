@@ -369,7 +369,7 @@ class VarianceScalingInitializationTest(test.TestCase):
     expect_mean = 0.
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(
-      distribution='truncated_normal')
+        distribution='truncated_normal')
 
     with self.test_session(use_gpu=True), \
       test.mock.patch.object(
@@ -402,7 +402,7 @@ class VarianceScalingInitializationTest(test.TestCase):
     expect_mean = 0.
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(
-      distribution='untruncated_normal')
+        distribution='untruncated_normal')
 
     with self.test_session(use_gpu=True), \
       test.mock.patch.object(
