@@ -26,7 +26,6 @@ import weakref
 
 import six
 
-from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.distribute.python import input_ops
 from tensorflow.contrib.distribute.python import prefetching_ops_v2
 from tensorflow.python.eager import context
@@ -43,7 +42,7 @@ from tensorflow.python.util import nest
 
 
 # pylint: disable=line-too-long
-# TODO(josh11b): Should device values be strings or DeviceSpec objects
+# TODO(josh11b): Should device values be strings or DeviceSpec objects?
 # Not sure DeviceSpec objects are usable as a dict key.
 class DistributedValues(object):
   """Holds a map from device to values. Either PerDevice or Mirrored."""
@@ -163,9 +162,16 @@ class PerDevice(DistributedValues):
   pass
 
 
-class Mirrored(DistributedValues):
+# Note that unlike PerDevice, Mirrored values inherit from
+# DistributedDelegate and so can be used directly in cross-tower mode.
+class Mirrored(DistributedDelegate):
   """Holds a map from device to values which are kept in sync."""
-  pass
+
+  def _get_cross_tower(self):
+    device = device_util.canonicalize(device_util.current())
+    if device in self._index:
+      return self._index[device]
+    return list(self._index.values())[0]
 
 
 def _assign_on_device(device, variable, tensor):
@@ -186,6 +192,10 @@ class DistributedVariable(DistributedDelegate):
     # Child class must set self._primary_var before calling
     # super(...).__init__(index).
     self._common_name = self._primary_var.name.split(":")[0]
+    # Use a weakref to make it easy to map from the contained values
+    # to the container without introducing a reference cycle.
+    for v in six.itervalues(index):
+      v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
     super(DistributedVariable, self).__init__(index)
 
   @property
@@ -281,10 +291,6 @@ class MirroredVariable(DistributedVariable, Mirrored,
   """Holds a map from device to variables whose values are kept in sync."""
 
   def __init__(self, index, primary_var):
-    # Use a weakref to make it easy to map from the contained values
-    # to the container without introducing a reference cycle.
-    for v in six.itervalues(index):
-      v._mirrored_container = weakref.ref(self)  # pylint: disable=protected-access
     self._primary_var = primary_var
     super(MirroredVariable, self).__init__(index)
 
@@ -353,7 +359,7 @@ class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():
-      return distribute_lib.get_distribution_strategy().fetch(
+      return distribute_lib.get_distribution_strategy().read_var(
           tower_local_variable)
     spec = saver.BaseSaverBuilder.SaveSpec(
         tensor=tensor,
@@ -492,40 +498,40 @@ def regroup(per_device, wrap_class=PerDevice):
       same_id = False
       break
   # Consider three cases where same_id is true:
-  # * If v0 is a MirroredVariable (and same_id means it is the same
-  #   across all devices), we want to return it. We check
-  #   MirroredVariable specifically since it can look like it
-  #   has a _mirrored_container member since its members do.
-  # * If v0 is a member of a mirrored variable, in which case
-  #   hasattr(v0, "_mirrored_container") is true, we want to
-  #   return the MirroredVariable that contains it using the
-  #   _mirrored_container logic below. This case can trigger
+  # * If v0 is a DistributedVariable (a MirroredVariable or
+  #   TowerLocalVariable, and same_id means it is the same across all
+  #   devices), we want to return it. We check DistributedVariable
+  #   specifically since it can look like it has a
+  #   _distributed_container member since its members do.
+  # * If v0 is a member of a distributed variable, in which case
+  #   hasattr(v0, "_distributed_container") is true, we want to
+  #   return the DistributedVariable that contains it using the
+  #   _distributed_container logic below. This case can trigger
   #   same_id when there is only one device.
   # * In any other situation, same_id means we return v0.
-  if same_id and (isinstance(v0, MirroredVariable) or
-                  not hasattr(v0, "_mirrored_container")):
+  if same_id and (isinstance(v0, DistributedVariable) or
+                  not hasattr(v0, "_distributed_container")):
     return v0
 
   # Detect the case where each device has a parallel component of the
-  # same MirroredVariable. In this case we want to return the
-  # containing MirroredVariable, after a bunch of sanity checking.
-  # In particular, each component should have the same container,
-  # and the devices of the variables should match the keys of the
-  # per-device dictionary.
-  # TODO(josh11b): Do we need similar logic for TowerLocalVariables?
-  if hasattr(v0, "_mirrored_container"):
+  # same MirroredVariable (or TowerLocalVariable). In this case we
+  # want to return the containing MirroredVariable, after a bunch of
+  # sanity checking. In particular, each component should have the
+  # same container, and the devices of the variables should match the
+  # keys of the per-device dictionary.
+  if hasattr(v0, "_distributed_container"):
     # pylint: disable=protected-access
     assert not isinstance(v0, MirroredVariable), (
         "ids = %s, items = %s" % ([id(v[1]) for v in items], items))
     assert _devices_match(v0.device, items[0][0]), (
         "v0.device = %s, items = %s" % (v0.device, items))
-    mirrored_container = v0._mirrored_container()
-    assert mirrored_container is not None
+    distributed_container = v0._distributed_container()
+    assert distributed_container is not None
     for d, v in items[1:]:
       assert _devices_match(v.device, d), (
           "v.device = %s, d = %s, items = %s" % (v.device, d, items))
-      assert mirrored_container is v._mirrored_container()
-    return mirrored_container
+      assert distributed_container is v._distributed_container()
+    return distributed_container
   # pylint: enable=protected-access
 
   return wrap_class(per_device)
@@ -607,8 +613,7 @@ class PerDeviceDataset(object):
       # TODO(priyag): If dropping remainder is not appropriate, find another
       # approach to distributing the dataset when not possible to divide evenly.
       # Possibly not an issue when we start using PartitionedDataset.
-      self._dataset = dataset.apply(
-          batching.batch_and_drop_remainder(len(devices)))
+      self._dataset = dataset.batch(len(devices), drop_remainder=True)
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for the distributed PerDeviceDataset."""

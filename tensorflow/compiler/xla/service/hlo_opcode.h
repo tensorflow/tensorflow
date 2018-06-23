@@ -94,6 +94,7 @@ namespace xla {
   V(kAnd, "and")                                             \
   V(kNot, "not")                                             \
   V(kOr, "or")                                               \
+  V(kXor, "xor")                                             \
   V(kLt, "less-than", kHloOpcodeIsComparison)                \
   V(kMap, "map", kHloOpcodeIsVariadic)                       \
   V(kMaximum, "maximum")                                     \

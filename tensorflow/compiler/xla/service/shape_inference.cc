@@ -885,6 +885,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
       if (lhs.element_type() != PRED &&
           !primitive_util::IsIntegralType(lhs.element_type())) {
         return InvalidArgument(
@@ -939,6 +940,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     HloOpcode opcode,
     tensorflow::gtl::ArraySlice<const HloInstruction*> operands) {
   std::vector<const Shape*> operand_shapes;
+  operand_shapes.reserve(operands.size());
   for (const HloInstruction* operand : operands) {
     operand_shapes.push_back(&operand->shape());
   }
@@ -954,6 +956,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   switch (opcode) {
     case HloOpcode::kTuple: {
       Shape result = ShapeUtil::MakeTupleShape({});
+      result.mutable_tuple_shapes()->Reserve(operand_shapes.size());
       for (const Shape* shape : operand_shapes) {
         ShapeUtil::AppendShapeToTuple(*shape, &result);
       }

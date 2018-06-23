@@ -735,8 +735,7 @@ void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
                             GraphDef* tensorflow_graph) {
   string softmax_input;
   Operator* providing_op = GetOpWithOutput(model, src_op.inputs[0]);
-  if (providing_op != nullptr &&
-      providing_op->type == OperatorType::kTensorFlowReshape) {
+  if (providing_op != nullptr && providing_op->type == OperatorType::kReshape) {
     softmax_input = src_op.inputs[0];
   } else {
     // Insert a reshape operator that reduces the dimensions down to the 2 that
@@ -776,8 +775,7 @@ void ConvertLogSoftmaxOperator(const Model& model,
                                GraphDef* tensorflow_graph) {
   string softmax_input;
   Operator* providing_op = GetOpWithOutput(model, src_op.inputs[0]);
-  if (providing_op != nullptr &&
-      providing_op->type == OperatorType::kTensorFlowReshape) {
+  if (providing_op != nullptr && providing_op->type == OperatorType::kReshape) {
     softmax_input = src_op.inputs[0];
   } else {
     // Insert a reshape operator that reduces the dimensions down to the 2 that
@@ -1045,6 +1043,18 @@ void ConvertSqrtOperator(const TensorFlowSqrtOperator& src_op,
   CHECK_EQ(src_op.inputs.size(), 1);
   *sqrt_op->add_input() = src_op.inputs[0];
   (*sqrt_op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
+void ConvertRsqrtOperator(const Model& model,
+                          const TensorFlowRsqrtOperator& src_op,
+                          GraphDef* tensorflow_graph) {
+  auto* rsqrt_op = tensorflow_graph->add_node();
+  rsqrt_op->set_op("Rsqrt");
+  rsqrt_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *rsqrt_op->add_input() = src_op.inputs[0];
+  const auto data_type = GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*rsqrt_op->mutable_attr())["T"].set_type(data_type);
 }
 
 void ConvertSplitOperator(const Model& model,
@@ -1843,20 +1853,24 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertConcatenationOperator(
         model, static_cast<const ConcatenationOperator&>(src_op),
         tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowReshape) {
+  } else if (src_op.type == OperatorType::kReshape) {
     ConvertTensorFlowReshapeOperator(
         model, static_cast<const TensorFlowReshapeOperator&>(src_op),
         tensorflow_graph);
   } else if (src_op.type == OperatorType::kL2Pool) {
     ConvertL2PoolOperator(static_cast<const L2PoolOperator&>(src_op),
                           tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowSquare) {
+  } else if (src_op.type == OperatorType::kSquare) {
     ConvertSquareOperator(static_cast<const TensorFlowSquareOperator&>(src_op),
                           tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowSqrt) {
+  } else if (src_op.type == OperatorType::kSqrt) {
     ConvertSqrtOperator(static_cast<const TensorFlowSqrtOperator&>(src_op),
                         tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowSplit) {
+  } else if (src_op.type == OperatorType::kRsqrt) {
+    ConvertRsqrtOperator(model,
+                         static_cast<const TensorFlowRsqrtOperator&>(src_op),
+                         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kSplit) {
     ConvertSplitOperator(model,
                          static_cast<const TensorFlowSplitOperator&>(src_op),
                          tensorflow_graph);
@@ -1900,11 +1914,11 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kSub) {
     ConvertSubOperator(model, static_cast<const SubOperator&>(src_op),
                        tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowMinimum) {
+  } else if (src_op.type == OperatorType::kMinimum) {
     ConvertTensorFlowMinimumOperator(
         model, static_cast<const TensorFlowMinimumOperator&>(src_op),
         tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowMaximum) {
+  } else if (src_op.type == OperatorType::kMaximum) {
     ConvertTensorFlowMaximumOperator(
         model, static_cast<const TensorFlowMaximumOperator&>(src_op),
         tensorflow_graph);
@@ -1923,7 +1937,7 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kTranspose) {
     ConvertTransposeOperator(
         model, static_cast<const TransposeOperator&>(src_op), tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowShape) {
+  } else if (src_op.type == OperatorType::kShape) {
     ConvertTensorFlowShapeOperator(
         model, static_cast<const TensorFlowShapeOperator&>(src_op),
         tensorflow_graph);
@@ -1954,22 +1968,22 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertRandomUniformOperator(
         model, static_cast<const RandomUniformOperator&>(src_op),
         tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowEqual) {
+  } else if (src_op.type == OperatorType::kEqual) {
     ConvertComparisonOperator(model, src_op, "Equal", tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowNotEqual) {
+  } else if (src_op.type == OperatorType::kNotEqual) {
     ConvertComparisonOperator(model, src_op, "NotEqual", tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowGreater) {
+  } else if (src_op.type == OperatorType::kGreater) {
     ConvertComparisonOperator(model, src_op, "Greater", tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowGreaterEqual) {
+  } else if (src_op.type == OperatorType::kGreaterEqual) {
     ConvertComparisonOperator(model, src_op, "GreaterEqual", tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowLess) {
+  } else if (src_op.type == OperatorType::kLess) {
     ConvertComparisonOperator(model, src_op, "Less", tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowLessEqual) {
+  } else if (src_op.type == OperatorType::kLessEqual) {
     ConvertComparisonOperator(model, src_op, "LessEqual", tensorflow_graph);
   } else if (src_op.type == OperatorType::kSelect) {
     ConvertSelectOperator(model, static_cast<const SelectOperator&>(src_op),
                           tensorflow_graph);
-  } else if (src_op.type == OperatorType::kTensorFlowTile) {
+  } else if (src_op.type == OperatorType::kTile) {
     ConvertTileOperator(model,
                         static_cast<const TensorFlowTileOperator&>(src_op),
                         tensorflow_graph);

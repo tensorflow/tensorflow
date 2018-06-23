@@ -28,6 +28,14 @@ from tensorflow.python.client import device_lib
 tfe = tf.contrib.eager
 
 
+def train_one_iter(model, inputs, labels, optimizer, global_step=None):
+  """Train for one iteration."""
+  grads, vars_, loss = model.compute_gradients(inputs, labels, training=True)
+  optimizer.apply_gradients(zip(grads, vars_), global_step=global_step)
+
+  return loss
+
+
 class RevnetTest(tf.test.TestCase):
 
   def setUp(self):
@@ -59,7 +67,7 @@ class RevnetTest(tf.test.TestCase):
   def test_compute_gradients(self):
     """Test `compute_gradients` function."""
 
-    grads, vars_ = self.model.compute_gradients(inputs=self.x, labels=self.t)
+    grads, vars_, _ = self.model.compute_gradients(inputs=self.x, labels=self.t)
     self.assertTrue(isinstance(grads, list))
     self.assertTrue(isinstance(vars_, list))
     self.assertEqual(len(grads), len(vars_))
@@ -67,38 +75,48 @@ class RevnetTest(tf.test.TestCase):
       if grad is not None:
         self.assertEqual(grad.shape, var.shape)
 
-  def test_train_step(self):
-    """Test `train_step` function."""
-
-    logits, _ = self.model(self.x, training=True)
-    loss = self.model.compute_loss(logits=logits, labels=self.t)
-    optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
-
-    # Loss should be decreasing after each optimization step
-    for _ in range(3):
-      loss_ = self.model.train_step(self.x, self.t, optimizer, report=True)
-      self.assertTrue(loss_.numpy() <= loss.numpy())
-      loss = loss_
-
   def test_call_defun(self):
-    """Test `call` function with tfe.defun apply."""
+    """Test `call` function with defun."""
 
     y, _ = tfe.defun(self.model.call)(self.x, training=False)
     self.assertEqual(y.shape, [self.config.batch_size, self.config.n_classes])
 
-  def test_train_step_defun(self):
-    self.model.call = tfe.defun(self.model.call)
-    logits, _ = self.model(self.x, training=True)
-    loss = self.model.compute_loss(logits=logits, labels=self.t)
-    optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+  def test_compute_gradients_defun(self):
+    """Test `compute_gradients` function with defun."""
+    compute_gradients = tfe.defun(self.model.compute_gradients)
+    grads, vars_, _ = compute_gradients(self.x, self.t)
+    self.assertTrue(isinstance(grads, list))
+    self.assertTrue(isinstance(vars_, list))
+    self.assertEqual(len(grads), len(vars_))
+    for grad, var in zip(grads, vars_):
+      if grad is not None:
+        self.assertEqual(grad.shape, var.shape)
 
-    for _ in range(3):
-      loss_ = self.model.train_step(self.x, self.t, optimizer, report=True)
-      self.assertTrue(loss_.numpy() <= loss.numpy())
-      loss = loss_
+  def test_training_graph(self):
+    """Test model training in graph mode."""
 
-    # Initialize new model, so that other tests are not affected
-    self.model = revnet.RevNet(config=self.config)
+    with tf.Graph().as_default():
+      x = tf.random_normal(
+          shape=(self.config.batch_size,) + self.config.input_shape)
+      t = tf.random_uniform(
+          shape=(self.config.batch_size,),
+          minval=0,
+          maxval=self.config.n_classes,
+          dtype=tf.int32)
+      global_step = tfe.Variable(0., trainable=False)
+      model = revnet.RevNet(config=self.config)
+      grads_all, vars_all, _ = model.compute_gradients(x, t, training=True)
+      optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+      updates = model.get_updates_for(x)
+      self.assertEqual(len(updates), 192)
+      with tf.control_dependencies(model.get_updates_for(x)):
+        train_op = optimizer.apply_gradients(
+            zip(grads_all, vars_all), global_step=global_step)
+
+      with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        for _ in range(1):
+          sess.run(train_op)
 
 
 # Benchmark related
@@ -227,7 +245,7 @@ class RevnetBenchmark(tf.test.Benchmark):
           iterator = make_iterator((images, labels))
           for _ in range(num_burn):
             (images, labels) = iterator.next()
-            model.train_step(images, labels, optimizer)
+            train_one_iter(model, images, labels, optimizer)
           if execution_mode:
             tfe.async_wait()
           self._force_device_sync()
@@ -236,7 +254,7 @@ class RevnetBenchmark(tf.test.Benchmark):
           start = time.time()
           for _ in range(num_iters):
             (images, labels) = iterator.next()
-            model.train_step(images, labels, optimizer)
+            train_one_iter(model, images, labels, optimizer)
           if execution_mode:
             tfe.async_wait()
           self._force_device_sync()

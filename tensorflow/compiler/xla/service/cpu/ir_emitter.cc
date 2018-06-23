@@ -563,7 +563,8 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &ir_builder_);
 
-        llvm_ir::IrArray::Index input_index(index.size());
+        llvm_ir::IrArray::Index input_index(ir_builder_.getInt64Ty(),
+                                            index.size());
         llvm::Value* in_bounds_condition = nullptr;
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* strided_index = ir_builder_.CreateNSWMul(
@@ -694,7 +695,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // Compute the operand index to visit and evaluate the condition whether the
   // operand index is within the bounds. The unsigned comparison includes
   // checking whether the operand index >= 0.
-  llvm_ir::IrArray::Index operand_index(source_index.size());
+  llvm_ir::IrArray::Index operand_index(ir_builder_.getInt64Ty(),
+                                        source_index.size());
   llvm::Value* in_bounds_condition = ir_builder_.getTrue();
   for (int64 i = 0; i < rank; ++i) {
     llvm::Value* strided_index = ir_builder_.CreateNSWMul(
@@ -768,7 +770,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // value and the current output value.
   SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(),
                         &ir_builder_);
-  llvm_ir::IrArray::Index selected_index;
+  llvm_ir::IrArray::Index selected_index(source_index.GetType());
   for (int64 i = 0; i < rank; ++i) {
     llvm::Value* selected_index_address_slot = ir_builder_.CreateInBoundsGEP(
         selected_index_address, {ir_builder_.getInt32(i)});
@@ -1110,7 +1112,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 
         // We are not in the padding, so carry out the computation.
         int num_dims = num_spatial_dims + 2;
-        llvm_ir::IrArray::Index input_index(num_dims);
+        llvm_ir::IrArray::Index input_index(ir_builder_.getInt64Ty(), num_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
           input_index[dnums.input_spatial_dimensions(i)] = input_spatial[i];
         }
@@ -1118,7 +1120,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         input_index[dnums.input_batch_dimension()] = batch;
 
         llvm_ir::IrArray kernel_array(GetIrArrayFor(rhs));
-        llvm_ir::IrArray::Index kernel_index(num_dims);
+        llvm_ir::IrArray::Index kernel_index(ir_builder_.getInt64Ty(),
+                                             num_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
           kernel_index[dnums.kernel_spatial_dimensions(i)] =
               window.dimensions(i).window_reversal()
@@ -1429,6 +1432,10 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
       return [](llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
                 llvm::Value* rhs) { return ir_builder->CreateOr(lhs, rhs); };
 
+    case HloOpcode::kXor:
+      return [](llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
+                llvm::Value* rhs) { return ir_builder->CreateXor(lhs, rhs); };
+
     case HloOpcode::kMaximum:
       return [root_is_floating_point, root_is_signed](
                  llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
@@ -1685,7 +1692,8 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   //  }
 
   llvm_ir::ForLoopNest loop_nest(IrName(reduce), &ir_builder_);
-  llvm_ir::IrArray::Index array_index(reduce->shape().dimensions_size());
+  llvm_ir::IrArray::Index array_index(ir_builder_.getInt64Ty(),
+                                      reduce->shape().dimensions_size());
   for (int i = LayoutUtil::MinorToMajor(reduce->shape()).size() - 1; i > 0;
        --i) {
     int64 dimension = LayoutUtil::Minor(reduce->shape().layout(), i);
@@ -2069,7 +2077,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   // Compute the output index the operand element should be assigned to.
   // output_index := edge_padding_low + operand_index * (interior_padding + 1)
   const PaddingConfig& padding_config = pad->padding_config();
-  llvm_ir::IrArray::Index output_index;
+  llvm_ir::IrArray::Index output_index(operand_index.GetType());
   for (size_t i = 0; i < operand_index.size(); ++i) {
     llvm::Value* offset = ir_builder_.CreateMul(
         operand_index[i],

@@ -27,6 +27,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+tfe = tf.contrib.eager
 
 
 def get_hparams_cifar_38():
@@ -41,11 +42,11 @@ def get_hparams_cifar_38():
   config.add_hparam("n_res", [3, 3, 3])
   config.add_hparam("filters", [32, 64, 112])
   config.add_hparam("strides", [1, 2, 2])
-  config.add_hparam("batch_size", 10)
+  config.add_hparam("batch_size", 100)
   config.add_hparam("bottleneck", False)
   config.add_hparam("fused", True)
   config.add_hparam("init_max_pool", False)
-  if tf.test.is_gpu_available():
+  if tfe.num_gpus() > 0:
     config.add_hparam("input_shape", (3, 32, 32))
     config.add_hparam("data_format", "channels_first")
   else:
@@ -61,12 +62,13 @@ def get_hparams_cifar_38():
   config.add_hparam("seed", 1234)
   config.add_hparam("shuffle", True)
   config.add_hparam("prefetch", True)
-  config.add_hparam("print_every", 50)
+  config.add_hparam("log_every", 50)
+  config.add_hparam("save_every", 50)
   config.add_hparam("dtype", tf.float32)
   config.add_hparam("eval_batch_size", 500)
   config.add_hparam("div255", True)
-  # For tf.data.Dataset
-  config.add_hparam("epochs", config.max_train_iter // config.batch_size)
+  config.add_hparam("iters_per_epoch", 50000 // config.batch_size)
+  config.add_hparam("epochs", config.max_train_iter // config.iters_per_epoch)
 
   return config
 
@@ -103,12 +105,14 @@ def get_hparams_imagenet_56():
   config.add_hparam("seed", 1234)
   config.add_hparam("shuffle", True)
   config.add_hparam("prefetch", True)
-  config.add_hparam("print_every", 50)
+  config.add_hparam("log_every", 50)
+  config.add_hparam("save_every", 50)
   config.add_hparam("dtype", tf.float32)
   config.add_hparam("eval_batch_size", 500)
   config.add_hparam("div255", True)
-  # For tf.data.Dataset
-  config.add_hparam("epochs", config.max_train_iter // config.batch_size)
+  # TODO(lxuechen): Update this according to ImageNet data
+  config.add_hparam("iters_per_epoch", 50000 // config.batch_size)
+  config.add_hparam("epochs", config.max_train_iter // config.iters_per_epoch)
 
   if config.bottleneck:
     filters = [f * 4 for f in config.filters]

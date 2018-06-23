@@ -81,7 +81,7 @@ We strongly recommend writing TensorFlow programs with the following APIs:
 * @{$programmers_guide/estimators$Estimators}, which represent a complete model.
   The Estimator API provides methods to train the model, to judge the model's
   accuracy, and to generate predictions.
-* @{$get_started/datasets_quickstart$Datasets}, which build a data input
+* @{$programmers_guide/datasets_for_estimators}, which build a data input
   pipeline. The Dataset API has methods to load and manipulate data, and feed
   it into your model. The Dataset API meshes well with the Estimators API.
 
@@ -424,9 +424,7 @@ Now that you've gotten started writing TensorFlow programs, consider the
 following material:
 
 * @{$checkpoints$Checkpoints} to learn how to save and restore models.
-* @{$get_started/datasets_quickstart$Datasets} to learn more about importing
-  data into your
-  model.
+* @{$programmers_guide/datasets_for_estimators} to learn more about importing
+  data into your model.
 * @{$custom_estimators$Creating Custom Estimators} to learn how to
   write your own Estimator, customized for a particular problem.
-

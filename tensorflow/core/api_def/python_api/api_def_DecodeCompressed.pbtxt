@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "DecodeCompressed"
+  endpoint {
+    name: "io.decode_compressed"
+  }
+  endpoint {
+    name: "decode_compressed"
+    deprecation_message: "tf.decode_compressed is deprecated, please use tf.io.decode_compressed instead."
+  }
+}

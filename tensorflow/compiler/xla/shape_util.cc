@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
@@ -263,6 +264,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     tensorflow::gtl::ArraySlice<Shape> shapes) {
   Shape result;
   result.set_element_type(TUPLE);
+  result.mutable_tuple_shapes()->Reserve(shapes.size());
   for (const auto& shape : shapes) {
     AppendShapeToTuple(shape, &result);
   }
@@ -379,6 +381,13 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return shape.tuple_shapes(index);
 }
 
+/* static */ int64 ShapeUtil::SubshapeCount(const Shape& shape) {
+  int64 n = 0;
+  ForEachSubshape(shape, [&](const Shape& literal_subshape,
+                             const ShapeIndex& index) { ++n; });
+  return n;
+}
+
 /* static */ Shape ShapeUtil::SliceTuple(const Shape& tuple, int64 start,
                                          int64 limit) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(tuple));
@@ -413,6 +422,18 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       std::multiplies<int64>());
 }
 
+/* static */ int64 ShapeUtil::ElementsInRecursive(const Shape& shape) {
+  CHECK(IsArray(shape) || IsTuple(shape));
+  if (IsArray(shape)) {
+    return ElementsIn(shape);
+  }
+  int64 count = 0;
+  for (const Shape& element_shape : shape.tuple_shapes()) {
+    count += ElementsInRecursive(element_shape);
+  }
+  return count;
+}
+
 /* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
   return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
 }
@@ -420,7 +441,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
   return shape.element_type() == F32 && Rank(shape) == 0;
 }
-
 
 namespace {
 
@@ -944,6 +964,11 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
     }
   });
   return leaves;
+}
+
+/* static */ bool ShapeUtil::HasDegenerateDimensions(const Shape& shape) {
+  CHECK(ShapeUtil::IsArray(shape));
+  return ArrayContains<int64>(AsInt64Slice(shape.dimensions()), 1);
 }
 
 namespace {

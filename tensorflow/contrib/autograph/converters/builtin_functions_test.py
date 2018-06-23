@@ -23,13 +23,13 @@ import sys
 import six
 
 from tensorflow.contrib.autograph.converters import builtin_functions
-from tensorflow.contrib.autograph.converters import converter_test_base
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class BuiltinFunctionsTest(converter_test_base.TestCase):
+class BuiltinFunctionsTest(converter_testing.TestCase):
 
   def test_len(self):
 

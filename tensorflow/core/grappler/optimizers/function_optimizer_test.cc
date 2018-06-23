@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -207,6 +208,12 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
       // Nodes
       {
           {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_FLOAT}}},
+          // "enter" node is used to verify that InlineFunction would update the
+          // frame name accordingly.
+          {{"enter"},
+           "Enter",
+           {"x"},
+           {{"T", DT_FLOAT}, {"frame_name", "frame"}}},
           {{"y"}, "Mul", {"x", "two"}, {{"T", DT_FLOAT}}},
       });
 
@@ -263,9 +270,14 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
       EXPECT_EQ(kDevice, node.device());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("y", node.input(0));
+    } else if (node.name() == "y/enter") {
+      count++;
+      EXPECT_TRUE(IsEnter(node));
+      const string frame_name = node.attr().at("frame_name").s();
+      EXPECT_EQ("y/frame", frame_name);
     }
   }
-  EXPECT_EQ(6, count);
+  EXPECT_EQ(7, count);
 
   Tensor pi = test::AsScalar<float>(3.14f);
   item.fetch = {"z"};

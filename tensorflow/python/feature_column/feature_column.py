@@ -452,13 +452,15 @@ def linear_model(features,
     ValueError: if an item in `feature_columns` is neither a `_DenseColumn`
       nor `_CategoricalColumn`.
   """
+  with variable_scope.variable_scope(None, 'linear_model') as vs:
+    model_name = _strip_leading_slashes(vs.name)
   linear_model_layer = _LinearModel(
       feature_columns=feature_columns,
       units=units,
       sparse_combiner=sparse_combiner,
       weight_collections=weight_collections,
       trainable=trainable,
-      name='linear_model')
+      name=model_name)
   retval = linear_model_layer(features)  # pylint: disable=not-callable
   if cols_to_vars is not None:
     cols_to_vars.update(linear_model_layer.cols_to_vars())
@@ -3581,6 +3583,3 @@ class _SequenceCategoricalColumn(
     return _CategoricalColumn.IdWeightPair(id_tensor, weight_tensor)
 
 
-# TODO(xiejw): Remove the following alias once call sites are updated.
-_clean_feature_columns = _normalize_feature_columns
-_to_sparse_input = _to_sparse_input_and_drop_ignore_values

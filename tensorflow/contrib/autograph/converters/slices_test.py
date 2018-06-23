@@ -19,15 +19,15 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.autograph import utils
-from tensorflow.contrib.autograph.converters import converter_test_base
 from tensorflow.contrib.autograph.converters import slices
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import list_ops
 from tensorflow.python.platform import test
 
 
-class SliceTest(converter_test_base.TestCase):
+class SliceTest(converter_testing.TestCase):
 
   def test_index_access(self):
 

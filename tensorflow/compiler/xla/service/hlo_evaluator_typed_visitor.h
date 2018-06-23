@@ -610,12 +610,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <typename NativeT, typename std::enable_if<std::is_floating_point<
                                   NativeT>::value>::type* = nullptr>
   Status HandleAnd(HloInstruction* and_) {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[and_],
-        ElementWiseBinaryOp(and_, [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
-          return lhs_el && rhs_el;
-        }));
-    return Status::OK();
+    return InvalidArgument("Unsupported type for And");
   }
 
   template <
@@ -644,12 +639,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <typename NativeT, typename std::enable_if<std::is_floating_point<
                                   NativeT>::value>::type* = nullptr>
   Status HandleOr(HloInstruction* or_) {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[or_],
-        ElementWiseBinaryOp(or_, [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
-          return lhs_el || rhs_el;
-        }));
-    return Status::OK();
+    return InvalidArgument("Unsupported type for Or");
   }
 
   template <
@@ -661,6 +651,35 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleOr(HloInstruction* or_) override {
     return HandleOr<ElementwiseT>(or_);
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<std::is_integral<NativeT>::value>::type* =
+                nullptr>
+  Status HandleXor(HloInstruction* xor_) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[xor_],
+        ElementWiseBinaryOp(xor_, [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
+          return lhs_el ^ rhs_el;
+        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT, typename std::enable_if<std::is_floating_point<
+                                  NativeT>::value>::type* = nullptr>
+  Status HandleXor(HloInstruction* xor_) {
+    return InvalidArgument("Unsupported type for Xor");
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleXor(HloInstruction* xor_) {
+    return InvalidArgument("Unsupported type for Xor");
+  }
+
+  Status HandleXor(HloInstruction* xor_) override {
+    return HandleXor<ElementwiseT>(xor_);
   }
 
   template <typename NativeT,
@@ -1376,6 +1395,44 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     }
 
     return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                !is_complex_t<NativeT>::value &&
+                !std::is_same<NativeT, bool>::value>::type* = nullptr>
+  Status HandleSort(HloInstruction* sort) {
+    TF_RET_CHECK(ShapeUtil::Rank(sort->shape()) == 1)
+        << "Sort is only supported for R1 shapes";
+
+    auto arg = sort->operand(0);
+    const Literal& arg_literal = parent_->GetEvaluatedLiteralFor(arg);
+    VLOG(3) << "HandleSort arg_literal: " << arg_literal.ToString();
+    const auto& arg_data = arg_literal.data<ReturnT>();
+
+    std::vector<ReturnT> return_data(arg_data.begin(), arg_data.end());
+    std::sort(return_data.begin(), return_data.end(),
+              [](const ReturnT& a, const ReturnT& b) {
+                return SafeLess<ReturnT>(a, b);
+              });
+    auto result_literal = MakeUnique<Literal>(sort->shape());
+    result_literal->PopulateR1(
+        tensorflow::gtl::ArraySlice<ReturnT>(return_data));
+    VLOG(3) << "HandleSort result_literal: " << result_literal->ToString();
+    parent_->evaluated_[sort] = std::move(result_literal);
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<is_complex_t<NativeT>::value ||
+                                    std::is_same<NativeT, bool>::value>::type* =
+                nullptr>
+  Status HandleSort(HloInstruction* sort) {
+    return InvalidArgument("Unsupported type for Sort");
+  }
+
+  Status HandleSort(HloInstruction* sort) override {
+    return HandleSort<ReturnT>(sort);
   }
 
   Status HandleReduce(HloInstruction* reduce) override {
@@ -2116,6 +2173,38 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     UnsignedT lhs_size_unsigned = sizeof(NativeT) * CHAR_BIT;
     UnsignedT rhs_unsigned = static_cast<UnsignedT>(rhs);
     return rhs_unsigned >= lhs_size_unsigned;
+  }
+
+  // It's UB to use std::sort with std::less<float>, because of NaNs. Define
+  // "safe" less functions which are actually strict weak orders.
+  template <typename NativeT,
+            typename std::enable_if<std::is_integral<NativeT>::value>::type* =
+                nullptr>
+  static bool SafeLess(const NativeT& a, const NativeT& b) {
+    return a < b;
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_floating_point<NativeT>::value ||
+                std::is_same<NativeT, bfloat16>::value>::type* = nullptr>
+  static bool SafeLess(const NativeT& a, const NativeT& b) {
+    if (std::isnan(b)) {
+      return !std::isnan(a);
+    } else {
+      return a < b;
+    }
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, Eigen::half>::value>::type* = nullptr>
+  static bool SafeLess(const NativeT& a, const NativeT& b) {
+    if (Eigen::half_impl::isnan(b)) {
+      return !Eigen::half_impl::isnan(a);
+    } else {
+      return a < b;
+    }
   }
 
   HloEvaluator* parent_;

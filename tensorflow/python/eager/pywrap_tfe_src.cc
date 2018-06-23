@@ -205,14 +205,20 @@ bool ParseDimensionValue(const string& key, PyObject* py_value,
 }
 
 bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
-                      const char** value) {
+                      tensorflow::StringPiece* value) {
   if (PyBytes_Check(py_value)) {
-    *value = PyBytes_AsString(py_value);
+    Py_ssize_t size = 0;
+    char* buf = nullptr;
+    if (PyBytes_AsStringAndSize(py_value, &buf, &size) < 0) return false;
+    *value = tensorflow::StringPiece(buf, size);
     return true;
   }
 #if PY_MAJOR_VERSION >= 3
   if (PyUnicode_Check(py_value)) {
-    *value = PyUnicode_AsUTF8(py_value);
+    Py_ssize_t size = 0;
+    char* buf = PyUnicode_AsUTF8AndSize(py_value, &size);
+    if (buf == nullptr) return false;
+    *value = tensorflow::StringPiece(buf, size);
     return true;
   }
 #endif
@@ -275,8 +281,16 @@ bool SetOpAttrList(
   }
 
   if (type == TF_ATTR_STRING) {
-    PARSE_LIST(const char*, ParseStringValue);
-    TFE_OpSetAttrStringList(op, key, values.get(), num_values);
+    std::unique_ptr<const void*[]> values(new const void*[num_values]);
+    std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
+    for (int i = 0; i < num_values; ++i) {
+      tensorflow::StringPiece value;
+      tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
+      if (!ParseStringValue(key, py_value.get(), status, &value)) return false;
+      values[i] = value.data();
+      lengths[i] = value.size();
+    }
+    TFE_OpSetAttrStringList(op, key, values.get(), lengths.get(), num_values);
   } else if (type == TF_ATTR_INT) {
     PARSE_LIST(int64_t, ParseInt64Value);
     TFE_OpSetAttrIntList(op, key, values.get(), num_values);
@@ -379,12 +393,15 @@ void SetOpAttrListDefault(
     TF_Status* status) {
   if (type == TF_ATTR_STRING) {
     int num_values = attr.default_value().list().s_size();
-    std::unique_ptr<const char*[]> values(new const char*[num_values]);
+    std::unique_ptr<const void*[]> values(new const void*[num_values]);
+    std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
     (*attr_list_sizes)[key] = num_values;
     for (int i = 0; i < num_values; i++) {
-      values[i] = attr.default_value().list().s(i).data();
+      const string& v = attr.default_value().list().s(i);
+      values[i] = v.data();
+      lengths[i] = v.size();
     }
-    TFE_OpSetAttrStringList(op, key, values.get(), num_values);
+    TFE_OpSetAttrStringList(op, key, values.get(), lengths.get(), num_values);
   } else if (type == TF_ATTR_INT) {
     int num_values = attr.default_value().list().i_size();
     std::unique_ptr<int64_t[]> values(new int64_t[num_values]);
@@ -470,9 +487,9 @@ bool SetOpAttrScalar(
     tensorflow::gtl::FlatMap<string, tensorflow::int64>* attr_list_sizes,
     TF_Status* status) {
   if (type == TF_ATTR_STRING) {
-    const char* value;
+    tensorflow::StringPiece value;
     if (!ParseStringValue(key, py_value, status, &value)) return false;
-    TFE_OpSetAttrString(op, key, value);
+    TFE_OpSetAttrString(op, key, value.data(), value.size());
   } else if (type == TF_ATTR_INT) {
     int64_t value;
     if (!ParseInt64Value(key, py_value, status, &value)) return false;
@@ -533,7 +550,7 @@ bool SetOpAttrScalar(
     //     (which is what the various "defun" or "Defun" decorators do).
     // And in the future also allow an object that can encapsulate
     // the function name and its attribute values.
-    const char* func_name = nullptr;
+    tensorflow::StringPiece func_name;
     if (!ParseStringValue(key, py_value, status, &func_name)) {
       PyObject* name_attr = PyObject_GetAttrString(py_value, "name");
       if (name_attr == nullptr ||
@@ -549,7 +566,8 @@ bool SetOpAttrScalar(
         return false;
       }
     }
-    TFE_Op* func = TFE_NewOp(ctx, func_name, status);
+    TFE_Op* func = TFE_NewOp(
+        ctx, string(func_name.data(), func_name.size()).c_str(), status);
     if (TF_GetCode(status) != TF_OK) return false;
     TFE_OpSetAttrFunction(op, key, func);
     TFE_DeleteOp(func);

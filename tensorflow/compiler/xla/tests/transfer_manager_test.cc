@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -41,7 +42,12 @@ class TransferManagerTest : public LocalClientTestBase {
   TransferManagerTest()
       : shape_size_fn_([this](const Shape& shape) {
           return transfer_manager_->GetByteSizeRequirement(shape);
-        }) {}
+        }) {
+    stream_ptr_ = local_client_->mutable_backend()
+                      ->BorrowStream(stream_executor_)
+                      .ValueOrDie();
+    stream_ = stream_ptr_.get();
+  }
 
   ~TransferManagerTest() override = default;
 
@@ -53,6 +59,10 @@ class TransferManagerTest : public LocalClientTestBase {
         .ValueOrDie();
   }
 
+ protected:
+  Backend::StreamPtr stream_ptr_;
+  se::Stream* stream_;
+
  private:
   std::function<int64(const Shape&)> shape_size_fn_;
 };
@@ -63,11 +73,11 @@ XLA_TEST_F(TransferManagerTest, TransferR0U32) {
   auto device_buffer = AllocateDeviceBuffer(shape);
 
   // Round trip literal through device.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   LiteralTestUtil::ExpectR0Equal<uint32>(42, *result);
 }
@@ -79,11 +89,11 @@ XLA_TEST_F(TransferManagerTest, TransferR1F32) {
   auto device_buffer = AllocateDeviceBuffer(shape);
 
   // Round trip literal through device.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   LiteralTestUtil::ExpectR1Equal<float>({1.25f, 2.5f, -17.0f, -20.125f},
                                         *result);
@@ -97,11 +107,11 @@ XLA_TEST_F(TransferManagerTest, TransferR1LargeF32) {
   auto device_buffer = AllocateDeviceBuffer(shape);
 
   // Round trip literal through device.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   LiteralTestUtil::ExpectR1Equal<float>(test_vector, *result);
 }
@@ -113,11 +123,11 @@ XLA_TEST_F(TransferManagerTest, TransferR1U8) {
   auto device_buffer = AllocateDeviceBuffer(shape);
 
   // Round trip literal through device.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   EXPECT_EQ(result->GetR1U8AsString(), test_string);
 }
@@ -129,11 +139,11 @@ XLA_TEST_F(TransferManagerTest, TransferR2F32) {
   auto device_buffer = AllocateDeviceBuffer(shape);
 
   // Round trip literal through device.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   LiteralTestUtil::ExpectR2Equal<float>(
       {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}}, *result);
@@ -149,11 +159,11 @@ XLA_TEST_F(TransferManagerTest,
 
   // Round trip literal through device. Set the on-device layout to something
   // different than the literal layout.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   EXPECT_FALSE(
       LayoutUtil::Equal(result->shape().layout(), literal->shape().layout()));
@@ -169,11 +179,11 @@ XLA_TEST_F(TransferManagerTest, TransferTuple) {
   auto device_buffer = AllocateDeviceBuffer(literal->shape());
 
   // Round trip literal through device.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
 }
@@ -183,11 +193,11 @@ XLA_TEST_F(TransferManagerTest, TransferEmptyTuple) {
   auto device_buffer = AllocateDeviceBuffer(literal->shape());
 
   // Round trip literal through device.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
 }
@@ -203,11 +213,11 @@ XLA_TEST_F(TransferManagerTest, TransferNestedTuple) {
   auto device_buffer = AllocateDeviceBuffer(literal->shape());
 
   // Round trip literal through device.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
 }
@@ -218,11 +228,11 @@ XLA_TEST_F(TransferManagerTest, TransferComplexValue) {
   auto device_buffer = AllocateDeviceBuffer(literal->shape());
 
   // Round trip literal through device.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
 }
@@ -237,13 +247,149 @@ XLA_TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
   auto device_buffer = AllocateDeviceBuffer(literal->shape());
 
   // Round trip literal through device.
-  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, *literal, device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          transfer_manager_->TransferLiteralFromDevice(
-                              stream_executor_, device_buffer));
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
+}
+
+XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
+  const int64 kIterationCount = 5000;
+  std::unique_ptr<Literal> literal1 = Literal::MakeTuple(
+      {Literal::CreateR0<float>(123.0f).get(),
+       Literal::MakeTuple(
+           {Literal::CreateR2<float>({{1.0f, 2.0f}, {4.0f, 5.0f}}).get(),
+            Literal::CreateR1<float>({44.0f, -10.0f, 3333333.3f}).get()})
+           .get(),
+       Literal::CreateR1<float>({-10.0f, 123.0f}).get()});
+  std::unique_ptr<Literal> literal2 = Literal::MakeTuple(
+      {Literal::CreateR0<float>(456.0f).get(),
+       Literal::MakeTuple(
+           {Literal::CreateR2<float>({{5.0f, 7.0f}, {9.0f, 4.0f}}).get(),
+            Literal::CreateR1<float>({44.0f, -11.0f, 3333333.3f}).get()})
+           .get(),
+       Literal::CreateR1<float>({-98.0f, 153.0f}).get()});
+
+  auto device_buffer1 = AllocateDeviceBuffer(literal1->shape());
+  auto device_buffer2 = AllocateDeviceBuffer(literal2->shape());
+
+  auto stream1 = stream_;
+  auto stream2 = stream_->GetOrCreateSubStream();
+
+  std::unique_ptr<Literal> result1, result2;
+
+  // Round trip literals through device in multiple streams asynchronously.
+  for (int i = 0; i < kIterationCount; ++i) {
+    ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream1, *literal1,
+                                                            device_buffer1));
+    ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream2, *literal2,
+                                                            device_buffer2));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Literal> this_result1,
+        transfer_manager_->TransferLiteralFromDevice(stream1, device_buffer1));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Literal> this_result2,
+        transfer_manager_->TransferLiteralFromDevice(stream2, device_buffer2));
+    result1 = std::move(this_result1);
+    result2 = std::move(this_result2);
+  }
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(*literal1, *result1));
+  EXPECT_TRUE(LiteralTestUtil::Equal(*literal2, *result2));
+}
+
+class TransferDeviceToHostBenchmark : public TransferManagerTest {
+ public:
+  using TransferManagerTest::TransferManagerTest;
+  ~TransferDeviceToHostBenchmark() override {}
+
+  void Run(int iters, int num_tuple_elements, int array_size) {
+    tensorflow::testing::StopTiming();
+    SetUp();
+
+    std::vector<std::unique_ptr<Literal>> tuple_elements;
+    for (int i = 0; i < num_tuple_elements; ++i) {
+      tuple_elements.push_back(
+          Literal::CreateR2F32Linspace(0.0f, 1.0f, array_size, array_size));
+    }
+    std::unique_ptr<Literal> literal =
+        Literal::MakeTupleOwned(std::move(tuple_elements));
+    auto device_buffer = AllocateDeviceBuffer(literal->shape());
+    TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                           device_buffer));
+    tensorflow::testing::StartTiming();
+    for (int i = 0; i < iters; ++i) {
+      TF_ASSERT_OK_AND_ASSIGN(
+          std::unique_ptr<Literal> result,
+          transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
+    }
+    tensorflow::testing::StopTiming();
+    TearDown();
+  }
+
+  void TestBody() override {}
+};
+
+class TransferHostToDeviceBenchmark : public TransferManagerTest {
+ public:
+  using TransferManagerTest::TransferManagerTest;
+  ~TransferHostToDeviceBenchmark() override {}
+
+  void Run(int iters, int num_tuple_elements, int array_size) {
+    tensorflow::testing::StopTiming();
+    SetUp();
+
+    std::vector<std::unique_ptr<Literal>> tuple_elements;
+    for (int i = 0; i < num_tuple_elements; ++i) {
+      tuple_elements.push_back(
+          Literal::CreateR2F32Linspace(0.0f, 1.0f, array_size, array_size));
+    }
+    std::unique_ptr<Literal> literal =
+        Literal::MakeTupleOwned(std::move(tuple_elements));
+    auto device_buffer = AllocateDeviceBuffer(literal->shape());
+    tensorflow::testing::StartTiming();
+    for (int i = 0; i < iters; ++i) {
+      TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, *literal,
+                                                             device_buffer));
+    }
+    tensorflow::testing::StopTiming();
+    TearDown();
+  }
+
+  void TestBody() override {}
+};
+
+void BM_TransferDeviceToHost(int iters, int num_tuple_elements,
+                             int array_size) {
+  TransferDeviceToHostBenchmark bm;
+  bm.Run(iters, num_tuple_elements, array_size);
+}
+
+void BM_TransferHostToDevice(int iters, int num_tuple_elements,
+                             int array_size) {
+  TransferHostToDeviceBenchmark bm;
+  bm.Run(iters, num_tuple_elements, array_size);
+}
+
+BENCHMARK(BM_TransferHostToDevice)
+    ->ArgPair(1, 256)
+    ->ArgPair(1, 257)
+    ->ArgPair(100, 256)
+    ->ArgPair(100, 257);
+
+BENCHMARK(BM_TransferDeviceToHost)
+    ->ArgPair(1, 256)
+    ->ArgPair(1, 257)
+    ->ArgPair(100, 256)
+    ->ArgPair(100, 257);
+
+int main(int argc, char** argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  tensorflow::testing::RunBenchmarks();
+  return RUN_ALL_TESTS();
 }
 
 }  // namespace

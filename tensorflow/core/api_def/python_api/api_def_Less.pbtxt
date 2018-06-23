@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Less"
+  endpoint {
+    name: "math.less"
+  }
+  endpoint {
+    name: "less"
+    deprecation_message: "tf.less is deprecated, please use tf.math.less instead."
+  }
+}

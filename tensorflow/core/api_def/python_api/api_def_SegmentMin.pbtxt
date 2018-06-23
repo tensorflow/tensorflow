@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "SegmentMin"
+  endpoint {
+    name: "math.segment_min"
+  }
+  endpoint {
+    name: "segment_min"
+    deprecation_message: "tf.segment_min is deprecated, please use tf.math.segment_min instead."
+  }
+}

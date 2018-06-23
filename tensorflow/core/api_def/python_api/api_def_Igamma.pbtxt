@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Igamma"
+  endpoint {
+    name: "math.igamma"
+  }
+  endpoint {
+    name: "igamma"
+    deprecation_message: "tf.igamma is deprecated, please use tf.math.igamma instead."
+  }
+}

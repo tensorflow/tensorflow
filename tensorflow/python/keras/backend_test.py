@@ -17,10 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 import scipy.sparse
 
 from tensorflow.python import keras
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -661,7 +663,7 @@ class BackendShapeOpsTest(test.TestCase):
           np_kwargs={'data_format': 'channels_first'})
 
 
-class BackendNNOpsTest(test.TestCase):
+class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 
   def test_bias_add(self):
     with self.test_session():
@@ -810,52 +812,117 @@ class BackendNNOpsTest(test.TestCase):
                              padding='same', data_format='channels_last')
     self.assertEqual(y.get_shape().as_list(), [10, 5, 5])
 
-  def test_local_conv1d_channels_dim(self):
-    input_length = 5
-    input_dim = 3
+  def test_local_conv_channels_dim(self):
+    filters = 3
     batch_size = 2
 
-    inputs = np.random.normal(0, 1, (batch_size, input_dim, input_length))
-    inputs_cf = keras.backend.variable(inputs)
+    for input_shape in [(3, 5), (2, 3, 5), (2, 5, 3, 4)]:
+      channels_in = input_shape[0]
+      input_spatial_shape = input_shape[1:]
+      dim = len(input_spatial_shape)
 
-    filters = 4
-    for kernel_size in [(1,), (2,), (3,)]:
-      for strides in [(1,), (2,), (3,)]:
-        output_length = (input_length - kernel_size[0]
-                         + strides[0]) // strides[0]
+      inputs = np.random.normal(0, 1, (batch_size,) + input_shape)
+      inputs_cf = keras.backend.variable(inputs)
 
-        kernel_shape = (output_length, kernel_size[0] * input_dim, filters)
-        kernel = np.random.normal(0, 1, (output_length,
-                                         input_dim,
-                                         kernel_size[0],
-                                         filters))
-        kernel_cf = np.reshape(kernel, kernel_shape)
-        kernel_cf = keras.backend.variable(kernel_cf)
+      for kernel_size in [1, 2]:
+        for stride in [1, 2]:
+          kernel_sizes = (kernel_size,) * dim
+          strides = (stride,) * dim
 
-        conv_cf = keras.backend.local_conv1d(inputs_cf,
+          output_shape = tuple([(i - kernel_size + stride) // stride
+                                for i in input_spatial_shape])
+
+          kernel_shape = (np.prod(output_shape),
+                          np.prod(kernel_sizes) * channels_in,
+                          filters)
+
+          kernel = np.random.normal(
+              0,
+              1,
+              output_shape + (channels_in, np.prod(kernel_sizes), filters)
+          )
+
+          kernel_cf = np.reshape(kernel, kernel_shape)
+          kernel_cf = keras.backend.variable(kernel_cf)
+
+          conv_cf = keras.backend.local_conv(inputs_cf,
                                              kernel_cf,
-                                             kernel_size,
+                                             kernel_sizes,
                                              strides,
+                                             output_shape,
                                              'channels_first')
 
-        inputs_cl = np.transpose(inputs, (0, 2, 1))
-        inputs_cl = keras.backend.variable(inputs_cl)
+          inputs_cl = np.transpose(inputs, [0, 2] + list(range(3, dim + 2)) +
+                                   [1])
+          inputs_cl = keras.backend.variable(inputs_cl)
 
-        kernel_cl = np.reshape(np.transpose(kernel, (0, 2, 1, 3)),
-                               kernel_shape)
-        kernel_cl = keras.backend.variable(kernel_cl)
+          kernel_cl = np.reshape(
+              np.transpose(kernel, list(range(dim)) + [dim + 1, dim, dim + 2]),
+              kernel_shape
+          )
+          kernel_cl = keras.backend.variable(kernel_cl)
 
-        conv_cl = keras.backend.local_conv1d(inputs_cl,
+          conv_cl = keras.backend.local_conv(inputs_cl,
                                              kernel_cl,
-                                             kernel_size,
+                                             kernel_sizes,
                                              strides,
+                                             output_shape,
                                              'channels_last')
-        with self.test_session():
-          conv_cf = keras.backend.eval(conv_cf)
-          conv_cl = keras.backend.eval(conv_cl)
+          with self.test_session():
+            conv_cf = keras.backend.eval(conv_cf)
+            conv_cl = keras.backend.eval(conv_cl)
 
-        self.assertAllCloseAccordingToType(conv_cf,
-                                           np.transpose(conv_cl, (0, 2, 1)))
+          self.assertAllCloseAccordingToType(
+              conv_cf,
+              np.transpose(conv_cl,
+                           [0, dim + 1] + list(range(1, dim + 1))),
+              atol=1e-5
+          )
+
+  @parameterized.named_parameters(
+      ('local_conv1d', (5, 6), (3,), (1,), (3,)),
+      ('local_conv2d', (4, 5, 6), (3, 3), (1, 1), (2, 3)))
+  def test_local_conv_1d_and_2d(self,
+                                input_shape,
+                                kernel_sizes,
+                                strides,
+                                output_shape):
+    filters = 3
+    batch_size = 2
+
+    inputs = np.random.normal(0, 1, (batch_size,) + input_shape)
+    inputs = keras.backend.variable(inputs)
+
+    kernel = np.random.normal(0, 1, (np.prod(output_shape),
+                                     np.prod(kernel_sizes) * input_shape[-1],
+                                     filters))
+    kernel = keras.backend.variable(kernel)
+
+    local_conv = keras.backend.local_conv(inputs,
+                                          kernel,
+                                          kernel_sizes,
+                                          strides,
+                                          output_shape,
+                                          'channels_last')
+    if len(output_shape) == 1:
+      local_conv_dim = keras.backend.local_conv1d(inputs,
+                                                  kernel,
+                                                  kernel_sizes,
+                                                  strides,
+                                                  'channels_last')
+    else:
+      local_conv_dim = keras.backend.local_conv2d(inputs,
+                                                  kernel,
+                                                  kernel_sizes,
+                                                  strides,
+                                                  output_shape,
+                                                  'channels_last')
+
+    with self.test_session():
+      local_conv = keras.backend.eval(local_conv)
+      local_conv_dim = keras.backend.eval(local_conv_dim)
+
+    self.assertAllCloseAccordingToType(local_conv, local_conv_dim)
 
   def test_conv2d(self):
     val = np.random.random((10, 4, 10, 10))
@@ -1212,6 +1279,13 @@ class TestRandomOps(test.TestCase):
       self.assertAllClose(np.max(y), 2., atol=0.1)
       self.assertAllClose(np.min(y), -2., atol=0.1)
 
+  def test_string_input(self):
+    seq = keras.Sequential([
+        keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
+        keras.layers.Lambda(lambda x: x[0])
+    ])
+    preds = seq.predict([['tensorflow eager']])
+    self.assertEqual(preds.shape, (1,))
 
 if __name__ == '__main__':
   test.main()

@@ -36,43 +36,6 @@ from tensorflow.python.ops import nn
 from tensorflow.python.util import tf_inspect
 
 
-def assert_close(
-    x, y, data=None, summarize=None, message=None, name="assert_close"):
-  """Assert that x and y are within machine epsilon of each other.
-
-  Args:
-    x: Floating-point `Tensor`
-    y: Floating-point `Tensor`
-    data: The tensors to print out if the condition is `False`. Defaults to
-      error message and first few entries of `x` and `y`.
-    summarize: Print this many entries of each tensor.
-    message: A string to prefix to the default message.
-    name: A name for this operation (optional).
-
-  Returns:
-    Op raising `InvalidArgumentError` if |x - y| > machine epsilon.
-  """
-  message = message or ""
-  x = ops.convert_to_tensor(x, name="x")
-  y = ops.convert_to_tensor(y, name="y")
-
-  if data is None:
-    data = [
-        message,
-        "Condition x ~= y did not hold element-wise: x = ", x, "y = ", y
-    ]
-
-  if x.dtype.is_integer:
-    return check_ops.assert_equal(
-        x, y, data=data, summarize=summarize, message=message, name=name)
-
-  with ops.name_scope(name, "assert_close", [x, y, data]):
-    tol = np.finfo(x.dtype.as_numpy_dtype).eps
-    condition = math_ops.reduce_all(math_ops.less_equal(math_ops.abs(x-y), tol))
-    return control_flow_ops.Assert(
-        condition, data, summarize=summarize)
-
-
 def assert_integer_form(
     x, data=None, summarize=None, message=None,
     int_dtype=None, name="assert_integer_form"):
@@ -241,8 +204,12 @@ def get_logits_and_probs(logits=None,
         dependencies = [check_ops.assert_non_negative(probs)]
         if multidimensional:
           probs = embed_check_categorical_event_shape(probs)
-          dependencies += [assert_close(math_ops.reduce_sum(probs, -1), one,
-                                        message="probs does not sum to 1.")]
+          dependencies += [
+              check_ops.assert_near(
+                  math_ops.reduce_sum(probs, -1),
+                  one,
+                  message="probs does not sum to 1.")
+          ]
         else:
           dependencies += [check_ops.assert_less_equal(
               probs, one, message="probs has components greater than 1.")]

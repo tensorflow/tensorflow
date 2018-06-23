@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "InvertPermutation"
+  endpoint {
+    name: "math.invert_permutation"
+  }
+  endpoint {
+    name: "invert_permutation"
+    deprecation_message: "tf.invert_permutation is deprecated, please use tf.math.invert_permutation instead."
+  }
+}

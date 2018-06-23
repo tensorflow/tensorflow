@@ -31,10 +31,6 @@ import tensorflow as tf
 from tensorflow.contrib.eager.python.examples.revnet import blocks
 
 
-# Global Conventions:
-# 1) Default data format is NCWH, targeting GPU
-# 2) Each block has attribute axis, inferred from data_format
-# 3) Default training option to True for batch normalization
 class RevNet(tf.keras.Model):
   """RevNet that depends on all the blocks."""
 
@@ -65,7 +61,7 @@ class RevNet(tf.keras.Model):
                 input_shape=self.config.input_shape),
             tf.keras.layers.BatchNormalization(
                 axis=self.axis, fused=self.config.fused),
-            tf.keras.layers.LeakyReLU(alpha=0.)
+            tf.keras.layers.Activation("relu"),
         ],
         name="init")
     if self.config.init_max_pool:
@@ -100,7 +96,7 @@ class RevNet(tf.keras.Model):
                 axis=self.axis,
                 input_shape=input_shape,
                 fused=self.config.fused),
-            tf.keras.layers.LeakyReLU(alpha=0.),  # Vanilla ReLU
+            tf.keras.layers.Activation("relu"),
             tf.keras.layers.GlobalAveragePooling2D(
                 data_format=self.config.data_format),
             tf.keras.layers.Dense(self.config.n_classes)
@@ -203,14 +199,16 @@ class RevNet(tf.keras.Model):
     # Manually backprop through last block
     x = saved_hidden[-1]
     with tf.GradientTape() as tape:
+      x = tf.identity(x)  # TODO(lxuechen): Remove after b/110264016 is fixed
       tape.watch(x)
       logits = self._final_block(x, training=training)
-      cost = self.compute_loss(logits, labels)
+      loss = self.compute_loss(logits, labels)
 
-    grads_combined = tape.gradient(cost, [x] + self._final_block.variables)
+    grads_combined = tape.gradient(loss,
+                                   [x] + self._final_block.trainable_variables)
     dy, grads_ = grads_combined[0], grads_combined[1:]
     grads_all += grads_
-    vars_all += self._final_block.variables
+    vars_all += self._final_block.trainable_variables
 
     # Manually backprop through intermediate blocks
     for block in reversed(self._block_list):
@@ -227,37 +225,17 @@ class RevNet(tf.keras.Model):
     assert not saved_hidden  # Cleared after backprop
 
     with tf.GradientTape() as tape:
-      y = self._init_block(x, training=training)  # Recomputing
+      x = tf.identity(x)  # TODO(lxuechen): Remove after b/110264016 is fixed
+      y = self._init_block(x, training=training)
 
     grads_all += tape.gradient(
-        y, self._init_block.variables, output_gradients=[dy])
-    vars_all += self._init_block.variables
+        y, self._init_block.trainable_variables, output_gradients=[dy])
+    vars_all += self._init_block.trainable_variables
 
-    return grads_all, vars_all
+    grads_all = self._apply_weight_decay(grads_all, vars_all)
 
-  def train_step(self,
-                 inputs,
-                 labels,
-                 optimizer,
-                 global_step=None,
-                 report=False):
-    """Train for one iteration."""
+    return grads_all, vars_all, loss
 
-    grads_all, vars_all = self.compute_gradients(inputs, labels, training=True)
-    optimizer.apply_gradients(zip(grads_all, vars_all), global_step=global_step)
-
-    if report:
-      logits, _ = self.call(inputs, training=True)
-      loss = self.compute_loss(logits, labels)
-
-      return loss
-
-  def eval_step(self, inputs, labels):
-    """Evaluate."""
-
-    logits, _ = self.call(inputs, training=False)
-    preds = tf.cast(tf.argmax(logits, axis=1), tf.int32)
-    corrects = tf.cast(tf.equal(preds, labels), tf.float32)
-    accuracy = tf.reduce_mean(corrects)
-
-    return accuracy
+  def _apply_weight_decay(self, grads, vars_):
+    """Update gradients to reflect weight decay."""
+    return [g + self.config.weight_decay * v for g, v in zip(grads, vars_)]

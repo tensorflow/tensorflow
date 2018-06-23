@@ -74,7 +74,7 @@ inline uint64 FingerprintCat64(const uint64 fp1, const uint64 fp2) {
 
 }  // namespace tensorflow
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
 #include "tensorflow/core/platform/google/fingerprint.h"
 #else
 #include "tensorflow/core/platform/default/fingerprint.h"

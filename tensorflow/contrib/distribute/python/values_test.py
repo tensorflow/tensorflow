@@ -82,7 +82,7 @@ class DistributedValuesTest(test.TestCase):
 
 class DistributedDelegateTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGetAttr(self):
     with ops.device("/device:CPU:0"):
 
@@ -97,7 +97,7 @@ class DistributedDelegateTest(test.TestCase):
       with self.assertRaises(AttributeError):
         _ = v.y
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testOperatorOverride(self):
     with ops.device("/device:CPU:0"):
       v = values.DistributedDelegate({"/device:CPU:0": 7, "/device:GPU:0": 8})
@@ -363,7 +363,7 @@ class PerDeviceDatasetTest(test.TestCase):
     self._test_iterator_no_prefetch(devices, dataset, expected_values)
     self._test_iterator_with_prefetch(devices, dataset, expected_values)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testOneDevice(self):
     devices = ["/device:CPU:0"]
     dataset = dataset_ops.Dataset.range(10)
