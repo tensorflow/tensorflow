@@ -370,7 +370,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       Status CopyPartialBatch(Tensor* output, const Tensor& value,
                               int64 num_elements) {
         switch (value.dtype()) {
-#define CASE(type)                                                \
+#define HANDLE_TYPE(type)                                         \
   case DataTypeToEnum<type>::value: {                             \
     auto output_t = output->flat_outer_dims<type>();              \
     auto value_t = value.flat_outer_dims<type>();                 \
@@ -379,10 +379,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     }                                                             \
     return Status::OK();                                          \
   }
-          TF_CALL_NUMBER_TYPES(CASE);
-          TF_CALL_string(CASE);
-          TF_CALL_variant(CASE);
-#undef CASE
+          TF_CALL_DATASET_TYPES(HANDLE_TYPE);
+#undef HANDLE_TYPE
           default:
             return errors::InvalidArgument("Unsupported data type: ",
                                            value.dtype());

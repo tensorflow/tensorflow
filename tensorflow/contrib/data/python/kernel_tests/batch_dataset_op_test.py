@@ -689,6 +689,32 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  @parameterized.parameters(
+      (False, dtypes.bool),
+      (-42, dtypes.int8),
+      (-42, dtypes.int16),
+      (-42, dtypes.int32),
+      (-42, dtypes.int64),
+      (42, dtypes.uint8),
+      (42, dtypes.uint16),
+      (42.0, dtypes.float16),
+      (42.0, dtypes.float32),
+      (42.0, dtypes.float64),
+      (b"hello", dtypes.string),
+  )
+  def testMapAndBatchTypes(self, element, dtype):
+    def gen():
+      yield element
+
+    dataset = dataset_ops.Dataset.from_generator(gen, dtype).repeat(100).apply(
+        batching.map_and_batch(lambda x: x, batch_size=10))
+
+    get_next = dataset.make_one_shot_iterator().get_next()
+
+    with self.test_session() as sess:
+      for _ in range(10):
+        self.assertAllEqual([element for _ in range(10)], sess.run(get_next))
+
 
 class RestructuredDatasetTest(test.TestCase):
 
