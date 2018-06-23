@@ -24,7 +24,6 @@ source "${SCRIPT_DIR}/../builds/libtensorflow.sh"
 
 # Configure script
 export TF_NEED_ROCM=1
-export LD_LIBRARY_PATH="/usr/local/cuda/lib:/usr/local/cuda/extras/CUPTI/lib:${LD_LIBRARY_PATH}"
 export PYTHON_BIN_PATH="/usr/bin/python"
 export TF_NEED_GCP=0
 export TF_NEED_HDFS=0

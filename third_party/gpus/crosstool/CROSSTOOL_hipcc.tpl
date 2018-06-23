@@ -15,10 +15,6 @@ default_toolchain {
   toolchain_identifier: "local_linux"
 }
 default_toolchain {
-  cpu: "darwin"
-  toolchain_identifier: "local_darwin"
-}
-default_toolchain {
   cpu: "ppc"
   toolchain_identifier: "local_linux"
 }
@@ -129,17 +125,7 @@ toolchain {
   # linker_flag: "-Wl,--detect-odr-violations"
 
   # Include directory for ROCm headers.
-  cxx_builtin_include_directory: "/opt/rocm/hsa/include"
-  cxx_builtin_include_directory: "/opt/rocm/include/hip"
-  cxx_builtin_include_directory: "/opt/rocm/include/hip/hcc_detail"
-  cxx_builtin_include_directory: "/opt/rocm/rocblas/include"
-  cxx_builtin_include_directory: "/opt/rocm/rocfft/include"
-  cxx_builtin_include_directory: "/opt/rocm/hiprand/include"
-  cxx_builtin_include_directory: "/opt/rocm/hcc/include"
-  cxx_builtin_include_directory: "/opt/rocm/hcc/compiler/lib/clang/6.0.0/include/"
-  cxx_builtin_include_directory: "/opt/rocm/hcc/lib/clang/6.0.0/include"
-  cxx_builtin_include_directory: "/opt/rocm/hcc/compiler/lib/clang/7.0.0/include/"
-  cxx_builtin_include_directory: "/opt/rocm/hcc/lib/clang/7.0.0/include"
+%{rocm_include_path}
 
   compilation_mode_flags {
     mode: DBG
@@ -169,109 +155,4 @@ toolchain {
     linker_flag: "-Wl,--gc-sections"
   }
   linking_mode_flags { mode: DYNAMIC }
-}
-
-toolchain {
-  abi_version: "local"
-  abi_libc_version: "local"
-  builtin_sysroot: ""
-  compiler: "compiler"
-  host_system_name: "local"
-  needsPic: true
-  target_libc: "macosx"
-  target_cpu: "darwin"
-  target_system_name: "local"
-  toolchain_identifier: "local_darwin"
-
-  tool_path { name: "ar" path: "/usr/bin/libtool" }
-  tool_path { name: "compat-ld" path: "/usr/bin/ld" }
-  tool_path { name: "cpp" path: "/usr/bin/cpp" }
-  tool_path { name: "dwp" path: "/usr/bin/dwp" }
-  tool_path { name: "gcc" path: "clang/bin/crosstool_wrapper_driver_rocm" }
-  cxx_flag: "-std=c++11"
-  ar_flag: "-static"
-  ar_flag: "-s"
-  ar_flag: "-o"
-  linker_flag: "-lc++"
-  linker_flag: "-undefined"
-  linker_flag: "dynamic_lookup"
-  # TODO(ulfjack): This is wrong on so many levels. Figure out a way to auto-detect the proper
-  # setting from the local compiler, and also how to make incremental builds correct.
-  cxx_builtin_include_directory: "/"
-  tool_path { name: "gcov" path: "/usr/bin/gcov" }
-  tool_path { name: "ld" path: "/usr/bin/ld" }
-  tool_path { name: "nm" path: "/usr/bin/nm" }
-  tool_path { name: "objcopy" path: "/usr/bin/objcopy" }
-  objcopy_embed_flag: "-I"
-  objcopy_embed_flag: "binary"
-  tool_path { name: "objdump" path: "/usr/bin/objdump" }
-  tool_path { name: "strip" path: "/usr/bin/strip" }
-
-  # Anticipated future default.
-  unfiltered_cxx_flag: "-no-canonical-prefixes"
-  # Make C++ compilation deterministic. Use linkstamping instead of these
-  # compiler symbols.
-  unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"
-  unfiltered_cxx_flag: "-D__DATE__=\"redacted\""
-  unfiltered_cxx_flag: "-D__TIMESTAMP__=\"redacted\""
-  unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
-
-  # Security hardening on by default.
-  # Conservative choice; -D_FORTIFY_SOURCE=2 may be unsafe in some cases.
-  compiler_flag: "-D_FORTIFY_SOURCE=1"
-  compiler_flag: "-fstack-protector"
-
-  # Enable coloring even if there's no attached terminal. Bazel removes the
-  # escape sequences if --nocolor is specified.
-  compiler_flag: "-fcolor-diagnostics"
-
-  # All warnings are enabled. Maybe enable -Werror as well?
-  compiler_flag: "-Wall"
-  # Enable a few more warnings that aren't part of -Wall.
-  compiler_flag: "-Wthread-safety"
-  compiler_flag: "-Wself-assign"
-
-  # Keep stack frames for debugging, even in opt mode.
-  compiler_flag: "-fno-omit-frame-pointer"
-
-  # Anticipated future default.
-  linker_flag: "-no-canonical-prefixes"
-
-  # Include directory for ROCm headers.
-  cxx_builtin_include_directory: "/opt/rocm/hsa/include"
-  cxx_builtin_include_directory: "/opt/rocm/include/hip"
-  cxx_builtin_include_directory: "/opt/rocm/include/hip/hcc_detail"
-  cxx_builtin_include_directory: "/opt/rocm/rocblas/include"
-  cxx_builtin_include_directory: "/opt/rocm/rocfft/include"
-  cxx_builtin_include_directory: "/opt/rocm/hiprand/include"
-  cxx_builtin_include_directory: "/opt/rocm/hcc/include"
-  cxx_builtin_include_directory: "/opt/rocm/hcc/compiler/lib/clang/6.0.0/include/"
-  cxx_builtin_include_directory: "/opt/rocm/hcc/lib/clang/6.0.0/include"
-  cxx_builtin_include_directory: "/opt/rocm/hcc/compiler/lib/clang/7.0.0/include/"
-  cxx_builtin_include_directory: "/opt/rocm/hcc/lib/clang/7.0.0/include"
-
-  compilation_mode_flags {
-    mode: DBG
-    # Enable debug symbols.
-    compiler_flag: "-g"
-  }
-  compilation_mode_flags {
-    mode: OPT
-    # No debug symbols.
-    # Maybe we should enable https://gcc.gnu.org/wiki/DebugFission for opt or even generally?
-    # However, that can't happen here, as it requires special handling in Bazel.
-    compiler_flag: "-g0"
-
-    # Conservative choice for -O
-    # -O3 can increase binary size and even slow down the resulting binaries.
-    # Profile first and / or use FDO if you need better performance than this.
-    compiler_flag: "-O2"
-
-    # Disable assertions
-    compiler_flag: "-DNDEBUG"
-
-    # Removal of unused code and data at link time (can this increase binary size in some cases?).
-    compiler_flag: "-ffunction-sections"
-    compiler_flag: "-fdata-sections"
-  }
 }

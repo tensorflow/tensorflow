@@ -751,27 +751,26 @@ def tf_gpu_cc_test(name,
       linkstatic=linkstatic,
       linkopts=linkopts,
       args=args)
-  if if_cuda_is_configured(True) or if_rocm_is_configured(True):
-      tf_cc_test(
-          name=name,
-          srcs=srcs,
-          suffix="_gpu",
-          deps=deps + [
-              clean_dep("//tensorflow/core:gpu_runtime"),
-          ],
-          linkstatic=select({
-              # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-              clean_dep("//tensorflow:darwin"): 1,
-              "@local_config_cuda//cuda:using_nvcc": 1,
-              "@local_config_cuda//cuda:using_clang": 1,
-              "//conditions:default": 0,
-          }),
-          tags=tags + tf_gpu_tests_tags(),
-          data=data,
-          size=size,
-          extra_copts=extra_copts,
-          linkopts=linkopts,
-          args=args)
+  tf_cc_test(
+      name=name,
+      srcs=srcs,
+      suffix="_gpu",
+      deps=deps + [
+          clean_dep("//tensorflow/core:gpu_runtime"),
+      ],
+      linkstatic=select({
+          # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
+          clean_dep("//tensorflow:darwin"): 1,
+          "@local_config_cuda//cuda:using_nvcc": 1,
+          "@local_config_cuda//cuda:using_clang": 1,
+          "//conditions:default": 0,
+      }),
+      tags=tags + tf_gpu_tests_tags(),
+      data=data,
+      size=size,
+      extra_copts=extra_copts,
+      linkopts=linkopts,
+      args=args)
 
 register_extension_info(
     extension_name = "tf_gpu_cc_test",
@@ -922,7 +921,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def _cuda_copts():
+def _cuda_copts(opts=[]):
   """Gets the appropriate set of copts for (maybe) CUDA compilation.
 
     If we're doing CUDA compilation, returns copts for our particular CUDA
@@ -937,10 +936,10 @@ def _cuda_copts():
       ]),
       "@local_config_cuda//cuda:using_clang": ([
           "-fcuda-flush-denormals-to-zero",
-      ]),
+      ]) + if_cuda_is_configured(opts)
   })
 
-def _rocm_copts():
+def _rocm_copts(opts=[]):
   """Gets the appropriate set of copts for (maybe) ROCm compilation.
 
     If we're doing ROCm compilation, returns copts for our particular ROCm
@@ -951,7 +950,7 @@ def _rocm_copts():
       "//conditions:default": [],
       "@local_config_rocm//rocm:using_hipcc": ([
           "",
-      ]),
+      ]) + if_rocm_is_configured(opts)
   })
 
 # Build defs for TensorFlow kernels
@@ -969,7 +968,7 @@ def tf_gpu_kernel_library(srcs,
                           deps=[],
                           hdrs=[],
                           **kwargs):
-  copts=copts + tf_copts() + _cuda_copts() + _rocm_copts() + if_cuda_is_configured(gpu_copts) + if_rocm_is_configured(gpu_copts)
+  copts = copts + tf_copts() + _cuda_copts(opts=gpu_copts) + _rocm_copts(opts=gpu_copts)
   kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
 
   native.cc_library(

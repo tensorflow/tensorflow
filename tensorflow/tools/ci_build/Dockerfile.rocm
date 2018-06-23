@@ -1,6 +1,6 @@
 # This Dockerfile provides a starting point for a ROCm installation of 
 # MIOpen and tensorflow.  
-FROM ubuntu:xenial-20170619
+FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
 ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/debian/
@@ -62,8 +62,8 @@ RUN apt-get update --allow-insecure-repositories && \
     rm -rf /var/lib/apt/lists/*
 
 # Workaround: build HIP from source using fork that holds roc-1.8.x with merged PR457
-RUN cd ~ && git clone -b roc-1.8.x-pr457 https://github.com/parallelo/HIP.git 
-RUN cd ~/HIP && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i *.deb
+RUN cd ~ && git clone -b roc-1.8.x-pr457 https://github.com/parallelo/HIP.git
+RUN cd ~/HIP && mkdir -p build && cd build && cmake .. && make package -j && dpkg -i *.deb
 
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip

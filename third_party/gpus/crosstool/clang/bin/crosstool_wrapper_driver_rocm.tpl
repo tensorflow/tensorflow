@@ -11,11 +11,6 @@ DESCRIPTION:
   to this script, it invokes the hipcc compiler. Most arguments are passed
   as is as a string to --compiler-options of hipcc. When "-x rocm" is not
   present, this wrapper invokes gcc with the input arguments as is.
-
-NOTES:
-  Changes to the contents of this file must be propagated from
-  //third_party/gpus/crosstool/crosstool_wrapper_driver_rocm to
-  //third_party/gpus/crosstool/v*/*/clang/bin/crosstool_wrapper_driver_rocm
 """
 
 from __future__ import print_function
