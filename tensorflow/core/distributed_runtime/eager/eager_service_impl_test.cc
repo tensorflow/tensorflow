@@ -155,7 +155,6 @@ tensorflow::FunctionDef MatMulFunction() {
 // Test creates a context and attempts to execute some ops.
 TEST_F(EagerServiceImplTest, BasicTest) {
   WorkerEnv worker_env;
-  worker_env.env = Env::Default();
   
   Status cons_status;
   TestEagerServiceImpl eager_service_impl(&worker_env);
