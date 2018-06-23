@@ -22,13 +22,14 @@
 #include "mlir/Parser.h"
 #include "Lexer.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/Types.h"
 #include "llvm/Support/SourceMgr.h"
 using namespace mlir;
 using llvm::SourceMgr;
 
 namespace {
-/// Simple enum to make code read better.  Failure is "true" in a boolean
-/// context.
+/// Simple enum to make code read better in cases that would otherwise return a
+/// bool value.  Failure is "true" in a boolean context.
 enum ParseResult {
   ParseSuccess,
   ParseFailure
@@ -37,13 +38,17 @@ enum ParseResult {
 /// Main parser implementation.
 class Parser {
  public:
-  Parser(llvm::SourceMgr &sourceMgr) : lex(sourceMgr), curToken(lex.lexToken()){
+  Parser(llvm::SourceMgr &sourceMgr, MLIRContext *context)
+     : context(context), lex(sourceMgr), curToken(lex.lexToken()){
     module.reset(new Module());
   }
 
   Module *parseModule();
 private:
   // State.
+  MLIRContext *const context;
+
+  // The lexer for the source file we're parsing.
   Lexer lex;
 
   // This is the next token that hasn't been consumed yet.
@@ -86,19 +91,24 @@ private:
                                const std::function<ParseResult()> &parseElement,
                                       bool allowEmptyList = true);
 
+  // We have two forms of parsing methods - those that return a non-null
+  // pointer on success, and those that return a ParseResult to indicate whether
+  // they returned a failure.  The second class fills in by-reference arguments
+  // as the results of their action.
+
   // Type parsing.
-  ParseResult parsePrimitiveType();
-  ParseResult parseElementType();
-  ParseResult parseVectorType();
+  PrimitiveType *parsePrimitiveType();
+  Type *parseElementType();
+  VectorType *parseVectorType();
   ParseResult parseDimensionListRanked(SmallVectorImpl<int> &dimensions);
-  ParseResult parseTensorType();
-  ParseResult parseMemRefType();
-  ParseResult parseFunctionType();
-  ParseResult parseType();
-  ParseResult parseTypeList();
+  Type *parseTensorType();
+  Type *parseMemRefType();
+  Type *parseFunctionType();
+  Type *parseType();
+  ParseResult parseTypeList(SmallVectorImpl<Type*> &elements);
 
   // Top level entity parsing.
-  ParseResult parseFunctionSignature(StringRef &name);
+  ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type);
   ParseResult parseExtFunc();
 };
 } // end anonymous namespace
@@ -166,40 +176,40 @@ parseCommaSeparatedList(Token::TokenKind rightToken,
 ///        | `i1` | `i8` | `i16` | `i32` | `i64` // Sized integers
 ///        | `int`
 ///
-ParseResult Parser::parsePrimitiveType() {
-  // TODO: Build IR objects.
+PrimitiveType *Parser::parsePrimitiveType() {
   switch (curToken.getKind()) {
-  default: return emitError("expected type");
+  default:
+    return (emitError("expected type"), nullptr);
   case Token::kw_bf16:
     consumeToken(Token::kw_bf16);
-    return ParseSuccess;
+    return Type::getBF16(context);
   case Token::kw_f16:
     consumeToken(Token::kw_f16);
-    return ParseSuccess;
+    return Type::getF16(context);
   case Token::kw_f32:
     consumeToken(Token::kw_f32);
-    return ParseSuccess;
+    return Type::getF32(context);
   case Token::kw_f64:
     consumeToken(Token::kw_f64);
-    return ParseSuccess;
+    return Type::getF64(context);
   case Token::kw_i1:
     consumeToken(Token::kw_i1);
-    return ParseSuccess;
-  case Token::kw_i16:
-    consumeToken(Token::kw_i16);
-    return ParseSuccess;
-  case Token::kw_i32:
-    consumeToken(Token::kw_i32);
-    return ParseSuccess;
-  case Token::kw_i64:
-    consumeToken(Token::kw_i64);
-    return ParseSuccess;
+    return Type::getI1(context);
   case Token::kw_i8:
     consumeToken(Token::kw_i8);
-    return ParseSuccess;
+    return Type::getI8(context);
+  case Token::kw_i16:
+    consumeToken(Token::kw_i16);
+    return Type::getI16(context);
+  case Token::kw_i32:
+    consumeToken(Token::kw_i32);
+    return Type::getI32(context);
+  case Token::kw_i64:
+    consumeToken(Token::kw_i64);
+    return Type::getI64(context);
   case Token::kw_int:
     consumeToken(Token::kw_int);
-    return ParseSuccess;
+    return Type::getInt(context);
   }
 }
 
@@ -207,7 +217,7 @@ ParseResult Parser::parsePrimitiveType() {
 ///
 ///   element-type ::= primitive-type | vector-type
 ///
-ParseResult Parser::parseElementType() {
+Type *Parser::parseElementType() {
   if (curToken.is(Token::kw_vector))
     return parseVectorType();
 
@@ -219,21 +229,21 @@ ParseResult Parser::parseElementType() {
 ///   vector-type ::= `vector` `<` const-dimension-list primitive-type `>`
 ///   const-dimension-list ::= (integer-literal `x`)+
 ///
-ParseResult Parser::parseVectorType() {
+VectorType *Parser::parseVectorType() {
   consumeToken(Token::kw_vector);
 
   if (!consumeIf(Token::less))
-    return emitError("expected '<' in vector type");
+    return (emitError("expected '<' in vector type"), nullptr);
 
   if (curToken.isNot(Token::integer))
-    return emitError("expected dimension size in vector type");
+    return (emitError("expected dimension size in vector type"), nullptr);
 
   SmallVector<unsigned, 4> dimensions;
   while (curToken.is(Token::integer)) {
     // Make sure this integer value is in bound and valid.
     auto dimension = curToken.getUnsignedIntegerValue();
     if (!dimension.hasValue())
-      return emitError("invalid dimension in vector type");
+      return (emitError("invalid dimension in vector type"), nullptr);
     dimensions.push_back(dimension.getValue());
 
     consumeToken(Token::integer);
@@ -241,7 +251,7 @@ ParseResult Parser::parseVectorType() {
     // Make sure we have an 'x' or something like 'xbf32'.
     if (curToken.isNot(Token::bare_identifier) ||
         curToken.getSpelling()[0] != 'x')
-      return emitError("expected 'x' in vector dimension list");
+      return (emitError("expected 'x' in vector dimension list"), nullptr);
 
     // If we had a prefix of 'x', lex the next token immediately after the 'x'.
     if (curToken.getSpelling().size() != 1)
@@ -252,15 +262,14 @@ ParseResult Parser::parseVectorType() {
   }
 
   // Parse the element type.
-  if (parsePrimitiveType())
-    return ParseFailure;
+  auto *elementType = parsePrimitiveType();
+  if (!elementType)
+    return nullptr;
 
   if (!consumeIf(Token::greater))
-    return emitError("expected '>' in vector type");
+    return (emitError("expected '>' in vector type"), nullptr);
 
-  // TODO: Form IR object.
-
-  return ParseSuccess;
+  return VectorType::get(dimensions, elementType);
 }
 
 /// Parse a dimension list of a tensor or memref type.  This populates the
@@ -303,11 +312,11 @@ ParseResult Parser::parseDimensionListRanked(SmallVectorImpl<int> &dimensions) {
 ///   tensor-type ::= `tensor` `<` dimension-list element-type `>`
 ///   dimension-list ::= dimension-list-ranked | `??`
 ///
-ParseResult Parser::parseTensorType() {
+Type *Parser::parseTensorType() {
   consumeToken(Token::kw_tensor);
 
   if (!consumeIf(Token::less))
-    return emitError("expected '<' in tensor type");
+    return (emitError("expected '<' in tensor type"), nullptr);
 
   bool isUnranked;
   SmallVector<int, 4> dimensions;
@@ -317,19 +326,19 @@ ParseResult Parser::parseTensorType() {
   } else {
     isUnranked = false;
     if (parseDimensionListRanked(dimensions))
-      return ParseFailure;
+      return nullptr;
   }
 
   // Parse the element type.
-  if (parseElementType())
-    return ParseFailure;
+  auto elementType = parseElementType();
+  if (!elementType)
+    return nullptr;
 
   if (!consumeIf(Token::greater))
-    return emitError("expected '>' in tensor type");
+    return (emitError("expected '>' in tensor type"), nullptr);
 
-  // TODO: Form IR object.
-
-  return ParseSuccess;
+  // FIXME: Add an IR representation for tensor types.
+  return Type::getI1(context);
 }
 
 /// Parse a memref type.
@@ -340,29 +349,29 @@ ParseResult Parser::parseTensorType() {
 ///   semi-affine-map-composition ::= (semi-affine-map `,` )* semi-affine-map
 ///   memory-space ::= integer-literal /* | TODO: address-space-id */
 ///
-ParseResult Parser::parseMemRefType() {
+Type *Parser::parseMemRefType() {
   consumeToken(Token::kw_memref);
 
   if (!consumeIf(Token::less))
-    return emitError("expected '<' in memref type");
+    return (emitError("expected '<' in memref type"), nullptr);
 
   SmallVector<int, 4> dimensions;
   if (parseDimensionListRanked(dimensions))
-    return ParseFailure;
+    return nullptr;
 
   // Parse the element type.
-  if (parseElementType())
-    return ParseFailure;
+  auto elementType = parseElementType();
+  if (!elementType)
+    return nullptr;
 
   // TODO: Parse semi-affine-map-composition.
   // TODO: Parse memory-space.
 
   if (!consumeIf(Token::greater))
-    return emitError("expected '>' in memref type");
+    return (emitError("expected '>' in memref type"), nullptr);
 
-  // TODO: Form IR object.
-
-  return ParseSuccess;
+  // FIXME: Add an IR representation for memref types.
+  return Type::getI1(context);
 }
 
 
@@ -371,20 +380,21 @@ ParseResult Parser::parseMemRefType() {
 ///
 ///   function-type ::= type-list-parens `->` type-list
 ///
-ParseResult Parser::parseFunctionType() {
+Type *Parser::parseFunctionType() {
   assert(curToken.is(Token::l_paren));
 
-  if (parseTypeList())
-    return ParseFailure;
+  SmallVector<Type*, 4> arguments;
+  if (parseTypeList(arguments))
+    return nullptr;
 
   if (!consumeIf(Token::arrow))
-    return emitError("expected '->' in function type");
+    return (emitError("expected '->' in function type"), nullptr);
 
-  if (parseTypeList())
-    return ParseFailure;
+  SmallVector<Type*, 4> results;
+  if (parseTypeList(results))
+    return nullptr;
 
-  // TODO: Build IR object.
-  return ParseSuccess;
+  return FunctionType::get(arguments, results, context);
 }
 
 
@@ -397,7 +407,7 @@ ParseResult Parser::parseFunctionType() {
 ///          | function-type
 ///   element-type ::= primitive-type | vector-type
 ///
-ParseResult Parser::parseType() {
+Type *Parser::parseType() {
   switch (curToken.getKind()) {
   case Token::kw_memref: return parseMemRefType();
   case Token::kw_tensor: return parseTensorType();
@@ -415,20 +425,20 @@ ParseResult Parser::parseType() {
 ///   type-list-parens ::= `(` `)`
 ///                      | `(` type (`,` type)* `)`
 ///
-ParseResult Parser::parseTypeList() {
+ParseResult Parser::parseTypeList(SmallVectorImpl<Type*> &elements) {
+  auto parseElt = [&]() -> ParseResult {
+    auto elt = parseType();
+    elements.push_back(elt);
+    return elt ? ParseSuccess : ParseFailure;
+  };
+
   // If there is no parens, then it must be a singular type.
   if (!consumeIf(Token::l_paren))
-    return parseType();
+    return parseElt();
 
-  if (parseCommaSeparatedList(Token::r_paren,
-                              [&]() -> ParseResult {
-    // TODO: Add to list of IR values we're parsing.
-    return parseType();
-  })) {
+  if (parseCommaSeparatedList(Token::r_paren, parseElt))
     return ParseFailure;
-  }
 
-  // TODO: Build IR objects.
   return ParseSuccess;
 }
 
@@ -443,7 +453,8 @@ ParseResult Parser::parseTypeList() {
 ///   argument-list ::= type (`,` type)* | /*empty*/
 ///   function-signature ::= function-id `(` argument-list `)` (`->` type-list)?
 ///
-ParseResult Parser::parseFunctionSignature(StringRef &name) {
+ParseResult Parser::parseFunctionSignature(StringRef &name,
+                                           FunctionType *&type) {
   if (curToken.isNot(Token::at_identifier))
     return emitError("expected a function identifier like '@foo'");
 
@@ -453,17 +464,17 @@ ParseResult Parser::parseFunctionSignature(StringRef &name) {
   if (curToken.isNot(Token::l_paren))
     return emitError("expected '(' in function signature");
 
-  if (parseTypeList())
+   SmallVector<Type*, 4> arguments;
+   if (parseTypeList(arguments))
     return ParseFailure;
 
   // Parse the return type if present.
+  SmallVector<Type*, 4> results;
   if (consumeIf(Token::arrow)) {
-    if (parseTypeList())
+    if (parseTypeList(results))
       return ParseFailure;
-
-    // TODO: Build IR object.
   }
-
+  type = FunctionType::get(arguments, results, context);
   return ParseSuccess;
 }
 
@@ -476,12 +487,13 @@ ParseResult Parser::parseExtFunc() {
   consumeToken(Token::kw_extfunc);
 
   StringRef name;
-  if (parseFunctionSignature(name))
+  FunctionType *type = nullptr;
+  if (parseFunctionSignature(name, type))
     return ParseFailure;
 
 
   // Okay, the external function definition was parsed correctly.
-  module->functionList.push_back(new Function(name));
+  module->functionList.push_back(new Function(name, type));
   return ParseSuccess;
 }
 
@@ -518,6 +530,6 @@ Module *Parser::parseModule() {
 
 /// This parses the file specified by the indicated SourceMgr and returns an
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns null.
-Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr) {
-  return Parser(sourceMgr).parseModule();
+Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context){
+  return Parser(sourceMgr, context).parseModule();
 }

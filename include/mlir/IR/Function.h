@@ -27,12 +27,14 @@
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
+  class FunctionType;
+
   /// This is the base class for all of the MLIR function types
   class Function {
     std::string name;
-    // TODO: type and lots of other stuff.
+    FunctionType *const type;
   public:
-    explicit Function(StringRef name);
+    explicit Function(StringRef name, FunctionType *type);
 
     void print(raw_ostream &os);
     void dump();

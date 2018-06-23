@@ -16,14 +16,37 @@
 // =============================================================================
 
 #include "mlir/IR/Function.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Support/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
-Function::Function(StringRef name) : name(name.str()) {
+Function::Function(StringRef name, FunctionType *type)
+  : name(name.str()), type(type) {
 }
 
 void Function::print(raw_ostream &os) {
-  os << "extfunc @" << name << "()\n";
+  os << "extfunc @" << name << '(';
+  interleave(type->getInputs(),
+             [&](Type *eltType) { os << *eltType; },
+             [&]() { os << ", "; });
+  os << ')';
+
+  switch (type->getResults().size()) {
+  case 0: break;
+  case 1:
+    os << " -> " << *type->getResults()[0];
+    break;
+  default:
+    os << " -> (";
+    interleave(type->getResults(),
+               [&](Type *eltType) { os << *eltType; },
+               [&]() { os << ", "; });
+    os << ')';
+    break;
+  }
+
+  os << "\n";
 }
 
 void Function::dump() {

@@ -28,10 +28,11 @@ namespace llvm {
 
 namespace mlir {
 class Module;
+class MLIRContext;
 
 /// This parses the file specified by the indicated SourceMgr and returns an
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns null.
-Module *parseSourceFile(llvm::SourceMgr &sourceMgr);
+Module *parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context);
 
 } // end namespace mlir
 

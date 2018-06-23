@@ -21,6 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
 #include "llvm/Support/CommandLine.h"
@@ -56,6 +57,8 @@ static std::unique_ptr<ToolOutputFile> getOutputStream() {
 int main(int argc, char **argv) {
   InitLLVM x(argc, argv);
 
+  MLIRContext context;
+
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
 
   // Set up the input file.
@@ -71,7 +74,7 @@ int main(int argc, char **argv) {
   sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), SMLoc());
 
   // Parse the input file and emit any errors.
-  std::unique_ptr<Module> module(parseSourceFile(sourceMgr));
+  std::unique_ptr<Module> module(parseSourceFile(sourceMgr, &context));
   if (!module) return 1;
 
   // Print the output.
