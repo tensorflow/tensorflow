@@ -413,6 +413,13 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
                         DeviceBase* cpu_device, Cluster* cluster,
+                        GraphDef* optimized_graph) {
+  MetaOptimizer optimizer(cpu_device, cfg);
+  return optimizer.Optimize(cluster, item, optimized_graph);
+}
+
+Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
+                        DeviceBase* cpu_device, Cluster* cluster,
                         GraphDef* optimized_graph,
                         const GPUOptions& gpu_options) {
   MetaOptimizer optimizer(cpu_device, cfg, gpu_options);
