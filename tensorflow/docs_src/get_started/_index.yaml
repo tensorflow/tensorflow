@@ -74,7 +74,7 @@ landing_page:
               The high-level Keras API provides building blocks to create and
               train deep learning models. Start with these beginner-friendly
               notebook examples, then read the
-              <a href="/programmers_guide/keras">TensorFlow Keras guide</a>.
+              <a href="/guide/keras">TensorFlow Keras guide</a>.
             </p>
             <ol style="padding-left:20px;">
               <li><a href="/get_started/basic_classification">Basic classification</a></li>
@@ -85,7 +85,7 @@ landing_page:
             </ol>
           </div>
           <div class="devsite-landing-row-item-buttons" style="margin-top:0;">
-            <a class="button button-primary tfo-button-primary" href="/programmers_guide/keras">Read the Keras guide</a>
+            <a class="button button-primary tfo-button-primary" href="/guide/keras">Read the Keras guide</a>
           </div>
         </div>
     - classname: tfo-landing-row-item-code-block
@@ -123,7 +123,7 @@ landing_page:
           <div class="devsite-landing-row-item-description-content">
             <p>
               Eager execution provides an imperative, define-by-run interface for advanced operations. Write custom layers, forward passes, and training loops with auto‑differentiation. Start with
-              these notebooks, then read the <a href="/programmers_guide/eager">eager execution guide</a>.
+              these notebooks, then read the <a href="/guide/eager">eager execution guide</a>.
             </p>
             <ol style="padding-left:20px;">
               <li>
@@ -165,7 +165,7 @@ landing_page:
             </ol>
           </div>
           <div class="devsite-landing-row-item-buttons">
-            <a class="button button-primary tfo-button-primary" href="/programmers_guide/eager">Read the eager execution guide</a>
+            <a class="button button-primary tfo-button-primary" href="/guide/eager">Read the eager execution guide</a>
           </div>
         </div>
     - custom_html: >
@@ -177,7 +177,7 @@ landing_page:
             <p>
               Estimators can train large models on multiple machines in a
               production environment. Try the examples below and read the
-              <a href="/programmers_guide/estimators">Estimators guide</a>.
+              <a href="/guide/estimators">Estimators guide</a>.
             </p>
             <ol style="padding-left: 20px;">
               <li><a href="/tutorials/text_classification_with_tf_hub">How to build a simple text classifier with TF-Hub</a></li>
@@ -186,7 +186,7 @@ landing_page:
             </ol>
           </div>
           <div class="devsite-landing-row-item-buttons">
-            <a class="button button-primary tfo-button-primary" href="/programmers_guide/estimators">Read the Estimators guide</a>
+            <a class="button button-primary tfo-button-primary" href="/guide/estimators">Read the Estimators guide</a>
           </div>
         </div>
 
