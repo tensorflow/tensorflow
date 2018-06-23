@@ -31,8 +31,11 @@ struct ControlFlowInfo {
 };
 
 // Clear and populate `info` with each node's frame and the level it belongs to.
-// We check the well-formedness of the graph: All inputs to a node must come
-// from the same frame and have the same "static" iteration level.
+// We check the well-formedness of the graph:
+// 1) All inputs to a node must come from the same frame and have the same
+//    "static" iteration level.
+// 2) Each frame has at most one LoopCond node.
+// 3) Each frame has a single parent frame.
 // If `unreachable_nodes` is set, return names of nodes unreachable from the
 // source node. We cannot build ControlFlowInfo for such nodes. They might be
 // pruned later.

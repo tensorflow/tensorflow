@@ -1120,11 +1120,9 @@ XlaOp XlaBuilder::Or(const XlaOp& lhs, const XlaOp& rhs,
   return BinaryOp(HloOpcode::kOr, lhs, rhs, broadcast_dimensions);
 }
 
-// TODO(b/65209188): Create a dedicated lowering for Xor.
 XlaOp XlaBuilder::Xor(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return Or(And(Not(lhs), rhs, broadcast_dimensions),
-            And(lhs, Not(rhs), broadcast_dimensions));
+  return BinaryOp(HloOpcode::kXor, lhs, rhs, broadcast_dimensions);
 }
 
 XlaOp XlaBuilder::Not(const XlaOp& operand) {
@@ -1611,7 +1609,9 @@ XlaOp XlaBuilder::BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
   });
 }
 
-XlaOp XlaBuilder::CrossReplicaSum(const XlaOp& operand) {
+XlaOp XlaBuilder::CrossReplicaSum(
+    const XlaOp& operand,
+    tensorflow::gtl::ArraySlice<int64> replica_group_ids) {
   return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
     const Shape& scalar_shape = ShapeUtil::MakeShape(shape.element_type(), {});
@@ -1619,7 +1619,7 @@ XlaOp XlaBuilder::CrossReplicaSum(const XlaOp& operand) {
     b->Add(b->Parameter(/*parameter_number=*/0, scalar_shape, "x"),
            b->Parameter(/*parameter_number=*/1, scalar_shape, "y"));
     TF_ASSIGN_OR_RETURN(auto computation, b->Build());
-    return CrossReplicaSum(operand, computation, /*replica_group_ids=*/{},
+    return CrossReplicaSum(operand, computation, replica_group_ids,
                            /*channel_id=*/tensorflow::gtl::nullopt);
   });
 }
@@ -1629,9 +1629,8 @@ XlaOp XlaBuilder::CrossReplicaSum(
     tensorflow::gtl::ArraySlice<int64> replica_group_ids,
     const tensorflow::gtl::optional<ChannelHandle>& channel_id) {
   return NoteErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    if (!replica_group_ids.empty() || channel_id.has_value()) {
-      return Unimplemented(
-          "replica_group_ids and channel_id and is not supported in AllReduce");
+    if (channel_id.has_value()) {
+      return Unimplemented("channel_id is not supported in AllReduce");
     }
 
     HloInstructionProto instr;
@@ -1639,6 +1638,9 @@ XlaOp XlaBuilder::CrossReplicaSum(
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
         ShapeInference::InferCrossReplicaSumShape({&operand_shape}));
+    for (int64 replica_group_id : replica_group_ids) {
+      instr.add_replica_group_ids(replica_group_id);
+    }
 
     AddCalledComputation(computation, &instr);
 

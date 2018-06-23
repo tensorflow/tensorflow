@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -210,8 +211,9 @@ Status XlaHelpers::Iota(xla::XlaBuilder* builder, DataType dtype, int64 size,
       return errors::InvalidArgument("Invalid argument type ",
                                      DataTypeString(dtype));
   }
-  xla::Literal linspace_literal;
-  TF_RETURN_IF_ERROR(HostTensorToLiteral(linspace, &linspace_literal));
+  xla::BorrowingLiteral linspace_literal;
+  TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(linspace, &linspace_literal));
+
   *iota = builder->ConstantLiteral(linspace_literal);
   return Status::OK();
 }
@@ -245,8 +247,9 @@ Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64 depth, int axis,
       return errors::InvalidArgument("Invalid argument type ",
                                      DataTypeString(index_type));
   }
-  xla::Literal linspace_literal;
-  TF_RETURN_IF_ERROR(HostTensorToLiteral(linspace, &linspace_literal));
+
+  xla::BorrowingLiteral linspace_literal;
+  TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(linspace, &linspace_literal));
 
   // Broadcast the linspace constant across the indices along the new axis,
   // and test equality at each position.

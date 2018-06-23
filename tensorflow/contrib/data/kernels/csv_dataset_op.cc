@@ -236,7 +236,7 @@ class CSVDatasetOp : public DatasetOpKernel {
         size_t num_parsed = 0;
         size_t num_selected_parsed = 0;
 
-        Status result = Status::OK();
+        Status result;
 
         while (!end_of_record) {  // Read till we reach \n, \r or EOF
           bool include =
@@ -329,6 +329,7 @@ class CSVDatasetOp : public DatasetOpKernel {
         size_t start = pos_;
         pos_++;  // Starting quotation mark
 
+        Status parse_result;
         while (true) {  // Each iter reads 1 char, filling buffer if necessary
           if (pos_ >= buffer_.size()) {
             Status s = SaveAndFillBuffer(&earlier_pieces, &start, include);
@@ -351,8 +352,9 @@ class CSVDatasetOp : public DatasetOpKernel {
               if (errors::IsOutOfRange(s)) {
                 // This was the last field. We are done
                 *end_of_record = true;
-                return QuotedFieldToOutput(ctx, StringPiece(), out_tensors,
-                                           earlier_pieces, include);
+                parse_result.Update(QuotedFieldToOutput(
+                    ctx, StringPiece(), out_tensors, earlier_pieces, include));
+                return parse_result;
               } else if (!s.ok()) {
                 return s;
               }
@@ -361,20 +363,24 @@ class CSVDatasetOp : public DatasetOpKernel {
             char next = buffer_[pos_];
             pos_++;
             if (next == dataset()->delim_) {
-              return QuotedFieldToOutput(
+              parse_result.Update(QuotedFieldToOutput(
                   ctx, StringPiece(&buffer_[start], pos_ - 1 - start),
-                  out_tensors, earlier_pieces, include);
+                  out_tensors, earlier_pieces, include));
+              return parse_result;
 
             } else if (next == '\n' || next == '\r') {
               *end_of_record = true;
-              Status s = QuotedFieldToOutput(
+              parse_result.Update(QuotedFieldToOutput(
                   ctx, StringPiece(&buffer_[start], pos_ - 1 - start),
-                  out_tensors, earlier_pieces, include);
+                  out_tensors, earlier_pieces, include));
               if (next == '\r') SkipNewLineIfNecessary();
-              return s;
+              return parse_result;
             } else if (next != '"') {
-              return errors::InvalidArgument(
-                  "Quote inside a string has to be escaped by another quote");
+              // Take note of the error, but keep going to end of field.
+              include = false;  // So we don't get funky errors when trying to
+                                // unescape the quotes.
+              parse_result.Update(errors::InvalidArgument(
+                  "Quote inside a string has to be escaped by another quote"));
             }
 
           } else {
@@ -454,6 +460,8 @@ class CSVDatasetOp : public DatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         std::vector<Piece> earlier_pieces;
         size_t start = pos_;
+        Status parse_result;
+
         while (true) {  // Each iter reads 1 char, filling buffer if necessary
           if (pos_ >= buffer_.size()) {
             Status s = SaveAndFillBuffer(&earlier_pieces, &start, include);
@@ -461,9 +469,10 @@ class CSVDatasetOp : public DatasetOpKernel {
             if (errors::IsOutOfRange(s)) {
               // Whatever we have is the last field of the last record
               *end_of_record = true;
-              return UnquotedFieldToOutput(
+              parse_result.Update(UnquotedFieldToOutput(
                   ctx, StringPiece(&buffer_[start], pos_ - start), out_tensors,
-                  earlier_pieces, include);
+                  earlier_pieces, include));
+              return parse_result;
             } else if (!s.ok()) {
               return s;  // Surface all other errors to caller
             }
@@ -472,63 +481,30 @@ class CSVDatasetOp : public DatasetOpKernel {
           char ch = buffer_[pos_];
 
           if (ch == dataset()->delim_) {
-            Status s = UnquotedFieldToOutput(
+            parse_result.Update(UnquotedFieldToOutput(
                 ctx, StringPiece(&buffer_[start], pos_ - start), out_tensors,
-                earlier_pieces, include);
+                earlier_pieces, include));
             pos_++;
-            return s;
+            return parse_result;
           }
           if (ch == '\n' || ch == '\r') {
             // need special case to skip over first \n of record if the line
             // breaks are \r\n
-            Status s = UnquotedFieldToOutput(
+            parse_result.Update(UnquotedFieldToOutput(
                 ctx, StringPiece(&buffer_[start], pos_ - start), out_tensors,
-                earlier_pieces, include);
+                earlier_pieces, include));
             *end_of_record = true;
             pos_++;
             if (ch == '\r') SkipNewLineIfNecessary();
-            return s;
+            return parse_result;
           }
           if (dataset()->use_quote_delim_ && ch == '"') {
-            // Advance pos_ to the next field anyway so that we can ignore
-            // errors gracefully if required. The caller of this will be able to
-            // call ParseOneField and continue with the rest of the record.
-            AdvanceToNextField(end_of_record);
-            return errors::InvalidArgument(
-                "Unquoted fields cannot have quotes inside");
+            // Take note of the error, but keep going to end of field.
+            parse_result.Update(errors::InvalidArgument(
+                "Unquoted fields cannot have quotes inside"));
           }
           // Otherwise, go to next character
           pos_++;
-        }
-      }
-
-      // Advances pos_ to the start of the next field, as delimited by delim,
-      // CRLF, or EOF, ignoring errors, and not keeping track of characters in
-      // the current field.
-      void AdvanceToNextField(bool* end_of_record)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        while (true) {
-          if (pos_ >= buffer_.size()) {
-            Status s = FillBuffer(&buffer_);
-            pos_ = 0;
-            if (!s.ok()) {
-              *end_of_record = true;
-              return;
-            }
-          }
-
-          char ch = buffer_[pos_];
-          pos_++;
-
-          if (ch == dataset()->delim_) {
-            return;
-          }
-
-          if (ch == '\n' || ch == '\r') {
-            *end_of_record = true;
-            if (ch == '\r') SkipNewLineIfNecessary();
-            return;
-          }
         }
       }
 

@@ -103,9 +103,9 @@ class AdamOptimizer(optimizer_v2.OptimizerV2):
 
   def _create_vars(self, var_list, state):
     # Non-slot variables end up on the same device(s).
-    state.create_non_slot(initial_value=state.get_hyper("beta1"),
+    state.create_non_slot(initial_value=lambda: state.get_hyper("beta1"),
                           name="beta1_power")
-    state.create_non_slot(initial_value=state.get_hyper("beta2"),
+    state.create_non_slot(initial_value=lambda: state.get_hyper("beta2"),
                           name="beta2_power")
 
     # Create slots for the first and second moments.

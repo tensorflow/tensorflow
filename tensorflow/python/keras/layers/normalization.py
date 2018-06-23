@@ -183,7 +183,7 @@ class BatchNormalization(Layer):
   def _add_tower_local_variable(self, *args, **kwargs):
     tower_context = distribute_lib.get_tower_context()
     with tower_context.tower_local_var_scope('mean'):
-      return self.add_variable(*args, **kwargs)
+      return self.add_weight(*args, **kwargs)
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -276,7 +276,7 @@ class BatchNormalization(Layer):
           self.axis[idx] = x + 1      # Account for added dimension
 
     if self.scale:
-      self.gamma = self.add_variable(
+      self.gamma = self.add_weight(
           name='gamma',
           shape=param_shape,
           dtype=param_dtype,
@@ -291,7 +291,7 @@ class BatchNormalization(Layer):
             1.0, dtype=param_dtype, shape=param_shape)
 
     if self.center:
-      self.beta = self.add_variable(
+      self.beta = self.add_weight(
           name='beta',
           shape=param_shape,
           dtype=param_dtype,
@@ -364,11 +364,12 @@ class BatchNormalization(Layer):
   def _assign_moving_average(self, variable, value, momentum):
     with ops.name_scope(None, 'AssignMovingAvg',
                         [variable, value, momentum]) as scope:
-      decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
-      if decay.dtype != variable.dtype.base_dtype:
-        decay = math_ops.cast(decay, variable.dtype.base_dtype)
-      update_delta = (variable - value) * decay
-      return state_ops.assign_sub(variable, update_delta, name=scope)
+      with ops.colocate_with(variable):
+        decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
+        if decay.dtype != variable.dtype.base_dtype:
+          decay = math_ops.cast(decay, variable.dtype.base_dtype)
+        update_delta = (variable - value) * decay
+        return state_ops.assign_sub(variable, update_delta, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""

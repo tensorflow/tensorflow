@@ -22,6 +22,7 @@ works. The units are as follows:
   design yourself.
 * @{$feature_columns}, which shows how an Estimator can handle a variety of input
   data types without changes to the model.
+* @{$datasets_for_estimators} describes using tf.data with estimators.
 * @{$checkpoints}, which explains how to save training progress and resume where
   you left off.
 

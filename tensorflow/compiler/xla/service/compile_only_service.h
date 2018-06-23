@@ -53,6 +53,12 @@ class CompileOnlyService : public Service {
       const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
       const AotCompilationOptions& options);
 
+  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(
+      const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+      const AotCompilationOptions& options,
+      std::unique_ptr<AotCompilationMetadata>* metadata);
+
   Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                           GetDeviceHandlesResponse* result) override {
     return Unimplemented("CompileOnlyService does not support devices.");

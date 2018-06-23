@@ -606,8 +606,8 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 }  // namespace
 
 Status EqualShapes(const Shape& expected, const Shape& actual) {
-  if (ShapeUtil::IsTuple(expected) != ShapeUtil::IsTuple(actual)) {
-    return InvalidArgument("tupleness-mismatch! want: %s got %s",
+  if (expected.element_type() != actual.element_type()) {
+    return InvalidArgument("element type mismatch, want: %s got %s",
                            ShapeUtil::HumanString(expected).c_str(),
                            ShapeUtil::HumanString(actual).c_str());
   }
@@ -626,7 +626,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
         return AppendStatus(result, StrCat("mismatch in tuple index", i));
       }
     }
-  } else {
+  } else if (ShapeUtil::IsArray(expected)) {
     if (ShapeUtil::Rank(expected) != ShapeUtil::Rank(actual)) {
       return InvalidArgument("want rank of %s got rank of %s",
                              ShapeUtil::HumanString(expected).c_str(),
@@ -652,6 +652,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
       }
     }
   }
+  // Non-array, non-tuple shapes are trivially equivalent.
   return Status::OK();
 }
 
@@ -705,6 +706,9 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
       }
       break;
     }
+    case TOKEN:
+      // Tokens have no on-device representation and are trivially equal.
+      return Status::OK();
     default:
       LOG(FATAL)
           << "Unsupported primitive type in LiteralTestUtil::ExpectEqual: "

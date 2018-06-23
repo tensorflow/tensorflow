@@ -1,9 +1,10 @@
 op {
   graph_op_name: "FFT"
   endpoint {
-    name: "fft"
+    name: "spectral.fft"
   }
   endpoint {
-    name: "spectral.fft"
+    name: "fft"
+    deprecation_message: "tf.fft is deprecated, please use tf.spectral.fft instead."
   }
 }

@@ -31,16 +31,13 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 
 
-class ListCompCanonicalizationTransformer(transformer.Base):
+class ListCompCanonicalizationTransformer(converter.Base):
   """NodeTransformer to canonicalize list comprehensions."""
-
-  def __init__(self, context):
-    super(ListCompCanonicalizationTransformer, self).__init__(context)
 
   def make_update_list_node(self, list_, elt):
     return templates.replace('list_.append(elt)', list_=list_, elt=elt)[0]
@@ -76,5 +73,5 @@ class ListCompCanonicalizationTransformer(transformer.Base):
     return make_list + loop_body
 
 
-def transform(node, context):
-  return ListCompCanonicalizationTransformer(context).visit(node)
+def transform(node, ctx):
+  return ListCompCanonicalizationTransformer(ctx).visit(node)

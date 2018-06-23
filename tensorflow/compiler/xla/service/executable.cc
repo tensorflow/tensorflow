@@ -116,6 +116,11 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     if (profile->compute_time_ns() == 0) {
       profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
+
+    const int64 executable_size_in_bytes = SizeInBytes();
+    if (executable_size_in_bytes != 0) {
+      profile->set_executable_size_in_bytes(executable_size_in_bytes);
+    }
   }
 
   if (profile_ptr != nullptr) {
@@ -128,6 +133,8 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
 
   return return_value;
 }
+
+int64 Executable::SizeInBytes() { return -1; }
 
 Status Executable::DumpHloSnapshot() {
   TF_RET_CHECK(dumping_snapshot());

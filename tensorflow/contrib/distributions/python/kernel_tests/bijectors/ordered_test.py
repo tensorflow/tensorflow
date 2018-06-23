@@ -36,7 +36,7 @@ class OrderedBijectorTest(test.TestCase):
   def setUp(self):
     self._rng = np.random.RandomState(42)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBijectorVector(self):
     with self.test_session():
       ordered = Ordered()
@@ -82,7 +82,7 @@ class OrderedBijectorTest(test.TestCase):
           atol=0.,
           rtol=1e-7)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testShapeGetters(self):
     with self.test_session():
       x = tensor_shape.TensorShape([4])

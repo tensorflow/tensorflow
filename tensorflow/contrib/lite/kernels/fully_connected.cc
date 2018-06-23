@@ -105,7 +105,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int batch_size = input_size / filter->dims->data[1];
   const int num_units = filter->dims->data[0];
 
-  TF_LITE_ASSERT_EQ(input_size, batch_size * filter->dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, input_size, batch_size * filter->dims->data[1]);
   if (bias) {
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
   }
@@ -118,8 +118,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
     TF_LITE_ENSURE(context, real_multiplier < 1.0);
-    QuantizeMultiplierSmallerThanOne(real_multiplier, &data->output_multiplier,
-                                     &data->output_shift);
+    QuantizeMultiplierSmallerThanOneExp(
+        real_multiplier, &data->output_multiplier, &data->output_shift);
+    data->output_shift *= -1;
     CalculateActivationRangeUint8(params->activation, output,
                                   &data->output_activation_min,
                                   &data->output_activation_max);

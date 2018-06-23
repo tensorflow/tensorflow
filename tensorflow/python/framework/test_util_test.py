@@ -569,7 +569,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(a_np_rand, b_np_rand)
     self.assertEqual(a_rand, b_rand)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_callable_evaluate(self):
     def model():
       return resource_variable_ops.ResourceVariable(
@@ -578,7 +578,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       self.assertEqual(2, self.evaluate(model))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_nested_tensors_evaluate(self):
     expected = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
     nested = {"a": constant_op.constant(1),
@@ -588,12 +588,41 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(expected, self.evaluate(nested))
 
+  def test_run_in_graph_and_eager_modes(self):
+    l = []
+    def inc(self, with_brackets):
+      del self  # self argument is required by run_in_graph_and_eager_modes.
+      mode = "eager" if context.executing_eagerly() else "graph"
+      with_brackets = "with_brackets" if with_brackets else "without_brackets"
+      l.append((with_brackets, mode))
+
+    f = test_util.run_in_graph_and_eager_modes(inc)
+    f(self, with_brackets=False)
+    f = test_util.run_in_graph_and_eager_modes()(inc)
+    f(self, with_brackets=True)
+
+    self.assertEqual(len(l), 4)
+    self.assertEqual(set(l), {
+        ("with_brackets", "graph"),
+        ("with_brackets", "eager"),
+        ("without_brackets", "graph"),
+        ("without_brackets", "eager"),
+    })
+
   def test_get_node_def_from_graph(self):
     graph_def = graph_pb2.GraphDef()
     node_foo = graph_def.node.add()
     node_foo.name = "foo"
     self.assertIs(test_util.get_node_def_from_graph("foo", graph_def), node_foo)
     self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
+
+  def testRunInGraphAndEagerModesOnTestCase(self):
+    msg = "`run_test_in_graph_and_eager_modes` only supports test methods.*"
+    with self.assertRaisesRegexp(ValueError, msg):
+      @test_util.run_in_graph_and_eager_modes()
+      class Foo(object):
+        pass
+      del Foo  # Make pylint unused happy.
 
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
@@ -619,7 +648,7 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
     ReferenceCycleTest().test_has_no_cycle()
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_no_leaked_tensor_decorator(self):
 
     class LeakedTensorTest(object):

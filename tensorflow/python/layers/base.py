@@ -191,7 +191,7 @@ class Layer(base_layer.Layer):
       RuntimeError: If called with partioned variable regularization and
         eager execution is enabled.
     """
-    
+
     def _should_add_regularizer(variable, existing_variable_set):
       if isinstance(variable, tf_variables.PartitionedVariable):
         for var in variable:

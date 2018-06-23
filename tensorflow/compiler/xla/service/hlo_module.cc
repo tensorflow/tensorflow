@@ -32,15 +32,6 @@ limitations under the License.
 
 namespace xla {
 
-HloModule::HloModule(const string& name,
-                     const VersionedComputationHandle& entry_computation_handle,
-                     const HloModuleConfig& config)
-    : name_(NameUniquer::GetSanitizedName(name)),
-      config_(config),
-      has_entry_computation_handle_(true),
-      entry_computation_handle_(entry_computation_handle),
-      unique_id_(next_unique_module_id_++) {}
-
 HloModule::HloModule(const string& name, const HloModuleConfig& config)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(config),
@@ -67,7 +58,7 @@ HloComputation* HloModule::AddComputationInternal(
 
     // If the module configuration has no entry layout computation set, create a
     // default one based on the program shape.
-    if (!config_.has_host_entry_computation_layout()) {
+    if (!config_.has_entry_computation_layout()) {
       config_.SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
@@ -234,21 +225,17 @@ HloModuleProto HloModule::ToProto() const {
 
 /* static */
 StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
-    const HloModuleProto& proto, const HloModuleConfig& module_config,
-    const VersionedComputationHandle& entry_computation_handle) {
+    const HloModuleProto& proto, const HloModuleConfig& module_config) {
   // The ProgramShape in the passed in module config must match the shapes of
   // the entry parameters and root.
   TF_RET_CHECK(proto.has_program_shape())
       << "No program shape found in the proto";
   const auto& expected_program_shape = proto.program_shape();
-  TF_RET_CHECK(
-      expected_program_shape.parameters_size() ==
-      module_config.device_entry_computation_layout().parameter_count());
+  TF_RET_CHECK(expected_program_shape.parameters_size() ==
+               module_config.entry_computation_layout().parameter_count());
   for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
     const Shape& parameter_shape =
-        module_config.device_entry_computation_layout()
-            .parameter_layout(i)
-            .shape();
+        module_config.entry_computation_layout().parameter_layout(i).shape();
     TF_RET_CHECK(ShapeUtil::Compatible(expected_program_shape.parameters(i),
                                        parameter_shape))
         << "HloModuleConfig has different shape for parameter " << i
@@ -258,7 +245,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
         << ", actual: " << ShapeUtil::HumanStringWithLayout(parameter_shape);
   }
   const Shape& result_shape =
-      module_config.device_entry_computation_layout().result_layout().shape();
+      module_config.entry_computation_layout().result_layout().shape();
   TF_RET_CHECK(
       ShapeUtil::Compatible(expected_program_shape.result(), result_shape))
       << "HloModuleConfig has different result shape than the HLO module. "
@@ -287,8 +274,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(entry != nullptr);
 
-  auto module = MakeUnique<HloModule>(proto.name(), entry_computation_handle,
-                                      module_config);
+  auto module = MakeUnique<HloModule>(proto.name(), module_config);
 
   // Sort the computations in the proto id's order.
   std::sort(computations.begin(), computations.end(),
@@ -338,7 +324,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   // The module config is constructed with default layouts regardless of what is
   // passed in via the ProgramShape. Set the layouts to the appropriate values.
   ComputationLayout* entry_layout =
-      module_config.mutable_host_entry_computation_layout();
+      module_config.mutable_entry_computation_layout();
   for (int64 i = 0; i < entry_layout->parameter_count(); ++i) {
     TF_RETURN_IF_ERROR(
         entry_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
@@ -346,9 +332,6 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   }
   TF_RETURN_IF_ERROR(entry_layout->mutable_result_layout()->CopyLayoutFromShape(
       program_shape.result()));
-  *module_config.mutable_device_entry_computation_layout() =
-      module_config.host_entry_computation_layout();
-
   return module_config;
 }
 
@@ -401,7 +384,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
         // as a parameter in the new function.
         arguments.push_back(old_operand);
         *operand_slot = builder.AddInstruction(HloInstruction::CreateParameter(
-            parameter_count, old_operand->shape(), ""));
+            parameter_count, old_operand->shape(), "p"));
         ++parameter_count;
       }
       TF_CHECK_OK(
@@ -462,7 +445,7 @@ int64 HloModule::instruction_count() const {
   return n;
 }
 
-std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
+std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the
   // module).
@@ -480,7 +463,7 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // order. This prevents duplication as an embedded computation may be called
   // from two different root computations.
   std::set<HloComputation*> added_computations;
-  std::list<HloComputation*> post_order;
+  std::vector<HloComputation*> post_order;
   for (auto& computation : computations_) {
     if (nonroot_computations.count(computation.get()) == 0) {
       for (HloComputation* embedded_computation :
@@ -525,8 +508,6 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
 std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = MakeUnique<HloModule>(name_ + "-" + suffix, config_);
-  module->entry_computation_handle_ = entry_computation_handle_;
-  module->has_entry_computation_handle_ = has_entry_computation_handle_;
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);

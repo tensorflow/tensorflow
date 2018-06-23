@@ -162,12 +162,12 @@ def _get_processor(v):
 def _var_key_v2(var):
   """Key for representing a primary variable, for looking up slots."""
   # pylint: disable=protected-access
-  if hasattr(var, "_mirrored_container"):
-    mirrored_container = var._mirrored_container()
-    assert mirrored_container is not None
+  if hasattr(var, "_distributed_container"):
+    distributed_container = var._distributed_container()
+    assert distributed_container is not None
     if context.executing_eagerly():
-      return mirrored_container._unique_id
-    return mirrored_container._shared_name
+      return distributed_container._unique_id
+    return distributed_container._shared_name
   if context.executing_eagerly():
     return var._unique_id
   return var.op.name
@@ -211,8 +211,9 @@ class _OptimizerV2State(object):
     # This dict starts with a single item with key "None" with the hyper
     # parameter value converted to a Tensor. Other items have dtype keys
     # with that Tensor cast to that dtype.
-    self._hyper = {name: {None: ops.convert_to_tensor(value, name=name)}
-                   for name, (dynamic, value) in hyper.items() if not dynamic}
+    with ops.init_scope():
+      self._hyper = {name: {None: ops.convert_to_tensor(value, name=name)}
+                     for name, (dynamic, value) in hyper.items() if not dynamic}
     self._slots = {}
     self._non_slot_dict = {}
     # Extra state to help Optimizers implement Checkpointable. Holds information
