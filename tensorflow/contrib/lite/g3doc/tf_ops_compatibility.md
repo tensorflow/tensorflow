@@ -429,6 +429,17 @@ Outputs {
 }
 ```
 
+**LOG**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to log(input)
+}
+```
+
 **LOG_SOFTMAX**
 
 ```
@@ -573,6 +584,31 @@ Options {
 }
 ```
 
+**RSQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise reciprocal square root of the input tensor
+}
+```
+
+**SHAPE**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 1D tensor representing the shape of the input tensor
+}
+Options {
+  out_type: the output type of the op (int32 or int64). Defaults to int32.
+}
+```
+
 **SLICE**
 
 ```
@@ -656,6 +692,17 @@ Outputs {
 }
 Options {
   num_splits: Specifies number of outputs
+}
+```
+
+**SQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise square root of the input tensor
 }
 ```
 

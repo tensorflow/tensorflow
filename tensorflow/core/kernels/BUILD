@@ -3381,7 +3381,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bias_op",
     prefix = "bias_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + if_cuda([
+        ":reduction_ops",
+        "@cub_archive//:cub",
+    ]),
 )
 
 tf_kernel_library(
@@ -3895,6 +3898,7 @@ cc_library(
         ":sparse_reduce_op",
         ":sparse_reorder_op",
         ":sparse_reshape_op",
+        ":sparse_slice_grad_op",
         ":sparse_slice_op",
         ":sparse_softmax",
         ":sparse_sparse_binary_op_shared",
@@ -3978,6 +3982,12 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         ":reshape_util",
     ],
+)
+
+tf_kernel_library(
+    name = "sparse_slice_grad_op",
+    prefix = "sparse_slice_grad_op",
+    deps = SPARSE_DEPS,
 )
 
 tf_kernel_library(

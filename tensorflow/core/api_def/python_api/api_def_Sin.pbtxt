@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Sin"
+  endpoint {
+    name: "math.sin"
+  }
+  endpoint {
+    name: "sin"
+    deprecation_message: "tf.sin is deprecated, please use tf.math.sin instead."
+  }
+}

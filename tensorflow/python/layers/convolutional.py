@@ -217,7 +217,6 @@ def conv1d(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -421,7 +420,6 @@ def conv2d(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -627,7 +625,6 @@ def conv3d(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -1266,7 +1263,6 @@ def conv2d_transpose(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -1438,7 +1434,6 @@ def conv3d_transpose(inputs,
       bias_constraint=bias_constraint,
       trainable=trainable,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)

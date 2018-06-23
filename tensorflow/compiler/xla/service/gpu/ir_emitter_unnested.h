@@ -67,7 +67,6 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleDot(HloInstruction* dot) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleGather(HloInstruction* gather) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
@@ -77,6 +76,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleRng(HloInstruction* random) override;
   Status HandleSelect(HloInstruction* select) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleGenerateToken(HloInstruction* gen_token) override;
 
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,

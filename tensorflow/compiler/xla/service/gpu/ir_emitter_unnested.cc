@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
@@ -282,6 +283,69 @@ int ComputeMaxUnrollFactor(const HloInstruction* hlo) {
   // Cannot unroll.
   return 1;
 }
+
+// Returns the llvm type for the indices used in the kernel that contains the
+// hlo instruction. Such indices include the index for the parallel loop and
+// the indices for the tensors accessed by the kernel. The return type is i32
+// iff the following conditions are met:
+//  . The launch_size of the kernel is within the range of i32.
+//  . The sizes of all the tensors accessed within the kernel are within the
+//    range of i32.
+// Otherwise, the return type is i64.
+llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo, int64 launch_size,
+                                  llvm::IRBuilder<>* ir_builder) {
+  // Find the unnested hlo instructon for which the kernel is generated for.
+  const HloInstruction* unnested_hlo = hlo;
+  const HloComputation* computation = hlo->parent();
+  if (computation->IsFusionComputation()) {
+    unnested_hlo = computation->FusionInstruction();
+  }
+
+  auto shape_in_range = [&](const Shape& s) {
+    bool in_range = true;
+    ShapeUtil::ForEachSubshape(
+        s, [&](const Shape& sub_shape, const ShapeIndex& /*index*/) {
+          if (ShapeUtil::IsArray(sub_shape) &&
+              !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
+            in_range = false;
+          }
+        });
+
+    return in_range;
+  };
+
+  llvm::Type* i64_ty = ir_builder->getInt64Ty();
+  // Check launch dimension
+  if (!IsInt32(launch_size)) {
+    return i64_ty;
+  }
+
+  // Check the size of result tensors
+  if (!shape_in_range(unnested_hlo->shape())) {
+    return i64_ty;
+  }
+
+  auto hlo_shape_in_range = [&](const HloInstruction* operand) -> bool {
+    return shape_in_range(operand->shape());
+  };
+
+  // Check the size of input tensors
+  if (!c_all_of(unnested_hlo->operands(), hlo_shape_in_range)) {
+    return i64_ty;
+  }
+
+  // Check the size of the internal result tensors
+  if (unnested_hlo->opcode() == HloOpcode::kFusion) {
+    if (!c_all_of(
+            unnested_hlo->fused_instructions_computation()->instructions(),
+            hlo_shape_in_range)) {
+      return i64_ty;
+    }
+  }
+
+  return ir_builder->getInt32Ty();
+}
+
 }  // namespace
 
 Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
@@ -550,17 +614,14 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
           if (root->opcode() == HloOpcode::kTuple) {
             output_shape_index = {i};
           }
-          // TODO(kramerb): CHECK that layouts are equal. Currently this
-          // breaks multioutputfusion_test. The test has pre-fused
-          // instructions, but layout_assignment will not assign any layouts
-          // for instructions inside of a fused computation. It just removes
-          // the layouts instead.
           if (inst->opcode() == HloOpcode::kReduce) {
-            CHECK(ShapeUtil::Compatible(first_reduce->shape(), inst->shape()));
-            CHECK(ShapeUtil::Compatible(first_reduce->operand(0)->shape(),
-                                        inst->operand(0)->shape()));
-            CHECK(ShapeUtil::Compatible(first_reduce->operand(1)->shape(),
-                                        inst->operand(1)->shape()));
+            // Shapes, layouts and dimensions must be the same for all reduces
+            // inside of this fusion.
+            CHECK(ShapeUtil::Equal(first_reduce->shape(), inst->shape()));
+            CHECK(ShapeUtil::Equal(first_reduce->operand(0)->shape(),
+                                   inst->operand(0)->shape()));
+            CHECK(ShapeUtil::Equal(first_reduce->operand(1)->shape(),
+                                   inst->operand(1)->shape()));
             CHECK(first_reduce->dimensions() == inst->dimensions());
             input_gens.push_back(fused_emitter.GetGenerator(inst->operand(0)));
             init_value_gens.push_back(
@@ -568,8 +629,13 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
             reducers.push_back(inst->to_apply());
             reduce_output_shapes.push_back(std::move(output_shape_index));
           } else {
-            CHECK(ShapeUtil::Compatible(first_reduce->operand(0)->shape(),
-                                        inst->shape()));
+            // For extra outputs we can relax shape equality to allow different
+            // types (with the same number of elements). Layouts still have to
+            // match.
+            CHECK(ShapeUtil::CompatibleIgnoringElementType(
+                first_reduce->operand(0)->shape(), inst->shape()));
+            CHECK(LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
+                                    inst->shape().layout()));
             extra_output_gens.emplace_back(fused_emitter.GetGenerator(inst),
                                            std::move(output_shape_index));
           }
@@ -1001,6 +1067,20 @@ Status IrEmitterUnnested::EmitReductionToScalar(
   int64 num_tiles =
       RoundUpToNearest(CeilOfRatio(num_elems, kTileSize), kWarpSize);
 
+  Shape tiled_input_shape = ShapeUtil::MakeShapeWithLayout(
+      reduce->shape().element_type(), {num_tiles}, {0});
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      tiled_input_shape, ir_emitter_context_->device_description());
+
+  llvm::Type* index_ty = GetIndexTypeForKernel(
+      reduce,
+      launch_dimensions.block_count() * launch_dimensions.threads_per_block(),
+      &ir_builder_);
+
+  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    return llvm::ConstantInt::get(index_ty, c);
+  };
+
   // Check whether every thread will process a full tile's worth of elements
   // without reading outside the bounds of the input.  If this is true, we can
   // skip some bounds checks in the final algorithm.
@@ -1049,40 +1129,42 @@ Status IrEmitterUnnested::EmitReductionToScalar(
       llvm::Value* partial_reduction_result_address = ir_builder_.CreateAlloca(
           element_ir_type, /*ArraySize=*/nullptr,
           "partial_reduction_result." + llvm::Twine(i));
-      TF_ASSIGN_OR_RETURN(llvm::Value* const init_ir_value,
-                          init_value_gens[i](llvm_ir::IrArray::Index({})));
+      TF_ASSIGN_OR_RETURN(
+          llvm::Value* const init_ir_value,
+          init_value_gens[i](llvm_ir::IrArray::Index(index_ty)));
       ir_builder_.CreateStore(init_ir_value, partial_reduction_result_address);
       partial_reduction_result_addresses.push_back(
           partial_reduction_result_address);
     }
 
     llvm::Value* x_in_tiles = tile_index[0];
+    x_in_tiles = ir_builder_.CreateZExtOrTrunc(x_in_tiles, index_ty);
 
     // Emit an inner for-loop that reduces the elements in the tile.
     auto emit_tile_element_loop = [=](bool tile_in_bounds) -> Status {
       std::unique_ptr<llvm_ir::ForLoop> tile_element_loop =
-          llvm_ir::ForLoop::EmitForLoop("element_id_in_tile",
-                                        ir_builder_.getInt64(0),
-                                        ir_builder_.getInt64(kTileSize),
-                                        ir_builder_.getInt64(1), &ir_builder_);
+          llvm_ir::ForLoop::EmitForLoop(
+              "element_id_in_tile", index_typed_const(0),
+              index_typed_const(kTileSize), index_typed_const(1), &ir_builder_);
 
       // Emit the body of the partial reduction loop.
       llvm_ir::SetToFirstInsertPoint(tile_element_loop->GetBodyBasicBlock(),
                                      &ir_builder_);
       llvm::Value* x = ir_builder_.CreateNSWAdd(
-          ir_builder_.CreateNSWMul(x_in_tiles, ir_builder_.getInt64(kTileSize)),
+          ir_builder_.CreateNSWMul(x_in_tiles, index_typed_const(kTileSize)),
           tile_element_loop->GetIndVarValue());
       // Unless we know the tile is entirely in bounds, we have to emit a
       // x-in-bounds check before reading from the input.
       if (!tile_in_bounds) {
         llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
-            ir_builder_.CreateICmpULT(x, ir_builder_.getInt64(num_elems)),
+            ir_builder_.CreateICmpULT(x, index_typed_const(num_elems)),
             "x_in_bounds", &ir_builder_);
 
         // Emit code that reads the input element and accumulates it to
         // the partial reduction result.
         llvm_ir::SetToFirstInsertPoint(if_data.true_block, &ir_builder_);
       }
+
       llvm_ir::IrArray::Index input_index(
           /*linear=*/x, input_shape, &ir_builder_);
       llvm::Value* input_address = ir_builder_.CreateAlloca(element_ir_type);
@@ -1101,12 +1183,12 @@ Status IrEmitterUnnested::EmitReductionToScalar(
     // x_end = kTileSize + x_in_tiles * kTileSize, i.e., the location that's
     // immediately beyond the tile.
     llvm::Value* x_end = ir_builder_.CreateNSWAdd(
-        ir_builder_.getInt64(kTileSize),
-        ir_builder_.CreateNSWMul(x_in_tiles, ir_builder_.getInt64(kTileSize)));
+        index_typed_const(kTileSize),
+        ir_builder_.CreateNSWMul(x_in_tiles, index_typed_const(kTileSize)));
     // The tile is entirely in bound if all_threads_in_bounds or
     // x_end <= num_elems.
     llvm::Value* tile_in_bounds = ir_builder_.CreateOr(
-        ir_builder_.CreateICmpULE(x_end, ir_builder_.getInt64(num_elems)),
+        ir_builder_.CreateICmpULE(x_end, index_typed_const(num_elems)),
         ir_builder_.getInt1(all_threads_in_bounds));
     llvm_ir::LlvmIfData if_tile_in_bounds_data =
         llvm_ir::EmitIfThenElse(tile_in_bounds, "tile_in_bounds", &ir_builder_);
@@ -1157,9 +1239,9 @@ Status IrEmitterUnnested::EmitReductionToScalar(
     // lane 0 (which holds the partially accumulated result for its warp) to the
     // output element.
     llvm::Value* lane_id = ir_builder_.CreateURem(
-        x_in_tiles, ir_builder_.getInt64(kWarpSize), "lane_id");
+        x_in_tiles, index_typed_const(kWarpSize), "lane_id");
     llvm_ir::LlvmIfData if_lane_id_is_zero_data = llvm_ir::EmitIfThenElse(
-        ir_builder_.CreateICmpEQ(lane_id, ir_builder_.getInt64(0)),
+        ir_builder_.CreateICmpEQ(lane_id, index_typed_const(0)),
         "lane_id_is_zero", &ir_builder_);
     llvm_ir::SetToFirstInsertPoint(if_lane_id_is_zero_data.true_block,
                                    &ir_builder_);
@@ -1181,10 +1263,6 @@ Status IrEmitterUnnested::EmitReductionToScalar(
   };
 
   // Emit a parallel loop that iterates through all input tiles, one per thread.
-  Shape tiled_input_shape = ShapeUtil::MakeShapeWithLayout(
-      reduce->shape().element_type(), {num_tiles}, {0});
-  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      tiled_input_shape, ir_emitter_context_->device_description());
   CHECK(LastThunk()->kind() == Thunk::Kind::kSequential);
   UpdateLaunchDimensions(
       launch_dimensions,
@@ -1192,7 +1270,7 @@ Status IrEmitterUnnested::EmitReductionToScalar(
       ir_emitter_context_->llvm_module());
   return ParallelLoopEmitter(loop_body_emitter, tiled_input_shape,
                              launch_dimensions, &ir_builder_)
-      .EmitLoop(IrName(reduce));
+      .EmitLoop(IrName(reduce), index_ty);
 }
 
 Status IrEmitterUnnested::EmitColumnReduction(
@@ -1223,6 +1301,17 @@ Status IrEmitterUnnested::EmitColumnReduction(
   // If the height is not a multiple of the tile size, we pad the bottom of the
   // input matrix.
   const int64 height_in_tiles = CeilOfRatio(height, kTileSize);
+  Shape tiled_input_shape = ShapeUtil::MakeShapeWithLayout(
+      reduce->shape().element_type(), {height_in_tiles, width}, {1, 0});
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      tiled_input_shape, ir_emitter_context_->device_description());
+
+  // TODO(b/110211620): Convert to use i32 index_type when it is possible.
+  llvm::Type* index_ty = ir_builder_.getInt64Ty();
+
+  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    return llvm::ConstantInt::get(index_ty, c);
+  };
 
   // for (linear_index = threadIdx.x + blockIdx.x * blockDim.x;
   //      linear_index < height_in_tiles * width;
@@ -1258,8 +1347,9 @@ Status IrEmitterUnnested::EmitColumnReduction(
       llvm::Value* partial_reduction_result_address = ir_builder_.CreateAlloca(
           element_ir_type, /*ArraySize=*/nullptr,
           "partial_reduction_result." + llvm::Twine(i));
-      TF_ASSIGN_OR_RETURN(llvm::Value* const init_ir_value,
-                          init_value_gens[i](llvm_ir::IrArray::Index({})));
+      TF_ASSIGN_OR_RETURN(
+          llvm::Value* const init_ir_value,
+          init_value_gens[i](llvm_ir::IrArray::Index(index_ty)));
       ir_builder_.CreateStore(init_ir_value, partial_reduction_result_address);
       partial_reduction_result_addresses.push_back(
           partial_reduction_result_address);
@@ -1270,24 +1360,27 @@ Status IrEmitterUnnested::EmitColumnReduction(
     llvm::Value* y_in_tiles = tile_index[0];
     llvm::Value* x = tile_index[1];
 
+    y_in_tiles = ir_builder_.CreateZExtOrTrunc(y_in_tiles, index_ty);
+    x = ir_builder_.CreateZExtOrTrunc(x, index_ty);
+
     auto emit_tile_element_loop = [=](bool tile_in_bounds) -> Status {
       std::unique_ptr<llvm_ir::ForLoop> tile_element_loop =
-          llvm_ir::ForLoop::EmitForLoop("element_id_in_tile",
-                                        ir_builder_.getInt64(0),
-                                        ir_builder_.getInt64(kTileSize),
-                                        ir_builder_.getInt64(1), &ir_builder_);
+          llvm_ir::ForLoop::EmitForLoop(
+              "element_id_in_tile", index_typed_const(0),
+              index_typed_const(kTileSize), index_typed_const(1), &ir_builder_);
 
       // Emit the body of the partial reduction loop.
       llvm_ir::SetToFirstInsertPoint(tile_element_loop->GetBodyBasicBlock(),
                                      &ir_builder_);
       llvm::Value* y = ir_builder_.CreateNSWAdd(
-          ir_builder_.CreateNSWMul(y_in_tiles, ir_builder_.getInt64(kTileSize)),
+          ir_builder_.CreateNSWMul(y_in_tiles, index_typed_const(kTileSize)),
           tile_element_loop->GetIndVarValue());
+
       // Unless we know the tile is entirely in bounds, we have to emit a
       // y-in-bounds check before reading from the input.
       if (!tile_in_bounds) {
         llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
-            ir_builder_.CreateICmpULT(y, ir_builder_.getInt64(height)),
+            ir_builder_.CreateICmpULT(y, index_typed_const(height)),
             "y_in_bounds", &ir_builder_);
 
         // Emit code that reads the input element and accumulates it to
@@ -1337,10 +1430,10 @@ Status IrEmitterUnnested::EmitColumnReduction(
     // y_end = kTileSize + y_in_tiles * kTileSize, i.e., the y location that's
     // immediately beyond the tile.
     llvm::Value* y_end = ir_builder_.CreateNSWAdd(
-        ir_builder_.getInt64(kTileSize),
-        ir_builder_.CreateNSWMul(y_in_tiles, ir_builder_.getInt64(kTileSize)));
+        index_typed_const(kTileSize),
+        ir_builder_.CreateNSWMul(y_in_tiles, index_typed_const(kTileSize)));
     llvm::Value* tile_in_bounds = ir_builder_.CreateOr(
-        ir_builder_.CreateICmpULE(y_end, ir_builder_.getInt64(height)),
+        ir_builder_.CreateICmpULE(y_end, index_typed_const(height)),
         ir_builder_.getInt1(height % kTileSize == 0));
     // The tile is entirely in bound if "height" is a multiple of kTileSize or
     // y_end <= height.
@@ -1377,10 +1470,6 @@ Status IrEmitterUnnested::EmitColumnReduction(
   };
 
   // Emit a parallel loop that iterate through all input tiles.
-  Shape tiled_input_shape = ShapeUtil::MakeShapeWithLayout(
-      reduce->shape().element_type(), {height_in_tiles, width}, {1, 0});
-  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      tiled_input_shape, ir_emitter_context_->device_description());
   CHECK(LastThunk()->kind() == Thunk::Kind::kSequential);
   UpdateLaunchDimensions(
       launch_dimensions,
@@ -1388,7 +1477,31 @@ Status IrEmitterUnnested::EmitColumnReduction(
       ir_emitter_context_->llvm_module());
   return ParallelLoopEmitter(loop_body_emitter, tiled_input_shape,
                              launch_dimensions, &ir_builder_)
-      .EmitLoop(IrName(reduce));
+      .EmitLoop(IrName(reduce), index_ty);
+}
+
+static std::pair<int64, int64> ComputeTilingSchemeForReduction(
+    int64 depth, int64 width, int64 kWarpSize) {
+  constexpr int64 kTargetNumElementsPerThread = 64;
+  int64 x_tile_size = kTargetNumElementsPerThread;
+  int64 z_tile_size = 1;
+
+  // Only tile along the x dimension with tile size kTargetNumElementsPerThread
+  // if doing so doesn't require a slow version of loop with bound check on each
+  // dimension. A more sophisticated heuristics is to enable tile along the
+  // x dimension with tile size kTargetNumElementsPerThread when either width is
+  // a factor of (kWarpSize * kTargetNumElementsPerThread) or width is big
+  // enough so that only a small fraction of the threads execute the slow
+  // version of loop with bound check.
+  if (width % (kWarpSize * kTargetNumElementsPerThread) != 0) {
+    x_tile_size = 8;
+    z_tile_size = 8;
+    while (depth % z_tile_size != 0) {
+      z_tile_size -= 1;
+    }
+  }
+
+  return std::pair<int64, int64>(x_tile_size, z_tile_size);
 }
 
 Status IrEmitterUnnested::EmitRowReduction(
@@ -1402,7 +1515,7 @@ Status IrEmitterUnnested::EmitRowReduction(
         std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
         extra_output_gens) {
   // A naive algorithm is:
-  // 1. Divide the input tensor into tiles of size 1x1xK.
+  // 1. Divide the x dimension of the input tensor into tiles of size 1x1xX.
   // 2. Partially reduces each tile to a scalar using one thread.
   // 3. Accumulates that scalar to the output vector using atomic operations.
   //
@@ -1413,15 +1526,15 @@ Status IrEmitterUnnested::EmitRowReduction(
   //   int y = linear_index / width_in_tiles % height;
   //   int z = linear_index / (height * width_in_tiles);
   //   float partial_result = 0;
-  //   for (element_id_in_tile : range(kTileSize)) {
-  //     int x = x_in_tiles * kTileSize + element_id_in_tile;
+  //   for (element_id_in_tile : range(x_tile_size)) {
+  //     int x = x_in_tiles * x_tile_size + element_id_in_tile;
   //     if (x < width)
   //       partial_result = reducer(partial_result, input[z][y][z]);
   //   }
   //   AtomicReducer(&output[y], partial_result);
   // }
   //
-  // Three optimizations are performed.
+  // Four optimizations are performed.
   //
   // 1. To coalesce global memory accesses, dilate the tile with a factor of 32
   // (i.e. the warp size). For example, suppose the width is 8x32=256. Instead
@@ -1448,29 +1561,44 @@ Status IrEmitterUnnested::EmitRowReduction(
   // element_id_in_tile, which makes the code more friendly to optimizations
   // such as LICM.
   //
+  // 4. When the width is too small and x_tile_size is less than the target
+  //    number of elements per thread and use a small factor of depth as
+  //    z_tile_size to increase the number of elements calculated by each
+  //    partial sum. This can reduce the needed number of dynamic shfl_down and
+  //    atomic operations.
+  //
   // for (linear_index = threadIdx.x + blockIdx.x * blockDim.x;
   //      linear_index < depth * height * width_in_tiles;
   //      linear_index += blockDim.x * gridDim.x) {
   //   int x_in_tiles = linear_index % width_in_tiles;
   //   int y = linear_index / width_in_tiles % height;
-  //   int z = linear_index / (height * width_in_tiles);
+  //   int z_in_tiles = linear_index / (height * width_in_tiles);
   //   int warp_id = x_in_tiles / warpSize;
   //   int lane_id = x_in_tiles % warpSize;
   //   float partial_result = 0;
   //   int x = warp_id * kTileSize * warpSize + lane_id;
-  //   if (width % (kTileSize * warpSize) == 0 ||
-  //       x + (kTileSize - 1) * warpSize < width) {
-  //     // The entire tile is in bounds.
-  //     for (int element_id_in_tile = 0; element_id_in_tile < kTileSize;
-  //        ++element_id_in_tile, x += warpSize) {
-  //       partial_result = Reducer(partial_result, input[z][y][x]);
+  //   if (width % (x_tile_size * warpSize) == 0 ||
+  //       x + (x_tile_size - 1) * warpSize < width) {
+  //     // The entire x_tile is in bounds.
+  //     for (int element_id_in_z_tile = 0; element_id_in_z_tile < z_tile_size;
+  //          ++element_id_in_z_tile) {
+  //       z = z_in_tiles * z_tile_size + element_id_in_z_tile;
+  //       for (int element_id_in_x_tile = 0;
+  //            element_id_in_x_tile < x_tile_size;
+  //            ++element_id_in_x_tile, x += warpSize) {
+  //         partial_result = Reducer(partial_result, input[z][y][x]);
+  //       }
   //     }
   //   } else {
   //     // The tile is partially in bounds.
-  //     for (int element_id_in_tile = 0; element_id_in_tile < kTileSize;
-  //          ++element_id_in_tile, x += warpSize) {
-  //       if (x < width)
-  //         partial_result = Reducer(partial_result, input[z][y][x]);
+  //     for (int element_id_in_z_tile = 0; element_id_in_z_tile < z_tile_size;
+  //          ++element_id_in_z_tile) {
+  //       z = z_in_tiles * z_tile_size + element_id_in_z_tile;
+  //       for (int element_id_in_x_tile = 0; element_id_in_x_tile <
+  //            x_tile_size; ++element_id_in_tile, x += warpSize) {
+  //         if (x < width)
+  //           partial_result = Reducer(partial_result, input[z][y][x]);
+  //       }
   //     }
   //   }
   //   for (shuffle_distance = 16; shuffle_distance > 0; shuffle_distance /= 2)
@@ -1481,17 +1609,32 @@ Status IrEmitterUnnested::EmitRowReduction(
   //     AtomicReducer(&output[y], partial_result);
   // }
   //
-  // Choose 8 as the tile size, which matches Eigen's RowReduceKernel.
-  constexpr int64 kTileSize = 8;
+
+  int64 x_tile_size;
+  int64 z_tile_size;
+  std::tie(x_tile_size, z_tile_size) =
+      ComputeTilingSchemeForReduction(depth, width, kWarpSize);
+
   // Round the width in tiles up to the nearest multiple of kWarpSize, so that
   // the use of shfl_down is valid.
   const int64 width_in_tiles =
-      RoundUpToNearest(CeilOfRatio(width, kTileSize), kWarpSize);
+      RoundUpToNearest(CeilOfRatio(width, x_tile_size), kWarpSize);
+  Shape tiled_input_shape = ShapeUtil::MakeShapeWithLayout(
+      reduce->shape().element_type(),
+      {depth / z_tile_size, height, width_in_tiles}, {2, 1, 0});
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      tiled_input_shape, ir_emitter_context_->device_description());
+  llvm::Type* index_ty = GetIndexTypeForKernel(
+      reduce,
+      launch_dimensions.block_count() * launch_dimensions.threads_per_block(),
+      &ir_builder_);
 
-  auto loop_body_emitter =
-      [=](const llvm_ir::IrArray::Index& tile_index) -> Status {
+  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    return llvm::ConstantInt::get(index_ty, c);
+  };
+
+  auto loop_body_emitter = [=](const llvm_ir::IrArray::Index& tile_index) {
     const int num_reduces = reducers.size();
-    // Emit the loop body that reduces one tile.
     llvm::Type* element_ir_type = llvm_ir::PrimitiveTypeToIrType(
         input_shape.element_type(), ir_emitter_context_->llvm_module());
     std::vector<llvm::Value*> partial_reduction_result_addresses;
@@ -1499,124 +1642,151 @@ Status IrEmitterUnnested::EmitRowReduction(
       llvm::Value* partial_reduction_result_address = ir_builder_.CreateAlloca(
           element_ir_type, /*ArraySize=*/nullptr,
           "partial_reduction_result." + llvm::Twine(i));
-      TF_ASSIGN_OR_RETURN(llvm::Value* const init_ir_value,
-                          init_value_gens[i](llvm_ir::IrArray::Index({})));
+      TF_ASSIGN_OR_RETURN(
+          llvm::Value* const init_ir_value,
+          init_value_gens[i](llvm_ir::IrArray::Index(index_ty)));
       ir_builder_.CreateStore(init_ir_value, partial_reduction_result_address);
       partial_reduction_result_addresses.push_back(
           partial_reduction_result_address);
     }
 
-    // Emit an inner for-loop that partially reduces the elements in the given
-    // tile.
-    llvm::Value* z = tile_index[0];
+    llvm::Value* z_tile = tile_index[0];
     llvm::Value* y = tile_index[1];
     llvm::Value* x_tile = tile_index[2];
-    llvm::Value* warp_id = ir_builder_.CreateUDiv(
-        x_tile, ir_builder_.getInt64(kWarpSize), "warp_id");
-    llvm::Value* lane_id = ir_builder_.CreateURem(
-        x_tile, ir_builder_.getInt64(kWarpSize), "lane_id");
 
-    // The x-location of the last element in this tile.
-    //   last_x = lane_id + warpSize * (kTileSize - 1 + warp_id * kTileSize);
+    x_tile = ir_builder_.CreateZExtOrTrunc(x_tile, index_ty);
+
+    llvm::Value* warp_id =
+        ir_builder_.CreateUDiv(x_tile, index_typed_const(kWarpSize), "warp_id");
+    llvm::Value* lane_id =
+        ir_builder_.CreateURem(x_tile, index_typed_const(kWarpSize), "lane_id");
+
+    // The x-location of the last element in this z-x-tile.
+    // last_x = lane_id + warpSize * (x_tile_size - 1 + warp_id * x_tile_size);
     llvm::Value* last_x = ir_builder_.CreateNSWAdd(
-        lane_id,
-        ir_builder_.CreateNSWMul(
-            ir_builder_.getInt64(kWarpSize),
-            ir_builder_.CreateNSWAdd(
-                ir_builder_.getInt64(kTileSize - 1),
-                ir_builder_.CreateNSWMul(warp_id,
-                                         ir_builder_.getInt64(kTileSize)))));
+        lane_id, ir_builder_.CreateNSWMul(
+                     index_typed_const(kWarpSize),
+                     ir_builder_.CreateNSWAdd(
+                         index_typed_const(x_tile_size - 1),
+                         ir_builder_.CreateNSWMul(
+                             warp_id, index_typed_const(x_tile_size)))));
 
-    auto emit_tile_element_loop = [=](bool tile_in_bounds) -> Status {
-      std::unique_ptr<llvm_ir::ForLoop> tile_element_loop =
-          llvm_ir::ForLoop::EmitForLoop("element_id_in_tile",
-                                        ir_builder_.getInt64(0),
-                                        ir_builder_.getInt64(kTileSize),
-                                        ir_builder_.getInt64(1), &ir_builder_);
+    KernelSupportLibrary ksl(
+        &ir_builder_,
+        /*unroll_mode=*/xla::llvm_ir::UnrollMode::kFullyUnroll,
+        /*prevent_vectorization=*/false);
 
-      // Emit the body of the partial reduction loop.
-      llvm_ir::SetToFirstInsertPoint(tile_element_loop->GetBodyBasicBlock(),
-                                     &ir_builder_);
-      // x = lane_id + warpSize * (element_id_in_tile + warp_id * kTileSize);
-      llvm::Value* x = ir_builder_.CreateNSWAdd(
-          lane_id,
-          ir_builder_.CreateNSWMul(
-              ir_builder_.getInt64(kWarpSize),
-              ir_builder_.CreateNSWAdd(
-                  tile_element_loop->GetIndVarValue(),
-                  ir_builder_.CreateNSWMul(warp_id,
-                                           ir_builder_.getInt64(kTileSize)))));
+    // Emit a for-loop that partially reduces the elements in the given
+    // z-x-tile.
+    auto emit_z_x_tile_element_loop = [&](bool x_tile_in_bounds,
+                                          int64 x_tile_loop_bound) -> Status {
+      auto emit_z_tile_element_loop = [&](llvm::Value* z_indvar) -> Status {
+        llvm::Value* z = ir_builder_.CreateNSWAdd(
+            z_indvar,
+            ir_builder_.CreateNSWMul(index_typed_const(z_tile_size), z_tile));
+        TF_RETURN_IF_ERROR(ksl.For(
+            "x_tile",
+            /*start=*/index_typed_const(0),
+            /*end=*/index_typed_const(x_tile_loop_bound),
+            /*step=*/1, [&](llvm::Value* x_indvar) -> Status {
+              // x = lane_id +
+              //     warpSize * (element_id_in_x_tile + warp_id * x_tile_size);
+              llvm::Value* x = ir_builder_.CreateNSWAdd(
+                  lane_id,
+                  ir_builder_.CreateNSWMul(
+                      index_typed_const(kWarpSize),
+                      ir_builder_.CreateNSWAdd(
+                          x_indvar, ir_builder_.CreateNSWMul(
+                                        warp_id, llvm::ConstantInt::get(
+                                                     index_ty, x_tile_size)))));
 
-      // Unless we know the tile is entirely in bounds, we have to emit a
-      // x-in-bounds check before reading from the input.
-      if (!tile_in_bounds) {
-        llvm_ir::LlvmIfData if_x_in_bounds_data = llvm_ir::EmitIfThenElse(
-            ir_builder_.CreateICmpULT(x, ir_builder_.getInt64(width)),
-            "x_in_bounds", &ir_builder_);
+              // Unless we know the x-tile is entirely in bounds, we have to
+              // emit a x-in-bounds check before reading from the input.
+              if (!x_tile_in_bounds) {
+                llvm_ir::LlvmIfData if_x_in_bounds_data =
+                    llvm_ir::EmitIfThenElse(
+                        ir_builder_.CreateICmpULT(x, index_typed_const(width)),
+                        "x_in_bounds", &ir_builder_);
+                // Points ir_builder_ to the then-block.
+                llvm_ir::SetToFirstInsertPoint(if_x_in_bounds_data.true_block,
+                                               &ir_builder_);
+              }
 
-        // Points ir_builder_ to the then-block.
-        llvm_ir::SetToFirstInsertPoint(if_x_in_bounds_data.true_block,
-                                       &ir_builder_);
-      }
+              // Emit code that reads the input element and accumulates it
+              // to the partial reduction result.
+              llvm::Value* input_address =
+                  ir_builder_.CreateAlloca(element_ir_type);
+              {
+                // {z,y,x} is an index to input_3d_tensor_shape
+                // [depth,height,width]. We need to convert that to an index
+                // to input_shape (the shape of the operand of "reduce").
+                // This conversion is composed of a transposition from
+                // input_shape to normalized_input_shape and a reshape from
+                // normalized_input_shape to input_3d_tensor_shape.
+                const Shape normalized_input_shape = ShapeUtil::
+                    MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+                        input_shape);
+                auto input_shape_min2maj =
+                    LayoutUtil::MinorToMajor(input_shape);
+                const std::vector<int64> transpose_dimension_mapping(
+                    input_shape_min2maj.rbegin(), input_shape_min2maj.rend());
+                const Shape input_3d_tensor_shape =
+                    ShapeUtil::MakeShapeWithDescendingLayout(
+                        input_shape.element_type(), {depth, height, width});
+                const llvm_ir::IrArray::Index input_3d_tensor_index(
+                    {z, y, x}, input_3d_tensor_shape, &ir_builder_);
+                const llvm_ir::IrArray::Index input_index =
+                    input_3d_tensor_index
+                        .SourceIndexOfReshape(input_3d_tensor_shape,
+                                              normalized_input_shape,
+                                              &ir_builder_)
+                        .SourceIndexOfTranspose(
+                            normalized_input_shape, input_shape,
+                            transpose_dimension_mapping, &ir_builder_);
 
-      // Emit code that reads the input element and accumulates it to the
-      // partial reduction result.
-      llvm::Value* input_address = ir_builder_.CreateAlloca(element_ir_type);
-      {
-        // {z,y,x} is an index to input_3d_tensor_shape [depth,height,width]. We
-        // need to convert that to an index to input_shape (the shape of the
-        // operand of "reduce"). This conversion is composed of a transposition
-        // from input_shape to normalized_input_shape and a reshape from
-        // normalized_input_shape to input_3d_tensor_shape.
-        const Shape normalized_input_shape =
-            ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-                input_shape);
-        auto input_shape_min2maj = LayoutUtil::MinorToMajor(input_shape);
-        const std::vector<int64> transpose_dimension_mapping(
-            input_shape_min2maj.rbegin(), input_shape_min2maj.rend());
-        const Shape input_3d_tensor_shape =
-            ShapeUtil::MakeShapeWithDescendingLayout(input_shape.element_type(),
-                                                     {depth, height, width});
-        const llvm_ir::IrArray::Index input_3d_tensor_index(
-            {z, y, x}, input_3d_tensor_shape, &ir_builder_);
-        const llvm_ir::IrArray::Index input_index =
-            input_3d_tensor_index
-                .SourceIndexOfReshape(input_3d_tensor_shape,
-                                      normalized_input_shape, &ir_builder_)
-                .SourceIndexOfTranspose(normalized_input_shape, input_shape,
-                                        transpose_dimension_mapping,
-                                        &ir_builder_);
-        for (int i = 0; i != num_reduces; ++i) {
-          TF_ASSIGN_OR_RETURN(llvm::Value* const input_ir_value,
-                              input_gens[i](input_index));
-          ir_builder_.CreateStore(input_ir_value, input_address);
-          TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
-              *reducers[i],
-              {partial_reduction_result_addresses[i], input_address},
-              partial_reduction_result_addresses[i]));
-        }
-        return EmitExtraOutputsForReduce(reduce, input_index,
-                                         extra_output_gens);
-      }
+                for (int i = 0; i != num_reduces; ++i) {
+                  TF_ASSIGN_OR_RETURN(llvm::Value* const input_ir_value,
+                                      input_gens[i](input_index));
+                  ir_builder_.CreateStore(input_ir_value, input_address);
+                  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
+                      *reducers[i],
+                      {partial_reduction_result_addresses[i], input_address},
+                      partial_reduction_result_addresses[i]));
+                }
+                return EmitExtraOutputsForReduce(reduce, input_index,
+                                                 extra_output_gens);
+              }
+            }));
+        return Status::OK();
+      };
+
+      return ksl.For("z_tile",
+                     /*start=*/index_typed_const(0),
+                     /*end=*/index_typed_const(z_tile_size),
+                     /*step=*/1, emit_z_tile_element_loop);
     };
 
     llvm::Value* tile_in_bounds = ir_builder_.CreateOr(
-        ir_builder_.getInt1(width % (kTileSize * kWarpSize) == 0),
-        ir_builder_.CreateICmpULT(last_x, ir_builder_.getInt64(width)));
-    llvm_ir::LlvmIfData if_tile_in_bounds_data =
-        llvm_ir::EmitIfThenElse(tile_in_bounds, "tile_in_bounds", &ir_builder_);
-    llvm_ir::SetToFirstInsertPoint(if_tile_in_bounds_data.true_block,
-                                   &ir_builder_);
-    TF_RETURN_IF_ERROR(emit_tile_element_loop(/*tile_in_bounds=*/true));
-    llvm_ir::SetToFirstInsertPoint(if_tile_in_bounds_data.false_block,
-                                   &ir_builder_);
-    TF_RETURN_IF_ERROR(emit_tile_element_loop(/*tile_in_bounds=*/false));
+        ir_builder_.getInt1(width % (x_tile_size * kWarpSize) == 0),
+        ir_builder_.CreateICmpULT(last_x, index_typed_const(width)));
 
-    // After the if-then-else statement on tile_in_bounds, emit calls to
-    // shfl_down that accumulate the partial reduction results of all threads
-    // from the warp.
-    llvm_ir::SetToFirstInsertPoint(if_tile_in_bounds_data.after_block,
-                                   &ir_builder_);
+    TF_RETURN_IF_ERROR(
+        ksl.If(tile_in_bounds,
+               /*true_block_generator=*/
+               [&]() -> Status {
+                 return emit_z_x_tile_element_loop(/*x_tile_in_bounds=*/true,
+                                                   x_tile_size);
+               },
+               /*false_block_generator=*/
+               [&]() -> Status {
+                 return emit_z_x_tile_element_loop(
+                     /*x_tile_in_bounds=*/false,
+                     CeilOfRatio(width % (x_tile_size * kWarpSize), kWarpSize));
+               }));
+
+    // After accumulating the elements of the z_x_tile, emit calls to
+    // shfl_down that accumulate the partial reduction results of all
+    // threads in a warp.
     int bit_width = llvm_ir::GetSizeInBits(element_ir_type);
     // bitcast cannot be applied to aggregate types (even packed ones), so we
     // instead bitcast addresses of load/store to intN* of the same bit-width.
@@ -1652,7 +1822,7 @@ Status IrEmitterUnnested::EmitRowReduction(
     // lane 0 (which holds the partially accumulated result for its warp) to the
     // output element.
     llvm_ir::LlvmIfData if_lane_id_is_zero_data = llvm_ir::EmitIfThenElse(
-        ir_builder_.CreateICmpEQ(lane_id, ir_builder_.getInt64(0)),
+        ir_builder_.CreateICmpEQ(lane_id, index_typed_const(0)),
         "lane_id_is_zero", &ir_builder_);
     llvm_ir::SetToFirstInsertPoint(if_lane_id_is_zero_data.true_block,
                                    &ir_builder_);
@@ -1666,18 +1836,21 @@ Status IrEmitterUnnested::EmitRowReduction(
                                              reduce_output_shapes[i]),
                       &ir_builder_),
                   &ir_builder_, "output_element_address");
-      TF_RETURN_IF_ERROR(EmitAtomicOperationForNestedComputation(
-          *reducers[i], output_address, partial_reduction_result_addresses[i]));
+      if (x_tile_size * z_tile_size < depth * width) {
+        TF_RETURN_IF_ERROR(EmitAtomicOperationForNestedComputation(
+            *reducers[i], output_address,
+            partial_reduction_result_addresses[i]));
+      } else {
+        TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
+            *reducers[i],
+            {output_address, partial_reduction_result_addresses[i]},
+            output_address));
+      }
     }
     return Status::OK();
   };
 
   // Emit a parallel loop that iterates through every input tiles.
-  Shape tiled_input_shape = ShapeUtil::MakeShapeWithLayout(
-      reduce->shape().element_type(), {depth, height, width_in_tiles},
-      {2, 1, 0});
-  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      tiled_input_shape, ir_emitter_context_->device_description());
   CHECK(LastThunk()->kind() == Thunk::Kind::kSequential);
   UpdateLaunchDimensions(
       launch_dimensions,
@@ -1685,7 +1858,7 @@ Status IrEmitterUnnested::EmitRowReduction(
       ir_emitter_context_->llvm_module());
   return ParallelLoopEmitter(loop_body_emitter, tiled_input_shape,
                              launch_dimensions, &ir_builder_)
-      .EmitLoop(IrName(reduce));
+      .EmitLoop(IrName(reduce), index_ty);
 }
 
 // Figures out whether `reduce` is a row or column reduction, and which
@@ -1797,7 +1970,7 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
   HloComputation* reducer = reduce->to_apply();
   // HandleReduce specializes reduction from a multi-dimensional array to a 1D
   // array. The specialized version requires an initializer thunk that
-  // initializes the output array to the initial value of the reduce.
+  // ingitializes the output array to the initial value of the reduce.
   if (IsReductionToVector(*reduce) &&
       // NVPTX backend can't do atomic cmpxchg any narrower than 32 bits
       32 <= primitive_util::BitWidth(reduce->shape().element_type())) {
@@ -1885,6 +2058,14 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
         "Dilation for SelectAndScatter not implemented on GPU.");
   }
 
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      source->shape(), ir_emitter_context_->device_description());
+  llvm::Type* index_type = GetIndexTypeForKernel(
+      select_and_scatter, launch_dimensions.launch_bound(), &ir_builder_);
+  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    return llvm::ConstantInt::get(index_type, c);
+  };
+
   // kSelectAndScatter is implemented as two kernel launches: the first launch
   // initializes the output array to the given initial value,
   // and the second accumulates the "source" matrix to the
@@ -1915,8 +2096,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
         "selected_value_address", &ir_builder_);
     llvm::Value* selected_index_address =
         llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-            ir_builder_.getInt64Ty(), ir_builder_.getInt32(rank),
-            "selected_index_address", &ir_builder_);
+            index_type, index_typed_const(rank), "selected_index_address",
+            &ir_builder_);
     llvm::Value* initialized_flag_address = llvm_ir::EmitAllocaAtFunctionEntry(
         ir_builder_.getInt1Ty(), "initialized_flag_address", &ir_builder_);
     ir_builder_.CreateStore(ir_builder_.getInt1(false),
@@ -1924,7 +2105,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
 
     // Create the inner loop to iterate over the window.
     llvm_ir::ForLoopNest window_loops(IrName(select_and_scatter, "inner"),
-                                      &ir_builder_);
+                                      &ir_builder_, index_type);
     std::vector<int64> window_size;
     for (const auto& dim : window.dimensions()) {
       window_size.push_back(dim.size());
@@ -1938,17 +2119,17 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
     // Compute the operand index to visit and evaluate the condition whether the
     // operand index is within the bounds. The unsigned comparison includes
     // checking whether the operand index >= 0.
-    llvm_ir::IrArray::Index operand_index(source_index.size());
+    llvm_ir::IrArray::Index operand_index(index_type, source_index.size());
     llvm::Value* in_bounds_condition = ir_builder_.getInt1(true);
     for (int64 i = 0; i < rank; ++i) {
       llvm::Value* strided_index = ir_builder_.CreateNSWMul(
-          source_index[i], ir_builder_.getInt64(window.dimensions(i).stride()));
+          source_index[i], index_typed_const(window.dimensions(i).stride()));
       operand_index[i] = ir_builder_.CreateNSWSub(
           ir_builder_.CreateNSWAdd(strided_index, window_index[i]),
-          ir_builder_.getInt64(window.dimensions(i).padding_low()));
+          index_typed_const(window.dimensions(i).padding_low()));
       llvm::Value* index_condition = ir_builder_.CreateICmpULT(
           operand_index[i],
-          ir_builder_.getInt64(ShapeUtil::GetDimension(operand->shape(), i)));
+          index_typed_const(ShapeUtil::GetDimension(operand->shape(), i)));
       in_bounds_condition =
           ir_builder_.CreateAnd(in_bounds_condition, index_condition);
     }
@@ -2020,7 +2201,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
     // value and the current output value.
     llvm_ir::SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(),
                                    &ir_builder_);
-    llvm_ir::IrArray::Index selected_index;
+    llvm_ir::IrArray::Index selected_index(operand_index.GetType());
     for (int64 i = 0; i < rank; ++i) {
       llvm::Value* selected_index_address_slot = ir_builder_.CreateInBoundsGEP(
           selected_index_address, {ir_builder_.getInt32(i)});
@@ -2038,8 +2219,6 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
         source_value_address);
   };
 
-  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      source->shape(), ir_emitter_context_->device_description());
   UpdateLaunchDimensions(
       launch_dimensions,
       // IrEmitterUnnested implements kSelectAndScatter as a SequentialThunk
@@ -2050,7 +2229,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
       ir_emitter_context_->llvm_module());
   return ParallelLoopEmitter(loop_body_emitter, source->shape(),
                              launch_dimensions, &ir_builder_)
-      .EmitLoop(IrName(select_and_scatter));
+      .EmitLoop(IrName(select_and_scatter), index_type);
 }
 
 Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
@@ -2129,6 +2308,10 @@ Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
                                           GetAllocationSlice(*crs), crs));
   thunk_sequence_->push_back(
       MakeUnique<SequentialThunk>(std::move(thunks), crs));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleGenerateToken(HloInstruction* gen_token) {
   return Status::OK();
 }
 
@@ -2253,11 +2436,6 @@ GetHloBufferSlices(const HloInstruction* hlo,
   }
 
   return slices;
-}
-
-Status IrEmitterUnnested::HandleGather(HloInstruction* gather) {
-  // TODO(b/72710576): Gather is not implemented on GPUs
-  return Unimplemented("Gather is not implemented on GPUs.");
 }
 
 std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
@@ -2440,7 +2618,9 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
     if (alpha->opcode() == HloOpcode::kBroadcast) {
       alpha = alpha->operand(0);
     }
-    alpha = inst->operand(alpha->parameter_number());
+    if (alpha->opcode() == HloOpcode::kParameter) {
+      alpha = inst->operand(alpha->parameter_number());
+    }
     // TODO(b/74185543): Remove the following if block once we support fusion
     // with a non-constant as well. Then we will just always use the constant
     // on the device.
@@ -2486,7 +2666,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     const HloInstruction* hlo, const ShapeIndex& index) {
   bool fused = HloOpcode::kFusion == hlo->opcode();
   const HloInstruction* inst = fused ? hlo->fused_expression_root() : hlo;
-  const HloInstruction* init_value = [&] {
+  const HloInstruction* init_value_operand = [&] {
     switch (inst->opcode()) {
       case HloOpcode::kSelectAndScatter:
         return inst->operand(2);
@@ -2506,6 +2686,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     }
   }();
 
+  const HloInstruction* init_value = init_value_operand;
   if (fused && init_value->opcode() == HloOpcode::kParameter) {
     init_value = hlo->operand(init_value->parameter_number());
   }
@@ -2529,8 +2710,9 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     // If the literal is 8 or 16 bits wide, we can emit a 32-bit memset by
     // repeating the literal 4 or 2 times, so long as the destination buffer is
     // an even multiple of 32 bits long.
+    const Shape& output_shape = ShapeUtil::GetSubshape(hlo->shape(), index);
     if ((num_bytes == 1 || num_bytes == 2) &&
-        ShapeUtil::ByteSizeOf(hlo->shape()) % 4 == 0) {
+        ShapeUtil::ByteSizeOf(output_shape) % 4 == 0) {
       uint16 pattern16;
       if (num_bytes == 1) {
         uint8 b = literal_bytes.front();
@@ -2562,6 +2744,11 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
                                 ir_emitter_context_->device_description());
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
+  // If the init_value was fused into this reduce we have to generate it first.
+  if (fused && init_value_operand->opcode() != HloOpcode::kParameter) {
+    CHECK_EQ(HloOpcode::kConstant, init_value_operand->opcode());
+    TF_RETURN_IF_ERROR(HandleConstant(const_cast<HloInstruction*>(init_value)));
+  }
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(
                          [=](const llvm_ir::IrArray::Index& index) {
                            return GetIrArray(*init_value, *hlo)
@@ -2753,7 +2940,9 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   if (!hlo.IsMultiOutputFusion()) {
     return ParallelLoopEmitter(element_generator, GetIrArray(hlo, hlo),
                                launch_dimensions, &ir_builder_, unroll_factor)
-        .EmitLoop(IrName(&hlo));
+        .EmitLoop(IrName(&hlo),
+                  GetIndexTypeForKernel(&hlo, launch_dimensions.launch_bound(),
+                                        &ir_builder_));
   }
 
   // For multiple outputs fusion, we need to emit each operand and the root.
@@ -2761,10 +2950,12 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   for (int64 i = 0; i < ShapeUtil::TupleElementCount(hlo.shape()); ++i) {
     output_arrays.push_back(GetIrArray(hlo, hlo, {i}));
   }
-  TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, output_arrays,
-                                         launch_dimensions, &ir_builder_,
-                                         unroll_factor)
-                         .EmitLoop(IrName(&hlo)));
+  TF_RETURN_IF_ERROR(
+      ParallelLoopEmitter(element_generator, output_arrays, launch_dimensions,
+                          &ir_builder_, unroll_factor)
+          .EmitLoop(IrName(&hlo),
+                    GetIndexTypeForKernel(
+                        &hlo, launch_dimensions.launch_bound(), &ir_builder_)));
 
   std::vector<llvm::Value*> tuple_operand_ptrs;
   for (int64 i = 0; i < output_arrays.size(); ++i) {

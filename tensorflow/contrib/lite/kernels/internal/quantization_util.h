@@ -167,9 +167,9 @@ IntOut SafeCast(FloatIn x) {
 // this is intended as a RIGHT-shift.
 //
 // Restricted to the case where the multiplier < 1 (and non-negative).
-void QuantizeMultiplierSmallerThanOne(double double_multiplier,
-                                      int32_t* quantized_multiplier,
-                                      int* right_shift);
+void QuantizeMultiplierSmallerThanOneExp(double double_multiplier,
+                                         int32_t* quantized_multiplier,
+                                         int* left_shift);
 
 // Decompose a double multiplier into a Q0.31 int32 representation of its
 // significand, and shift representation of its exponent.
@@ -197,11 +197,12 @@ void PreprocessSoftmaxScaling(double beta, double input_scale,
                               int input_integer_bits,
                               int32_t* quantized_multiplier, int* left_shift);
 // Like PreprocessSoftmaxScaling, but inverse scaling factors also calculated.
-void PreprocessLogSoftmaxScaling(double beta, double input_scale,
-                                 int input_integer_bits,
-                                 int32_t* quantized_multiplier, int* left_shift,
-                                 int32_t* reverse_scaling_divisor,
-                                 int* reverse_scaling_right_shift);
+void PreprocessLogSoftmaxScalingExp(double beta, double input_scale,
+                                    int input_integer_bits,
+                                    int32_t* quantized_multiplier,
+                                    int* left_shift,
+                                    int32_t* reverse_scaling_divisor,
+                                    int* reverse_scaling_left_shift);
 // Calculate the largest input that will result in a within-bounds intermediate
 // result within MultiplyByQuantizedMultiplierGreaterThanOne.  In other words,
 // it must not overflow before we reduce the value by multiplication by the
@@ -216,6 +217,11 @@ int CalculateInputRadius(int input_integer_bits, int input_left_shift);
 void NudgeQuantizationRange(const float min, const float max,
                             const int quant_min, const int quant_max,
                             float* nudged_min, float* nudged_max, float* scale);
+
+// If x is approximately a power of two (with any positive or negative
+// exponent), stores that exponent (i.e. log2(x)) in *log2_result, otherwise
+// returns false.
+bool CheckedLog2(const float x, int* log2_result);
 
 }  // namespace tflite
 

@@ -123,29 +123,11 @@ void FillRandomString(tflite::DynamicBuffer* buffer,
   }
 }
 
-TfLiteType TfLiteTypeFromString(const string& input_layer_type) {
-  if (input_layer_type == "string")
-    return kTfLiteString;
-  else if (input_layer_type == "float")
-    return kTfLiteFloat32;
-  else if (input_layer_type == "uint8")
-    return kTfLiteUInt8;
-  else if (input_layer_type == "int32")
-    return kTfLiteInt32;
-  else if (input_layer_type == "int64")
-    return kTfLiteInt64;
-  else
-    return kTfLiteNoType;
-}
-
 bool PopulateInputLayerInfo(
     const string& names_string, const string& shapes_string,
-    const string& types_string, const string& values_string,
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
   std::vector<std::string> names = Split(names_string, ',');
   std::vector<std::string> shapes = Split(shapes_string, ':');
-  std::vector<std::string> types = Split(types_string, ',');
-  std::vector<std::string> values = Split(values_string, ':');
 
   if (names.size() != shapes.size()) {
     TFLITE_LOG(ERROR) << "The number of items in"
@@ -158,27 +140,12 @@ bool PopulateInputLayerInfo(
                       << " --input_layer_shape=1,224,224,4:1,20";
     return false;
   }
-  if (names.size() != types.size()) {
-    TFLITE_LOG(ERROR) << "The number of items in"
-                      << " --input_layer_type (" << types_string << ", with "
-                      << types.size() << " items)"
-                      << " must match the number of items in"
-                      << " --input_layer (" << names_string << ", with "
-                      << names.size() << " items)."
-                      << " For example --input_layer=input1,input2"
-                      << " --input_layer_type=float,int";
-    return false;
-  }
 
   for (int i = 0; i < names.size(); ++i) {
     info->push_back(BenchmarkTfLiteModel::InputLayerInfo());
     BenchmarkTfLiteModel::InputLayerInfo& input = info->back();
 
     input.name = names[i];
-
-    input.data_type = TfLiteTypeFromString(types[i]);
-    TFLITE_BENCHMARK_CHECK(input.data_type != kTfLiteNoType)
-        << types[i] << " was an invalid type";
 
     TFLITE_BENCHMARK_CHECK(SplitAndParse(shapes[i], ',', &input.shape))
         << "Incorrect size string specified: " << shapes[i];
@@ -190,30 +157,42 @@ bool PopulateInputLayerInfo(
         return false;
       }
     }
-
-    if (i < values.size()) {
-      TFLITE_BENCHMARK_CHECK(
-          SplitAndParse(values[i], ',', &input.initialization_values))
-          << "Incorrect initialization values string specified: " << values[i];
-    }
   }
 
   return true;
 }
 
+BenchmarkParams GetDefaultParams() {
+  BenchmarkParams default_params = BenchmarkModel::DefaultParams();
+  default_params.AddParam("graph", BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("input_layer",
+                          BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("input_layer_shape",
+                          BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+  return default_params;
+}
+
 }  // namespace
+
+BenchmarkTfLiteModel::BenchmarkTfLiteModel()
+    : BenchmarkModel(GetDefaultParams()) {
+  AddListener(&profiling_listener_);
+}
+
+BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
+    : BenchmarkModel(std::move(params)) {
+  AddListener(&profiling_listener_);
+}
 
 std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
   std::vector<Flag> flags = BenchmarkTfLiteModel::BenchmarkModel::GetFlags();
   std::vector<Flag> specific_flags = {
-      Flag("graph", &graph, "graph file name"),
-      Flag("input_layer", &input_layer_string, "input layer names"),
-      Flag("input_layer_shape", &input_layer_shape_string, "input layer shape"),
-      Flag("input_layer_type", &input_layer_type_string, "input layer type"),
-      Flag("input_layer_values", &input_layer_values_string,
-           "values to initialize the inputs with"),
-      Flag("output_layer", &output_layer_string, "output layer name"),
-      Flag("use_nnapi", &use_nnapi, "use nnapi api")};
+      CreateFlag<std::string>("graph", &params_, "graph file name"),
+      CreateFlag<std::string>("input_layer", &params_, "input layer names"),
+      CreateFlag<std::string>("input_layer_shape", &params_,
+                              "input layer shape"),
+      CreateFlag<bool>("use_nnapi", &params_, "use nnapi api")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
   return flags;
@@ -221,23 +200,23 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
 
 void BenchmarkTfLiteModel::LogFlags() {
   BenchmarkModel::LogFlags();
-  TFLITE_LOG(INFO) << "Graph: [" << graph << "]";
-  TFLITE_LOG(INFO) << "Input layers: [" << input_layer_string << "]";
-  TFLITE_LOG(INFO) << "Input shapes: [" << input_layer_shape_string << "]";
-  TFLITE_LOG(INFO) << "Input types: [" << input_layer_type_string << "]";
-  TFLITE_LOG(INFO) << "Output layers: [" << output_layer_string << "]";
-  TFLITE_LOG(INFO) << "Use nnapi : [" << use_nnapi << "]";
+  TFLITE_LOG(INFO) << "Graph: [" << params_.Get<std::string>("graph") << "]";
+  TFLITE_LOG(INFO) << "Input layers: ["
+                   << params_.Get<std::string>("input_layer") << "]";
+  TFLITE_LOG(INFO) << "Input shapes: ["
+                   << params_.Get<std::string>("input_layer_shape") << "]";
+  TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
 }
 
 bool BenchmarkTfLiteModel::ValidateFlags() {
-  if (graph.empty()) {
+  if (params_.Get<std::string>("graph").empty()) {
     TFLITE_LOG(ERROR)
         << "Please specify the name of your TF Lite input file with --graph";
     return false;
   }
-  return PopulateInputLayerInfo(input_layer_string, input_layer_shape_string,
-                                input_layer_type_string,
-                                input_layer_values_string, &inputs);
+  return PopulateInputLayerInfo(params_.Get<std::string>("input_layer"),
+                                params_.Get<std::string>("input_layer_shape"),
+                                &inputs);
 }
 
 uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
@@ -251,6 +230,7 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
 }
 
 void BenchmarkTfLiteModel::Init() {
+  std::string graph = params_.Get<std::string>("graph");
   model = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
   if (!model) {
     TFLITE_LOG(FATAL) << "Failed to mmap model " << graph;
@@ -272,9 +252,13 @@ void BenchmarkTfLiteModel::Init() {
   }
   profiling_listener_.SetInterpreter(interpreter.get());
 
-  if (params_.num_threads != -1) {
-    interpreter->SetNumThreads(params_.num_threads);
+  const int32_t num_threads = params_.Get<int32_t>("num_threads");
+
+  if (num_threads != -1) {
+    interpreter->SetNumThreads(num_threads);
   }
+
+  bool use_nnapi = params_.Get<bool>("use_nnapi");
 
   interpreter->UseNNAPI(use_nnapi);
   auto interpreter_inputs = interpreter->inputs();
@@ -293,8 +277,6 @@ void BenchmarkTfLiteModel::Init() {
     TFLITE_BENCHMARK_CHECK_EQ(t->name, input.name)
         << "Tensor # " << i << " is named " << t->name << " but flags call it "
         << input.name;
-    TFLITE_BENCHMARK_CHECK_EQ(t->type, input.data_type)
-        << "Could not match the type of input tensor " << t->name;
   }
 
   // Resize all non-string tensors.

@@ -46,7 +46,7 @@ from tensorflow.python.training import training
 
 class BackpropTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAggregateGradients(self):
 
     def fn(x):
@@ -251,7 +251,7 @@ class BackpropTest(test.TestCase):
     g, = backprop.gradients_function(loss, [0])(logits, labels)
     self.assertAllEqual(g.numpy(), [[-0.5, 0.5]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGradientWithinTapeBlock(self):
     v1 = resource_variable_ops.ResourceVariable(1.)
     self.evaluate(v1.initializer)
@@ -265,7 +265,7 @@ class BackpropTest(test.TestCase):
       grad = t.gradient(loss, v1)
     self.assertAllEqual(self.evaluate(grad), 2.0)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNestedSelfContexts(self):
     v1 = resource_variable_ops.ResourceVariable(1.)
     self.evaluate(v1.initializer)
@@ -435,7 +435,7 @@ class BackpropTest(test.TestCase):
     self.assertEqual(backprop.implicit_grad(f)()[0][0], None)
 
   @test_util.assert_no_new_tensors
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGradientTapeRepeatedSource(self):
     with backprop.GradientTape(persistent=False) as g:
       x = constant_op.constant(3.0)
@@ -445,7 +445,7 @@ class BackpropTest(test.TestCase):
     self.assertEqual(self.evaluate(grad), [2.0, 2.0])
 
   @test_util.assert_no_new_tensors
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testPersistentGradientTapeRepeatedSource(self):
     with backprop.GradientTape(persistent=True) as g:
       x = constant_op.constant(3.0)
@@ -459,7 +459,7 @@ class BackpropTest(test.TestCase):
     self.assertEqual(self.evaluate(grad), [3.0, 11.0])
 
   @test_util.assert_no_new_tensors
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGradientTapeStructure(self):
     with backprop.GradientTape(persistent=True) as g:
       # Using different constant values because constant tensors are
@@ -482,7 +482,7 @@ class BackpropTest(test.TestCase):
                      [1.0, {'x2': 2.0, 'x3': 3.0}])
 
   @test_util.assert_no_new_tensors
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGradientTape(self):
     with backprop.GradientTape() as g:
       x = constant_op.constant(3.0)
@@ -497,7 +497,7 @@ class BackpropTest(test.TestCase):
     grad = g.gradient(y, [x])[0]
     self.assertEqual(self.evaluate(grad), 6.0)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGradientTapeWithCond(self):
     x = constant_op.constant(3.0)
 
@@ -518,7 +518,7 @@ class BackpropTest(test.TestCase):
       dy = g.gradient(y, [x])[0]
       self.assertEqual(self.evaluate(dy), 6.0)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGradientTapeWithWhileLoop(self):
     i = constant_op.constant(1)
     x = constant_op.constant(2.)
@@ -553,7 +553,7 @@ class BackpropTest(test.TestCase):
       g.gradient(y, [x])
 
   @test_util.assert_no_new_tensors
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testPersistentTape(self):
     with backprop.GradientTape(persistent=True) as g:
       x = constant_op.constant(3.0)
@@ -567,7 +567,7 @@ class BackpropTest(test.TestCase):
     del g
 
   @test_util.assert_no_new_tensors
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testHigherOrderGradient(self):
     with backprop.GradientTape(persistent=True) as g:
       x = constant_op.constant(3.0)
@@ -584,7 +584,7 @@ class BackpropTest(test.TestCase):
     del g
 
   @test_util.assert_no_new_tensors
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testPersistentNestedTape(self):
     with backprop.GradientTape(persistent=True) as g:
       x = constant_op.constant(3.0)
@@ -605,7 +605,7 @@ class BackpropTest(test.TestCase):
     del g
 
   @test_util.assert_no_new_tensors
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGradientTapeVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
     self.evaluate(v.initializer)
@@ -615,7 +615,7 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(self.evaluate(grad), 2.0)
 
   @test_util.assert_no_new_tensors
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNestedGradients(self):
     x = constant_op.constant(3.0)
     with backprop.GradientTape() as g:

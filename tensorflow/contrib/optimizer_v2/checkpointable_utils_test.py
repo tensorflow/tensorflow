@@ -226,7 +226,7 @@ class CheckpointingTests(test.TestCase):
             optimizer_node.slot_variables[0]
             .slot_variable_node_id].attributes[0].checkpoint_key)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSaveRestore(self):
     model = MyModel()
     optimizer = adam.AdamOptimizer(0.001)
@@ -347,7 +347,7 @@ class CheckpointingTests(test.TestCase):
             self.assertEqual(training_continuation + 1,
                              session.run(root.save_counter))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAgnosticUsage(self):
     """Graph/eager agnostic usage."""
     # Does create garbage when executing eagerly due to ops.Graph() creation.
@@ -381,7 +381,7 @@ class CheckpointingTests(test.TestCase):
                          self.evaluate(root.save_counter))
 
   # pylint: disable=cell-var-from-loop
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testWithDefun(self):
     num_training_steps = 2
     checkpoint_directory = self.get_temp_dir()
@@ -453,7 +453,7 @@ class CheckpointingTests(test.TestCase):
         optimizer.apply_gradients(
             [(g, v) for g, v in zip(grad, model.vars)])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDeferredSlotRestoration(self):
     checkpoint_directory = self.get_temp_dir()
 
@@ -616,7 +616,7 @@ class CheckpointingTests(test.TestCase):
 
 class TemplateTests(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_checkpointable_save_restore(self):
 
     def _templated():
@@ -712,7 +712,7 @@ class CheckpointCompatibilityTests(test.TestCase):
             sess=session, save_path=checkpoint_prefix,
             global_step=root.optimizer_step)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLoadFromNameBasedSaver(self):
     """Save a name-based checkpoint, load it using the object-based API."""
     with test_util.device(use_gpu=True):

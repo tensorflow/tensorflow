@@ -190,10 +190,10 @@ class DirichletTest(test.TestCase):
         dist.stddev(),
     ])
 
-    self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.04)
-    self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.06)
-    self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.03)
-    self.assertAllClose(sample_stddev_, analytic_stddev, atol=0., rtol=0.02)
+    self.assertAllClose(sample_mean_, analytic_mean, atol=0.04, rtol=0.)
+    self.assertAllClose(sample_cov_, analytic_cov, atol=0.06, rtol=0.)
+    self.assertAllClose(sample_var_, analytic_var, atol=0.03, rtol=0.)
+    self.assertAllClose(sample_stddev_, analytic_stddev, atol=0.02, rtol=0.)
 
   def testVariance(self):
     with self.test_session():

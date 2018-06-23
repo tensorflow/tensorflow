@@ -73,7 +73,7 @@ class OnlyOneDep(checkpointable.Checkpointable):
 
 class SplitTests(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSaveRestoreSplitDep(self):
     save_checkpoint = checkpointable_utils.Checkpoint(
         dep=SaveTensorSlicesAsDeps())

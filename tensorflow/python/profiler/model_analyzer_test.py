@@ -707,8 +707,10 @@ class PrintModelAnalysisTest(test.TestCase):
     a = array_ops.constant(np.ones((100, 100)))
     b = array_ops.constant(np.ones((100, 100)))
     c = a * b
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.min_graph_nodes = -1
 
-    with session.Session() as sess:
+    with session.Session(config=config) as sess:
       run_options = config_pb2.RunOptions(
           trace_level=config_pb2.RunOptions.FULL_TRACE)
       run_metadata = config_pb2.RunMetadata()
