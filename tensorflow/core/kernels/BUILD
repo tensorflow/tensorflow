@@ -52,7 +52,8 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "if_cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm", "if_rocm_is_configured")
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -2505,10 +2506,11 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ] + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "@local_config_cuda//cuda:cublas",
         "@local_config_cuda//cuda:cusolver",
-    ],
+    ])
 )
 
 LINALG_DEPS = [
@@ -2917,7 +2919,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-    deps = MATH_DEPS + if_cuda([
+    deps = MATH_DEPS + if_cuda_is_configured([
+        ":cuda_solvers",
+    ]) + if_rocm_is_configured([
         ":cuda_solvers",
     ]),
 )

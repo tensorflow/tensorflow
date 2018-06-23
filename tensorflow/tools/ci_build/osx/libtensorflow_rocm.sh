@@ -23,13 +23,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../builds/libtensorflow.sh"
 
 # Configure script
+export TF_NEED_ROCM=1
+export LD_LIBRARY_PATH="/usr/local/cuda/lib:/usr/local/cuda/extras/CUPTI/lib:${LD_LIBRARY_PATH}"
 export PYTHON_BIN_PATH="/usr/bin/python"
+export TF_NEED_GCP=0
 export TF_NEED_HDFS=0
 export TF_NEED_CUDA=0
-export TF_NEED_ROCM=0
 export TF_NEED_OPENCL_SYCL=0
 export TF_NEED_MKL=0
 export COMPUTECPP_PATH="/usr/local"
 
-export PATH="$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-build_libtensorflow_tarball "-cpu-darwin-$(uname -m)"
+export PATH="/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+build_libtensorflow_tarball "-gpu-darwin-$(uname -m)"

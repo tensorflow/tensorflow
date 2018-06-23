@@ -14,22 +14,9 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Script to produce binary release of libtensorflow (C API, Java jars etc.).
+# Script to build a binary releases of libtensorflow with GPU support.
 
 set -ex
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# See comments at the top of this file for details.
-source "${SCRIPT_DIR}/../builds/libtensorflow.sh"
-
-# Configure script
-export PYTHON_BIN_PATH="/usr/bin/python"
-export TF_NEED_HDFS=0
-export TF_NEED_CUDA=0
-export TF_NEED_ROCM=0
-export TF_NEED_OPENCL_SYCL=0
-export TF_NEED_MKL=0
-export COMPUTECPP_PATH="/usr/local"
-
-export PATH="$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-build_libtensorflow_tarball "-cpu-darwin-$(uname -m)"
+export TF_NEED_ROCM=1
+"${SCRIPT_DIR}/libtensorflow_docker.sh"
