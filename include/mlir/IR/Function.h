@@ -29,16 +29,52 @@
 namespace mlir {
   class FunctionType;
 
-  /// This is the base class for all of the MLIR function types
-  class Function {
-    std::string name;
-    FunctionType *const type;
-  public:
-    explicit Function(StringRef name, FunctionType *type);
-
-    void print(raw_ostream &os);
-    void dump();
+/// This is the base class for all of the MLIR function types.
+class Function {
+public:
+  enum class Kind {
+    ExtFunc, CFGFunc
   };
+
+  Kind getKind() const { return kind; }
+
+  /// Return the name of this function, without the @.
+  const std::string &getName() const { return name; }
+
+  /// Return the type of this function.
+  FunctionType *getType() const {
+    return type;
+  }
+
+  void print(raw_ostream &os) const;
+  void dump() const;
+
+protected:
+  Function(StringRef name, FunctionType *type, Kind kind);
+  ~Function() {}
+private:
+  Kind kind;
+  std::string name;
+  FunctionType *const type;
+
+  void operator=(const Function&) = delete;
+};
+
+/// An extfunc declaration is a declaration of a function signature that is
+/// defined in some other module.
+class ExtFunction : public Function {
+public:
+  ExtFunction(StringRef name, FunctionType *type);
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Function *func) {
+    return func->getKind() == Kind::ExtFunc;
+  }
+
+  void print(raw_ostream &os) const;
+};
+
+
 } // end namespace mlir
 
 #endif  // MLIR_IR_FUNCTION_H

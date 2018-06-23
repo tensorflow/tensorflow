@@ -1,4 +1,4 @@
-//===- Module.cpp - MLIR Module Class -------------------------------===//
+//===- BasicBlock.cpp - MLIR BasicBlock Class -----------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,9 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/Module.h"
+#include "mlir/IR/BasicBlock.h"
 using namespace mlir;
 
-Module::Module() {
+BasicBlock::BasicBlock(CFGFunction *function) : function(function) {
 }
-

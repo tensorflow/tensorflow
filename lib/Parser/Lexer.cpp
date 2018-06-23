@@ -66,9 +66,12 @@ Token Lexer::lexToken() {
     // Ignore whitespace.
     return lexToken();
 
+  case ':': return formToken(Token::colon, tokStart);
   case ',': return formToken(Token::comma, tokStart);
   case '(': return formToken(Token::l_paren, tokStart);
   case ')': return formToken(Token::r_paren, tokStart);
+  case '{': return formToken(Token::l_brace, tokStart);
+  case '}': return formToken(Token::r_brace, tokStart);
   case '<': return formToken(Token::less, tokStart);
   case '>': return formToken(Token::greater, tokStart);
 
@@ -148,6 +151,7 @@ Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
     .Case("int", Token::kw_int)
     .Case("memref", Token::kw_memref)
     .Case("mlfunc", Token::kw_mlfunc)
+    .Case("return", Token::kw_return)
     .Case("tensor", Token::kw_tensor)
     .Case("vector", Token::kw_vector)
     .Default(Token::bare_identifier);

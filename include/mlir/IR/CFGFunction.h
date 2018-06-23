@@ -1,4 +1,4 @@
-//===- Module.h - MLIR Module Class -----------------------------*- C++ -*-===//
+//===- CFGFunction.h - MLIR CFGFunction Class -------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,29 +14,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-//
-// Module is the top-level container for code in an MLIR program.
-//
-//===----------------------------------------------------------------------===//
 
-#ifndef MLIR_IR_MODULE_H
-#define MLIR_IR_MODULE_H
+#ifndef MLIR_IR_CFGFUNCTION_H
+#define MLIR_IR_CFGFUNCTION_H
 
 #include "mlir/IR/Function.h"
+#include "mlir/IR/BasicBlock.h"
 #include <vector>
 
 namespace mlir {
-class Module {
+
+// This kind of function is defined in terms of a "Control Flow Graph" of basic
+// blocks, each of which includes instructions.
+class CFGFunction : public Function {
 public:
-  explicit Module();
+  CFGFunction(StringRef name, FunctionType *type);
 
-  // FIXME: wrong representation and API.
-  std::vector<Function*> functionList;
+  // FIXME: wrong representation and API, leaks memory etc.
+  std::vector<BasicBlock*> blockList;
 
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Function *func) {
+    return func->getKind() == Kind::CFGFunc;
+  }
 
   void print(raw_ostream &os) const;
-  void dump() const;
 };
+
+
 } // end namespace mlir
 
-#endif  // MLIR_IR_FUNCTION_H
+#endif  // MLIR_IR_CFGFUNCTION_H

@@ -1,4 +1,4 @@
-//===- Module.cpp - MLIR Module Class -------------------------------===//
+//===- Instructions.cpp - MLIR CFGFunction Instruction Classes ------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,9 +15,14 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/Module.h"
+#include "mlir/IR/Instructions.h"
+#include "mlir/IR/BasicBlock.h"
 using namespace mlir;
 
-Module::Module() {
+CFGFunction *TerminatorInst::getFunction() const {
+  return getBlock()->getFunction();
+}
+
+ReturnInst::ReturnInst(BasicBlock *block) : TerminatorInst(Kind::Return, block){
 }
 

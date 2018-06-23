@@ -15,40 +15,26 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/Function.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Support/STLExtras.h"
-#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/CFGFunction.h"
+#include "llvm/ADT/StringRef.h"
 using namespace mlir;
 
-Function::Function(StringRef name, FunctionType *type)
-  : name(name.str()), type(type) {
+Function::Function(StringRef name, FunctionType *type, Kind kind)
+  : kind(kind), name(name.str()), type(type) {
 }
 
-void Function::print(raw_ostream &os) {
-  os << "extfunc @" << name << '(';
-  interleave(type->getInputs(),
-             [&](Type *eltType) { os << *eltType; },
-             [&]() { os << ", "; });
-  os << ')';
+//===----------------------------------------------------------------------===//
+// ExtFunction implementation.
+//===----------------------------------------------------------------------===//
 
-  switch (type->getResults().size()) {
-  case 0: break;
-  case 1:
-    os << " -> " << *type->getResults()[0];
-    break;
-  default:
-    os << " -> (";
-    interleave(type->getResults(),
-               [&](Type *eltType) { os << *eltType; },
-               [&]() { os << ", "; });
-    os << ')';
-    break;
-  }
-
-  os << "\n";
+ExtFunction::ExtFunction(StringRef name, FunctionType *type)
+  : Function(name, type, Kind::ExtFunc) {
 }
 
-void Function::dump() {
-  print(llvm::errs());
+//===----------------------------------------------------------------------===//
+// CFGFunction implementation.
+//===----------------------------------------------------------------------===//
+
+CFGFunction::CFGFunction(StringRef name, FunctionType *type)
+  : Function(name, type, Kind::CFGFunc) {
 }

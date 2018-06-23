@@ -22,12 +22,16 @@
 #include "mlir/Parser.h"
 #include "Lexer.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/Types.h"
 #include "llvm/Support/SourceMgr.h"
 using namespace mlir;
 using llvm::SourceMgr;
+using llvm::SMLoc;
 
 namespace {
+class CFGFunctionParserState;
+
 /// Simple enum to make code read better in cases that would otherwise return a
 /// bool value.  Failure is "true" in a boolean context.
 enum ParseResult {
@@ -61,7 +65,10 @@ private:
   // Helper methods.
 
   /// Emit an error and return failure.
-  ParseResult emitError(const Twine &message);
+  ParseResult emitError(const Twine &message) {
+    return emitError(curToken.getLoc(), message);
+  }
+  ParseResult emitError(SMLoc loc, const Twine &message);
 
   /// Advance the current lexer onto the next token.
   void consumeToken() {
@@ -107,9 +114,11 @@ private:
   Type *parseType();
   ParseResult parseTypeList(SmallVectorImpl<Type*> &elements);
 
-  // Top level entity parsing.
+  // Functions.
   ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type);
   ParseResult parseExtFunc();
+  ParseResult parseCFGFunc();
+  ParseResult parseBasicBlock(CFGFunctionParserState &functionState);
 };
 } // end anonymous namespace
 
@@ -117,7 +126,7 @@ private:
 // Helper methods.
 //===----------------------------------------------------------------------===//
 
-ParseResult Parser::emitError(const Twine &message) {
+ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
   // If we hit a parse error in response to a lexer error, then the lexer
   // already emitted an error.
   if (curToken.is(Token::error))
@@ -125,8 +134,7 @@ ParseResult Parser::emitError(const Twine &message) {
 
   // TODO(clattner): If/when we want to implement a -verify mode, this will need
   // to package up errors into SMDiagnostic and report them.
-  lex.getSourceMgr().PrintMessage(curToken.getLoc(), SourceMgr::DK_Error,
-                                  message);
+  lex.getSourceMgr().PrintMessage(loc, SourceMgr::DK_Error, message);
   return ParseFailure;
 }
 
@@ -442,10 +450,10 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type*> &elements) {
   return ParseSuccess;
 }
 
+//===----------------------------------------------------------------------===//
+// Functions
+//===----------------------------------------------------------------------===//
 
-//===----------------------------------------------------------------------===//
-// Top-level entity parsing.
-//===----------------------------------------------------------------------===//
 
 /// Parse a function signature, starting with a name and including the parameter
 /// list.
@@ -493,10 +501,118 @@ ParseResult Parser::parseExtFunc() {
 
 
   // Okay, the external function definition was parsed correctly.
-  module->functionList.push_back(new Function(name, type));
+  module->functionList.push_back(new ExtFunction(name, type));
   return ParseSuccess;
 }
 
+
+namespace {
+/// This class represents the transient parser state for the internals of a
+/// function as we are parsing it, e.g. the names for basic blocks.  It handles
+/// forward references.
+class CFGFunctionParserState {
+public:
+  CFGFunctionParserState(CFGFunction *function) : function(function) {}
+
+  /// Get the basic block with the specified name, creating it if it doesn't
+  /// already exist.
+  BasicBlock *getBlockNamed(StringRef name) {
+    auto *&block = blocksByName[name];
+    if (!block) {
+      block = new BasicBlock(function);
+      // TODO: Should be automatic when we have the right function
+      // representation.
+      function->blockList.push_back(block);
+    }
+    return block;
+  }
+private:
+  CFGFunction *function;  
+  llvm::StringMap<BasicBlock*> blocksByName;
+};
+} // end anonymous namespace
+
+
+/// CFG function declarations.
+///
+///   cfg-func ::= `cfgfunc` function-signature `{` basic-block+ `}`
+///
+ParseResult Parser::parseCFGFunc() {
+  consumeToken(Token::kw_cfgfunc);
+
+  StringRef name;
+  FunctionType *type = nullptr;
+  if (parseFunctionSignature(name, type))
+    return ParseFailure;
+
+  if (!consumeIf(Token::l_brace))
+    return emitError("expected '{' in CFG function");
+
+  // Okay, the CFG function signature was parsed correctly, create the function.
+  auto function = new CFGFunction(name, type);
+
+  // Make sure we have at least one block.
+  if (curToken.is(Token::r_brace))
+    return emitError("CFG functions must have at least one basic block");
+
+  CFGFunctionParserState functionState(function);
+
+  // Parse the list of blocks.
+  while (!consumeIf(Token::r_brace))
+    if (parseBasicBlock(functionState))
+      return ParseFailure;
+
+  module->functionList.push_back(function);
+  return ParseSuccess;
+}
+
+/// Basic block declaration.
+///
+///   basic-block ::= bb-label instruction* terminator-stmt
+///   bb-label    ::= bb-id bb-arg-list? `:`
+///   bb-id       ::= bare-id
+///   bb-arg-list ::= `(` ssa-id-and-type-list? `)`
+///
+ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
+  SMLoc nameLoc = curToken.getLoc();
+  auto name = curToken.getSpelling();
+  if (!consumeIf(Token::bare_identifier))
+    return emitError("expected basic block name");
+  auto block = functionState.getBlockNamed(name);
+
+  // If this block has already been parsed, then this is a redefinition with the
+  // same block name.
+  if (block->getTerminator())
+    return emitError(nameLoc, "redefinition of block named '" +
+                     name.str() + "'");
+
+  // TODO: parse bb argument list.
+
+  if (!consumeIf(Token::colon))
+    return emitError("expected ':' after basic block name");
+
+
+  // TODO(clattner): Verify block hasn't already been parsed (this would be a
+  // redefinition of the same name) once we have a body implementation.
+
+  // TODO(clattner): Move block to the end of the list, once we have a proper
+  // block list representation in CFGFunction.
+
+  // TODO: parse instruction list.
+
+  // TODO: Generalize this once instruction list parsing is built out.
+  if (!consumeIf(Token::kw_return))
+    return emitError("expected 'return' at end of basic block");
+
+  block->setTerminator(new ReturnInst(block));
+
+  return ParseSuccess;
+}
+
+
+//===----------------------------------------------------------------------===//
+// Top-level entity parsing.
+//===----------------------------------------------------------------------===//
 
 /// This is the top-level module parser.
 Module *Parser::parseModule() {
@@ -517,11 +633,14 @@ Module *Parser::parseModule() {
       return nullptr;
 
     case Token::kw_extfunc:
-      if (parseExtFunc())
-        return nullptr;
+      if (parseExtFunc()) return nullptr;
       break;
 
-    // TODO: cfgfunc, mlfunc, affine entity declarations, etc.
+    case Token::kw_cfgfunc:
+      if (parseCFGFunc()) return nullptr;
+      break;
+
+    // TODO: mlfunc, affine entity declarations, etc.
     }
   }
 }

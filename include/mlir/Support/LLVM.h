@@ -48,6 +48,12 @@ namespace llvm {
   template<typename T> class TinyPtrVector;
   template<typename T> class Optional;
   template <typename PT1, typename PT2> class PointerUnion;
+  namespace detail {
+    template <typename KeyT, typename ValueT> struct DenseMapPair;
+  }
+  template<typename T> struct DenseMapInfo;
+  template <typename KeyT, typename ValueT, typename KeyInfoT, typename BucketT>
+  class DenseMap;
 
   // Other common classes.
   class raw_ostream;
@@ -79,6 +85,7 @@ namespace mlir {
   using llvm::MutableArrayRef;
   using llvm::TinyPtrVector;
   using llvm::PointerUnion;
+  using llvm::DenseMap;
 
   // Other common classes.
   using llvm::raw_ostream;

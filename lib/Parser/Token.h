@@ -40,10 +40,12 @@ public:
 
     // Punctuation.
     arrow,              // ->
+    colon,              // :
     comma,              // ,
     question,           // ?
     questionquestion,   // ??
     l_paren, r_paren,   // ( )
+    l_brace, r_brace,   // { }
     less, greater,      // < >
     // TODO: More punctuation.
 
@@ -62,6 +64,7 @@ public:
     kw_int,
     kw_memref,
     kw_mlfunc,
+    kw_return,
     kw_tensor,
     kw_vector,
   };

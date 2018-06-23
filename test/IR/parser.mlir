@@ -29,3 +29,18 @@ extfunc @memrefs(memref<1x?x4x?x?xint>, memref<i8>)
 
 ; CHECK: extfunc @functions((i1, i1) -> (), () -> ())
 extfunc @functions((memref<1x?x4x?x?xint>, memref<i8>) -> (), ()->())
+
+
+; CHECK-LABEL: cfgfunc @simpleCFG() {
+cfgfunc @simpleCFG() {
+bb42:       ; CHECK: bb0:
+  return    ; CHECK: return
+}           ; CHECK: }
+
+; CHECK-LABEL: cfgfunc @multiblock() -> i32 {
+cfgfunc @multiblock() -> i32 {
+bb0:         ; CHECK: bb0:
+  return     ; CHECK: return
+bb4:         ; CHECK: bb1:
+  return     ; CHECK: return
+}            ; CHECK: }

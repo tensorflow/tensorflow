@@ -43,6 +43,8 @@ enum class TypeKind {
   F32,
   F64,
 
+  /// This is a marker for the last primitive type.  The range of primitive
+  /// types is expected to be this element and earlier.
   LAST_PRIMITIVE_TYPE = F64,
 
   // Derived types.
@@ -129,8 +131,8 @@ public:
   static PrimitiveType *get(TypeKind kind, MLIRContext *context);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *T) {
-    return T->getKind() <= TypeKind::LAST_PRIMITIVE_TYPE;
+  static bool classof(const Type *type) {
+    return type->getKind() <= TypeKind::LAST_PRIMITIVE_TYPE;
   }
 private:
   PrimitiveType(TypeKind kind, MLIRContext *context);
@@ -174,17 +176,17 @@ public:
   static FunctionType *get(ArrayRef<Type*> inputs, ArrayRef<Type*> results,
                            MLIRContext *context);
 
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *T) {
-    return T->getKind() == TypeKind::Function;
-  }
-
   ArrayRef<Type*> getInputs() const {
     return ArrayRef<Type*>(inputsAndResults, getSubclassData());
   }
 
   ArrayRef<Type*> getResults() const {
     return ArrayRef<Type*>(inputsAndResults+getSubclassData(), numResults);
+  }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Type *type) {
+    return type->getKind() == TypeKind::Function;
   }
 
 private:
@@ -211,8 +213,8 @@ public:
   }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *T) {
-    return T->getKind() == TypeKind::Vector;
+  static bool classof(const Type *type) {
+    return type->getKind() == TypeKind::Vector;
   }
 
 private:
