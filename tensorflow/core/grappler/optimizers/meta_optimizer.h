@@ -95,6 +95,10 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg);
 // when possible.
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
                         DeviceBase* cpu_device, Cluster* cluster,
+                        GraphDef* optimized_graph);
+
+Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
+                        DeviceBase* cpu_device, Cluster* cluster,
                         GraphDef* optimized_graph,
                         const GPUOptions& gpu_options);
 
