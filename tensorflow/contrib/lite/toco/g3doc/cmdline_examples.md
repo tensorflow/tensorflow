@@ -81,19 +81,19 @@ tflite_convert \
   --saved_model_dir=/tmp/saved_model
 ```
 
-[SavedModel](https://www.tensorflow.org/programmers_guide/saved_model#using_savedmodel_with_estimators)
+[SavedModel](https://www.tensorflow.org/guide/saved_model#using_savedmodel_with_estimators)
 has fewer required flags than frozen graphs due to access to additional data
 contained within the SavedModel. The values for `--input_arrays` and
 `--output_arrays` are an aggregated, alphabetized list of the inputs and outputs
 in the [SignatureDefs](https://www.tensorflow.org/serving/signature_defs) within
 the
-[MetaGraphDef](https://www.tensorflow.org/programmers_guide/saved_model#apis_to_build_and_load_a_savedmodel)
+[MetaGraphDef](https://www.tensorflow.org/guide/saved_model#apis_to_build_and_load_a_savedmodel)
 specified by `--saved_model_tag_set`. As with the GraphDef, the value for
 `input_shapes` is automatically determined whenever possible.
 
 There is currently no support for MetaGraphDefs without a SignatureDef or for
 MetaGraphDefs that use the [`assets/`
-directory](https://www.tensorflow.org/programmers_guide/saved_model#structure_of_a_savedmodel_directory).
+directory](https://www.tensorflow.org/guide/saved_model#structure_of_a_savedmodel_directory).
 
 ## Quantization
 
