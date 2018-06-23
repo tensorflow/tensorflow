@@ -33,7 +33,7 @@ _image_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_image_ops.so"))
 
 _IMAGE_DTYPES = set(
-    [dtypes.uint8, dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64])
+    [dtypes.uint8, dtypes.int32, dtypes.int64, dtypes.float16, dtypes.float32, dtypes.float64])
 
 ops.RegisterShape("ImageConnectedComponents")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
