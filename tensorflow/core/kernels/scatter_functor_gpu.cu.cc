@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/scatter_functor_gpu.cu.h"
 
 namespace tensorflow {
@@ -40,13 +41,9 @@ typedef Eigen::GpuDevice GPUDevice;
   DEFINE_GPU_SPECS_INDEX(T, int32); \
   DEFINE_GPU_SPECS_INDEX(T, int64);
 
-DEFINE_GPU_SPECS(float);
-DEFINE_GPU_SPECS(double);
 DEFINE_GPU_SPECS_OP(bool, int32, scatter_op::UpdateOp::ASSIGN);
 DEFINE_GPU_SPECS_OP(bool, int64, scatter_op::UpdateOp::ASSIGN);
-// TODO(b/27222123): The following fails to compile due to lack of support for
-// fp16.
-// TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 #undef DEFINE_GPU_SPECS
 #undef DEFINE_GPU_SPECS_INDEX
