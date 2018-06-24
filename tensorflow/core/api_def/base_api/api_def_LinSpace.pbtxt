@@ -3,13 +3,13 @@ op {
   in_arg {
     name: "start"
     description: <<END
-First entry in the range.
+0-D tensor. First entry in the range.
 END
   }
   in_arg {
     name: "stop"
     description: <<END
-Last entry in the range.
+0-D tensor. Last entry in the range.
 END
   }
   in_arg {
