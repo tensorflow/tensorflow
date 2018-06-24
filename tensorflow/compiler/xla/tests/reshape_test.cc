@@ -656,9 +656,9 @@ XLA_TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   std::unique_ptr<Literal> expected =
       Literal::CreateR2FromArray2D<float>(expected_array);
   if (use_bfloat16()) {
-    expected = LiteralTestUtil::ConvertF32ToBF16(*expected);
+    expected = Literal::ConvertF32ToBF16(*expected);
   }
-  LiteralTestUtil::ExpectEqual(*expected, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *actual));
 }
 
 XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4) {
@@ -731,7 +731,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x1x1_To_2x1) {
   builder.Reshape(parameter, /*dimensions=*/{0, 1, 2, 3}, /*new_sizes=*/{2, 1});
 
   std::unique_ptr<Literal> expected =
-      LiteralTestUtil::Reshape({2, 1}, {1, 0}, *input_literal);
+      Literal::ReshapeSlice({2, 1}, {1, 0}, *input_literal);
   ComputeAndCompareLiteral(&builder, *expected, {input_data.get()},
                            zero_error_spec_);
 }
@@ -753,7 +753,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x4x1_To_4x2) {
   builder.Reshape(parameter, /*dimensions=*/{0, 1, 2, 3}, /*new_sizes=*/{4, 2});
 
   std::unique_ptr<Literal> expected =
-      LiteralTestUtil::Reshape({4, 2}, {1, 0}, *input_literal);
+      Literal::ReshapeSlice({4, 2}, {1, 0}, *input_literal);
   ComputeAndCompareLiteral(&builder, *expected, {input_data.get()},
                            zero_error_spec_);
 }
@@ -817,7 +817,7 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
   // Since the reshape is a no-op, verify that it does not change the underlying
   // data.
   if (use_bfloat16()) {
-    auto expected = LiteralTestUtil::ConvertF32ToBF16(*input_literal);
+    auto expected = Literal::ConvertF32ToBF16(*input_literal);
     EXPECT_EQ(expected->data<bfloat16>(), output_literal->data<bfloat16>());
   } else {
     EXPECT_EQ(input_literal->data<float>(), output_literal->data<float>());
@@ -886,7 +886,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeSimple) {
                   /*new_sizes=*/new_bounds);
 
   std::unique_ptr<Literal> expected =
-      LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal)
+      Literal::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
           ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
@@ -915,7 +915,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
                   /*new_sizes=*/new_bounds);
 
   std::unique_ptr<Literal> expected =
-      LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal)
+      Literal::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
           ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
@@ -944,7 +944,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1) {
                   /*new_sizes=*/new_bounds);
 
   std::unique_ptr<Literal> expected =
-      LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal)
+      Literal::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
           ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
@@ -974,7 +974,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
                   /*new_sizes=*/new_bounds);
 
   std::unique_ptr<Literal> expected =
-      LiteralTestUtil::Reshape(new_bounds, {2, 3, 1, 0}, *input_literal)
+      Literal::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
           ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
@@ -1003,7 +1003,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
                   /*new_sizes=*/new_bounds);
 
   std::unique_ptr<Literal> expected =
-      LiteralTestUtil::Reshape(new_bounds, {1, 0, 2, 3}, *input_literal)
+      Literal::ReshapeSlice(new_bounds, {1, 0, 2, 3}, *input_literal)
           ->Relayout(input_literal->shape().layout());
 
   // Specify the requested output shape explicitly to ensure that this reshape

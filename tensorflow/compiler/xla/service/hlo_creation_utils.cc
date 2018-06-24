@@ -162,6 +162,17 @@ StatusOr<HloInstruction*> MakeConcatHlo(ArraySlice<HloInstruction*> operands,
       HloInstruction::CreateConcatenate(concat_shape, operands, dimension));
 }
 
+StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
+                                     const DotDimensionNumbers& dim_numbers) {
+  HloComputation* computation = lhs->parent();
+  CHECK_EQ(computation, rhs->parent());
+  TF_ASSIGN_OR_RETURN(
+      Shape dot_shape,
+      ShapeInference::InferDotOpShape(lhs->shape(), rhs->shape(), dim_numbers));
+  return computation->AddInstruction(
+      HloInstruction::CreateDot(dot_shape, lhs, rhs, dim_numbers));
+}
+
 StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n) {
   CHECK_GT(n, 0);
 

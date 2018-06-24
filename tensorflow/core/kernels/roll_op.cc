@@ -285,7 +285,7 @@ class RollOp : public OpKernel {
       dim_range[i] = dim_size_prod;
     }
 
-    Tensor* output = NULL;
+    Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
     auto input_flat = input.flat<T>().data();

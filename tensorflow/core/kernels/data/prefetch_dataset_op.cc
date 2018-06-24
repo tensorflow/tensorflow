@@ -55,7 +55,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Prefetch")}));
@@ -68,7 +68,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "PrefetchDatasetOp::Dataset"; }
+    string DebugString() const override { return "PrefetchDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -87,7 +87,6 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             auto_tuner_(params.dataset->buffer_size_) {}
 
       ~Iterator() override {
@@ -104,6 +103,10 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
           cancelled_ = true;
           cond_var_.notify_all();
         }
+      }
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -327,7 +330,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
       // accessing the parent iterator. We keep this separate from `mu_` to
       // allow prefetching to run in parallel with GetNext calls.
       mutex parent_mu_ ACQUIRED_BEFORE(mu_);
-      const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(parent_mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(parent_mu_);
       condition_variable cond_var_;
       PrefetchAutotuner auto_tuner_ GUARDED_BY(mu_);
       std::deque<BufferElement> buffer_ GUARDED_BY(mu_);

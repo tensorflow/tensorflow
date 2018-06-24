@@ -102,7 +102,9 @@ CallContainer<Call>::CallContainer(
     typename CallContainer<Call>::StartCallFn start_call_fn)
     : ctx_(ctx),
       done_(std::move(done)),
-      token_(ctx->cancellation_manager()->get_cancellation_token()),
+      token_(ctx->cancellation_manager() != nullptr
+                 ? ctx->cancellation_manager()->get_cancellation_token()
+                 : CancellationManager::kInvalidToken),
       fail_fast_(fail_fast),
       try_rpc_(try_rpc),
       callback_destroyed_(new Notification) {
@@ -110,7 +112,9 @@ CallContainer<Call>::CallContainer(
 
   // This will run when all RPCs are finished.
   reffed_status_callback_ = new ReffedStatusCallback([this](const Status& s) {
-    ctx_->cancellation_manager()->DeregisterCallback(token_);
+    if (token_ != CancellationManager::kInvalidToken) {
+      ctx_->cancellation_manager()->DeregisterCallback(token_);
+    }
     ctx_->SetStatus(s);
     done_();
     callback_destroyed_->WaitForNotification();
@@ -125,11 +129,14 @@ CallContainer<Call>::CallContainer(
   std::shared_ptr<internal::NotifyWhenDestroyed> notify_when_destroyed(
       new internal::NotifyWhenDestroyed(callback_destroyed_));
   std::shared_ptr<Notification> calls_started(new Notification);
-  bool is_cancelled = !ctx_->cancellation_manager()->RegisterCallback(
-      token_, [this, calls_started, notify_when_destroyed]() {
-        calls_started->WaitForNotification();
-        StartCancel();
-      });
+  bool is_cancelled = false;
+  if (token_ != CancellationManager::kInvalidToken) {
+    is_cancelled = !ctx_->cancellation_manager()->RegisterCallback(
+        token_, [this, calls_started, notify_when_destroyed]() {
+          calls_started->WaitForNotification();
+          StartCancel();
+        });
+  }
 
   for (int i = 0; i < num_calls; ++i) {
     create_call_fn(this, i);

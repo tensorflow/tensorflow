@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -44,7 +43,7 @@ StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
   return std::move(liveness);
 }
 
-tensorflow::Status BufferLiveness::Analyze() {
+Status BufferLiveness::Analyze() {
   TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
   for (auto* computation : module_->computations()) {
     if (computation->IsFusionComputation()) {
@@ -71,7 +70,7 @@ tensorflow::Status BufferLiveness::Analyze() {
   }
 
   XLA_VLOG_LINES(3, ToString());
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 string BufferLiveness::ToString() const {
@@ -105,8 +104,8 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
   for (const BufferAlias& alias : points_to_analysis_->GetBufferAliases(a)) {
     // Every user of 'a' must be a predecessor of 'b' or 'b' itself.
     for (auto user : alias.instruction()->users()) {
-      if (DoesNotUseOperandBuffer(alias.instruction(), alias.index(), user,
-                                  points_to_analysis())) {
+      if (points_to_analysis().DoesNotUseOperandBuffer(alias.instruction(),
+                                                       alias.index(), user)) {
         continue;
       }
       if (user != b.instruction() &&
@@ -132,9 +131,8 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
   // the qualifications specified in CanShareOperandBufferWithUser.
   for (const BufferAlias& alias : points_to_analysis_->GetBufferAliases(a)) {
     if (b.instruction()->IsUserOf(alias.instruction()) &&
-        !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),
-                                       b.instruction(), b.index(),
-                                       points_to_analysis())) {
+        !points_to_analysis().CanShareOperandBufferWithUser(
+            alias.instruction(), alias.index(), b.instruction(), b.index())) {
       return false;
     }
   }

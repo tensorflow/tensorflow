@@ -15,15 +15,15 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/device_base.h"
+#endif
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/stream.h"
-#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
@@ -37,6 +37,21 @@ namespace {
 Status Instantiate(FunctionLibraryRuntime* lib, const NameAttrList& func,
                    FunctionLibraryRuntime::Handle* handle) {
   return lib->Instantiate(func.name(), AttrSlice(&func.attr()), handle);
+}
+
+template <typename To, typename From>  // use like this: down_cast<T*>(foo);
+inline To down_cast(From* f) {         // so we only accept pointers
+  static_assert(
+      (std::is_base_of<From, typename std::remove_pointer<To>::type>::value),
+      "target type not derived from source type");
+
+  // We skip the assert and hence the dynamic_cast if RTTI is disabled.
+#if !defined(__GNUC__) || defined(__GXX_RTTI)
+  // Uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
+  assert(f == nullptr || dynamic_cast<To>(f) != nullptr);
+#endif  // !defined(__GNUC__) || defined(__GXX_RTTI)
+
+  return static_cast<To>(f);
 }
 
 // If "t" is a scalar of a supported type, returns t != 0 in "*v".
@@ -137,7 +152,7 @@ class IfOp : public AsyncOpKernel {
         : kernel_(kernel),
           ctx_(ctx),
           cond_(cond),
-          done_(done),
+          done_(std::move(done)),
           lib_(CHECK_NOTNULL(ctx_->function_library())) {
       SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
       for (int i = 1; i < ctx_->num_inputs(); ++i) {
@@ -159,9 +174,9 @@ class IfOp : public AsyncOpKernel {
               s = SetOutputs(kernel_, ctx_, rets_);
             }
             ctx_->SetStatus(s);
-            auto done = done_;
+            DoneCallback captured_done(std::move(done_));
             delete this;
-            done();
+            captured_done();
           });
     }
 
@@ -169,7 +184,7 @@ class IfOp : public AsyncOpKernel {
     IfOp* const kernel_;
     OpKernelContext* const ctx_;
     const bool cond_;
-    const DoneCallback done_;
+    DoneCallback done_;
     FunctionLibraryRuntime* const lib_;
     FunctionLibraryRuntime::Options opts_;
     TensorVec args_;
@@ -242,7 +257,7 @@ class WhileOp : public AsyncOpKernel {
           ctx_(ctx),
           cond_handle_(cond_handle),
           body_handle_(body_handle),
-          done_(done),
+          done_(std::move(done)),
           lib_(CHECK_NOTNULL(ctx_->function_library())) {
       SetRunOptions(ctx_, &opts_, false /* always_collect_stats */);
       for (int i = 0; i < ctx_->num_inputs(); ++i) {
@@ -279,8 +294,46 @@ class WhileOp : public AsyncOpKernel {
     }
 
     void StartBody() {
+      Status s;
+      if (rets_.size() != 1) {
+        s = errors::InvalidArgument(
+            "Expected a single scalar return value from WhileOp cond, got ",
+            rets_.size(), " tensors.");
+        return Finish(s);
+      }
+      Tensor cond_t;
+#if GOOGLE_CUDA
+      const DeviceBase::GpuDeviceInfo* gpu_device_info =
+          ctx_->device()->tensorflow_gpu_device_info();
+      const bool is_hostmem_dtype =
+          rets_[0].dtype() == DT_INT32 || rets_[0].dtype() == DT_INT64;
+      if (!is_hostmem_dtype && gpu_device_info &&
+          (opts_.rets_alloc_attrs.empty() ||
+           !opts_.rets_alloc_attrs[0].on_host())) {
+        // Copy the ret value to host if it's allocated on device.
+        Device* device = down_cast<Device*>(ctx_->device());
+        DeviceContext* device_ctx = ctx_->op_device_context();
+        cond_t = Tensor(rets_[0].dtype(), rets_[0].shape());
+        Notification done_copy;
+        device_ctx->CopyDeviceTensorToCPU(
+            &rets_[0], /*tensor_name=*/"", device, &cond_t,
+            [&done_copy, &s](const Status& status) {
+              s = status;
+              done_copy.Notify();
+            });
+        done_copy.WaitForNotification();
+        if (!s.ok()) {
+          return Finish(s);
+        }
+      } else {
+        cond_t = rets_[0];
+      }
+#else
+      cond_t = rets_[0];
+#endif
       bool cond;
-      Status s = ToBool(rets_, &cond);
+      s = ToBool({cond_t}, &cond);
+
       if (!s.ok()) {
         return Finish(s);
       }
@@ -464,6 +517,25 @@ REGISTER_KERNEL_BUILDER(Name("For")
                             .HostMemory("limit")
                             .HostMemory("delta"),
                         ForOp);
+
+class FakeParamOp : public OpKernel {
+ public:
+  explicit FakeParamOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // We must produce something (only Switch and Recvs are allowed to output
+    // dead tensors). This output is not expected to be consumed by anything.
+    Tensor output_tensor(dtype_, TensorShape({}));
+    context->set_output(0, output_tensor);
+  }
+
+ private:
+  DataType dtype_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_CPU), FakeParamOp);
 
 }  // namespace
 }  // namespace tensorflow

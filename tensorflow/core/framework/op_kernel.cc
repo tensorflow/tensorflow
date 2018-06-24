@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
 #include "tensorflow/core/framework/op_kernel.h"
 
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -270,6 +273,19 @@ OpKernelContext::OpKernelContext(Params* params, int num_outputs)
   if (params_->record_tensor_accesses) {
     referenced_tensors_.Init();
   }
+  if (params->device->has_eigen_cpu_device()) {
+    int64 block_size = -1, output_size = -1, num_threads = 1;
+    const Eigen::ThreadPoolDevice* thread_pool =
+        params_->device->eigen_cpu_device();
+    AttrSlice attributes(op_kernel().def());
+    if (GetNodeAttr(attributes, "_block_size", &block_size) == Status::OK() &&
+        GetNodeAttr(attributes, "_output_size", &output_size) == Status::OK()) {
+      num_threads = std::min(Eigen::divup(output_size, block_size),
+                             static_cast<int64>(thread_pool->numThreads()));
+      eigen_cpu_device_ = MakeUnique<Eigen::ThreadPoolDevice>(
+          thread_pool->getPool(), num_threads);
+    }
+  }
 }
 
 OpKernelContext::~OpKernelContext() {
@@ -283,13 +299,13 @@ OpKernelContext::~OpKernelContext() {
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
   Allocator* allocator = nullptr;
-  if (attr.scope_id > 0) {
+  if (TF_PREDICT_FALSE(attr.scope_id > 0)) {
     allocator = params_->device->GetScopedAllocator(attr, step_id());
     CHECK(allocator);
   } else {
-    allocator = params_->device->GetStepAllocator(attr, resource_manager());
+    allocator = params_->device->GetAllocator(attr);
   }
-  if (track_allocations()) {
+  if (TF_PREDICT_FALSE(track_allocations())) {
     mutex_lock lock(mu_);
     for (const auto& wrapped : wrapped_allocators_) {
       if (wrapped.first == allocator) {
@@ -1120,6 +1136,16 @@ void LogAllRegisteredKernels() {
   }
 }
 
+std::vector<KernelDef> GetAllRegisteredKernels() {
+  const KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
+  std::vector<KernelDef> kernels;
+  kernels.reserve(typed_registry->size());
+  for (const auto& p : *typed_registry) {
+    kernels.emplace_back(p.second.def);
+  }
+  return kernels;
+}
+
 string KernelsRegisteredForOp(StringPiece op_name) {
   string ret;
   for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
@@ -1273,59 +1299,51 @@ const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
 }
 #endif
 
-namespace {
-template <class OpKernelT>
-void CtxFailureInternal(OpKernelT* op_kernel, const char* file, int line,
-                        const Status& s) {
-  const string logging_prefix =
-      file == nullptr ? "CtxFailure: "
-                      : strings::StrCat("CtxFailure at ", io::Basename(file),
-                                        ":", line, ": ");
-
-  if (errors::IsOutOfRange(s)) {
-    // VLOG OutOfRange errors. Dataset ops create OutOfRange errors when they
-    // reach end-of-sequence.
-    VLOG(1) << logging_prefix << s;
-  } else {
-    LOG(WARNING) << logging_prefix << s;
-  }
-  op_kernel->SetStatus(s);
-}
-}  // anonymous namespace
-
 void OpKernelConstruction::CtxFailure(const Status& s) {
-  CtxFailureInternal(this, nullptr, 0, s);
+  VLOG(1) << s;
+  SetStatus(s);
 }
 
 void OpKernelConstruction::CtxFailureWithWarning(const Status& s) {
-  CtxFailureInternal(this, nullptr, 0, s);
+  LOG(WARNING) << s;
+  SetStatus(s);
 }
 
 void OpKernelConstruction::CtxFailure(const char* file, int line,
                                       const Status& s) {
-  CtxFailureInternal(this, file, line, s);
+  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+          << " : " << s;
+  SetStatus(s);
 }
 
 void OpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
                                                  const Status& s) {
-  CtxFailureInternal(this, file, line, s);
+  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+               << " : " << s;
+  SetStatus(s);
 }
 
 void OpKernelContext::CtxFailure(const Status& s) {
-  CtxFailureInternal(this, nullptr, 0, s);
+  VLOG(1) << s;
+  SetStatus(s);
 }
 
 void OpKernelContext::CtxFailureWithWarning(const Status& s) {
-  CtxFailureInternal(this, nullptr, 0, s);
+  LOG(WARNING) << s;
+  SetStatus(s);
 }
 
 void OpKernelContext::CtxFailure(const char* file, int line, const Status& s) {
-  CtxFailureInternal(this, file, line, s);
+  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+          << " : " << s;
+  SetStatus(s);
 }
 
 void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
                                             const Status& s) {
-  CtxFailureInternal(this, file, line, s);
+  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+               << " : " << s;
+  SetStatus(s);
 }
 
 }  // namespace tensorflow

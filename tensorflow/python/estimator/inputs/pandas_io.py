@@ -22,7 +22,7 @@ import uuid
 
 import numpy as np
 from tensorflow.python.estimator.inputs.queues import feeding_functions
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 try:
   # pylint: disable=g-import-not-at-top
@@ -52,7 +52,7 @@ def _get_unique_target_key(features, target_column_name):
   return target_column_name
 
 
-@tf_export('estimator.inputs.pandas_input_fn')
+@estimator_export('estimator.inputs.pandas_input_fn')
 def pandas_input_fn(x,
                     y=None,
                     batch_size=128,
@@ -86,15 +86,16 @@ def pandas_input_fn(x,
   Raises:
     ValueError: if `x` already contains a column with the same name as `y`, or
       if the indexes of `x` and `y` don't match.
-    TypeError: `shuffle` is not bool.
+    ValueError: if 'shuffle' is not provided or a bool.
   """
   if not HAS_PANDAS:
     raise TypeError(
         'pandas_input_fn should not be called without pandas installed')
 
   if not isinstance(shuffle, bool):
-    raise TypeError('shuffle must be explicitly set as boolean; '
-                    'got {}'.format(shuffle))
+    raise ValueError('shuffle must be provided and explicitly set as boolean '
+                     '(it is recommended to set it as True for training); '
+                     'got {}'.format(shuffle))
 
   if not isinstance(target_column, six.string_types):
     raise TypeError('target_column must be a string type')

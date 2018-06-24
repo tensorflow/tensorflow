@@ -49,6 +49,34 @@ inline bool* GetTensorData(TfLiteTensor* tensor) {
   return tensor != nullptr ? tensor->data.b : nullptr;
 }
 
+template <typename T>
+inline const T* GetTensorData(const TfLiteTensor* tensor);
+
+template <>
+inline const float* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.f : nullptr;
+}
+
+template <>
+inline const uint8_t* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.uint8 : nullptr;
+}
+
+template <>
+inline const int32_t* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.i32 : nullptr;
+}
+
+template <>
+inline const int64_t* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.i64 : nullptr;
+}
+
+template <>
+inline const bool* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.b : nullptr;
+}
+
 inline int RemapDim(int max_dimensions, int d) {
   return max_dimensions - d - 1;
 }

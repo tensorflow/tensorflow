@@ -74,6 +74,10 @@ service WorkerService {
   rpc Tracing(TracingRequest) returns (TracingResponse);
 
   // See worker.proto for details.
+  rpc RecvBuf(RecvBufRequest) returns (RecvBufResponse) {
+  }
+
+  // See worker.proto for details.
   rpc GetStepSequence(GetStepSequenceRequest) returns (GetStepSequenceResponse);
 
   // See worker.proto for details.

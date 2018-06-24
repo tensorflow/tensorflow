@@ -34,7 +34,7 @@ from tensorflow.python.util import deprecation
 # where <rhs> is either a single token or [] enclosed list of tokens.
 # For example:  "var[1] = a" or "x = [1,2,3]"
 PARAM_RE = re.compile(r"""
-  (?P<name>[a-zA-Z][\w]*)      # variable name: "var" or "x"
+  (?P<name>[a-zA-Z][\w\.]*)      # variable name: "var" or "x"
   (\[\s*(?P<index>\d+)\s*\])?  # (optional) index: "1" or None
   \s*=\s*
   ((?P<val>[^,\[]*)            # single value: "a" or None
@@ -199,6 +199,13 @@ def parse_values(values, type_map):
 
   If a hyperparameter name in both an index assignment and scalar assignment,
   a ValueError is raised.  (e.g. 'a=[1,2,3],a[0] = 1').
+
+  The hyperparameter name may contain '.' symbols, which will result in an
+  attribute name that is only accessible through the getattr and setattr
+  functions.  (And must be first explicit added through add_hparam.)
+
+  WARNING: Use of '.' in your variable names is allowed, but is not well
+  supported and not recommended.
 
   The `value` in `name=value` must follows the syntax according to the
   type of the parameter:

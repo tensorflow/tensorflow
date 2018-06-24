@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ tensorflow::Status TextLiteralWriter::WriteToPath(
+/* static */ Status TextLiteralWriter::WriteToPath(
     const Literal& literal, tensorflow::StringPiece path) {
   std::unique_ptr<tensorflow::WritableFile> f;
   auto s = tensorflow::Env::Default()->NewWritableFile(std::string(path), &f);
@@ -43,7 +43,7 @@ namespace xla {
     return s;
   }
 
-  tensorflow::Status status;
+  Status status;
   tensorflow::WritableFile* f_ptr = f.get();
   literal.EachCellAsString(
       [f_ptr, &status](tensorflow::gtl::ArraySlice<int64> indices,

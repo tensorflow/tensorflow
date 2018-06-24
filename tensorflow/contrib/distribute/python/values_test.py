@@ -42,7 +42,6 @@ from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util import nest
 
 
-@test_util.with_c_api
 class DistributedValuesTest(test.TestCase):
 
   def testGetEager(self):
@@ -81,7 +80,6 @@ class DistributedValuesTest(test.TestCase):
       v = values.DistributedValues({"/device:cpu:0": 42})
 
 
-@test_util.with_c_api
 class DistributedDelegateTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
@@ -164,7 +162,6 @@ def _make_mirrored():
   return v, devices, mirrored
 
 
-@test_util.with_c_api
 class RegroupAndSelectDeviceTest(test.TestCase):
 
   def _is_per_device(self, result, expected, klass=values.PerDevice):
@@ -317,7 +314,6 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                                                merged_estimator_spec))
 
 
-@test_util.with_c_api
 class PerDeviceDatasetTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
@@ -564,7 +560,6 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
         multi_worker_iterator.get_next()
 
 
-@test_util.with_c_api
 class MirroredVariableTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
@@ -741,7 +736,6 @@ def _make_tower_local(method):
   return v, tower_local
 
 
-@test_util.with_c_api
 class TowerLocalVariableTest(test.TestCase):
 
   config = config_pb2.ConfigProto()

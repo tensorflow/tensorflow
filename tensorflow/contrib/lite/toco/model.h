@@ -78,6 +78,7 @@ enum class OperatorType {
   kFloor,
   kGather,
   kResizeBilinear,
+  kSin,
   kSpaceToBatchND,
   kStack,
   kBatchToSpaceND,
@@ -134,6 +135,9 @@ enum class OperatorType {
   // special nodes in the graph to shuffle axes.
   kReorderAxes,
   kSelect,
+  kSparseToDense,
+  kTensorFlowEqual,
+  kTensorFlowNotEqual,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -151,6 +155,7 @@ enum class AxesOrder {
   k1HWO,     // Our standard for DepthwiseConv weights
   kHWIM,     // TensorFlow DepthwiseConv weights
   kNHWC,     // TensorFlow activations
+  kHWOI,     // TensorFlow back-prop conv weights
 };
 
 // The type of the scalars in an array.
@@ -525,7 +530,15 @@ struct LstmCellOperator : Operator {
     ACTIV_TEMP = 3,
     NUM_OUTPUTS = 4
   };
-  LstmCellOperator() : Operator(OperatorType::kLstmCell) {}
+  enum KernelType {
+    KERNEL_BASIC = 0,
+    KERNEL_FULL = 1,
+  };
+
+  LstmCellOperator()
+      : Operator(OperatorType::kLstmCell), kernel_type(KERNEL_BASIC) {}
+
+  KernelType kernel_type;
 };
 
 // Element-wise multiplication operator.
@@ -616,6 +629,17 @@ struct LogOperator : Operator {
 // TensorFlow equivalent: Tanh
 struct TanhOperator : Operator {
   TanhOperator() : Operator(OperatorType::kTanh) {}
+};
+
+// Element-wise Sin operator:
+//   x -> Sin(x) = sin(x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Sin
+struct SinOperator : Operator {
+  SinOperator() : Operator(OperatorType::kSin) {}
 };
 
 // Element-wise addition operator.
@@ -1337,6 +1361,22 @@ struct TensorFlowGreaterEqualOperator : Operator {
       : Operator(OperatorType::kTensorFlowGreaterEqual) {}
 };
 
+// TensorFlow Equal equivalent. Refer to TensorFlow documentation for
+// details.
+// Not fully supported, just a placeholder to handle TensorFlow graphs and
+// support graph transformations to other operator types by matching sub-graphs.
+// Typically, this is only used as an input to an Assert node, so can be
+// removed as an unused node as we drop Assert nodes.
+struct TensorFlowEqualOperator : Operator {
+  TensorFlowEqualOperator() : Operator(OperatorType::kTensorFlowEqual) {}
+};
+
+// TensorFlow Not Equal equivalent. Refer to TensorFlow documentation for
+// details.
+struct TensorFlowNotEqualOperator : Operator {
+  TensorFlowNotEqualOperator() : Operator(OperatorType::kTensorFlowNotEqual) {}
+};
+
 // Global max reduction: computes the max of all of entries in the input array.
 // Thus the output is "0-dimensional": it consists of a single scalar value.
 //
@@ -1586,13 +1626,26 @@ struct DynamicStitchOperator : Operator {
   int num_partitions;
 };
 
+// SparseToDense operator:
+//
+// Inputs:
+// Inputs[0]: required: sparse_indices.
+// Inputs[1]: required: output_shape.
+// Inputs[2]: required: sparse_values.
+//
+// TensorFlow equivalent: SparseToDense.
+struct SparseToDenseOperator : Operator {
+  SparseToDenseOperator() : Operator(OperatorType::kSparseToDense) {}
+  bool validate_indices;
+};
+
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
 // of the "transient_data" workspace buffer passed to inference functions, is to
 // be used for the transient array at hand. The 'start' and 'end' values are
 // offsets from the start of the workspace buffer, expressed in bytes.
 struct Alloc {
-  int start = 0;
-  int end = 0;
+  int64 start = 0;
+  int64 end = 0;
 };
 
 inline bool operator<(const Alloc& a, const Alloc& b) {
@@ -1817,6 +1870,8 @@ class Model {
   }
   const ArrayMap& GetArrayMap() const { return arrays; }
 
+  int64 ArithmeticOpsCount() const { return ops_count; }
+
   // Optional arrays are used for optional tensors,
   // these tensors do not have data, but with reserved names as op inputs.
   std::set<string> optional_arrays;
@@ -1833,6 +1888,8 @@ class Model {
   std::size_t transient_data_size = 0;
   // For code-generation only: required alignment of the transient_data buffer
   std::size_t transient_data_alignment = 0;
+  // Arithmatic operations performed in the model.
+  int64 ops_count = 0;
 
  private:
   // The associative array mapping names to Array's.

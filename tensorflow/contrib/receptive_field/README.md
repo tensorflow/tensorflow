@@ -6,6 +6,32 @@ region your output features depend on. Better yet, using the parameters computed
 by the library, you can easily find the exact image region which is used to
 compute each convnet feature.
 
+This library can be used to compute receptive field parameters of popular
+convnets:
+
+<center>
+
+convnet model       | receptive field | effective stride | effective padding
+:-----------------: | :-------------: | :--------------: | :---------------:
+alexnet_v2          | 195             | 32               | 64
+vgg_16              | 212             | 32               | 90
+inception_v2        | 699             | 32               | 318
+inception_v3        | 1311            | 32               | 618
+inception_v4        | 2071            | 32               | 998
+inception_resnet_v2 | 3039            | 32               | 1482
+mobilenet_v1        | 315             | 32               | 126
+mobilenet_v1_075    | 315             | 32               | 126
+resnet_v1_50        | 483             | 32               | 241
+resnet_v1_101       | 1027            | 32               | 513
+resnet_v1_152       | 1507            | 32               | 753
+resnet_v1_200       | 1763            | 32               | 881
+
+</center>
+
+A comprehensive table with pre-computed receptive field parameters for different
+end-points, input resolutions, and other variants of these networks can be found
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/receptive_field/RECEPTIVE_FIELD_TABLE.md).
+
 ## Basic usage
 
 The main function to be called is `compute_receptive_field_from_graph_def`,
@@ -96,9 +122,9 @@ The script will write to stdout the receptive field parameters for many variants
 of several popular convnets: AlexNet, VGG, ResNet, Inception, Mobilenet. They
 are also written to the file `/tmp/rf_benchmark_results.csv`.
 
-TODO: include here a plot for receptive field sizes of different convnets.
-
-TODO: include table/link to pre-computed RF parameters.
+A comprehensive table with pre-computed receptive field parameters for different
+networks can be found
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/receptive_field/RECEPTIVE_FIELD_TABLE.md).
 
 ## Compute RF parameters from a graph pbtxt
 

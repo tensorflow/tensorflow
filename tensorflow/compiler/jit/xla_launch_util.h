@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -50,9 +52,9 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
  public:
   XlaAllocator(const se::Platform* platform, Allocator* wrapped);
   ~XlaAllocator() override;
-  xla::StatusOr<se::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
-                                               bool retry_on_failure) override;
-  Status Deallocate(int device_ordinal, se::DeviceMemoryBase* mem) override;
+  xla::StatusOr<xla::OwningDeviceMemory> Allocate(
+      int device_ordinal, uint64 size, bool retry_on_failure) override;
+  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
   // before GPU execution takes place. Tensorflow uses the ordering of the main

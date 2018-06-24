@@ -1,9 +1,9 @@
 path: "tensorflow.keras.models.Model"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.training.Model\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.network.Network\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.training.Model\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.network.Network\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -127,7 +127,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'_\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"
@@ -155,7 +155,7 @@ tf_class {
   }
   member_method {
     name: "evaluate_generator"
-    argspec: "args=[\'self\', \'generator\', \'steps\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'1\', \'False\'], "
+    argspec: "args=[\'self\', \'generator\', \'steps\', \'max_queue_size\', \'workers\', \'use_multiprocessing\', \'verbose\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'1\', \'False\', \'0\'], "
   }
   member_method {
     name: "fit"

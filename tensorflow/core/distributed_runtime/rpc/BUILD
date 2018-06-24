@@ -41,8 +41,8 @@ cc_library(
     srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
     deps = [
-        "@grpc//:grpc_unsecure",
-        "@grpc//:grpc++_unsecure",
+        "@grpc",
+        "@grpc//:grpc++",
         "//tensorflow/core:lib",
         # Required to be able to overload TensorResponse parsing.
         "//tensorflow/core/distributed_runtime:tensor_coding",
@@ -56,7 +56,7 @@ cc_library(
     deps = [
         ":grpc_util",
         "//tensorflow/core:lib",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -70,7 +70,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:tensor_coding",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -90,7 +90,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/core/distributed_runtime:worker_cache_logger",
         "//tensorflow/core/distributed_runtime:worker_interface",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -103,7 +103,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -118,7 +118,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -129,7 +129,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -171,6 +171,7 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:graph_mgr",
         "//tensorflow/core/distributed_runtime:recent_request_ids",
@@ -179,7 +180,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_session",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -191,7 +192,7 @@ cc_library(
         ":grpc_util",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:tensor_coding",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -224,7 +225,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:master",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
     alwayslink = 1,
 )
@@ -235,7 +236,7 @@ cc_library(
     hdrs = ["grpc_master_service_impl.h"],
     deps = [
         "//tensorflow/core:master_proto_cc",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -273,16 +274,19 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
+        "//tensorflow/core/distributed_runtime:device_resolver_distributed",
         "//tensorflow/core/distributed_runtime:graph_mgr",
         "//tensorflow/core/distributed_runtime:local_master",
         "//tensorflow/core/distributed_runtime:master",
         "//tensorflow/core/distributed_runtime:master_env",
         "//tensorflow/core/distributed_runtime:master_session",
+        "//tensorflow/core/distributed_runtime:rpc_collective_executor_mgr",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_env",
-        "@grpc//:grpc++_unsecure",
-        "@grpc//:grpc_unsecure",
+        "@grpc",
+        "@grpc//:grpc++",
     ],
     alwayslink = 1,
 )
@@ -309,20 +313,8 @@ tf_cc_binary(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:data_flow",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
-)
-
-tf_cuda_library(
-    name = "grpc_testlib_ops",
-    testonly = 1,
-    srcs = ["grpc_testlib_ops.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-    alwayslink = 1,
 )
 
 tf_cc_binary(
@@ -333,11 +325,11 @@ tf_cc_binary(
     ],
     deps = [
         ":grpc_server_lib",
-        ":grpc_testlib_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:cwise_op",
@@ -346,7 +338,7 @@ tf_cc_binary(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:variable_ops",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -361,12 +353,12 @@ tf_cuda_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":grpc_session",
-        ":grpc_testlib_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
     ],
     alwayslink = 1,
 )
@@ -440,7 +432,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core:worker_proto_cc",
-        "@grpc//:grpc++_unsecure",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -453,8 +445,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:worker_proto_cc",
-        "@grpc//:grpc++_unsecure",
-        "@grpc//:grpc_unsecure",
+        "@grpc",
+        "@grpc//:grpc++",
     ],
 )
 

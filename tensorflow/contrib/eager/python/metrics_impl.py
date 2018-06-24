@@ -25,12 +25,13 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 
 _to_replace = re.compile("[^A-Za-z0-9.]")
 
@@ -367,6 +368,9 @@ class Accuracy(Mean):
     Returns:
       The arguments, for easy chaining.
     """
+    check_ops.assert_equal(
+        array_ops.shape(labels), array_ops.shape(predictions),
+        message="Shapes of labels and predictions are unequal")
     matches = math_ops.equal(labels, predictions)
     matches = math_ops.cast(matches, dtypes.float64)
     super(Accuracy, self).call(matches, weights=weights)

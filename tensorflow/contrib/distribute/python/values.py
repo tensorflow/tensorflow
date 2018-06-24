@@ -35,10 +35,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import checkpointable
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 
 
@@ -65,9 +65,10 @@ class DistributedValues(object):
     device = device_util.canonicalize(device)
     try:
       return self._index[device]
-    except KeyError:
-      raise ValueError("Device %s not found in %s (current device %s)" %
-                       (device, self._index.keys(), device_util.current()))
+    except KeyError as e:
+      six.raise_from(
+          ValueError("Device %s not found in %s (current device %s)" %
+                     (device, self._index.keys(), device_util.current())), e)
 
   def on_device(self, device):
     device = device_util.canonicalize(device)

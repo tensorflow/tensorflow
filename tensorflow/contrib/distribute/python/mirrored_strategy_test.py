@@ -27,7 +27,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import distribute as distribute_lib
 
 
-@test_util.with_c_api
 class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
 
   def _get_distribution_strategy(self):
@@ -53,7 +52,6 @@ class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
     self._test_call_and_merge_exceptions(self._get_distribution_strategy())
 
 
-@test_util.with_c_api
 class VariableCreatorStackTest(test.TestCase):
 
   def testCreatorStacksAreThreadLocal(self):

@@ -62,9 +62,9 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
       TF_ASSERT_OK_AND_ASSIGN(
           auto computed, client_->Transfer(*data, &expected_literal->shape()));
 
-      LiteralTestUtil::AssertEqualShapesAndLayouts(expected_literal->shape(),
-                                                   computed->shape());
-      LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
+      ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
+          expected_literal->shape(), computed->shape()));
+      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
     }
   }
 }
@@ -91,9 +91,9 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
       auto result,
       client_->ExecuteAndTransfer(computation, {}, &execution_options));
   LiteralTestUtil::ExpectR2Equal<int32>({{1, 2}, {3, 4}},
-                                        LiteralView::Create(*result, {0}));
+                                        LiteralSlice(*result, {0}));
   LiteralTestUtil::ExpectR2Equal<int32>({{10, 20}, {30, 40}},
-                                        LiteralView::Create(*result, {1}));
+                                        LiteralSlice(*result, {1}));
 
   EXPECT_TRUE(ShapeUtil::IsTuple(result->shape()));
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result->shape()));
@@ -142,7 +142,7 @@ XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
       auto result_literal,
       client_->Transfer(*results[0], &expected_result->shape()));
 
-  LiteralTestUtil::ExpectEqual(*expected_result, *result_literal);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*expected_result, *result_literal));
 }
 
 }  // namespace

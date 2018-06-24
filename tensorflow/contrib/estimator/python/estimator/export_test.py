@@ -166,12 +166,9 @@ class EstimatorExportTest(test.TestCase):
     input_receiver_fn_map = {
         model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    self.assertEqual(len(export_dirs), 1)
-    # Restore, to validate that the export was well-formed.
-    export_dir = export_dirs[model_fn_lib.ModeKeys.PREDICT]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.SERVING], export_dir)
@@ -188,12 +185,9 @@ class EstimatorExportTest(test.TestCase):
     input_receiver_fn_map = {
         model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    self.assertEqual(len(export_dirs), 1)
-    # Restore, to validate that the export was well-formed.
-    export_dir = export_dirs[model_fn_lib.ModeKeys.TRAIN]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.TRAINING], export_dir)
@@ -211,12 +205,9 @@ class EstimatorExportTest(test.TestCase):
     input_receiver_fn_map = {
         model_fn_lib.ModeKeys.EVAL: _get_supervised_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    self.assertEqual(len(export_dirs), 1)
-    # Restore, to validate that the export was well-formed.
-    export_dir = export_dirs[model_fn_lib.ModeKeys.EVAL]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.EVAL], export_dir)
@@ -235,12 +226,9 @@ class EstimatorExportTest(test.TestCase):
         model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
         model_fn_lib.ModeKeys.EVAL: _get_supervised_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    self.assertEqual(len(export_dirs), 2)
-    # Restore, to validate that the export was well-formed.
-    export_dir = export_dirs[model_fn_lib.ModeKeys.TRAIN]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.TRAINING], export_dir)
@@ -249,7 +237,7 @@ class EstimatorExportTest(test.TestCase):
         self.assertFalse('eval_multiplied' in graph_ops)
         self.assertTrue('feature_x' in graph_ops)
         self.assertTrue('weight' in graph_ops)
-    export_dir = export_dirs[model_fn_lib.ModeKeys.EVAL]
+
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.EVAL], export_dir)
@@ -270,12 +258,11 @@ class EstimatorExportTest(test.TestCase):
         model_fn_lib.ModeKeys.EVAL: _get_supervised_input_receiver_fn(),
         model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
     # Restore, to validate that the export was well-formed.
-    for mode, tag_set in model_fn_lib.EXPORT_TAG_MAP.items():
-      export_dir = export_dirs[mode]
+    for tag_set in model_fn_lib.EXPORT_TAG_MAP.values():
       with ops.Graph().as_default() as graph:
         with session.Session(graph=graph) as sess:
           loader.load(sess, tag_set, export_dir)
@@ -292,10 +279,9 @@ class EstimatorExportTest(test.TestCase):
         model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
         model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    export_dir = export_dirs[model_fn_lib.ModeKeys.TRAIN]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.TRAINING], export_dir)
@@ -303,7 +289,6 @@ class EstimatorExportTest(test.TestCase):
         self.assertTrue('later_var' in graph_ops)
         self.assertTrue('weight' in graph_ops)
 
-    export_dir = export_dirs[model_fn_lib.ModeKeys.PREDICT]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.SERVING], export_dir)
@@ -319,10 +304,9 @@ class EstimatorExportTest(test.TestCase):
         model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
         model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    export_dir = export_dirs[model_fn_lib.ModeKeys.TRAIN]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.TRAINING], export_dir)
@@ -332,7 +316,6 @@ class EstimatorExportTest(test.TestCase):
         collection_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
         self.assertEqual(3, collection_vars[-1].eval())
 
-    export_dir = export_dirs[model_fn_lib.ModeKeys.PREDICT]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.SERVING], export_dir)
@@ -360,16 +343,15 @@ class EstimatorExportTest(test.TestCase):
     # Perform the export.
     export_dir_base = os.path.join(
         compat.as_bytes(tmpdir), compat.as_bytes('export'))
-    export_dirs = contrib_export.export_all_saved_models(
+    export_dir = contrib_export.export_all_saved_models(
         est, export_dir_base, input_receiver_fn_map)
 
     # Check that all the files are in the right places.
     self.assertTrue(gfile.Exists(export_dir_base))
 
-    for _, export_dir in export_dirs.items():
-      self._validate_exported_files(export_dir)
+    self._validate_exported_files(export_dir)
 
-    return export_dirs, tmpdir
+    return export_dir, tmpdir
 
   def _validate_exported_files(self, export_dir):
     self.assertTrue(gfile.Exists(export_dir))

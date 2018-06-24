@@ -43,7 +43,7 @@ class ExternalConstantPool {
   // The constant pool copies out the contents of `literal` into a buffer it
   // owns -- it does not keep pointers to `literal`, or to memory owned by
   // `literal`.
-  void Insert(string name, const Literal& literal, int64 alignment);
+  void Insert(string name, const LiteralSlice& literal, int64 alignment);
 
   // Find the constant with name `name` in this constant pool.  If there isn't
   // such constant, return nullptr.

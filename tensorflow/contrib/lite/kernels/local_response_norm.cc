@@ -38,7 +38,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
@@ -60,7 +60,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteLocalResponseNormParams*>(node->builtin_data);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32) {
@@ -77,7 +77,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 #undef TF_LITE_LOCAL_RESPONSE_NORM
   } else {
-    context->ReportError(context, "Inputs and outputs not all float types.");
+    context->ReportError(context, "Output type is %d, requires float.",
+                         output->type);
     return kTfLiteError;
   }
 

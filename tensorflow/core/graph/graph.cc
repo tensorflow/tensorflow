@@ -80,6 +80,9 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"Shape", NC_METADATA},
         {"Rank", NC_METADATA},
         {"_ScopedAllocator", NC_SCOPED_ALLOCATOR},
+        {"CollectiveReduce", NC_COLLECTIVE},
+        {"CollectiveBcastSend", NC_COLLECTIVE},
+        {"CollectiveBcastRecv", NC_COLLECTIVE},
     });
 
 #undef REF_CLASS

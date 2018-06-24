@@ -124,6 +124,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
     ],
     shard_count = 5,
+    tags = ["optonly"],  # Test is flaky without optimization.
 )
 
 cuda_py_test(

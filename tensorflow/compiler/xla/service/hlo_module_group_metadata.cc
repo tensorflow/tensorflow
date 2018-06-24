@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module_group_metadata.h"
 
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -47,13 +48,16 @@ string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
     case ComputationKind::kConditionalFalse:
       repr += ":CONDITIONAL_FALSE";
       break;
+    case ComputationKind::kCallFunction:
+      repr += ":CALL";
+      break;
   }
   return repr;
 }
 
 /* static */ StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
 HloModuleGroupMetadata::Build(const std::vector<HloModule*>& modules) {
-  auto metadata = absl::make_unique<HloModuleGroupMetadata>(modules);
+  auto metadata = MakeUnique<HloModuleGroupMetadata>(modules);
   TF_RETURN_IF_ERROR(metadata->Build());
   return std::move(metadata);
 }
@@ -83,6 +87,7 @@ Status HloModuleGroupMetadata::Build() {
           << "Peer instruction does not match the computation kind";
       TF_RETURN_IF_ERROR(
           AddCompanion(tracked->instruction(), peer_tracked->instruction()));
+      tracked_instructions_comms_[tracked->instruction()].push_back(hlo);
     }
 
     // Add the parents of companion instructions (they must be all of the same
@@ -105,6 +110,47 @@ Status HloModuleGroupMetadata::Build() {
   for (HloModule* module : modules_) {
     for (HloComputation* computation : module->MakeComputationPostOrder()) {
       TF_RETURN_IF_ERROR(computation->Accept(visitor));
+    }
+  }
+  TF_RETURN_IF_ERROR(VerifyCompanionSets());
+  if (VLOG_IS_ON(4)) {
+    DumpCollectedStats();
+  }
+  return Status::OK();
+}
+
+Status HloModuleGroupMetadata::VerifyCompanionSets() const {
+  for (const auto& companions : companion_sets_) {
+    // A companion set must be composed at most of an instruction per
+    // device/module.
+    std::unordered_set<int64> devices;
+    for (HloInstruction* instruction : *companions) {
+      // Go through all the communicating instructions (send, recv) of the given
+      // companion, and record their device.
+      auto it = tracked_instructions_comms_.find(instruction);
+      if (it == tracked_instructions_comms_.end()) {
+        // Companions can be added even if they have no communicating
+        // instructions, if they are parent of companions.
+        continue;
+      }
+      std::unordered_set<int64> comm_devices;
+      for (HloInstruction* comm_instruction : it->second) {
+        auto device = GetInstructionDevice(*comm_instruction);
+        TF_RET_CHECK(device) << "Instruction " << comm_instruction->ToString()
+                             << " does not have a device";
+        comm_devices.insert(*device);
+      }
+      for (int64 device : comm_devices) {
+        if (!devices.insert(device).second) {
+          std::stringstream ss;
+          ss << "Companion set:" << std::endl;
+          for (HloInstruction* hlo : *companions) {
+            ss << "  " << hlo->name() << std::endl;
+          }
+          ss << "has multiple instructions on the same device";
+          return FailedPrecondition("%s", ss.str().c_str());
+        }
+      }
     }
   }
   return Status::OK();
@@ -194,6 +240,28 @@ int64 HloModuleGroupMetadata::GetModuleId(const HloModule* module) const {
   LOG(FATAL) << "unknown module";
 }
 
+tensorflow::gtl::optional<int64> HloModuleGroupMetadata::GetInstructionDevice(
+    const HloInstruction& instruction) const {
+  // The module group metadata can be created in both "single module, multiple
+  // devices" and "multiple modules, no explicit devices" fashions.
+  // The API returns an optional even though the current implementation always
+  // returns a device, to account for cases where we cannot guess a device.
+  // In such cases the VerifyChannelInstructions() will return proper errors.
+  tensorflow::gtl::optional<int64> device =
+      instruction.sharding_unique_device();
+  if (!device) {
+    device = GetModuleId(instruction.parent()->parent());
+  }
+  return device;
+}
+
+int64 HloModuleGroupMetadata::GetDeviceModulesCount() const {
+  return std::count_if(modules_.begin(), modules_.end(),
+                       [](const HloModule* module) {
+                         return !module->config().is_host_module();
+                       });
+}
+
 Status HloModuleGroupMetadata::RecordInstructions() {
   const auto visitor = [this](HloInstruction* hlo) -> Status {
     if (hlo->opcode() == HloOpcode::kWhile) {
@@ -206,6 +274,9 @@ Status HloModuleGroupMetadata::RecordInstructions() {
           TrackedInstruction(hlo, ComputationKind::kConditionalTrue);
       tracked_instructions_[hlo->false_computation()] =
           TrackedInstruction(hlo, ComputationKind::kConditionalFalse);
+    } else if (hlo->opcode() == HloOpcode::kCall) {
+      tracked_instructions_[hlo->to_apply()] =
+          TrackedInstruction(hlo, ComputationKind::kCallFunction);
     }
     if (!IsChannelInstruction(hlo)) {
       return Status::OK();
@@ -252,20 +323,22 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       TF_RETURN_IF_ERROR(computation->Accept(visitor));
     }
   }
+  VLOG(2) << "Created " << channels_.size() << " channels";
   return Status::OK();
 }
 
 Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
                                             HloInstruction* instruction2) {
   TF_RET_CHECK(instruction1->opcode() == HloOpcode::kWhile ||
-               instruction1->opcode() == HloOpcode::kConditional);
+               instruction1->opcode() == HloOpcode::kConditional ||
+               instruction1->opcode() == HloOpcode::kCall);
   VLOG(2) << "adding as companions:" << instruction1->ToString() << " and "
           << instruction2->ToString();
 
   if (!ContainsKey(companion_set_index_, instruction1) &&
       !ContainsKey(companion_set_index_, instruction2)) {
     companion_sets_.push_back(
-        absl::make_unique<std::unordered_set<HloInstruction*>>());
+        tensorflow::MakeUnique<std::unordered_set<HloInstruction*>>());
     auto companion_set = companion_sets_.back().get();
     companion_set->insert(instruction1);
     companion_set->insert(instruction2);
@@ -313,44 +386,46 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
     if (!ShapeUtil::Compatible(send_shape, recv_shape)) {
       return FailedPrecondition("send/recv shapes do not match");
     }
-    const HloModule* send_module = channel.send->parent()->parent();
-    const HloModule* send_done_module = channel.send_done->parent()->parent();
-    if (send_module != send_done_module) {
+    auto send_device = GetInstructionDevice(*channel.send);
+    auto send_done_device = GetInstructionDevice(*channel.send_done);
+    if (!send_device) {
+      return FailedPrecondition("send instruction must have a device: %s",
+                                channel.send->ToString().c_str());
+    }
+    if (!send_done_device) {
+      return FailedPrecondition("send_done instruction must have a device: %s",
+                                channel.send_done->ToString().c_str());
+    }
+    if (*send_device != *send_done_device) {
       return FailedPrecondition(
           "send and send-done (channel=%lld) must be on the same device: %lld "
           "vs. %lld",
-          channel.id, GetModuleId(send_module), GetModuleId(send_done_module));
+          channel.id, *send_device, *send_done_device);
     }
-    const HloModule* recv_module = channel.recv->parent()->parent();
-    const HloModule* recv_done_module = channel.recv_done->parent()->parent();
-    if (recv_module != recv_done_module) {
+    auto recv_device = GetInstructionDevice(*channel.recv);
+    auto recv_done_device = GetInstructionDevice(*channel.recv_done);
+    if (!recv_done_device) {
+      return FailedPrecondition("recv_done instruction must have a device: %s",
+                                channel.recv_done->ToString().c_str());
+    }
+    if (*recv_device != *recv_done_device) {
       return FailedPrecondition(
           "recv and recv-done (channel=%lld) must be on the same device: %lld "
           "vs. %lld",
-          channel.id, GetModuleId(recv_module), GetModuleId(recv_done_module));
+          channel.id, *recv_device, *recv_done_device);
     }
-    if (send_module == recv_module) {
+    if (*send_device == *recv_device) {
       return FailedPrecondition(
           "send and recv (channel=%lld) must be on different devices: %lld",
-          channel.id, GetModuleId(send_module));
+          channel.id, *send_device);
     }
   }
 
-  // Check if channel instructions are used only in allowed computations.
-  const auto allowed = [this](HloInstruction* hlo) {
-    HloComputation* computation = hlo->parent();
-    const HloModule* module = computation->parent();
-    if (module->entry_computation() == computation ||
-        tracked_instructions_.count(computation) > 0) {
-      return true;
-    }
-    return false;
-  };
   for (const Channel& channel : channels_) {
-    if (!allowed(channel.send) || !allowed(channel.send_done) ||
-        !allowed(channel.recv) || !allowed(channel.recv_done)) {
-      return FailedPrecondition("channel is used in disallowed computation");
-    }
+    TF_RETURN_IF_ERROR(CheckCommunicatingInstruction(channel.send));
+    TF_RETURN_IF_ERROR(CheckCommunicatingInstruction(channel.send_done));
+    TF_RETURN_IF_ERROR(CheckCommunicatingInstruction(channel.recv));
+    TF_RETURN_IF_ERROR(CheckCommunicatingInstruction(channel.recv_done));
   }
   // Check if the nest levels match for each channel.
   for (const Channel& channel : channels_) {
@@ -366,6 +441,49 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
     }
   }
   return Status::OK();
+}
+
+Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
+    HloInstruction* instruction) const {
+  HloComputation* computation = instruction->parent();
+  const HloModule* module = computation->parent();
+  if (module->entry_computation() == computation ||
+      tracked_instructions_.count(computation) > 0) {
+    return Status::OK();
+  }
+  return FailedPrecondition("channel is used in disallowed computation");
+}
+
+void HloModuleGroupMetadata::DumpCollectedStats() const {
+  std::map<std::pair<int64, int64>, int64> communication_histogram;
+  for (auto& channel : channels_) {
+    auto from_device = GetInstructionDevice(*channel.send);
+    auto to_device = GetInstructionDevice(*channel.recv);
+    LOG(INFO) << "Channel " << channel.id << ": from_device=" << *from_device
+              << " to_device=" << *to_device << " send=" << channel.send->name()
+              << " send_done=" << channel.send_done->name()
+              << " recv=" << channel.recv->name()
+              << " recv_done=" << channel.recv_done->name();
+    communication_histogram[std::pair<int64, int64>(*from_device,
+                                                    *to_device)] += 1;
+  }
+  for (auto& fromto_count : communication_histogram) {
+    LOG(INFO) << "From " << fromto_count.first.first << " to "
+              << fromto_count.first.second << ": " << fromto_count.second;
+  }
+  for (auto& companion_set : companion_sets_) {
+    LOG(INFO) << "Companion set:";
+    for (HloInstruction* instruction : *companion_set) {
+      LOG(INFO) << "  " << instruction->name();
+    }
+  }
+  for (auto& instruction_comm : tracked_instructions_comms_) {
+    LOG(INFO) << "Communicating instruction " << instruction_comm.first->name();
+    for (HloInstruction* instruction : instruction_comm.second) {
+      auto device = GetInstructionDevice(*instruction);
+      LOG(INFO) << "  " << instruction->name() << " on device " << *device;
+    }
+  }
 }
 
 }  // namespace xla

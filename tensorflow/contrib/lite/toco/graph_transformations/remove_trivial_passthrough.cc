@@ -85,9 +85,11 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
         "Removing %s, keeping its non-constant input array %s and removing %s",
         LogName(*passthru_op), main_input_name, output_name);
     RerouteEdges(output_name, main_input_name, model);
-  } else if (IsDiscardableArray(*model, main_input_name)) {
+  } else if (IsDiscardableArray(*model, main_input_name) &&
+             !IsConstantParameterArray(*model, main_input_name)) {
     transformation->AddMessageF(
-        "Removing %s, keeping its output array %s and removing input %s",
+        "Removing %s, keeping its output array %s and removing non-constant "
+        "input %s",
         LogName(*passthru_op), output_name, main_input_name);
     RerouteEdges(main_input_name, output_name, model);
   } else {
@@ -95,10 +97,23 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
         "Cannot remove %s, neither its main input nor its output may be "
         "discarded",
         LogName(*passthru_op));
-    return false;
+    if (passthru_op->type != OperatorType::kTensorFlowReshape &&
+        model->GetArray(main_input_name).has_shape()) {
+      // We can't remove either array but we can remove the op. Converting it to
+      // a reshape gives us some hope of later on fixing that (either in the
+      // final runtime or as an additional fixup step).
+      //
+      // Note that we don't try to insert copies in place of reshapes as the
+      // copy itself is a trivial reshape and we'd go into an infinite loop!
+      transformation->AddMessageF("Replacing with a copy (reshape) instead");
+      InsertCopyOperator(model, main_input_name, output_name);
+    } else {
+      return false;
+    }
   }
 
   // Remove the pass-through node.
+  CHECK_EQ(passthru_it->get(), passthru_op);
   model->operators.erase(passthru_it);
 
   // Remove any array that is no longer used.

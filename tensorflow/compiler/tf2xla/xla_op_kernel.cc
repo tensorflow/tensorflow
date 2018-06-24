@@ -314,8 +314,8 @@ Status XlaOpKernelContext::ReadVariableInput(int index, DataType type,
   }
 
   XlaContext& xla_context = XlaContext::Get(context_);
-  TensorShape representation_shape = xla_context.VariableRepresentationShape(
-      variable->shape(), variable->type());
+  TensorShape representation_shape =
+      xla_context.RepresentationShape(variable->shape(), variable->type());
   if (representation_shape == variable->shape()) {
     *value = variable->value();
   } else {
@@ -436,7 +436,7 @@ Status XlaOpKernelContext::AssignVariable(int input_index, DataType type,
 
   XlaContext& xla_context = XlaContext::Get(context_);
   TensorShape representation_shape =
-      xla_context.VariableRepresentationShape(shape, type);
+      xla_context.RepresentationShape(shape, type);
   if (shape != representation_shape) {
     handle = builder()->Reshape(handle, representation_shape.dim_sizes());
   }

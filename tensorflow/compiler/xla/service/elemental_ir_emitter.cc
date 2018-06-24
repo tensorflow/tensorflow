@@ -418,8 +418,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     }
     case HloOpcode::kExp:
       return EmitExp(op->shape().element_type(), operand_value);
+    case HloOpcode::kExpm1:
+      return EmitExpm1(op->shape().element_type(), operand_value);
     case HloOpcode::kLog:
       return EmitLog(op->shape().element_type(), operand_value);
+    case HloOpcode::kLog1p:
+      return EmitLog1p(op->shape().element_type(), operand_value);
     case HloOpcode::kCos:
       return EmitCos(op->shape().element_type(), operand_value);
     case HloOpcode::kSin:
@@ -452,17 +456,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                                     llvm::ConstantFP::get(type, 1.0)));
     }
     case HloOpcode::kIsFinite: {
-      // (x == x) && abs(x) != inf
+      // abs(x) o!= inf, this works because the comparison returns false if
+      // either operand is NaN.
       auto type = operand_value->getType();
-      auto equal_self =
-          ir_builder_->CreateFCmpOEQ(operand_value, operand_value);
       auto abs_value = llvm_ir::EmitCallToIntrinsic(
           llvm::Intrinsic::fabs, {operand_value}, {type}, ir_builder_);
       auto infinity = llvm::ConstantFP::getInfinity(type);
       auto not_infinite = ir_builder_->CreateFCmpONE(abs_value, infinity);
-      auto result_i1 = ir_builder_->CreateAnd(equal_self, not_infinite);
       return ir_builder_->CreateZExt(
-          result_i1, llvm_ir::PrimitiveTypeToIrType(PRED, module_));
+          not_infinite, llvm_ir::PrimitiveTypeToIrType(PRED, module_));
     }
     case HloOpcode::kNegate:
       return ir_builder_->CreateFNeg(operand_value);
@@ -489,6 +491,22 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
                                             ir_builder_->CreateFMul(b, b));
       TF_ASSIGN_OR_RETURN(auto log_sum_sq, EmitLog(component_type, sum_sq));
       TF_ASSIGN_OR_RETURN(auto angle, EmitAtan2(component_type, b, a));
+      auto one_half = llvm::ConstantFP::get(llvm_ty, 0.5);
+      return EmitComposeComplex(
+          op, ir_builder_->CreateFMul(one_half, log_sum_sq), angle);
+    }
+    case HloOpcode::kLog1p: {
+      // log1p(a+bi) = .5*log((a+1)^2+b^2) + i*atan2(b, a + 1)
+      auto a = EmitExtractReal(operand_value);
+      auto b = EmitExtractImag(operand_value);
+      llvm::Type* llvm_ty = a->getType();
+      auto one = llvm::ConstantFP::get(llvm_ty, 1.0);
+      auto a_plus_one = ir_builder_->CreateFAdd(a, one);
+      auto sum_sq = ir_builder_->CreateFAdd(
+          ir_builder_->CreateFMul(a_plus_one, a_plus_one),
+          ir_builder_->CreateFMul(b, b));
+      TF_ASSIGN_OR_RETURN(auto log_sum_sq, EmitLog(component_type, sum_sq));
+      TF_ASSIGN_OR_RETURN(auto angle, EmitAtan2(component_type, b, a_plus_one));
       auto one_half = llvm::ConstantFP::get(llvm_ty, 0.5);
       return EmitComposeComplex(
           op, ir_builder_->CreateFMul(one_half, log_sum_sq), angle);
@@ -522,6 +540,20 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
           auto sin_b, EmitSin(component_type, EmitExtractImag(operand_value)));
       return EmitComposeComplex(op, ir_builder_->CreateFMul(exp_a, cos_b),
                                 ir_builder_->CreateFMul(exp_a, sin_b));
+    }
+    case HloOpcode::kExpm1: {
+      // e^(a+bi)-1 = (e^a*cos(b)-1)+e^a*sin(b)i
+      TF_ASSIGN_OR_RETURN(
+          auto exp_a, EmitExp(component_type, EmitExtractReal(operand_value)));
+      TF_ASSIGN_OR_RETURN(
+          auto cos_b, EmitCos(component_type, EmitExtractImag(operand_value)));
+      TF_ASSIGN_OR_RETURN(
+          auto sin_b, EmitSin(component_type, EmitExtractImag(operand_value)));
+      auto one = llvm::ConstantFP::get(exp_a->getType(), 1.0);
+      auto real_result =
+          ir_builder_->CreateFSub(ir_builder_->CreateFMul(exp_a, cos_b), one);
+      auto imag_result = ir_builder_->CreateFMul(exp_a, sin_b);
+      return EmitComposeComplex(op, real_result, imag_result);
     }
     case HloOpcode::kCos: {
       // cos(z) = .5(e^(iz) + e^(-iz))
@@ -975,6 +1007,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog(PrimitiveType prim_type,
                                       {value->getType()}, ir_builder_);
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(PrimitiveType prim_type,
+                                                     llvm::Value* value) const {
+  auto x = value;
+  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
+  auto one = llvm::ConstantFP::get(type, 1.0);
+  auto negative_half = llvm::ConstantFP::get(type, -0.5);
+  // When x is large, the naive evaluation of ln(x + 1) is more
+  // accurate than the Taylor series.
+  TF_ASSIGN_OR_RETURN(auto for_large_x,
+                      EmitLog(prim_type, ir_builder_->CreateFAdd(x, one)));
+  // The Taylor series for ln(x+1) is x - x^2/2 - x^3/3 + ….
+  auto for_small_x = ir_builder_->CreateFMul(
+      ir_builder_->CreateFAdd(ir_builder_->CreateFMul(negative_half, x), one),
+      x);
+  const auto kAntilogarithmIsSmallThreshold = 1e-4;
+  auto abs_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value},
+                                            {type}, ir_builder_);
+  auto x_is_small = ir_builder_->CreateFCmpOLT(
+      abs_x, llvm::ConstantFP::get(type, kAntilogarithmIsSmallThreshold));
+  return ir_builder_->CreateSelect(x_is_small, for_small_x, for_large_x);
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitSin(PrimitiveType prim_type,
                                                    llvm::Value* value) const {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {value},
@@ -991,6 +1045,29 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExp(PrimitiveType prim_type,
                                                    llvm::Value* value) const {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},
                                       {value->getType()}, ir_builder_);
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
+                                                     llvm::Value* value) const {
+  auto x = value;
+  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
+  auto one = llvm::ConstantFP::get(type, 1.0);
+  auto half = llvm::ConstantFP::get(type, 0.5);
+  // When the exponent is large, the naive evaluation of e^(x) - 1 is more
+  // accurate than the Taylor series.
+  TF_ASSIGN_OR_RETURN(auto exp_x, EmitExp(prim_type, value));
+  auto for_large_x = ir_builder_->CreateFSub(exp_x, one);
+  // The Taylor series for exp(x) is 1 + x + x^2/2 + x^3/6 + ….
+  // We want exp(x)-1 which is x + x^2/2 + x^3/6 + ….
+  auto x_squared = ir_builder_->CreateFAdd(x, x);
+  auto x_squared_over_two = ir_builder_->CreateFMul(x_squared, half);
+  auto for_small_x = ir_builder_->CreateFAdd(x, x_squared_over_two);
+  const auto kExponentIsSmallThreshold = 1e-5;
+  auto abs_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value},
+                                            {type}, ir_builder_);
+  auto x_is_small = ir_builder_->CreateFCmpOLT(
+      abs_x, llvm::ConstantFP::get(type, kExponentIsSmallThreshold));
+  return ir_builder_->CreateSelect(x_is_small, for_small_x, for_large_x);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(PrimitiveType prim_type,
@@ -1468,6 +1545,26 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     llvm_ir::IrArray::Index dim_index(1, ir_builder_->getInt64(i));
     TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
                         operand_to_generator.at(hlo->operand(1))(dim_index));
+
+    // Clamp the start index so that the sliced portion fits in the operand:
+    // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
+
+    // TODO(b/74360564): This is implementation defined behavior, but is
+    // currently respected by all implementations. Change this if we ever decide
+    // to oficially document different behavior.
+    start_index_value = ir_builder_->CreateSExtOrBitCast(start_index_value,
+                                                         index[i]->getType());
+    llvm::Value* operand_dim_size = llvm::ConstantInt::get(
+        start_index_value->getType(), input_hlo->shape().dimensions(i));
+    llvm::Value* output_dim_size = llvm::ConstantInt::get(
+        start_index_value->getType(), hlo->shape().dimensions(i));
+
+    start_index_value = EmitIntegralMin(
+        ir_builder_->CreateSub(operand_dim_size, output_dim_size),
+        EmitIntegralMax(llvm::ConstantInt::get(start_index_value->getType(), 0),
+                        start_index_value, /*is_signed=*/true),
+        /*is_signed=*/true);
+
     start_index_value->setName(
         AsStringRef(IrName(hlo, StrCat("start_idx", i))));
     slice_start_index[i] = start_index_value;
@@ -1476,14 +1573,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
   llvm_ir::IrArray::Index input_index(rank);
   for (int64 i = 0; i < rank; ++i) {
     // Emit IR which computes:
-    //   input_index = (start_index + offset_index) % dim_size
-    // Security note: this is the code that keeps the indices in-bounds.
-    llvm::Value* dim_size = llvm::ConstantInt::get(
-        index[i]->getType(), input_hlo->shape().dimensions(i));
-    llvm::Value* start_index = ir_builder_->CreateZExtOrBitCast(
-        slice_start_index[i], index[i]->getType());
-    input_index[i] = ir_builder_->CreateURem(
-        ir_builder_->CreateAdd(start_index, index[i]), dim_size);
+    //   input_index = start_index + offset_index
+    input_index[i] = ir_builder_->CreateAdd(slice_start_index[i], index[i]);
   }
   return operand_to_generator.at(input_hlo)(input_index);
 }
@@ -1582,104 +1673,48 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const int64 rank = ShapeUtil::Rank(input_hlo->shape());
   llvm_ir::IrArray::Index slice_start_index(rank);
   llvm_ir::IrArray::Index slice_limit_index(rank);
-  // Slice starts at update[index - slice_start_index_adjusted],
-  // where adjusted value = slice_start_index when in bounds, and
-  // adjusted value = slice_start_index - input_dim, when wrapping.
-  llvm_ir::IrArray::Index slice_start_index_adjusted(rank);
-
   // Slice intersection gathers (ANDs) conditions on all ranks for which
   // 'input' is set to 'update'
   llvm::Value* slice_intersection = ir_builder_->getTrue();
 
   for (int64 i = 0; i < rank; ++i) {
-    // Emit IR to read dynamic start indices from 'start_hlo'.
     llvm_ir::IrArray::Index dim_index(1, ir_builder_->getInt64(i));
     TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
                         operand_to_generator.at(start_hlo)(dim_index));
-    start_index_value->setName(
-        AsStringRef(IrName(hlo, StrCat("start_idx", i))));
-    slice_start_index[i] = ir_builder_->CreateZExtOrBitCast(
-        start_index_value, index[i]->getType());
 
+    // Clamp the start index so that the update region fits in the operand.
+    // start_index = clamp(start_index, 0, input_dim_size - update_dim_size)
+
+    // TODO(b/74360564): This is implementation defined behavior, but is
+    // currently respected by all implementations. Change this if we ever decide
+    // to oficially document different behavior.
+    start_index_value = ir_builder_->CreateSExtOrBitCast(start_index_value,
+                                                         index[i]->getType());
     llvm::Value* input_dim_size = llvm::ConstantInt::get(
         index[i]->getType(), input_hlo->shape().dimensions(i));
     llvm::Value* update_dim_size = llvm::ConstantInt::get(
         index[i]->getType(), update_hlo->shape().dimensions(i));
 
-    // Generate code to handle wrapping semantics:
-    // slice_start_index[i] = slice_start_index[i] % input_dim_size;
-    // slice_limit_index[i] = slice_start_index[i] + update_dim_size.
-    // slice_start_index[i] is updated in place and it will now be in
-    // range. slice_limit_index[i] may be out of range, and it's being
-    // URem-ed below if so.
-    slice_start_index[i] =
-        ir_builder_->CreateURem(slice_start_index[i], input_dim_size);
+    start_index_value = EmitIntegralMin(
+        ir_builder_->CreateSub(input_dim_size, update_dim_size),
+        EmitIntegralMax(llvm::ConstantInt::get(start_index_value->getType(), 0),
+                        start_index_value, /*is_signed=*/true),
+        /*is_signed=*/true);
+
+    start_index_value->setName(
+        AsStringRef(IrName(hlo, StrCat("start_idx", i))));
+    slice_start_index[i] = start_index_value;
     slice_limit_index[i] =
         ir_builder_->CreateAdd(slice_start_index[i], update_dim_size);
 
-    // Test if slice_limit_index[i] is in bounds
-    llvm::Value* in_bounds =
-        ir_builder_->CreateICmpULE(slice_limit_index[i], input_dim_size);
-    llvm_ir::LlvmIfData if_in_bounds =
-        llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", ir_builder_);
-
-    // Handle true BB (slice_limit_index[i] <= input_dim_size).
-    SetToFirstInsertPoint(if_in_bounds.true_block, ir_builder_);
-    // Check that index[i] >= slice_start_index[i] &&
-    //            index[i] < slice_limit_index[i]
-    llvm::Value* slice_intersection_in_bounds = ir_builder_->CreateAnd(
+    slice_intersection = ir_builder_->CreateAnd(
         slice_intersection,
         ir_builder_->CreateICmpSGE(index[i], slice_start_index[i]),
-        "slice_intersection_in");
-    slice_intersection_in_bounds = ir_builder_->CreateAnd(
-        slice_intersection_in_bounds,
+        "slice_intersection");
+    slice_intersection = ir_builder_->CreateAnd(
+        slice_intersection,
         ir_builder_->CreateICmpSLT(index[i], slice_limit_index[i]),
-        "slice_intersection_in");
-
-    // Handle false BB (slice_limit_index[i] > input_dim_size).
-    SetToFirstInsertPoint(if_in_bounds.false_block, ir_builder_);
-    // Check that index[i] >= slice_start_index[i] ||
-    //            index[i] < slice_limit_index[i]%input_dim_size.
-    llvm::Value* index_wraps = ir_builder_->CreateICmpSLT(
-        index[i],
-        ir_builder_->CreateURem(slice_limit_index[i], input_dim_size));
-    llvm::Value* slice_intersection_or = ir_builder_->CreateOr(
-        ir_builder_->CreateICmpSGE(index[i], slice_start_index[i]), index_wraps,
-        "slice_intersection_out");
-    llvm::Value* slice_intersection_out_of_bounds = ir_builder_->CreateAnd(
-        slice_intersection, slice_intersection_or, "slice_intersection_out");
-    // Create value for slice_start_index_adjusted[i] when out of bounds.
-    // If within out-of-bounds if.
-    llvm_ir::LlvmIfData if_start_needs_adjustment =
-        llvm_ir::EmitIfThenElse(index_wraps, "adjust_start", ir_builder_);
-    SetToFirstInsertPoint(if_start_needs_adjustment.true_block, ir_builder_);
-    llvm::Value* slice_start_index_adjusted_oob =
-        ir_builder_->CreateSub(slice_start_index[i], input_dim_size);
-    SetToFirstInsertPoint(if_start_needs_adjustment.after_block, ir_builder_);
-    llvm::PHINode* slice_start_index_adjusted_phi =
-        ir_builder_->CreatePHI(slice_start_index_adjusted_oob->getType(), 2);
-    slice_start_index_adjusted_phi->addIncoming(
-        slice_start_index_adjusted_oob, if_start_needs_adjustment.true_block);
-    slice_start_index_adjusted_phi->addIncoming(
-        slice_start_index[i], if_start_needs_adjustment.false_block);
-    // End of if within if.
-
-    // After checking in/out of bounds.
-    SetToFirstInsertPoint(if_in_bounds.after_block, ir_builder_);
-    llvm::PHINode* phi_slice_intersection =
-        ir_builder_->CreatePHI(slice_intersection->getType(), 2);
-    phi_slice_intersection->addIncoming(slice_intersection_in_bounds,
-                                        if_in_bounds.true_block);
-    phi_slice_intersection->addIncoming(slice_intersection_out_of_bounds,
-                                        if_start_needs_adjustment.after_block);
-    slice_intersection = phi_slice_intersection;
-
-    llvm::PHINode* phi_index =
-        ir_builder_->CreatePHI(slice_start_index[i]->getType(), 2);
-    phi_index->addIncoming(slice_start_index[i], if_in_bounds.true_block);
-    phi_index->addIncoming(slice_start_index_adjusted_phi,
-                           if_start_needs_adjustment.after_block);
-    slice_start_index_adjusted[i] = phi_index;
+        "slice_intersection");
   }
 
   // Emit:
@@ -1696,12 +1731,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   // Compute update index for intersection case.
   llvm_ir::IrArray::Index update_index(rank);
   for (int64 i = 0; i < rank; ++i) {
-    llvm::Value* update_dim_size = llvm::ConstantInt::get(
-        index[i]->getType(), update_hlo->shape().dimensions(i));
-    // NOTE: Subtraction will be positive due to bounds checking above.
-    update_index[i] = ir_builder_->CreateURem(
-        ir_builder_->CreateSub(index[i], slice_start_index_adjusted[i]),
-        update_dim_size);
+    update_index[i] = ir_builder_->CreateSub(index[i], slice_start_index[i]);
   }
   TF_ASSIGN_OR_RETURN(llvm::Value * true_value,
                       operand_to_generator.at(update_hlo)(update_index));
@@ -1784,8 +1814,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
     const llvm_ir::IrArray::Index& dot_result_index) const {
   auto lhs_generator = operand_to_generator.at(hlo->operand(0));
   auto rhs_generator = operand_to_generator.at(hlo->operand(1));
-  int64 contracted_dim_size = hlo->operand(0)->shape().dimensions(
-      hlo->operand(0)->shape().dimensions_size() - 1);
+
+  const DotDimensionNumbers& dim_numbers = hlo->dot_dimension_numbers();
+  int64 lhs_contracting_dim = dim_numbers.lhs_contracting_dimensions(0);
+  int64 rhs_contracting_dim = dim_numbers.rhs_contracting_dimensions(0);
+
+  int64 contracted_dim_size =
+      hlo->operand(0)->shape().dimensions(lhs_contracting_dim);
   int64 lhs_dims = hlo->operand(0)->shape().dimensions_size();
   int64 rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
@@ -1816,13 +1851,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   for (int64 i = 0; i < lhs_dims - 1; i++) {
     lhs_index.push_back(dot_result_index[i]);
   }
-  lhs_index.push_back(inner_loop->GetIndVarValue());
+  lhs_index.InsertAt(lhs_contracting_dim, inner_loop->GetIndVarValue());
 
-  for (int64 i = 0; i < rhs_dims - 2; i++) {
+  for (int64 i = 0; i < rhs_dims - 1; i++) {
     rhs_index.push_back(dot_result_index[lhs_dims - 1 + i]);
   }
-  rhs_index.push_back(inner_loop->GetIndVarValue());
-  rhs_index.push_back(dot_result_index.back());
+  rhs_index.InsertAt(rhs_contracting_dim, inner_loop->GetIndVarValue());
 
   llvm::Value* current_accumulator =
       ir_builder_->CreateLoad(accumulator_alloca);
@@ -1877,10 +1911,12 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kReal:

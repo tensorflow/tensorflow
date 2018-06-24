@@ -302,6 +302,8 @@ cc_library(
     name = "neon_tensor_utils",
     srcs = [
         "optimized/neon_tensor_utils.cc",
+        "reference/portable_tensor_utils.cc",
+        "reference/portable_tensor_utils.h",
     ],
     hdrs = [
         "common.h",
@@ -313,11 +315,11 @@ cc_library(
     copts = NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
     deps = [
         ":cpu_check",
-        ":portable_tensor_utils",
         ":round",
         ":types",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
+        "//tensorflow/contrib/lite/kernels:op_macros",
         "@arm_neon_2_x86_sse",
         "@gemmlowp",
     ],
@@ -418,6 +420,15 @@ cc_library(
     }),
 )
 
+cc_library(
+    name = "test_util",
+    srcs = ["test_util.cc"],
+    hdrs = ["test_util.h"],
+    deps = [
+        ":types",
+    ],
+)
+
 cc_test(
     name = "tensor_utils_test",
     srcs = ["tensor_utils_test.cc"],
@@ -434,6 +445,84 @@ cc_test(
         ":tensor_utils",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "depthwiseconv_float_test",
+    srcs = ["depthwiseconv_float_test.cc"],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "depthwiseconv_quantized_test",
+    srcs = ["depthwiseconv_quantized_test.cc"],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "resize_bilinear_test",
+    srcs = ["resize_bilinear_test.cc"],
+    tags = ["tflite_not_portable"],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "softmax_quantized_test",
+    timeout = "long",
+    srcs = [
+        "softmax_quantized_test.cc",
+    ],
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "logsoftmax_quantized_test",
+    timeout = "long",
+    srcs = [
+        "logsoftmax_quantized_test.cc",
+    ],
+    tags = ["tflite_not_portable"],
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "log_quantized_test",
+    srcs = ["log_quantized_test.cc"],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
         "@com_google_googletest//:gtest_main",
     ],
 )

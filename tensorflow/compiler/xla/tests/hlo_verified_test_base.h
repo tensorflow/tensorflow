@@ -52,11 +52,23 @@ class HloVerifiedTestBase : public HloTestBase {
     shape_verifier_ = std::move(shape_verifier);
   }
 
+  // Creates a new module for a test, and stores it in modules_ so it can be
+  // verified. Intentionally hides HloTestBase::CreateNewModule, to prevent
+  // creation of unverified modules.
+  HloModule* CreateNewModule(const string& name = TestName());
+
+  // It is confusing to store modules created by module() and CreateNewModule()
+  // in different fields, but it allows us to migrate tests to
+  // HloVerifiedTestBase more easily, so it's a win because we can verify more
+  // modules. See b/80488902.
  private:
-  std::unique_ptr<HloModule> module_;  // Lazily populated. Access via module().
+  // Lazily populated. Access via module().
+  std::unique_ptr<HloModule> module_;
+  // Populated by calls to CreateNewModule.
+  std::vector<std::unique_ptr<HloModule>> modules_;
   std::unique_ptr<ShapeVerifier> shape_verifier_;
   bool tear_down_called_ = false;
-  void VerifyModule();
+  static void VerifyModule(HloModule* module);
 };
 
 }  // namespace xla

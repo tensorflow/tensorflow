@@ -90,7 +90,11 @@ class BaseGPUDevice : public LocalDevice {
 
   // Returns the CUDA GPU id of this device within the native driver system;
   // e.g., for CUDA this is the ordinal of the GPU within the system.
-  int gpu_id() const { return GpuIdManager::TfToCudaGpuId(tf_gpu_id_).value(); }
+  int gpu_id() const {
+    CudaGpuId cuda_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToCudaGpuId(tf_gpu_id_, &cuda_gpu_id));
+    return cuda_gpu_id.value();
+  }
 
   // The executor that provides control for the device; e.g., for CUDA this
   // corresponds to the cuda context.
@@ -134,6 +138,9 @@ class BaseGPUDevice : public LocalDevice {
                           int stream_id, Allocator* allocator);
 
   void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
+
+  string ComputeOpKernelDebugString(const OpKernel& op_kernel,
+                                    const int& stream_id);
 
   // This method returns an initialization status, in addition to
   // calling the "done" StatusCallback, if there is a failure to

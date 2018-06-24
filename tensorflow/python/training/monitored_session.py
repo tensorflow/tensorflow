@@ -25,7 +25,6 @@ import sys
 import six
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.estimator import util
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,6 +40,7 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -620,7 +620,7 @@ class _MonitoredSession(object):
         `step_context`. It may also optionally have `self` for cases when it
         belongs to an object.
     """
-    step_fn_arguments = util.fn_args(step_fn)
+    step_fn_arguments = function_utils.fn_args(step_fn)
     if step_fn_arguments != ('step_context',) and step_fn_arguments != (
         'self',
         'step_context',

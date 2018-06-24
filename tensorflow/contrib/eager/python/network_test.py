@@ -30,8 +30,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 # pylint: disable=not-callable

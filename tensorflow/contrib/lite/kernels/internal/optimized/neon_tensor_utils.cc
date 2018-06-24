@@ -56,9 +56,12 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       m_cols - (m_cols & (kFloatWeightsPerNeonLane - 1));
 
   // The arrays used to cache the vector.
+  void* aligned_vector_cache_free = nullptr;
   float32x4_t* vector_cache_float32x4 =
-      new float32x4_t[(m_cols / kFloatWeightsPerNeonLane) *
-                      sizeof(float32x4_t)];
+      reinterpret_cast<float32x4_t*>(aligned_alloc(
+          sizeof(float32x4_t), (postamble_start >> 2) * sizeof(float32x4_t),
+          &aligned_vector_cache_free));
+
   const int kUnrollSize = 2;
   for (int b = 0; b < n_batch; b++) {
     float* result_in_batch = result + b * m_rows * result_stride;
@@ -71,7 +74,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       matrix_ptr1 = matrix + m_cols;
     }
 
-    // Cahce the vector.
+    // Cache the vector.
     for (int c = 0; c < postamble_start; c += kFloatWeightsPerNeonLane) {
       vector_cache_float32x4[c >> 2] = vld1q_f32(vector_in_batch + c);
     }
@@ -128,7 +131,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       result_in_batch += result_stride;
     }
   }
-  delete[] vector_cache_float32x4;
+  free(aligned_vector_cache_free);
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
@@ -294,9 +297,12 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
       v_size - (v_size & (kFloatWeightsPerNeonLane - 1));
 
   // The arrays used to cache the vector.
+  void* aligned_vector_cache_free = nullptr;
   float32x4_t* vector_cache_float32x4 =
-      new float32x4_t[(v_size / kFloatWeightsPerNeonLane) *
-                      sizeof(float32x4_t)];
+      reinterpret_cast<float32x4_t*>(aligned_alloc(
+          sizeof(float32x4_t), (postamble_start >> 2) * sizeof(float32x4_t),
+          &aligned_vector_cache_free));
+
   for (int v = 0; v < postamble_start; v += kFloatWeightsPerNeonLane) {
     vector_cache_float32x4[v >> 2] = vld1q_f32(vector + v);
   }
@@ -322,7 +328,7 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
     result_ptr += v_size;
     batch_vector_ptr += v_size;
   }
-  delete[] vector_cache_float32x4;
+  free(aligned_vector_cache_free);
 }
 
 void NeonSub1Vector(const float* vector, int v_size, float* result) {
@@ -344,6 +350,30 @@ void NeonSub1Vector(const float* vector, int v_size, float* result) {
   for (int v = postamble_start; v < v_size; v++) {
     result[v] = 1.0f - vector[v];
   }
+}
+
+bool NeonIsZeroVector(const float* vector, int v_size) {
+  // If v_size is not divisible by kFloatWeightsPerNeonLane, we cannot
+  // use the main vectorized loop, and we need to process sequentially.
+  // postamble_start shows the start index where this should happen.
+  const int postamble_start =
+      v_size - (v_size & (kFloatWeightsPerNeonLane - 1));
+
+  const float32x4_t zero_x4_float = vmovq_n_f32(0.0f);
+  for (int v = 0; v < postamble_start; v += kFloatWeightsPerNeonLane) {
+    const float32x4_t i_x4_float = vld1q_f32(vector + v);
+    uint32x4_t cmp_result = vceqq_f32(i_x4_float, zero_x4_float);
+    if (vgetq_lane_u32(cmp_result, 0) == 0) return false;
+    if (vgetq_lane_u32(cmp_result, 1) == 0) return false;
+    if (vgetq_lane_u32(cmp_result, 2) == 0) return false;
+    if (vgetq_lane_u32(cmp_result, 3) == 0) return false;
+  }
+
+  // Postamble loop
+  for (int v = postamble_start; v < v_size; ++v) {
+    if (vector[v] != 0.0) return false;
+  }
+  return true;
 }
 
 void NeonClipVector(const float* vector, int v_size, float abs_limit,

@@ -56,6 +56,7 @@ $ python
 42
 >>> sess.close()
 ```
+Learn more examples about how to do specific tasks in TensorFlow at the [tutorials page of tensorflow.org](https://www.tensorflow.org/tutorials/).
 
 ## Contribution guidelines
 
@@ -91,9 +92,10 @@ The TensorFlow project strives to abide by generally accepted best practices in 
 
 ### Community Supported Builds
 
-| Build Type    | Status | Artifacts |
-| ---           | ---    | ---       |
-| **IBM s390x** | [![Build Status](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/badge/icon)](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/) | TBA |
+| Build Type      | Status | Artifacts |
+| ---             | ---    | ---       |
+| **IBM s390x**       | [![Build Status](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/badge/icon)](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/) | TBA |
+| **IBM ppc64le CPU** | [![Build Status](http://powerci.osuosl.org/job/TensorFlow_Ubuntu_16.04_CPU/badge/icon)](http://powerci.osuosl.org/job/TensorFlow_Ubuntu_16.04_CPU/) | TBA |
 
 
 ## For more information

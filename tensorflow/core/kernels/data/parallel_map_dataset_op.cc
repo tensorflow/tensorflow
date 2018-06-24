@@ -85,7 +85,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::ParallelMap")}));
@@ -99,7 +99,9 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "ParallelMapDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "ParallelMapDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -150,7 +152,6 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             invocation_results_(params.dataset->num_parallel_calls_) {}
 
       ~Iterator() override {
@@ -167,6 +168,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
             }
           }
         }
+      }
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,

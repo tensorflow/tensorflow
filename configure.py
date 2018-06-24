@@ -498,10 +498,6 @@ def set_cc_opt_flags(environ_cp):
   if not is_ppc64le() and not is_windows():
     write_to_bazelrc('build:opt --host_copt=-march=native')
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
-  # TODO(mikecase): Remove these default defines once we are able to get
-  # TF Lite targets building without them.
-  write_to_bazelrc('build --copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
-  write_to_bazelrc('build --host_copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
 
 def set_tf_cuda_clang(environ_cp):
   """set TF_CUDA_CLANG action_env.
@@ -674,8 +670,9 @@ def create_android_ndk_rule(environ_cp):
       error_msg=('The path %s or its child file "source.properties" '
                  'does not exist.')
   )
-
-  write_android_ndk_workspace_rule(android_ndk_home_path)
+  write_action_env_to_bazelrc('ANDROID_NDK_HOME', android_ndk_home_path)
+  write_action_env_to_bazelrc('ANDROID_NDK_API_LEVEL',
+                              check_ndk_level(android_ndk_home_path))
 
 
 def create_android_sdk_rule(environ_cp):
@@ -737,41 +734,12 @@ def create_android_sdk_rule(environ_cp):
       error_msg=('The selected SDK does not have build-tools version %s '
                  'available.'))
 
-  write_android_sdk_workspace_rule(android_sdk_home_path,
-                                   android_build_tools_version,
-                                   android_api_level)
-
-
-def write_android_sdk_workspace_rule(android_sdk_home_path,
-                                     android_build_tools_version,
-                                     android_api_level):
-  print('Writing android_sdk_workspace rule.\n')
-  with open(_TF_WORKSPACE, 'a') as f:
-    f.write("""
-android_sdk_repository(
-  name="androidsdk",
-  api_level=%s,
-  path="%s",
-  build_tools_version="%s")\n
-""" % (android_api_level, android_sdk_home_path, android_build_tools_version))
-
-
-def write_android_ndk_workspace_rule(android_ndk_home_path):
-  print('Writing android_ndk_workspace rule.')
-  ndk_api_level = check_ndk_level(android_ndk_home_path)
-  if int(ndk_api_level) not in _SUPPORTED_ANDROID_NDK_VERSIONS:
-    print('WARNING: The API level of the NDK in %s is %s, which is not '
-          'supported by Bazel (officially supported versions: %s). Please use '
-          'another version. Compiling Android targets may result in confusing '
-          'errors.\n' % (android_ndk_home_path, ndk_api_level,
-                         _SUPPORTED_ANDROID_NDK_VERSIONS))
-  with open(_TF_WORKSPACE, 'a') as f:
-    f.write("""
-android_ndk_repository(
-  name="androidndk",
-  path="%s",
-  api_level=%s)\n
-""" % (android_ndk_home_path, ndk_api_level))
+  write_action_env_to_bazelrc('ANDROID_BUILD_TOOLS_VERSION',
+                              android_build_tools_version)
+  write_action_env_to_bazelrc('ANDROID_SDK_API_LEVEL',
+                              android_api_level)
+  write_action_env_to_bazelrc('ANDROID_SDK_HOME',
+                              android_sdk_home_path)
 
 
 def check_ndk_level(android_ndk_home_path):
@@ -784,18 +752,16 @@ def check_ndk_level(android_ndk_home_path):
 
   revision = re.search(r'Pkg.Revision = (\d+)', filedata)
   if revision:
-    return revision.group(1)
-  return None
-
-
-def workspace_has_any_android_rule():
-  """Check the WORKSPACE for existing android_*_repository rules."""
-  with open(_TF_WORKSPACE, 'r') as f:
-    workspace = f.read()
-  has_any_rule = re.search(r'^android_[ns]dk_repository',
-                           workspace,
-                           re.MULTILINE)
-  return has_any_rule
+    ndk_api_level = revision.group(1)
+  else:
+    raise Exception('Unable to parse NDK revision.')
+  if int(ndk_api_level) not in _SUPPORTED_ANDROID_NDK_VERSIONS:
+    print('WARNING: The API level of the NDK in %s is %s, which is not '
+          'supported by Bazel (officially supported versions: %s). Please use '
+          'another version. Compiling Android targets may result in confusing '
+          'errors.\n' % (android_ndk_home_path, ndk_api_level,
+                         _SUPPORTED_ANDROID_NDK_VERSIONS))
+  return ndk_api_level
 
 
 def set_gcc_host_compiler_path(environ_cp):
@@ -1227,7 +1193,7 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     # Check whether all capabilities from the input is valid
     all_valid = True
     # Remove all whitespace characters before splitting the string
-    # that users may insert by accident, as this will result in error 
+    # that users may insert by accident, as this will result in error
     tf_cuda_compute_capabilities = ''.join(tf_cuda_compute_capabilities.split())
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
@@ -1431,6 +1397,10 @@ def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
 
 
+def set_build_strip_flag():
+  write_to_bazelrc('build --strip=always')
+
+
 def set_windows_build_flags():
   if is_windows():
     # The non-monolithic build is not supported yet
@@ -1553,23 +1523,18 @@ def main():
 
   set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
+  set_build_strip_flag()
   set_windows_build_flags()
 
-  if workspace_has_any_android_rule():
-    print('The WORKSPACE file has at least one of ["android_sdk_repository", '
-          '"android_ndk_repository"] already set. Will not ask to help '
-          'configure the WORKSPACE. Please delete the existing rules to '
-          'activate the helper.\n')
-  else:
-    if get_var(
-        environ_cp, 'TF_SET_ANDROID_WORKSPACE', 'android workspace',
-        False,
-        ('Would you like to interactively configure ./WORKSPACE for '
-         'Android builds?'),
-        'Searching for NDK and SDK installations.',
-        'Not configuring the WORKSPACE for Android builds.'):
-      create_android_ndk_rule(environ_cp)
-      create_android_sdk_rule(environ_cp)
+  if get_var(
+      environ_cp, 'TF_SET_ANDROID_WORKSPACE', 'android workspace',
+      False,
+      ('Would you like to interactively configure ./WORKSPACE for '
+       'Android builds?'),
+      'Searching for NDK and SDK installations.',
+      'Not configuring the WORKSPACE for Android builds.'):
+    create_android_ndk_rule(environ_cp)
+    create_android_sdk_rule(environ_cp)
 
   print('Preconfigured Bazel build configs. You can use any of the below by '
         'adding "--config=<>" to your build command. See tools/bazel.rc for '

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -49,9 +50,20 @@ class HloModule;
 
 // Describes a computation at the HLO level.
 //
-// An HloComputation contains a directed acyclic graph of HLO instructions. The
-// computation has a single root instruction which produces the output of the
-// computation.
+// You can think of an HloComputation like a function.  It has some inputs
+// (parameters) and returns exactly one value (the value of its root node).  If
+// you want to return multiple values, you can return a tuple.
+//
+// The instructions inside of a computation do not have an explicit total order.
+// Instead, they have a partial order determined by their data and control
+// dependencies.
+//
+// An HloModule contains one "entry computation" -- this is like main() in a C
+// program.  Every other computation inside of a module is attached to one or
+// more HloInstructions, as a "nested computation".  For example, the kMap
+// instruction has a nested computation and "applies" it to every element of its
+// input, elementwise.  (That is, the input [x, y, z] is transformed to [f(x),
+// f(y), f(z)].)
 class HloComputation {
  public:
   // Builder class for HloComputation.
@@ -157,14 +169,12 @@ class HloComputation {
 
   // Creates a computation from the given proto. Arguments:
   //
-  //   module: the module which will contain the computation. The newly created
-  //     computation is *not* added to the module, however.
   //   proto: the proto to convert from.
   //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed computation
   //     calls.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
-      HloModule* module, const HloComputationProto& proto,
+      const HloComputationProto& proto,
       const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
 
   // Gets the instructions in this computation.
@@ -291,17 +301,11 @@ class HloComputation {
       const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
   // Returns a deep copy of this computation including all instructions.
-  //
-  // If the module pointer is not nullptr, then the cloned computations will be
-  // added to this module in order to support deep cloning. Otherwise the module
-  // of the computation is used.
-  //
-  // If clone_map is not nullptr, then each original instruction that is cloned
-  // will be inserted and map to its clone. clone_map should not already contain
-  // any of the instructions to clone.
-  std::unique_ptr<HloComputation> Clone(
-      const string& suffix = "clone", HloModule* module = nullptr,
-      HloInstruction::CloneMap* clone_map = nullptr);
+  // If the clone context is specified, it will be populated with the cloned
+  // object mappings, and its module() will be used to add new computations
+  // into.
+  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone",
+                                        HloCloneContext* context = nullptr);
 
   // Like Clone(), but if an instruction is present in replacement_map, we use
   // the map's value to replace that instruction in the cloned computation.
@@ -311,9 +315,7 @@ class HloComputation {
   std::unique_ptr<HloComputation> CloneWithReplacements(
       std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
           replacements,
-      HloModule* module = nullptr,
-      HloInstruction::CloneMap* clone_map = nullptr,
-      const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const string& suffix = "clone");
 
   // Returns true if the given instruction can be removed from the computation.
   // Parameter instructions cannot be removed without violating invariants of

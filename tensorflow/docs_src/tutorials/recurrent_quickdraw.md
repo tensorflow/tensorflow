@@ -220,7 +220,7 @@ length 2.
 ### Defining the model
 
 To define the model we create a new `Estimator`. If you want to read more about
-estimators, we recommend @{$get_started/custom_estimators$this tutorial}.
+estimators, we recommend @{$custom_estimators$this tutorial}.
 
 To build the model, we:
 

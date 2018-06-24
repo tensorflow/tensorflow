@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "grpc++/create_channel.h"
-#include "grpc++/security/credentials.h"
+#include "grpcpp/create_channel.h"
+#include "grpcpp/security/credentials.h"
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
@@ -101,8 +101,8 @@ TEST_F(GRPCClientTestBase, AxpyTenValues) {
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(auto result_literal, client_->ExecuteAndTransfer(
                                                    computation, {}, nullptr));
-  LiteralTestUtil::ExpectNear(*expected_literal, *result_literal,
-                              ErrorSpec(0.0001));
+  EXPECT_TRUE(LiteralTestUtil::Near(*expected_literal, *result_literal,
+                                    ErrorSpec(0.0001)));
 }
 
 }  // namespace

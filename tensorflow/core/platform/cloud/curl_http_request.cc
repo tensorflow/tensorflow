@@ -112,10 +112,6 @@ class LibCurlProxy : public LibCurl {
   }
 
   void curl_free(void* p) override { ::curl_free(p); }
-
-  const char* curl_easy_strerror(CURLcode errornum) override {
-    return ::curl_easy_strerror(errornum);
-  }
 };
 }  // namespace
 
@@ -313,7 +309,7 @@ void CurlHttpRequest::SetResultBufferDirect(char* buffer, size_t size) {
   CHECK(buffer != nullptr);
   CheckNotSent();
 
-  direct_response_ = DirectResponseState{buffer, size, 0};
+  direct_response_ = DirectResponseState{buffer, size, 0, 0};
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
                                            reinterpret_cast<void*>(this)));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(
@@ -335,24 +331,15 @@ size_t CurlHttpRequest::WriteCallbackDirect(const void* ptr, size_t size,
   size_t curl_bytes_received = size * nmemb;
   size_t user_buffer_bytes_available =
       state->buffer_size_ - state->bytes_transferred_;
-
-  // The HTTP server may send a response body that is longer than what we
-  // expected. We must not use CHECK() for this situation, because that would
-  // imply a code bug (in this client code) where none exists; the violation of
-  // expectations would have been caused by the server, not the client. So we
-  // report a log warning, if an HTTP server is misbehaving.
-  if (curl_bytes_received > user_buffer_bytes_available) {
-    LOG(WARNING) << "The HTTP response body that we received is longer than we "
-                    "requested or expected. "
-                 << "Total bytes requested: " << state->buffer_size_
-                 << " Bytes received (so far) in HTTP response body: "
-                 << (state->bytes_transferred_ + curl_bytes_received);
-  }
-
   size_t bytes_to_copy =
       std::min<size_t>(curl_bytes_received, user_buffer_bytes_available);
   memcpy(&state->buffer_[state->bytes_transferred_], ptr, bytes_to_copy);
   state->bytes_transferred_ += bytes_to_copy;
+  state->bytes_received_ += curl_bytes_received;
+  // If we didn't have room to store the full response, returning less than
+  // curl_bytes_received here will abort the transfer and curl_easy_perform()
+  // will return CURLE_WRITE_ERROR. We will detect and handle this error there,
+  // and can use state->bytes_received_ as stored above for logging purposes.
   return bytes_to_copy;
 }
 
@@ -447,23 +434,7 @@ Status CurlHttpRequest::Send() {
   }
 
   const CURLcode curl_result = libcurl_->curl_easy_perform(curl_);
-  TF_CURL_RETURN_WITH_CONTEXT_IF_ERROR(
-      curl_result, "Performing request. Detailed error: ", error_buffer);
-
-  auto get_error_message = [this, curl_result, &error_buffer]() -> string {
-    StringPiece response = GetResponse();
-    string error_message = strings::StrCat(
-        "Error executing an HTTP request (HTTP response code ", response_code_,
-        ", error code ", curl_result, ", error message '", error_buffer, "')");
-    if (!response.empty()) {
-      return strings::StrCat(
-          error_message, ", response '",
-          response.substr(0,
-                          std::min(response.size(), response_to_error_limit_)),
-          "'");
-    }
-    return error_message;
-  };
+  TF_RETURN_IF_ERROR(CURLcodeToStatus(curl_result, error_buffer));
 
   double written_size = 0;
   CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD,
@@ -471,6 +442,18 @@ Status CurlHttpRequest::Send() {
 
   CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE,
                                             &response_code_));
+
+  auto get_error_message = [this]() -> string {
+    string error_message = strings::StrCat(
+        "Error executing an HTTP request: HTTP response code ", response_code_);
+    StringPiece body = GetResponse();
+    if (!body.empty()) {
+      return strings::StrCat(
+          error_message, " with body '",
+          body.substr(0, std::min(body.size(), response_to_error_limit_)), "'");
+    }
+    return error_message;
+  };
 
   Status result;
   switch (response_code_) {
@@ -485,9 +468,12 @@ Status CurlHttpRequest::Send() {
 
     case 416:  // Requested Range Not Satisfiable
       // The requested range had no overlap with the available range.
-      // This doesn't indicate an error, but this does mean an empty response
-      // body.
+      // This doesn't indicate an error, but we should produce an empty response
+      // body. (Not all servers do; GCS returns a short error message body.)
       response_buffer_->clear();
+      if (IsDirectResponse()) {
+        direct_response_.bytes_transferred_ = 0;
+      }
       result = Status::OK();
       break;
 
@@ -613,14 +599,13 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
                << " bytes for " << now - that->last_progress_timestamp_
                << " seconds and will be aborted. CURL timing information: "
                << "lookup time: " << lookup_time << " ("
-               << that->libcurl_->curl_easy_strerror(lookup_time_status)
+               << curl_easy_strerror(lookup_time_status)
                << "), connect time: " << connect_time << " ("
-               << that->libcurl_->curl_easy_strerror(connect_time_status)
+               << curl_easy_strerror(connect_time_status)
                << "), pre-transfer time: " << pretransfer_time << " ("
-               << that->libcurl_->curl_easy_strerror(pretransfer_time_status)
+               << curl_easy_strerror(pretransfer_time_status)
                << "), start-transfer time: " << starttransfer_time << " ("
-               << that->libcurl_->curl_easy_strerror(starttransfer_time_status)
-               << ")";
+               << curl_easy_strerror(starttransfer_time_status) << ")";
     return 1;  // Will abort the request.
   }
 
@@ -628,12 +613,36 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
   return 0;
 }
 
-Status CURLcodeToStatus(CURLcode code) {
-  // Return Unavailable to retry by default. We probably should distinguish
-  // between permanent or temporary failures.
-  return errors::Unavailable("Error executing an HTTP request (error code ",
-                             code, ", error message '",
-                             curl_easy_strerror(code), "')");
+Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
+                                         const char* error_buffer) {
+  if (code == CURLE_OK) {
+    return Status::OK();
+  }
+  string error_message = strings::StrCat(
+      "Error executing an HTTP request: libcurl code ", code, " meaning '",
+      curl_easy_strerror(code), "', error details: ");
+  // Special-case response-too-large errors as FAILED_PRECONDITION.
+  if (code == CURLE_WRITE_ERROR && IsDirectResponse() &&
+      direct_response_.bytes_received_ > direct_response_.buffer_size_) {
+    string overflow_message = strings::StrCat(
+        "Received ", direct_response_.bytes_received_, " response bytes ",
+        "for a ", direct_response_.buffer_size_, "-byte buffer");
+    uint64 response_code = 0;
+    const CURLcode get_response_result = libcurl_->curl_easy_getinfo(
+        curl_, CURLINFO_RESPONSE_CODE, &response_code);
+    // Special-case 416 Range Not Satisfied responses; they sometimes have
+    // a response body (e.g. GCS sends one with an error message) but we
+    // pretend as though they don't, so actually ignore this error.
+    if (get_response_result == CURLE_OK && response_code == 416) {
+      return Status::OK();
+    }
+    return errors::FailedPrecondition(
+        strings::StrCat(error_message, overflow_message));
+  }
+  // Return Unavailable to retry by default. There may be other permanent
+  // failures that should be distinguished.
+  return errors::Unavailable(
+      strings::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
 }
 
 }  // namespace tensorflow

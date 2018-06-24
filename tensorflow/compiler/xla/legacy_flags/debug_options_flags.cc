@@ -47,6 +47,12 @@ void SetDebugOptionsDefaults(DebugOptions* flags) {
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
   flags->set_xla_gpu_use_cudnn_batchnorm(false);
+
+  // Run all GPU work on one stream by default.  Using multiple streams
+  // increases memory usage and we lack strong motivating benchmarks for tuning
+  // the heuristics needed to decide when to run on multiple streams.  See
+  // b/77879207.
+  flags->set_xla_gpu_disable_multi_streaming(true);
 }
 
 // Allocates flag_values and flag_objects; this function must not be called more

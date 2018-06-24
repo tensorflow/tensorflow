@@ -49,7 +49,6 @@ cd Python-3.6.1
 make altinstall
 ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
 
-pip3 install --upgrade setuptools
 pip3 install --upgrade pip
 
 pip3 install --upgrade virtualenv
@@ -97,5 +96,8 @@ pip3 install grpcio
 pip3 install --upgrade astor
 pip3 install --upgrade gast
 pip3 install --upgrade termcolor
+
+# Install last working version of setuptools.
+pip3 install --upgrade setuptools==39.1.0
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.5_pip_packages.sh)

@@ -1623,7 +1623,7 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
   Args:
     tensor: A `Tensor`.
     dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
-      `int8`, `uint8`, `int16`, `uint16`, int32`, `int64`,
+      `int8`, `uint8`, `int16`, `uint16`, `int32`, `int64`,
       `complex64`, `complex128` or `bool`.
     name: A name for the operation (optional).
     optimize: if true, attempt to statically determine the shape of 'tensor'
@@ -1897,7 +1897,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
         and paddings_constant is not None):
       new_shape = []
       for padding, dim in zip(paddings_constant, input_shape.as_list()):
-        if padding is None or dim is None or not all(padding):
+        if padding is None or dim is None or any((x is None for x in padding)):
           new_shape.append(None)
         else:
           new_shape.append(sum(padding) + dim)
@@ -2619,6 +2619,10 @@ reverse.__doc__ = gen_array_ops.reverse_v2.__doc__
 
 # pylint: disable=redefined-builtin
 @tf_export("reverse_sequence")
+@deprecation.deprecated_args(
+    None, "seq_dim is deprecated, use seq_axis instead", "seq_dim")
+@deprecation.deprecated_args(
+    None, "batch_dim is deprecated, use batch_axis instead", "batch_dim")
 def reverse_sequence(input,
                      seq_lengths,
                      seq_axis=None,

@@ -116,7 +116,7 @@ class Independent(distribution_lib.Distribution):
       ValueError: if `reinterpreted_batch_ndims` exceeds
         `distribution.batch_ndims`
     """
-    parameters = locals()
+    parameters = dict(locals())
     name = name or "Independent" + distribution.name
     self._distribution = distribution
     with ops.name_scope(name) as name:

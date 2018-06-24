@@ -219,6 +219,12 @@ Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status InvalidArgumentV(const char* format, va_list args);
 
 template <typename... Args>
+Status InvalidArgumentStrCat(Args&&... concat) {
+  return InvalidArgument(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
 Status UnimplementedStrCat(Args&&... concat) {
   return Unimplemented(
       "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
@@ -486,6 +492,12 @@ bool c_is_sorted(const C& c) {
   return std::is_sorted(std::begin(c), std::end(c));
 }
 
+template <typename C, typename Compare>
+bool c_is_sorted(const C& c, Compare&& comp) {
+  return std::is_sorted(std::begin(c), std::end(c),
+                        std::forward<Compare>(comp));
+}
+
 template <typename C>
 auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
   return std::adjacent_find(std::begin(c), std::end(c));
@@ -514,10 +526,27 @@ typename std::decay<T>::type c_accumulate(const Sequence& sequence, T&& init,
                          std::forward<BinaryOp>(binary_op));
 }
 
+template <typename C, typename Pred>
+typename std::iterator_traits<
+    decltype(std::begin(std::declval<C>()))>::difference_type
+c_count_if(const C& c, Pred&& pred) {
+  return std::count_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
+}
+
 template <typename C, typename Value>
 int64 FindIndex(const C& c, Value&& value) {
   auto it = c_find(c, std::forward<Value>(value));
   return std::distance(c.begin(), it);
+}
+
+template <typename C, typename Value>
+void InsertAt(C* c, int64 index, Value&& value) {
+  c->insert(c->begin() + index, std::forward<Value>(value));
+}
+
+template <typename C>
+void EraseAt(C* c, int64 index) {
+  c->erase(c->begin() + index);
 }
 
 // Returns true if `x` fits in 32-bits.

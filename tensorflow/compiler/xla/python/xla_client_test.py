@@ -164,6 +164,16 @@ class ComputationsWithConstantsTest(LocalComputationTest):
         c.Constant(NumpyArrayF32([[1, -1, 1], [-1, 1, -1]])))
     self._ExecuteAndCompareClose(c, expected=[[2, 1, 4], [3, 6, 5]])
 
+  def testGetProto(self):
+    c = self._NewComputation()
+    c.Add(
+        c.Constant(NumpyArrayF32([[1, 2, 3], [4, 5, 6]])),
+        c.Constant(NumpyArrayF32([[1, -1, 1], [-1, 1, -1]])))
+    built = c.Build()
+    proto = built.GetProto()  # HloModuleProto
+    self.assertTrue(len(proto.computations) == 1)
+    self.assertTrue(len(proto.computations[0].instructions) == 3)
+
   def testSum2DF64(self):
     c = self._NewComputation()
     c.Add(
@@ -509,6 +519,46 @@ class SingleOpTest(LocalComputationTest):
                          [40., 50., 0.]]]])
     self._ExecuteAndCompareClose(c, expected=result)
 
+  def testConvGeneralDilatedF32(self):
+    c = self._NewComputation()
+    a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+    lhs = a(1, 1, 2, 3)
+    rhs = a(1, 1, 1, 2) * 10
+    strides = [1, 1]
+    pads = [(1, 0), (0, 1)]
+    lhs_dilation = (2, 1)
+    rhs_dilation = (1, 1)
+    dimension_numbers = ("NCHW", "OIHW", "NCHW")
+    c.ConvGeneralDilated(c.Constant(lhs), c.Constant(rhs),
+                         strides, pads, lhs_dilation, rhs_dilation,
+                         dimension_numbers)
+    result = np.array([[[[0., 0., 0.],
+                         [10., 20., 0.],
+                         [0., 0., 0.],
+                         [40., 50., 0.]]]])
+    self._ExecuteAndCompareClose(c, expected=result)
+
+  def testConvGeneralDilatedPermutedF32(self):
+    c = self._NewComputation()
+    a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+    lhs = a(1, 1, 2, 3)
+    rhs = a(1, 1, 1, 2) * 10
+    strides = [1, 1]
+    pads = [(1, 0), (0, 1)]
+    lhs_dilation = (2, 1)
+    rhs_dilation = (1, 1)
+
+    dimension_numbers = ("NHWC", "OIHW", "CWNH")
+    c.ConvGeneralDilated(c.Constant(np.transpose(lhs, (0, 2, 3, 1))),
+                         c.Constant(rhs),
+                         strides, pads, lhs_dilation, rhs_dilation,
+                         dimension_numbers)
+    result = np.array([[[[0., 0., 0.],
+                         [10., 20., 0.],
+                         [0., 0., 0.],
+                         [40., 50., 0.]]]])
+    self._ExecuteAndCompareClose(c, expected=np.transpose(result, (1, 3, 0, 2)))
+
   def testBooleanNot(self):
     c = self._NewComputation()
     arr = NumpyArrayBool([True, False, True])
@@ -521,6 +571,12 @@ class SingleOpTest(LocalComputationTest):
     c.Exp(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=np.exp(arr))
 
+  def testExpm1(self):
+    c = self._NewComputation()
+    arr = NumpyArrayF32([3.3, 12.1])
+    c.Expm1(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=np.expm1(arr))
+
   def testRound(self):
     c = self._NewComputation()
     arr = NumpyArrayF32([3.3, 12.1])
@@ -532,6 +588,12 @@ class SingleOpTest(LocalComputationTest):
     arr = NumpyArrayF32([3.3, 12.1])
     c.Log(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=np.log(arr))
+
+  def testLog1p(self):
+    c = self._NewComputation()
+    arr = NumpyArrayF32([3.3, 12.1])
+    c.Log1p(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=np.log1p(arr))
 
   def testNeg(self):
     c = self._NewComputation()

@@ -45,12 +45,14 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowMinimum ||
          type == OperatorType::kTensorFlowMaximum ||
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
-         type == OperatorType::kLogSoftmax ||
+         type == OperatorType::kLogSoftmax || type == OperatorType::kSlice ||
+         type == OperatorType::kResizeBilinear ||
          type == OperatorType::kTensorFlowSplit || type == OperatorType::kSub ||
          type == OperatorType::kSqueeze || type == OperatorType::kPad ||
          type == OperatorType::kPadV2 ||
          type == OperatorType::kTensorFlowReshape ||
          type == OperatorType::kTanh || type == OperatorType::kMul ||
+         type == OperatorType::kSpaceToBatchND ||
          type == OperatorType::kSpaceToDepth ||
          type == OperatorType::kStridedSlice ||
          type == OperatorType::kDepthToSpace ||
@@ -59,7 +61,8 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowGreater ||
          type == OperatorType::kTensorFlowGreaterEqual ||
          type == OperatorType::kTensorFlowLess ||
-         type == OperatorType::kTensorFlowLessEqual;
+         type == OperatorType::kTensorFlowLessEqual ||
+         type == OperatorType::kSelect || type == OperatorType::kArgMax;
 }
 
 const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {

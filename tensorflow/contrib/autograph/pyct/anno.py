@@ -46,8 +46,15 @@ class Basic(NoValue):
       '`name_map` allows renaming symbols.')
 
 
-def getanno(node, key, field_name='___pyct_anno'):
-  return getattr(node, field_name)[key]
+FAIL = object()
+
+
+def getanno(node, key, default=FAIL, field_name='___pyct_anno'):
+  if (default is FAIL or
+      (hasattr(node, field_name) and (key in getattr(node, field_name)))):
+    return getattr(node, field_name)[key]
+  else:
+    return default
 
 
 def hasanno(node, key, field_name='___pyct_anno'):
@@ -73,5 +80,9 @@ def delanno(node, key, field_name='___pyct_anno'):
 
 
 def copyanno(from_node, to_node, key, field_name='___pyct_anno'):
-  if hasanno(from_node, key, field_name):
-    setanno(to_node, key, getanno(from_node, key, field_name), field_name)
+  if hasanno(from_node, key, field_name=field_name):
+    setanno(
+        to_node,
+        key,
+        getanno(from_node, key, field_name=field_name),
+        field_name=field_name)

@@ -135,8 +135,7 @@ class CfgBuilder(gast.NodeVisitor):
     # Handle the body
     self.visit_statements(node.body)
     body_exit = self.current_leaves
-    self.current_leaves = []
-    self.current_leaves.append(test)
+    self.current_leaves = [test]
     # Handle the orelse
     self.visit_statements(node.orelse)
     self.current_leaves.extend(body_exit)
@@ -149,12 +148,15 @@ class CfgBuilder(gast.NodeVisitor):
     self.continue_.append([])
     # Handle the body
     self.visit_statements(node.body)
+    body_exit = self.current_leaves
     self.current_leaves.extend(self.continue_.pop())
     self.set_current_leaves(test)
     # Handle the orelse
     self.visit_statements(node.orelse)
     # The break statements and the test go to the next node
     self.current_leaves.extend(self.break_.pop())
+    # Body and orelse statements can reach out of the loop
+    self.current_leaves.extend(body_exit)
 
   def visit_For(self, node):
     iter_ = CfgNode(node.iter)
@@ -162,9 +164,15 @@ class CfgBuilder(gast.NodeVisitor):
     self.break_.append([])
     self.continue_.append([])
     self.visit_statements(node.body)
+    body_exit = self.current_leaves
     self.current_leaves.extend(self.continue_.pop())
     self.set_current_leaves(iter_)
+    # Handle the orelse
+    self.visit_statements(node.orelse)
+    # The break statements and the test go to the next node
     self.current_leaves.extend(self.break_.pop())
+    # Body and orelse statements can reach out of the loop
+    self.current_leaves.extend(body_exit)
 
   def visit_Break(self, node):
     self.break_[-1].extend(self.current_leaves)
@@ -395,7 +403,13 @@ class Liveness(Backward):
     super(Liveness, self).__init__('live', context)
 
   def get_gen_kill(self, node, _):
+    # A variable's parents are live if it is live
+    # e.g. x is live if x.y is live. This means gen needs to return
+    # all parents of a variable (if it's an Attribute or Subscript).
+    # This doesn't apply to kill (e.g. del x.y doesn't affect liveness of x)
     gen = activity.get_read(node.value, self.context)
+    gen = functools.reduce(lambda left, right: left | right.support_set, gen,
+                           gen)
     kill = activity.get_updated(node.value, self.context)
     return gen, kill
 

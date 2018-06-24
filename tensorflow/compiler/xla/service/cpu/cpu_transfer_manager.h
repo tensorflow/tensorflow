@@ -38,7 +38,7 @@ class CpuTransferManager : public GenericTransferManager {
   ~CpuTransferManager() override {}
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const Literal& literal) override;
+                                 const LiteralSlice& literal) override;
   Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
                                 const void* source) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,

@@ -14,7 +14,7 @@ introduces the API by walking through two simple examples:
 
 Taking slices from an array is the simplest way to get started with `tf.data`.
 
-The @{$get_started/premade_estimators$Premade Estimators} chapter describes
+The @{$premade_estimators$Premade Estimators} chapter describes
 the following `train_input_fn`, from
 [`iris_data.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/iris_data.py),
 to pipe the data into the Estimator:
@@ -377,7 +377,7 @@ Now you have the basic idea of how to efficiently load data into an
 Estimator. Consider the following documents next:
 
 
-* @{$get_started/custom_estimators}, which demonstrates how to build your own
+* @{$custom_estimators}, which demonstrates how to build your own
   custom `Estimator` model.
 * The @{$low_level_intro#datasets$Low Level Introduction}, which demonstrates
   how to experiment directly with `tf.data.Datasets` using TensorFlow's low

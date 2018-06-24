@@ -349,6 +349,8 @@ enum class FilterLayout : int64 {
   kOutputInputYX = 0,  // cuDNN's default filter layout, laid out as:
                        // (major) output feature maps >> input feature maps >>
                        // rows >> columns (minor).
+  kOutputYXInput,      // major to minor:
+                       //   (output features, row, columns, input features)
   kOutputInputYX4,  // laid out the same as kOutputInputYX but each element is a
                     // vector of 4 feature maps.
   kInputYXOutput,   // Same as dist_belief's default filter layout.
@@ -466,6 +468,9 @@ enum class PadAlignment : int64 {
 
 // Returns a string representation of the given padding alignment.
 string PadAlignmentString(PadAlignment alignment);
+
+// Print alignment to str. Needed to use CHECK_EQ between two PadAlignments.
+std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment);
 
 // Describes a convolution.
 //
@@ -708,7 +713,7 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(false) {}
+  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(true) {}
   AlgorithmDesc(Index a, bool use_tensor_ops)
       : algo_(a), tensor_ops_enabled_(use_tensor_ops) {}
   bool is_default() const { return algo_ == kDefaultAlgorithm; }
@@ -882,8 +887,8 @@ enum class ElementwiseOperation { kAdd, kMultiply };
 
 string ElementwiseOperationString(ElementwiseOperation op);
 
-// A simple class representing the version of the backing library, to 
-// workaround the "too perfect forwarding" issue in gcc6+ compilers. 
+// A simple class representing the version of the backing library, to
+// workaround the "too perfect forwarding" issue in gcc6+ compilers.
 // See PR#16309 and issue #18402 for links discussing the issue.
 class VersionInfo {
  public:
@@ -1051,10 +1056,8 @@ class DnnSupport {
   //    convolution result.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
-  //  algorithm: specifies which algorithm should be used for the
-  //    operation. If algorithm.is_default(), the system will pick an algorithm
-  //    by default. The coding of the algorithm is be interpretted by the
-  //    underlying implementation.
+  //  algorithm_config: specifies which algorithm should be used for the
+  //    operation.
   //  output_profile_result: the output profile result for this call. The
   //    profiling is only enabled when this is not nullptr.
   //
@@ -1153,17 +1156,13 @@ class DnnSupport {
   //    convolution input.
   //  filter_descriptor: dimensions of the convolution filter.
   //  convolution_descriptor: stride of the convolution filter.
-  //  input. This can be DeviceMemory pointing to NULL only when activation_mode
-  //  is kNone.
   //  output_descriptor: dimensions of the output layer.
   //  output_data: un-owned device memory region in which to place the
   //    convolution result.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
-  //  algorithm: an integer to specify which algorithm should be used for the
-  //    operation. kDefaultAlgorithm means the system will pick an algorithm
-  //    by default. The coding of the algorithm is be interpreted by the
-  //    underlying implementation.
+  //  algorithm_config: specifies which algorithm should be used for the
+  //    operation.
   //  output_profile_result: the output profile result for this call. The
   //    profiling is only enabled when this is not nullptr.
   //
@@ -1220,6 +1219,7 @@ class DnnSupport {
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the forward convolution pass.
+  // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
@@ -2036,8 +2036,8 @@ class DnnSupport {
                       const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64 seed,
                       ScratchAllocator* state_allocator) {
-    return port::Status{port::error::UNIMPLEMENTED,
-                        "createRnnDescriptor is unimplemented"};
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnDescriptor is unimplemented");
   }
 
   // Create a RNN sequence descriptor that specifies either the input or output
@@ -2051,8 +2051,8 @@ class DnnSupport {
   virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
-    return port::Status{port::error::UNIMPLEMENTED,
-                        "createRnnSequenceTensorDescriptor is unimplemented"};
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
   // Create an RNN state descriptor that specifies the input or hidden state.
@@ -2060,8 +2060,8 @@ class DnnSupport {
   virtual port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
-    return port::Status{port::error::UNIMPLEMENTED,
-                        "createRnnStateTensorDescriptor is unimplemented"};
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnStateTensorDescriptor is unimplemented");
   }
 
   // Enqueue a forward operation of the RNN model onto the stream.

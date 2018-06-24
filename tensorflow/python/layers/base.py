@@ -20,12 +20,12 @@ from __future__ import print_function
 import copy
 
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.keras._impl.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -319,7 +319,7 @@ class Layer(base_layer.Layer):
       try:
         call_has_scope_arg = self._call_has_scope_arg
       except AttributeError:
-        self._call_fn_args = estimator_util.fn_args(self.call)
+        self._call_fn_args = function_utils.fn_args(self.call)
         self._call_has_scope_arg = 'scope' in self._call_fn_args
         call_has_scope_arg = self._call_has_scope_arg
       if call_has_scope_arg:

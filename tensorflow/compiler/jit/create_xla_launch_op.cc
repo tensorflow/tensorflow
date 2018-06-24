@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/create_xla_launch_op.h"
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -203,8 +203,8 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& node_def,
       &fbody->fdef.signature(), flr, fbody->arg_types, input_memory_types,
       fbody->ret_types, output_memory_types, flr->graph_def_version(), &s);
 
-  *kernel = absl::make_unique<XlaLocalLaunchBase>(
-      &construction, constant_arg_indices, resource_arg_indices, function);
+  *kernel = MakeUnique<XlaLocalLaunchBase>(&construction, constant_arg_indices,
+                                           resource_arg_indices, function);
   return s;
 }
 

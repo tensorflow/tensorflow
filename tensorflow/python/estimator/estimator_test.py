@@ -33,13 +33,13 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
-from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.export import export_output
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import layers
 from tensorflow.python.lib.io import file_io
@@ -72,6 +72,7 @@ from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 
 _TMP_DIR = '/tmp'
 _ANOTHER_TMP_DIR = '/another_tmp'
@@ -81,21 +82,27 @@ def dummy_model_fn(features, labels, params):
   _, _, _ = features, labels, params
 
 
-def check_eventfile_for_keyword(keyword, dir_):
-  """Checks event files for the keyword."""
+def summaries_with_matching_keyword(keyword, dir_):
+  """Yields summary protos matching given keyword from event file."""
 
   writer_cache.FileWriterCache.clear()
 
-  # Get last Event written.
   event_paths = glob.glob(os.path.join(dir_, 'events*'))
-  last_event = None
-  for last_event in summary_iterator.summary_iterator(event_paths[-1]):
-    if last_event.summary is not None:
-      for value in last_event.summary.value:
+  for event in summary_iterator.summary_iterator(event_paths[-1]):
+    if event.summary is not None:
+      for value in event.summary.value:
         if keyword in value.tag:
-          return True
+          yield event.summary
 
-  return False
+
+def check_eventfile_for_keyword(keyword, dir_):
+  """Checks event files for the keyword."""
+  return any(summaries_with_matching_keyword(keyword, dir_))
+
+
+def get_mock_saver():
+  real_saver = saver.Saver()
+  return test.mock.Mock(wraps=real_saver, saver_def=real_saver.saver_def)
 
 
 class EstimatorInheritanceConstraintTest(test.TestCase):
@@ -332,7 +339,7 @@ class EstimatorConstructorTest(test.TestCase):
       _, _, _, _, _ = features, labels, mode, config, params
 
     est = estimator.Estimator(model_fn=model_fn)
-    model_fn_args = util.fn_args(est.model_fn)
+    model_fn_args = function_utils.fn_args(est.model_fn)
     self.assertEqual(
         set(['features', 'labels', 'mode', 'config']), set(model_fn_args))
 
@@ -342,7 +349,7 @@ class EstimatorConstructorTest(test.TestCase):
       _, _ = features, labels
 
     est = estimator.Estimator(model_fn=model_fn)
-    model_fn_args = util.fn_args(est.model_fn)
+    model_fn_args = function_utils.fn_args(est.model_fn)
     self.assertEqual(
         set(['features', 'labels', 'mode', 'config']), set(model_fn_args))
 
@@ -814,6 +821,7 @@ class EstimatorTrainTest(test.TestCase):
 
   def test_saving_listeners_are_used(self):
     listener = test.mock.Mock(spec=training.CheckpointSaverListener)
+    listener.after_save.return_value = None
     est = estimator.Estimator(
         model_fn=model_fn_global_step_incrementer,
         config=run_config.RunConfig(save_checkpoints_steps=10))
@@ -1061,6 +1069,15 @@ class EstimatorDatasetIntegrationTest(test.TestCase):
 
 class EstimatorEvaluateTest(test.TestCase):
 
+  def test_eval_dir(self):
+    est = estimator.Estimator(
+        model_fn=model_fn_global_step_incrementer,
+        model_dir='some_path')
+    expected_eval_dir = os.path.join('some_path', 'eval')
+    self.assertEqual(expected_eval_dir, est.eval_dir())
+    expected_eval_dir_name = os.path.join('some_path', 'eval_a_name')
+    self.assertEqual(expected_eval_dir_name, est.eval_dir('a_name'))
+
   def test_input_fn_args(self):
     expected_mode = model_fn_lib.ModeKeys.EVAL
     expected_params = {'batch_size': 10}
@@ -1283,9 +1300,7 @@ class EstimatorEvaluateTest(test.TestCase):
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
       variables.Variable(1., name='weight')
-      real_saver = saver.Saver()
-      self.mock_saver = test.mock.Mock(
-          wraps=real_saver, saver_def=real_saver.saver_def)
+      self.mock_saver = get_mock_saver()
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           predictions=constant_op.constant([[1.]]),
@@ -1385,8 +1400,21 @@ class EstimatorEvaluateTest(test.TestCase):
     # Get last evaluation Event written.
     for key in ['foo/0', 'foo/1', 'foo/2']:
       self.assertTrue(
-          check_eventfile_for_keyword(key, os.path.join(est.model_dir, 'eval')),
+          check_eventfile_for_keyword(key, est.eval_dir()),
           '{} should be part of reported summaries.'.format(key))
+
+    # Verify that evaluated checkpoint path is written to event file.
+    checkpoint_path_tag = 'checkpoint_path'
+    self.assertTrue(
+        check_eventfile_for_keyword(checkpoint_path_tag, est.eval_dir()),
+        '{} should be part of reported summaries.'.format(checkpoint_path_tag))
+
+    expected_tensor_proto = tensor_util.make_tensor_proto(
+        est.latest_checkpoint(), dtype=dtypes.string)
+    summaries = summaries_with_matching_keyword(checkpoint_path_tag,
+                                                est.eval_dir())
+    self.assertProtoEquals(expected_tensor_proto,
+                           next(summaries).value[0].tensor)
 
 
 class EstimatorPredictTest(test.TestCase):
@@ -1794,9 +1822,7 @@ class EstimatorPredictTest(test.TestCase):
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
       variables.Variable(1., name='weight')
-      real_saver = saver.Saver()
-      self.mock_saver = test.mock.Mock(
-          wraps=real_saver, saver_def=real_saver.saver_def)
+      self.mock_saver = get_mock_saver()
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           predictions=constant_op.constant([[1.]]),
@@ -2013,12 +2039,9 @@ class EstimatorExportTest(test.TestCase):
     input_receiver_fn_map = {
         model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    self.assertEqual(len(export_dirs), 1)
-    # Restore, to validate that the export was well-formed.
-    export_dir = export_dirs[model_fn_lib.ModeKeys.PREDICT]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.SERVING], export_dir)
@@ -2035,12 +2058,9 @@ class EstimatorExportTest(test.TestCase):
     input_receiver_fn_map = {
         model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    self.assertEqual(len(export_dirs), 1)
-    # Restore, to validate that the export was well-formed.
-    export_dir = export_dirs[model_fn_lib.ModeKeys.TRAIN]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.TRAINING], export_dir)
@@ -2058,12 +2078,9 @@ class EstimatorExportTest(test.TestCase):
     input_receiver_fn_map = {
         model_fn_lib.ModeKeys.EVAL: _get_supervised_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    self.assertEqual(len(export_dirs), 1)
-    # Restore, to validate that the export was well-formed.
-    export_dir = export_dirs[model_fn_lib.ModeKeys.EVAL]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.EVAL], export_dir)
@@ -2082,12 +2099,9 @@ class EstimatorExportTest(test.TestCase):
         model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
         model_fn_lib.ModeKeys.EVAL: _get_supervised_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    self.assertEqual(len(export_dirs), 2)
-    # Restore, to validate that the export was well-formed.
-    export_dir = export_dirs[model_fn_lib.ModeKeys.TRAIN]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.TRAINING], export_dir)
@@ -2096,7 +2110,7 @@ class EstimatorExportTest(test.TestCase):
         self.assertFalse('eval_multiplied' in graph_ops)
         self.assertTrue('feature_x' in graph_ops)
         self.assertTrue('weight' in graph_ops)
-    export_dir = export_dirs[model_fn_lib.ModeKeys.EVAL]
+
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.EVAL], export_dir)
@@ -2117,12 +2131,11 @@ class EstimatorExportTest(test.TestCase):
         model_fn_lib.ModeKeys.EVAL: _get_supervised_input_receiver_fn(),
         model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
     # Restore, to validate that the export was well-formed.
-    for mode, tag_set in model_fn_lib.EXPORT_TAG_MAP.items():
-      export_dir = export_dirs[mode]
+    for tag_set in model_fn_lib.EXPORT_TAG_MAP.values():
       with ops.Graph().as_default() as graph:
         with session.Session(graph=graph) as sess:
           loader.load(sess, tag_set, export_dir)
@@ -2139,10 +2152,9 @@ class EstimatorExportTest(test.TestCase):
         model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
         model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    export_dir = export_dirs[model_fn_lib.ModeKeys.TRAIN]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.TRAINING], export_dir)
@@ -2150,7 +2162,6 @@ class EstimatorExportTest(test.TestCase):
         self.assertTrue('later_var' in graph_ops)
         self.assertTrue('weight' in graph_ops)
 
-    export_dir = export_dirs[model_fn_lib.ModeKeys.PREDICT]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.SERVING], export_dir)
@@ -2166,10 +2177,9 @@ class EstimatorExportTest(test.TestCase):
         model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
         model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
     }
-    export_dirs, tmpdir = self._test_export_all_saved_models(
+    export_dir, tmpdir = self._test_export_all_saved_models(
         input_receiver_fn_map)
 
-    export_dir = export_dirs[model_fn_lib.ModeKeys.TRAIN]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.TRAINING], export_dir)
@@ -2179,7 +2189,6 @@ class EstimatorExportTest(test.TestCase):
         collection_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
         self.assertEqual(3, collection_vars[-1].eval())
 
-    export_dir = export_dirs[model_fn_lib.ModeKeys.PREDICT]
     with ops.Graph().as_default() as graph:
       with session.Session(graph=graph) as sess:
         loader.load(sess, [tag_constants.SERVING], export_dir)
@@ -2207,16 +2216,15 @@ class EstimatorExportTest(test.TestCase):
     # Perform the export.
     export_dir_base = os.path.join(
         compat.as_bytes(tmpdir), compat.as_bytes('export'))
-    export_dirs = est._export_all_saved_models(
+    export_dir = est._export_all_saved_models(
         export_dir_base, input_receiver_fn_map)
 
     # Check that all the files are in the right places.
     self.assertTrue(gfile.Exists(export_dir_base))
 
-    for _, export_dir in export_dirs.items():
-      self._validate_exported_files(export_dir)
+    self._validate_exported_files(export_dir)
 
-    return export_dirs, tmpdir
+    return export_dir, tmpdir
 
   def _validate_exported_files(self, export_dir):
     self.assertTrue(gfile.Exists(export_dir))
@@ -2232,6 +2240,42 @@ class EstimatorExportTest(test.TestCase):
     self.assertTrue(gfile.Exists(os.path.join(
         compat.as_bytes(export_dir),
         compat.as_bytes('variables/variables.data-00000-of-00001'))))
+
+  def test_export_all_saved_models_var_not_found(self):
+    input_receiver_fn_map = {
+        model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
+        model_fn_lib.ModeKeys.EVAL: _get_supervised_input_receiver_fn(),
+        model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
+    }
+
+    def _model_fn_with_predict_only_vars(features, labels, mode):
+      _, _ = features, labels
+      if mode == model_fn_lib.ModeKeys.PREDICT:
+        variables.Variable(1., name='only_in_predict')
+      else:
+        variables.Variable(1., name='otherwise')
+
+      prediction = constant_op.constant(1.)
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=prediction,
+          loss=constant_op.constant(1.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          export_outputs={
+              'test': export_output.PredictOutput({'prediction': prediction})
+          })
+
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=_model_fn_with_predict_only_vars)
+    est.train(input_fn=_x_y_input_fn, steps=1)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+
+    err_regex = r'Could not load all requested variables[\w\W]*infer'
+    with self.assertRaisesRegexp(ValueError, err_regex):
+      est._export_all_saved_models(export_dir_base, input_receiver_fn_map)
 
   def test_export_savedmodel_with_saveables_proto_roundtrip(self):
     tmpdir = tempfile.mkdtemp()
@@ -2272,8 +2316,8 @@ class EstimatorExportTest(test.TestCase):
         graph_ops = [x.name for x in graph.get_operations()]
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
-        # Note that the SavedModel builder replaced the Saver with a new one
-        self.assertTrue('save_1/LookupTableImportV2' in graph_ops)
+        # The original saver is used to restore variables
+        self.assertTrue('save/LookupTableImportV2' in graph_ops)
 
     # Clean up.
     gfile.DeleteRecursively(tmpdir)
@@ -2438,9 +2482,7 @@ class EstimatorExportTest(test.TestCase):
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
       variables.Variable(1., name='weight')
-      real_saver = saver.Saver()
-      self.mock_saver = test.mock.Mock(
-          wraps=real_saver, saver_def=real_saver.saver_def)
+      self.mock_saver = get_mock_saver()
       scores = constant_op.constant([3.])
       return model_fn_lib.EstimatorSpec(
           mode=mode,
@@ -2463,6 +2505,54 @@ class EstimatorExportTest(test.TestCase):
     est.export_savedmodel(export_dir_base, serving_input_receiver_fn)
 
     self.assertTrue(self.mock_saver.restore.called)
+    self.assertTrue(self.mock_saver.export_meta_graph.called)
+    self.assertTrue(self.mock_saver.save.called)
+
+  def test_scaffold_is_used_for_saver_multiple_modes(self):
+    tmpdir = tempfile.mkdtemp()
+    savers = {'predict_saver': None, 'train_saver': None}
+
+    def _model_fn_scaffold(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='weight')
+
+      scores = constant_op.constant([3.])
+      if mode == model_fn_lib.ModeKeys.PREDICT:
+        savers['predict_saver'] = get_mock_saver()
+        scaffold = training.Scaffold(saver=savers['predict_saver'])
+      elif mode == model_fn_lib.ModeKeys.TRAIN:
+        savers['train_saver'] = get_mock_saver()
+        scaffold = training.Scaffold(saver=savers['train_saver'])
+      else:
+        scaffold = training.Scaffold()
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          predictions=constant_op.constant([[1.]]),
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          scaffold=scaffold,
+          export_outputs={'test': export_output.ClassificationOutput(scores)})
+
+    est = estimator.Estimator(model_fn=_model_fn_scaffold)
+    est.train(dummy_input_fn, steps=1)
+    input_receiver_fn_map = {
+        model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
+        model_fn_lib.ModeKeys.EVAL: _get_supervised_input_receiver_fn(),
+        model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
+    }
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    est._export_all_saved_models(export_dir_base, input_receiver_fn_map)
+
+    self.assertTrue(savers['train_saver'].restore.called)
+    self.assertEqual(savers['train_saver'].export_meta_graph.call_count, 1)
+    self.assertEqual(savers['train_saver'].save.call_count, 1)
+
+    self.assertTrue(savers['predict_saver'].restore.called)
+    self.assertEqual(savers['predict_saver'].export_meta_graph.call_count, 1)
+    self.assertEqual(savers['predict_saver'].save.call_count, 0)
 
   def test_scaffold_is_used_for_local_init(self):
     tmpdir = tempfile.mkdtemp()
@@ -2508,6 +2598,61 @@ class EstimatorExportTest(test.TestCase):
         my_int = graph.get_tensor_by_name('my_int:0')
         my_int_value = sess.run(my_int)
         self.assertEqual(12345, my_int_value)
+
+  def test_scaffold_is_used_for_local_init_multiple_modes(self):
+    tmpdir = tempfile.mkdtemp()
+
+    def _model_fn_scaffold(features, labels, mode):
+      _, _ = features, labels
+      my_int = variables.Variable(1, name='my_int',
+                                  collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      scores = constant_op.constant([3.])
+      with ops.control_dependencies([
+          variables.local_variables_initializer(),
+          lookup_ops.tables_initializer()
+      ]):
+        assign_op = state_ops.assign(my_int, 12345)
+
+      custom_local_init_op = None
+      if mode == model_fn_lib.ModeKeys.PREDICT:
+        # local_initSop must be an Operation, not a Tensor.
+        custom_local_init_op = control_flow_ops.group(assign_op)
+
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          predictions=constant_op.constant([[1.]]),
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          scaffold=training.Scaffold(local_init_op=custom_local_init_op),
+          export_outputs={'test': export_output.ClassificationOutput(scores)})
+
+    est = estimator.Estimator(model_fn=_model_fn_scaffold)
+    est.train(dummy_input_fn, steps=1)
+    input_receiver_fn_map = {
+        model_fn_lib.ModeKeys.TRAIN: _get_supervised_input_receiver_fn(),
+        model_fn_lib.ModeKeys.EVAL: _get_supervised_input_receiver_fn(),
+        model_fn_lib.ModeKeys.PREDICT: _get_serving_input_receiver_fn()
+    }
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est._export_all_saved_models(
+        export_dir_base, input_receiver_fn_map)
+
+    # Restore, to validate that the custom local_init_op runs.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        my_int = graph.get_tensor_by_name('my_int:0')
+        my_int_value = sess.run(my_int)
+        self.assertEqual(12345, my_int_value)
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.TRAINING], export_dir)
+        my_int = graph.get_tensor_by_name('my_int:0')
+        my_int_value = sess.run(my_int)
+        self.assertEqual(1, my_int_value)
 
   def test_features_labels_mode(self):
     given_features = {'test-features': constant_op.constant([[1], [1]])}

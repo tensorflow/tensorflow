@@ -19,9 +19,9 @@ limitations under the License.
 #include <set>
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -172,7 +172,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -202,7 +202,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -233,7 +233,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -775,7 +775,7 @@ TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
   string hlo_string = tensorflow::strings::StrCat(
       "HloModule ", spec.test_name, "\n\n", spec.hlo_computation_text);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   RunFusionAndCheckOpcodesWereFused(
       module.get(),

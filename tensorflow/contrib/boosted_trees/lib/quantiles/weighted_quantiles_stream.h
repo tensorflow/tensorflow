@@ -295,7 +295,7 @@ WeightedQuantilesStream<ValueType, WeightType, CompareFn>::GetQuantileSpecs(
   if (eps <= std::numeric_limits<double>::epsilon()) {
     // Exact quantile computation at the expense of RAM.
     max_level = 1;
-    block_size = std::max(max_elements, 2LL);
+    block_size = std::max(max_elements, int64{2});
   } else {
     // The bottom-most level will become full at most
     // (max_elements / block_size) times, the level above will become full
@@ -315,7 +315,7 @@ WeightedQuantilesStream<ValueType, WeightType, CompareFn>::GetQuantileSpecs(
       block_size = static_cast<size_t>(ceil(max_level / eps)) + 1;
     }
   }
-  return std::make_tuple(max_level, std::max(block_size, 2LL));
+  return std::make_tuple(max_level, std::max(block_size, int64{2}));
 }
 
 }  // namespace quantiles

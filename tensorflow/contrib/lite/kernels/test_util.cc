@@ -101,7 +101,7 @@ void SingleOpModel::BuildInterpreter(
     }
     resolver_ = std::unique_ptr<OpResolver>(resolver);
   }
-  InterpreterBuilder(model, *resolver_)(&interpreter_);
+  CHECK(InterpreterBuilder(model, *resolver_)(&interpreter_) == kTfLiteOk);
 
   CHECK(interpreter_ != nullptr);
 
@@ -112,6 +112,12 @@ void SingleOpModel::BuildInterpreter(
     if (shape.empty()) continue;
     CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);
   }
+
+  // Modify delegate with function.
+  if (apply_delegate_fn_) {
+    apply_delegate_fn_(interpreter_.get());
+  }
+
   CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
       << "Cannot allocate tensors";
 }

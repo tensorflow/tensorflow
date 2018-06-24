@@ -213,6 +213,12 @@ class BoostedTreesPredictOp : public OpKernel {
                                 &output_logits_t));
     auto output_logits = output_logits_t->matrix<float>();
 
+    // Return zero logits if it's an empty ensemble.
+    if (resource->num_trees() <= 0) {
+      output_logits.setZero();
+      return;
+    }
+
     const int32 latest_tree = resource->num_trees() - 1;
 
     auto do_work = [&resource, &batch_bucketized_features, &output_logits,

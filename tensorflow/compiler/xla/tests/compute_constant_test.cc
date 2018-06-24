@@ -208,7 +208,7 @@ TEST_F(ComputeConstantTest, NonScalarAdd) {
                             ComputeConstantLiteral(client, computation, &b));
     std::unique_ptr<Literal> expected_literal =
         Literal::CreateR1<int32>({4, 6});
-    LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
+    EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
   }
 }
 
@@ -222,7 +222,7 @@ TEST_F(ComputeConstantTest, IntegerDivide) {
     TF_ASSERT_OK_AND_ASSIGN(auto computed,
                             ComputeConstantLiteral(client, computation, &b));
     std::unique_ptr<Literal> expected_literal = Literal::CreateR0<int32>(5);
-    LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
+    EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
   }
 }
 
@@ -244,9 +244,9 @@ XLA_TEST_F(ComputeConstantTest, Layout) {
       std::unique_ptr<Literal> expected_literal =
           Literal::CreateR2WithLayout<int32>({{11, 22}, {33, 44}},
                                              LayoutUtil::MakeLayout(layout));
-      LiteralTestUtil::AssertEqualShapesAndLayouts(expected_literal->shape(),
-                                                   computed->shape());
-      LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
+      ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
+          expected_literal->shape(), computed->shape()));
+      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
     }
   }
 }

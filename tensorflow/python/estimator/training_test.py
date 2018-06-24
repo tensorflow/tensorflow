@@ -1835,6 +1835,7 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     def export(estimator, *args, **kwargs):
       del args, kwargs
       estimator.export_was_called = True
+      return 'path_to_export'
 
     exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
     exporter.name = 'see_whether_export_is_called'
@@ -1848,9 +1849,12 @@ class TrainingExecutorRunLocalTest(test.TestCase):
         exporters=exporter)
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
-    executor.run_local()
+    # pylint: disable=assignment-from-no-return
+    _, export_results = executor.run_local()
+    # pylint: enable=assignment-from-no-return
 
     self.assertTrue(mock_est.export_was_called)
+    self.assertEqual(export_results, ['path_to_export'])
 
   def test_errors_out_if_evaluate_returns_empty_dict(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
@@ -1867,7 +1871,6 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     train_spec = training.TrainSpec(input_fn=lambda: 1)
     eval_spec = training.EvalSpec(input_fn=(lambda: 1), throttle_secs=123)
     mock_est.evaluate.return_value = 123
-
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     with self.assertRaisesRegexp(TypeError, _INVALID_EVAL_RESULT_TYPE_ERR):
       executor.run_local()
@@ -1882,6 +1885,21 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  _MISSING_GLOBAL_STEP_IN_EVAL_RESULT_ERR):
       executor.run_local()
+
+  def test_train_and_evaluate_return_metrics(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
+    mock_est.latest_checkpoint.return_value = 'checkpoint_path/'
+    train_spec = training.TrainSpec(
+        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, steps=2, hooks=[_FakeHook()], name='local_eval')
+    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: train_spec.max_steps}
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    # pylint: disable=assignment-from-no-return
+    metrics, _ = executor.run_local()
+    # pylint: enable=assignment-from-no-return
+    self.assertEqual(metrics['global_step'], 300)
 
 
 class TrainAndEvaluateRunTest(test.TestCase):

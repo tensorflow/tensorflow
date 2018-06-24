@@ -58,9 +58,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 2);
 
   TfLiteTensor* input = &context->tensors[node->inputs->data[kInputTensor]];
-  TfLiteTensor* weights_feature =
+  const TfLiteTensor* weights_feature =
       GetInput(context, node, kWeightsFeatureTensor);
-  TfLiteTensor* weights_time = GetInput(context, node, kWeightsTimeTensor);
+  const TfLiteTensor* weights_time =
+      GetInput(context, node, kWeightsTimeTensor);
 
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
@@ -73,7 +74,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ASSERT_EQ(input->dims->data[1], weights_feature->dims->data[1]);
   TF_LITE_ASSERT_EQ(weights_time->dims->data[0], num_filters);
 
-  TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   if (bias) {
     TF_LITE_ASSERT_EQ(bias->dims->data[0], num_units);
   }
@@ -123,16 +124,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* weights_feature =
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* weights_feature =
       GetInput(context, node, kWeightsFeatureTensor);
-  TfLiteTensor* weights_time = GetInput(context, node, kWeightsTimeTensor);
+  const TfLiteTensor* weights_time =
+      GetInput(context, node, kWeightsTimeTensor);
 
   TfLiteTensor* state = GetOutput(context, node, kStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TfLiteTensor* scratch = GetTemporary(context, node, /*index=*/0);
 
-  TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];

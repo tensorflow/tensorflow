@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TYPES_H_
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TYPES_H_
 
+#include <cstring>
+#include <iterator>
+
 #include "tensorflow/contrib/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
 
 enum class FusedActivationFunctionType : uint8 { kNone, kRelu6, kRelu1, kRelu };
+enum class PaddingType { kNone, kSame, kValid };
 
 // Quantization parameters, determining the mapping of quantized values
 // to real values (i.e. determining how quantized values are mathematically
@@ -42,6 +46,121 @@ struct Dims {
   int sizes[N];
   int strides[N];
 };
+
+class RuntimeShape {
+ public:
+  // Shapes with dimensions up to 4 are stored directly in the structure, while
+  // larger shapes are separately allocated.
+  static constexpr int kMaxSmallSize = 4;
+
+  RuntimeShape() : size_(0) {}
+
+  explicit RuntimeShape(int dimensions_count) : size_(dimensions_count) {
+    if (dimensions_count > kMaxSmallSize) {
+      dims_pointer_ = new int32[dimensions_count];
+    }
+  }
+
+  RuntimeShape(int dimensions_count, const int32* dims_data) : size_(0) {
+    ReplaceWith(dimensions_count, dims_data);
+  }
+
+  ~RuntimeShape() {
+    if (size_ > kMaxSmallSize) {
+      delete[] dims_pointer_;
+    }
+  }
+
+  inline int32 DimensionsCount() const { return size_; }
+  inline int32 Dims(int i) const {
+    TFLITE_DCHECK_GE(i, 0);
+    TFLITE_DCHECK_LT(i, size_);
+    return size_ > kMaxSmallSize ? dims_pointer_[i] : dims_[i];
+  }
+  inline void SetDim(int i, int32 val) {
+    TFLITE_DCHECK_GE(i, 0);
+    TFLITE_DCHECK_LT(i, size_);
+    if (size_ > kMaxSmallSize) {
+      dims_pointer_[i] = val;
+    } else {
+      dims_[i] = val;
+    }
+  }
+  inline int32* DimsData() {
+    return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
+  }
+  inline const int32* DimsData() const {
+    return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
+  }
+
+  inline void Resize(int dimensions_count) {
+    if (size_ > kMaxSmallSize) {
+      delete[] dims_pointer_;
+    }
+    size_ = dimensions_count;
+    if (dimensions_count > kMaxSmallSize) {
+      dims_pointer_ = new int32[dimensions_count];
+    }
+  }
+
+  inline void ReplaceWith(int dimensions_count, const int32* dims_data) {
+    Resize(dimensions_count);
+    int32* dst_dims = DimsData();
+    std::memcpy(dst_dims, dims_data, dimensions_count * sizeof(int32));
+  }
+
+  template <typename T>
+  inline void BuildFrom(const T& src_iterable) {
+    const int dimensions_count =
+        std::distance(src_iterable.begin(), src_iterable.end());
+    Resize(dimensions_count);
+    int32* data = DimsData();
+    for (auto it : src_iterable) {
+      *data = it;
+      ++data;
+    }
+  }
+
+  inline void BuildFrom(const std::initializer_list<int> init_list) {
+    BuildFrom<const std::initializer_list<int>>(init_list);
+  }
+
+  // Returns the total count of elements, that is the size when flattened into a
+  // vector.
+  inline int FlatSize() const {
+    int buffer_size = 1;
+    const int* dims_data = DimsData();
+    for (int i = 0; i < size_; i++) {
+      const int dim = dims_data[i];
+      TFLITE_DCHECK_GE(dim, 1);
+      buffer_size *= dim;
+    }
+    return buffer_size;
+  }
+
+ private:
+  int32 size_;
+  union {
+    int32 dims_[kMaxSmallSize];
+    int32* dims_pointer_;
+  };
+};
+
+// Converts inference-style shape to legacy tflite::Dims<4>.
+inline tflite::Dims<4> ToRuntimeDims(const tflite::RuntimeShape& array_shape) {
+  tflite::Dims<4> result;
+  const int dimensions_count = array_shape.DimensionsCount();
+  TFLITE_CHECK_LE(dimensions_count, 4);
+  int cum_prod = 1;
+  for (int i = 0; i < 4; i++) {
+    const int new_dim =
+        (i < dimensions_count) ? array_shape.Dims(dimensions_count - 1 - i) : 1;
+    result.sizes[i] = new_dim;
+    result.strides[i] = cum_prod;
+    cum_prod *= new_dim;
+  }
+  return result;
+}
 
 // Gets next index to iterate through a multidimensional array.
 inline bool NextIndex(const int num_dims, const int* dims, int* current) {
@@ -132,11 +251,11 @@ int MatchingArraySize(const ArrayType1& array1, int index1,
 
 template <int N>
 inline int FlatSize(const Dims<N>& dims) {
-  int max_offset = 0;
-  for (int i = 0; i < N; i++) {
-    max_offset += (dims.sizes[i] - 1) * dims.strides[i];
+  int flat_size = 1;
+  for (int i = 0; i < N; ++i) {
+    flat_size *= dims.sizes[i];
   }
-  return max_offset + 1;
+  return flat_size;
 }
 
 // Deprecated. Prefer FlatSize.
@@ -148,7 +267,7 @@ inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
 // arrays.
 template <int N>
 inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0) {
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
   return FlatSize(dims);
@@ -157,7 +276,7 @@ inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0) {
 template <int N>
 inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
                             const Dims<N>& check_dims_1) {
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
   return MatchingFlatSize(dims, check_dims_1);
@@ -167,7 +286,7 @@ template <int N>
 inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
                             const Dims<N>& check_dims_1,
                             const Dims<N>& check_dims_2) {
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
   return FlatSize(dims, check_dims_1, check_dims_2);
@@ -178,7 +297,7 @@ inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
                             const Dims<N>& check_dims_1,
                             const Dims<N>& check_dims_2,
                             const Dims<N>& check_dims_3) {
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
   return FlatSize(dims, check_dims_1, check_dims_2, check_dims_3);
@@ -191,7 +310,7 @@ template <int N>
 inline int FlatSizeSkipDim(const Dims<N>& dims, int skip_dim) {
   TFLITE_DCHECK(skip_dim >= 0 && skip_dim < N);
   int flat_size = 1;
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < N; ++i) {
     flat_size *= (i == skip_dim) ? 1 : dims.sizes[i];
   }
   return flat_size;
@@ -201,7 +320,7 @@ inline int FlatSizeSkipDim(const Dims<N>& dims, int skip_dim) {
 template <int N>
 inline int MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
                                    const Dims<N>& check_dims_0) {
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < N; ++i) {
     if (i != skip_dim) {
       TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
     }
@@ -213,7 +332,7 @@ template <int N>
 inline int MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
                                    const Dims<N>& check_dims_0,
                                    const Dims<N>& check_dims_1) {
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < N; ++i) {
     if (i != skip_dim) {
       TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
     }
@@ -226,7 +345,7 @@ inline int MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
                                    const Dims<N>& check_dims_0,
                                    const Dims<N>& check_dims_1,
                                    const Dims<N>& check_dims_2) {
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < N; ++i) {
     if (i != skip_dim) {
       TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
     }
@@ -240,7 +359,7 @@ inline int MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
                                    const Dims<N>& check_dims_1,
                                    const Dims<N>& check_dims_2,
                                    const Dims<N>& check_dims_3) {
-  for (int i = 0; i < N; i++) {
+  for (int i = 0; i < N; ++i) {
     if (i != skip_dim) {
       TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
     }
@@ -257,6 +376,14 @@ bool IsPackedWithoutStrides(const Dims<N>& dims) {
     expected_stride *= dims.sizes[d];
   }
   return true;
+}
+
+template <int N>
+void ComputeStrides(Dims<N>* dims) {
+  dims->strides[0] = 1;
+  for (int d = 1; d < N; d++) {
+    dims->strides[d] = dims->strides[d - 1] * dims->sizes[d - 1];
+  }
 }
 
 }  // namespace tflite

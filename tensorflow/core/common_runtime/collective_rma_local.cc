@@ -54,9 +54,13 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
                       hook->prod_value,  // src Tensor*
                       to_tensor,         // dst Tensor*
                       [hook, done](const Status& s) {
+                        // This callback may be executing in the GPUEventMgr
+                        // pool in which case it must be very short duration
+                        // and non-blocking (except e.g. for queue insertion).
+                        // It would be safer, though expensive, to transfer
+                        // to another thread here.
                         done(s);
-                        hook->prod_cb(s);
-                        delete hook;
+                        BufRendezvous::DoneWithHook(hook);
                       });
         }
       });
@@ -91,6 +95,21 @@ void CollectiveRemoteAccessLocal::MemCpyAsync(
       dst_attr.on_host() ? DEVICE_CPU : dst_dev->attributes().device_type());
   const bool non_cpu_src = src_device_type != DeviceType(DEVICE_CPU);
   const bool non_cpu_dst = dst_device_type != DeviceType(DEVICE_CPU);
+  // For GPU devices when only one compute stream is used (the default)
+  // the OpKernelContext does not supply a DeviceContext.  It's assumed
+  // that all nodes use the default context.
+  if (src_dev_ctx == nullptr && src_device_type == DEVICE_GPU) {
+    const DeviceBase::GpuDeviceInfo* dev_info =
+        src_dev->tensorflow_gpu_device_info();
+    CHECK(dev_info);
+    src_dev_ctx = dev_info->default_context;
+  }
+  if (dst_dev_ctx == nullptr && dst_device_type == DEVICE_GPU) {
+    const DeviceBase::GpuDeviceInfo* dev_info =
+        src_dev->tensorflow_gpu_device_info();
+    CHECK(dev_info);
+    dst_dev_ctx = dev_info->default_context;
+  }
   if (non_cpu_src) CHECK(src_dev_ctx);
   if (non_cpu_dst) CHECK(dst_dev_ctx);
   if (non_cpu_src || non_cpu_dst) {

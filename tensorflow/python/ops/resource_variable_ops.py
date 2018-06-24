@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -38,7 +40,7 @@ from tensorflow.python.ops import variables
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import compat
 
 
@@ -115,6 +117,18 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   return handle
 
 
+@contextlib.contextmanager
+def _handle_graph(handle):
+  # Note: might have an eager tensor but not be executing eagerly when building
+  # functions.
+  if (context.executing_eagerly() or isinstance(handle, ops.EagerTensor)
+      or ops.has_default_graph()):
+    yield
+  else:
+    with handle.graph.as_default():
+      yield
+
+
 class EagerResourceDeleter(object):
   """An object which cleans up a resource handle.
 
@@ -159,7 +173,8 @@ class EagerResourceDeleter(object):
 
 def shape_safe_assign_variable_handle(handle, shape, value, name=None):
   """Helper that checks shape compatibility and assigns variable."""
-  value_tensor = ops.convert_to_tensor(value)
+  with _handle_graph(handle):
+    value_tensor = ops.convert_to_tensor(value)
   shape.assert_is_compatible_with(value_tensor.shape)
   return gen_resource_variable_ops.assign_variable_op(handle,
                                                       value_tensor,
@@ -492,6 +507,9 @@ class ResourceVariable(variables.Variable):
           else:
             self._cached_value = None
         if not context.executing_eagerly():
+          # Eager variables are only added to collections if they are part of an
+          # eager variable store (otherwise in an interactive session they would
+          # hog memory and cause OOM). This is done in ops/variable_scope.py.
           ops.add_to_collections(collections, self)
         elif ops.GraphKeys.GLOBAL_STEP in collections:
           ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, self)
@@ -536,6 +554,7 @@ class ResourceVariable(variables.Variable):
                                  import_scope=import_scope))
     else:
       self._initial_value = None
+    self._trainable = getattr(variable_def, "trainable", True)
     if variable_def.snapshot_name:
       snapshot = g.as_graph_element(
           ops.prepend_name_scope(
@@ -560,6 +579,21 @@ class ResourceVariable(variables.Variable):
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._constraint = None
     self._cached_shape_as_list = None
+
+  @contextlib.contextmanager
+  def _assign_dependencies(self):
+    """Makes assignments depend on the cached value, if any.
+
+    This prevents undefined behavior with reads not ordered wrt writes.
+
+    Yields:
+      None.
+    """
+    if self._cached_value is not None:
+      with ops.control_dependencies([self._cached_value]):
+        yield
+    else:
+      yield
 
   def __nonzero__(self):
     return self.__bool__()
@@ -705,7 +739,7 @@ class ResourceVariable(variables.Variable):
     return self._save_slice_info
 
   def _read_variable_op(self):
-    if hasattr(self, "_trainable") and self._trainable:
+    if self.trainable:
       tape.watch_variable(self)
     return gen_resource_variable_ops.read_variable_op(self._handle,
                                                       self._dtype)
@@ -730,7 +764,7 @@ class ResourceVariable(variables.Variable):
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
-      if self._trainable:
+      if self.trainable:
         tape.watch_variable(self)
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
@@ -771,6 +805,7 @@ class ResourceVariable(variables.Variable):
         var_def.snapshot_name = ops.strip_name_scope(self._graph_element.name,
                                                      export_scope)
       var_def.is_resource = True
+      var_def.trainable = self.trainable
       if self._save_slice_info:
         var_def.save_slice_info_def.MergeFrom(
             self._save_slice_info.to_proto(export_scope=export_scope))
@@ -850,8 +885,10 @@ class ResourceVariable(variables.Variable):
     # TODO(apassos): this here and below is not atomic. Consider making it
     # atomic if there's a way to do so without a performance cost for those who
     # don't need it.
-    assign_sub_op = gen_resource_variable_ops.assign_sub_variable_op(
-        self.handle, ops.convert_to_tensor(delta, dtype=self.dtype), name=name)
+    with _handle_graph(self.handle), self._assign_dependencies():
+      assign_sub_op = gen_resource_variable_ops.assign_sub_variable_op(
+          self.handle, ops.convert_to_tensor(delta, dtype=self.dtype),
+          name=name)
     if read_value:
       return self._lazy_read(assign_sub_op)
     return assign_sub_op
@@ -872,14 +909,16 @@ class ResourceVariable(variables.Variable):
       it will return the `Operation` that does the assignment, and when in eager
       mode it will return `None`.
     """
-    assign_add_op = gen_resource_variable_ops.assign_add_variable_op(
-        self.handle, ops.convert_to_tensor(delta, dtype=self.dtype), name=name)
+    with _handle_graph(self.handle), self._assign_dependencies():
+      assign_add_op = gen_resource_variable_ops.assign_add_variable_op(
+          self.handle, ops.convert_to_tensor(delta, dtype=self.dtype),
+          name=name)
     if read_value:
       return self._lazy_read(assign_add_op)
     return assign_add_op
 
   def _lazy_read(self, op):
-    if hasattr(self, "_trainable") and self._trainable:
+    if self.trainable:
       tape.watch_variable(self)
     return _UnreadVariable(
         self._handle, self.dtype, self._shape, self._in_graph_mode,
@@ -902,30 +941,34 @@ class ResourceVariable(variables.Variable):
       it will return the `Operation` that does the assignment, and when in eager
       mode it will return `None`.
     """
-    value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
-    self._shape.assert_is_compatible_with(value_tensor.shape)
-    assign_op = gen_resource_variable_ops.assign_variable_op(
-        self.handle, value_tensor, name=name)
-    if read_value:
-      return self._lazy_read(assign_op)
+    # Note: not depending on the cached value here since this can used to
+    # initialize the variable.
+    with _handle_graph(self.handle):
+      value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
+      self._shape.assert_is_compatible_with(value_tensor.shape)
+      assign_op = gen_resource_variable_ops.assign_variable_op(
+          self.handle, value_tensor, name=name)
+      if read_value:
+        return self._lazy_read(assign_op)
     return assign_op
 
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
-    return self._lazy_read(
-        gen_array_ops.resource_strided_slice_assign(
-            ref=self.handle,
-            begin=begin,
-            end=end,
-            strides=strides,
-            value=value,
-            name=name,
-            begin_mask=begin_mask,
-            end_mask=end_mask,
-            ellipsis_mask=ellipsis_mask,
-            new_axis_mask=new_axis_mask,
-            shrink_axis_mask=shrink_axis_mask))
+    with _handle_graph(self.handle), self._assign_dependencies():
+      return self._lazy_read(
+          gen_array_ops.resource_strided_slice_assign(
+              ref=self.handle,
+              begin=begin,
+              end=end,
+              strides=strides,
+              value=ops.convert_to_tensor(value, dtype=self.dtype),
+              name=name,
+              begin_mask=begin_mask,
+              end_mask=end_mask,
+              ellipsis_mask=ellipsis_mask,
+              new_axis_mask=new_axis_mask,
+              shrink_axis_mask=shrink_axis_mask))
 
   def __int__(self):
     if self.dtype != dtypes.int32 and self.dtype != dtypes.int64:

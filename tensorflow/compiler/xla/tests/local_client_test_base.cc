@@ -35,9 +35,9 @@ namespace xla {
 
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
-StatusOr<se::DeviceMemoryBase> TestAllocator::Allocate(int device_ordinal,
-                                                       uint64 size,
-                                                       bool retry_on_failure) {
+StatusOr<OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
+                                                     uint64 size,
+                                                     bool retry_on_failure) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
     tensorflow::mutex_lock lock(count_mutex_);
@@ -48,8 +48,7 @@ StatusOr<se::DeviceMemoryBase> TestAllocator::Allocate(int device_ordinal,
                                                  retry_on_failure);
 }
 
-tensorflow::Status TestAllocator::Deallocate(int device_ordinal,
-                                             se::DeviceMemoryBase* mem) {
+Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
   VLOG(2) << "Deallocate(" << device_ordinal << ")";
   {
     tensorflow::mutex_lock lock(count_mutex_);

@@ -90,7 +90,7 @@ class Exponential(gamma.Gamma):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = dict(locals())
     # Even though all statistics of are defined for valid inputs, this is not
     # true in the parent class "Gamma."  Therefore, passing
     # allow_nan_stats=True
@@ -143,7 +143,7 @@ class ExponentialWithSoftplusRate(Exponential):
                validate_args=False,
                allow_nan_stats=True,
                name="ExponentialWithSoftplusRate"):
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[rate]) as name:
       super(ExponentialWithSoftplusRate, self).__init__(
           rate=nn.softplus(rate, name="softplus_rate"),

@@ -49,9 +49,6 @@ string HloSharding::ToString() const {
     return StrCat("{", tensorflow::str_util::Join(parts, ", "), "}");
   }
 
-  string result = StrCat("{", (replicated_ ? " replicated" : ""),
-                         (maximal_ ? " maximal" : ""));
-
   if (replicated_) {
     return "{replicated}";
   } else if (maximal_) {
@@ -124,6 +121,38 @@ std::vector<int64> HloSharding::TileLimitForDevice(int64 device) const {
     index[i] = (index[i] + 1) * tile_shape_.dimensions(i);
   }
   return index;
+}
+
+StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
+    const Shape& shape) const {
+  if (IsTuple()) {
+    ShapeTree<HloSharding> result(shape, HloSharding::Replicate());
+    int64 num_leaves = result.leaf_count();
+    TF_RET_CHECK(num_leaves == tuple_elements_.size())
+        << "Shape " << ShapeUtil::HumanString(shape) << " has " << num_leaves
+        << " leaf nodes while this sharding has " << tuple_elements_.size();
+    auto it = tuple_elements_.begin();
+    for (auto& index_to_sharding : result.leaves()) {
+      index_to_sharding.second = *it++;
+    }
+    return std::move(result);
+  } else {
+    return ShapeTree<HloSharding>(shape, *this);
+  }
+}
+
+StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
+  if (IsTuple()) {
+    // TODO(b/109903108): An empty tuple has one leaf for ShapeTree, while it
+    // has zero leaves for ShapeUtil. This needs cleanup.
+    int64 shape_leaves =
+        ShapeUtil::IsEmptyTuple(shape) ? 1 : ShapeUtil::GetLeafCount(shape);
+    TF_RET_CHECK(shape_leaves == tuple_elements_.size())
+        << "Shape " << ShapeUtil::HumanString(shape) << " has " << shape_leaves
+        << " leaf nodes while this sharding has " << tuple_elements_.size();
+    return *this;
+  }
+  return Tuple(ShapeTree<HloSharding>(shape, *this));
 }
 
 StatusOr<int64> HloSharding::UniqueDevice() const {
@@ -370,11 +399,21 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
   Shape sub_shape = ShapeUtil::GetSubshape(shape, index);
   ShapeTree<HloSharding> sub_shape_tree(sub_shape, Replicate());
   sub_shape_tree.CopySubtreeFrom(GetAsShapeTree(shape), index, {});
-  if (ShapeUtil::IsTuple(sub_shape)) {
-    return Tuple(sub_shape_tree);
-  } else {
-    return sub_shape_tree.element({});
+  return ShapeUtil::IsTuple(sub_shape) ? Tuple(sub_shape_tree)
+                                       : sub_shape_tree.element(ShapeIndex({}));
+}
+
+tensorflow::gtl::optional<HloSharding> HloSharding::ExtractSingleSharding()
+    const {
+  if (!IsTuple()) {
+    return *this;
   }
+  for (int64 i = 1; i < tuple_elements_.size(); ++i) {
+    if (tuple_elements_[0] != tuple_elements_[i]) {
+      return tensorflow::gtl::optional<HloSharding>();
+    }
+  }
+  return tuple_elements_.front();
 }
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {

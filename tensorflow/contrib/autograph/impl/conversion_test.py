@@ -24,7 +24,7 @@ from tensorflow.contrib.autograph import utils
 from tensorflow.contrib.autograph.impl import api
 from tensorflow.contrib.autograph.impl import conversion
 from tensorflow.python.framework import constant_op
-from tensorflow.python.keras._impl.keras.engine import training
+from tensorflow.python.keras.engine import training
 from tensorflow.python.platform import test
 
 

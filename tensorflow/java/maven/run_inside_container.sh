@@ -31,7 +31,7 @@ if [[ "${TF_VERSION}" == *"-SNAPSHOT" ]]; then
   # Bintray does not allow snapshots.
   DEPLOY_BINTRAY="false"
 fi
-PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.3.0/protoc-3.3.0-linux-x86_64.zip"
+PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.5.1/protoc-3.5.1-linux-x86_64.zip"
 if [[ "${DEPLOY_BINTRAY}" != "true" && "${DEPLOY_OSSRH}" != "true" ]]; then
   echo "Must deploy to at least one of Bintray or OSSRH" >&2
   exit 2

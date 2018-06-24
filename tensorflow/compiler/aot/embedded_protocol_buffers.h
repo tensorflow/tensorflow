@@ -71,7 +71,7 @@ struct ProtobufToEmbed {
   const ::tensorflow::protobuf::MessageLite* message;
 };
 
-// Embeds a a sequence of protocol buffers into an object file.
+// Embeds a sequence of protocol buffers into an object file.
 //
 // `target_triple` is the target triple for the target architecture for the
 // generated object file.

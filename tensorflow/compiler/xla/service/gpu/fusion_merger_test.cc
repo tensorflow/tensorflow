@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace xla {
 namespace gpu {
@@ -40,7 +40,7 @@ class FusionMergerTest : public HloTestBase {};
 //                   Tuple
 //
 TEST_F(FusionMergerTest, MergeSharedFusionInstruction) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
 HloModule MergeSharedFusionInstruction
 
 comp.3 {
@@ -104,7 +104,7 @@ ENTRY MergeSharedFusionInstruction.Computation0 {
 //
 // Fusion2 is not merged because it exceeds the threshold flops-to-bytes ratio.
 TEST_F(FusionMergerTest, FlopsToBytesRatioThresholdExceeded) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
 HloModule FlopsToBytesRatioThresholdExceeded
 
 comp.2 {
@@ -162,7 +162,7 @@ ENTRY FlopsToBytesRatioThresholdExceeded.Computation1 {
 // is merged into Fusion0 and Fusion1) would exceed the bytes transferred
 // threshold.
 TEST_F(FusionMergerTest, BytesTransferredThresholdExeceeded) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
 HloModule BytesTransferredThresholdExeceeded
 
 comp.2 {
@@ -210,7 +210,7 @@ ENTRY BytesTransferredThresholdExeceeded.Computation2 {
 // Fusion2 is reduced for this test which makes the merge operation into its
 // operand below the bytes transferred threshold.
 TEST_F(FusionMergerTest, BytesTransferredThresholdNotExeceeded) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
 HloModule BytesTransferredThresholdNotExeceeded
 
 comp.2 {
@@ -253,7 +253,7 @@ ENTRY BytesTransferredThresholdNotExeceeded.Computation2 {
 // Check that we're willing to merge f1_computation into f2_computation, even
 // though f2 is an input fusion node.
 TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule m
 
     f1_computation {

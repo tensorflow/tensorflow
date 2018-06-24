@@ -37,8 +37,8 @@ namespace xla {
 // This should be readable by xla::TextLiteralReader.
 class TextLiteralWriter {
  public:
-  static tensorflow::Status WriteToPath(const Literal& literal,
-                                        tensorflow::StringPiece path);
+  static Status WriteToPath(const Literal& literal,
+                            tensorflow::StringPiece path);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TextLiteralWriter);

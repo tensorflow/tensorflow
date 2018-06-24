@@ -89,9 +89,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 3);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Check all the parameters of tensor match within themselves and match the
@@ -101,16 +101,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     input_size *= input->dims->data[i];
   }
 
+  TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
   const int batch_size = input_size / filter->dims->data[1];
   const int num_units = filter->dims->data[0];
 
-  TF_LITE_ASSERT_EQ(input_size, batch_size * filter->dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, input_size, batch_size * filter->dims->data[1]);
   if (bias) {
-    TF_LITE_ASSERT_EQ(bias->dims->data[0], num_units);
+    TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
   }
-
-  TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(bias), 1);
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
@@ -119,6 +117,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
+    TF_LITE_ENSURE(context, real_multiplier < 1.0);
     QuantizeMultiplierSmallerThanOne(real_multiplier, &data->output_multiplier,
                                      &data->output_shift);
     CalculateActivationRangeUint8(params->activation, output,
@@ -158,8 +157,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
                      TfLiteFullyConnectedParams* params, OpData* data,
-                     TfLiteTensor* input, TfLiteTensor* filter,
-                     TfLiteTensor* bias, TfLiteTensor* output) {
+                     const TfLiteTensor* input, const TfLiteTensor* filter,
+                     const TfLiteTensor* bias, TfLiteTensor* output) {
   int total_input_size = 1;
   for (int i = 0; i < input->dims->size; i++) {
     total_input_size *= input->dims->data[i];
@@ -191,8 +190,10 @@ TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
                               TfLiteFullyConnectedParams* params, OpData* data,
-                              TfLiteTensor* input, TfLiteTensor* filter,
-                              TfLiteTensor* bias, TfLiteTensor* input_quantized,
+                              const TfLiteTensor* input,
+                              const TfLiteTensor* filter,
+                              const TfLiteTensor* bias,
+                              TfLiteTensor* input_quantized,
                               TfLiteTensor* output) {
   // Check the types for this hybrid Op.
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
@@ -217,11 +218,8 @@ TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
     tensor_utils::ZeroVector(output->data.f, batch_size * num_units);
   }
 
-  // TODO(mirkov): change std::minmax_element with a vectorized call.
-  auto minmax_element =
-      std::minmax_element(input->data.f, input->data.f + total_input_size);
   // Save matrix multiplication computation for all zero input.
-  if (*minmax_element.first == 0.0 && *minmax_element.second == 0.0) {
+  if (tensor_utils::IsZeroVector(input->data.f, total_input_size)) {
     tensor_utils::ApplyActivationToVector(output->data.f,
                                           batch_size * num_units,
                                           params->activation, output->data.f);
@@ -271,8 +269,9 @@ TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            TfLiteFullyConnectedParams* params, OpData* data,
-                           TfLiteTensor* input, TfLiteTensor* filter,
-                           TfLiteTensor* bias, TfLiteTensor* output) {
+                           const TfLiteTensor* input,
+                           const TfLiteTensor* filter, const TfLiteTensor* bias,
+                           TfLiteTensor* output) {
   gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
 
   int32_t input_offset = -input->params.zero_point;
@@ -311,8 +310,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
                        TfLiteFullyConnectedParams* params, OpData* data,
-                       TfLiteTensor* input, TfLiteTensor* filter,
-                       TfLiteTensor* bias, TfLiteTensor* output) {
+                       const TfLiteTensor* input, const TfLiteTensor* filter,
+                       const TfLiteTensor* bias, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRangeFloat(params->activation, &output_activation_min,
                                 &output_activation_max);
@@ -342,9 +341,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (filter->type) {  // Already know in/out types are same.
@@ -355,7 +354,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalQuantized<kernel_type>(context, node, params, data, input,
                                         filter, bias, output);
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           filter->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

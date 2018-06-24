@@ -18,7 +18,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service/interpreter:platform_id",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
@@ -117,6 +116,5 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_headers_lib",
-        "//tensorflow/core:stream_executor_no_cuda",
     ],
 )

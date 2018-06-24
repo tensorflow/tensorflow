@@ -53,10 +53,10 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
 from tensorflow.python.training import saveable_object
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
@@ -569,6 +569,76 @@ class BaseSaverBuilder(object):
       # pylint: enable=protected-access
     return names_to_saveables
 
+  @staticmethod
+  def SaveableObjectsForOp(op, name):
+    """Create `SaveableObject`s from an operation.
+
+    Args:
+      op: A variable, operation, or SaveableObject to coerce into a
+        SaveableObject.
+      name: A string name for the SaveableObject.
+
+    Yields:
+      `SaveableObject`s which together save/restore `op`.
+
+    Raises:
+      TypeError: If `name` is not a string.
+      ValueError: For operations with no known conversion to SaveableObject.
+    """
+    if not isinstance(name, six.string_types):
+      raise TypeError(
+          "names_to_saveables must be a dict mapping string names to "
+          "checkpointable operations. Name is not a string: %s" % name)
+    if isinstance(op, BaseSaverBuilder.SaveableObject):
+      yield op
+    elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
+      if isinstance(op, variables.PartitionedVariable):
+        op = list(op)
+      # A set of slices.
+      slice_name = None
+      # pylint: disable=protected-access
+      for variable in op:
+        if not isinstance(variable, variables.Variable):
+          raise ValueError("Slices must all be Variables: %s" % variable)
+        if not variable._save_slice_info:
+          raise ValueError("Slices must all be slices: %s" % variable)
+        if slice_name is None:
+          slice_name = variable._save_slice_info.full_name
+        elif slice_name != variable._save_slice_info.full_name:
+          raise ValueError(
+              "Slices must all be from the same tensor: %s != %s" %
+              (slice_name, variable._save_slice_info.full_name))
+        if variable.op.type in ["Variable", "VariableV2",
+                                "AutoReloadVariable"]:
+          yield BaseSaverBuilder.VariableSaveable(
+              variable, variable._save_slice_info.spec, name)
+        else:
+          yield BaseSaverBuilder.ResourceVariableSaveable(
+              variable, variable._save_slice_info.spec, name)
+      # pylint: enable=protected-access
+    else:
+      # A variable or tensor.
+      if context.executing_eagerly():
+        if not isinstance(op, resource_variable_ops.ResourceVariable):
+          raise ValueError("Can only save/restore ResourceVariable eager "
+                           "mode is enabled, type: %s." % type(op))
+        yield BaseSaverBuilder.ResourceVariableSaveable(op, "", name)
+      else:
+        if isinstance(op, resource_variable_ops.ResourceVariable):
+          variable = op._graph_element  # pylint: disable=protected-access
+        else:
+          variable = ops.internal_convert_to_tensor(op, as_ref=True)
+        if not BaseSaverBuilder._IsVariable(variable):
+          raise TypeError("names_to_saveables must be a dict mapping string "
+                          "names to Tensors/Variables. Not a variable: %s" %
+                          variable)
+        if variable.op.type in ["Variable", "VariableV2",
+                                "AutoReloadVariable"]:
+          yield BaseSaverBuilder.VariableSaveable(variable, "", name)
+        else:
+          yield BaseSaverBuilder.ResourceVariableSaveable(
+              variable, "", name)
+
   def _ValidateAndSliceInputs(self, names_to_saveables):
     """Returns the variables and names that will be used for a Saver.
 
@@ -590,63 +660,11 @@ class BaseSaverBuilder(object):
 
     saveables = []
     seen_ops = set()
-    for name in sorted(names_to_saveables.keys()):
-      if not isinstance(name, six.string_types):
-        raise TypeError(
-            "names_to_saveables must be a dict mapping string names to "
-            "checkpointable operations. Name is not a string: %s" % name)
-      op = names_to_saveables[name]
-      if isinstance(op, BaseSaverBuilder.SaveableObject):
-        self._AddSaveable(saveables, seen_ops, op)
-      elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
-        if isinstance(op, variables.PartitionedVariable):
-          op = list(op)
-        # A set of slices.
-        slice_name = None
-        # pylint: disable=protected-access
-        for variable in op:
-          if not isinstance(variable, variables.Variable):
-            raise ValueError("Slices must all be Variables: %s" % variable)
-          if not variable._save_slice_info:
-            raise ValueError("Slices must all be slices: %s" % variable)
-          if slice_name is None:
-            slice_name = variable._save_slice_info.full_name
-          elif slice_name != variable._save_slice_info.full_name:
-            raise ValueError(
-                "Slices must all be from the same tensor: %s != %s" %
-                (slice_name, variable._save_slice_info.full_name))
-          if variable.op.type in ["Variable", "VariableV2",
-                                  "AutoReloadVariable"]:
-            saveable = BaseSaverBuilder.VariableSaveable(
-                variable, variable._save_slice_info.spec, name)
-          else:
-            saveable = BaseSaverBuilder.ResourceVariableSaveable(
-                variable, variable._save_slice_info.spec, name)
-          self._AddSaveable(saveables, seen_ops, saveable)
-        # pylint: enable=protected-access
-      else:
-        # A variable or tensor.
-        if context.executing_eagerly():
-          if not isinstance(op, resource_variable_ops.ResourceVariable):
-            raise ValueError("Can only save/restore ResourceVariable eager "
-                             "mode is enabled, type: %s." % type(op))
-          saveable = BaseSaverBuilder.ResourceVariableSaveable(op, "", name)
-        else:
-          if isinstance(op, resource_variable_ops.ResourceVariable):
-            variable = op._graph_element  # pylint: disable=protected-access
-          else:
-            variable = ops.internal_convert_to_tensor(op, as_ref=True)
-          if not BaseSaverBuilder._IsVariable(variable):
-            raise TypeError("names_to_saveables must be a dict mapping string "
-                            "names to Tensors/Variables. Not a variable: %s" %
-                            variable)
-          if variable.op.type in ["Variable", "VariableV2",
-                                  "AutoReloadVariable"]:
-            saveable = BaseSaverBuilder.VariableSaveable(variable, "", name)
-          else:
-            saveable = BaseSaverBuilder.ResourceVariableSaveable(
-                variable, "", name)
-        self._AddSaveable(saveables, seen_ops, saveable)
+    for name, op in sorted(names_to_saveables.items(),
+                           # Avoid comparing ops, sort only by name.
+                           key=lambda x: x[0]):
+      for converted_saveable_object in self.SaveableObjectsForOp(op, name):
+        self._AddSaveable(saveables, seen_ops, converted_saveable_object)
     return saveables
 
   def _AddSaveable(self, saveables, seen_ops, saveable):
@@ -1736,13 +1754,17 @@ class Saver(object):
       exception_type, exception_value, exception_traceback = sys.exc_info()
       # The checkpoint would not be loaded successfully as is. Try to parse it
       # as an object-based checkpoint.
+      should_reraise = False
       try:
         reader = pywrap_tensorflow.NewCheckpointReader(save_path)
         object_graph_string = reader.get_tensor(
             checkpointable.OBJECT_GRAPH_PROTO_KEY)
       except errors.NotFoundError:
         # This is not an object-based checkpoint, or the checkpoint doesn't
-        # exist. Re-raise the original exception.
+        # exist. Re-raise the original exception, but do it outside the except
+        # block so the object graph lookup isn't included in the stack trace.
+        should_reraise = True
+      if should_reraise:
         six.reraise(exception_type, exception_value, exception_traceback)
       del exception_traceback  # avoid reference cycles
 
@@ -1948,7 +1970,7 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
 
     return Saver(saver_def=meta_graph_def.saver_def, name=scope)
   else:
-    if variables._all_saveable_objects():  # pylint: disable=protected-access
+    if variables._all_saveable_objects(scope=import_scope):  # pylint: disable=protected-access
       # Return the default saver instance for all graph variables.
       return Saver()
     else:

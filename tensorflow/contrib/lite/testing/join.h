@@ -22,7 +22,7 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
-// Join a list of data separated by delimieter.
+// Join a list of data separated by delimiter.
 template <typename T>
 string Join(T* data, size_t len, const string& delimiter) {
   if (len == 0 || data == nullptr) {
@@ -32,6 +32,22 @@ string Join(T* data, size_t len, const string& delimiter) {
   result << data[0];
   for (int i = 1; i < len; i++) {
     result << delimiter << data[i];
+  }
+  return result.str();
+}
+
+// Join a list of uint8 data separated by a delimiter. Cast data to int before
+// placing it in the string to prevent values from being treated like chars.
+template <>
+inline string Join<uint8_t>(uint8_t* data, size_t len,
+                            const string& delimiter) {
+  if (len == 0 || data == nullptr) {
+    return "";
+  }
+  std::stringstream result;
+  result << static_cast<int>(data[0]);
+  for (int i = 1; i < len; i++) {
+    result << delimiter << static_cast<int>(data[i]);
   }
   return result.str();
 }

@@ -1,0 +1,30 @@
+op {
+  graph_op_name: "RegexFullMatch"
+  in_arg {
+    name: "input"
+    description: <<END
+A string tensor of the text to be processed.
+END
+  }
+  in_arg {
+    name: "pattern"
+    description: <<END
+A 1-D string tensor of the regular expression to match the input.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A bool tensor with the same shape as `input`.
+END
+  }
+  summary: "Check if the input matches the regex pattern."
+  description: <<END
+The input is a string tensor of any shape. The pattern is a scalar
+string tensor which is applied to every element of the input tensor.
+The boolean values (True or False) of the output tensor indicate
+if the input matches the regex pattern provided.
+
+The pattern follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
+END
+}

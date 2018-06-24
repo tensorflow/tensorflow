@@ -24,7 +24,6 @@ import collections
 import six
 
 from tensorflow.python.estimator import model_fn
-from tensorflow.python.estimator import util
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export_output
@@ -46,6 +45,7 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training_util
+from tensorflow.python.util import function_utils
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
@@ -461,7 +461,7 @@ def _validate_loss_fn_args(loss_fn):
   Raises:
     ValueError: If the signature is unexpected.
   """
-  loss_fn_args = util.fn_args(loss_fn)
+  loss_fn_args = function_utils.fn_args(loss_fn)
   for required_arg in ['labels', 'logits']:
     if required_arg not in loss_fn_args:
       raise ValueError(
@@ -484,7 +484,7 @@ def _call_loss_fn(loss_fn, labels, logits, features, expected_loss_dim=1):
   Returns:
     Loss Tensor with shape [D0, D1, ... DN, expected_loss_dim].
   """
-  loss_fn_args = util.fn_args(loss_fn)
+  loss_fn_args = function_utils.fn_args(loss_fn)
   kwargs = {}
   if 'features' in loss_fn_args:
     kwargs['features'] = features
@@ -873,6 +873,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -1244,6 +1245,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -1506,6 +1508,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -1533,6 +1536,14 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         train_op=train_op)
 
 
+def _append_update_ops(train_op):
+  """Returns `train_op` appending `UPDATE_OPS` collection if present."""
+  update_ops = ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+  if update_ops:
+    return control_flow_ops.group(train_op, *update_ops)
+  return train_op
+
+
 def _assert_range(labels, n_classes, message=None):
   with ops.name_scope(None, 'assert_range', (labels,)):
     assert_less = check_ops.assert_less_equal(
@@ -1543,26 +1554,6 @@ def _assert_range(labels, n_classes, message=None):
         labels, message=message or 'Labels must >= 0')
     with ops.control_dependencies((assert_less, assert_greater)):
       return array_ops.identity(labels)
-
-
-# TODO(b/69000400): Delete this method.
-def _weights(features, weight_column):
-  """Fetches weights from features."""
-  with ops.name_scope(None, 'weights', values=features.values()):
-    if weight_column is None:
-      return 1.
-    if isinstance(weight_column, six.string_types):
-      weight_column = feature_column_lib.numeric_column(
-          key=weight_column, shape=(1,))
-    if not isinstance(weight_column, feature_column_lib._NumericColumn):  # pylint: disable=protected-access
-      raise TypeError('Weight column must be either a string or _NumericColumn.'
-                      ' Given type: {}.'.format(type(weight_column)))
-    weights = weight_column._get_dense_tensor(  # pylint: disable=protected-access
-        feature_column_lib._LazyBuilder(features))  # pylint: disable=protected-access
-    if not (weights.dtype.is_floating or weights.dtype.is_integer):
-      raise ValueError('Weight column should be castable to float. '
-                       'Given dtype: {}'.format(weights.dtype))
-    return math_ops.to_float(weights, name='weights')
 
 
 def _binary_logistic_or_multi_class_head(

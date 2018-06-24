@@ -177,6 +177,9 @@ class StreamExecutor {
   //
   // Resets the internal contents of mem to be null-representative, but this
   // null-out effect should not be relied upon in client code.
+  //
+  // TODO(jlebar): Change this to accept a DeviceMemoryBase by value, see
+  // discussion in cl/195744342.
   void Deallocate(DeviceMemoryBase *mem);
 
   // Retrieves a mapping of active opaque device memory pointer to a string
@@ -186,6 +189,16 @@ class StreamExecutor {
   // Note: this will only be populated if --check_device_leaks flag is
   // activated.
   void GetMemAllocs(std::map<void *, AllocRecord> *records_out);
+
+  // Allocates unified memory space of the given size, if supported.
+  // See
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
+  // for more details on unified memory.
+  void *UnifiedMemoryAllocate(uint64 bytes);
+
+  // Deallocates unified memory space previously allocated with
+  // UnifiedMemoryAllocate.
+  void UnifiedMemoryDeallocate(void *location);
 
   // Allocates a region of host memory and registers it with the platform API.
   // Memory allocated in this manner (or allocated and registered with

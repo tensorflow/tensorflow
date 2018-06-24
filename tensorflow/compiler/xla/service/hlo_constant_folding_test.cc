@@ -149,7 +149,7 @@ TEST_F(HloConstantFoldingTest, Slice) {
   const int64 slice_limits[] = {10, 8, 6, 5, 9};
   const int64 slice_strides[] = {1, 1, 1, 1, 1};
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
-                          LiteralTestUtil::CreateRandomLiteral<F32>(
+                          Literal::CreateRandomLiteral<F32>(
                               ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
@@ -172,7 +172,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   HloComputation::Builder builder(TestName());
   const int64 dimensions[] = {11, 8, 7, 5, 9};
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
-                          LiteralTestUtil::CreateRandomLiteral<F32>(
+                          Literal::CreateRandomLiteral<F32>(
                               ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
   auto literal_clone = literal->Literal::CloneToUnique();
   HloInstruction* literal_instruction = builder.AddInstruction(

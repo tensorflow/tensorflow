@@ -32,7 +32,6 @@ import six
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.client import device_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import device as framework_device
 from tensorflow.python.framework import ops as ops_lib
@@ -48,6 +47,7 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import device_setter as device_setter_lib
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import function_utils
 
 
 @deprecation.deprecated(
@@ -521,7 +521,7 @@ def _get_loss_towers(model_fn,
   """Replicate the loss computation across devices."""
   tower_specs = []
 
-  model_fn_args = util.fn_args(model_fn)
+  model_fn_args = function_utils.fn_args(model_fn)
   optional_params = {}
   if 'params' in model_fn_args:
     optional_params['params'] = copy.deepcopy(params)

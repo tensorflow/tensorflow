@@ -34,7 +34,7 @@ filegroup(
         "@org_tensorflow//tensorflow:windows": [
             "@mkl_windows//:LICENSE",
         ],
-        "//conditions:default": []
+        "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
 )
@@ -55,6 +55,6 @@ cc_library(
             "@mkl_windows//:mkl_headers",
             "@mkl_windows//:mkl_libs_windows",
         ],
-        "//conditions:default": []
+        "//conditions:default": [],
     }),
 )

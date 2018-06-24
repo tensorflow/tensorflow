@@ -24,8 +24,25 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
+int64 GetMinimumAlignmentForArray(
+    const Shape& shape, const TargetMachineFeatures& target_machine_features) {
+  CHECK(ShapeUtil::IsArray(shape));
+  CHECK(!LayoutUtil::HasLayout(shape) || LayoutUtil::IsDense(shape.layout()));
+
+  // We don't require a layout to be set on `shape`.  This only works on CPU
+  // because we don't pad our tensors or otherwise have complicated data tiling
+  // schemes.
+
+  int64 allocation_size_bytes =
+      ShapeUtil::ElementsIn(shape) *
+      ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
+  return target_machine_features.minimum_alignment_for_allocation(
+      allocation_size_bytes);
+}
+
 bool PotentiallyImplementedAsEigenConvolution(
-    const HloInstruction& convolution) {
+    const HloInstruction& convolution,
+    const TargetMachineFeatures& target_machine_features) {
   // The following conditions are necessary (but not sufficient) for
   // implementing `convolution` with Eigen convolution:
   // - the input and kernel have a non-zero number of elements.
@@ -35,6 +52,18 @@ bool PotentiallyImplementedAsEigenConvolution(
   // To be sufficient, certain layout constraints need to be satisfied as well.
   const Shape& input_shape = convolution.operand(0)->shape();
   const Shape& kernel_shape = convolution.operand(1)->shape();
+  const Shape& output_shape = convolution.shape();
+
+  auto is_aligned = [&](const Shape& shape) {
+    return GetMinimumAlignmentForArray(shape, target_machine_features) >=
+           TargetMachineFeatures::kEigenExpectedTensorAlignment;
+  };
+
+  if (!is_aligned(input_shape) || !is_aligned(kernel_shape) ||
+      !is_aligned(output_shape)) {
+    return false;
+  }
+
   if (ShapeUtil::HasZeroElements(input_shape) ||
       ShapeUtil::HasZeroElements(kernel_shape)) {
     return false;
@@ -71,7 +100,6 @@ bool PotentiallyImplementedAsEigenConvolution(
     }
   }
 
-  const Shape& output_shape = convolution.shape();
   return dnums.input_batch_dimension() == 0 &&
          dnums.input_feature_dimension() == input_shape.dimensions_size() - 1 &&
          dnums.output_batch_dimension() == 0 &&

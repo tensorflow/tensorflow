@@ -21,13 +21,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -169,9 +167,9 @@ TEST_F(ConstantsTest, DISABLED_TupleConstant) {
       ExecuteAndTransfer(&builder, {}).ConsumeValueOrDie();
 
   LiteralTestUtil::ExpectR2Near<float>(
-      {{1.0}, {2.0}}, LiteralView::Create(*result, {0}), error_spec_);
+      {{1.0}, {2.0}}, LiteralSlice(*result, {0}), error_spec_);
   LiteralTestUtil::ExpectR1Near<float>(
-      {2.0, 42.0}, LiteralView::Create(*result, {1}), error_spec_);
+      {2.0, 42.0}, LiteralSlice(*result, {1}), error_spec_);
 }
 
 }  // namespace

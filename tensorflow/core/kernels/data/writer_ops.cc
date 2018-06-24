@@ -70,9 +70,13 @@ class ToTFRecordOp : public AsyncOpKernel {
       DatasetBase* dataset;
       OP_REQUIRES_OK_ASYNC(
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
-      auto iterator = dataset->MakeIterator("ToTFRecordOpIterator");
-
       IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
+      std::unique_ptr<IteratorBase> iterator;
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          dataset->MakeIterator(&iter_ctx, "ToTFRecordOpIterator", &iterator),
+          done);
+
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;

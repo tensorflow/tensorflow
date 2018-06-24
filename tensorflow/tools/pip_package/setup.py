@@ -12,6 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""TensorFlow is an open source machine learning framework for everyone.
+
+TensorFlow is an open source software library for high performance numerical
+computation. Its flexible architecture allows easy deployment of computation
+across a variety of platforms (CPUs, GPUs, TPUs), and from desktops to clusters
+of servers to mobile and edge devices.
+
+Originally developed by researchers and engineers from the Google Brain team
+within Google's AI organization, it comes with strong support for machine
+learning and deep learning and the flexible numerical computation core is used
+across many other scientific domains.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,10 +40,12 @@ from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
+DOCLINES = __doc__.split('\n')
+
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.8.0'
+_VERSION = '1.9.0-rc0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
@@ -40,6 +54,7 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.4.0',
+    'setuptools <= 39.1.0',
     'tensorboard >= 1.8.0, < 1.9.0',
     'termcolor >= 1.1.0',
 ]
@@ -81,7 +96,8 @@ if sys.version_info < (3, 4):
 CONSOLE_SCRIPTS = [
     'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
     'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
-    'toco = tensorflow.contrib.lite.toco.python.toco_wrapper:main',
+    'tflite_convert = tensorflow.contrib.lite.python.tflite_convert:main',
+    'toco = tensorflow.contrib.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the
@@ -214,9 +230,10 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
 setup(
     name=project_name,
     version=_VERSION.replace('-', ''),
-    description='TensorFlow helps the tensors flow',
-    long_description='',
+    description=DOCLINES[0],
+    long_description='\n'.join(DOCLINES[2:]),
     url='https://www.tensorflow.org/',
+    download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
     author_email='opensource@google.com',
     # Contained modules and scripts.
@@ -242,7 +259,7 @@ setup(
     },
     # PyPI package information.
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
@@ -261,4 +278,5 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     license='Apache 2.0',
-    keywords='tensorflow tensor machine learning',)
+    keywords='tensorflow tensor machine learning',
+)

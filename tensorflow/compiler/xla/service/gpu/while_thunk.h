@@ -45,7 +45,8 @@ class WhileThunk : public Thunk {
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;
 
-  Status Initialize(const GpuExecutable& executable) override;
+  Status Initialize(const GpuExecutable& executable,
+                    se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
                          se::Stream* stream) override;
 

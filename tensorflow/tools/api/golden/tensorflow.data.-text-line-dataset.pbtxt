@@ -25,7 +25,7 @@ tf_class {
   }
   member_method {
     name: "batch"
-    argspec: "args=[\'self\', \'batch_size\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "cache"
@@ -45,7 +45,7 @@ tf_class {
   }
   member_method {
     name: "from_generator"
-    argspec: "args=[\'generator\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "from_sparse_tensor_slices"
@@ -81,7 +81,7 @@ tf_class {
   }
   member_method {
     name: "padded_batch"
-    argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "prefetch"
