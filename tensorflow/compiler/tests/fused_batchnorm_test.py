@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.compiler.tests import test_utils
 from tensorflow.compiler.tests.xla_test import XLATestCase
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -30,24 +31,6 @@ from tensorflow.python.platform import test
 
 
 class FusedBatchNormTest(XLATestCase, parameterized.TestCase):
-
-  def _convertBetweenDataFormats(self, x, data_format_src, data_format_dst):
-    valid_data_formats = ["NHWC", "NCHW", "HWNC", "HWCN"]
-    if data_format_src not in valid_data_formats:
-      raise ValueError("data_format_src must be of %s, got %s." %
-                       (valid_data_formats, data_format_src))
-    if data_format_dst not in valid_data_formats:
-      raise ValueError("data_format_dst must be of %s, got %s." %
-                       (valid_data_formats, data_format_dst))
-    if len(x.shape) != 4:
-      raise ValueError("x must be 4D, got shape %s." % x.shape)
-
-    if data_format_src == data_format_dst:
-      return x
-
-    dim_map = {d: i for i, d in enumerate(data_format_src)}
-    transpose_dims = [dim_map[d] for d in data_format_dst]
-    return np.transpose(x, transpose_dims)
 
   def _reference_training(self, x, scale, offset, epsilon, data_format):
     if data_format != "NHWC":
@@ -102,10 +85,10 @@ class FusedBatchNormTest(XLATestCase, parameterized.TestCase):
 
     with self.test_session() as sess, self.test_scope():
       # To avoid constant folding
-      x_val_converted = self._convertBetweenDataFormats(x_val, data_format_src,
-                                                        data_format)
-      y_ref_converted = self._convertBetweenDataFormats(y_ref, data_format_src,
-                                                        data_format)
+      x_val_converted = test_utils.ConvertBetweenDataFormats(
+          x_val, data_format_src, data_format)
+      y_ref_converted = test_utils.ConvertBetweenDataFormats(
+          y_ref, data_format_src, data_format)
 
       t_val = array_ops.placeholder(
           np.float32, shape=x_val_converted.shape, name="x")
@@ -149,10 +132,10 @@ class FusedBatchNormTest(XLATestCase, parameterized.TestCase):
 
     with self.test_session() as sess, self.test_scope():
       # To avoid constant folding
-      x_val_converted = self._convertBetweenDataFormats(x_val, data_format_src,
-                                                        data_format)
-      y_ref_converted = self._convertBetweenDataFormats(y_ref, data_format_src,
-                                                        data_format)
+      x_val_converted = test_utils.ConvertBetweenDataFormats(
+          x_val, data_format_src, data_format)
+      y_ref_converted = test_utils.ConvertBetweenDataFormats(
+          y_ref, data_format_src, data_format)
 
       t_val = array_ops.placeholder(
           np.float32, shape=x_val_converted.shape, name="x")
@@ -236,12 +219,13 @@ class FusedBatchNormTest(XLATestCase, parameterized.TestCase):
       self.skipTest("GPU does not support data format HWCN.")
 
     with self.test_session() as sess, self.test_scope():
-      grad_val_converted = self._convertBetweenDataFormats(
+      grad_val_converted = test_utils.ConvertBetweenDataFormats(
           grad_val, data_format_src, data_format)
-      x_val_converted = self._convertBetweenDataFormats(x_val, data_format_src,
-                                                        data_format)
-      grad_x_ref_converted = self._convertBetweenDataFormats(
+      x_val_converted = test_utils.ConvertBetweenDataFormats(
+          x_val, data_format_src, data_format)
+      grad_x_ref_converted = test_utils.ConvertBetweenDataFormats(
           grad_x_ref, data_format_src, data_format)
+
       grad = array_ops.placeholder(
           np.float32, shape=x_val_converted.shape, name="grad")
       x = array_ops.placeholder(
@@ -289,10 +273,10 @@ class FusedBatchNormTest(XLATestCase, parameterized.TestCase):
       self.skipTest("GPU does not support data format HWCN.")
 
     with self.test_session() as sess, self.test_scope():
-      grad_val_converted = self._convertBetweenDataFormats(
+      grad_val_converted = test_utils.ConvertBetweenDataFormats(
           grad_val, data_format_src, data_format)
-      x_val_converted = self._convertBetweenDataFormats(x_val, data_format_src,
-                                                        data_format)
+      x_val_converted = test_utils.ConvertBetweenDataFormats(
+          x_val, data_format_src, data_format)
 
       grad = array_ops.placeholder(
           np.float32, shape=x_val_converted.shape, name="grad")

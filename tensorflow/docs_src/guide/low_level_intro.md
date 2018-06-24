@@ -303,7 +303,7 @@ while True:
     break
 ```
 
-For more details on Datasets and Iterators see: @{$programmers_guide/datasets}.
+For more details on Datasets and Iterators see: @{$guide/datasets}.
 
 ## Layers
 

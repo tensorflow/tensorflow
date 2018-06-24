@@ -66,7 +66,7 @@ REGISTER_XLA_OP(Name("DummyDuplicateOp").TypeConstraint("T", DT_FLOAT),
 // should have type INT32 while all other kernels should have type FLOAT.
 TEST(XlaOpRegistryTest, XlaOpRegistrationWithOverride) {
   XlaOpRegistry::RegisterCompilationKernels();
-  auto registered_kernels = GetAllRegisteredKernels();
+  auto registered_kernels = GetAllRegisteredKernels().kernel();
   for (const auto& kernels : registered_kernels) {
     if (kernels.op() == "DummyDuplicateOp") {
       EXPECT_EQ(kernels.constraint_size(), 1);

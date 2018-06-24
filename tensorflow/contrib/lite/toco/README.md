@@ -17,7 +17,7 @@ Usage information is given in these documents:
 Once an application developer has a trained TensorFlow model, TOCO will accept
 that model and generate a TensorFlow Lite
 [FlatBuffer](https://google.github.io/flatbuffers/) file. TOCO currently supports
-[SavedModels](https://www.tensorflow.org/programmers_guide/saved_model#using_savedmodel_with_estimators)
+[SavedModels](https://www.tensorflow.org/guide/saved_model#using_savedmodel_with_estimators)
 and frozen graphs (models generated via
 [freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py)).
 The TensorFlow Lite FlatBuffer file can be shipped to client devices, generally

@@ -619,42 +619,6 @@ TEST_F(ConstantFoldingTest, ConstShapeKnown) {
   }
 }
 
-TEST_F(ConstantFoldingTest, ZerosLikeAndOnesLike) {
-  Graph g(OpRegistry::Global());
-  {
-    Scope s = Scope::NewRootScope();
-    auto recv = ops::_Recv(s.WithOpName("recv"), DT_FLOAT, "recv", "sender", 0,
-                           "receiver");
-    auto zeros = ops::ZerosLike(s.WithOpName("zeros"), recv);
-    auto ones = ops::OnesLike(s.WithOpName("ones"), recv);
-    auto out = ops::Add(s.WithOpName("out"), ones, zeros);
-    auto send =
-        ops::_Send(s.WithOpName("send"), out, "out", "sender", 0, "receiver");
-    TF_ASSERT_OK(s.ToGraph(&g));
-  }
-
-  std::unordered_map<string, Node*> orig_index = NodeNameIndex(g);
-  Node* recv = orig_index.at("recv");
-  PartialTensorShape ps;
-  int dims[] = {2, 3};
-  TF_EXPECT_OK(PartialTensorShape::MakePartialShape(dims, 2, &ps));
-  std::unordered_map<string, std::vector<PartialTensorShape>> map;
-  map[recv->name()].push_back(ps);
-  ConstantFoldingOptions opts;
-  opts.shape_map = &map;
-
-  bool was_mutated;
-  TF_EXPECT_OK(
-      ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
-  EXPECT_TRUE(was_mutated);
-
-  std::unordered_map<string, Node*> index = NodeNameIndex(g);
-  Node* send = index.at("send");
-  ASSERT_EQ(1, send->num_inputs());
-  Node* cf = *(send->in_nodes().begin());
-  ExpectNodeEqual<float>(cf, {1, 1, 1, 1, 1, 1}, {2, 3});
-}
-
 namespace {
 
 const char kTestMemRegionName[] = "test://test";

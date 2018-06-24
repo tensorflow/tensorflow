@@ -78,10 +78,10 @@ provides a programming stack consisting of multiple API layers:
 
 We strongly recommend writing TensorFlow programs with the following APIs:
 
-* @{$programmers_guide/estimators$Estimators}, which represent a complete model.
+* @{$guide/estimators$Estimators}, which represent a complete model.
   The Estimator API provides methods to train the model, to judge the model's
   accuracy, and to generate predictions.
-* @{$programmers_guide/datasets_for_estimators}, which build a data input
+* @{$guide/datasets_for_estimators}, which build a data input
   pipeline. The Dataset API has methods to load and manipulate data, and feed
   it into your model. The Dataset API meshes well with the Estimators API.
 
@@ -173,7 +173,7 @@ example is an Iris Versicolor.
 An Estimator is TensorFlow's high-level representation of a complete model. It
 handles the details of initialization, logging, saving and restoring, and many
 other features so you can concentrate on your model. For more details see
-@{$programmers_guide/estimators}.
+@{$guide/estimators}.
 
 An Estimator is any class derived from @{tf.estimator.Estimator}. TensorFlow
 provides a collection of
@@ -424,7 +424,7 @@ Now that you've gotten started writing TensorFlow programs, consider the
 following material:
 
 * @{$checkpoints$Checkpoints} to learn how to save and restore models.
-* @{$programmers_guide/datasets_for_estimators} to learn more about importing
+* @{$guide/datasets_for_estimators} to learn more about importing
   data into your model.
 * @{$custom_estimators$Creating Custom Estimators} to learn how to
   write your own Estimator, customized for a particular problem.
