@@ -78,22 +78,6 @@ struct RankedTensorTypeKeyInfo : DenseMapInfo<RankedTensorType*> {
     return lhs == KeyTy(rhs->getElementType(), rhs->getShape());
   }
 };
-struct UnrankedTensorTypeKeyInfo : DenseMapInfo<UnrankedTensorType*> {
-  // Ranked tensors are uniqued based on their element type and shape.
-  using KeyTy = Type*;
-  using DenseMapInfo<UnrankedTensorType*>::getHashValue;
-  using DenseMapInfo<UnrankedTensorType*>::isEqual;
-
-  static unsigned getHashValue(KeyTy key) {
-    return hash_combine(DenseMapInfo<Type*>::getHashValue(key));
-  }
-
-  static bool isEqual(const KeyTy &lhs, const UnrankedTensorType *rhs) {
-    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
-      return false;
-    return lhs == rhs->getElementType();
-  }
-};
 } // end anonymous namespace.
 
 
