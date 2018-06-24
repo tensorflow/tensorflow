@@ -51,6 +51,7 @@ public:
 
     // Keywords.
     kw_bf16,
+    kw_br,
     kw_cfgfunc,
     kw_extfunc,
     kw_f16,

@@ -16,7 +16,9 @@
 // =============================================================================
 
 #include "mlir/IR/BasicBlock.h"
+#include "mlir/IR/CFGFunction.h"
 using namespace mlir;
 
 BasicBlock::BasicBlock(CFGFunction *function) : function(function) {
+  function->blockList.push_back(this);
 }

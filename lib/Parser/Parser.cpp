@@ -119,6 +119,9 @@ private:
   ParseResult parseExtFunc();
   ParseResult parseCFGFunc();
   ParseResult parseBasicBlock(CFGFunctionParserState &functionState);
+  TerminatorInst *parseTerminator(BasicBlock *currentBB,
+                                  CFGFunctionParserState &functionState);
+
 };
 } // end anonymous namespace
 
@@ -513,23 +516,22 @@ namespace {
 /// forward references.
 class CFGFunctionParserState {
 public:
+  CFGFunction *function;
+  llvm::StringMap<std::pair<BasicBlock*, SMLoc>> blocksByName;
+
   CFGFunctionParserState(CFGFunction *function) : function(function) {}
 
   /// Get the basic block with the specified name, creating it if it doesn't
-  /// already exist.
-  BasicBlock *getBlockNamed(StringRef name) {
-    auto *&block = blocksByName[name];
-    if (!block) {
-      block = new BasicBlock(function);
-      // TODO: Should be automatic when we have the right function
-      // representation.
-      function->blockList.push_back(block);
+  /// already exist.  The location specified is the point of use, which allows
+  /// us to diagnose references to blocks that are not defined precisely.
+  BasicBlock *getBlockNamed(StringRef name, SMLoc loc) {
+    auto &blockAndLoc = blocksByName[name];
+    if (!blockAndLoc.first) {
+      blockAndLoc.first = new BasicBlock(function);
+      blockAndLoc.second = loc;
     }
-    return block;
+    return blockAndLoc.first;
   }
-private:
-  CFGFunction *function;
-  llvm::StringMap<BasicBlock*> blocksByName;
 };
 } // end anonymous namespace
 
@@ -563,6 +565,16 @@ ParseResult Parser::parseCFGFunc() {
     if (parseBasicBlock(functionState))
       return ParseFailure;
 
+  // Verify that all referenced blocks were defined.  Iteration over a
+  // StringMap isn't determinstic, but this is good enough for our purposes.
+  for (auto &elt : functionState.blocksByName) {
+    auto *bb = elt.second.first;
+    if (!bb->getTerminator())
+      return emitError(elt.second.second,
+                       "reference to an undefined basic block '" +
+                       elt.first() + "'");
+  }
+
   module->functionList.push_back(function);
   return ParseSuccess;
 }
@@ -579,13 +591,25 @@ ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
   auto name = curToken.getSpelling();
   if (!consumeIf(Token::bare_identifier))
     return emitError("expected basic block name");
-  auto block = functionState.getBlockNamed(name);
+
+  auto block = functionState.getBlockNamed(name, nameLoc);
 
   // If this block has already been parsed, then this is a redefinition with the
   // same block name.
   if (block->getTerminator())
-    return emitError(nameLoc, "redefinition of block named '" +
-                     name.str() + "'");
+    return emitError(nameLoc, "redefinition of block '" + name.str() + "'");
+
+  // References to blocks can occur in any order, but we need to reassemble the
+  // function in the order that occurs in the source file.  Do this by moving
+  // each block to the end of the list as it is defined.
+  // FIXME: This is inefficient for large functions given that blockList is a
+  // vector.  blockList will eventually be an ilist, which will make this fast.
+  auto &blockList = functionState.function->blockList;
+  if (blockList.back() != block) {
+    auto it = std::find(blockList.begin(), blockList.end(), block);
+    assert(it != blockList.end() && "Block has to be in the blockList");
+    std::swap(*it, blockList.back());
+  }
 
   // TODO: parse bb argument list.
 
@@ -602,12 +626,43 @@ ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
   // TODO: parse instruction list.
 
   // TODO: Generalize this once instruction list parsing is built out.
-  if (!consumeIf(Token::kw_return))
-    return emitError("expected 'return' at end of basic block");
 
-  block->setTerminator(new ReturnInst(block));
+  auto *termInst = parseTerminator(block, functionState);
+  if (!termInst)
+    return ParseFailure;
+  block->setTerminator(termInst);
 
   return ParseSuccess;
+}
+
+
+/// Parse the terminator instruction for a basic block.
+///
+///   terminator-stmt ::= `br` bb-id branch-use-list?
+///   branch-use-list ::= `(` ssa-use-and-type-list? `)`
+///   terminator-stmt ::=
+///     `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id branch-use-list?
+///   terminator-stmt ::= `return` ssa-use-and-type-list?
+///
+TerminatorInst *Parser::parseTerminator(BasicBlock *currentBB,
+                                        CFGFunctionParserState &functionState) {
+  switch (curToken.getKind()) {
+  default:
+    return (emitError("expected terminator at end of basic block"), nullptr);
+
+  case Token::kw_return:
+    consumeToken(Token::kw_return);
+    return new ReturnInst(currentBB);
+
+  case Token::kw_br: {
+    consumeToken(Token::kw_br);
+    auto destBB = functionState.getBlockNamed(curToken.getSpelling(),
+                                              curToken.getLoc());
+    if (!consumeIf(Token::bare_identifier))
+      return (emitError("expected basic block name"), nullptr);
+    return new BranchInst(destBB, currentBB);
+  }
+  }
 }
 
 

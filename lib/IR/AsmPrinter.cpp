@@ -120,6 +120,9 @@ void CFGFunctionState::print(const BasicBlock *block) {
 
 void CFGFunctionState::print(const TerminatorInst *inst) {
   switch (inst->getKind()) {
+  case TerminatorInst::Kind::Branch:
+    os << "  br bb" << getBBID(cast<BranchInst>(inst)->getDest()) << "\n";
+    break;
   case TerminatorInst::Kind::Return:
     os << "  return\n";
     break;

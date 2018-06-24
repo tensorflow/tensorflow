@@ -126,18 +126,19 @@ Token Lexer::lexComment() {
 
 /// Lex a bare identifier or keyword that starts with a letter.
 ///
-///   bare-id ::= letter (letter|digit)*
+///   bare-id ::= letter (letter|digit|[_])*
 ///
 Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
-  // Match the rest of the identifier regex: [0-9a-zA-Z]*
-  while (isalpha(*curPtr) || isdigit(*curPtr))
+  // Match the rest of the identifier regex: [0-9a-zA-Z_]*
+  while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_')
     ++curPtr;
 
   // Check to see if this identifier is a keyword.
   StringRef spelling(tokStart, curPtr-tokStart);
 
   Token::TokenKind kind = llvm::StringSwitch<Token::TokenKind>(spelling)
-    .Case("bf16",    Token::kw_bf16)
+    .Case("bf16", Token::kw_bf16)
+    .Case("br", Token::kw_br)
     .Case("cfgfunc", Token::kw_cfgfunc)
     .Case("extfunc", Token::kw_extfunc)
     .Case("f16", Token::kw_f16)
@@ -168,7 +169,7 @@ Token Lexer::lexAtIdentifier(const char *tokStart) {
   if (!isalpha(*curPtr++))
     return emitError(curPtr-1, "expected letter in @ identifier");
 
-  while (isalpha(*curPtr) || isdigit(*curPtr))
+  while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_')
     ++curPtr;
   return formToken(Token::at_identifier, tokStart);
 }

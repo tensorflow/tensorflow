@@ -40,7 +40,11 @@ bb42:       ; CHECK: bb0:
 ; CHECK-LABEL: cfgfunc @multiblock() -> i32 {
 cfgfunc @multiblock() -> i32 {
 bb0:         ; CHECK: bb0:
-  return     ; CHECK: return
-bb4:         ; CHECK: bb1:
-  return     ; CHECK: return
+  return     ; CHECK:   return
+bb1:         ; CHECK: bb1:
+  br bb4     ; CHECK:   br bb3
+bb2:         ; CHECK: bb2:
+  br bb2     ; CHECK:   br bb2
+bb4:         ; CHECK: bb3:
+  return     ; CHECK:   return
 }            ; CHECK: }

@@ -23,6 +23,10 @@ CFGFunction *TerminatorInst::getFunction() const {
   return getBlock()->getFunction();
 }
 
-ReturnInst::ReturnInst(BasicBlock *block) : TerminatorInst(Kind::Return, block){
+ReturnInst::ReturnInst(BasicBlock *parent)
+  : TerminatorInst(Kind::Return, parent) {
 }
 
+BranchInst::BranchInst(BasicBlock *dest, BasicBlock *parent)
+  : TerminatorInst(Kind::Branch, parent), dest(dest) {
+}
