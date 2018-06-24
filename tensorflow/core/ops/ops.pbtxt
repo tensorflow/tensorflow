@@ -2490,6 +2490,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -2672,6 +2674,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -3985,6 +3989,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -4034,6 +4040,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -5667,6 +5675,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -5744,6 +5754,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -5821,6 +5833,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -8523,6 +8537,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -8593,6 +8609,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -8663,6 +8681,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -15331,6 +15351,17 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -15385,6 +15416,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -15462,6 +15495,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -15532,6 +15567,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }
@@ -15673,6 +15710,8 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "HWNC"
+        s: "HWCN"
       }
     }
   }

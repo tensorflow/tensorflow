@@ -1990,7 +1990,7 @@ def matmul(a,
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
       use_sparse_matmul = (
           a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
-    if (a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16 and
+    if ((a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16) and
         a.dtype != b.dtype):
       # matmul currently doesn't handle mixed-precision inputs.
       use_sparse_matmul = True

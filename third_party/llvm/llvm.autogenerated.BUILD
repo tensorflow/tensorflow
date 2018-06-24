@@ -292,6 +292,20 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "instcombine_transforms_gen",
+    tbl_outs = [(
+        "-gen-searchable-tables",
+        "lib/Transforms/InstCombine/InstCombineTables.inc",
+    )],
+    tblgen = ":llvm-tblgen",
+    td_file = "lib/Transforms/InstCombine/InstCombineTables.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]) + ["include/llvm/TableGen/SearchableTable.td"],
+)
+
 # Binary targets used by Tensorflow.
 cc_binary(
     name = "llvm-tblgen",
@@ -1397,6 +1411,7 @@ cc_library(
         ":analysis",
         ":config",
         ":core",
+        ":instcombine_transforms_gen",
         ":support",
         ":transform_utils",
     ],

@@ -39,7 +39,8 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saveable_object as saveable_object_lib
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.checkpointable import base as checkpointable_lib
+from tensorflow.python.training.checkpointable import base
+from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
@@ -114,7 +115,7 @@ class _CheckpointRestoreCoordinator(object):
         # `node` refers to an `Optimizer`, since only these have slot variables.
         self.slot_restorations.setdefault(
             slot_reference.original_variable_node_id, []).append(
-                checkpointable_lib._SlotVariableRestoration(  # pylint: disable=protected-access
+                base._SlotVariableRestoration(  # pylint: disable=protected-access
                     optimizer_id=node_index,
                     slot_variable_id=slot_reference.slot_variable_node_id,
                     slot_name=slot_reference.slot_name))
@@ -258,13 +259,13 @@ def object_metadata(save_path):
   reader = pywrap_tensorflow.NewCheckpointReader(save_path)
   try:
     object_graph_string = reader.get_tensor(
-        checkpointable_lib.OBJECT_GRAPH_PROTO_KEY)
+        base.OBJECT_GRAPH_PROTO_KEY)
   except errors_impl.NotFoundError:
     raise ValueError(
         ('The specified checkpoint "%s" does not appear to be object-based (it '
          'is missing the key "%s"). Likely it was created with a name-based '
          'saver and does not contain an object dependency graph.') % (
-             save_path, checkpointable_lib.OBJECT_GRAPH_PROTO_KEY))
+             save_path, base.OBJECT_GRAPH_PROTO_KEY))
   object_graph_proto = (
       checkpointable_object_graph_pb2.CheckpointableObjectGraph())
   object_graph_proto.ParseFromString(object_graph_string)
@@ -278,7 +279,7 @@ def _breadth_first_checkpointable_traversal(root_checkpointable):
   path_to_root = {root_checkpointable: ()}
   while to_visit:
     current_checkpointable = to_visit.popleft()
-    if isinstance(current_checkpointable, checkpointable_lib.NotCheckpointable):
+    if isinstance(current_checkpointable, tracking.NotCheckpointable):
       raise NotImplementedError(
           ("The object %s does not support object-based saving. File a feature "
            "request if this limitation bothers you. In the meantime, you can "
@@ -1038,11 +1039,11 @@ class CheckpointableSaver(object):
       with ops.device("/cpu:0"):
         object_graph_tensor = constant_op.constant(
             graph_proto.SerializeToString(), dtype=dtypes.string)
-    assert checkpointable_lib.OBJECT_GRAPH_PROTO_KEY not in named_variables
+    assert base.OBJECT_GRAPH_PROTO_KEY not in named_variables
     named_variables.append(
         _NoRestoreSaveable(
             tensor=object_graph_tensor,
-            name=checkpointable_lib.OBJECT_GRAPH_PROTO_KEY))
+            name=base.OBJECT_GRAPH_PROTO_KEY))
     if (self._last_save_object_graph != graph_proto
         # When executing eagerly, we need to re-create SaveableObjects each time
         # save() is called so they pick up new Tensors passed to their
@@ -1132,7 +1133,7 @@ class CheckpointableSaver(object):
       dtype_map = reader.get_variable_to_dtype_map()
     try:
       object_graph_string = reader.get_tensor(
-          checkpointable_lib.OBJECT_GRAPH_PROTO_KEY)
+          base.OBJECT_GRAPH_PROTO_KEY)
     except errors_impl.NotFoundError:
       # The object graph proto does not exist in this checkpoint. Try the
       # name-based compatibility mode.
@@ -1178,7 +1179,7 @@ class CheckpointableSaver(object):
               "file a feature request if this limitation bothers you.")
         self._last_restore_checkpoint = checkpoint
         self._last_restore_object_graph = object_graph_proto
-    checkpointable_lib._CheckpointPosition(  # pylint: disable=protected-access
+    base._CheckpointPosition(  # pylint: disable=protected-access
         checkpoint=checkpoint, proto_id=0).restore(self._root_checkpointable)
     load_status = CheckpointLoadStatus(
         checkpoint,
@@ -1188,7 +1189,7 @@ class CheckpointableSaver(object):
 
 
 @tf_export("train.Checkpoint")
-class Checkpoint(checkpointable_lib.Checkpointable):
+class Checkpoint(tracking.Checkpointable):
   """Groups checkpointable objects, saving and restoring them.
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
@@ -1290,7 +1291,7 @@ class Checkpoint(checkpointable_lib.Checkpointable):
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, checkpointable_lib.CheckpointableBase):
+      if not isinstance(v, base.CheckpointableBase):
         raise ValueError(
             ("`Checkpoint` was expecting a checkpointable object (an object "
              "derived from `CheckpointableBase`), got %s. If you believe this "
@@ -1309,7 +1310,7 @@ class Checkpoint(checkpointable_lib.Checkpointable):
       with ops.device("/cpu:0"):
         # add_variable creates a dependency named "save_counter"; NoDependency
         # prevents creating a second dependency named "_save_counter".
-        self._save_counter = checkpointable_lib.NoDependency(
+        self._save_counter = tracking.NoDependency(
             add_variable(self, name="save_counter", initializer=0,
                          dtype=dtypes.int64))
 

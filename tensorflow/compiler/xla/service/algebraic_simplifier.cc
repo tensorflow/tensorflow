@@ -75,21 +75,22 @@ bool TransposeIsBitcast(const HloInstruction* transpose) {
                                        transpose->dimensions());
 }
 
-// Returns true if the given reshape produces a result which is bit-wise
+// Returns true if the given reshape/copy produces a result which is bit-wise
 // identical to its operand and thus may be replaced with a bitcast.
 //
 // This function is conservative -- even if this function returns false, the
 // reshape may still be a bitcast. For example, a reshape from [28x28] to [784].
-bool ReshapeIsBitcast(
-    const HloInstruction* reshape,
+bool ReshapeOrCopyIsBitcast(
+    const HloInstruction* instr,
     const AlgebraicSimplifier::ValidBitcastCallback& valid_bitcast_callback) {
-  CHECK_EQ(HloOpcode::kReshape, reshape->opcode());
+  CHECK(HloOpcode::kReshape == instr->opcode() ||
+        HloOpcode::kCopy == instr->opcode());
 
-  const HloInstruction* operand = reshape->operand(0);
+  const HloInstruction* operand = instr->operand(0);
   // Can't insert bitcasts if the compiler used a memory layout which isn't
   // compatible.
-  return ShapeUtil::ReshapeIsBitcast(operand->shape(), reshape->shape()) &&
-         valid_bitcast_callback(operand->shape(), reshape->shape());
+  return ShapeUtil::ReshapeIsBitcast(operand->shape(), instr->shape()) &&
+         valid_bitcast_callback(operand->shape(), instr->shape());
 }
 
 // AlgebraicSimplifierVisitor traverses the HLO computation and reduces certain
@@ -433,7 +434,15 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
         copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy, op));
   }
   // All copies can be eliminated (assuming layout constraints are satisified).
-  ReplaceInstructionIfSameShape(copy, copy->mutable_operand(0));
+  if (ReplaceInstructionIfSameShape(copy, copy->mutable_operand(0))) {
+    return Status::OK();
+  }
+
+  if (is_layout_sensitive_ &&
+      ReshapeOrCopyIsBitcast(copy, valid_bitcast_callback_)) {
+    ReplaceWithBitcast(copy);
+  }
+
   return Status::OK();
 }
 
@@ -1672,7 +1681,7 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
 
   // Make this a bitcast if possible.
   if (is_layout_sensitive_ &&
-      ReshapeIsBitcast(reshape, valid_bitcast_callback_)) {
+      ReshapeOrCopyIsBitcast(reshape, valid_bitcast_callback_)) {
     ReplaceWithBitcast(reshape);
     return Status::OK();
   }
