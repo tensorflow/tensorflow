@@ -26,6 +26,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import input_layer as input_layer_lib
+from tensorflow.python.keras.engine import network as network_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -62,7 +64,7 @@ class TopologyConstructionTest(test.TestCase):
                         inputs=True)
         return inputs + 1
 
-    x1 = keras.Input(shape=(1,))
+    x1 = input_layer_lib.Input(shape=(1,))
     layer = MyLayer()
     _ = layer.apply(x1)
 
@@ -70,7 +72,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(layer.get_updates_for(x1)), 1)
     self.assertEqual(len(layer.get_updates_for(None)), 1)
 
-    x2 = keras.Input(shape=(1,))
+    x2 = input_layer_lib.Input(shape=(1,))
     y2 = layer.apply(x2)
 
     self.assertEqual(len(layer.updates), 3)
@@ -78,17 +80,17 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(layer.get_updates_for(x2)), 1)
     self.assertEqual(len(layer.get_updates_for(None)), 1)
 
-    network = keras.engine.Network(x2, y2)
+    network = network_lib.Network(x2, y2)
     self.assertEqual(len(network.updates), 2)
     self.assertEqual(len(network.get_updates_for(x1)), 0)
     self.assertEqual(len(network.get_updates_for(x2)), 1)
     self.assertEqual(len(network.get_updates_for(None)), 1)
 
-    x3 = keras.Input(shape=(1,))
+    x3 = input_layer_lib.Input(shape=(1,))
     _ = layer.apply(x3)
     self.assertEqual(len(network.updates), 2)
 
-    x4 = keras.Input(shape=(1,))
+    x4 = input_layer_lib.Input(shape=(1,))
     _ = network(x4)
     self.assertEqual(len(network.updates), 3)
     self.assertEqual(len(network.get_updates_for(x2)), 1)
@@ -104,7 +106,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(network.get_updates_for(x4)), 2)
 
   def test_get_updates_bn(self):
-    x1 = keras.Input(shape=(1,))
+    x1 = input_layer_lib.Input(shape=(1,))
     layer = keras.layers.BatchNormalization()
     _ = layer.apply(x1)
 
@@ -134,7 +136,7 @@ class TopologyConstructionTest(test.TestCase):
                       inputs=True)
         return inputs + 1
 
-    x1 = keras.Input(shape=(1,))
+    x1 = input_layer_lib.Input(shape=(1,))
     layer = MyLayer()
     _ = layer.apply(x1)
 
@@ -142,7 +144,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(layer.get_losses_for(x1)), 1)
     self.assertEqual(len(layer.get_losses_for(None)), 1)
 
-    x2 = keras.Input(shape=(1,))
+    x2 = input_layer_lib.Input(shape=(1,))
     y2 = layer.apply(x2)
 
     self.assertEqual(len(layer.losses), 3)
@@ -150,17 +152,17 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(layer.get_losses_for(x2)), 1)
     self.assertEqual(len(layer.get_losses_for(None)), 1)
 
-    network = keras.engine.Network(x2, y2)
+    network = network_lib.Network(x2, y2)
     self.assertEqual(len(network.losses), 2)
     self.assertEqual(len(network.get_losses_for(x1)), 0)
     self.assertEqual(len(network.get_losses_for(x2)), 1)
     self.assertEqual(len(network.get_losses_for(None)), 1)
 
-    x3 = keras.Input(shape=(1,))
+    x3 = input_layer_lib.Input(shape=(1,))
     _ = layer.apply(x3)
     self.assertEqual(len(network.losses), 2)
 
-    x4 = keras.Input(shape=(1,))
+    x4 = input_layer_lib.Input(shape=(1,))
     _ = network(x4)
     self.assertEqual(len(network.losses), 3)
     self.assertEqual(len(network.get_losses_for(x2)), 1)
@@ -177,8 +179,8 @@ class TopologyConstructionTest(test.TestCase):
 
   def testTopologicalAttributes(self):
     # test layer attributes / methods related to cross-layer connectivity.
-    a = keras.Input(shape=(32,), name='input_a')
-    b = keras.Input(shape=(32,), name='input_b')
+    a = input_layer_lib.Input(shape=(32,), name='input_a')
+    b = input_layer_lib.Input(shape=(32,), name='input_b')
 
     # test input, output, input_shape, output_shape
     test_layer = keras.layers.Dense(16, name='test_layer')
@@ -219,15 +221,15 @@ class TopologyConstructionTest(test.TestCase):
       _ = new_dense.input_shape
     with self.assertRaises(AttributeError):
       new_dense = keras.layers.Dense(16)
-      a = keras.Input(shape=(3, 32))
-      a = keras.Input(shape=(5, 32))
+      a = input_layer_lib.Input(shape=(3, 32))
+      a = input_layer_lib.Input(shape=(5, 32))
       a_2 = dense(a)
       b_2 = dense(b)
       _ = new_dense.input_shape
     with self.assertRaises(AttributeError):
       new_dense = keras.layers.Dense(16)
-      a = keras.Input(shape=(3, 32))
-      a = keras.Input(shape=(5, 32))
+      a = input_layer_lib.Input(shape=(3, 32))
+      a = input_layer_lib.Input(shape=(5, 32))
       a_2 = dense(a)
       b_2 = dense(b)
       _ = new_dense.output_shape
@@ -239,7 +241,7 @@ class TopologyConstructionTest(test.TestCase):
       def call(self, inputs):
         return [inputs**2, inputs**3]
 
-    x = keras.Input(shape=(32,))
+    x = input_layer_lib.Input(shape=(32,))
     test_layer = PowersLayer()
     p1, p2 = test_layer(x)  # pylint: disable=not-callable
 
@@ -256,8 +258,8 @@ class TopologyConstructionTest(test.TestCase):
         assert len(inputs) == 2
         return inputs[0] + inputs[1]
 
-    a = keras.Input(shape=(32,))
-    b = keras.Input(shape=(32,))
+    a = input_layer_lib.Input(shape=(32,))
+    b = input_layer_lib.Input(shape=(32,))
     test_layer = AddLayer()
     y = test_layer([a, b])  # pylint: disable=not-callable
 
@@ -268,10 +270,10 @@ class TopologyConstructionTest(test.TestCase):
 
   def testBasicNetwork(self):
     # minimum viable network
-    x = keras.Input(shape=(32,))
+    x = input_layer_lib.Input(shape=(32,))
     dense = keras.layers.Dense(2)
     y = dense(x)
-    network = keras.engine.Network(x, y, name='dense_network')
+    network = network_lib.Network(x, y, name='dense_network')
 
     # test basic attributes
     self.assertEqual(network.name, 'dense_network')
@@ -282,7 +284,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(network.non_trainable_weights, dense.non_trainable_weights)
 
     # test callability on Input
-    x_2 = keras.Input(shape=(32,))
+    x_2 = input_layer_lib.Input(shape=(32,))
     y_2 = network(x_2)
     self.assertEqual(y_2.get_shape().as_list(), [None, 2])
 
@@ -506,7 +508,7 @@ class TopologyConstructionTest(test.TestCase):
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
       # test get_source_inputs
-      self.assertListEqual(keras.engine.network.get_source_inputs(c), [a, b])
+      self.assertListEqual(keras.engine.get_source_inputs(c), [a, b])
 
       # serialization / deserialization
       json_config = model.to_json()
@@ -778,12 +780,12 @@ class TopologyConstructionTest(test.TestCase):
           self.evaluate(getattr(b, '_keras_mask')))
       self.assertAllEqual(self.evaluate(a * mask), self.evaluate(b))
     else:
-      x = keras.Input(shape=(32,))
+      x = input_layer_lib.Input(shape=(32,))
       y = MaskedLayer()(x)  # pylint: disable=not-callable
-      network = keras.engine.Network(x, y)
+      network = network_lib.Network(x, y)
 
       # test callability on Input
-      x_2 = keras.Input(shape=(32,))
+      x_2 = input_layer_lib.Input(shape=(32,))
       y_2 = network(x_2)
       self.assertEqual(y_2.get_shape().as_list(), [None, 32])
 
@@ -797,14 +799,14 @@ class TopologyConstructionTest(test.TestCase):
     def reg(x):
       return math_ops.reduce_sum(x)
 
-    net_a_input = keras.Input((2,))
+    net_a_input = input_layer_lib.Input((2,))
     net_a = net_a_input
     net_a = keras.layers.Dense(2, kernel_initializer='ones',
                                use_bias=False,
                                activity_regularizer=reg)(net_a)
     model_a = keras.Model([net_a_input], [net_a])
 
-    net_b_input = keras.Input((2,))
+    net_b_input = input_layer_lib.Input((2,))
     net_b = model_a(net_b_input)
     model_b = keras.Model([net_b_input], [net_b])
 
@@ -817,7 +819,7 @@ class TopologyConstructionTest(test.TestCase):
     with self.test_session():
       x_val = np.random.random((10, 5))
 
-      x = keras.Input(shape=(5,))
+      x = input_layer_lib.Input(shape=(5,))
       a = keras.layers.Dense(5, name='A')
       b = keras.layers.Dense(5, name='B')
       output = a(b(a(b(x))))
@@ -837,7 +839,7 @@ class TopologyConstructionTest(test.TestCase):
   def test_layer_sharing_at_heterogenous_depth_with_concat(self):
     with self.test_session():
       input_shape = (16, 9, 3)
-      input_layer = keras.Input(shape=input_shape)
+      input_layer = input_layer_lib.Input(shape=input_shape)
 
       a = keras.layers.Dense(3, name='dense_A')
       b = keras.layers.Dense(3, name='dense_B')
@@ -922,9 +924,9 @@ class DeferredModeTest(test.TestCase):
     self.assertEqual(repr(x),
                      '<DeferredTensor \'x\' shape=(?, 2) dtype=float32>')
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_in_graph_and_eager_modes()
   def testSimpleNetworkBuilding(self):
-    inputs = keras.engine.Input(shape=(32,))
+    inputs = input_layer_lib.Input(shape=(32,))
     if context.executing_eagerly():
       self.assertIsInstance(inputs, base_layer.DeferredTensor)
       self.assertEqual(inputs.dtype.name, 'float32')
@@ -937,8 +939,8 @@ class DeferredModeTest(test.TestCase):
       self.assertEqual(x.shape.as_list(), [None, 2])
 
     outputs = keras.layers.Dense(4)(x)
-    network = keras.engine.Network(inputs, outputs)
-    self.assertIsInstance(network, keras.engine.Network)
+    network = network_lib.Network(inputs, outputs)
+    self.assertIsInstance(network, network_lib.Network)
 
     if context.executing_eagerly():
       # It should be possible to call such a network on EagerTensors.
@@ -947,10 +949,10 @@ class DeferredModeTest(test.TestCase):
       outputs = network(inputs)
       self.assertEqual(outputs.shape.as_list(), [10, 4])
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_in_graph_and_eager_modes()
   def testMultiIONetworkbuilding(self):
-    input_a = keras.engine.Input(shape=(32,))
-    input_b = keras.engine.Input(shape=(16,))
+    input_a = input_layer_lib.Input(shape=(32,))
+    input_b = input_layer_lib.Input(shape=(16,))
     a = keras.layers.Dense(16)(input_a)
 
     class AddLayer(keras.layers.Layer):
@@ -964,7 +966,7 @@ class DeferredModeTest(test.TestCase):
     c = AddLayer()([a, input_b])  # pylint: disable=not-callable
     c = keras.layers.Dense(2)(c)
 
-    network = keras.engine.Network([input_a, input_b], [a, c])
+    network = network_lib.Network([input_a, input_b], [a, c])
     if context.executing_eagerly():
       a_val = constant_op.constant(
           np.random.random((10, 32)).astype('float32'))

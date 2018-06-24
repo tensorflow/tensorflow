@@ -1133,6 +1133,18 @@ class Estimator(object):
       return self._train_model_default(input_fn, hooks, saving_listeners)
 
   def _train_model_default(self, input_fn, hooks, saving_listeners):
+    """Initiate training with input_fn, without DistributionStrategies.
+
+    Args:
+      input_fn: A function that provides input data for training as minibatches.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the training loop.
+      saving_listeners: list of `CheckpointSaverListener` objects. Used for
+        callbacks that run immediately before or after checkpoint savings.
+
+    Returns:
+      Loss from training
+    """
     worker_hooks = []
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
@@ -1149,6 +1161,18 @@ class Estimator(object):
                                              saving_listeners)
 
   def _train_model_distributed(self, input_fn, hooks, saving_listeners):
+    """Initiate training with input_fn, using DistributionStrategies.
+
+    Args:
+      input_fn: A function that provides input data for training as minibatches.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the training loop.
+      saving_listeners: list of `CheckpointSaverListener` objects. Used for
+        callbacks that run immediately before or after checkpoint savings.
+
+    Returns:
+      Loss from training
+    """
     self._distribution.configure(self._session_config)
     worker_hooks = []
     with ops.Graph().as_default() as g:
