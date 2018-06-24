@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -143,7 +144,29 @@ class EagerServiceImpl {
 
   TF_DISALLOW_COPY_AND_ASSIGN(EagerServiceImpl);
 };
+ //add--> EagerServiceImplEx
+  
+class EagerServiceImplEx :  public EagerServiceImpl{
+ public:
+  explicit EagerServiceImplEx(const WorkerEnv* env);
+  Status GetTensorHandle(const uint64 context_id,
+                         const RemoteTensorHandleInternal& remote_handle,
+                         tensorflow::TensorHandle** handle) {
+    ServerContext* context = nullptr;
+    TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
+    core::ScopedUnref context_unref(context);
 
+    return context->GetTensorHandle(remote_handle, handle);
+  }
+
+  protected:
+  WorkerEnv *worker_env_;
+  tensorflow::RpcRendezvousMgr rendezvous_mgr_;
+  std::unique_ptr<SessionMgr> session_mgr_;
+  std::unique_ptr<DeviceMgr> device_mgr_;
+	
+};
+//<---End----
 }  // namespace eager
 }  // namespace tensorflow
 
