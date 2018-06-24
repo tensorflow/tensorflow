@@ -15,7 +15,7 @@ END
   in_arg {
     name: "num"
     description: <<END
-Number of values to generate.
+0-D tensor. Number of values to generate.
 END
   }
   out_arg {
