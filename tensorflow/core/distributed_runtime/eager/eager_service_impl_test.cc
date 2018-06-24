@@ -151,13 +151,9 @@ tensorflow::FunctionDef MatMulFunction() {
       &def));
   return def;
 }
-
 // Test creates a context and attempts to execute some ops.
 TEST_F(EagerServiceImplTest, BasicTest) {
-  WorkerEnv worker_env;
-  
-  Status cons_status;
-  TestEagerServiceImpl eager_service_impl(&worker_env);
+  TestEagerServiceImpl eager_service_impl(&worker_env_);
 
   CreateContextRequest request;
   request.mutable_server_def()->set_job_name("localhost");
@@ -165,17 +161,7 @@ TEST_F(EagerServiceImplTest, BasicTest) {
   request.set_rendezvous_id(random::New64());
   CreateContextResponse response;
 
-  cons_status = eager_service_impl.CreateContext(&request, &response);
-  
-  EXPECT_NE(cons_status,Status::OK());
-  EXPECT_NE(cons_status.ok(),Status::OK().ok());
-
-  tensorflow::RpcRendezvousMgr rm(&worker_env);
-  worker_env.rendezvous_mgr = &rm; 
-
-  cons_status = eager_service_impl.CreateContext(&request, &response);
-  TF_ASSERT_OK(cons_status); 
-  EXPECT_EQ(cons_status,Status::OK());
+  TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
   uint64 context_id = response.context_id();
 
