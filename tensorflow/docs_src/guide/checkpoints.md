@@ -8,9 +8,8 @@ Estimators. TensorFlow provides two model formats:
 *   SavedModel, which is a format independent of the code that created
     the model.
 
-This document focuses on checkpoints. For details on SavedModel, see the
-@{$saved_model$Saving and Restoring} chapter of the
-*TensorFlow Programmer's Guide*.
+This document focuses on checkpoints. For details on `SavedModel`, see the
+@{$saved_model$Saving and Restoring} guide.
 
 
 ## Sample code
@@ -232,8 +231,7 @@ This separation will keep your checkpoints recoverable.
 Checkpoints provide an easy automatic mechanism for saving and restoring
 models created by Estimators.
 
-See the @{$saved_model$Saving and Restoring}
-chapter of the *TensorFlow Programmer's Guide* for details on:
+See the @{$saved_model$Saving and Restoring} guide for details about:
 
 *   Saving and restoring models using low-level TensorFlow APIs.
 *   Exporting and importing models in the SavedModel format, which is a

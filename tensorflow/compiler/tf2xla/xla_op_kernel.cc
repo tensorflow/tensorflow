@@ -39,8 +39,7 @@ xla::XlaBuilder* XlaOpKernelContext::builder() const {
 static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor) {
   const XlaExpression* expression =
       reinterpret_cast<const XlaExpression*>(tensor.tensor_data().data());
-  CHECK(expression->handle().builder() != nullptr ||
-        expression->resource() != nullptr);
+  CHECK(expression->handle().valid() || expression->resource() != nullptr);
   VLOG(1) << "Fetched T" << expression->handle();
   return expression;
 }
@@ -49,7 +48,7 @@ static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor) {
 static XlaExpression* CastExpressionFromUninitializedTensor(Tensor* tensor) {
   const XlaExpression* expression =
       reinterpret_cast<const XlaExpression*>(tensor->tensor_data().data());
-  CHECK_EQ(expression->handle().builder(), nullptr);
+  CHECK(!expression->handle().valid());
   return const_cast<XlaExpression*>(expression);
 }
 
@@ -396,7 +395,7 @@ void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
   OP_REQUIRES_OK(context_, HostTensorToBorrowingLiteral(constant, &literal));
 
   xla::XlaOp handle = builder()->ConstantLiteral(literal);
-  CHECK_NE(handle.builder(), nullptr);
+  CHECK(handle.valid());
 
   // Make the Tensor that will refer to the expression.
   Tensor* output = nullptr;
@@ -441,7 +440,7 @@ Status XlaOpKernelContext::GetResourceInput(int index, XlaResource** resource) {
 
 Status XlaOpKernelContext::AssignVariable(int input_index, DataType type,
                                           xla::XlaOp handle) {
-  TF_RET_CHECK(handle.builder() != nullptr);
+  TF_RET_CHECK(handle.valid());
 
   const XlaExpression* expression =
       CastExpressionFromTensor(context_->input(input_index));

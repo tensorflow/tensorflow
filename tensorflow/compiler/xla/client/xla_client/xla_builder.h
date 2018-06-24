@@ -46,10 +46,10 @@ class XlaBuilder;
 // instruction as an operand.
 class XlaOp {
  public:
-  XlaOp() : handle_(0), builder_(nullptr) {}
+  XlaOp() : handle_(-1), builder_(nullptr) {}
   ~XlaOp() {}
 
-  const XlaBuilder* builder() const { return builder_; }
+  XlaBuilder* builder() const { return builder_; }
 
   bool operator==(const XlaOp& rhs) const {
     return handle_ == rhs.handle_ && builder_ == rhs.builder_;
@@ -59,12 +59,16 @@ class XlaOp {
     return handle_ != rhs.handle_ || builder_ != rhs.builder_;
   }
 
+  // Returns true if the XlaOp represents valid, non-erroneous value.
+  bool valid() const { return handle_ >= 0; }
+
   friend std::ostream& operator<<(std::ostream& out, const XlaOp& op) {
     out << op.handle();
     return out;
   }
 
  private:
+  explicit XlaOp(XlaBuilder* builder) : handle_(-1), builder_(builder) {}
   XlaOp(int64 handle, XlaBuilder* builder)
       : handle_(handle), builder_(builder) {}
 
@@ -72,8 +76,12 @@ class XlaOp {
 
   friend class XlaBuilder;
 
+  // < 0 means "invalid handle".
   int64 handle_;
-  XlaBuilder* builder_;  // Not owned.
+
+  // Not owned. Non-null for any handle returned by XlaBuilder, even if the
+  // handle is invalid.
+  XlaBuilder* builder_;
 };
 
 // A convenient interface for building up computations.
@@ -829,9 +837,6 @@ class XlaBuilder {
   void NoteError(const Status& error);
 
   XlaOp NoteErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
-
-  // Helper method that creates an empty op and notes error.
-  XlaOp UnimplementedOp();
 
   StatusOr<const HloInstructionProto*> LookUpInstruction(const XlaOp& op) const;
 

@@ -171,7 +171,7 @@ This section details the changes you must make to the model function
 During regular usage TensorFlow attempts to determine the shapes of each
 `tf.Tensor` during graph construction. During execution any unknown shape
 dimensions are determined dynamically,
-see @{$programmers_guide/tensors#shape$Tensor Shapes} for more details.
+see @{$guide/tensors#shape$Tensor Shapes} for more details.
 
 To run on Cloud TPUs TensorFlow models are compiled using @{$xla$XLA}.
 XLA uses a similar system for determining shapes at compile time. XLA requires
@@ -195,7 +195,7 @@ TPU.
 
 Build your evaluation metrics dictionary in a stand-alone `metric_fn`.
 
-<!-- TODO(markdaoust) link to programmers_guide/metrics when it exists -->
+<!-- TODO(markdaoust) link to guide/metrics when it exists -->
 
 Evaluation metrics are an essential part of training a model. These are fully
 supported on Cloud TPUs, but with a slightly different syntax.

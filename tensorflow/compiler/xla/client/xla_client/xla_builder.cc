@@ -96,12 +96,12 @@ void XlaBuilder::NoteError(const Status& error) {
 XlaOp XlaBuilder::NoteErrorOrReturn(
     const std::function<StatusOr<XlaOp>()>& op_creator) {
   if (!first_error_.ok()) {
-    return {};
+    return XlaOp(this);
   }
   auto op = op_creator();
   if (!op.ok()) {
     NoteError(op.status());
-    return {};
+    return XlaOp(this);
   }
   return op.ConsumeValueOrDie();
 }
@@ -1988,11 +1988,6 @@ StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
     return InvalidArgument("no XlaOp value %lld", op.handle());
   }
   return &instructions_[op.handle()];
-}
-
-XlaOp XlaBuilder::UnimplementedOp() {
-  NoteError(Unimplemented("Op not implemented"));
-  return {};
 }
 
 }  // namespace xla

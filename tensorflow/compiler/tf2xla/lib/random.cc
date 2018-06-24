@@ -51,7 +51,7 @@ xla::StatusOr<xla::XlaOp> TruncatedNormal(const DataType dtype,
   // probit(p) = sqrt(2) * erfinv(2*p-1)
   auto p = builder->Add(alpha_normal_cdf, builder->Mul(z, uniform));
   auto erfinv_input = builder->Sub(builder->Mul(p, two), one);
-  TF_ASSIGN_OR_RETURN(auto erfinv_or_status, ErfInv(builder, erfinv_input));
+  TF_ASSIGN_OR_RETURN(auto erfinv_or_status, ErfInv(erfinv_input));
   return builder->Mul(sqrt_2, erfinv_or_status);
 }
 }  // namespace tensorflow
