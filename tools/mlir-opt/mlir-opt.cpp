@@ -39,6 +39,9 @@ static cl::opt<std::string>
 outputFilename("o", cl::desc("Output filename"), cl::value_desc("filename"),
                cl::init("-"));
 
+static cl::opt<bool>
+checkParserErrors("check-parser-errors", cl::desc("Check for parser errors"),
+                  cl::init(false));
 
 /// Open the specified output file and return it, exiting if there is any I/O or
 /// other errors.
@@ -54,10 +57,42 @@ static std::unique_ptr<ToolOutputFile> getOutputStream() {
   return result;
 }
 
+/// Parses the memory buffer and, if successfully parsed, prints the parsed
+/// output. Returns whether parsing succeeded.
+bool parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
+  // Tell sourceMgr about this buffer, which is what the parser will pick up.
+  SourceMgr sourceMgr;
+  sourceMgr.AddNewSourceBuffer(std::move(buffer), SMLoc());
+
+  // Parse the input file and emit any errors.
+  MLIRContext context;
+  std::unique_ptr<Module> module(parseSourceFile(sourceMgr, &context));
+  if (!module) return false;
+
+  // Print the output.
+  auto output = getOutputStream();
+  module->print(output->os());
+  output->keep();
+
+  // Success.
+  return true;
+}
+
+/// Split the memory buffer into multiple buffers using the marker -----.
+bool splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
+  const char marker[] = "-----";
+  SmallVector<StringRef, 2> sourceBuffers;
+  buffer->getBuffer().split(sourceBuffers, marker);
+  for (auto& subbuffer : sourceBuffers)
+    parseAndPrintMemoryBuffer(MemoryBuffer::getMemBufferCopy(subbuffer));
+
+  // Ignore errors returned by parseAndPrintMemoryBuffer when checking parse
+  // errors reported.
+  return true;
+}
+
 int main(int argc, char **argv) {
   InitLLVM x(argc, argv);
-
-  MLIRContext context;
 
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
 
@@ -69,19 +104,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Tell sourceMgr about this buffer, which is what the parser will pick up.
-  SourceMgr sourceMgr;
-  sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), SMLoc());
-
-  // Parse the input file and emit any errors.
-  std::unique_ptr<Module> module(parseSourceFile(sourceMgr, &context));
-  if (!module) return 1;
-
-  // Print the output.
-  auto output = getOutputStream();
-  module->print(output->os());
-  output->keep();
-
-  // Success.
-  return 0;
+  if (checkParserErrors)
+    return !splitMemoryBufferForErrorChecking(std::move(*fileOrErr));
+  return !parseAndPrintMemoryBuffer(std::move(*fileOrErr));
 }
