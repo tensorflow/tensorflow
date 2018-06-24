@@ -20,7 +20,7 @@ extfunc @missingReturn()
 ; CHECK: extfunc @vectors(vector<1xf32>, vector<2x4xf32>)
 extfunc @vectors(vector<1 x f32>, vector<2x4xf32>)
 
-; CHECK: extfunc @tensors(i1, i1, i1, i1)
+; CHECK: extfunc @tensors(tensor<??f32>, tensor<??vector<2x4xf32>>, tensor<1x?x4x?x?xint>, tensor<i8>)
 extfunc @tensors(tensor<?? f32>, tensor<?? vector<2x4xf32>>,
                  tensor<1x?x4x?x?xint>, tensor<i8>)
 

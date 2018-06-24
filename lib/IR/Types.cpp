@@ -60,6 +60,24 @@ void Type::print(raw_ostream &os) const {
     os << *v->getElementType() << '>';
     return;
   }
+  case TypeKind::RankedTensor: {
+    auto *v = cast<RankedTensorType>(this);
+    os << "tensor<";
+    for (auto dim : v->getShape()) {
+      if (dim < 0)
+        os << '?';
+      else
+        os << dim;
+      os << 'x';
+    }
+    os << *v->getElementType() << '>';
+    return;
+  }
+  case TypeKind::UnrankedTensor: {
+    auto *v = cast<UnrankedTensorType>(this);
+    os << "tensor<??" << *v->getElementType() << '>';
+    return;
+  }
   }
 }
 

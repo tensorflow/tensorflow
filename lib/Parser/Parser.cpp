@@ -345,8 +345,9 @@ Type *Parser::parseTensorType() {
   if (!consumeIf(Token::greater))
     return (emitError("expected '>' in tensor type"), nullptr);
 
-  // FIXME: Add an IR representation for tensor types.
-  return Type::getI1(context);
+  if (isUnranked)
+    return UnrankedTensorType::get(elementType);
+  return RankedTensorType::get(dimensions, elementType);
 }
 
 /// Parse a memref type.
@@ -527,7 +528,7 @@ public:
     return block;
   }
 private:
-  CFGFunction *function;  
+  CFGFunction *function;
   llvm::StringMap<BasicBlock*> blocksByName;
 };
 } // end anonymous namespace

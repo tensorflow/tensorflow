@@ -50,8 +50,10 @@ enum class TypeKind {
   // Derived types.
   Function,
   Vector,
+  RankedTensor,
+  UnrankedTensor,
 
-  // TODO: Tensor / MemRef types.
+  // TODO: MemRef types.
 };
 
 /// Instances of the Type class are immutable, uniqued, immortal, and owned by
@@ -198,7 +200,7 @@ private:
 };
 
 
-/// Vector types represent multi-dimensional SIMD vectors, and have fixed a
+/// Vector types represent multi-dimensional SIMD vectors, and have a fixed
 /// known constant shape with one or more dimension.
 class VectorType : public Type {
 public:
@@ -225,6 +227,63 @@ private:
              MLIRContext *context);
 };
 
+/// Tensor types represent multi-dimensional arrays, and have two variants:
+/// RankedTensorType and UnrankedTensorType.
+class TensorType : public Type {
+public:
+  Type *getElementType() const { return elementType; }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Type *type) {
+    return type->getKind() == TypeKind::RankedTensor ||
+           type->getKind() == TypeKind::UnrankedTensor;
+  }
+
+protected:
+  /// The type of each scalar element of the tensor.
+  Type *elementType;
+
+  TensorType(TypeKind kind, Type *elementType, MLIRContext *context);
+};
+
+/// Ranked tensor types represent multi-dimensional arrays that have a shape
+/// with a fixed number of dimensions. Each shape element can be a positive
+/// integer or unknown (represented by any negative integer).
+class RankedTensorType : public TensorType {
+public:
+  static RankedTensorType *get(ArrayRef<int> shape,
+                               Type *elementType);
+
+  ArrayRef<int> getShape() const {
+    return ArrayRef<int>(shapeElements, getSubclassData());
+  }
+
+  unsigned getRank() const { return getShape().size(); }
+
+  static bool classof(const Type *type) {
+    return type->getKind() == TypeKind::RankedTensor;
+  }
+
+private:
+  const int *shapeElements;
+
+  RankedTensorType(ArrayRef<int> shape, Type *elementType,
+                   MLIRContext *context);
+};
+
+/// Unranked tensor types represent multi-dimensional arrays that have an
+/// unknown shape.
+class UnrankedTensorType : public TensorType {
+public:
+  static UnrankedTensorType *get(Type *elementType);
+
+  static bool classof(const Type *type) {
+    return type->getKind() == TypeKind::UnrankedTensor;
+  }
+
+private:
+  UnrankedTensorType(Type *elementType, MLIRContext *context);
+};
 
 } // end namespace mlir
 
