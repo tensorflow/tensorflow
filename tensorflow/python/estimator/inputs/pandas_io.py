@@ -96,8 +96,8 @@ def pandas_input_fn(x,
     raise TypeError('shuffle must be explicitly set as boolean; '
                     'got {}'.format(shuffle))
 
-  if isinstance(target_column, list):
-    raise TypeError('target_column must be a string or None')
+  if not isinstance(target_column, six.string_types):
+    raise TypeError('target_column must be a string type')
 
   x = x.copy()
   if y is not None:
