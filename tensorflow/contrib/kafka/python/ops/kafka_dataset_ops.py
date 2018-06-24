@@ -29,40 +29,50 @@ class KafkaDataset(Dataset):
   """A Kafka Dataset that consumes the message.
   """
 
-  def __init__(self):
+  def __init__(self, host="localhost", port=10800, local=False, part=-1):
     """Create a KafkaReader.
+
+    Args:
+      host: Host.
+      port: Port.
+      local: Local.
+      part: Part.
     """
     super(KafkaDataset, self).__init__()
+    self._host = ops.convert_to_tensor(host, dtype=dtypes.string, name="host")
+    self._port = ops.convert_to_tensor(port, dtype=dtypes.int32, name="port")
+    self._local = ops.convert_to_tensor(local, dtype=dtypes.bool, name="local")
+    self._part = ops.convert_to_tensor(part, dtype=dtypes.int32, name="part")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.kafka_dataset()
+    return gen_dataset_ops.kafka_dataset(self._host, self._port, self._local, self._part)
 
   @property
   def output_classes(self):
     return {
-	'key' : ops.Tensor,
-	'val' : {
-	    'pixels' : ops.Tensor,
-	    'lb' : ops.Tensor
-	}
+      'key' : ops.Tensor,
+	    'val' : {
+	      'pixels' : ops.Tensor,
+	      'label' : ops.Tensor
+	     }
     }
 
   @property
   def output_shapes(self):
     return {
-	'key' : tensor_shape.scalar(),
-        'val' : {
-            'pixels' : tensor_shape.TensorShape([784]),
-	    'lb' : tensor_shape.scalar()
-        }
+	    'key' : tensor_shape.scalar(),
+      'val' : {
+        'pixels' : tensor_shape.TensorShape([784]),
+	      'label' : tensor_shape.scalar()
+      }
     }
 
   @property
   def output_types(self):
     return {
     	'key' : dtypes.int32,
-        'val' : {
-           'pixels' : dtypes.double,
-           'lb' : dtypes.int32
-        }
+      'val' : {
+        'pixels' : dtypes.double,
+        'label' : dtypes.int32
+      }
     }

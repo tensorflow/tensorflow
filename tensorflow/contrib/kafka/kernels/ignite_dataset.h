@@ -14,22 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/dataset.h"
-#include "ignite_client.h"
 
 namespace ignite {
-
-class BinaryObjectParser {
+	
+class IgniteDataset : public tensorflow::GraphDatasetBase {
  public:
-  BinaryObjectParser(char *ptr, std::vector<tensorflow::Tensor>* out_tensors);
-  void Parse();
+  IgniteDataset(tensorflow::OpKernelContext* ctx, std::string host, tensorflow::int32 port, bool local, tensorflow::int32 part);
+  std::unique_ptr<tensorflow::IteratorBase> MakeIteratorInternal(const tensorflow::string& prefix) const override;
+  const tensorflow::DataTypeVector& output_dtypes() const override;
+  const std::vector<tensorflow::PartialTensorShape>& output_shapes() const override;
+  tensorflow::string DebugString() const override;
+
+ protected:
+  tensorflow::Status AsGraphDefInternal(DatasetGraphDefBuilder* b, tensorflow::Node** output) const override;
+
  private:
-  char* ptr;
-  std::vector<tensorflow::Tensor>* out_tensors;
-  Client* client;
-  char ReadByte();
-  short ReadShort();
-  int ReadInt();
-  long ReadLong();
+  const std::string host_;
+  const tensorflow::int32 port_;
+  const bool local_;
+  const tensorflow::int32 part_;
 };
 
 } // namespace ignite

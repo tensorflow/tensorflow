@@ -13,23 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/dataset.h"
-#include "ignite_client.h"
+#include "ignite_dataset.h"
 
 namespace ignite {
 
-class BinaryObjectParser {
+class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> {
  public:
-  BinaryObjectParser(char *ptr, std::vector<tensorflow::Tensor>* out_tensors);
-  void Parse();
- private:
-  char* ptr;
-  std::vector<tensorflow::Tensor>* out_tensors;
-  Client* client;
-  char ReadByte();
-  short ReadShort();
-  int ReadInt();
-  long ReadLong();
+  explicit IgniteDatasetIterator(const Params& params, Client* client, std::string cache_name, bool local, int part);
+  tensorflow::Status GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) override;
+
+ protected:
+  tensorflow::Status SaveInternal(tensorflow::IteratorStateWriter* writer) override;
+  tensorflow::Status RestoreInternal(tensorflow::IteratorContext* ctx, tensorflow::IteratorStateReader* reader) override;
 };
 
 } // namespace ignite

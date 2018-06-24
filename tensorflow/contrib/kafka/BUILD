@@ -38,9 +38,13 @@ cc_library(
     srcs = [
         "kernels/kafka_dataset_ops.cc",
         "kernels/ignite_binary_object_parser.h",
-        "kernels/ignite_binary_object_parser.cpp",
+        "kernels/ignite_binary_object_parser.cc",
         "kernels/ignite_client.h",
-        "kernels/ignite_client.cpp"
+        "kernels/ignite_client.cc",
+        "kernels/ignite_dataset.h",
+        "kernels/ignite_dataset.cc",
+        "kernels/ignite_dataset_iterator.h",
+        "kernels/ignite_dataset_iterator.cc"
     ],
     deps = [
         "//tensorflow/core:framework_headers_lib",

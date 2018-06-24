@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 
-#include "src-cpp/rdkafkacpp.h"
-
-#include "ignite_client.h"
+#include "ignite_dataset.h"
 
 namespace tensorflow {
 
@@ -26,89 +24,16 @@ class KafkaDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    *output = new Dataset(ctx);
+  	std::string host = "";
+  	OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "host", &host));
+  	int32 port = -1;
+  	OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "port", &port));
+  	bool local = false;
+  	OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "local", &local));
+  	int32 part = -1;
+  	OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "part", &part));
+    *output = new ignite::IgniteDataset(ctx, host, port, local, part);
   }
-
- private:
-  class Dataset : public GraphDatasetBase {
-   public:
-    Dataset(OpKernelContext* ctx)
-        : GraphDatasetBase(ctx) {}
-
-    std::unique_ptr<IteratorBase> MakeIteratorInternal(const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator({this, strings::StrCat(prefix, "::Kafka")}));
-    }
-
-    const DataTypeVector& output_dtypes() const override {
-      static DataTypeVector* dtypes = new DataTypeVector({DT_INT32, DT_INT32, DT_DOUBLE});
-      return *dtypes;
-    }
-
-    const std::vector<PartialTensorShape>& output_shapes() const override {
-      static std::vector<PartialTensorShape>* shapes = new std::vector<PartialTensorShape>({{}, {}, {784}});
-      return *shapes;
-    }
-
-    string DebugString() const override { return "KafkaDatasetOp::Dataset"; }
-
-   protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b, Node** output) const override {
-      return Status::OK();
-    }
-
-   private:
-    class Iterator : public DatasetIterator<Dataset> {
-     public:
-      explicit Iterator(const Params& params) : DatasetIterator<Dataset>(params) {}
-
-      Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors, bool* end_of_sequence) override {
-        ignite::client client;
-
-        client.scan_query("MNIST_CACHE", out_tensors); 
-
-        // Tensor lb = out_tensors->back();
-        // out_tensors->pop_back();
-        // Tensor pixels = out_tensors->back();
-        // out_tensors->pop_back();
-
-        // out_tensors->emplace_back(lb);
-        // out_tensors->emplace_back(pixels);
-
-        // Create tensor for key.
-      	// Tensor key_tensor(cpu_allocator(), DT_INT32, {});
-       //        key_tensor.scalar<int32>()() = 42;
-
-      	// // Create tensor for pixels.
-      	// Tensor pixels_tensor(cpu_allocator(), DT_DOUBLE, TensorShape({784}));
-
-      	// for (int i = 0; i < 784; i++) {
-      	// 	pixels_tensor.vec<double>()(i) = 0.42;
-      	// }
-
-      	// // Create tensor for label.
-      	// Tensor lb_tensor(cpu_allocator(), DT_INT32, {});
-      	// lb_tensor.scalar<int32>()() = 3;
-
-      	// // Pack all tensors together.
-       //        out_tensors->emplace_back(std::move(key_tensor));
-       //        out_tensors->emplace_back(std::move(lb_tensor));
-      	// out_tensors->emplace_back(std::move(pixels_tensor));
-
-        *end_of_sequence = false;
-
-        return Status::OK();
-      }
-
-     protected:
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        return Status::OK();
-      }
-
-      Status RestoreInternal(IteratorContext* ctx, IteratorStateReader* reader) override {
-        return Status::OK();
-      }
-    };
-  };
 };
 
 REGISTER_KERNEL_BUILDER(Name("KafkaDataset").Device(DEVICE_CPU), KafkaDatasetOp);
