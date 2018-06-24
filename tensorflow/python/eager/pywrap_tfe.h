@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
 #define TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
 
+#include <Python.h>
+
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include <Python.h>
 
 typedef tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 4>
     TFE_InputTensorHandles;
@@ -66,14 +67,15 @@ PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e);
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
 
-// Registers e as the backward_function_getter.
-// The registered function creates a backward function (a function that can
-// return the gradient of the inputs an op given the gradient of it's outputs).
-// The registered function will be passed the following arguments:
-//    op_name, attrs, num_inputs, op_inputs, op_outputs
+// Registers e as the gradient_function.
+// The registered function takes
+// (op_name, attrs, num_inputs, inputs, outputs, output_gradients) and returns
+// the input gradients. This function will not correctly be able to generate
+// gradients for functional ops - the gradients for those ops are calculated
+// through a different codepath (see function.py for additional information).
 //
 // This function is not thread-safe.
-PyObject* TFE_Py_RegisterBackwardFunctionGetter(PyObject* e);
+PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -113,12 +115,24 @@ TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 // newly created type, or nullptr on error.
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class);
 
+// Sets `profiler` as the current profiler to receive callbacks about events
+// on eager tensors. Currently, the only reported event is creation.
+// `profiler` is expected to have a `created(self, eager_tensor)` method that
+// takes the created tensor as its single argument.
+// Previous profiler, if any, is unset and will not receive any more
+// callbacks.
+// To unset the profiler, pass Py_None as the value of `profiler`.
+PyObject* TFE_Py_SetEagerTensorProfiler(PyObject* profiler);
+
 // Creates a new tape and adds it to the active set. `persistent` must be a
 // PyBool_Type, i.e either Py_True or Py_False
 PyObject* TFE_Py_TapeSetNew(PyObject* persistent);
 
 // Removes the passed tape from the set of active tapes.
 void TFE_Py_TapeSetRemove(PyObject* tape);
+
+// Adds the passed tape to the set of active tapes.
+void TFE_Py_TapeSetAdd(PyObject* tape);
 
 // Returns true if the tape stack is empty.
 PyObject* TFE_Py_TapeSetIsEmpty();
@@ -183,7 +197,8 @@ PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
                                 PyObject* attrs, PyObject* results,
                                 PyObject* name);
 
-// Returns the set of variables watched by the given tape.
+// Returns all variables watched by the given tape in the order those variables
+// were created.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
@@ -197,5 +212,9 @@ PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 // REQUIRES: `slice_dim` is non-negative and smaller than the rank of all
 //   tensors in `tensors`.
 PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim);
+
+// Returns the shape of this tensor's on-device representation.
+// The shape is represented as a Python tuple of integers.
+PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

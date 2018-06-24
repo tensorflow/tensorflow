@@ -65,9 +65,7 @@ class RGBToHSVTest(XLATestCase):
         join1 = array_ops.stack(split1)
         join2 = array_ops.stack(split2)
         batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2],
-                                                {
-                                                    batch0: inp
-                                                })
+                                                {batch0: inp})
 
       # Verify that processing batch elements together is the same as separate
       self.assertAllClose(batch1, join1)
@@ -401,9 +399,7 @@ class AdjustSaturationTest(XLATestCase):
           x = array_ops.placeholder(dtypes.float32, shape=x_shape)
           with self.test_scope():
             y_fused = self._adjust_saturation(x,
-                                              scale).eval(feed_dict={
-                                                  x: x_np
-                                              })
+                                              scale).eval(feed_dict={x: x_np})
           self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
 
@@ -412,7 +408,8 @@ class ResizeBilinearTest(XLATestCase):
   def _assertForwardOpMatchesExpected(self,
                                       image_np,
                                       target_shape,
-                                      expected=None):
+                                      expected=None,
+                                      large_tolerance=False):
     if expected is None:
       self.fail("expected must be specified")
     with self.test_session() as sess, self.test_scope():
@@ -420,7 +417,11 @@ class ResizeBilinearTest(XLATestCase):
       resized = gen_image_ops.resize_bilinear(
           image, target_shape, align_corners=True)
       out = sess.run(resized, {image: image_np[np.newaxis, :, :, np.newaxis]})
-      self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
+      if large_tolerance:
+        self.assertAllClose(
+            expected[np.newaxis, :, :, np.newaxis], out, rtol=0.03, atol=0.1)
+      else:
+        self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
 
   def _assertBackwardOpMatchesExpected(self,
                                        grads_np,
@@ -554,6 +555,28 @@ class ResizeBilinearTest(XLATestCase):
           expected=np.array(
               [[12.5, 27.5, 21.875], [42.5, 80.0, 57.5], [40.625, 72.5, 50]],
               dtype=np.float32))
+
+  def testAlignCorners4x4To8x8(self):
+    self._assertForwardOpMatchesExpected(
+        (np.array([[0, 1, 2, 3]], dtype=np.float32) + np.array(
+            [[0], [1], [2], [3]], dtype=np.float32)) * 7.0, [8, 8],
+        expected=3 *
+        (np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.float32) + np.array(
+            [[0], [1], [2], [3], [4], [5], [6], [7]], dtype=np.float32)),
+        large_tolerance=True)
+
+  def testAlignCorners8x8To16x16(self):
+    self._assertForwardOpMatchesExpected(
+        (np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.float32) + np.array(
+            [[0], [1], [2], [3], [4], [5], [6], [7]], dtype=np.float32)) * 15.0,
+        [16, 16],
+        expected=7 * (np.array(
+            [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]],
+            dtype=np.float32) + np.array(
+                [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11],
+                 [12], [13], [14], [15]],
+                dtype=np.float32)),
+        large_tolerance=True)
 
 
 if __name__ == "__main__":

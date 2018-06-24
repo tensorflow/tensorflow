@@ -144,7 +144,7 @@ class Autoregressive(distribution_lib.Distribution):
         `distribution_fn(sample0).event_shape.num_elements()` are both `None`.
       ValueError: if `num_steps < 1`.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name) as name:
       self._distribution_fn = distribution_fn
       self._sample0 = sample0

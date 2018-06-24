@@ -151,16 +151,18 @@ Status XlaCompileOnDemandOp::Compile(
   core::ScopedUnref cache_ref(cache);
 
   XlaCompiler::Options options;
-  DeviceType device_type = metadata.jit_device_type();
-  options.device_type = &device_type;
+  options.device_type = metadata.jit_device_type();
   options.client = metadata.client();
   options.flib_def =
       new FunctionLibraryDefinition(OpRegistry::Global(), FunctionDefLibrary{});
+  options.shape_representation_fn = metadata.shape_representation_fn();
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
   return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,
-                                result, executable,
-                                /*compile_options=*/nullptr);
+                                result, executable, &compile_options);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

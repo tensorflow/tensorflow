@@ -51,6 +51,9 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
+        "//tensorflow/core/distributed_runtime:worker_session",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
     ],
 )
 
@@ -64,9 +67,9 @@ tf_cuda_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":attr_builder",
         ":context",
         ":tensor_handle",
-        "//tensorflow/c/eager:runtime",
     ],
 )
 
@@ -136,8 +139,8 @@ tf_cc_test(
     name = "kernel_and_device_test",
     srcs = ["kernel_and_device_test.cc"],
     deps = [
+        ":attr_builder",
         ":kernel_and_device",
-        "//tensorflow/c/eager:runtime",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:ops",
@@ -168,6 +171,49 @@ cc_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
+        "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
+    ],
+)
+
+tf_cuda_library(
+    name = "attr_builder",
+    srcs = ["attr_builder.cc"],
+    hdrs = ["attr_builder.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            ":kernel_and_device",
+            "//tensorflow/c:c_api",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:core_cpu_internal",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
+        ],
+    }),
+)
+
+tf_cc_test(
+    name = "attr_builder_test",
+    srcs = ["attr_builder_test.cc"],
+    deps = [
+        ":attr_builder",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

@@ -41,7 +41,8 @@ class HumanReadableProfileBuilder {
   int64 total_cycles() const { return total_cycles_; }
 
   // Adds an operation to the profile.  If you don't know the number of
-  // floating-point ops or bytes touched by the op, pass -1 for that param.
+  // floating-point ops or bytes touched by the op, or if you don't know how
+  // fast it would run optimally, pass -1 for that param.
   void AddOp(tensorflow::StringPiece op_name,
              tensorflow::StringPiece short_name,
              tensorflow::StringPiece category, int64 cycles, int64 flop_count,
@@ -62,10 +63,10 @@ class HumanReadableProfileBuilder {
     string short_name;
     string category;
     int64 cycles;
-    int64 flop_count;
+    int64 flop_count;  // -1 if unknown
     int64 transcendental_count;
-    int64 bytes_accessed;
-    float optimal_seconds;
+    int64 bytes_accessed;   // -1 if unknown
+    float optimal_seconds;  // -1 if unknown
   };
 
   double CyclesToSeconds(int64 cycles) const {

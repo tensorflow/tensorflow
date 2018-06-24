@@ -40,6 +40,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 class VariableScopeTest(test.TestCase):
@@ -109,6 +110,12 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope(tower, constraint=constraint):
         w = variable_scope.get_variable("w", [])
         self.assertEqual(w.constraint, constraint)
+
+  def testStringDefaultInitializer(self):
+    with self.test_session():
+      v = variable_scope.get_variable("string", shape=[], dtype=dtypes.string)
+      variables_lib.global_variables_initializer().run()
+      self.assertAllEqual(compat.as_bytes(v.eval()), b"")
 
   @test_util.run_in_graph_and_eager_modes()
   def testVarScopeDType(self):
@@ -189,6 +196,32 @@ class VariableScopeTest(test.TestCase):
         v3, v4 = d2.variables
         self.assertAllEqual([v1, v2], [v3, v4])
       f()
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerVariablesStoreAddsToCollections(self):
+    store = variable_scope.EagerVariableStore()
+    with store.as_default():
+      trainable = variable_scope.get_variable("v1", [], trainable=True)
+      not_trainable = variable_scope.get_variable("v2", [], trainable=False)
+      concat = variable_scope.get_variable(
+          "v3", [], collections=[ops.GraphKeys.CONCATENATED_VARIABLES])
+      self.assertEqual(
+          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES),
+          [trainable, not_trainable])
+      self.assertEqual(
+          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES),
+          [trainable, concat])
+      self.assertEqual(
+          ops.get_collection(ops.GraphKeys.CONCATENATED_VARIABLES), [concat])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testEagerVariablesOutsideStoreNotAddedToCollections(self):
+    if not context.executing_eagerly():
+      return
+    variable_scope.get_variable("v1", [], trainable=True)
+    variable_scope.get_variable("v2", [], trainable=False)
+    self.assertFalse(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+    self.assertFalse(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
   @test_util.run_in_graph_and_eager_modes()
   def testInitFromNonTensorValue(self):

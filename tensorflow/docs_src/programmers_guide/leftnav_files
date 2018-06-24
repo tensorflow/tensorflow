@@ -1,9 +1,20 @@
 index.md
 
 ### High Level APIs
+keras.md
 eager.md
 datasets.md
-estimators.md
+
+### Estimators
+estimators.md: Introduction to Estimators
+premade_estimators.md
+custom_estimators.md
+feature_columns.md
+checkpoints.md
+
+### Accelerators
+using_gpu.md
+using_tpu.md
 
 ### Low Level APIs
 low_level_intro.md
@@ -11,10 +22,6 @@ tensors.md
 variables.md
 graphs.md
 saved_model.md
-
-### Accelerators
-using_gpu.md
-using_tpu.md
 
 ### ML Concepts
 embedding.md

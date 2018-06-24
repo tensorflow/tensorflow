@@ -516,13 +516,13 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     if has_scaling:
       if fused:
         return scope + '/BatchNorm_Fold/mul'
-      return scope + '/BatchNorm/batchnorm/mul'
-    return scope + '/BatchNorm/batchnorm/Rsqrt'
+      return scope + '/BatchNorm/batchnorm_1/mul'
+    return scope + '/BatchNorm/batchnorm_1/Rsqrt'
 
   def _BathNormBiasName(self, scope, fused):
     if fused:
       return scope + '/BatchNorm_Fold/bias'
-    return scope + '/BatchNorm/batchnorm/sub'
+    return scope + '/BatchNorm/batchnorm_1/sub'
 
   def _WeightInit(self, stddev):
     """Returns a truncated normal variable initializer.

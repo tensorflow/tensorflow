@@ -81,10 +81,9 @@ class ShapeVerifier : public DfsHloVisitor {
       HloInstruction* batch_norm_inference) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
   Status HandleGather(HloInstruction* gather) override;
+  Status HandleGenerateToken(HloInstruction* token) override;
 
-  Status FinishVisit(HloInstruction*) override {
-    return tensorflow::Status::OK();
-  }
+  Status FinishVisit(HloInstruction*) override { return Status::OK(); }
 
  protected:
   // Check the instruction's shape against the shape given by ShapeInference

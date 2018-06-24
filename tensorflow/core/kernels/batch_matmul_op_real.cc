@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if !defined(INTEL_MKL)
+#if !defined(INTEL_MKL) || defined(DO_NOT_USE_ML)
 TF_CALL_float(REGISTER_BATCH_MATMUL_CPU);
 TF_CALL_double(REGISTER_BATCH_MATMUL_CPU);
 #endif
@@ -31,9 +31,8 @@ TF_CALL_int32(REGISTER_BATCH_MATMUL_CPU);
 #if GOOGLE_CUDA
 TF_CALL_float(REGISTER_BATCH_MATMUL_GPU);
 TF_CALL_double(REGISTER_BATCH_MATMUL_GPU);
-#if CUDA_VERSION >= 7050
-TF_CALL_half(REGISTER_BATCH_MATMUL_GPU);
-#endif
+// TODO(csigg): Implement Stream::ThenBlasGemv for Eigen::half and uncomment.
+// TF_CALL_half(REGISTER_BATCH_MATMUL_GPU);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL

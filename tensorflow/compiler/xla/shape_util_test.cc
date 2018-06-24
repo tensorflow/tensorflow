@@ -93,12 +93,14 @@ TEST(ShapeUtilTest, ParseShapeStringTupleOfArrays) {
 }
 
 TEST(ShapeUtilTest, ParseShapeStringNestedTuple) {
-  string shape_string = "(f32[1],(f32[2]), f32[3])";
+  string shape_string = "(f32[1],(f32[2], token[]), opaque[], f32[3])";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual,
                           ShapeUtil::ParseShapeString(shape_string));
   Shape expected = ShapeUtil::MakeTupleShape({
       ShapeUtil::MakeShape(F32, {1}),
-      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {2})}),
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeTokenShape()}),
+      ShapeUtil::MakeOpaqueShape(),
       ShapeUtil::MakeShape(F32, {3}),
   });
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
@@ -134,6 +136,23 @@ TEST(ShapeUtilTest, ParseShapeStringWithSparseLayout) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual: " << ShapeUtil::HumanString(actual);
+}
+
+TEST(ShapeUtilTest, ParseOpaqueType) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual,
+                          ShapeUtil::ParseShapeString("opaque[]"));
+  Shape expected = ShapeUtil::MakeOpaqueShape();
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST(ShapeUtilTest, ParseTokenType) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ShapeUtil::ParseShapeString("token[]"));
+  Shape expected = ShapeUtil::MakeTokenShape();
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
 }
 
 TEST(ShapeUtilTest, ParseInvalidShapeString) {
@@ -295,6 +314,9 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(8, ShapeUtil::ByteSizeOfPrimitiveType(C64));
   EXPECT_EQ(8, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {})));
   EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {10, 20})));
+
+  EXPECT_EQ(0, ShapeUtil::ByteSizeOfPrimitiveType(TOKEN));
+  EXPECT_EQ(0, ShapeUtil::ByteSizeOf(ShapeUtil::MakeTokenShape()));
 }
 
 TEST(ShapeUtilTest, ByteSizeOfWithPadding) {
@@ -449,19 +471,21 @@ TEST(ShapeUtilTest, IsLeafIndex) {
 
 TEST(ShapeUtilTest, HumanString) {
   Shape opaque = ShapeUtil::MakeOpaqueShape();
+  Shape token = ShapeUtil::MakeTokenShape();
   Shape scalar = ShapeUtil::MakeShape(F32, {});
   Shape matrix = ShapeUtil::MakeShape(U32, {1, 2});
   Shape matrix2 = ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1});
   Shape tuple = ShapeUtil::MakeTupleShape({opaque, scalar, matrix, matrix2});
-  Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, matrix});
+  Shape nested_tuple = ShapeUtil::MakeTupleShape({tuple, matrix, token});
 
   EXPECT_EQ("opaque[]", ShapeUtil::HumanString(opaque));
+  EXPECT_EQ("token[]", ShapeUtil::HumanString(token));
   EXPECT_EQ("f32[]", ShapeUtil::HumanString(scalar));
   EXPECT_EQ("u32[1,2]", ShapeUtil::HumanString(matrix));
   EXPECT_EQ("s32[3,4]", ShapeUtil::HumanString(matrix2));
   EXPECT_EQ("(opaque[], f32[], u32[1,2], s32[3,4])",
             ShapeUtil::HumanString(tuple));
-  EXPECT_EQ("((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2])",
+  EXPECT_EQ("((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
             ShapeUtil::HumanString(nested_tuple));
 
   EXPECT_EQ("opaque[]", ShapeUtil::HumanStringWithLayout(opaque));
@@ -470,8 +494,10 @@ TEST(ShapeUtilTest, HumanString) {
   EXPECT_EQ("s32[3,4]{0,1}", ShapeUtil::HumanStringWithLayout(matrix2));
   EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",
             ShapeUtil::HumanStringWithLayout(tuple));
-  EXPECT_EQ("((opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1}), u32[1,2]{1,0})",
-            ShapeUtil::HumanStringWithLayout(nested_tuple));
+  EXPECT_EQ(
+      "((opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1}), u32[1,2]{1,0}, "
+      "token[])",
+      ShapeUtil::HumanStringWithLayout(nested_tuple));
 
   ProgramShape prog = ShapeUtil::MakeProgramShape(
       {opaque, scalar, matrix, matrix2, tuple, nested_tuple}, nested_tuple);
@@ -481,8 +507,9 @@ TEST(ShapeUtilTest, HumanString) {
       "(unknown): u32[1,2], "
       "(unknown): s32[3,4], "
       "(unknown): (opaque[], f32[], u32[1,2], s32[3,4]), "
-      "(unknown): ((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2])) -> "
-      "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2])",
+      "(unknown): ((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])) "
+      "-> "
+      "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
       ShapeUtil::HumanString(prog));
 
   prog.add_parameter_names("arg0");
@@ -497,8 +524,10 @@ TEST(ShapeUtilTest, HumanString) {
       "matrix: u32[1,2], "
       "matrix2: s32[3,4], "
       "tuple: (opaque[], f32[], u32[1,2], s32[3,4]), "
-      "nested_tuple: ((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2])) -> "
-      "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2])",
+      "nested_tuple: ((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], "
+      "token[])) "
+      "-> "
+      "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
       ShapeUtil::HumanString(prog));
 }
 

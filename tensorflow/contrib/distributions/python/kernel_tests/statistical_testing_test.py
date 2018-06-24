@@ -98,23 +98,21 @@ class StatisticalTestingTest(test.TestCase):
     num_samples = 5000
     # 5000 samples is chosen to be enough to find discrepancies of
     # size 0.1 or more with assurance 1e-6, as confirmed here:
-    with self.test_session() as sess:
-      d = st.min_discrepancy_of_true_means_detectable_by_dkwm(
-          num_samples, 0., 1., false_fail_rate=1e-6, false_pass_rate=1e-6)
-      d = sess.run(d)
-      self.assertLess(d, 0.1)
+    d = st.min_discrepancy_of_true_means_detectable_by_dkwm(
+        num_samples, 0., 1., false_fail_rate=1e-6, false_pass_rate=1e-6)
+    d = self.evaluate(d)
+    self.assertLess(d, 0.1)
 
     # Test that the confidence interval computed for the mean includes
     # 0.5 and excludes 0.4 and 0.6.
-    with self.test_session() as sess:
-      samples = rng.uniform(size=num_samples).astype(np.float32)
-      (low, high) = st.true_mean_confidence_interval_by_dkwm(
-          samples, 0., 1., error_rate=1e-6)
-      low, high = sess.run([low, high])
-      self.assertGreater(low, 0.4)
-      self.assertLess(low, 0.5)
-      self.assertGreater(high, 0.5)
-      self.assertLess(high, 0.6)
+    samples = rng.uniform(size=num_samples).astype(np.float32)
+    (low, high) = st.true_mean_confidence_interval_by_dkwm(
+        samples, 0., 1., error_rate=1e-6)
+    low, high = self.evaluate([low, high])
+    self.assertGreater(low, 0.4)
+    self.assertLess(low, 0.5)
+    self.assertGreater(high, 0.5)
+    self.assertLess(high, 0.6)
 
   def test_dkwm_mean_one_sample_assertion(self):
     rng = np.random.RandomState(seed=0)
@@ -123,21 +121,45 @@ class StatisticalTestingTest(test.TestCase):
     # Test that the test assertion agrees that the mean of the standard
     # uniform distribution is 0.5.
     samples = rng.uniform(size=num_samples).astype(np.float32)
-    with self.test_session() as sess:
-      sess.run(st.assert_true_mean_equal_by_dkwm(
-          samples, 0., 1., 0.5, false_fail_rate=1e-6))
+    self.evaluate(st.assert_true_mean_equal_by_dkwm(
+        samples, 0., 1., 0.5, false_fail_rate=1e-6))
 
-      # Test that the test assertion confirms that the mean of the
-      # standard uniform distribution is not 0.4.
-      with self.assertRaisesOpError("Mean confidence interval too high"):
-        sess.run(st.assert_true_mean_equal_by_dkwm(
-            samples, 0., 1., 0.4, false_fail_rate=1e-6))
+    # Test that the test assertion confirms that the mean of the
+    # standard uniform distribution is not 0.4.
+    with self.assertRaisesOpError("true mean greater than expected"):
+      self.evaluate(st.assert_true_mean_equal_by_dkwm(
+          samples, 0., 1., 0.4, false_fail_rate=1e-6))
 
-      # Test that the test assertion confirms that the mean of the
-      # standard uniform distribution is not 0.6.
-      with self.assertRaisesOpError("Mean confidence interval too low"):
-        sess.run(st.assert_true_mean_equal_by_dkwm(
-            samples, 0., 1., 0.6, false_fail_rate=1e-6))
+    # Test that the test assertion confirms that the mean of the
+    # standard uniform distribution is not 0.6.
+    with self.assertRaisesOpError("true mean smaller than expected"):
+      self.evaluate(st.assert_true_mean_equal_by_dkwm(
+          samples, 0., 1., 0.6, false_fail_rate=1e-6))
+
+  def test_dkwm_mean_in_interval_one_sample_assertion(self):
+    rng = np.random.RandomState(seed=0)
+    num_samples = 5000
+
+    # Test that the test assertion agrees that the mean of the standard
+    # uniform distribution is between 0.4 and 0.6.
+    samples = rng.uniform(size=num_samples).astype(np.float32)
+    self.evaluate(st.assert_true_mean_in_interval_by_dkwm(
+        samples, 0., 1.,
+        expected_low=0.4, expected_high=0.6, false_fail_rate=1e-6))
+
+    # Test that the test assertion confirms that the mean of the
+    # standard uniform distribution is not between 0.2 and 0.4.
+    with self.assertRaisesOpError("true mean greater than expected"):
+      self.evaluate(st.assert_true_mean_in_interval_by_dkwm(
+          samples, 0., 1.,
+          expected_low=0.2, expected_high=0.4, false_fail_rate=1e-6))
+
+    # Test that the test assertion confirms that the mean of the
+    # standard uniform distribution is not between 0.6 and 0.8.
+    with self.assertRaisesOpError("true mean smaller than expected"):
+      self.evaluate(st.assert_true_mean_in_interval_by_dkwm(
+          samples, 0., 1.,
+          expected_low=0.6, expected_high=0.8, false_fail_rate=1e-6))
 
   def test_dkwm_mean_two_sample_assertion(self):
     rng = np.random.RandomState(seed=0)
@@ -145,20 +167,18 @@ class StatisticalTestingTest(test.TestCase):
 
     # 4000 samples is chosen to be enough to find discrepancies of
     # size 0.2 or more with assurance 1e-6, as confirmed here:
-    with self.test_session() as sess:
-      d = st.min_discrepancy_of_true_means_detectable_by_dkwm_two_sample(
-          num_samples, 0., 1., num_samples, 0., 1.,
-          false_fail_rate=1e-6, false_pass_rate=1e-6)
-      d = sess.run(d)
-      self.assertLess(d, 0.2)
+    d = st.min_discrepancy_of_true_means_detectable_by_dkwm_two_sample(
+        num_samples, 0., 1., num_samples, 0., 1.,
+        false_fail_rate=1e-6, false_pass_rate=1e-6)
+    d = self.evaluate(d)
+    self.assertLess(d, 0.2)
 
     # Test that the test assertion agrees that the standard
     # uniform distribution has the same mean as itself.
     samples1 = rng.uniform(size=num_samples).astype(np.float32)
     samples2 = rng.uniform(size=num_samples).astype(np.float32)
-    with self.test_session() as sess:
-      sess.run(st.assert_true_mean_equal_by_dkwm_two_sample(
-          samples1, 0., 1., samples2, 0., 1., false_fail_rate=1e-6))
+    self.evaluate(st.assert_true_mean_equal_by_dkwm_two_sample(
+        samples1, 0., 1., samples2, 0., 1., false_fail_rate=1e-6))
 
   def test_dkwm_mean_two_sample_assertion_beta_2_1_false(self):
     rng = np.random.RandomState(seed=0)
@@ -168,15 +188,14 @@ class StatisticalTestingTest(test.TestCase):
     # As established above, 4000 samples is enough to find discrepancies
     # of size 0.2 or more with assurance 1e-6.
 
-    with self.test_session() as sess:
-      # Test that the test assertion confirms that the mean of the
-      # standard uniform distribution is different from the mean of beta(2, 1).
-      beta_high_samples = rng.beta(2, 1, size=num_samples).astype(np.float32)
-      with self.assertRaisesOpError("samples1 has a smaller mean"):
-        sess.run(st.assert_true_mean_equal_by_dkwm_two_sample(
-            samples1, 0., 1.,
-            beta_high_samples, 0., 1.,
-            false_fail_rate=1e-6))
+    # Test that the test assertion confirms that the mean of the
+    # standard uniform distribution is different from the mean of beta(2, 1).
+    beta_high_samples = rng.beta(2, 1, size=num_samples).astype(np.float32)
+    with self.assertRaisesOpError("true mean smaller than expected"):
+      self.evaluate(st.assert_true_mean_equal_by_dkwm_two_sample(
+          samples1, 0., 1.,
+          beta_high_samples, 0., 1.,
+          false_fail_rate=1e-6))
 
   def test_dkwm_mean_two_sample_assertion_beta_1_2_false(self):
     rng = np.random.RandomState(seed=0)
@@ -186,15 +205,14 @@ class StatisticalTestingTest(test.TestCase):
     # As established above, 4000 samples is enough to find discrepancies
     # of size 0.2 or more with assurance 1e-6.
 
-    with self.test_session() as sess:
-      # Test that the test assertion confirms that the mean of the
-      # standard uniform distribution is different from the mean of beta(1, 2).
-      beta_low_samples = rng.beta(1, 2, size=num_samples).astype(np.float32)
-      with self.assertRaisesOpError("samples2 has a smaller mean"):
-        sess.run(st.assert_true_mean_equal_by_dkwm_two_sample(
-            samples1, 0., 1.,
-            beta_low_samples, 0., 1.,
-            false_fail_rate=1e-6))
+    # Test that the test assertion confirms that the mean of the
+    # standard uniform distribution is different from the mean of beta(1, 2).
+    beta_low_samples = rng.beta(1, 2, size=num_samples).astype(np.float32)
+    with self.assertRaisesOpError("true mean greater than expected"):
+      self.evaluate(st.assert_true_mean_equal_by_dkwm_two_sample(
+          samples1, 0., 1.,
+          beta_low_samples, 0., 1.,
+          false_fail_rate=1e-6))
 
   def test_dkwm_argument_validity_checking(self):
     rng = np.random.RandomState(seed=0)
@@ -203,18 +221,17 @@ class StatisticalTestingTest(test.TestCase):
 
     # Test that the test library complains if the given samples fall
     # outside the purported bounds.
-    with self.test_session() as sess:
-      with self.assertRaisesOpError("maximum value exceeds expectations"):
-        sess.run(st.true_mean_confidence_interval_by_dkwm(
-            samples, [[0., 1.]], [[0.5, 1.5]], error_rate=0.5))
-      with self.assertRaisesOpError("minimum value falls below expectations"):
-        sess.run(st.true_mean_confidence_interval_by_dkwm(
-            samples, [[0.5, 1.5]], [[1., 2.]], error_rate=0.5))
+    with self.assertRaisesOpError("maximum value exceeds expectations"):
+      self.evaluate(st.true_mean_confidence_interval_by_dkwm(
+          samples, [[0., 1.]], [[0.5, 1.5]], error_rate=0.5))
+    with self.assertRaisesOpError("minimum value falls below expectations"):
+      self.evaluate(st.true_mean_confidence_interval_by_dkwm(
+          samples, [[0.5, 1.5]], [[1., 2.]], error_rate=0.5))
 
-      # But doesn't complain if they don't.
-      op = st.true_mean_confidence_interval_by_dkwm(
-          samples, [[0., 1.]], [[1., 2.]], error_rate=0.5)
-      _ = sess.run(op)
+    # But doesn't complain if they don't.
+    op = st.true_mean_confidence_interval_by_dkwm(
+        samples, [[0., 1.]], [[1., 2.]], error_rate=0.5)
+    _ = self.evaluate(op)
 
   def test_do_maximum_mean(self):
     n = 117
@@ -223,10 +240,9 @@ class StatisticalTestingTest(test.TestCase):
     samples = rng.uniform(size=n).astype(np.float32)
 
     # Compute the answer in TF using the code under test
-    with self.test_session() as sess:
-      envelope_t = ops.convert_to_tensor(envelope)
-      max_mean = st._do_maximum_mean(samples, envelope_t, 1)
-      max_mean = sess.run(max_mean)
+    envelope_t = ops.convert_to_tensor(envelope)
+    max_mean = st._do_maximum_mean(samples, envelope_t, 1)
+    max_mean = self.evaluate(max_mean)
 
     # Compute the correct answer for this case in numpy.  In this
     # example, `n` and `envelope` are such that `samples[2]` is the

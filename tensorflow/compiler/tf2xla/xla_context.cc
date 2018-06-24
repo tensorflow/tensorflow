@@ -65,26 +65,30 @@ void XlaContext::set_args(std::vector<XlaExpression> args) {
 XlaContext::XlaContext(
     XlaCompiler* compiler, xla::XlaBuilder* builder,
     bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
+    bool is_entry_computation,
     const std::function<TensorShape(const TensorShape&, DataType)>*
-        variable_representation_shape_fn)
+        shape_representation_fn)
     : compiler_(compiler),
       builder_(builder),
       allow_cpu_custom_calls_(allow_cpu_custom_calls),
       resolve_compile_time_constants_(resolve_compile_time_constants),
-      variable_representation_shape_fn_(variable_representation_shape_fn) {}
+      is_entry_computation_(is_entry_computation),
+      shape_representation_fn_(shape_representation_fn) {}
 
 string XlaContext::DebugString() { return "TLA JIT context"; }
 
 // This is called by the Retval Op to associate a computed value
 // with a specific return value of the subgraph.
 void XlaContext::AddRetval(int retval_index, DataType type,
-                           const xla::XlaOp& handle) {
+                           const TensorShape& shape, const xla::XlaOp& handle) {
   VLOG(1) << "Added retval index " << retval_index << " to XLA computation";
   // Add the return value to the list being built up.
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
-  retvals_[retval_index].set_handle(handle);
+  XlaExpression e;
+  e.set_handle(handle);
+  retvals_[retval_index] = Retval{type, shape, e};
 }
 
 Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
@@ -94,13 +98,11 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
-  if (resolve_compile_time_constants_) {
-    Tensor value;
-    TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value));
-    retvals_[retval_index].set_constant_value(std::move(value));
-  } else {
-    retvals_[retval_index].set_handle(builder_->ConstantLiteral(literal));
-  }
+  Tensor value;
+  TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value));
+  XlaExpression e;
+  e.set_constant_value(value);
+  retvals_[retval_index] = Retval{dtype, value.shape(), e};
   return Status::OK();
 }
 
@@ -117,9 +119,9 @@ Status XlaContext::CreateResource(
   return Status::OK();
 }
 
-TensorShape XlaContext::VariableRepresentationShape(const TensorShape& shape,
-                                                    DataType type) const {
-  return (*variable_representation_shape_fn_)(shape, type);
+TensorShape XlaContext::RepresentationShape(const TensorShape& shape,
+                                            DataType type) const {
+  return (*shape_representation_fn_)(shape, type);
 }
 
 const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {

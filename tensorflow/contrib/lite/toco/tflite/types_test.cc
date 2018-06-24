@@ -28,8 +28,7 @@ using flatbuffers::Vector;
 
 // These are types that exist in TF Mini but don't have a correspondence
 // in TF Lite.
-static const ArrayDataType kUnsupportedTocoTypes[] = {ArrayDataType::kNone,
-                                                      ArrayDataType::kBool};
+static const ArrayDataType kUnsupportedTocoTypes[] = {ArrayDataType::kNone};
 
 // These are TF Lite types for which there is no correspondence in TF Mini.
 static const ::tflite::TensorType kUnsupportedTfLiteTypes[] = {
@@ -71,7 +70,8 @@ TEST(DataType, SupportedTypes) {
       {ArrayDataType::kUint8, ::tflite::TensorType_UINT8},
       {ArrayDataType::kInt32, ::tflite::TensorType_INT32},
       {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
-      {ArrayDataType::kFloat, ::tflite::TensorType_FLOAT32}};
+      {ArrayDataType::kFloat, ::tflite::TensorType_FLOAT32},
+      {ArrayDataType::kBool, ::tflite::TensorType_BOOL}};
   for (auto x : testdata) {
     EXPECT_EQ(x.second, DataType::Serialize(x.first));
     EXPECT_EQ(x.first, DataType::Deserialize(x.second));
@@ -156,6 +156,13 @@ TEST(DataBuffer, String) {
       {"AA", "BBB", "Best. String. Ever."});
   EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kString>().data,
               ::testing::ElementsAre("AA", "BBB", "Best. String. Ever."));
+}
+
+TEST(DataBuffer, Bool) {
+  Array recovered =
+      ToFlatBufferAndBack<ArrayDataType::kBool>({true, false, true});
+  EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kBool>().data,
+              ::testing::ElementsAre(true, false, true));
 }
 
 TEST(Padding, All) {

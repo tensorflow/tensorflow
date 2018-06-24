@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/eager/python_eager_op_gen.h"
+#include "tensorflow/python/framework/python_op_gen.h"
 
 #include <memory>
 #include <string>
@@ -133,11 +133,10 @@ void PrintAllPythonOps(const std::vector<string>& op_list,
         *pruned_ops.mutable_op()->Add() = op_def;
       }
     }
-    PrintEagerPythonOps(pruned_ops, api_def_map, {}, require_shapes,
-                        source_file_name);
+    PrintPythonOps(pruned_ops, api_def_map, {}, require_shapes,
+                   source_file_name);
   } else {
-    PrintEagerPythonOps(ops, api_def_map, op_list, require_shapes,
-                        source_file_name);
+    PrintPythonOps(ops, api_def_map, op_list, require_shapes, source_file_name);
   }
 }
 

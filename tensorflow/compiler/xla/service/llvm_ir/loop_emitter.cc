@@ -39,14 +39,13 @@ LoopEmitter::LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
                          const IrArray& target_array,
                          llvm::IRBuilder<>* ir_builder)
-    : body_emitter_([=](const llvm_ir::IrArray::Index array_index)
-                        -> ::tensorflow::Status {
+    : body_emitter_([=](const llvm_ir::IrArray::Index array_index) -> Status {
         // Convert target_element_generator to a BodyEmitter.
         TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
                             target_element_generator(array_index));
         target_array.EmitWriteArrayElement(array_index, target_element,
                                            ir_builder);
-        return tensorflow::Status::OK();
+        return Status::OK();
       }),
       shape_(target_array.GetShape()),
       ir_builder_(ir_builder) {}
@@ -84,7 +83,9 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
   // Sanity check: In multi-output fusion, all shapes produced must have the
   // same dimensions.
   for (const IrArray& array : target_arrays) {
-    CHECK(ShapeUtil::SameDimensions(shape_, array.GetShape()));
+    CHECK(ShapeUtil::SameDimensions(shape_, array.GetShape()))
+        << ": '" << shape_.ShortDebugString() << "' does not match '"
+        << array.GetShape().ShortDebugString() << "'";
   }
 }
 
@@ -124,7 +125,7 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   return {array_index};
 }
 
-tensorflow::Status LoopEmitter::EmitLoop(tensorflow::StringPiece loop_name) {
+Status LoopEmitter::EmitLoop(tensorflow::StringPiece loop_name) {
   for (const IrArray::Index& array_index :
        EmitIndexAndSetExitBasicBlock(loop_name)) {
     TF_RETURN_IF_ERROR(body_emitter_(array_index));
@@ -135,7 +136,7 @@ tensorflow::Status LoopEmitter::EmitLoop(tensorflow::StringPiece loop_name) {
   if (exit_bb_ != nullptr) {
     ir_builder_->SetInsertPoint(exit_bb_);
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace llvm_ir

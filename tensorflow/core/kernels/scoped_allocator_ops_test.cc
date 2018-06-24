@@ -37,10 +37,12 @@ namespace tensorflow {
 
 class ScopedAllocatorOpTest : public OpsTestBase {
  protected:
-  void MakeOp(const gtl::ArraySlice<TensorShape>& shapes, DataType dtype,
+  void MakeOp(const TensorShape& shape,
+              const gtl::ArraySlice<TensorShape>& shapes, DataType dtype,
               const string& name, int32 id, int32 expected_call_count) {
     TF_EXPECT_OK(NodeDefBuilder("scoped_allocator_op", "_ScopedAllocator")
                      .Attr("T", dtype)
+                     .Attr("shape", shape)
                      .Attr("shapes", shapes)
                      .Attr("sa_name", name)
                      .Attr("id", id)
@@ -61,12 +63,14 @@ class ScopedAllocatorOpTest : public OpsTestBase {
 };
 
 TEST_F(ScopedAllocatorOpTest, Simple) {
-  MakeOp({TensorShape({8})}, DT_FLOAT, "test", 120, 1);
-  MakeOp({TensorShape({32, 32})}, DT_DOUBLE, "test1", 130, 1);
-  MakeOp({TensorShape({64}), TensorShape({3, 3}), TensorShape({5, 5, 5})},
+  MakeOp(TensorShape({8}), {TensorShape({8})}, DT_FLOAT, "test", 120, 1);
+  MakeOp(TensorShape({1024}), {TensorShape({32, 32})}, DT_DOUBLE, "test1", 130,
+         1);
+  MakeOp(TensorShape({204}),
+         {TensorShape({64}), TensorShape({3, 3}), TensorShape({5, 5, 5})},
          DT_HALF, "test2", 140, 3);
-  MakeOp({TensorShape({512}), TensorShape({64, 8})}, DT_UINT32, "test3", 150,
-         2);
+  MakeOp(TensorShape({1024}), {TensorShape({512}), TensorShape({64, 8})},
+         DT_UINT32, "test3", 150, 2);
 }
 
 // PrepOp is common to ConcatOp tests and SplitOpTests.
@@ -212,8 +216,13 @@ TEST_F(ScopedAllocatorConcatOpTest, Success3) {
 }
 
 TEST_F(ScopedAllocatorConcatOpTest, Reshape) {
-  MakeOp({2, 2, 2}, DT_DOUBLE, true, "test", 120, 2);
-  ExecOp(DT_DOUBLE, 120, {{2, 2}, {2, 2}});
+  MakeOp({2, 2, 4}, DT_DOUBLE, true, "test", 120, 2);
+
+  // The elements of the third parameter to ExecOp must be multiples of
+  // Allocator::kAllocatorAlignment in size.  If they are not, the backing
+  // tensor allocated by PrepOp will have too many elements and reshaping
+  // will fail.
+  ExecOp(DT_DOUBLE, 120, {{2, 4}, {2, 4}});
 }
 
 TEST_F(ScopedAllocatorConcatOpTest, NoReshapeAttr) {
@@ -249,23 +258,26 @@ TEST_F(ScopedAllocatorConcatOpTest, FailBounds) {
 
 class ScopedAllocatorSplitOpTest : public OpsTestBase {
  protected:
-  void BuildNodeDef(const TensorShape& shape, DataType dtype,
-                    const string& name, int32 id, int32 num_tensors) {
+  void BuildNodeDef(const TensorShape& in_shape, DataType dtype,
+                    const string& name, int32 id, int32 num_tensors,
+                    const std::vector<TensorShape>& out_shapes) {
     TF_EXPECT_OK(
         NodeDefBuilder("scoped_allocator_split_op", "_ScopedAllocatorSplit")
             .Attr("T", dtype)
             .Attr("N", num_tensors)
             .Attr("sa_name", name)
             .Attr("id", id)
+            .Attr("shapes", out_shapes)
             .Input(FakeInput(dtype))  // backing tensor and input
             .Input(
                 FakeInput(num_tensors, dtype))  // list of subtensors to forward
             .Finalize(node_def()));
   }
 
-  void MakeOp(const TensorShape& shape, DataType dtype, const string& name,
-              int32 id, int32 num_tensors) {
-    BuildNodeDef(shape, dtype, name, id, num_tensors);
+  void MakeOp(const TensorShape& in_shape, DataType dtype, const string& name,
+              int32 id, int32 num_tensors,
+              const std::vector<TensorShape>& out_shapes) {
+    BuildNodeDef(in_shape, dtype, name, id, num_tensors, out_shapes);
     TF_EXPECT_OK(InitOp());
   }
 
@@ -305,33 +317,33 @@ class ScopedAllocatorSplitOpTest : public OpsTestBase {
 };
 
 TEST_F(ScopedAllocatorSplitOpTest, Success1) {
-  MakeOp({32}, DT_FLOAT, "test", 120, 2);
+  MakeOp({32}, DT_FLOAT, "test", 120, 2, {{16}, {16}});
   ExecOp(DT_FLOAT, 120, {{16}, {16}});
 }
 
 TEST_F(ScopedAllocatorSplitOpTest, Success2) {
-  MakeOp({2, 2, 2}, DT_DOUBLE, "test", 120, 2);
+  MakeOp({2, 2, 2}, DT_DOUBLE, "test", 120, 2, {{2, 2}, {2, 2}});
   ExecOp(DT_DOUBLE, 120, {{2, 2}, {2, 2}});
 }
 
 TEST_F(ScopedAllocatorSplitOpTest, Success3) {
-  MakeOp({3, 3, 3}, DT_HALF, "test", 120, 3);
+  MakeOp({3, 3, 3}, DT_HALF, "test", 120, 3, {{3, 3}, {3, 3}, {3, 3}});
   ExecOp(DT_HALF, 120, {{3, 3}, {3, 3}, {3, 3}});
 }
 
 TEST_F(ScopedAllocatorSplitOpTest, FailNLessThan2) {
-  BuildNodeDef({4, 4}, DT_FLOAT, "test", 120, 1);
+  BuildNodeDef({4, 4}, DT_FLOAT, "test", 120, 1, {{4, 4}});
   Status s = InitOp();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
 }
 
 TEST_F(ScopedAllocatorSplitOpTest, FailDtypeCheck) {
-  MakeOp({8}, DT_FLOAT, "test", 120, 2);
+  MakeOp({8}, DT_FLOAT, "test", 120, 2, {{4}, {4}});
   EXPECT_DEATH(ExecOp(DT_HALF, 120, {{4}, {4}}), "");
 }
 
 TEST_F(ScopedAllocatorSplitOpTest, FailBounds) {
-  MakeOp({8}, DT_DOUBLE, "test", 120, 2);
+  MakeOp({8}, DT_DOUBLE, "test", 120, 2, {{4}, {4}});
   AddInputFromArray<double>({8}, {0, 1, 2, 3, 4, 5, 6, 7});
   AddInputFromArray<double>({4}, {0, 1, 2, 3});
   AddInputFromArray<double>({4}, {4, 5, 6, 7});

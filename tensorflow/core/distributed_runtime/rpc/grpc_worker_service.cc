@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <deque>
 
-#include "grpc++/alarm.h"
-#include "grpc++/server_builder.h"
+#include "grpcpp/alarm.h"
+#include "grpcpp/server_builder.h"
 
+#include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -37,10 +38,12 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
@@ -159,6 +162,9 @@ class GrpcWorkerService : public AsyncServiceInterface {
       for (int i = 0; i < 1000; ++i) {
         EnqueueRecvTensorRequestRaw();
       }
+      for (int i = 0; i < 500; ++i) {
+        ENQUEUE_REQUEST(RecvBuf, true);
+      }
       for (int i = 0; i < 100; ++i) {
         ENQUEUE_REQUEST(RunGraph, true);
       }
@@ -170,9 +176,9 @@ class GrpcWorkerService : public AsyncServiceInterface {
       ENQUEUE_REQUEST(Tracing, false);
 
       for (int i = 0; i < 10; ++i) {
-        ENQUEUE_REQUEST(CompleteGroup, false);
-        ENQUEUE_REQUEST(CompleteInstance, false);
-        ENQUEUE_REQUEST(GetStepSequence, false);
+        ENQUEUE_REQUEST(CompleteGroup, true);
+        ENQUEUE_REQUEST(CompleteInstance, true);
+        ENQUEUE_REQUEST(GetStepSequence, true);
       }
 
       void* tag;
@@ -322,6 +328,20 @@ class GrpcWorkerService : public AsyncServiceInterface {
       ENQUEUE_REQUEST(Tracing, false);
     }
 
+    void RecvBufHandler(WorkerCall<RecvBufRequest, RecvBufResponse>* call) {
+      Schedule([this, call]() {
+        CallOptions* call_opts = new CallOptions;
+        call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
+        worker_->RecvBufAsync(call_opts, &call->request, &call->response,
+                              [call, call_opts](const Status& s) {
+                                call->ClearCancelCallback();
+                                delete call_opts;
+                                call->SendResponse(ToGrpcStatus(s));
+                              });
+      });
+      ENQUEUE_REQUEST(RecvBuf, true);
+    }
+
     void CompleteGroupHandler(
         WorkerCall<CompleteGroupRequest, CompleteGroupResponse>* call) {
       Schedule([this, call]() {
@@ -334,7 +354,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
                                       call->SendResponse(ToGrpcStatus(s));
                                     });
       });
-      ENQUEUE_REQUEST(CompleteGroup, false);
+      ENQUEUE_REQUEST(CompleteGroup, true);
     }
 
     void CompleteInstanceHandler(
@@ -360,7 +380,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
             &call->request, &call->response,
             [call](const Status& s) { call->SendResponse(ToGrpcStatus(s)); });
       });
-      ENQUEUE_REQUEST(GetStepSequence, false);
+      ENQUEUE_REQUEST(GetStepSequence, true);
     }
 #undef ENQUEUE_REQUEST
 
@@ -485,13 +505,90 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
       });
 }
 
+void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                              RecvBufResponse* response, StatusCallback done) {
+  // This is a generic, low performance implementation appropriate for grpc.
+  CollectiveExecutor::Handle ce_handle(
+      env_->collective_executor_mgr->FindOrCreate(request->step_id()), true);
+  CollectiveRemoteAccess* rma = ce_handle.get()->remote_access();
+  rma->buf_rendezvous()->ConsumeBuf(
+      request->buf_rendezvous_key(),
+      [this, request, response, done](const Status& status,
+                                      BufRendezvous::Hook* hook) {
+        Status s = status;
+        if (s.ok()) {
+          if (!DMAHelper::CanUseDMA(hook->prod_value)) {
+            s = errors::Internal("Tensor value for key ",
+                                 request->buf_rendezvous_key(),
+                                 " is not of a type supported by RecvBuf");
+          }
+        }
+        if (s.ok()) {
+          // The RPC source tensor needs to be in CPU RAM.  If not already
+          // there make a copy using memory appropriate to the purpose.
+          const size_t num_bytes = hook->prod_value->TotalBytes();
+          const bool on_host =
+              hook->prod_dev->attributes().device_type() == "CPU" ||
+              hook->prod_attr.on_host();
+          if ((!on_host) && (num_bytes > 0)) {
+            Device* cpu_dev = nullptr;
+            s = env_->device_mgr->LookupDevice("CPU:0", &cpu_dev);
+            if (s.ok()) {
+              AllocatorAttributes cpu_attr;
+              cpu_attr.set_gpu_compatible(true);
+              cpu_attr.set_nic_compatible(true);
+              Tensor* cpu_tensor = new Tensor(cpu_dev->GetAllocator(cpu_attr),
+                                              hook->prod_value->dtype(),
+                                              hook->prod_value->shape());
+              hook->prod_ctx->CopyDeviceTensorToCPU(
+                  hook->prod_value, "empty_name", hook->prod_dev, cpu_tensor,
+                  [this, num_bytes, response, done, hook,
+                   cpu_tensor](const Status& s) {
+                    if (s.ok()) {
+                      RecvBufRespExtra extra;
+                      extra.set_tensor_content(reinterpret_cast<const char*>(
+                                                   DMAHelper::base(cpu_tensor)),
+                                               num_bytes);
+                      response->mutable_transport_options()->PackFrom(extra);
+                    }
+                    response->set_send_start_micros(env_->env->NowMicros());
+                    done(s);
+                    BufRendezvous::DoneWithHook(hook);
+                    delete cpu_tensor;
+                  });
+              return;
+            }
+          } else {
+            // Tensor is on CPU.
+            RecvBufRespExtra extra;
+            extra.set_tensor_content(reinterpret_cast<const char*>(
+                                         DMAHelper::base(hook->prod_value)),
+                                     num_bytes);
+            response->mutable_transport_options()->PackFrom(extra);
+          }
+        }
+        response->set_send_start_micros(env_->env->NowMicros());
+        done(s);
+        BufRendezvous::DoneWithHook(hook);
+      });
+}
+
 void GrpcWorker::LoggingAsync(const LoggingRequest* request,
                               LoggingResponse* response, StatusCallback done) {
   auto env = this->env();
   if (env) {
-    auto session_mgr = (SessionMgr*)env->session_mgr;
+    auto session_mgr = env->session_mgr;
     if (session_mgr) {
-      session_mgr->SetLogging(request->rpc_logging());
+      if (request->enable_rpc_logging()) {
+        session_mgr->SetLogging(true);
+      }
+      // NOTE(mrry): Handle old masters that disable RPC logging by setting
+      // `request->enable_rpc_logging` to `false`.
+      if (request->disable_rpc_logging() ||
+          (!request->enable_rpc_logging() &&
+           request->fetch_step_id_size() == 0)) {
+        session_mgr->SetLogging(false);
+      }
       for (const auto& step_id : request->fetch_step_id()) {
         session_mgr->RetrieveLogs(step_id, response);
       }

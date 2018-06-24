@@ -113,7 +113,7 @@ class ScopedAllocatorConcatOp : public OpKernel {
     OP_REQUIRES(context, backing_tensor.NumElements() >= shape_.num_elements(),
                 errors::InvalidArgument("Backing tensor num elements ",
                                         backing_tensor.NumElements(),
-                                        " is not equal to expected ",
+                                        " is not >= to expected ",
                                         shape_.num_elements()));
     Tensor output(dtype_);
     if (reshape_) {

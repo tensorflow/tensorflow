@@ -57,6 +57,11 @@ class HloReachabilityMap {
       tensorflow::gtl::ArraySlice<const HloInstruction*> inputs,
       const HloInstruction* instruction);
 
+  // As above, but faster because it does not check if the reachability changed.
+  void FastSetReachabilityToUnion(
+      tensorflow::gtl::ArraySlice<const HloInstruction*> inputs,
+      const HloInstruction* instruction);
+
   // Sets entry so that IsReachable(a, b) will return true
   //
   // !!! THIS FUNCTION DOES NOT COMPUTE REACHABILITY !!! It sets the adjacency
@@ -132,6 +137,11 @@ class HloReachabilityMap {
   BitVector& GetBitVector(const HloInstruction* instruction) {
     return bit_vectors_[GetIndex(instruction)];
   }
+
+  // Helper for SetReachabilityToUnion/FastSetReachabilityToUnion.
+  void SetReachabilityToUnionHelper(
+      tensorflow::gtl::ArraySlice<const HloInstruction*> inputs,
+      const HloInstruction* instruction, BitVector* bit_vector);
 
   // Return the index of the given instruction. The value is used to index into
   // the vector of BitVectors and the BitVectors themselves.

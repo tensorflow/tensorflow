@@ -38,7 +38,7 @@ using namespace tflite;
 
 int main(int argc, char *argv[]) {
   if(argc != 2) {
-    fprintf(stderr, "Usage: %s <model>\n");
+    fprintf(stderr, "minimal <tflite model>\n");
     return 1;
   }
   const char* filename = argv[1];

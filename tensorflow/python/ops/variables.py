@@ -29,7 +29,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
@@ -122,6 +122,30 @@ class Variable(checkpointable.CheckpointableBase):
   `trainable_variables()` returns the contents of this collection. The
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
+
+  WARNING: tf.Variable objects have a non-intuitive memory model. A Variable is
+  represented internally as a mutable Tensor which can non-deterministically
+  alias other Tensors in a graph. The set of operations which consume a Variable
+  and can lead to aliasing is undetermined and can change across TensorFlow
+  versions. Avoid writing code which relies on the value of a Variable either
+  changing or not changing as other operations happen. For example, using
+  Variable objects or simple functions thereof as predicates in a `tf.cond` is
+  dangerous and error-prone:
+
+  ```
+  v = tf.Variable(True)
+  tf.cond(v, lambda: v.assign(False), my_false_fn)  # Note: this is broken.
+  ```
+
+  Here replacing tf.Variable with tf.contrib.eager.Variable will fix any
+  nondeterminism issues.
+
+  To use the replacement for variables which does
+  not have these issues:
+
+  * Replace `tf.Variable` with `tf.contrib.eager.Variable`;
+  * Call `tf.get_variable_scope().set_use_resource(True)` inside a
+    `tf.variable_scope` before the `tf.get_variable()` call.
 
   @compatibility(eager)
   `tf.Variable` is not compatible with eager execution.  Use
@@ -235,7 +259,7 @@ class Variable(checkpointable.CheckpointableBase):
           constraint=constraint)
 
   def __repr__(self):
-    if context.executing_eagerly():
+    if context.executing_eagerly() and not self._in_graph_mode:
       return "<tf.Variable '%s' shape=%s dtype=%s, numpy=%s>" % (
           self.name, self.get_shape(), self.dtype.name,
           ops.numpy_text(self.read_value(), is_repr=True))
@@ -317,6 +341,7 @@ class Variable(checkpointable.CheckpointableBase):
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
+    self._trainable = trainable
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
@@ -426,6 +451,7 @@ class Variable(checkpointable.CheckpointableBase):
                                  import_scope=import_scope))
     else:
       self._initial_value = None
+    self._trainable = getattr(variable_def, "trainable", True)
     self._snapshot = g.as_graph_element(
         ops.prepend_name_scope(variable_def.snapshot_name,
                                import_scope=import_scope))
@@ -518,6 +544,10 @@ class Variable(checkpointable.CheckpointableBase):
     """
     self._ref().set_shape(shape)
     self.value().set_shape(shape)
+
+  @property
+  def trainable(self):
+    return self._trainable
 
   def eval(self, session=None):
     """In a session, computes and returns the value of this variable.
@@ -1026,6 +1056,7 @@ class Variable(checkpointable.CheckpointableBase):
         # For backwards compatibility.
         var_def.initial_value_name = ops.strip_name_scope(
             self._initial_value.name, export_scope)
+      var_def.trainable = self.trainable
       var_def.initializer_name = ops.strip_name_scope(
           self.initializer.name, export_scope)
       var_def.snapshot_name = ops.strip_name_scope(

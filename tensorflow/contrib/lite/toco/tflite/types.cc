@@ -36,6 +36,16 @@ DataBuffer::FlatBufferOffset CopyStringToBuffer(
   return builder->CreateVector(dst_data.data(), bytes);
 }
 
+// vector<bool> may be implemented using a bit-set, so we can't just
+// reinterpret_cast, accesing it data as vector<bool> and let flatbuffer
+// CreateVector handle it.
+// Background: https://isocpp.org/blog/2012/11/on-vectorbool
+DataBuffer::FlatBufferOffset CopyBoolToBuffer(
+    const Array& array, flatbuffers::FlatBufferBuilder* builder) {
+  const auto& src_data = array.GetBuffer<ArrayDataType::kBool>().data;
+  return builder->CreateVector(src_data);
+}
+
 template <ArrayDataType T>
 DataBuffer::FlatBufferOffset CopyBuffer(
     const Array& array, flatbuffers::FlatBufferBuilder* builder) {
@@ -86,6 +96,8 @@ void CopyBuffer(const ::tflite::Buffer& buffer, Array* array) {
       return ::tflite::TensorType_UINT8;
     case ArrayDataType::kString:
       return ::tflite::TensorType_STRING;
+    case ArrayDataType::kBool:
+      return ::tflite::TensorType_BOOL;
     default:
       // FLOAT32 is filled for unknown data types.
       // TODO(ycling): Implement type inference in TF Lite interpreter.
@@ -105,6 +117,8 @@ ArrayDataType DataType::Deserialize(int tensor_type) {
       return ArrayDataType::kString;
     case ::tflite::TensorType_UINT8:
       return ArrayDataType::kUint8;
+    case ::tflite::TensorType_BOOL:
+      return ArrayDataType::kBool;
     default:
       LOG(FATAL) << "Unhandled tensor type '" << tensor_type << "'.";
   }
@@ -125,6 +139,8 @@ flatbuffers::Offset<flatbuffers::Vector<uint8_t>> DataBuffer::Serialize(
       return CopyStringToBuffer(array, builder);
     case ArrayDataType::kUint8:
       return CopyBuffer<ArrayDataType::kUint8>(array, builder);
+    case ArrayDataType::kBool:
+      return CopyBoolToBuffer(array, builder);
     default:
       LOG(FATAL) << "Unhandled array data type.";
   }
@@ -146,6 +162,8 @@ void DataBuffer::Deserialize(const ::tflite::Tensor& tensor,
       return CopyStringFromBuffer(buffer, array);
     case ::tflite::TensorType_UINT8:
       return CopyBuffer<ArrayDataType::kUint8>(buffer, array);
+    case ::tflite::TensorType_BOOL:
+      return CopyBuffer<ArrayDataType::kBool>(buffer, array);
     default:
       LOG(FATAL) << "Unhandled tensor type.";
   }

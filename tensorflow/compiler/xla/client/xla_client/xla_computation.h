@@ -25,8 +25,6 @@ limitations under the License.
 namespace xla {
 
 // The computation graph that the user builds up with the XlaBuilder.
-//
-// TODO(b/74197823): Replace xla::Computation with this one.
 class XlaComputation {
  public:
   XlaComputation() : unique_id_(-1) {}

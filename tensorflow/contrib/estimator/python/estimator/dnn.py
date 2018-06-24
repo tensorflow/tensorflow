@@ -93,7 +93,7 @@ class DNNEstimator(estimator.Estimator):
                dropout=None,
                input_layer_partitioner=None,
                config=None):
-    """Initializes a `DNNClassifier` instance.
+    """Initializes a `DNNEstimator` instance.
 
     Args:
       head: A `_Head` instance constructed with a method such as

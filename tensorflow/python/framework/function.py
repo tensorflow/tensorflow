@@ -68,9 +68,10 @@ class Defun(object):
   during the first call to the function. Subsequent function calls will refer to
   the same set of variables.
 
-  Definitions of functions are frozen in a graph as soon as the graph is used to
-  create a session. Therefore, nodes using the function must be created in the
-  graph before the corresponding session is created.
+  Definitions of functions in a graph are frozen as soon as the graph is used to
+  create a session. However, new functions and new calls to existing functions
+  may be added to the graph, with the new functions themselves becoming
+  immediately frozen.
 
   Example, but also see the [How To on functions](link_needed).
 
@@ -248,6 +249,9 @@ class _DefinedFunction(object):
     # Constructed only when C API is enabled, lazily
     self._c_func = None
     self._sub_functions = dict()  # Constructed with _definition or _c_func
+    device_stack = ops.get_default_graph()._device_function_stack  # pylint: disable=protected-access
+    # Get the innermost device if possbile.
+    self._caller_device = device_stack[-1] if device_stack else None
 
     # Cached OpDef for this function. When C API is enabled, this is
     # the only part of FunctionDef that we cache in Python. When C API
@@ -255,12 +259,10 @@ class _DefinedFunction(object):
     # another reference to _definition.signature
     self._op_def = None
 
-    self._args = []
     assert isinstance(input_types, (list, tuple))
-    for i in range(len(input_types)):
-      argname = argnames[i] if i < len(argnames) else ("arg%d" % i)
-      argtype = input_types[i]
-      self._args.append((argname, argtype))
+    self._arg_types = input_types
+    self._arg_names = [argnames[i] if i < len(argnames) else ("arg%d" % i)
+                       for i in range(len(input_types))]
 
   @property
   def name(self):
@@ -313,6 +315,16 @@ class _DefinedFunction(object):
     self._create_definition_if_needed()
     return self._extra_inputs
 
+  @property
+  def stateful_ops(self):
+    """Returns the list of stateful ops in function definition.
+
+    Returns:
+      A list of (op.name, op.type) pairs.
+    """
+    self._create_definition_if_needed()
+    return self._stateful_ops
+
   def _create_definition_if_needed(self):
     """Creates the function definition if it's not created yet."""
     with context.graph_mode():
@@ -323,42 +335,11 @@ class _DefinedFunction(object):
     if self._definition is not None or self._c_func is not None:
       return
 
-    # Create the func_def object.
-    temp_graph = _FuncGraph(capture_by_value=self._capture_by_value)
-    with temp_graph.as_default():
-      # List of placeholders for the function_def.
-      inputs = []
-      for (argname, argtype) in self._args:
-        argholder = array_ops.placeholder(argtype, name=argname)
-        inputs.append(argholder)
-      # Call func and gather the output tensors.
-      with vs.variable_scope("", custom_getter=temp_graph.getvar):
-        outputs = self._func(*inputs)
+    temp_graph = func_graph_from_py_func(
+        self._func, self._arg_names, self._arg_types, self._func_name,
+        self._capture_by_value, self._caller_device)
 
-      # There is no way of distinguishing between a function not returning
-      # anything and a function returning None in Python.
-      # We need to allow the former and ideally want to forbid the latter as
-      # it is most likely user error.
-      # TODO(iga): Consider adding a @NoOutput decorator on top of @Defun to
-      # allow users to explicitly mark the function as not returning anything.
-      # For now, we allow a single None return and interpret it as a function
-      # with no output.
-      if outputs is None:
-        outputs = []
-      else:
-        # If func only returned one value, make it a tuple.
-        if not isinstance(outputs, (list, tuple)):
-          outputs = (outputs,)
-        if any([_ is None for _ in outputs]):
-          raise ValueError("Function can not return None.")
-      # Ensures each output is a Tensor in the function graph.
-      outputs = [ops.convert_to_tensor(t) for t in outputs]
-      outputs = [
-          temp_graph.capture(t) if t.graph is not temp_graph else t
-          for t in outputs
-      ]
     self._extra_inputs = temp_graph.extra_inputs
-    inputs.extend(temp_graph.extra_args)
     # pylint: disable=protected-access
     self._sub_functions = temp_graph._functions
     # pylint: enable=protected-access
@@ -377,8 +358,8 @@ class _DefinedFunction(object):
       self._definition = graph_to_function_def.graph_to_function_def(
           temp_graph,
           temp_graph.get_operations(),
-          inputs,
-          outputs,
+          temp_graph.inputs,
+          temp_graph.outputs,
           out_names=self._out_names)
 
       for k in kwargs_attr:
@@ -408,8 +389,8 @@ class _DefinedFunction(object):
           base_func_name,
           self._func_name is None,  # append_hash_to_fn_name
           None,  # opers
-          [t._as_tf_output() for t in inputs],
-          [t._as_tf_output() for t in outputs],
+          [t._as_tf_output() for t in temp_graph.inputs],
+          [t._as_tf_output() for t in temp_graph.outputs],
           output_names,
           None,  # opts
           description)
@@ -423,6 +404,10 @@ class _DefinedFunction(object):
         assert self._func_name == self._op_def.name
       else:
         self._func_name = compat.as_str(self._op_def.name)
+
+    self._stateful_ops = [(op.name, op.type)
+                          for op in temp_graph.get_operations()
+                          if op.op_def.is_stateful]
 
   def _set_c_attrs(self, attrs):
     """Sets `attrs` as attributes of self._c_func.
@@ -636,16 +621,33 @@ class _FuncGraph(ops.Graph):
   function argument and the caller passes in the captured tensor.
   """
 
-  def __init__(self, capture_by_value, *args, **kwargs):
+  def __init__(self, name, capture_by_value, *args, **kwargs):
     super(_FuncGraph, self).__init__(*args, **kwargs)
     self._capture_by_value = capture_by_value
     self._building_function = True
     self._outer_graph = ops.get_default_graph()
     self._vscope = vs.get_variable_scope()
     self._old_custom_getter = self._vscope.custom_getter
+
+    # The name of the function.
+    self.name = name
+    # Placeholder tensors representing the inputs to this function. The tensors
+    # are in this _FuncGraph.
+    self.inputs = []
+    # Tensors that will be returned this function. The tensors are in this
+    # _FuncGraph.
+    self.outputs = []
+    # Maps external tensor -> internal tensor (e.g. input placeholder).
     self._captured = {}
+    # The external tensors that have been captured as inputs and must be passed
+    # to this function (empty if capturing by value, otherwise these are the
+    # keys of _captured).
     self.extra_inputs = []
+    # Input placeholders that been added for captured values (empty if capturing
+    # by value).
     self.extra_args = []
+    # Captured variables.
+    # TODO(skyewm): is this needed?
     self.extra_vars = []
 
   def getvar(
@@ -716,8 +718,14 @@ class _FuncGraph(ops.Graph):
           tensor.dtype, shape=tensor.get_shape(), name=name)
     # pylint: disable=protected-access
     if ops._USE_C_SHAPES:
-      handle_data = c_api.GetResourceHandleShapeAndType(tensor.graph._c_graph,
-                                                        tensor._as_tf_output())
+      if isinstance(tensor, ops.EagerTensor):
+        handle_data = tensor._handle_data
+        if handle_data:
+          handle_data = handle_data.SerializeToString()
+      else:
+        handle_data = c_api.GetResourceHandleShapeAndType(
+            tensor.graph._c_graph, tensor._as_tf_output())
+
       if handle_data:
         c_api.SetResourceHandleShapeAndType(ph.graph._c_graph,
                                             ph._as_tf_output(),
@@ -725,6 +733,7 @@ class _FuncGraph(ops.Graph):
     else:
       ph._handle_data = tensor._handle_data
     # pylint: enable=protected-access
+    self.inputs.append(ph)
     self._captured[tensor] = ph
     self.extra_args.append(ph)
     if _is_guaranteed_const(tensor):
@@ -761,6 +770,63 @@ class _FuncGraph(ops.Graph):
       self._captured[t] = captured_t
 
     return captured_op
+
+
+def func_graph_from_py_func(func, arg_names, arg_types, name=None,
+                            capture_by_value=False, device=None):
+  """Returns a _FuncGraph generated from `func`.
+
+  Args:
+    func: A Python callable which constructs a TF function body. The arguments
+      must correspond to `arg_types`. Returns a value or list/tuple of values.
+      No returned value can be None.
+    arg_names: A sequence of strings for the function argument names.
+    arg_types: A sequence of the function's argument types.
+    name: The function name. If None, the name is derived from `func`.
+    capture_by_value: boolean. If True, captured values will be copied into the
+      function body.
+    device: device name or function.
+
+  Returns:
+    A _FuncGraph.
+
+  Raises:
+    ValueError: if func returns None.
+  """
+  if not name:
+    name = _get_func_name(func)
+  func_graph = _FuncGraph(name, capture_by_value)
+  with func_graph.as_default(), ops.device(device):
+    # Create placeholders for the function arguments.
+    for (argname, argtype) in zip(arg_names, arg_types):
+      argholder = array_ops.placeholder(argtype, name=argname)
+      func_graph.inputs.append(argholder)
+    # Call func and gather the output tensors.
+    with vs.variable_scope("", custom_getter=func_graph.getvar):
+      outputs = func(*func_graph.inputs)
+
+    # There is no way of distinguishing between a function not returning
+    # anything and a function returning None in Python.
+    # We need to allow the former and ideally want to forbid the latter as
+    # it is most likely user error.
+    # TODO(iga): Consider adding a @NoOutput decorator on top of @Defun to
+    # allow users to explicitly mark the function as not returning anything.
+    # For now, we allow a single None return and interpret it as a function
+    # with no output.
+    if outputs is None:
+      outputs = []
+    else:
+      # If func only returned one value, make it a tuple.
+      if not isinstance(outputs, (list, tuple)):
+        outputs = (outputs,)
+      if any([_ is None for _ in outputs]):
+        raise ValueError("Function can not return None.")
+    # Ensures each output is a Tensor in the function graph.
+    outputs = [ops.convert_to_tensor(t) for t in outputs]
+    outputs = [func_graph.capture(t) if t.graph is not func_graph else t
+               for t in outputs]
+    func_graph.outputs = outputs
+  return func_graph
 
 
 def _is_guaranteed_const(tensor):
@@ -1106,3 +1172,13 @@ _DTYPE_TO_STR = {
     dtypes.qint32: "qi32",
     dtypes.bfloat16: "b16"
 }
+
+
+def function_def_from_tf_function(c_func):
+  """Converts a SWIG-wrapped TF_Function* to a FunctionDef proto."""
+  with c_api_util.tf_buffer() as buf:
+    c_api.TF_FunctionToFunctionDef(c_func, buf)
+    data = c_api.TF_GetBuffer(buf)
+  fdef = function_pb2.FunctionDef()
+  fdef.ParseFromString(compat.as_bytes(data))
+  return fdef

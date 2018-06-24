@@ -97,8 +97,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
     ],
 )
 

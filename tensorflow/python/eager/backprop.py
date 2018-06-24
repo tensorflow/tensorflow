@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import functools
 import operator
-import threading
 
 import six
 
@@ -37,7 +36,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
@@ -92,8 +93,8 @@ class _MockOp(object):
     )
 
 
-def _magic_gradient_function(op_name, attr_tuple, num_inputs,
-                             inputs, outputs, out_grads):
+def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
+                       out_grads):
   """Calls the gradient function of the op.
 
   Args:
@@ -115,8 +116,7 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs,
   return grad_fn(mock_op, *out_grads)
 
 
-_gradient_functions = {}
-_gradient_functions_lock = threading.Lock()
+pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
 
 
 _tracing = False
@@ -138,22 +138,6 @@ _grad_fn_accepts_none_for_indices = {
     "SoftmaxCrossEntropyWithLogits": [1],
     "FusedBatchNorm": [1, 2, 3, 4]
 }
-
-
-def _get_backward_fn(op_name, attrs, num_inputs, op_inputs, op_outputs):
-
-  def grad_fn(*orig_outputs):
-    result = _magic_gradient_function(op_name, attrs, num_inputs,
-                                      op_inputs, op_outputs, orig_outputs)
-    if _tracing:
-      print("Gradient for", op_name, "inputs", op_inputs, "output_grads",
-            orig_outputs, "gradients", result)
-    return nest.flatten(result)
-
-  return grad_fn
-
-
-pywrap_tensorflow.TFE_Py_RegisterBackwardFunctionGetter(_get_backward_fn)
 
 
 def _record_gradient(op_name, inputs, attrs, results, name):
@@ -212,27 +196,25 @@ def implicit_val_and_grad(f):
   # TODO(cais): Remove calls to tf.constant() once the gradients functions
   # accept lists and np.ndarrays.
 
-  def grad_fn(*args):
+  def grad_fn(*args, **kwds):
     """Computes the gradient of the wrapped function."""
     this_tape = tape.push_new_tape()
     try:
-      end_node = f(*args)
+      end_node = f(*args, **kwds)
       if end_node is None:
         raise ValueError("Cannot differentiate a function that returns None; "
                          "did you forget to return a value from {}?".format(
                              f.__name__))
     finally:
       tape.pop_tape(this_tape)
-    # Sorting variables by id, which is monotonically increasing in construction
-    # order. This ensures unique order across executions.
-    # TODO(josh11b): Move the sort to the C++ implementation in pywrap_tfe_src.cc.
-    variables = list(sorted(this_tape.watched_variables(),
-                            key=lambda v: v.handle._id))  # pylint: disable=protected-access
-    sources = [x.handle for x in variables]
-
-    if not sources:
+    # Note: variables are returned in construction order. This ensures unique
+    # order across executions.
+    variables = this_tape.watched_variables()
+    if not variables:
       raise ValueError("No trainable variables were accessed while the "
                        "function was being computed.")
+
+    sources = [v.handle for v in variables]
     grad = imperative_grad.imperative_grad(_default_vspace,
                                            this_tape,
                                            nest.flatten(end_node),
@@ -668,19 +650,19 @@ class GradientTape(object):
   be computed as:
 
   ```python
-  x = tf.constant(3.)
-  with tfe.GradientTape() as g:
+  x = tf.constant(3.0)
+  with tf.GradientTape() as g:
     g.watch(x)
     y = x * x
-  grad = g.gradient(y, [x])[0] # Will compute to 6.0
+  dy_dx = g.gradient(y, x) # Will compute to 6.0
   ```
 
   GradientTapes can be nested to compute higher-order derivatives. For example,
 
   ```python
   x = tf.constant(3.0)
-  with tfe.GradientTape() as g:
-    with tfe.GradientTape() as gg:
+  with tf.GradientTape() as g:
+    with tf.GradientTape() as gg:
       gg.watch(x)
       y = x * x
     dy_dx = gg.gradient(y, x)     # Will compute to 6.0
@@ -695,7 +677,7 @@ class GradientTape(object):
 
   ```python
   x = tf.constant(3.0)
-  with tfe.GradientTape(persistent=True) as g:
+  with tf.GradientTape(persistent=True) as g:
     g.watch(x)
     y = x * x
     z = y * y
@@ -717,13 +699,29 @@ class GradientTape(object):
     """
     self._tape = None
     self._persistent = persistent
+    self._recording = False
 
   def __enter__(self):
-    self._tape = tape.push_new_tape(persistent=self._persistent)
+    """Enters a context inside which operations are recorded on this tape."""
+    self._push_tape()
     return self
 
   def __exit__(self, typ, value, traceback):
+    """Exits the recording context, no further operations are traced."""
+    if self._recording:
+      self._pop_tape()
+
+  def _push_tape(self):
+    if self._recording:
+      raise ValueError("Tape is already recording.")
+    self._tape = tape.push_new_tape(persistent=self._persistent)
+    self._recording = True
+
+  def _pop_tape(self):
+    if not self._recording:
+      raise ValueError("Tape is not recording.")
     tape.pop_tape(self._tape)
+    self._recording = False
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
@@ -734,12 +732,75 @@ class GradientTape(object):
     for t in nest.flatten(tensor):
       tape.watch(_handle_or_self(t))
 
+  @tf_contextlib.contextmanager
+  def stop_recording(self):
+    """Temporarily stops recording operations on this tape.
+
+    Operations executed while this context manager is active will not be
+    recorded on the tape. This is useful for reducing the memory used by tracing
+    all computations.
+
+    For example:
+
+    ```
+      with tf.GradientTape(persistent=True) as t:
+        loss = compute_loss(model)
+        with t.stop_recording():
+          # The gradient computation below is not traced, saving memory.
+          grads = t.gradient(loss, model.variables)
+    ```
+
+    Yields:
+      None
+    Raises:
+      RuntimeError: if the tape is not currently recording.
+    """
+    if self._tape is None:
+      raise RuntimeError(
+          "Trying to stop recording a tape which is not recording.")
+    self._pop_tape()
+    try:
+      yield
+    finally:
+      self._push_tape()
+
+  def reset(self):
+    """Clears all information stored in this tape.
+
+    Equivalent to exiting and reentering the tape context manager with a new
+    tape. For example, the two following code blocks are equivalent:
+    ```
+    with tf.GradientTape() as t:
+      loss = loss_fn()
+    with tf.GradientTape() as t:
+      loss += other_loss_fn()
+    t.gradient(loss, ...)  # Only differentiates other_loss_fn, not loss_fn
+
+
+    # The following is equivalent to the above
+    with tf.GradientTape() as t:
+      loss = loss_fn()
+      t.reset()
+      loss += other_loss_fn()
+    t.gradient(loss, ...)  # Only differentiates other_loss_fn, not loss_fn
+    ```
+
+    This is useful if you don't want to exit the context manager for the tape,
+    or can't because the desired reset point is inside a control flow construct:
+
+    ```
+    with tf.GradientTape() as t:
+      loss = ...
+      if loss > k:
+        t.reset()
+    ```
+    """
+    self._pop_tape()
+    self._push_tape()
+
   def watched_variables(self):
-    # Sorting variables by id, which is monotonically increasing in construction
-    # order. This ensures unique order across executions.
-    # TODO(josh11b): Move the sort to the C++ implementation in pywrap_tfe_src.cc.
-    return list(sorted(self._tape.watched_variables(),
-                       key=lambda v: v.handle._id))  # pylint: disable=protected-access
+    """Returns variables watched by this tape in order of construction."""
+    return self._tape.watched_variables()
 
   def gradient(self, target, sources, output_gradients=None):
     """Computes the gradient using operations recorded in context of this tape.
@@ -761,9 +822,23 @@ class GradientTape(object):
        than once on a non-persistent tape.
     """
     if self._tape is None:
-      raise RuntimeError("GradientTape.gradient can only be called once "
-                         "on non-persistent tapes, and "
-                         "only when the context manager has exited.")
+      raise RuntimeError("GradientTape.gradient can only be called once on "
+                         "non-persistent tapes.")
+    if self._recording:
+      if not self._persistent:
+        self._pop_tape()
+      else:
+        logging.log_first_n(logging.WARN,
+                            "Calling GradientTape.gradient on a persistent "
+                            "tape inside it's context is significantly less "
+                            "efficient than calling it outside the context (it "
+                            "causes the gradient ops to be recorded on the "
+                            "tape, leading to increased CPU and memory usage). "
+                            "Only call GradientTape.gradient inside the "
+                            "context if you actually want to trace the "
+                            "gradient in order to compute higher order "
+                            "derrivatives.", 1)
+
     flat_sources = nest.flatten(sources)
     flat_sources = [_handle_or_self(x) for x in flat_sources]
 

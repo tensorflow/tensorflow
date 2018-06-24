@@ -106,9 +106,7 @@ Status ShapeVerifier::HandleReducePrecision(HloInstruction* reduce_precision) {
                                           reduce_precision->mantissa_bits()));
 }
 
-Status ShapeVerifier::HandleInfeed(HloInstruction*) {
-  return tensorflow::Status::OK();
-}
+Status ShapeVerifier::HandleInfeed(HloInstruction*) { return Status::OK(); }
 
 Status ShapeVerifier::HandleOutfeed(HloInstruction* outfeed) {
   // Outfeed has a separate shape field for the value which is outfed to the
@@ -127,12 +125,10 @@ Status ShapeVerifier::HandleOutfeed(HloInstruction* outfeed) {
 }
 
 Status ShapeVerifier::HandleHostCompute(HloInstruction*) {
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-Status ShapeVerifier::HandleRng(HloInstruction*) {
-  return tensorflow::Status::OK();
-}
+Status ShapeVerifier::HandleRng(HloInstruction*) { return Status::OK(); }
 
 Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
   return CheckShape(
@@ -164,7 +160,7 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
@@ -183,7 +179,7 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
                  operand_shape.dimensions(operand_dimension))
         << broadcast->ToString() << " operand shape " << operand_shape;
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
@@ -191,7 +187,7 @@ Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
   TF_RETURN_IF_ERROR(CheckShape(reshape, reshape->shape()));
   TF_RET_CHECK(ShapeUtil::ElementsIn(reshape->shape()) ==
                ShapeUtil::ElementsIn(reshape->operand(0)->shape()));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status ShapeVerifier::HandleTranspose(HloInstruction* transpose) {
@@ -201,21 +197,17 @@ Status ShapeVerifier::HandleTranspose(HloInstruction* transpose) {
 }
 
 Status ShapeVerifier::HandleParameter(HloInstruction* hlo) {
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-Status ShapeVerifier::HandleFusion(HloInstruction*) {
-  return tensorflow::Status::OK();
-}
+Status ShapeVerifier::HandleFusion(HloInstruction*) { return Status::OK(); }
 
 Status ShapeVerifier::HandleCall(HloInstruction* call) {
   // The shape of kCall should match the shape of the computation it calls.
   return CheckShape(call, call->to_apply()->ComputeProgramShape().result());
 }
 
-Status ShapeVerifier::HandleCustomCall(HloInstruction*) {
-  return tensorflow::Status::OK();
-}
+Status ShapeVerifier::HandleCustomCall(HloInstruction*) { return Status::OK(); }
 
 Status ShapeVerifier::HandleSlice(HloInstruction* slice) {
   return CheckShape(slice,
@@ -384,6 +376,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConstant:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
+    case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kInfeed:
@@ -431,6 +424,14 @@ Status ShapeVerifier::HandleGather(HloInstruction* gather) {
       ShapeInference::InferGatherShape(
           gather->operand(0)->shape(), gather->operand(1)->shape(),
           gather->gather_dimension_numbers(), gather->gather_window_bounds()));
+}
+
+Status ShapeVerifier::HandleGenerateToken(HloInstruction* token) {
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : token->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(token, ShapeInference::InferTokenShape(operand_shapes));
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
@@ -497,7 +498,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
         ShapeUtil::HumanString(instruction->shape()).c_str(),
         instruction->ToString().c_str());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
@@ -547,7 +548,7 @@ Status ShapeVerifier::CheckSameChannel(const HloInstruction* instr1,
         instr1->ToString().c_str(), instr1->channel_id(),
         instr2->ToString().c_str(), instr2->channel_id());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 string ComputationsToString(
@@ -612,7 +613,7 @@ Status VerifyHloStructure(HloModule* module) {
       }
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
@@ -728,7 +729,7 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
   // TODO(b/65423525): We'd like to check that all operands are distinct.
   // This is currently disabled due to the invariant being violated by
   // multi-output fusion.
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status HloVerifier::CheckWhileInstruction(HloInstruction* instruction) {
@@ -777,7 +778,7 @@ Status HloVerifier::CheckWhileInstruction(HloInstruction* instruction) {
         "init: %s, body: %s",
         init->ToString().c_str(), body_root->ToString().c_str());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
@@ -795,8 +796,48 @@ Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
           ShapeUtil::HumanString(operand_shape).c_str());
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
+
+namespace {
+
+// Returns true if the given Shape has a TOKEN shape as any subshape.
+bool ShapeContainsToken(const Shape& shape) {
+  bool contains_token = false;
+  ShapeUtil::ForEachSubshape(
+      shape, [&contains_token](const Shape& subshape, const ShapeIndex&) {
+        if (ShapeUtil::IsToken(subshape)) {
+          contains_token = true;
+        }
+      });
+  return contains_token;
+}
+
+// Verifies that all types entering and exiting the entry computation are
+// legal. For example, TOKEN types have no Literal representation and cannot be
+// on the interface of the entry computation (parameters and root instruction).
+Status VerifyEntryAndExitShapes(const HloModule& module) {
+  for (int i = 0; i < module.entry_computation()->num_parameters(); ++i) {
+    HloInstruction* param =
+        module.entry_computation()->parameter_instruction(i);
+    if (ShapeContainsToken(param->shape())) {
+      return InternalError(
+          "Entry parameter %d is or contains a token shape: %s", i,
+          ShapeUtil::HumanString(param->shape()).c_str());
+    }
+  }
+  if (ShapeContainsToken(
+          module.entry_computation()->root_instruction()->shape())) {
+    return InternalError(
+        "Entry root is or contains a token shape: %s",
+        ShapeUtil::HumanString(
+            module.entry_computation()->root_instruction()->shape())
+            .c_str());
+  }
+  return Status::OK();
+}
+
+}  // namespace
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
@@ -857,6 +898,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
     TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
   }
+
+  TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
 
   return false;
 }

@@ -207,11 +207,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           renorm=renorm,
           update_ops_in_tower_mode=not update_ops_in_cross_tower_mode)
 
-      # Disable prefetching since that makes the specific input on each device
-      # to be non deterministic, and this test relies on specific input being
-      # on each device.
+      # Make sure prefetching is disabled since that makes the
+      # specific input on each device to be non deterministic, and
+      # this test relies on specific input being on each device.
       if isinstance(distribution, mirrored_strategy.MirroredStrategy):
-        distribution._prefetch_on_device = False
+        self.assertFalse(distribution._prefetch_on_device)
       iterator = distribution.distribute_dataset(
           dataset_fn).make_one_shot_iterator()
 

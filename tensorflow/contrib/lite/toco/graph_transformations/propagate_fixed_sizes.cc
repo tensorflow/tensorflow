@@ -278,7 +278,7 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
       << "TransposeConv input shape must have 4 dimensions. Input \""
       << op->inputs[TransposeConvOperator::WEIGHTS] << "\" had shape "
       << toco::ShapeToString(weights_shape) << ".";
-  CHECK_EQ(input_shape.dims(3), weights_shape.dims(0))
+  CHECK_EQ(input_shape.dims(3), weights_shape.dims(3))
       << "Input shape depth and weight depth do not agree";
 
   // Set the output shape according to the specified output shape.
@@ -1477,6 +1477,34 @@ void ProcessArgMaxOperator(Model* model, ArgMaxOperator* op) {
   *output_array.mutable_shape()->mutable_dims() = output_dims;
 }
 
+void ProcessSparseToDenseOperator(Model* model, SparseToDenseOperator* op) {
+  CHECK_EQ(op->inputs.size(), 4);
+
+  const Array& output_shape_array = model->GetArray(op->inputs[1]);
+  if (!output_shape_array.has_shape()) return;
+  CHECK_EQ(output_shape_array.shape().dimensions_count(), 1);
+
+  // Output should not go over four dimensions.
+  CHECK_LE(output_shape_array.shape().dims(0), 4);
+
+  const string& output_name = op->outputs[0];
+  Array& output_array = model->GetArray(output_name);
+  if (output_array.has_shape()) return;
+
+  CHECK(output_shape_array.data_type == ArrayDataType::kInt32 ||
+        output_shape_array.data_type == ArrayDataType::kInt64);
+  if (output_shape_array.data_type == ArrayDataType::kInt32) {
+    *output_array.mutable_shape()->mutable_dims() =
+        output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+  } else {
+    const std::vector<int64>& output_shape_data =
+        output_shape_array.GetBuffer<ArrayDataType::kInt64>().data;
+    std::copy(
+        output_shape_data.begin(), output_shape_data.end(),
+        std::back_inserter(*output_array.mutable_shape()->mutable_dims()));
+  }
+}
+
 }  // namespace
 
 bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
@@ -1514,6 +1542,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kCast:
     case OperatorType::kFloor:
     case OperatorType::kExp:
+    case OperatorType::kSin:
       ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:
@@ -1534,6 +1563,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowMaximum:
     case OperatorType::kTensorFlowMinimum:
     case OperatorType::kTensorFlowGreaterEqual:
+    case OperatorType::kTensorFlowEqual:
+    case OperatorType::kTensorFlowNotEqual:
       ProcessSimpleBinaryOperator(model, op);
       break;
     case OperatorType::kAddN:
@@ -1698,6 +1729,10 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kRandomUniform:
       CHECK_EQ(op->inputs.size(), 1);
       ProcessOpWithShapeInput(model, op);
+      break;
+    case OperatorType::kSparseToDense:
+      ProcessSparseToDenseOperator(model,
+                                   static_cast<SparseToDenseOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

@@ -28,6 +28,13 @@ namespace xla {
 /* static */ tensorflow::mutex Compiler::platform_compiler_mutex_(
     tensorflow::LINKER_INITIALIZED);
 
+std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
+Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
+                                se::StreamExecutor* executor) const {
+  CHECK(executor != nullptr);
+  return {};
+}
+
 /* static */ std::map<se::Platform::Id, Compiler::CompilerFactory>*
 Compiler::GetPlatformCompilerFactories() {
   static auto* r = new std::map<se::Platform::Id, CompilerFactory>;

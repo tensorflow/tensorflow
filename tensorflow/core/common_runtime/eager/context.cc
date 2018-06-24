@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 
 namespace tensorflow {
 
@@ -24,21 +25,59 @@ EagerContext::EagerContext(const SessionOptions& opts,
                            bool async, std::unique_ptr<DeviceMgr> device_mgr,
                            Rendezvous* rendezvous)
     : policy_(default_policy),
-      device_manager_(std::move(device_mgr)),
-      devices_(device_manager_->ListDevices()),
+      local_device_manager_(std::move(device_mgr)),
+      local_unowned_device_manager_(nullptr),
+      devices_(local_device_manager_->ListDevices()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
-          device_manager_.get(), opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-          {}, thread_pool_.get())),
+          local_device_manager_.get(), opts.env, TF_GRAPH_DEF_VERSION,
+          &func_lib_def_, {}, thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
       async_default_(async) {
+  InitDeviceMapAndAsync();
+}
+
+EagerContext::EagerContext(
+    const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
+    bool async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
+    std::unique_ptr<GrpcServer> server,
+    std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
+    std::unique_ptr<DeviceMgr> remote_device_manager,
+    const gtl::FlatMap<string, uint64>& remote_contexts)
+    : policy_(default_policy),
+      local_unowned_device_manager_(local_device_mgr),
+      devices_(local_unowned_device_manager_->ListDevices()),
+      rendezvous_(rendezvous),
+      thread_pool_(NewThreadPoolFromSessionOptions(opts)),
+      pflr_(new ProcessFunctionLibraryRuntime(
+          local_unowned_device_manager_, opts.env, TF_GRAPH_DEF_VERSION,
+          &func_lib_def_, {}, thread_pool_.get())),
+      log_device_placement_(opts.config.log_device_placement()),
+      async_default_(async),
+      server_(std::move(server)),
+      remote_eager_workers_(std::move(remote_eager_workers)),
+      remote_device_manager_(std::move(remote_device_manager)),
+      remote_contexts_(remote_contexts) {
+  InitDeviceMapAndAsync();
+}
+
+void EagerContext::InitDeviceMapAndAsync() {
   if (async_default_) {
     executor_.EnableAsync();
   }
 
   for (auto* device : devices_) {
     devices_map_[device->name()] = device;
+  }
+
+  if (remote_device_manager_ != nullptr) {
+    for (auto* device : remote_device_manager_->ListDevices()) {
+      if (devices_map_.find(device->name()) == devices_map_.end()) {
+        devices_map_[device->name()] = device;
+        devices_.push_back(device);
+      }
+    }
   }
 }
 
@@ -86,6 +125,40 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() {
 }
 
 EagerContext::~EagerContext() {
+  if (server_) {
+    // TODO(nareshmodi): Fix this.
+    LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
+                    "GrpcServer doesn't support clean shutdown.";
+    server_.release();
+  }
+
+  // Close all remote contexts.
+  std::vector<eager::CloseContextRequest> requests(remote_contexts_.size());
+  std::vector<eager::CloseContextResponse> responses(remote_contexts_.size());
+  BlockingCounter counter(static_cast<int>(remote_contexts_.size()));
+
+  int i = 0;
+  for (const auto& worker_and_context_id : remote_contexts_) {
+    auto* client =
+        remote_eager_workers_->GetClient(worker_and_context_id.first);
+
+    requests[i].set_context_id(worker_and_context_id.second);
+    client->CloseContextAsync(
+        &requests[i], &responses[i],
+        [&worker_and_context_id, &counter](const Status& s) {
+          if (!s.ok()) {
+            LOG(ERROR) << "Unable to close remote context with ID "
+                       << worker_and_context_id.second
+                       << " for worker: " << worker_and_context_id.first
+                       << " due to " << s.error_message();
+          }
+          counter.DecrementCount();
+        });
+    i++;
+  }
+
+  counter.Wait();
+
   executor_.WaitForAllPendingNodes().IgnoreError();
   ClearCaches();
   rendezvous_->Unref();
@@ -138,6 +211,47 @@ void EagerContext::SetShouldStoreMetadata(bool value) {
     mutex_lock ml(metadata_mu_);
     run_metadata_.Clear();
   }
+}
+
+namespace {
+Status GetTaskName(Device* d, string* task_name) {
+  string ignored;
+  if (!DeviceNameUtils::SplitDeviceName(d->name(), task_name, &ignored)) {
+    return errors::InvalidArgument("Unable to parse device name: ", d->name());
+  }
+
+  return Status::OK();
+}
+}  // namespace
+
+Status EagerContext::GetClientAndContextID(Device* device,
+                                           eager::EagerClient** client,
+                                           uint64* context_id) {
+  auto it = device_to_client_cache_.find(device);
+  if (it != device_to_client_cache_.end()) {
+    *client = it->second.first;
+    *context_id = it->second.second;
+  }
+  string device_task_name;
+  TF_RETURN_IF_ERROR(GetTaskName(device, &device_task_name));
+
+  *client = remote_eager_workers_->GetClient(device_task_name);
+
+  if (*client == nullptr) {
+    return errors::InvalidArgument(
+        "Unable to find eager client corresponding to device ", device->name());
+  }
+
+  auto context_iterator = remote_contexts_.find(device_task_name);
+  if (context_iterator == remote_contexts_.end()) {
+    return errors::Internal("Unable to find a context for handle on task: ",
+                            device_task_name, ". This should not be possible");
+  }
+  *context_id = context_iterator->second;
+
+  device_to_client_cache_.insert({device, {*client, *context_id}});
+
+  return Status::OK();
 }
 
 }  // namespace tensorflow

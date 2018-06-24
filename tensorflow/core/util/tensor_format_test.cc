@@ -29,6 +29,7 @@ std::pair<TensorFormat, const char*> test_data_formats[] = {
     EnumStringPair(FORMAT_NHWC),
     EnumStringPair(FORMAT_NCHW),
     EnumStringPair(FORMAT_NCHW_VECT_C),
+    EnumStringPair(FORMAT_NHWC_VECT_W),
 };
 
 std::pair<FilterTensorFormat, const char*> test_filter_formats[] = {
@@ -104,7 +105,8 @@ struct DimMaps {
 inline constexpr const TensorDimMap&
 GetTensorDimMap(const int num_spatial_dims, const TensorFormat format) {
   return
-      (format == FORMAT_NHWC) ? DimMaps::kTdmNHWC[num_spatial_dims] :
+      (format == FORMAT_NHWC ||
+       format == FORMAT_NHWC_VECT_W) ? DimMaps::kTdmNHWC[num_spatial_dims] :
       (format == FORMAT_NCHW ||
        format == FORMAT_NCHW_VECT_C) ? DimMaps::kTdmNCHW[num_spatial_dims]
                                      : DimMaps::kTdmInvalid;

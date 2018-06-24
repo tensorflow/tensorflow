@@ -176,6 +176,27 @@ def latency_stats(tag):
   return _apply_fn
 
 
+def feature_stats(tag):
+  """Records the features stats from `Example` records of the input dataset.
+
+  To consume the statistics, associate a `StatsAggregator` with the output
+  dataset.
+
+  Args:
+    tag: String. All statistics recorded by the returned transformation will be
+      associated with the given `tag`.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    @{tf.data.Dataset.apply}.
+  """
+
+  def _apply_fn(dataset):
+    return _StatsDataset(dataset, gen_dataset_ops.feature_stats_dataset, tag)
+
+  return _apply_fn
+
+
 class _StatsDataset(dataset_ops.Dataset):
   """A `Dataset` that acts as an identity, and also records statistics."""
 

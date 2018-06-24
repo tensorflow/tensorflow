@@ -36,6 +36,7 @@ from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework.errors import InvalidArgumentError
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -182,6 +183,8 @@ class FunctionTest(test.TestCase):
     def APlus2B(a, b):
       return a + b * 2
 
+    # APlus2B is stateless.
+    self.assertEqual([], APlus2B.stateful_ops)
     with ops.Graph().as_default():
       call = APlus2B([1.0], [2.0])
       self.assertEqual("APlus2B", call.op.name)
@@ -428,6 +431,8 @@ class FunctionTest(test.TestCase):
       with ops.control_dependencies([check]):
         return x * 2
 
+    # Foo contains a stateful op (Assert).
+    self.assertEqual([("Assert", "Assert")], Foo.stateful_ops)
     g = ops.Graph()
     with g.as_default(), self.test_session():
       self.assertAllEqual(Foo(constant_op.constant(3.0)).eval(), 6.0)
@@ -809,17 +814,11 @@ class FunctionTest(test.TestCase):
     def Foo(x, y, z):
       return math_ops.tanh(math_ops.matmul(x, y) + z)
 
-    # We added more randomness to function names in C API.
-    # TODO(iga): Remove this if statement when we switch to C API.
-    if ops._USE_C_API:  # pylint: disable=protected-access
-      if sys.byteorder == "big":
-        self.assertEqual("Foo_kEdkAG8SJvg",
-                         Foo.instantiate([dtypes.float32] * 3).name)
-      else:
-        self.assertEqual("Foo_aCYSbwBkR5A",
-                         Foo.instantiate([dtypes.float32] * 3).name)
+    if sys.byteorder == "big":
+      self.assertEqual("Foo_kEdkAG8SJvg",
+                       Foo.instantiate([dtypes.float32] * 3).name)
     else:
-      self.assertEqual("Foo_d643acf7",
+      self.assertEqual("Foo_aCYSbwBkR5A",
                        Foo.instantiate([dtypes.float32] * 3).name)
 
   def testSignatureHash(self):
@@ -1717,6 +1716,92 @@ class VariableHoistingTest(test.TestCase):
   def testBasicResource(self):
     self._testSimpleModel(True, use_resource=True)
     self._testSimpleModel(False, use_resource=True)
+
+
+class DevicePlacementTest(test.TestCase):
+
+  def testNoDeviceGraph(self):
+    with ops.Graph().as_default():
+
+      @function.Defun(*[dtypes.float32] * 2)
+      def Matmul(a, b):
+        return math_ops.matmul(a, b)
+
+      Matmul(1., 2.)
+
+      gdef = ops.get_default_graph().as_graph_def()
+      self.assertAllEqual(len(gdef.library.function), 1)
+      fdef = gdef.library.function[0]
+
+      for node in fdef.node_def:
+        self.assertAllEqual(node.device, "")
+
+  def testNestedDevices(self):
+    with ops.Graph().as_default(), ops.device("CPU:0"):
+
+      @function.Defun(*[dtypes.float32] * 2)
+      def Matmul(a, b):
+        return math_ops.matmul(a, b)
+
+      with ops.device("CPU:1"):
+
+        @function.Defun(*[dtypes.float32] * 2)
+        def Divide(a, b):
+          return math_ops.divide(a, b)
+
+        Divide(Matmul(1., 2.), 3.)
+
+      gdef = ops.get_default_graph().as_graph_def()
+      matmul_fdef = [
+          f for f in gdef.library.function if "Matmul" in f.signature.name
+      ]
+      divide_fdef = [
+          f for f in gdef.library.function if "Divide" in f.signature.name
+      ]
+      self.assertAllEqual(len(matmul_fdef), 1)
+      self.assertAllEqual(len(divide_fdef), 1)
+      for node in matmul_fdef[0].node_def:
+        self.assertAllEqual(node.device, "/device:CPU:0")
+      for node in divide_fdef[0].node_def:
+        self.assertAllEqual(node.device, "/device:CPU:1")
+
+  def _testNestedDeviceWithSameFunction(self, func_name):
+
+    def MatmulWrap(a, b):
+
+      @function.Defun(
+          func_name=func_name, *[dtypes.int32] * 2)
+      def Matmul(a, b):
+        return math_ops.matmul(a, b)
+
+      return Matmul(a, b)
+
+    with ops.Graph().as_default(), ops.device("CPU:0"):
+      c = MatmulWrap(1, 2)
+
+      with ops.device("CPU:1"):
+        MatmulWrap(c, 3)
+
+      gdef = ops.get_default_graph().as_graph_def()
+
+      devices = []
+      for node in gdef.library.function[0].node_def:
+        devices.append(node.device)
+      for node in gdef.library.function[1].node_def:
+        devices.append(node.device)
+
+      self.assertAllEqual(sorted(devices), ["/device:CPU:0", "/device:CPU:1"])
+
+  def testFunctionWithName(self):
+    with self.assertRaises(InvalidArgumentError) as cm:
+      self._testNestedDeviceWithSameFunction("MatmulTest")
+    self.assertEqual(
+        cm.exception.message,
+        "Cannot add function \'MatmulTest\' because a different "
+        "function with the same name already exists.")
+
+  def testFunctionWithoutName(self):
+    self._testNestedDeviceWithSameFunction(None)
 
 
 if __name__ == "__main__":

@@ -125,7 +125,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::MapAndBatch")}));
@@ -139,7 +139,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "MapAndBatchDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "MapAndBatchDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -188,7 +190,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             batch_results_((params.dataset->num_parallel_calls_ +
                             params.dataset->batch_size_ - 1) /
                            params.dataset->batch_size_) {
@@ -208,9 +209,14 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
       }
 
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
+
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+        mutex_lock external_l(external_mu_);
         mutex_lock l(mu_);
         EnsureRunnerThreadStarted(ctx);
         BatchResult* result = &batch_results_[ComputeIndex(input_batch_)];
@@ -220,6 +226,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock external_l(external_mu_);
         mutex_lock l(mu_);
         // Wait for all in-flight calls to complete.
         while (num_calls_ > 0) {
@@ -243,6 +250,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
+        mutex_lock external_l(external_mu_);
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
         TF_RETURN_IF_ERROR(
@@ -436,6 +444,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             gtl::MakeCleanup([this, result]() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
               result->Initialize(dataset()->batch_size_);
               input_batch_++;
+              cond_var_.notify_all();
             });
         mutex_lock l(result->mu);
         if (result->num_elements == 0) {
@@ -473,7 +482,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           }
           *end_of_sequence = false;
         }
-        cond_var_.notify_all();
         return result->status;
       }
 
@@ -629,6 +637,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
+      // Used for coordination between the main thread, the runner thread, and
+      // the callback threads.
       mutex mu_;
       // Used for coordination between the main thread, the runner thread, and
       // the callback threads. In particular, the runner thread should only
@@ -636,11 +646,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       // user specified level of parallelism and there are slots available in
       // the `batch_results_` buffer.
       condition_variable cond_var_;
+      // Used for serializing external parallelism.
+      mutex external_mu_ ACQUIRED_BEFORE(mu_);
       // Counts the number of outstanding calls for this batch.
       int64 num_calls_ GUARDED_BY(mu_) = 0;
       // Counts the total number of calls.
       int64 call_counter_ GUARDED_BY(mu_) = 0;
-      const std::unique_ptr<IteratorBase> input_impl_;
+      std::unique_ptr<IteratorBase> input_impl_;
       // Identifies the next batch to be read by the caller.
       int64 input_batch_ GUARDED_BY(mu_) = 0;
       // Identifies the next batch to create.

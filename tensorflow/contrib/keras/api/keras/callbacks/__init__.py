@@ -18,19 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras._impl.keras.callbacks import BaseLogger
-from tensorflow.python.keras._impl.keras.callbacks import Callback
-from tensorflow.python.keras._impl.keras.callbacks import CSVLogger
-from tensorflow.python.keras._impl.keras.callbacks import EarlyStopping
-from tensorflow.python.keras._impl.keras.callbacks import History
-from tensorflow.python.keras._impl.keras.callbacks import LambdaCallback
-from tensorflow.python.keras._impl.keras.callbacks import LearningRateScheduler
-from tensorflow.python.keras._impl.keras.callbacks import ModelCheckpoint
-from tensorflow.python.keras._impl.keras.callbacks import ProgbarLogger
-from tensorflow.python.keras._impl.keras.callbacks import ReduceLROnPlateau
-from tensorflow.python.keras._impl.keras.callbacks import RemoteMonitor
-from tensorflow.python.keras._impl.keras.callbacks import TensorBoard
-from tensorflow.python.keras._impl.keras.callbacks import TerminateOnNaN
+from tensorflow.python.keras.callbacks import BaseLogger
+from tensorflow.python.keras.callbacks import Callback
+from tensorflow.python.keras.callbacks import CSVLogger
+from tensorflow.python.keras.callbacks import EarlyStopping
+from tensorflow.python.keras.callbacks import History
+from tensorflow.python.keras.callbacks import LambdaCallback
+from tensorflow.python.keras.callbacks import LearningRateScheduler
+from tensorflow.python.keras.callbacks import ModelCheckpoint
+from tensorflow.python.keras.callbacks import ProgbarLogger
+from tensorflow.python.keras.callbacks import ReduceLROnPlateau
+from tensorflow.python.keras.callbacks import RemoteMonitor
+from tensorflow.python.keras.callbacks import TensorBoard
+from tensorflow.python.keras.callbacks import TerminateOnNaN
 
 del absolute_import
 del division

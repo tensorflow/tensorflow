@@ -36,8 +36,8 @@ from third_party.examples.eager.spinn import spinn
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
-from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import saver
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 # pylint: enable=g-bad-import-order
 
 

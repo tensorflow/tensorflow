@@ -12,6 +12,7 @@ py_library(
     deps = [
         ":pywrap_xla",
         "//tensorflow/compiler/xla:xla_data_proto_py",
+        "//tensorflow/compiler/xla/service:hlo_proto_py",
     ],
 )
 
@@ -53,6 +54,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",

@@ -28,105 +28,51 @@ class GRPCStub : public ServiceInterface {
   explicit GRPCStub(grpc::XlaService::Stub* stub) : grpc_stub_(stub) {}
   ~GRPCStub() override;
 
-  tensorflow::Status TransferToClient(
-      const TransferToClientRequest* arg,
-      TransferToClientResponse* result) override;
+  Status TransferToClient(const TransferToClientRequest* arg,
+                          TransferToClientResponse* result) override;
 
-  tensorflow::Status TransferToServer(
-      const TransferToServerRequest* arg,
-      TransferToServerResponse* result) override;
+  Status TransferToServer(const TransferToServerRequest* arg,
+                          TransferToServerResponse* result) override;
 
-  tensorflow::Status TransferToInfeed(
-      const TransferToInfeedRequest* arg,
-      TransferToInfeedResponse* result) override;
+  Status TransferToInfeed(const TransferToInfeedRequest* arg,
+                          TransferToInfeedResponse* result) override;
 
-  tensorflow::Status TransferFromOutfeed(
-      const TransferFromOutfeedRequest* arg,
-      TransferFromOutfeedResponse* result) override;
+  Status TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
+                             TransferFromOutfeedResponse* result) override;
 
-  tensorflow::Status ResetDevice(const ResetDeviceRequest* arg,
-                                 ResetDeviceResponse* result) override;
+  Status ResetDevice(const ResetDeviceRequest* arg,
+                     ResetDeviceResponse* result) override;
 
-  tensorflow::Status LoadComputationSnapshot(
-      const LoadComputationSnapshotRequest* request,
-      LoadComputationSnapshotResponse* result) override;
+  Status ExecuteGraph(const ExecuteGraphRequest* request,
+                      ExecuteResponse* response) override;
 
-  tensorflow::Status Execute(const ExecuteRequest* arg,
-                             ExecuteResponse* result) override;
+  Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* request,
+                              ExecuteParallelResponse* response) override;
 
-  tensorflow::Status ExecuteGraph(const ExecuteGraphRequest* request,
-                                  ExecuteResponse* response) override;
+  Status WaitForExecution(const WaitForExecutionRequest* arg,
+                          WaitForExecutionResponse* result) override;
 
-  tensorflow::Status ExecuteParallel(const ExecuteParallelRequest* arg,
-                                     ExecuteParallelResponse* result) override;
+  Status DeconstructTuple(const DeconstructTupleRequest* arg,
+                          DeconstructTupleResponse* result) override;
 
-  tensorflow::Status ExecuteGraphParallel(
-      const ExecuteGraphParallelRequest* request,
-      ExecuteParallelResponse* response) override;
+  Status GetComputationGraphStats(const ComputationGraphStatsRequest* request,
+                                  ComputationStatsResponse* response) override;
 
-  tensorflow::Status ExecuteAsync(const ExecuteAsyncRequest* arg,
-                                  ExecuteAsyncResponse* result) override;
+  Status GetShape(const GetShapeRequest* arg,
+                  GetShapeResponse* result) override;
 
-  tensorflow::Status WaitForExecution(
-      const WaitForExecutionRequest* arg,
-      WaitForExecutionResponse* result) override;
+  Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
+                          GetDeviceHandlesResponse* result) override;
 
-  tensorflow::Status DeconstructTuple(
-      const DeconstructTupleRequest* arg,
-      DeconstructTupleResponse* result) override;
+  Status CreateChannelHandle(const CreateChannelHandleRequest* arg,
+                             CreateChannelHandleResponse* result) override;
 
-  tensorflow::Status GetComputationStats(
-      const ComputationStatsRequest* arg,
-      ComputationStatsResponse* result) override;
-
-  tensorflow::Status GetComputationGraphStats(
-      const ComputationGraphStatsRequest* request,
-      ComputationStatsResponse* response) override;
-
-  tensorflow::Status GetComputationShape(
-      const GetComputationShapeRequest* arg,
-      GetComputationShapeResponse* result) override;
-
-  tensorflow::Status GetShape(const GetShapeRequest* arg,
-                              GetShapeResponse* result) override;
-
-  tensorflow::Status GetDeviceHandles(
-      const GetDeviceHandlesRequest* arg,
-      GetDeviceHandlesResponse* result) override;
-
-  tensorflow::Status CreateChannelHandle(
-      const CreateChannelHandleRequest* arg,
-      CreateChannelHandleResponse* result) override;
-
-  // Methods used by ComputationBuilder.
-  tensorflow::Status Computation(const ComputationRequest* arg,
-                                 ComputationResponse* result) override;
-
-  tensorflow::Status Op(const OpRequest* arg, OpResponse* result) override;
-  tensorflow::Status GetLocalShape(const GetLocalShapeRequest* arg,
-                                   GetLocalShapeResponse* result) override;
-
-  tensorflow::Status SetReturnValue(const SetReturnValueRequest* arg,
-                                    SetReturnValueResponse* results) override;
-
-  tensorflow::Status IsConstant(const IsConstantRequest* arg,
-                                IsConstantResponse* result) override;
-
-  tensorflow::Status ComputeConstant(const ComputeConstantRequest* arg,
-                                     ComputeConstantResponse* result) override;
-
-  tensorflow::Status ComputeConstantGraph(
-      const ComputeConstantGraphRequest* arg,
-      ComputeConstantResponse* result) override;
-
-  // Methods used by Computation.
-  tensorflow::Status SnapshotComputation(
-      const SnapshotComputationRequest* ag,
-      SnapshotComputationResponse* result) override;
+  Status ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
+                              ComputeConstantResponse* result) override;
 
   // Methods used by GlobalData.
-  tensorflow::Status Unregister(const UnregisterRequest* arg,
-                                UnregisterResponse* result) override;
+  Status Unregister(const UnregisterRequest* arg,
+                    UnregisterResponse* result) override;
 
   grpc::XlaService::Stub* service() { return grpc_stub_; }
 

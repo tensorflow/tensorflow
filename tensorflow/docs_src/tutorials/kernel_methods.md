@@ -53,7 +53,7 @@ In order to feed data to a `tf.contrib.learn Estimator`, it is helpful to conver
 it to Tensors. For this, we will use an `input function` which adds Ops to the
 TensorFlow graph that, when executed, create mini-batches of Tensors to be used
 downstream. For more background on input functions, check
-@{$get_started/premade_estimators#create_input_functions$this section on input functions}.
+@{$premade_estimators#create_input_functions$this section on input functions}.
 In this example, we will use the `tf.train.shuffle_batch` Op which, besides
 converting numpy arrays to Tensors, allows us to specify the batch_size and
 whether to randomize the input every time the input_fn Ops are executed

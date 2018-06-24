@@ -33,9 +33,10 @@ bool MergeLstmCellInputs::Run(Model* model, std::size_t op_index) {
     return false;
   }
 
-  // Already a compact LstmCell with LstmCellOperator::NUM_INPUTS of inputs,
-  // do not need to merge cell inputs.
-  if (src_op->inputs.size() == LstmCellOperator::NUM_INPUTS) {
+  // Already a compact LstmCell. Do not need to merge cell inputs.
+  const auto* src_lstm_op = static_cast<LstmCellOperator*>(src_op);
+  if (src_lstm_op->kernel_type != LstmCellOperator::KERNEL_FULL ||
+      src_lstm_op->inputs.size() != kExtendedLstmInputCount) {
     return false;
   }
 
@@ -136,6 +137,7 @@ bool MergeLstmCellInputs::Run(Model* model, std::size_t op_index) {
 
   // Emplace a new LSTM cell operator (use basic 5 inputs kernel).
   auto lstm_cell_op = absl::make_unique<LstmCellOperator>();
+  lstm_cell_op->kernel_type = LstmCellOperator::KERNEL_BASIC;
 
   // Compact LstmCell's 5 inputs.
   lstm_cell_op->inputs.resize(LstmCellOperator::NUM_INPUTS);

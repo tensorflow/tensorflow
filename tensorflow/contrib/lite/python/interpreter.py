@@ -54,7 +54,7 @@ class Interpreter(object):
     elif model_content and not model_path:
       self._interpreter = (
           _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
-              model_content, len(model_content)))
+              model_content))
       if not self._interpreter:
         raise ValueError(
             'Failed to create model from {} bytes'.format(len(model_content)))

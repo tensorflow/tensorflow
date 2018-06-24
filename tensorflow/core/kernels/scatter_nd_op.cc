@@ -62,13 +62,56 @@ class ScatterNdOp : public OpKernel {
     const Tensor& updates = c->input(1);
     const Tensor& shape_input = c->input(2);
 
-    OP_REQUIRES(c, shape_input.dims() == 1,
-                errors::InvalidArgument("Shape must be a vector"));
+    OP_REQUIRES(c, indices.shape().dims() >= 1,
+                errors::InvalidArgument(
+                    "Indices shape must have rank at least one. Found:",
+                    indices.shape().DebugString()));
+    OP_REQUIRES(c, updates.shape().dims() >= 1,
+                errors::InvalidArgument(
+                    "Updates shape must have rank at least one. Found:",
+                    updates.shape().DebugString()));
 
     auto vec = shape_input.flat<Index>();
     TensorShape shape;
     OP_REQUIRES_OK(c,
                    TensorShapeUtils::MakeShape(vec.data(), vec.size(), &shape));
+
+    OP_REQUIRES(
+        c,
+        (shape.num_elements() > 0 || (indices.shape().num_elements() == 0 &&
+                                      updates.shape().num_elements() == 0)),
+        errors::InvalidArgument(
+            "Indices and updates specified for empty output shape"));
+
+    const int64 outer_dims = indices.shape().dims() - 1;
+
+    for (int i = 0; i < outer_dims; ++i) {
+      OP_REQUIRES(c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
+                  errors::InvalidArgument(
+                      "Outer dimensions of indices and update must match. "
+                      "Indices shape: ",
+                      indices.shape().DebugString(),
+                      ", updates shape:", updates.shape().DebugString()));
+    }
+
+    const int64 ix = indices.shape().dim_size(outer_dims);
+    OP_REQUIRES(
+        c, updates.shape().dims() - outer_dims == shape.dims() - ix,
+        errors::InvalidArgument("Inner dimensions of output shape must match "
+                                "inner dimensions of updates shape. Output: ",
+                                shape.DebugString(),
+                                " updates: ", updates.shape().DebugString()));
+    for (int i = 0; i + outer_dims < updates.shape().dims(); ++i) {
+      OP_REQUIRES(
+          c, updates.shape().dim_size(i + outer_dims) == shape.dim_size(ix + i),
+          errors::InvalidArgument(
+              "The inner ", shape.dims() - ix,
+              " dimensions of output.shape=", shape.DebugString(),
+              " must match the inner ", updates.shape().dims() - outer_dims,
+              " dimensions of updates.shape=", updates.shape().DebugString()));
+    }
+    OP_REQUIRES(c, shape_input.dims() == 1,
+                errors::InvalidArgument("Shape must be a vector"));
 
     Tensor out;
     OP_REQUIRES_OK(
@@ -100,14 +143,10 @@ class ScatterNdUpdateOp : public OpKernel {
 
   void Compute(OpKernelContext* c) override {
     if (dtype_ == DT_RESOURCE) {
-      if (use_exclusive_lock_) {
-        Var* v;
-        OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
-        mutex_lock m(*v->mu());
-        DoCompute(c);
-      } else {
-        DoCompute(c);
-      }
+      Var* v;
+      OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      mutex_lock m(*v->mu());
+      DoCompute(c);
     } else if (use_exclusive_lock_) {
       // If we're here, it means the input type is a ref.
       DCHECK(IsRefType(c->input_dtype(0)));
@@ -133,13 +172,7 @@ class ScatterNdUpdateOp : public OpKernel {
       Var* v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
       Tensor* t = v->tensor();
-      if (!use_exclusive_lock_) {
-        // We're not holding the lock in the outer scope so need it here.
-        mutex_lock m(*v->mu());
-        OP_REQUIRES_OK(c, PrepareToUpdateVariable<Device, T>(c, t));
-      } else {
-        OP_REQUIRES_OK(c, PrepareToUpdateVariable<Device, T>(c, t));
-      }
+      OP_REQUIRES_OK(c, PrepareToUpdateVariable<Device, T>(c, t));
       params = *t;
       params_shape = params.shape();
     } else if (IsRefType(c->input_dtype(0))) {
@@ -217,7 +250,9 @@ class ScatterNdUpdateOp : public OpKernel {
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdNonAliasingAdd", \
                                     scatter_nd_op::UpdateOp::ADD);        \
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdSub",            \
-                                    scatter_nd_op::UpdateOp::SUB);
+                                    scatter_nd_op::UpdateOp::SUB);        \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                             \
+      type, dev, "ResourceScatterNdAdd", scatter_nd_op::UpdateOp::ADD);
 
 #define REGISTER_SCATTER_ND(type, dev) \
   REGISTER_SCATTER_ND_KERNEL(type, dev, "ScatterNd");
@@ -257,6 +292,7 @@ TF_CALL_string(REGISTER_SCATTER_ND_CPU);
   REGISTER_SCATTER_ND_UPDATE_GPU(type);   \
   REGISTER_SCATTER_ND_GPU(type);
 
+TF_CALL_int32(REGISTER_SCATTER_ND_ALL_GPU);
 // TODO(b/66916790): Support half types in ScatterNd.
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ALL_GPU);
 TF_CALL_complex64(REGISTER_SCATTER_ND_ALL_GPU);
@@ -271,6 +307,8 @@ TF_CALL_complex128(REGISTER_SCATTER_ND_ALL_GPU);
 #define REGISTER_SCATTER_ND_UPDATE_SYCL(type) \
   REGISTER_SCATTER_ND_UPDATE(type, SYCL);
 
+TF_CALL_int32(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
+TF_CALL_int32(REGISTER_SCATTER_ND_UPDATE_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
 #undef REGISTER_SCATTER_ND_ADD_SUB_SYCL
@@ -541,6 +579,7 @@ namespace functor {
   DECLARE_GPU_SPECS_INDEX(T, int32); \
   DECLARE_GPU_SPECS_INDEX(T, int64)
 
+TF_CALL_int32(DECLARE_GPU_SPECS);
 // TODO(b/66916790): Support half types in ScatterNd.
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 TF_CALL_complex64(DECLARE_GPU_SPECS);

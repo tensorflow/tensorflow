@@ -53,11 +53,17 @@ using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 using tensorflow::strings::StrAppend;
 
+namespace {
 // Returns whether operand is a floating-point literal with the given value.
 bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
-  return operand->opcode() == HloOpcode::kConstant &&
-         operand->literal().IsAllFloat(value);
+  if (operand->opcode() == HloOpcode::kConstant &&
+      operand->literal().IsAllFloat(value)) {
+    return true;
+  }
+  return operand->opcode() == HloOpcode::kBroadcast &&
+         IsFPLiteralWithValue(operand->operand(0), value);
 }
+}  // namespace
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
@@ -227,6 +233,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(
   return EmitLibdeviceMathCall("__nv_log", {value}, {prim_type}, prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog1p(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_log1p", {value}, {prim_type}, prim_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(
     PrimitiveType prim_type, llvm::Value* value) const {
   return EmitLibdeviceMathCall("__nv_sin", {value}, {prim_type}, prim_type);
@@ -240,6 +251,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value) const {
   return EmitLibdeviceMathCall("__nv_exp", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExpm1(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_expm1", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(PrimitiveType prim_type,

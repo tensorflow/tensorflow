@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/default/thread_annotations.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 
@@ -274,6 +274,15 @@ StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
 
 const XlaComputation& LocalComputation::computation() const {
   return computation_;
+}
+
+string LocalComputation::GetSerializedProto() const {
+  string result;
+  if (!computation_.proto().SerializeToString(&result)) {
+    LOG(ERROR) << "Failed to serialize the HloModuleProto.";
+    return "";
+  }
+  return result;
 }
 
 StatusOr<Shape> LocalComputation::GetReturnValueShape() const {
@@ -589,10 +598,12 @@ _FORWARD_BINOP(Or)
 _FORWARD_UNOP(Not)
 _FORWARD_UNOP(Abs)
 _FORWARD_UNOP(Exp)
+_FORWARD_UNOP(Expm1)
 _FORWARD_UNOP(Floor)
 _FORWARD_UNOP(Ceil)
 _FORWARD_UNOP(Round)
 _FORWARD_UNOP(Log)
+_FORWARD_UNOP(Log1p)
 _FORWARD_UNOP(Sign)
 _FORWARD_UNOP(Cos)
 _FORWARD_UNOP(Sin)

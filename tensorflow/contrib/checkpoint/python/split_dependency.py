@@ -20,8 +20,8 @@ from __future__ import print_function
 import functools
 
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.training import checkpointable as checkpointable
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training.checkpointable import base as checkpointable
 
 
 class _CallbackSaveable(saver_lib.BaseSaverBuilder.SaveableObject):

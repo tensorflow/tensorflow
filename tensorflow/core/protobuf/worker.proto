@@ -122,6 +122,14 @@ message RegisterGraphRequest {
 
   // Field(s) used by TensorFlow Debugger (tfdbg).
   DebugOptions debug_options = 5;
+
+  // If graph_def contains any collective ops this must be a positive
+  // integer used to coordinate execution with other graphs.  All
+  // graphs in a distributed execution with the same
+  // collective_graph_key will coordinate to use the same step_id
+  // concurrently so that BufRendezvous entries will make the correct
+  // values accessible.
+  int64 collective_graph_key = 7;
 }
 
 message RegisterGraphResponse {
@@ -361,8 +369,11 @@ message RecvTensorResponse {
 // Out-of-band request to begin or end logging, or
 // to retrieve logs for particular steps.
 message LoggingRequest {
-  // If true, RPC logging will be activated.
-  bool rpc_logging = 1;
+  // If true, RPC logging will be enabled.
+  bool enable_rpc_logging = 1;
+
+  // If true, RPC logging will be disabled.
+  bool disable_rpc_logging = 4;
 
   // If true, discard any saved logging data (for all steps).
   bool clear = 2;
@@ -414,6 +425,60 @@ message TracingRequest {
 }
 
 message TracingResponse {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Raw data transfers in support of Collective Ops.
+// These methods are experimental and subject to change.
+//
+// The intention is to allow collectives to take advantage of the most
+// efficient methods available on a platform, e.g. RDMA, and not be
+// constrained to use the RPC system in use by other methods.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message RecvBufRequest {
+  // Use of the fields below may vary by implementation.  For example
+  // the buf_ptr and num_bytes may be set only for local operations and
+  // not sent on the wire, or only sent on the wire in one direction.
+
+  // Used at server side to find the correct BufRendezvous.
+  int64 step_id = 1;
+
+  // Arbitrary string identifying a BufRendezvous entry.
+  string buf_rendezvous_key = 2;
+
+  // Size of value expected, must agree with BufRendezvous entry.
+  int64 num_bytes = 3;
+
+  // When RDMA is in use, address of destination field on client.
+  fixed64 buf_ptr = 4;
+
+  // Optional information on client-side device locality.
+  DeviceLocality client_locality = 5;
+
+  // Optional information on server-side device locality.
+  DeviceLocality server_locality = 6;
+
+  // Optional, implementation-specific data.
+  google.protobuf.Any transport_options = 7;
+  // Optional, for annotating the timeline.
+  string src_device = 8;
+  string dst_device = 9;
+}
+
+message RecvBufResponse {
+  // Use of the fields below may vary by implementation.  Comments give
+  // intended use.
+
+  fixed64 buf_ptr = 1;  // Address of source field on server.
+  int64 num_bytes = 2;  // Byte length of buf_ptr field, if set.
+  bool is_dead = 3;     // True if value is 'dead' like a tensor.
+  // Optional, implementation-specific data.
+  google.protobuf.Any transport_options = 4;
+  // Optional, for timeline.
+  int64 send_start_micros = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

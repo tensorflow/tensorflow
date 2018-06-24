@@ -1,9 +1,9 @@
 path: "tensorflow.keras.layers.SpatialDropout1D"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.core.SpatialDropout1D\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.core.Dropout\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.core.SpatialDropout1D\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.core.Dropout\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -107,7 +107,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'_\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"

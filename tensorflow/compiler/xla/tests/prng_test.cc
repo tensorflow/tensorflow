@@ -273,11 +273,11 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
                                              &execution_options_));
   }
 
-  LiteralTestUtil::ExpectEqual(*result1, *result2);
-  LiteralTestUtil::ExpectEqual(*result1, *result3);
-  LiteralTestUtil::ExpectNotEqual(*result1, *result4);
-  LiteralTestUtil::ExpectNotEqual(*result4, *result5);
-  LiteralTestUtil::ExpectNotEqual(*result5, *result6);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*result1, *result2));
+  EXPECT_TRUE(LiteralTestUtil::Equal(*result1, *result3));
+  EXPECT_FALSE(LiteralTestUtil::Equal(*result1, *result4));
+  EXPECT_FALSE(LiteralTestUtil::Equal(*result4, *result5));
+  EXPECT_FALSE(LiteralTestUtil::Equal(*result5, *result6));
 }
 
 XLA_TEST_F(PrngTest, TenValuesN01) {

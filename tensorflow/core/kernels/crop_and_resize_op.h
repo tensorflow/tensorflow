@@ -31,7 +31,7 @@ struct CropAndResize {
                   typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
-                  float extrapolation_value,
+                  string method_name, float extrapolation_value,
                   typename TTypes<float, 4>::Tensor crops);
 };
 
@@ -41,7 +41,8 @@ struct CropAndResizeBackpropImage {
   bool operator()(const Device& d, typename TTypes<float, 4>::ConstTensor grads,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
-                  typename TTypes<T, 4>::Tensor grads_image);
+                  typename TTypes<T, 4>::Tensor grads_image,
+                  const string& method_name);
 };
 
 template <typename Device, typename T>

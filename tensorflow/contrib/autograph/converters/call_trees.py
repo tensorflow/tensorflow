@@ -292,15 +292,25 @@ class CallTreeTransformer(transformer.Base):
         raise NotImplementedError(
             'py_func with return values (unknown function)')
     else:
+      if anno.hasanno(node.func, anno.Basic.QN):
+        # Special-case a few builtins that otherwise go undetected. This
+        # normally doesn't pose a problem, but the dict built-in doesn't
+        # work with inspect.getargspec which is required for dynamic functions.
+        # Note: expecting this is resilient to aliasing (e.g.
+        # dict = an_evil_dict), because in those cases the regular mechanisms
+        # process a simple user function.
+        qn = anno.getanno(node.func, anno.Basic.QN)
+        # Add items to this list as needed.
+        if str(qn) in ('dict',):
+          return node
+
       if ast_util.matches(node, 'super(_)'):
         # super() calls are preserved. The class conversion mechanism will
         # ensure that they return the correct value.
-        pass
-      elif self.context.recursive:
+        return node
+
+      if self.context.recursive:
         node = self._insert_dynamic_conversion(node)
-      else:
-        # Unresolved functions are allowed in non-recursive mode.
-        pass
     return node
 
 

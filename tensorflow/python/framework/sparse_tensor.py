@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -225,6 +226,7 @@ class SparseTensor(_TensorLike):
 SparseTensorValue = collections.namedtuple(
     "SparseTensorValue", ["indices", "values", "dense_shape"])
 tf_export("SparseTensorValue")(SparseTensorValue)
+pywrap_tensorflow.RegisterSparseTensorValueClass(SparseTensorValue)
 
 
 @tf_export("convert_to_tensor_or_sparse_tensor")

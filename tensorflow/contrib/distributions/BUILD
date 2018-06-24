@@ -94,7 +94,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "distribution_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/distribution_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -337,7 +337,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "mvn_tril_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/mvn_tril_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -710,6 +710,7 @@ cuda_py_test(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
     tags = ["noasan"],  # times out, http://b/78588814
 )
 
@@ -940,6 +941,25 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "fill_triangular_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/fill_triangular_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "gumbel_test",
     size = "small",
     srcs = ["python/kernel_tests/bijectors/gumbel_test.py"],
@@ -1032,6 +1052,25 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "matrix_inverse_tril_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/bijectors/matrix_inverse_tril_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "real_nvp_test",
     size = "small",
     srcs = ["python/kernel_tests/bijectors/real_nvp_test.py"],
@@ -1094,6 +1133,25 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "scale_tril_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/scale_tril_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -1200,6 +1258,25 @@ cuda_py_test(
     name = "square_test",
     size = "small",
     srcs = ["python/kernel_tests/bijectors/square_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "transform_diagonal_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/transform_diagonal_test.py"],
     additional_deps = [
         ":bijectors_py",
         ":distributions_py",

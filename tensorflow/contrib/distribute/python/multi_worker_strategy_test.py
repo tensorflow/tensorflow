@@ -25,11 +25,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.training import server_lib
 
 
-@test_util.with_c_api
 class MultiWorkerStrategyTest(multi_worker_test_base.MultiWorkerTestBase,
                               strategy_test_lib.DistributionTestBase):
 

@@ -153,7 +153,7 @@ class DepthwiseConv2DTest(XLATestCase):
                   dtype=data_type).reshape(filter_in_sizes)
     with self.test_session() as sess:
       if data_type == np.float32:
-        tolerance = 1e-5
+        tolerance = 1e-4
       else:
         self.assertEqual(data_type, np.float64)
         tolerance = 1e-8
@@ -339,7 +339,7 @@ class DepthwiseConv2DTest(XLATestCase):
 
     gpu_value = _GetVal(use_xla=True)
     cpu_value = _GetVal(use_xla=False)
-    self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
+    self.assertAllClose(cpu_value, gpu_value, rtol=1e-3, atol=1e-3)
 
   def testDepthwiseConv2DInputGradCompare(self):
     for index, (input_size, filter_size, output_size, stride,

@@ -145,9 +145,14 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   //
   // Preconditions:
   //  cp is populated with all DeviceLocalities
-  Status InitInstanceSharedParams(const GroupRec* gr,
-                                  const CollectiveParams* cp, InstanceRec* ir)
+  void InitInstanceSharedParams(const GroupRec* gr, const CollectiveParams* cp,
+                                InstanceRec* ir, const StatusCallback& done)
       EXCLUSIVE_LOCKS_REQUIRED(ir->out_mu) LOCKS_EXCLUDED(gr->mu);
+
+  void CallInitInstanceSharedParams(const GroupRec* gr,
+                                    const CollectiveParams* cp, InstanceRec* ir,
+                                    const InstanceRecCallback& done)
+      LOCKS_EXCLUDED(ir->out_mu, gr->mu);
 
   // Establishes the final order of ir->shared.instance.device_names and
   // ir->shared.instance.task_names by considering localities of all devices.
@@ -196,7 +201,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
       LOCKS_EXCLUDED(irec->out_mu);
 
   const DeviceMgr* dev_mgr_;
-  DeviceResolverInterface* dev_resolver_;
+  DeviceResolverInterface* dev_resolver_;  // Not owned.
   string task_name_;
   mutex group_mu_;
   gtl::FlatMap<int32, std::unique_ptr<GroupRec>> group_table_

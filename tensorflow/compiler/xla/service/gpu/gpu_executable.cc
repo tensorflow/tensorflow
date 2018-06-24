@@ -32,11 +32,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using tensorflow::tracing::ScopedAnnotation;
 
 // A helper class for profiling HLO in the course of GPU program execution.
 // All of the profiling is guarded internally, to avoid the caller needing to
@@ -134,9 +137,10 @@ Status GpuExecutable::ExecuteThunks(
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* main_stream = run_options->stream();
+  se::StreamExecutor* executor = main_stream->parent();
 
   std::pair<int, int> stream_compute_compatibility;
-  main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
+  executor->GetDeviceDescription().cuda_compute_capability(
       &stream_compute_compatibility.first,
       &stream_compute_compatibility.second);
   TF_RET_CHECK(stream_compute_compatibility == compute_capability_)
@@ -155,21 +159,39 @@ Status GpuExecutable::ExecuteThunks(
   sub_streams.reserve(thunk_schedule_->StreamCount() - 1);
   while (sub_streams.size() + 1 < thunk_schedule_->StreamCount()) {
     sub_streams.emplace_back();
-    TF_ASSIGN_OR_RETURN(
-        sub_streams.back(),
-        run_options->BorrowStream(main_stream->parent()->device_ordinal()));
+    TF_ASSIGN_OR_RETURN(sub_streams.back(),
+                        run_options->BorrowStream(executor->device_ordinal()));
   }
 
   HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
                                 sub_streams, hlo_module_->entry_computation());
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
-  // The next event enqueued on stream N must not run until the thunk at
-  // last_blocking_thunk_for_stream[N] completes.
-  std::map<int32, const Thunk*> last_blocking_thunk_for_stream;
+  // This top-level trace serves two purposes:
+  //  1) It marks the scope of the whole XLA module.
+  //  2) It tells us whether tracing is enabled.  We use this to avoid the
+  //     expensive HloInstruction::ToString() calls inside the loop below if
+  //     tracing is disabled.
+  ScopedAnnotation top_level_annotation(hlo_module_->name(), "XLA GPU module");
+
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(*this));
+    // Annotate execution of this op if tracing was enabled when we started
+    // running this module.  If tracing is enabled *while* we're running the
+    // module, we won't get any data, but that's probably an OK trade-off.
+    //
+    // TODO(jlebar): Should we cache the results of HloInstruction::ToString(),
+    // since we expect it to be an expensive call?
+    tensorflow::gtl::optional<ScopedAnnotation> op_annotation;
+    if (top_level_annotation.IsEnabled()) {
+      op_annotation.emplace(
+          thunk->hlo_instruction() != nullptr
+              ? thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical())
+              : "<unknown>",
+          "XLA op");
+    }
+
+    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     int32 stream_no =
         thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
     se::Stream* stream =
@@ -179,18 +201,10 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
-    if (last_blocking_thunk_for_stream.count(stream_no)) {
-      stream->ThenWaitFor(FindOrDie(thunk_to_finish_event,
-                                    last_blocking_thunk_for_stream[stream_no])
-                              .get());
-      last_blocking_thunk_for_stream.erase(stream_no);
-    }
-
     // If this thunk requests it, wait for all currently-executing thunks to
     // finish.  This is useful e.g. if the thunk is about to perform autotuning.
     if (thunk->ShouldHaltAllActivityBeforeRunning(stream)) {
       TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
-      last_blocking_thunk_for_stream.clear();
     }
 
     profiler.StartOperation();
@@ -198,22 +212,11 @@ Status GpuExecutable::ExecuteThunks(
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(buffer_allocations, stream));
-    if (thunk_schedule_->Depended(thunk) || thunk->ShouldBlockFutureThunks()) {
+    if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = MakeUnique<se::Event>(main_stream->parent());
       finish_event->Init();
       stream->ThenRecordEvent(finish_event.get());
       thunk_to_finish_event[thunk] = std::move(finish_event);
-
-      if (thunk->ShouldBlockFutureThunks()) {
-        // Set last_blocking_thunk_for_stream on all streams other than this one
-        // so that all other streams will wait for this thunk to complete before
-        // executing any events that occur later in the total order.
-        for (int32 i = 0; i < sub_streams.size() + 1; ++i) {
-          if (i != stream_no) {
-            last_blocking_thunk_for_stream[i] = thunk;
-          }
-        }
-      }
     }
     profiler.FinishOperation(thunk->hlo_instruction());
   }
@@ -286,8 +289,8 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
   se::StreamExecutor* executor = run_options->stream()->parent();
   TF_ASSIGN_OR_RETURN(
       auto buffer_allocations,
-      buffer_allocations_builder.Build(*assignment_, executor->device_ordinal(),
-                                       memory_allocator));
+      buffer_allocations_builder.Build(
+          assignment_.get(), executor->device_ordinal(), memory_allocator));
 
   bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
@@ -329,8 +332,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
         buffers_in_result.insert(src_base);
         return Status::OK();
       }));
-  TF_RETURN_IF_ERROR(
-      buffer_allocations->TearDown(buffers_in_result, *assignment_));
+  TF_RETURN_IF_ERROR(buffer_allocations->TearDown(buffers_in_result));
 
   return std::move(shaped_buffer);
 }

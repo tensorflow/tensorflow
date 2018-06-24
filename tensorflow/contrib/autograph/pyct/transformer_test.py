@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gast
+
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import context
 from tensorflow.contrib.autograph.pyct import parser
@@ -27,7 +29,7 @@ from tensorflow.python.platform import test
 
 class TransformerTest(test.TestCase):
 
-  def _context_for_nodetesting(self):
+  def _context_for_testing(self):
     return context.EntityContext(
         namer=None,
         source_code=None,
@@ -53,7 +55,7 @@ class TransformerTest(test.TestCase):
         anno.setanno(node, 'enclosing_entities', self.enclosing_entities)
         return self.generic_visit(node)
 
-    tr = TestTransformer(self._context_for_nodetesting())
+    tr = TestTransformer(self._context_for_testing())
 
     def test_function():
       a = 0
@@ -94,7 +96,7 @@ class TransformerTest(test.TestCase):
                       inner_function, lambda_node),
                      anno.getanno(lambda_expr, 'enclosing_entities'))
 
-  def test_statement_info_stack(self):
+  def test_local_scope_info_stack(self):
 
     class TestTransformer(transformer.Base):
 
@@ -116,7 +118,7 @@ class TransformerTest(test.TestCase):
       def visit_For(self, node):
         return self._annotate_result(node)
 
-    tr = TestTransformer(self._context_for_nodetesting())
+    tr = TestTransformer(self._context_for_testing())
 
     def test_function(a):
       """Docstring."""
@@ -142,7 +144,7 @@ class TransformerTest(test.TestCase):
     self.assertFalse(anno.hasanno(while_node, 'string'))
     self.assertEqual('1', anno.getanno(while_node, 'test'))
 
-  def test_statement_info_stack_checks_integrity(self):
+  def test_local_scope_info_stack_checks_integrity(self):
 
     class TestTransformer(transformer.Base):
 
@@ -155,7 +157,7 @@ class TransformerTest(test.TestCase):
         self.exit_local_scope()
         return node
 
-    tr = TestTransformer(self._context_for_nodetesting())
+    tr = TestTransformer(self._context_for_testing())
 
     def no_exit(a):
       if a > 0:
@@ -173,6 +175,38 @@ class TransformerTest(test.TestCase):
     node, _ = parser.parse_entity(no_entry)
     with self.assertRaises(AssertionError):
       tr.visit(node)
+
+  def test_visit_block_postprocessing(self):
+
+    class TestTransformer(transformer.Base):
+
+      def _process_body_item(self, node):
+        if isinstance(node, gast.Assign) and (node.value.id == 'y'):
+          if_node = gast.If(gast.Name('x', gast.Load(), None), [node], [])
+          return if_node, if_node.body
+        return node, None
+
+      def visit_FunctionDef(self, node):
+        node.body = self.visit_block(
+            node.body, after_visit=self._process_body_item)
+        return node
+
+    def test_function(x, y):
+      z = x
+      z = y
+      return z
+
+    tr = TestTransformer(self._context_for_testing())
+
+    node, _ = parser.parse_entity(test_function)
+    node = tr.visit(node)
+    node = node.body[0]
+
+    self.assertEqual(len(node.body), 2)
+    self.assertTrue(isinstance(node.body[0], gast.Assign))
+    self.assertTrue(isinstance(node.body[1], gast.If))
+    self.assertTrue(isinstance(node.body[1].body[0], gast.Assign))
+    self.assertTrue(isinstance(node.body[1].body[1], gast.Return))
 
 
 if __name__ == '__main__':

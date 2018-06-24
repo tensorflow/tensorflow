@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_internal.h"
-#include "tensorflow/c/eager/runtime.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #endif  // TENSORFLOW_EAGER_USE_XLA
@@ -32,15 +31,22 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/copy_to_device_node.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/rpc/eager/eager_grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -67,10 +73,121 @@ string DeviceName(const tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
 }
 
-#ifdef TENSORFLOW_EAGER_USE_XLA
-std::atomic_int_fast64_t func_id_generator(0);
-#endif  // TENSORFLOW_EAGER_USE_XLA
+tensorflow::Status GetAllRemoteDevices(
+    const std::vector<string>& remote_workers,
+    tensorflow::WorkerCacheInterface* worker_cache,
+    std::unique_ptr<tensorflow::DeviceMgr>* device_mgr) {
+  std::vector<tensorflow::Device*> remote_devices;
+  tensorflow::Status status;
+  // TODO(nareshmodi) do this in parallel instead of serially.
+  for (const string& remote_worker : remote_workers) {
+    tensorflow::Notification n;
+    tensorflow::NewRemoteDevices(
+        tensorflow::Env::Default(), worker_cache, remote_worker,
+        [&status, &n, &remote_devices](
+            const tensorflow::Status& s,
+            std::vector<tensorflow::Device*>* devices) {
+          status = s;
+          if (s.ok()) {
+            for (tensorflow::Device* d : *devices) {
+              remote_devices.push_back(d);
+            }
+          }
+          n.Notify();
+        });
+    n.WaitForNotification();
+  }
+  std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr(
+      new tensorflow::DeviceMgr(remote_devices));
 
+  TF_RETURN_IF_ERROR(status);
+
+  *device_mgr = std::move(remote_device_mgr);
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status CreateRemoteContexts(
+    const std::vector<string>& remote_workers,
+    tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
+    tensorflow::gtl::FlatMap<string, tensorflow::uint64>* remote_contexts) {
+  for (int i = 0; i < remote_workers.size(); i++) {
+    const string& remote_worker = remote_workers[i];
+
+    tensorflow::eager::CreateContextRequest request;
+    tensorflow::eager::CreateContextResponse response;
+    tensorflow::DeviceNameUtils::ParsedName parsed_name;
+    if (!tensorflow::DeviceNameUtils::ParseFullName(remote_worker,
+                                                    &parsed_name)) {
+      return tensorflow::errors::InvalidArgument(
+          "Unable to parse ", remote_worker, " as a device name");
+    }
+    request.mutable_server_def()->set_job_name(parsed_name.job);
+    request.mutable_server_def()->set_task_index(parsed_name.task);
+    request.set_async(async);
+    auto* eager_client = remote_eager_workers->GetClient(remote_worker);
+    if (eager_client == nullptr) {
+      return tensorflow::errors::Internal(
+          "Cannot find a client for the given target:", remote_worker);
+    }
+    tensorflow::Notification n;
+    tensorflow::Status status;
+    // TODO(nareshmodi) do this in parallel instead of serially.
+    eager_client->CreateContextAsync(
+        &request, &response, [&status, &n](const tensorflow::Status& s) {
+          status = s;
+          n.Notify();
+        });
+    n.WaitForNotification();
+    TF_RETURN_IF_ERROR(status);
+
+    remote_contexts->emplace(remote_worker, response.context_id());
+  }
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status NewRemoteAwareTFE_Context(const TFE_ContextOptions* opts,
+                                             TFE_Context** ctx) {
+  string worker_name = tensorflow::strings::StrCat(
+      "/job:", opts->server_def.job_name(),
+      "/replica:0/task:", opts->server_def.task_index());
+  std::unique_ptr<tensorflow::eager::EagerGrpcServer> server;
+  TF_RETURN_IF_ERROR(
+      tensorflow::eager::EagerGrpcServer::Create(opts->server_def, &server));
+
+  TF_RETURN_IF_ERROR(server->Start());
+
+  std::vector<string> remote_workers;
+  server->master_env()->worker_cache->ListWorkers(&remote_workers);
+  remote_workers.erase(
+      std::remove(remote_workers.begin(), remote_workers.end(), worker_name),
+      remote_workers.end());
+
+  std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr;
+  TF_RETURN_IF_ERROR(GetAllRemoteDevices(
+      remote_workers, server->master_env()->worker_cache, &remote_device_mgr));
+
+  std::shared_ptr<tensorflow::GrpcChannelCache> channel_cache =
+      server->channel_cache();
+  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers(
+      tensorflow::eager::NewGrpcEagerClientCache(channel_cache));
+
+  // Initialize remote eager workers.
+  tensorflow::gtl::FlatMap<string, tensorflow::uint64> remote_contexts;
+  TF_RETURN_IF_ERROR(CreateRemoteContexts(remote_workers,
+                                          remote_eager_workers.get(),
+                                          opts->async, &remote_contexts));
+
+  tensorflow::RemoteRendezvous* r =
+      server->worker_env()->rendezvous_mgr->Find(0);
+
+  auto* device_mgr = server->worker_env()->device_mgr;
+  *ctx = new TFE_Context(opts->session_options.options, opts->policy,
+                         opts->async, device_mgr, r, std::move(server),
+                         std::move(remote_eager_workers),
+                         std::move(remote_device_mgr), remote_contexts);
+
+  return tensorflow::Status::OK();
+}
 }  // namespace
 
 extern "C" {
@@ -91,6 +208,15 @@ void TFE_ContextOptionsSetDevicePlacementPolicy(
   options->policy = policy;
 }
 
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetServerDef(
+    TFE_ContextOptions* options, const void* proto, size_t proto_len,
+    TF_Status* status) {
+  if (!options->server_def.ParseFromArray(proto, proto_len)) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Invalid tensorflow.ServerDef protocol buffer");
+  }
+}
+
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
                                                         unsigned char async,
                                                         TF_Status* status) {
@@ -100,17 +226,23 @@ TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
+  if (!opts->server_def.job_name().empty()) {
+    TFE_Context* ctx = nullptr;
+    status->status = NewRemoteAwareTFE_Context(opts, &ctx);
+    return ctx;
+  }
+
   std::vector<tensorflow::Device*> devices;
   status->status = tensorflow::DeviceFactory::AddDevices(
       opts->session_options.options, "/job:localhost/replica:0/task:0",
       &devices);
-  if (!status->status.ok()) {
-    return nullptr;
-  }
+  if (!status->status.ok()) return nullptr;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
       new tensorflow::DeviceMgr(devices));
+
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
+
   return new TFE_Context(opts->session_options.options, opts->policy,
                          opts->async, std::move(device_mgr), r);
 }
@@ -119,7 +251,10 @@ void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) { delete ctx; }
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   TF_DeviceList* list = new TF_DeviceList;
-  ctx->context.device_mgr()->ListDeviceAttributes(&list->response);
+  ctx->context.local_device_mgr()->ListDeviceAttributes(&list->response);
+  if (ctx->context.remote_device_mgr()) {
+    ctx->context.remote_device_mgr()->ListDeviceAttributes(&list->response);
+  }
   return list;
 }
 

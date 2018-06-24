@@ -26,12 +26,12 @@ namespace java {
 
 // An enumeration of different modifiers commonly used in Java
 enum Modifier {
-  PACKAGE   = 0,
-  PUBLIC    = (1 << 0),
+  PACKAGE = 0,
+  PUBLIC = (1 << 0),
   PROTECTED = (1 << 1),
-  PRIVATE   = (1 << 2),
-  STATIC    = (1 << 3),
-  FINAL     = (1 << 4),
+  PRIVATE = (1 << 2),
+  STATIC = (1 << 3),
+  FINAL = (1 << 4),
 };
 
 class Annotation;
@@ -75,12 +75,8 @@ class Type {
     // Reflection API does
     return Type(Type::PRIMITIVE, "void");
   }
-  static Type Generic(const string& name) {
-    return Type(Type::GENERIC, name);
-  }
-  static Type Wildcard() {
-    return Type(Type::GENERIC, "");
-  }
+  static Type Generic(const string& name) { return Type(Type::GENERIC, name); }
+  static Type Wildcard() { return Type(Type::GENERIC, ""); }
   static Type Class(const string& name, const string& package = "") {
     return Type(Type::CLASS, name, package);
   }
@@ -226,9 +222,7 @@ class Method {
 // A definition of a documentation bloc for a Java element (JavaDoc)
 class Javadoc {
  public:
-  static Javadoc Create(const string& brief = "") {
-    return Javadoc(brief);
-  }
+  static Javadoc Create(const string& brief = "") { return Javadoc(brief); }
   const string& brief() const { return brief_; }
   const string& details() const { return details_; }
   Javadoc& details(const string& details) {

@@ -1,4 +1,8 @@
 """Generate Flatbuffer binary from json."""
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
 
 def tflite_copts():
   """Defines compile time flags."""
@@ -185,32 +189,109 @@ def json_to_tflite(name, src, out):
       tools = [flatc],
   )
 
-def gen_zipped_test_files(name, files):
+# This is the master list of generated examples that will be made into tests. A
+# function called make_XXX_tests() must also appear in generate_examples.py.
+# Disable a test by commenting it out. If you do, add a link to a bug or issue.
+def generated_test_models():
+    return [
+        "add",
+        "arg_max",
+        "avg_pool",
+        "batch_to_space_nd",
+        "concat",
+        "constant",
+        "control_dep",
+        "conv",
+        "depthwiseconv",
+        "div",
+        "equal",
+        "exp",
+        "expand_dims",
+        "floor",
+        "fully_connected",
+        "fused_batch_norm",
+        "gather",
+        "global_batch_norm",
+        "greater",
+        "greater_equal",
+        "l2norm",
+        "l2_pool",
+        "less",
+        "less_equal",
+        "local_response_norm",
+        "log_softmax",
+        "log",
+        "lstm",
+        "max_pool",
+        "maximum",
+        "mean",
+        "minimum",
+        "mul",
+        "neg",
+        "not_equal",
+        "pad",
+        "padv2",
+        # "prelu",
+        "relu",
+        "relu1",
+        "relu6",
+        "reshape",
+        "resize_bilinear",
+        "sigmoid",
+        "sin",
+        "slice",
+        "softmax",
+        "space_to_batch_nd",
+        "space_to_depth",
+        "sparse_to_dense",
+        "split",
+        "squeeze",
+        "strided_slice",
+        "strided_slice_1d_exhaustive",
+        "sub",
+        "tile",
+        "topk",
+        "transpose",
+        "transpose_conv",
+        "where",
+    ]
+
+def gen_zip_test(name, test_name, **kwargs):
+  """Generate a zipped-example test and its dependent zip files.
+
+  Args:
+    name: Resulting cc_test target name
+    test_name: Test targets this model. Comes from the list above.
+    **kwargs: tf_cc_test kwargs.
+  """
+  gen_zipped_test_file(
+      name = "zip_%s" % test_name,
+      file = "%s.zip" % test_name,
+  )
+  tf_cc_test(name, **kwargs)
+
+def gen_zipped_test_file(name, file):
   """Generate a zip file of tests by using :generate_examples.
 
   Args:
-    name: Name of output. We will produce "`name`_files" as a target.
-    files: A list of zip file basenames.
+    name: Name of output. We will produce "`file`.files" as a target.
+    file: The name of one of the generated_examples targets, e.g. "transpose"
   """
   toco = "//tensorflow/contrib/lite/toco:toco"
-  out_files = []
-  for f in files:
-    out_file = name + "/" + f
-    out_files.append(out_file)
-    native.genrule(
-        name = name + "_" + f + ".files",
-        cmd = ("$(locations :generate_examples) --toco $(locations %s) " % toco
-               + " --zip_to_output " + f + " $(@D)"),
-        outs = [out_file],
-        tools = [
-            ":generate_examples",
-            toco,
-        ],
-    )
+  native.genrule(
+      name = file + ".files",
+      cmd = ("$(locations :generate_examples) --toco $(locations %s) " % toco
+             + " --zip_to_output " + file + " $(@D)"),
+      outs = [file],
+      tools = [
+          ":generate_examples",
+          toco,
+      ],
+  )
 
   native.filegroup(
       name = name,
-      srcs = out_files,
+      srcs = [file],
   )
 
 def gen_selected_ops(name, model):

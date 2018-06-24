@@ -39,6 +39,8 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
+# Expose regex_full_match in strings namespace
+tf_export("strings.regex_full_match")(regex_full_match)
 
 @tf_export("string_split")
 def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
@@ -89,6 +91,59 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   shape.set_shape([2])
   return sparse_tensor.SparseTensor(indices, values, shape)
 
+@tf_export("strings.split")
+def string_split_v2(source, sep=None, maxsplit=-1):
+  """Split elements of `source` based on `sep` into a `SparseTensor`.
+
+  Let N be the size of source (typically N will be the batch size). Split each
+  element of `source` based on `sep` and return a `SparseTensor`
+  containing the split tokens. Empty tokens are ignored.
+
+  For example, N = 2, source[0] is 'hello world' and source[1] is 'a b c',
+  then the output will be
+
+  st.indices = [0, 0;
+                0, 1;
+                1, 0;
+                1, 1;
+                1, 2]
+  st.shape = [2, 3]
+  st.values = ['hello', 'world', 'a', 'b', 'c']
+
+  If `sep` is given, consecutive delimiters are not grouped together and are
+  deemed to delimit empty strings. For example, source of `"1<>2<><>3"` and
+  sep of `"<>"` returns `["1", "2", "", "3"]`. If `sep` is None or an empty
+  string, consecutive whitespace are regarded as a single separator, and the
+  result will contain no empty strings at the startor end if the string has
+  leading or trailing whitespace.
+
+  Note that the above mentioned behavior matches python's str.split.
+
+  Args:
+    source: `1-D` string `Tensor`, the strings to split.
+    sep: `0-D` string `Tensor`, the delimiter character.
+    maxsplit: An `int`. If `maxsplit > 0`, limit of the split of the result.
+
+  Raises:
+    ValueError: If sep is not a string.
+
+  Returns:
+    A `SparseTensor` of rank `2`, the strings split according to the delimiter.
+    The first column of the indices corresponds to the row in `source` and the
+    second column corresponds to the index of the split component in this row.
+  """
+  if sep is None:
+    sep = ''
+  sep = ops.convert_to_tensor(sep, dtype=dtypes.string)
+  source = ops.convert_to_tensor(source, dtype=dtypes.string)
+
+  indices, values, shape = gen_string_ops.string_split_v2(
+      source, sep=sep, maxsplit=maxsplit)
+  indices.set_shape([None, 2])
+  values.set_shape([None])
+  shape.set_shape([2])
+  return sparse_tensor.SparseTensor(indices, values, shape)
+
 
 def _reduce_join_reduction_dims(x, axis, reduction_indices):
   """Returns range(rank(x) - 1, 0, -1) if reduction_indices is None."""
@@ -101,7 +156,7 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return axis
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
-    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+    if x.get_shape().ndims is not None:
       return constant_op.constant(
           np.arange(x.get_shape().ndims - 1, -1, -1), dtype=dtypes.int32)
 
@@ -115,10 +170,11 @@ def reduce_join(inputs, axis=None,
                 separator="",
                 name=None,
                 reduction_indices=None):
+  inputs_t = ops.convert_to_tensor(inputs)
   reduction_indices = _reduce_join_reduction_dims(
-      inputs, axis, reduction_indices)
+      inputs_t, axis, reduction_indices)
   return gen_string_ops.reduce_join(
-      inputs=inputs,
+      inputs=inputs_t,
       reduction_indices=reduction_indices,
       keep_dims=keep_dims,
       separator=separator,

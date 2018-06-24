@@ -46,8 +46,9 @@ bool CreateIm2colArrays::Run(Model* model, std::size_t op_index) {
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
   if (kwidth == 1 && kheight == 1 && conv_op->stride_width == 1 &&
-      conv_op->stride_height == 1) {
-    // 1x1 unstrided conv does not need an im2col array.
+      conv_op->stride_height == 1 && conv_op->dilation_width_factor == 1 &&
+      conv_op->dilation_height_factor == 1) {
+    // 1x1 unstrided undilated conv does not need an im2col array.
     return false;
   }
 
