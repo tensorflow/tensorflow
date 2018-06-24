@@ -265,6 +265,27 @@ tensorflow::Status EagerServiceImpl::GetServerContext(
   (*server_context)->Ref();
   return Status::OK();
 }
+EagerServiceImplEx:: EagerServiceImplEx(const WorkerEnv* env_) :rendezvous_mgr_(env_), EagerServiceImpl(env_) {
 
+   worker_env_ = const_cast<WorkerEnv*>(env_) ;
+   worker_env_->env = Env::Default();
+   worker_env_->rendezvous_mgr = &rendezvous_mgr_;
+   session_mgr_ = std::unique_ptr<SessionMgr>(new SessionMgr(
+            worker_env_, "/job:localhost/replica:0/task:0/device:CPU:0",
+            std::unique_ptr<WorkerCacheInterface>(),
+            [](const ServerDef& server_def,
+               WorkerCacheInterface** worker_cache) {
+              *worker_cache = nullptr;
+              return Status::OK();
+            })) ;
+    worker_env_->session_mgr = session_mgr_.get();
+    Device* device = DeviceFactory::NewDevice(
+        "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0");
+
+    worker_env_->local_devices = {device};
+    device_mgr_.reset(new DeviceMgr(worker_env_->local_devices));
+    worker_env_->device_mgr = device_mgr_.get();
+ 
+}
 }  // namespace eager
 }  // namespace tensorflow
