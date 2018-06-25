@@ -157,6 +157,13 @@ class ComputationsWithConstantsTest(LocalComputationTest):
         c.Constant(NumpyArrayBool([True, True, False, False])))
     self._ExecuteAndCompareExact(c, expected=[True, True, True, False])
 
+  def testBooleanXor(self):
+    c = self._NewComputation()
+    c.Xor(
+        c.Constant(NumpyArrayBool([True, False, True, False])),
+        c.Constant(NumpyArrayBool([True, True, False, False])))
+    self._ExecuteAndCompareExact(c, expected=[False, True, True, False])
+
   def testSum2DF32(self):
     c = self._NewComputation()
     c.Add(

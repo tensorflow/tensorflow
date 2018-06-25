@@ -123,6 +123,7 @@ _BINARY_OPS = [
     'Min',
     'And',
     'Or',
+    'Xor',
     'Pow',
 ]
 

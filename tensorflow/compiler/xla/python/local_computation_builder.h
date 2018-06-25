@@ -333,6 +333,7 @@ class LocalComputationBuilder {
   _FORWARD_BINOP(Min)
   _FORWARD_BINOP(And)
   _FORWARD_BINOP(Or)
+  _FORWARD_BINOP(Xor)
   _FORWARD_UNOP(Not)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
