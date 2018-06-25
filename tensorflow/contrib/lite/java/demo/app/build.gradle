@@ -5,7 +5,8 @@ android {
     buildToolsVersion "26.0.1"
     defaultConfig {
         applicationId "android.example.com.tflitecamerademo"
-        minSdkVersion 15
+        // Required by Camera2 API.
+        minSdkVersion 21
         targetSdkVersion 26
         versionCode 1
         versionName "1.0"
