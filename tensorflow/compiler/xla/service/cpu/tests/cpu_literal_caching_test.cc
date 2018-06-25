@@ -55,8 +55,8 @@ ENTRY main {
 )";
 
   string filecheck_pattern = R"(
-CHECK: private constant [12 x float]
-CHECK-NOT: private constant [12 x float]
+CHECK: private constant [48 x i8]
+CHECK-NOT: private constant [48 x i8]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -98,10 +98,10 @@ ENTRY main {
 )";
 
   string filecheck_pattern = R"(
-CHECK: private constant [1 x float]
-CHECK: private constant [2 x float]
-CHECK-NOT: private constant [1 x float]
-CHECK-NOT: private constant [2 x float]
+CHECK: private constant [4 x i8]
+CHECK: private constant [8 x i8]
+CHECK-NOT: private constant [4 x i8]
+CHECK-NOT: private constant [8 x i8]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
