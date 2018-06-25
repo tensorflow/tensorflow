@@ -144,8 +144,10 @@ TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
   auto* conditional = computation->root_instruction();
   ASSERT_EQ(conditional->opcode(), HloOpcode::kConditional);
   auto* false_computation = conditional->false_computation();
-  false_computation->AddInstruction(
-      HloInstruction::CreateInfeed(ShapeUtil::MakeShape(F32, {1}), "config"));
+  auto token = false_computation->AddInstruction(
+      HloInstruction::CreateGenerateToken({}));
+  false_computation->AddInstruction(HloInstruction::CreateInfeed(
+      ShapeUtil::MakeShape(F32, {1}), token, "config"));
   EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
 }
 

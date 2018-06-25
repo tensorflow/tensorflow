@@ -1874,11 +1874,15 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   auto module = CreateNewModule();
   auto builder = HloComputation::Builder("entry");
 
-  auto infeed = builder.AddInstruction(HloInstruction::CreateInfeed(r0s32, ""));
+  auto token = builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
+  auto infeed =
+      builder.AddInstruction(HloInstruction::CreateInfeed(r0s32, token, ""));
+  auto infeed_data = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(r0s32, infeed, 0));
   auto cond0 = module->AddEmbeddedComputation(build_cond());
   auto body0 = module->AddEmbeddedComputation(build_body());
   auto while0 = builder.AddInstruction(
-      HloInstruction::CreateWhile(r0s32, cond0, body0, infeed));
+      HloInstruction::CreateWhile(r0s32, cond0, body0, infeed_data));
 
   auto cond1 = module->AddEmbeddedComputation(build_cond());
   auto body1 = module->AddEmbeddedComputation(build_body());
@@ -1909,8 +1913,8 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   // computation, since the issue this test stresses depends on the order the
   // nodes are traversed during BufferAssignment.
   SequentialHloOrdering::HloModuleSequence sequence;
-  sequence[module->entry_computation()] = {infeed, while0, while1, zero,
-                                           add,    while2, tuple};
+  sequence[module->entry_computation()] = {
+      token, infeed, infeed_data, while0, while1, zero, add, while2, tuple};
   TF_ASSERT_OK_AND_ASSIGN(
       auto assignment,
       BufferAssigner::Run(

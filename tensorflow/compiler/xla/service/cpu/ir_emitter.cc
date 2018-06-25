@@ -48,6 +48,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
@@ -321,30 +323,42 @@ Status IrEmitter::HandleSelect(HloInstruction* select) {
   return DefaultAction(select);
 }
 
-Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
+Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
+  HloInfeedInstruction* infeed = Cast<HloInfeedInstruction>(instruction);
   VLOG(2) << "HandleInfeed: " << infeed->ToString();
 
-  const Shape& shape = infeed->shape();
-
-  // The infeed operation produces data (dequeued from the infeed queue) at this
-  // address, which has been provided by buffer assignment.
+  // The infeed operation produces a two-element tuple containing data and a
+  // token value. HloInfeedInstruction::infeed_shape gives us the data shape.
+  const Shape& data_shape = infeed->infeed_shape();
+  DCHECK(ShapeUtil::Equal(data_shape,
+                          ShapeUtil::GetTupleElementShape(infeed->shape(), 0)));
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(infeed));
-  llvm_ir::IrArray infeed_array = GetIrArrayFor(infeed);
 
-  if (ShapeUtil::IsTuple(shape)) {
-    TF_RET_CHECK(!ShapeUtil::IsNestedTuple(shape));
+  // Write the tuple index table.
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
+                      assignment_.GetUniqueSlice(infeed, {0}));
+  llvm::Value* data_address = EmitTempBufferPointer(data_slice, data_shape);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice token_slice,
+                      assignment_.GetUniqueSlice(infeed, {1}));
+  llvm::Value* token_address = EmitTempBufferPointer(
+      token_slice, ShapeUtil::GetTupleElementShape(infeed->shape(), 1));
+  llvm_ir::EmitTuple(GetIrArrayFor(infeed), {data_address, token_address},
+                     &ir_builder_, module_);
+
+  if (ShapeUtil::IsTuple(data_shape)) {
+    TF_RET_CHECK(!ShapeUtil::IsNestedTuple(data_shape));
 
     // For a tuple, we first copy each of the internal elements to
     // their corresponding target locations. We then construct the
     // tuple outer buffer containing pointers to the internal
     // elements.
     std::vector<llvm::Value*> tuple_element_addresses;
-    for (int64 i = 0; i < shape.tuple_shapes_size(); ++i) {
+    for (int64 i = 0; i < data_shape.tuple_shapes_size(); ++i) {
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
-                          assignment_.GetUniqueSlice(infeed, {i}));
+                          assignment_.GetUniqueSlice(infeed, {0, i}));
 
       const Shape& tuple_element_shape =
-          ShapeUtil::GetTupleElementShape(shape, i);
+          ShapeUtil::GetTupleElementShape(data_shape, i);
 
       // Only the outer tuple buffer's target address is obtained from
       // GetEmittedValueFor, to handle the case when Infeed is the root
@@ -359,11 +373,11 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
       tuple_element_addresses.push_back(tuple_element_address);
     }
 
-    llvm_ir::EmitTuple(infeed_array, tuple_element_addresses, &ir_builder_,
-                       module_);
+    llvm_ir::EmitTuple(llvm_ir::IrArray(data_address, data_shape),
+                       tuple_element_addresses, &ir_builder_, module_);
   } else {
-    TF_RETURN_IF_ERROR(EmitXfeedTransfer(XfeedKind::kInfeed, shape,
-                                         GetEmittedValueFor(infeed)));
+    TF_RETURN_IF_ERROR(
+        EmitXfeedTransfer(XfeedKind::kInfeed, data_shape, data_address));
   }
 
   return Status::OK();

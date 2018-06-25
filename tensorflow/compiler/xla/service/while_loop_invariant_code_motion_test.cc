@@ -248,7 +248,9 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistInstructionWithSideEffects) {
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
+  auto token_shape = ShapeUtil::MakeTokenShape();
+  Shape while_shape =
+      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, token_shape});
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -258,25 +260,32 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistInstructionWithSideEffects) {
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 0));
     HloInstruction* gte_1 = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
+    HloInstruction* in_token = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(token_shape, param, 2));
+    HloInstruction* out_token = builder.AddInstruction(
+        HloInstruction::CreateOutfeed(scalar_s32, gte_0, in_token, ""));
     builder.AddInstruction(
-        HloInstruction::CreateOutfeed(scalar_s32, gte_0, ""));
-    builder.AddInstruction(HloInstruction::CreateTuple({gte_0, gte_1}));
+        HloInstruction::CreateTuple({gte_0, gte_1, out_token}));
 
     return module().AddEmbeddedComputation(builder.Build());
   }();
 
   HloComputation::Builder builder(TestName());
+  auto* scalar_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_s32, "param"));
+  auto* token = builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
   auto* init_value = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, while_shape, "init_value"));
+      HloInstruction::CreateTuple({scalar_param, scalar_param, token}));
   auto* while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
       while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
       while_body, init_value));
-
+  builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_s32, while_inst, 0));
   module().AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopInvariantCodeMotion{}.Run(&module()));
-  EXPECT_FALSE(simplified_loop);
+  ASSERT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(),
               Contains(op::Outfeed()));
@@ -287,7 +296,9 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
   // bitcast either.
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   auto scalar_f32 = ShapeUtil::MakeShape(F32, {});
-  Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
+  auto token_shape = ShapeUtil::MakeTokenShape();
+  Shape while_shape =
+      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, token_shape});
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -297,21 +308,29 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 0));
     HloInstruction* gte_1 = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
+    HloInstruction* in_token = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(token_shape, param, 2));
     HloInstruction* bitcast_inst = builder.AddInstruction(
         HloInstruction::CreateUnary(scalar_f32, HloOpcode::kBitcast, gte_0));
+    HloInstruction* out_token = builder.AddInstruction(
+        HloInstruction::CreateOutfeed(scalar_f32, bitcast_inst, in_token, ""));
     builder.AddInstruction(
-        HloInstruction::CreateOutfeed(scalar_f32, bitcast_inst, ""));
-    builder.AddInstruction(HloInstruction::CreateTuple({gte_0, gte_1}));
+        HloInstruction::CreateTuple({gte_0, gte_1, out_token}));
 
     return module().AddEmbeddedComputation(builder.Build());
   }();
 
   HloComputation::Builder builder(TestName());
+  auto* scalar_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_s32, "param"));
+  auto* token = builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
   auto* init_value = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, while_shape, "init_value"));
+      HloInstruction::CreateTuple({scalar_param, scalar_param, token}));
   auto* while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
       while_shape, MakeAlwaysTrueComputation(while_shape, &module()),
       while_body, init_value));
+  builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_s32, while_inst, 0));
 
   module().AddEntryComputation(builder.Build());
 

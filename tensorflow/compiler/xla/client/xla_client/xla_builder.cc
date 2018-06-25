@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -1017,9 +1018,55 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
     if (!LayoutUtil::HasLayout(shape)) {
       return InvalidArgument("Given shape to Infeed must have a layout");
     }
-    *instr.mutable_shape() = shape;
+    const Shape infeed_instruction_shape =
+        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()});
+    *instr.mutable_shape() = infeed_instruction_shape;
     instr.set_infeed_config(config);
-    return AddInstruction(std::move(instr), HloOpcode::kInfeed);
+
+    if (ShapeUtil::IsArray(shape) && sharding() &&
+        sharding()->type() == OpSharding::Type::OpSharding_Type_OTHER) {
+      // TODO(b/110793772): Support tiled array-shaped infeeds.
+      return InvalidArgument(
+          "Tiled sharding is not yet supported for array-shaped infeeds");
+    }
+
+    if (sharding() &&
+        sharding()->type() == OpSharding::Type::OpSharding_Type_REPLICATED) {
+      return InvalidArgument(
+          "Replicated sharding is not yet supported for infeeds");
+    }
+
+    // The sharding is set by the client according to the data tuple shape.
+    // However, the shape of the infeed instruction is a tuple containing the
+    // data and a token. For tuple sharding type, the sharding must be changed
+    // to accommodate the token.
+    XlaOp infeed;
+    if (sharding() &&
+        sharding()->type() == OpSharding::Type::OpSharding_Type_TUPLE) {
+      // TODO(b/80000000): Remove this when clients have been updated to handle
+      // tokens.
+      OpSharding infeed_instruction_sharding = *sharding();
+      // Arbitrarily assign the token to device 0.
+      *infeed_instruction_sharding.add_tuple_shardings() =
+          sharding_builder::AssignDevice(0);
+      XlaScopedShardingAssignment scoped_sharding(this,
+                                                  infeed_instruction_sharding);
+      TF_ASSIGN_OR_RETURN(infeed,
+                          AddInstruction(std::move(instr), HloOpcode::kInfeed));
+    } else {
+      TF_ASSIGN_OR_RETURN(infeed,
+                          AddInstruction(std::move(instr), HloOpcode::kInfeed));
+    }
+
+    // The infeed instruction produces a tuple of the infed data and a token
+    // type. Return XLA op containing the data.
+    // TODO(b/80000000): Remove this when clients have been updated to handle
+    // tokens.
+    HloInstructionProto infeed_data;
+    *infeed_data.mutable_shape() = shape;
+    infeed_data.set_tuple_index(0);
+    return AddInstruction(std::move(infeed_data), HloOpcode::kGetTupleElement,
+                          {infeed});
   });
 }
 
@@ -1028,7 +1075,7 @@ void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
   ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
-    *instr.mutable_shape() = ShapeUtil::MakeNil();
+    *instr.mutable_shape() = ShapeUtil::MakeTokenShape();
 
     // Check and set outfeed shape.
     if (!LayoutUtil::HasLayout(shape_with_layout)) {
@@ -1045,7 +1092,26 @@ void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
 
     instr.set_outfeed_config(outfeed_config);
 
-    return AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand});
+    TF_RETURN_IF_ERROR(
+        AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand})
+            .status());
+
+    // The outfeed instruction produces a token. However, existing users expect
+    // a nil shape (empty tuple). This should only be relevant if the outfeed is
+    // the root of a computation.
+    // TODO(b/80000000): Remove this when clients have been updated to handle
+    // tokens.
+    HloInstructionProto tuple_instr;
+    *tuple_instr.mutable_shape() = ShapeUtil::MakeNil();
+
+    // The dummy tuple should have no sharding.
+    {
+      XlaScopedShardingAssignment scoped_sharding(this, OpSharding());
+      TF_ASSIGN_OR_RETURN(
+          XlaOp empty_tuple,
+          AddInstruction(std::move(tuple_instr), HloOpcode::kTuple, {}));
+      return empty_tuple;
+    }
   });
 }
 

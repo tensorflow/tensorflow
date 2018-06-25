@@ -32,11 +32,12 @@ XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
   std::unique_ptr<HloModule> module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
-  builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(42)));
 
   module->AddEntryComputation(builder.Build());
-  EXPECT_IS_OK(HloVerifier().Run(module.get()).status());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
+                          Execute(std::move(module), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *Literal::CreateToken()));
 }
 
 XLA_TEST_F(TokenHloTest, TokenTree) {
@@ -47,11 +48,12 @@ XLA_TEST_F(TokenHloTest, TokenTree) {
   auto token2 = builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
   builder.AddInstruction(
       HloInstruction::CreateGenerateToken({token0, token0, token1, token2}));
-  builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(42)));
 
   module->AddEntryComputation(builder.Build());
-  EXPECT_IS_OK(HloVerifier().Run(module.get()).status());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
+                          Execute(std::move(module), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *Literal::CreateToken()));
 }
 
 XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
@@ -87,18 +89,6 @@ XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
   EXPECT_THAT(
       status.error_message(),
       ::testing::HasSubstr("Entry parameter 0 is or contains a token shape"));
-}
-
-XLA_TEST_F(TokenHloTest, InvalidTokenRoot) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
-  auto builder = HloComputation::Builder(TestName());
-  builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
-  module->AddEntryComputation(builder.Build());
-
-  Status status = HloVerifier().Run(module.get()).status();
-  ASSERT_IS_NOT_OK(status);
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("Entry root is or contains a token shape"));
 }
 
 XLA_TEST_F(TokenHloTest, InvalidOperandToTokenInstruction) {

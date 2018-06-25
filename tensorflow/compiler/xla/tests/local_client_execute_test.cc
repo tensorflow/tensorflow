@@ -841,6 +841,31 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
                            Literal::CreateR0<int64>(123456789000LL).get()}));
 }
 
+XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
+  XlaBuilder builder(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {3});
+  auto in = builder.Infeed(shape);
+  auto constant = builder.ConstantR1<float>({1.0f, 2.0f, 3.0f});
+  builder.Add(in, constant);
+
+  std::unique_ptr<Literal> result;
+  std::unique_ptr<tensorflow::Thread> thread(
+      tensorflow::Env::Default()->StartThread(
+          tensorflow::ThreadOptions(), "execute_thread", [&] {
+            result = ShapedBufferToLiteral(ExecuteLocallyOrDie(
+                builder.Build().ValueOrDie(), /*arguments=*/{}));
+          }));
+
+  ASSERT_IS_OK(local_client_->TransferToInfeedLocal(
+      *Literal::CreateR1<float>({-5.0, 123.0, 42.0}),
+      local_client_->default_device_ordinal()));
+
+  // Join the thread.
+  thread.reset();
+
+  LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, *result);
+}
+
 // TODO(b/34359662): Support infeed/outfeed on GPU and CPU parallel.
 // 2017-10-18.
 XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(InfeedOutfeedTest)) {

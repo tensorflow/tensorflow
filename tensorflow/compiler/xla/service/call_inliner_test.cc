@@ -148,14 +148,17 @@ TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
   HloComputation::Builder outfeeder(TestName() + ".outfeeder");
   auto value = outfeeder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+  auto token =
+      outfeeder.AddInstruction(HloInstruction::CreateGenerateToken({}));
   outfeeder.AddInstruction(
-      HloInstruction::CreateOutfeed(f32, value, /*outfeed_config=*/""));
+      HloInstruction::CreateOutfeed(f32, value, token, /*outfeed_config=*/""));
 
   auto outfeed_computation = module->AddEmbeddedComputation(outfeeder.Build());
 
   HloComputation::Builder outer(TestName() + ".outer");
   outer.AddInstruction(HloInstruction::CreateCall(
-      ShapeUtil::MakeNil(), /*operands=*/{}, outfeed_computation));
+      outfeed_computation->root_instruction()->shape(), /*operands=*/{},
+      outfeed_computation));
 
   module->AddEntryComputation(outer.Build());
 

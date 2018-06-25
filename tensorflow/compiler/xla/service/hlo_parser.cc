@@ -978,23 +978,53 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kInfeed: {
       optional<string> config;
       attrs["infeed_config"] = {/*required=*/false, AttrTy::kString, &config};
-      if (!ParseOperands(&operands, /*expected_size=*/0) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateInfeed(shape, config ? *config : ""));
+      // We need to know the infeed data shape to construct the infeed
+      // instruction. This is the zero-th element of the tuple-shaped output of
+      // the infeed instruction. ShapeUtil::GetTupleElementShape will check fail
+      // if the shape is not a non-empty tuple, so add guard so an error message
+      // can be emitted instead of a check fail
+      if (!ShapeUtil::IsTuple(shape) && !ShapeUtil::IsEmptyTuple(shape)) {
+        return Error(lexer_.GetLoc(),
+                     "infeed must have a non-empty tuple shape");
+      }
+
+      if (operands.empty()) {
+        // TODO(b/80000000): Remove this when all uses of infeed are
+        // converted to take tokens.
+        instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
+            ShapeUtil::GetTupleElementShape(shape, 0), config ? *config : ""));
+      } else if (operands.size() == 1) {
+        instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
+            ShapeUtil::GetTupleElementShape(shape, 0), operands[0],
+            config ? *config : ""));
+      } else {
+        return Error(lexer_.GetLoc(),
+                     "infeed must have exactly zero or one operands");
+      }
       break;
     }
     case HloOpcode::kOutfeed: {
       optional<string> config;
       attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
-          operands[0]->shape(), operands[0], config ? *config : ""));
+      if (operands.size() == 1) {
+        // TODO(b/80000000): Remove this when all uses of outfeed are
+        // converted to take tokens.
+        instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
+            operands[0]->shape(), operands[0], config ? *config : ""));
+      } else if (operands.size() == 2) {
+        instruction = builder->AddInstruction(
+            HloInstruction::CreateOutfeed(operands[0]->shape(), operands[0],
+                                          operands[1], config ? *config : ""));
+      } else {
+        return Error(lexer_.GetLoc(),
+                     "outfeed must have exactly one or two operands");
+      }
       break;
     }
     case HloOpcode::kRng: {

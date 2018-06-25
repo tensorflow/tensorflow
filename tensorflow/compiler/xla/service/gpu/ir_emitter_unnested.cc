@@ -2563,17 +2563,14 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildInfeedThunk(
     const HloInstruction* inst) {
   CHECK_EQ(HloOpcode::kInfeed, inst->opcode());
 
-  std::vector<BufferAllocation::Slice> tuple_element_buffers;
-  for (int64 i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
-    BufferAllocation::Slice buffer = ir_emitter_context_->buffer_assignment()
-                                         .GetUniqueSlice(inst, {i})
-                                         .ConsumeValueOrDie();
-    tuple_element_buffers.push_back(buffer);
-  }
-
-  return MakeUnique<InfeedThunk>(
-      tuple_element_buffers,
-      /*destination_buffer=*/GetAllocationSlice(*inst), inst);
+  ShapeTree<BufferAllocation::Slice> slices(inst->shape());
+  slices.ForEachMutableElement(
+      [this, inst](const ShapeIndex& index, BufferAllocation::Slice* slice) {
+        *slice = ir_emitter_context_->buffer_assignment()
+                     .GetUniqueSlice(inst, index)
+                     .ConsumeValueOrDie();
+      });
+  return MakeUnique<InfeedThunk>(slices, inst);
 }
 
 namespace {

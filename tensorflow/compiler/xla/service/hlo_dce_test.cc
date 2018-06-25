@@ -234,9 +234,10 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
   {
     auto param = body_builder.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "param"));
-
-    auto infeed =
-        body_builder.AddInstruction(HloInstruction::CreateInfeed(shape, ""));
+    auto token =
+        body_builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
+    auto infeed = body_builder.AddInstruction(
+        HloInstruction::CreateInfeed(shape, token, ""));
     body_builder.AddInstruction(
         HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, infeed));
   }
@@ -278,8 +279,10 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
   {
     auto param = nested_callee_builder.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "param"));
+    auto token = nested_callee_builder.AddInstruction(
+        HloInstruction::CreateGenerateToken({}));
     nested_callee_builder.AddInstruction(
-        HloInstruction::CreateOutfeed(shape, param, ""));
+        HloInstruction::CreateOutfeed(shape, param, token, ""));
   }
   auto nested_called_computation =
       module->AddEmbeddedComputation(nested_callee_builder.Build());

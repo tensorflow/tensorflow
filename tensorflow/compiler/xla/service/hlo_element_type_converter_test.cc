@@ -57,8 +57,10 @@ TEST_F(HloElementTypeConverterTest, InfeedsOutfeedsNotConverted) {
   const string& hlo_string = R"(
     HloModule InfeedOutfeed
     ENTRY RoundTrip16MiBR1.v2 {
-      ROOT infeed = bf16[4]{0} infeed()
-      outfeed = () outfeed(infeed)
+      token = token[] generate-token()
+      infeed = (bf16[4]{0}, token[]) infeed(token)
+      ROOT infeed.data = bf16[4]{0} get-tuple-element(infeed), index=0
+      outfeed = token[] outfeed(infeed.data, token)
     }
   )";
   auto module = CreateModuleFromHloString(hlo_string);

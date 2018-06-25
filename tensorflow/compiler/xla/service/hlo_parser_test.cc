@@ -795,10 +795,14 @@ ENTRY ReduceR3ToR2.v3 {
 R"(HloModule outfeed_module
 
 ENTRY InfeedToOutfeed {
-  infeed = (u32[3]{0}, pred[]) infeed()
-  outfeed = () outfeed(infeed)
-  ROOT infeed.1 = (u32[3]{0}, pred[]) infeed()
-  outfeed.1 = () outfeed(infeed.1)
+  token = token[] generate-token()
+  infeed = ((u32[3]{0}, pred[]), token[]) infeed(token)
+  infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
+  outfeed = token[] outfeed(infeed.data, token)
+  ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token)
+  infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
+  infeed.1.token = token[] get-tuple-element(infeed.1), index=1
+  outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)
 }
 
 )"
@@ -1416,6 +1420,16 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
                           ParseConvolutionDimensionNumbers(original));
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
+}
+
+TEST_F(HloParserTest, NontupleInfeed) {
+  const string original = R"(HloModule nontuple_infeed:
+ENTRY nontuple_infeed {
+  token = token[] generate-token()
+  ROOT infeed = pred[] infeed(token)
+})";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "infeed must have a non-empty tuple shape");
 }
 
 }  // namespace

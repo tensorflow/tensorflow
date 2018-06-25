@@ -458,13 +458,29 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand);
 
   // Creates an infeed instruction, which reads data of the given shape from the
-  // Infeed interface of the device.
-  static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& shape,
+  // Infeed interface of the device. infeed_shape is the shape of the data
+  // received from the infeed *not* the shape of the infeed instruction which
+  // is a tuple containing the infeed_shape and the TOKEN.
+  static std::unique_ptr<HloInstruction> CreateInfeed(
+      const Shape& infeed_shape, HloInstruction* token_operand,
+      const string& config);
+  // Overload which does not require a token.
+  // TODO(b/80000000): Remove this overload when all uses of infeed are
+  // converted to take tokens.
+  static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& infeed_shape,
                                                       const string& config);
 
-  // Creates an outfeed instruction, which outputs data.
+  // Creates an outfeed instruction, which outputs data. outfeed_shape is the
+  // shape of the data being outfed *not* the shape of the outfeed instruction
+  // which is a TOKEN.
   static std::unique_ptr<HloInstruction> CreateOutfeed(
-      const Shape& shape, HloInstruction* operand,
+      const Shape& outfeed_shape, HloInstruction* operand,
+      HloInstruction* token_operand, tensorflow::StringPiece outfeed_config);
+  // Overload which does not require a token.
+  // TODO(b/80000000): Remove this overload when all uses of infeed are
+  // converted to take tokens.
+  static std::unique_ptr<HloInstruction> CreateOutfeed(
+      const Shape& outfeed_shape, HloInstruction* operand,
       tensorflow::StringPiece outfeed_config);
 
   // Creates an asynchronous send instruction with the given channel id, which
