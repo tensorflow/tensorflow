@@ -14,6 +14,7 @@ RUN /install/install_bootstrap_deb_packages.sh
 RUN add-apt-repository -y ppa:openjdk-r/ppa
 RUN /install/install_deb_packages.sh
 RUN apt-get update && apt-get install -y libopenblas-dev
+RUN /install/install_hdf5_ppc64le.sh
 RUN /install/install_pip_packages.sh
 RUN /install/install_bazel_from_source.sh
 RUN /install/install_golang_ppc64le.sh

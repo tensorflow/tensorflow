@@ -221,7 +221,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           batch_results_.pop_front();
         }
         cond_var_.notify_all();
-        return ProcessBatch(ctx, result, out_tensors, end_of_sequence);
+        return ProcessResult(ctx, result, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -313,10 +313,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               break;
             }
           }
-        }
-        {
-          mutex_lock l(result->mu);
-          result->num_elements++;
+          {
+            mutex_lock l(result->mu);
+            result->num_elements++;
+          }
         }
         CallCompleted(result);
       }
@@ -370,7 +370,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       Status CopyPartialBatch(Tensor* output, const Tensor& value,
                               int64 num_elements) {
         switch (value.dtype()) {
-#define CASE(type)                                                \
+#define HANDLE_TYPE(type)                                         \
   case DataTypeToEnum<type>::value: {                             \
     auto output_t = output->flat_outer_dims<type>();              \
     auto value_t = value.flat_outer_dims<type>();                 \
@@ -379,10 +379,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     }                                                             \
     return Status::OK();                                          \
   }
-          TF_CALL_NUMBER_TYPES(CASE);
-          TF_CALL_string(CASE);
-          TF_CALL_variant(CASE);
-#undef CASE
+          TF_CALL_DATASET_TYPES(HANDLE_TYPE);
+#undef HANDLE_TYPE
           default:
             return errors::InvalidArgument("Unsupported data type: ",
                                            value.dtype());
@@ -426,47 +424,49 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                dataset()->batch_size_;
       }
 
-      Status ProcessBatch(IteratorContext* ctx,
-                          const std::shared_ptr<BatchResult>& result,
-                          std::vector<Tensor>* out_tensors,
-                          bool* end_of_sequence) {
+      Status ProcessResult(IteratorContext* ctx,
+                           const std::shared_ptr<BatchResult>& result,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) {
         mutex_lock l(result->mu);
         if (result->num_elements == 0) {
           *end_of_sequence = true;
           return Status::OK();
         }
-
-        if (!result->status.ok()) {
+        // `f` may deliberately raise `errors::OutOfRange` to indicate that we
+        // should terminate the iteration early.
+        if (!result->status.ok() && !errors::IsOutOfRange(result->status)) {
+          // Deallocate tensors allocated for the output.
+          result->output.clear();
+          *end_of_sequence = false;
+          return result->status;
+        }
+        if (result->num_elements < dataset()->batch_size_) {
+          if (dataset()->drop_remainder_) {
+            // Deallocate tensors allocated for the output.
+            result->output.clear();
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+          const std::vector<Tensor>& output = result->output;
+          for (size_t i = 0; i < output.size(); ++i) {
+            TensorShape component_shape(result->output[i].shape());
+            component_shape.set_dim(0, result->num_elements);
+            AllocatorAttributes attr;
+            attr.set_gpu_compatible(true);
+            Tensor component(ctx->allocator(attr), output[i].dtype(),
+                             component_shape);
+            TF_RETURN_IF_ERROR(
+                CopyPartialBatch(&component, output[i], result->num_elements));
+            out_tensors->emplace_back(std::move(component));
+          }
           // Deallocate tensors allocated for the output.
           result->output.clear();
         } else {
-          if (result->num_elements < dataset()->batch_size_) {
-            if (dataset()->drop_remainder_) {
-              // Deallocate tensors allocated for the output.
-              result->output.clear();
-              *end_of_sequence = true;
-              return Status::OK();
-            }
-            const std::vector<Tensor>& output = result->output;
-            for (size_t i = 0; i < output.size(); ++i) {
-              TensorShape component_shape(result->output[i].shape());
-              component_shape.set_dim(0, result->num_elements);
-              AllocatorAttributes attr;
-              attr.set_gpu_compatible(true);
-              Tensor component(ctx->allocator(attr), output[i].dtype(),
-                               component_shape);
-              TF_RETURN_IF_ERROR(CopyPartialBatch(&component, output[i],
-                                                  result->num_elements));
-              out_tensors->emplace_back(std::move(component));
-            }
-            // Deallocate tensors allocated for the output.
-            result->output.clear();
-          } else {
-            *out_tensors = std::move(result->output);
-          }
-          *end_of_sequence = false;
+          *out_tensors = std::move(result->output);
         }
-        return result->status;
+        *end_of_sequence = result->num_elements == 0;
+        return Status::OK();
       }
 
       void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)

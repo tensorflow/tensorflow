@@ -3394,6 +3394,19 @@ py_library(
     ],
 )
 
+py_test(
+    name = "lock_util_test",
+    size = "small",
+    srcs = ["util/lock_util_test.py"],
+    main = "util/lock_util_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_proto_library(
     name = "protos_all",
     srcs = glob(

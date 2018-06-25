@@ -21,6 +21,7 @@ import importlib
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -265,6 +266,18 @@ class GammaTest(test.TestCase):
           stats.gamma.var(alpha_v, scale=1 / beta_v),
           atol=.15)
 
+  def testGammaFullyReparameterized(self):
+    alpha = constant_op.constant(4.0)
+    beta = constant_op.constant(3.0)
+    with backprop.GradientTape() as tape:
+      tape.watch(alpha)
+      tape.watch(beta)
+      gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
+      samples = gamma.sample(100)
+    grad_alpha, grad_beta = tape.gradient(samples, [alpha, beta])
+    self.assertIsNotNone(grad_alpha)
+    self.assertIsNotNone(grad_beta)
+
   def testGammaSampleMultiDimensional(self):
     with self.test_session():
       alpha_v = np.array([np.arange(1, 101, dtype=np.float32)])  # 1 x 100
@@ -284,11 +297,11 @@ class GammaTest(test.TestCase):
           sample_values.mean(axis=0),
           stats.gamma.mean(
               alpha_bc, scale=1 / beta_bc),
-          rtol=.035)
+          atol=0., rtol=.05)
       self.assertAllClose(
           sample_values.var(axis=0),
           stats.gamma.var(alpha_bc, scale=1 / beta_bc),
-          atol=4.5)
+          atol=10.0, rtol=0.)
       fails = 0
       trials = 0
       for ai, a in enumerate(np.reshape(alpha_v, [-1])):
@@ -400,7 +413,7 @@ class GammaTest(test.TestCase):
                    + alpha0 * (beta1 / beta0 - 1.))
 
     self.assertAllClose(kl_expected, kl_actual_, atol=0., rtol=1e-6)
-    self.assertAllClose(kl_sample_, kl_actual_, atol=0., rtol=1e-2)
+    self.assertAllClose(kl_sample_, kl_actual_, atol=0., rtol=1e-1)
 
 
 if __name__ == "__main__":

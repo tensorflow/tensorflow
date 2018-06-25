@@ -965,7 +965,7 @@ BENCHMARK(BM_ConcatInputRange);
 BENCHMARK(BM_SelectInputRange);
 
 TEST(RegisteredKernels, CanCallGetAllRegisteredKernels) {
-  auto all_registered_kernels = GetAllRegisteredKernels();
+  auto all_registered_kernels = GetAllRegisteredKernels().kernel();
   auto has_name_test1 = [](const KernelDef& k) { return k.op() == "Test1"; };
 
   // Verify we can find the "Test1" op registered above

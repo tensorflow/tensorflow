@@ -218,7 +218,7 @@ class Dataset(object):
     @{tf.constant} operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization.  If tensors contains
     one or more large NumPy arrays, consider the alternative described in
-    @{$programmers_guide/datasets#consuming_numpy_arrays$this guide}.
+    @{$guide/datasets#consuming_numpy_arrays$this guide}.
 
     Args:
       tensors: A nested structure of tensors.
@@ -237,7 +237,7 @@ class Dataset(object):
     @{tf.constant} operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization.  If tensors contains
     one or more large NumPy arrays, consider the alternative described in
-    @{$programmers_guide/datasets#consuming_numpy_arrays$this guide}.
+    @{$guide/datasets#consuming_numpy_arrays$this guide}.
 
     Args:
       tensors: A nested structure of tensors, each having the same size in the
@@ -1149,13 +1149,74 @@ class SparseTensorSliceDataset(Dataset):
     return (dtypes.int64, self._sparse_tensor.dtype, dtypes.int64)
 
 
+class _NestedDatasetComponent(object):
+  """The structure of a `Dataset` nested in a component of another `Dataset`.
+
+  A `StructuredFunctionWrapper` around a function that returns a `Dataset` as
+  one of its components will have a `NestedDatasetComponent` in the
+  corresponding position in the `output_classes`, `output_shapes`, and
+  `output_types` properties.
+
+  NOTE(mrry): This class is not currently exposed via the public API. Support
+  for nested datasets can be enabled on a function-by-function basis by setting
+  `experimental_nested_dataset_support=True` in the `StructuredFunctionWrapper`
+  initializer.
+
+  TODO(b/110122868): Add this class, or something equivalent, to the public API.
+  We are considering revising the public API for accessing Dataset structure
+  (`output_classes` etc.) based on experience with nested datasets and other
+  custom component types.
+  """
+
+  def __init__(self, dataset):
+    self._output_classes = dataset.output_classes
+    self._output_shapes = dataset.output_shapes
+    self._output_types = dataset.output_types
+
+  @property
+  def output_classes(self):
+    return self._output_classes
+
+  @property
+  def output_shapes(self):
+    return self._output_shapes
+
+  @property
+  def output_types(self):
+    return self._output_types
+
+
+class _VariantDataset(Dataset):
+  """A Dataset wrapper around a @{tf.variant}-typed function argument."""
+
+  def __init__(self, dataset_variant, structure):
+    super(_VariantDataset, self).__init__()
+    self._dataset_variant = dataset_variant
+    self._structure = structure
+
+  def _as_variant_tensor(self):
+    return self._dataset_variant
+
+  @property
+  def output_classes(self):
+    return self._structure.output_classes
+
+  @property
+  def output_shapes(self):
+    return self._structure.output_shapes
+
+  @property
+  def output_types(self):
+    return self._structure.output_types
+
+
 class StructuredFunctionWrapper(object):
   """A wrapper for `Defun` that supports structured arguments and return values.
   """
 
   def __init__(self, func, transformation_name, dataset=None,
                input_classes=None, input_shapes=None, input_types=None,
-               add_to_graph=True):
+               add_to_graph=True, experimental_nested_dataset_support=False):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
     Args:
@@ -1174,6 +1235,8 @@ class StructuredFunctionWrapper(object):
         argument defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
         default graph.
+      experimental_nested_dataset_support: (Optional.) If `True`, the function
+        will support @{tf.data.Dataset} objects as arguments and return values.
 
     Raises:
       ValueError: If an invalid combination of `dataset`, `input_classes`,
@@ -1195,14 +1258,37 @@ class StructuredFunctionWrapper(object):
       self._input_types = dataset.output_types
       self._input_classes = dataset.output_classes
 
-    @function.Defun(*defun_args(
-        input_types=self._input_types, input_classes=self._input_classes))
+    self._transformation_name = transformation_name
+
+    # TODO(b/110122868): Enable this support for all `tf.data` functions.
+    self._nested_dataset_support = experimental_nested_dataset_support
+
+    @function.Defun(*self._defun_args())
     def tf_data_structured_function_wrapper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
-      nested_args = restructure_args(args,
-                                     input_shapes=self._input_shapes,
-                                     input_types=self._input_types,
-                                     input_classes=self._input_classes)
+      flat_args = []
+      for arg, arg_class, arg_shape, arg_type in zip(
+          args,
+          nest.flatten(self._input_classes),
+          nest.flatten(self._input_shapes),
+          nest.flatten(self._input_types)):
+        # TODO(b/110122868): Add a registration mechanism for new component
+        # types.
+        if arg_class is sparse_tensor_lib.SparseTensor:
+          arg = sparse.deserialize_sparse_tensors(
+              arg, arg_type, arg_shape, arg_class)
+          arg.indices.set_shape([None, arg_shape.ndims])
+          arg.dense_shape.set_shape([arg_shape.ndims])
+        elif isinstance(arg_class, _NestedDatasetComponent):
+          assert self._nested_dataset_support
+          arg = _VariantDataset(arg, arg_class)
+        else:
+          arg.set_shape(arg_shape)
+        flat_args.append(arg)
+      nested_args = nest.pack_sequence_as(self._input_classes, flat_args)
+      if not _should_unpack_args(nested_args):
+        nested_args = (nested_args,)
+
       ret = func(*nested_args)
       # If `func` returns a list of tensors, `nest.flatten()` and
       # `ops.convert_to_tensor()` would conspire to attempt to stack
@@ -1219,24 +1305,45 @@ class StructuredFunctionWrapper(object):
 
       # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
       # values to tensors.
-      ret = nest.pack_sequence_as(ret, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(t)
-          for t in nest.flatten(ret)
-      ])
+      flat_ret = []
+      flat_classes = []
+      flat_shapes = []
+      flat_types = []
+      for t in nest.flatten(ret):
+        # TODO(b/110122868): Add a registration mechanism for new component
+        # types.
+        if sparse_tensor_lib.is_sparse(t):
+          t = sparse_tensor_lib.SparseTensor.from_value(t)
+          flat_ret.append(sparse.serialize_sparse_tensors(t))
+          flat_classes.append(sparse_tensor_lib.SparseTensor)
+          flat_shapes.append(t.get_shape())
+          flat_types.append(t.dtype)
+        elif isinstance(t, Dataset):
+          if not self._nested_dataset_support:
+            raise NotImplementedError(
+                "The %s transformation does not currently support nested "
+                "datasets as outputs." % self._transformation_name)
 
-      self._output_classes = sparse.get_classes(ret)
-      self._output_shapes = nest.pack_sequence_as(
-          ret, [t.get_shape() for t in nest.flatten(ret)])
-      self._output_types = nest.pack_sequence_as(
-          ret, [t.dtype for t in nest.flatten(ret)])
+          flat_ret.append(t._as_variant_tensor())  # pylint: disable=protected-access
+          component = _NestedDatasetComponent(t)
+          flat_classes.append(component)
+          flat_shapes.append(component)
+          flat_types.append(component)
+        else:
+          t = ops.convert_to_tensor(t)
+          flat_ret.append(t)
+          flat_classes.append(ops.Tensor)
+          flat_shapes.append(t.get_shape())
+          flat_types.append(t.dtype)
+
+      ret = nest.pack_sequence_as(ret, flat_ret)
+      self._output_classes = nest.pack_sequence_as(ret, flat_classes)
+      self._output_shapes = nest.pack_sequence_as(ret, flat_shapes)
+      self._output_types = nest.pack_sequence_as(ret, flat_types)
 
       _warn_if_collections(transformation_name)
 
-      # Serialize any sparse tensors.
-      ret = nest.pack_sequence_as(
-          ret, [t for t in nest.flatten(sparse.serialize_sparse_tensors(ret))])
-      return nest.flatten(ret)
+      return flat_ret
 
     self._function = tf_data_structured_function_wrapper
     if add_to_graph:
@@ -1246,6 +1353,25 @@ class StructuredFunctionWrapper(object):
       # `tf_data_structured_function_wrapper` but delay adding it to the graph
       # in case (e.g.) we need to rerun the function.
       self._function._create_definition_if_needed()  # pylint: disable=protected-access
+
+  def _defun_args(self):
+    """Returns a flat list of @{tf.DType} for the input element structure."""
+    ret = []
+    for input_type, input_class in zip(nest.flatten(self._input_types),
+                                       nest.flatten(self._input_classes)):
+      # TODO(b/110122868): Add a registration mechanism for new component types.
+      if input_class is sparse_tensor_lib.SparseTensor:
+        ret.append(dtypes.variant)
+      elif isinstance(input_class, _NestedDatasetComponent):
+        if not self._nested_dataset_support:
+          raise NotImplementedError(
+              "The %s transformation does not currently support nested "
+              "datasets as inputs." % self._transformation_name)
+        ret.append(dtypes.variant)
+      else:
+        assert isinstance(input_type, dtypes.DType)
+        ret.append(input_type)
+    return ret
 
   @property
   def output_classes(self):
@@ -1286,109 +1412,6 @@ def flat_structure(dataset):
       "output_types": nest.flatten(sparse.as_dense_types(
           dataset.output_types, dataset.output_classes)),
   }
-
-
-# TODO(mrry): Investigate adding a `Defun` wrapper that combines
-# `defun_args()`, `restructure_args()`, and a future helper that consumes the
-# outputs of the wrapped function.
-def defun_args(dataset=None, input_types=None, input_classes=None):
-  """Returns a flat list of @{tf.DType} for a given element structure.
-
-  The expected usage for an example function is as follows:
-
-  ```python
-  input_dataset = ...  # A `tf.data.Dataset`.
-
-  @function.Defun(*defun_args(input_dataset))
-  def tf_example_func(*args):
-    nested_args = restructure_args(args, input_dataset)
-    # [Destructure and handle the return values from `example_func()`.
-  ```
-
-  Either `dataset`, or both of `input_types` and `input_classes` must be
-  specified. If `dataset` is not specified, the structures of `input_types` and
-  `input_classes` must be compatible.
-
-  Args:
-    dataset: (Optional.) A @{tf.data.Dataset} whose element structure should
-      be flattened.
-    input_types: (Optional.) A nested structure of @{tf.DType} with the desired
-      structure and types for each argument.
-    input_classes: (Optional.) A nested structure of `type` with the desired
-      structure and classes for each argument.
-
-  Returns:
-    A flat list of @{tf.DType} for the given element structure.
-  """
-  if input_types is None:
-    assert dataset is not None
-    assert input_classes is None
-    input_types = dataset.output_types
-    input_classes = dataset.output_classes
-  else:
-    assert input_types is not None and input_classes is not None
-  return nest.flatten(
-      sparse.as_dense_types(input_types, input_classes))
-
-
-def restructure_args(args, dataset=None, input_shapes=None, input_types=None,
-                     input_classes=None):
-  """Converts a flat tuple of arguments into a given structure.
-
-  The intended use is to bridge between the flat tuple of unshaped @{tf.Tensor}
-  arguments that a `Defun` receives and the potentially nested structures that
-  `tf.data` functions expect.
-
-  The expected usage for an example function is as follows:
-
-  ```python
-  input_dataset = ...  # A `tf.data.Dataset`.
-
-  @function.Defun(*defun_args(input_dataset))
-  def tf_example_func(*args):
-    nested_args = restructure_args(args, input_dataset)
-    ret = example_func(*nested_args)
-    # [Destructure and handle the return values from `example_func()`.
-  ```
-
-  Either `dataset`, or all of `input_shapes`, `input_types` and `input_classes`
-  must be specified. If `dataset` is not specified, the structures of
-  `input_shapes`, `input_types` and `input_classes` must be compatible.
-
-  Args:
-    args: A flat tuple of @{tf.Tensor} objects, representing the arguments
-      to a TensorFlow function.
-    dataset: (Optional.) A @{tf.data.Dataset} whose element structure matches
-      the desired structure of the arguments.
-    input_shapes: (Optional.) A nested structure of @{tf.TensorShape} with the
-      desired structure and static shapes for each argument.
-    input_types: (Optional.) A nested structure of @{tf.DType} with the desired
-      structure and types for each argument.
-    input_classes: (Optional.) A nested structure of `type` with the desired
-      structure and classes for each argument.
-
-  Returns:
-    A nested structure representing the arguments.
-  """
-  if input_shapes is None:
-    assert dataset is not None
-    assert input_types is None and input_classes is None
-    input_shapes = dataset.output_shapes
-    input_types = dataset.output_types
-    input_classes = dataset.output_classes
-  else:
-    assert input_types is not None and input_classes is not None
-
-  dense_shapes = sparse.as_dense_shapes(input_shapes, input_classes)
-  for arg, shape in zip(args, nest.flatten(dense_shapes)):
-    arg.set_shape(shape)
-
-  nested_args = nest.pack_sequence_as(input_classes, args)
-  nested_args = sparse.deserialize_sparse_tensors(
-      nested_args, input_types, input_shapes, input_classes)
-  if not _should_unpack_args(nested_args):
-    nested_args = (nested_args,)
-  return nested_args
 
 
 class _GeneratorDataset(Dataset):
@@ -2106,19 +2129,14 @@ class FlatMapDataset(Dataset):
     super(FlatMapDataset, self).__init__()
     self._input_dataset = input_dataset
 
-    # TODO(b/110122868): When we handle nested datasets natively as the return
-    # value from `map_func`, we can avoid needing this wrapper.
-    def map_func_wrapper(*args):
-      dataset = map_func(*args)
-      if not isinstance(dataset, Dataset):
-        raise TypeError("`map_func` must return a `Dataset` object.")
-      self._output_classes = dataset.output_classes
-      self._output_shapes = dataset.output_shapes
-      self._output_types = dataset.output_types
-      return dataset._as_variant_tensor()  # pylint: disable=protected-access
-
     wrapped_func = StructuredFunctionWrapper(
-        map_func_wrapper, self._transformation_name(), input_dataset)
+        map_func, self._transformation_name(), input_dataset,
+        experimental_nested_dataset_support=True)
+    if not isinstance(wrapped_func.output_classes, _NestedDatasetComponent):
+      raise TypeError("`map_func` must return a `Dataset` object.")
+    self._output_classes = wrapped_func.output_classes.output_classes
+    self._output_types = wrapped_func.output_types.output_types
+    self._output_shapes = wrapped_func.output_shapes.output_shapes
     self._map_func = wrapped_func.function
 
   def _as_variant_tensor(self):

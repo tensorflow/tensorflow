@@ -51,6 +51,16 @@ py_library(
     ],
 )
 
+py_library(
+    name = "test_utils",
+    testonly = 1,
+    srcs = ["test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//third_party/py/numpy",
+    ],
+)
+
 py_test(
     name = "xla_test_test",
     size = "small",
@@ -247,6 +257,7 @@ tf_xla_py_test(
     srcs = ["conv2d_test.py"],
     shard_count = 10,
     deps = [
+        ":test_utils",
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -254,6 +265,7 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -755,9 +767,10 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "fused_batchnorm_test",
-    size = "small",
+    size = "medium",
     srcs = ["fused_batchnorm_test.py"],
     deps = [
+        ":test_utils",
         ":xla_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
@@ -767,6 +780,7 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

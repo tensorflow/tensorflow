@@ -17,9 +17,8 @@ limitations under the License.
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 // TODO(misard,phawkins): add tests.
 
-#include <limits>
-
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -207,38 +206,13 @@ class TruncatedNormalOp : public XlaOpKernel {
 
     xla::XlaBuilder* b = ctx->builder();
 
-    auto normal_cdf = [](double x) {
-      return (1.0 + std::erf(x / std::sqrt(2.0))) / 2.0;
-    };
-
-    const double kA = -2.0;
-    const double kB = 2.0;
-    const double kMu = 0.0;
-    const double kSigma = 1.0;
-    const double kAlpha = (kA - kMu) / kSigma;
-    const double kBeta = (kB - kMu) / kSigma;
-    const double kAlphaNormalCdf = normal_cdf(kAlpha);
-    const double kBetaNormalCdf = normal_cdf(kBeta);
-    const double kZ = kBetaNormalCdf - kAlphaNormalCdf;
-
     xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype, 1.0);
-    xla::XlaOp two = XlaHelpers::FloatLiteral(b, dtype, 2.0);
-    xla::XlaOp sqrt_2 = XlaHelpers::FloatLiteral(b, dtype, std::sqrt(2.0));
     xla::XlaOp min_positive =
         XlaHelpers::FloatLiteral(b, dtype, std::numeric_limits<float>::min());
-
-    xla::XlaOp z = XlaHelpers::FloatLiteral(b, dtype, kZ);
-    xla::XlaOp alpha_normal_cdf =
-        XlaHelpers::FloatLiteral(b, dtype, kAlphaNormalCdf);
-
     auto uniform = b->RngUniform(min_positive, one, xla_shape);
-    // probit(p) = sqrt(2) * erfinv(2*p-1)
-    auto p = b->Add(alpha_normal_cdf, b->Mul(z, uniform));
-    auto erfinv_input = b->Sub(b->Mul(p, two), one);
-    auto erfinv_or_status = ErfInv(b, erfinv_input);
-    OP_REQUIRES_OK(ctx, erfinv_or_status.status());
-    auto probit = b->Mul(sqrt_2, erfinv_or_status.ValueOrDie());
-    ctx->SetOutput(0, probit);
+    auto truncated_normal_or_status = TruncatedNormal(dtype, uniform, b);
+    OP_REQUIRES_OK(ctx, truncated_normal_or_status.status());
+    ctx->SetOutput(0, truncated_normal_or_status.ValueOrDie());
   }
 };
 

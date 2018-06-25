@@ -2607,7 +2607,7 @@ class _LinearModelTest(test.TestCase):
 
 class InputLayerTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_retrieving_input(self):
     features = {'a': [0.]}
     input_layer = InputLayer(fc.numeric_column('a'))

@@ -1133,6 +1133,18 @@ class Estimator(object):
       return self._train_model_default(input_fn, hooks, saving_listeners)
 
   def _train_model_default(self, input_fn, hooks, saving_listeners):
+    """Initiate training with input_fn, without DistributionStrategies.
+
+    Args:
+      input_fn: A function that provides input data for training as minibatches.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the training loop.
+      saving_listeners: list of `CheckpointSaverListener` objects. Used for
+        callbacks that run immediately before or after checkpoint savings.
+
+    Returns:
+      Loss from training
+    """
     worker_hooks = []
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
@@ -1149,6 +1161,18 @@ class Estimator(object):
                                              saving_listeners)
 
   def _train_model_distributed(self, input_fn, hooks, saving_listeners):
+    """Initiate training with input_fn, using DistributionStrategies.
+
+    Args:
+      input_fn: A function that provides input data for training as minibatches.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the training loop.
+      saving_listeners: list of `CheckpointSaverListener` objects. Used for
+        callbacks that run immediately before or after checkpoint savings.
+
+    Returns:
+      Loss from training
+    """
     self._distribution.configure(self._session_config)
     worker_hooks = []
     with ops.Graph().as_default() as g:
@@ -1196,10 +1220,16 @@ class Estimator(object):
         else:
           init_op = None
 
+        def _unwrap_and_concat(value):
+          value = nest.flatten(self._distribution.unwrap(value))
+          if len(value) != 1:
+            return array_ops.concat(value)
+          return value[0]
+
         ready_op = self._distribution.call_for_each_tower(
             create_per_tower_ready_op, grouped_estimator_spec.scaffold)
         if ready_op is not None:
-          ready_op = self._distribution.group(ready_op)
+          ready_op = _unwrap_and_concat(ready_op)
         else:
           ready_op = None
 
@@ -1207,8 +1237,7 @@ class Estimator(object):
             create_per_tower_ready_for_local_init_op,
             grouped_estimator_spec.scaffold)
         if ready_for_local_init_op is not None:
-          ready_for_local_init_op = self._distribution.group(
-              ready_for_local_init_op)
+          ready_for_local_init_op = _unwrap_and_concat(ready_for_local_init_op)
         else:
           ready_for_local_init_op = None
 

@@ -1120,14 +1120,14 @@ void LogAllRegisteredKernels() {
   }
 }
 
-std::vector<KernelDef> GetAllRegisteredKernels() {
+KernelList GetAllRegisteredKernels() {
   const KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
-  std::vector<KernelDef> kernels;
-  kernels.reserve(typed_registry->size());
+  KernelList kernel_list;
+  kernel_list.mutable_kernel()->Reserve(typed_registry->size());
   for (const auto& p : *typed_registry) {
-    kernels.emplace_back(p.second.def);
+    *kernel_list.add_kernel() = p.second.def;
   }
-  return kernels;
+  return kernel_list;
 }
 
 string KernelsRegisteredForOp(StringPiece op_name) {

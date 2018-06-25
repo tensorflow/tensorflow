@@ -1,4 +1,4 @@
-"""A trivial base class to avoid circular imports for isinstance checks."""
+#!/usr/bin/env bash
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,15 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 
-from tensorflow.python.training.checkpointable import base as checkpointable_lib
+#This is required because pypi doesn't have a pre-built h5py binary for ppc64le
+#It has to be compiled from source during the install
+apt-get update
+apt-get install -y libhdf5-dev
 
+#h5py is not expecting the shared libraries to have _serial in the name.
+ln -s /usr/lib/powerpc64le-linux-gnu/libhdf5_serial.so /usr/lib/powerpc64le-linux-gnu/libhdf5.so
+ln -s /usr/lib/powerpc64le-linux-gnu/libhdf5_serial_hl.so /usr/lib/powerpc64le-linux-gnu/libhdf5_hl.so
 
-class CheckpointableDataStructureBase(checkpointable_lib.CheckpointableBase):
-  """Base class for data structures which contain checkpointable objects."""
-
-  pass
+#pip is not installed yet, so use easy_install
+#CPATH is the location of hdf5.h
+CPATH=/usr/include/hdf5/serial/ easy_install -U h5py
+CPATH=/usr/include/hdf5/serial/ easy_install3 -U h5py

@@ -830,10 +830,6 @@ HloInstructionProto HloFusionInstruction::ToProto() const {
 
 bool HloFusionInstruction::IsElementwiseImpl(
     const tensorflow::gtl::optional<int64>& operand_idx) const {
-  if (fusion_kind() != FusionKind::kLoop) {
-    return false;
-  }
-
   if (!operand_idx.has_value()) {
     for (auto* fused : fused_instructions()) {
       if (fused->opcode() != HloOpcode::kParameter && !fused->IsElementwise()) {

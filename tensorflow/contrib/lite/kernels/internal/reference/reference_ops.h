@@ -697,7 +697,7 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void ExperimentalShuffledFullyConnected(
+inline void ShuffledFullyConnected(
     const uint8* input_data, const Dims<4>& input_dims,
     const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
     const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,

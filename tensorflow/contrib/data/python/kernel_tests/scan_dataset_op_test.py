@@ -63,7 +63,7 @@ class ScanDatasetTest(test.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(next_element)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFibonacci(self):
     iterator = dataset_ops.Dataset.from_tensors(1).repeat(None).apply(
         scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1]))
