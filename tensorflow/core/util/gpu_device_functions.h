@@ -495,11 +495,23 @@ __device__ float GpuAtomicCasHelper(float* ptr, F accumulate) {
 }
 template <typename F>
 __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
+#if TENSORFLOW_USE_ROCM
+  // FIXME : remove the workaround below once bug is fixed
+  // HIP has a bug in the implementation of __longlong_as_double
+  // So workaround it by using reinterpret_cast<double*>
+  uint64_t result = GpuAtomicCasHelper(
+      reinterpret_cast<tensorflow::uint64*>(ptr),
+      [accumulate](tensorflow::uint64 a) {
+	return __double_as_longlong(accumulate(*(reinterpret_cast<double*>(&a))));
+      });
+ return *(reinterpret_cast<double*>(&result));
+#else
   return __longlong_as_double(GpuAtomicCasHelper(
       reinterpret_cast<tensorflow::uint64*>(ptr),
       [accumulate](tensorflow::uint64 a) {
         return __double_as_longlong(accumulate(__longlong_as_double(a)));
       }));
+#endif
 }
 
 // Overload of above function for half. Note that we don't have
