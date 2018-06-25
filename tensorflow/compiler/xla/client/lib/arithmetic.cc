@@ -122,8 +122,7 @@ StatusOr<XlaOp> Any(const XlaOp& predicates, XlaBuilder* builder) {
 }
 
 namespace {
-xla::XlaOp FloatLiteral(xla::XlaBuilder* b, PrimitiveType data_type,
-                        float value) {
+XlaOp FloatLiteral(XlaBuilder* b, PrimitiveType data_type, float value) {
   return b->ConvertElementType(b->ConstantR0(value), data_type);
 }
 
@@ -165,10 +164,11 @@ std::array<float, 6> kErfUCoefficient = {
 
 // Evaluate the polynomial given coefficients and `x`.
 // N.B. Coefficients should be supplied in decreasing order.
-xla::XlaOp EvaluatePolynomial(xla::XlaBuilder* b, const xla::XlaOp& x,
-                              tensorflow::gtl::ArraySlice<float> coefficients,
-                              PrimitiveType data_type) {
-  xla::XlaOp poly = FloatLiteral(b, data_type, 0.0);
+XlaOp EvaluatePolynomial(const XlaOp& x,
+                         tensorflow::gtl::ArraySlice<float> coefficients,
+                         PrimitiveType data_type) {
+  XlaBuilder* b = x.builder();
+  XlaOp poly = FloatLiteral(b, data_type, 0.0);
   for (float c : coefficients) {
     poly = b->Add(b->Mul(poly, x), FloatLiteral(b, data_type, c));
   }
@@ -176,32 +176,32 @@ xla::XlaOp EvaluatePolynomial(xla::XlaBuilder* b, const xla::XlaOp& x,
 }
 
 // Compute an approximation of the error function complement (1 - erf(x)).
-xla::XlaOp Erfc(xla::XlaBuilder* b, const xla::XlaOp& x,
-                PrimitiveType data_type) {
-  xla::XlaOp zero = FloatLiteral(b, data_type, 0.0);
-  xla::XlaOp two = FloatLiteral(b, data_type, 2.0);
-  xla::XlaOp eight = FloatLiteral(b, data_type, 8.0);
+XlaOp Erfc(const XlaOp& x, PrimitiveType data_type) {
+  XlaBuilder* b = x.builder();
+  XlaOp zero = FloatLiteral(b, data_type, 0.0);
+  XlaOp two = FloatLiteral(b, data_type, 2.0);
+  XlaOp eight = FloatLiteral(b, data_type, 8.0);
 
-  xla::XlaOp abs_x = b->Abs(x);
-  xla::XlaOp z = b->Exp(b->Mul(b->Neg(x), x));
+  XlaOp abs_x = b->Abs(x);
+  XlaOp z = b->Exp(b->Mul(b->Neg(x), x));
 
-  xla::XlaOp pp = EvaluatePolynomial(b, abs_x, kErfcPCoefficient, data_type);
-  xla::XlaOp pq = EvaluatePolynomial(b, abs_x, kErfcQCoefficient, data_type);
-  xla::XlaOp pr = EvaluatePolynomial(b, abs_x, kErfcRCoefficient, data_type);
-  xla::XlaOp ps = EvaluatePolynomial(b, abs_x, kErfcSCoefficient, data_type);
+  XlaOp pp = EvaluatePolynomial(abs_x, kErfcPCoefficient, data_type);
+  XlaOp pq = EvaluatePolynomial(abs_x, kErfcQCoefficient, data_type);
+  XlaOp pr = EvaluatePolynomial(abs_x, kErfcRCoefficient, data_type);
+  XlaOp ps = EvaluatePolynomial(abs_x, kErfcSCoefficient, data_type);
 
-  xla::XlaOp y = b->Select(b->Lt(abs_x, eight), b->Div(b->Mul(z, pp), pq),
-                           b->Div(b->Mul(z, pr), ps));
+  XlaOp y = b->Select(b->Lt(abs_x, eight), b->Div(b->Mul(z, pp), pq),
+                      b->Div(b->Mul(z, pr), ps));
 
   return b->Select(b->Lt(x, zero), b->Sub(two, y), y);
 }
 
 // Compute a polynomial approximation of the error function.
-xla::XlaOp Erf(xla::XlaBuilder* b, const xla::XlaOp& x,
-               PrimitiveType data_type) {
-  xla::XlaOp z = b->Mul(x, x);
-  xla::XlaOp pt = EvaluatePolynomial(b, z, kErfTCoefficient, data_type);
-  xla::XlaOp pu = EvaluatePolynomial(b, z, kErfUCoefficient, data_type);
+XlaOp Erf(const XlaOp& x, PrimitiveType data_type) {
+  XlaBuilder* b = x.builder();
+  XlaOp z = b->Mul(x, x);
+  XlaOp pt = EvaluatePolynomial(z, kErfTCoefficient, data_type);
+  XlaOp pu = EvaluatePolynomial(z, kErfUCoefficient, data_type);
   return b->Div(b->Mul(x, pt), pu);
 }
 
@@ -217,7 +217,8 @@ xla::XlaOp Erf(xla::XlaBuilder* b, const xla::XlaOp& x,
 //     p = sum_{i=1}^n gq[i]*w^i
 //   }
 //   return p*x
-StatusOr<XlaOp> ErfInv(xla::XlaBuilder* b, const xla::XlaOp& x) {
+StatusOr<XlaOp> ErfInv(const XlaOp& x) {
+  XlaBuilder* b = x.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, b->GetShape(x));
   constexpr int kDegree = 9;
   constexpr std::array<float, 9> w_less_than_5_constants = {

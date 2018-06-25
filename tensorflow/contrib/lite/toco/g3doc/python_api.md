@@ -20,6 +20,9 @@ Table of contents:
 *   [TensorFlow Lite Python interpreter](#interpreter)
     *   [Using the interpreter from a model file](#interpreter-file)
     *   [Using the interpreter from model data](#interpreter-data)
+*   [Additional instructions](#additional-instructions)
+    *   [Build from source code](#latest-package)
+    *   [Converting models prior to TensorFlow 1.9.](#pre-tensorflow-1.9)
 
 ## High-level overview
 
@@ -31,8 +34,8 @@ designing a model that can be targeted to devices with mobile.
 
 ## API
 
-The API for converting TensorFlow models to TensorFlow Lite is
-`tf.contrib.lite.TocoConverter`. The API for calling the Python intepreter is
+The API for converting TensorFlow models to TensorFlow Lite as of TensorFlow 1.9
+is `tf.contrib.lite.TocoConverter`. The API for calling the Python intepreter is
 `tf.contrib.lite.Interpreter`.
 
 `TocoConverter` provides class methods based on the original format of the
@@ -200,3 +203,18 @@ with tf.Session() as sess:
 interpreter = tf.contrib.lite.Interpreter(model_content=tflite_model)
 interpreter.allocate_tensors()
 ```
+
+## Additional instructions
+
+### Build from source code <a name="latest-package"></a>
+
+In order to run the latest version of the TOCO Python API, clone the TensorFlow
+repository, configure the installation, and build and install the pip package.
+Detailed instructions are available
+[here](https://www.tensorflow.org/install/install_sources).
+
+### Converting models prior to TensorFlow 1.9. <a name="pre-tensorflow-1.9"></a>
+
+To use TOCO in TensorFlow 1.7 and TensorFlow 1.8, use the `toco_convert`
+function. Run `help(tf.contrib.lite.toco_convert)` to get details about accepted
+parameters.

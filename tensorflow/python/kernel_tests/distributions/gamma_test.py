@@ -21,6 +21,7 @@ import importlib
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -264,6 +265,18 @@ class GammaTest(test.TestCase):
           sample_values.var(),
           stats.gamma.var(alpha_v, scale=1 / beta_v),
           atol=.15)
+
+  def testGammaFullyReparameterized(self):
+    alpha = constant_op.constant(4.0)
+    beta = constant_op.constant(3.0)
+    with backprop.GradientTape() as tape:
+      tape.watch(alpha)
+      tape.watch(beta)
+      gamma = gamma_lib.Gamma(concentration=alpha, rate=beta)
+      samples = gamma.sample(100)
+    grad_alpha, grad_beta = tape.gradient(samples, [alpha, beta])
+    self.assertIsNotNone(grad_alpha)
+    self.assertIsNotNone(grad_beta)
 
   def testGammaSampleMultiDimensional(self):
     with self.test_session():

@@ -26,7 +26,7 @@ some cases it's only possible to find the shape of a tensor at graph execution
 time.
 
 Some types of tensors are special, and these will be covered in other
-units of the Programmer's guide. The main ones are:
+units of the TensorFlow guide. The main ones are:
 
   * `tf.Variable`
   * `tf.constant`
@@ -230,7 +230,7 @@ yet_another = tf.reshape(matrixAlt, [13, 2, -1])  # ERROR!
 ## Data types
 
 In addition to dimensionality, Tensors have a data type. Refer to the
-`tf.DataType` page in the programmer's guide for a full list of the data types.
+`tf.DType` page for a complete list of the data types.
 
 It is not possible to have a `tf.Tensor` with more than one data type. It is
 possible, however, to serialize arbitrary data structures as `string`s and store

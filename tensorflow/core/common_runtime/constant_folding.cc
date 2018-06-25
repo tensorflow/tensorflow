@@ -47,8 +47,7 @@ namespace {
 // inputs' shapes are known.
 bool IsShapeOp(const Node* n) {
   const auto& ts = n->type_string();
-  return ts == "Shape" || ts == "ShapeN" || ts == "Rank" || ts == "Size" ||
-         ts == "ZerosLike" || ts == "OnesLike";
+  return ts == "Shape" || ts == "ShapeN" || ts == "Rank" || ts == "Size";
 }
 
 // Reads the partially-known shape of each of n's inputs from shape_map, and
@@ -162,63 +161,6 @@ bool MaybeReplaceSizeOp(const Node* n,
   return true;
 }
 
-template <class T>
-void SetAll(Tensor* t, T val) {
-  auto flat_t = t->flat<T>();
-  for (int i = 0; i < flat_t.size(); i++) {
-    flat_t(i) = val;
-  }
-}
-
-#define REPLACE_ZEROS_OR_ONES_CASE(DTYPE)                                      \
-  case DTYPE:                                                                  \
-    SetAll<EnumToDataType<DTYPE>::Type>(&t,                                    \
-                                        EnumToDataType<DTYPE>::Type(int_val)); \
-    break;
-
-bool MaybeReplaceZerosOrOnesLikeOp(
-    const Node* n, const std::vector<PartialTensorShape>& input_shapes,
-    std::unordered_map<const Node*, std::vector<Tensor>>*
-        shape_replacement_map) {
-  std::vector<Tensor> defined_shape;
-  for (const auto& shape : input_shapes) {
-    if (!shape.IsFullyDefined()) {
-      return false;
-    }
-    const DataType op_type = n->output_type(0);
-    TensorShape fully_defined_shape;
-    shape.AsTensorShape(&fully_defined_shape);
-    Tensor t(op_type, fully_defined_shape);
-
-    int int_val = n->type_string() == "OnesLike" ? 1 : 0;
-    switch (op_type) {
-      REPLACE_ZEROS_OR_ONES_CASE(DT_BOOL);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_HALF);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_BFLOAT16);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_FLOAT);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_DOUBLE);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_COMPLEX64);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_COMPLEX128);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_UINT8);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_INT8);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_UINT16);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_INT16);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_INT32);
-      REPLACE_ZEROS_OR_ONES_CASE(DT_INT64);
-      default:
-        VLOG(1) << "Unsupported type " << DataTypeString(op_type);
-        return false;
-    }
-    defined_shape.push_back(t);
-  }
-  // All the inputs had known shapes so we can replace the node by constants
-  // later in the rewrite.
-  shape_replacement_map->insert({n, defined_shape});
-  return true;
-}
-
-#undef REPLACE_ZEROS_OR_ONES_CASE
-
 // If n is a shape Op (Shape, ShapeN, Rank, or Size) and its inputs have their
 // shapes specified in shape_map, then adds to shape_replacement_map a mapping
 // from n to a vector of Tensors, where Tensor k is the (statically known) value
@@ -249,14 +191,9 @@ bool MaybeReplaceShapeOp(
     if (!MaybeReplaceRankOp(n, input_shapes, shape_replacement_map)) {
       return false;
     }
-  } else if (ts == "Size") {
-    if (!MaybeReplaceSizeOp(n, input_shapes, shape_replacement_map)) {
-      return false;
-    }
   } else {
-    CHECK(ts == "ZerosLike" || ts == "OnesLike");
-    if (!MaybeReplaceZerosOrOnesLikeOp(n, input_shapes,
-                                       shape_replacement_map)) {
+    CHECK_EQ(ts, "Size");
+    if (!MaybeReplaceSizeOp(n, input_shapes, shape_replacement_map)) {
       return false;
     }
   }

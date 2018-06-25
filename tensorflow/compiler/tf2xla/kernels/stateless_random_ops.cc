@@ -207,7 +207,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
         RandomUniform(builder, seed, shape, std::nextafter(-1.0f, 0.0f), 1.0);
     // Convert uniform distribution to normal distribution by computing
     // sqrt(2) * erfinv(x)
-    auto erfinv_or_status = ErfInv(builder, uniform);
+    auto erfinv_or_status = ErfInv(uniform);
     OP_REQUIRES_OK(ctx, erfinv_or_status.status());
     auto normal = builder->Mul(builder->ConstantR0<float>(std::sqrt(2.0)),
                                erfinv_or_status.ValueOrDie());

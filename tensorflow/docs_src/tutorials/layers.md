@@ -627,7 +627,7 @@ operation earlier when we generated the probabilities in `cnn_model_fn`.
 > argument, TensorFlow will assign a default name. A couple easy ways to
 > discover the names applied to operations are to visualize your graph on
 > @{$graph_viz$TensorBoard}) or to enable the
-> @{$programmers_guide/debugger$TensorFlow Debugger (tfdbg)}.
+> @{$guide/debugger$TensorFlow Debugger (tfdbg)}.
 
 Next, we create the `LoggingTensorHook`, passing `tensors_to_log` to the
 `tensors` argument. We set `every_n_iter=50`, which specifies that probabilities
