@@ -9,7 +9,7 @@
   * Using `tf.keras.layers` with custom variable scopes.
   * Using `tf.layers` in  a subclassed `tf.keras.Model` class. See [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers) for more details
 
-## Breaking Chances
+## Breaking Changes
   * If you're opening empty variable scopes; replace `variable_scope`('', ...) by `variable_scope`(`tf.get_variable_scope()`, ...).
 
 ## Bug Fixes and Other Changes
