@@ -63,7 +63,7 @@ class DropStaleGradientOptimizer(optimizer.Optimizer):
   def compute_gradients(self, loss, *args, **kwargs):
     # Record current global step for worker.
     with ops.colocate_with(loss):
-      self._local_step = training_util.get_global_step() + 0
+      self._local_step = training_util.get_global_step().read_value() + 0
 
     with ops.control_dependencies([self._local_step]):
       loss = gen_array_ops.identity(loss)
@@ -102,13 +102,13 @@ class DropStaleGradientOptimizer(optimizer.Optimizer):
 
     with ops.control_dependencies(gradients), ops.colocate_with(global_step):
       staleness = gen_array_ops.reshape(
-          global_step - self._local_step, shape=())
+          global_step.read_value() - self._local_step, shape=())
 
     conditional_update = stale_counter.assign_add(control_flow_ops.cond(
         gen_math_ops.less_equal(staleness, self._staleness),
         _AcceptGradientOp, _DropGradientOp))
 
     summary.scalar(
-        "Gradient staleness percentage",
-        stale_counter / (math_ops.cast(global_step + 1, dtypes.float32)))
+        "Gradient staleness percentage", stale_counter / (math_ops.cast(
+            global_step.read_value() + 1, dtypes.float32)))
     return conditional_update

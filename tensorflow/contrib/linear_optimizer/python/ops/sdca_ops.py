@@ -518,7 +518,7 @@ class SdcaModel(object):
               update_ops.append(state_ops.assign_add(v, split_update))
           else:
             update_ops.append(state_ops.assign_add(w, u))
-      if not global_step:
+      if global_step is None:
         return control_flow_ops.group(*update_ops)
       with ops.control_dependencies(update_ops):
         return state_ops.assign_add(global_step, 1, name=name).op

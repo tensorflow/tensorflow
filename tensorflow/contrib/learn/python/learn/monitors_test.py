@@ -802,9 +802,6 @@ class RunHookAdapterForMonitorsTest(test.TestCase):
       mon_sess.run(inc_5)
       for mon in [mock_mon, mock_mon2]:
         self.assertEqual(mon.output, {})
-        self.assertEqual(mon.last_begin_step, 11)
-        self.assertEqual(mon.last_end_step, 11)
-        self.assertEqual(mon.last_post_step, 11)
         self.assertEqual(mon.call_counter['step_end'], 1)
         self.assertEqual(mon.call_counter['step_begin'], 1)
         self.assertEqual(mon.call_counter['post_step'], 1)
@@ -812,9 +809,6 @@ class RunHookAdapterForMonitorsTest(test.TestCase):
       mon_sess.run(inc_5)
       for mon in [mock_mon, mock_mon2]:
         self.assertEqual(mon.output, {})
-        self.assertEqual(mon.last_begin_step, 16)
-        self.assertEqual(mon.last_end_step, 16)
-        self.assertEqual(mon.last_post_step, 16)
         self.assertEqual(mon.call_counter['step_end'], 2)
         self.assertEqual(mon.call_counter['step_begin'], 2)
         self.assertEqual(mon.call_counter['post_step'], 2)
