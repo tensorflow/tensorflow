@@ -800,7 +800,7 @@ void BM_ParallelFusion(int num_iters) {
   auto param2 = builder.Parameter(2, shape2, "param2");
 
   auto x = builder.Mul(param0, param1);
-  auto y = builder.Add(x, param2);
+  builder.Add(x, param2);
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Transfer literals to device.

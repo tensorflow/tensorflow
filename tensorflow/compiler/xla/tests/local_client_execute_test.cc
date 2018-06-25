@@ -54,7 +54,7 @@ class LocalClientExecuteTest : public LocalClientTestBase {
 
 XLA_TEST_F(LocalClientExecuteTest, Constant) {
   XlaBuilder builder(TestName());
-  auto y = builder.ConstantR0<float>(123.0f);
+  builder.ConstantR0<float>(123.0f);
 
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {});
@@ -701,7 +701,7 @@ XLA_TEST_F(LocalClientExecuteTest,
   TestAllocator allocator(wrong_platform);
 
   XlaBuilder builder(TestName());
-  auto y = builder.ConstantR0<float>(123.0f);
+  builder.ConstantR0<float>(123.0f);
 
   auto execute_status = ExecuteLocally(
       builder.Build().ValueOrDie(), {}, DefaultExecutableBuildOptions(),

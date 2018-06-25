@@ -46,7 +46,7 @@ XLA_TEST_F(ParamsTest, ConstantR0F32Param) {
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
-  auto p = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param0");
+  builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param0");
 
   ComputeAndCompareR0<float>(&builder, 3.14159f, {param0_data.get()},
                              ErrorSpec(0.0001f));
@@ -58,7 +58,7 @@ XLA_TEST_F(ParamsTest, ConstantR1S0F32Param) {
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
-  auto p = builder.Parameter(0, ShapeUtil::MakeShape(F32, {0}), "param0");
+  builder.Parameter(0, ShapeUtil::MakeShape(F32, {0}), "param0");
 
   ComputeAndCompareR1<float>(&builder, {}, {param0_data.get()},
                              ErrorSpec(0.01f));
@@ -71,7 +71,7 @@ XLA_TEST_F(ParamsTest, ConstantR1S2F32Param) {
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
-  auto p = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2}), "param0");
+  builder.Parameter(0, ShapeUtil::MakeShape(F32, {2}), "param0");
 
   ComputeAndCompareR1<float>(&builder, {3.14f, -100.25f}, {param0_data.get()},
                              ErrorSpec(0.01f));
@@ -84,7 +84,7 @@ XLA_TEST_F(ParamsTest, ConstantR1U8Param) {
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
-  auto p = builder.Parameter(
+  builder.Parameter(
       0, ShapeUtil::MakeShape(U8, {static_cast<int64>(str.size())}), "param0");
 
   ComputeAndCompareR1U8(&builder, str, {param0_data.get()});
@@ -97,7 +97,7 @@ XLA_TEST_F(ParamsTest, ConstantR2_3x0_F32Param) {
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
-  auto p = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3, 0}), "param0");
+  builder.Parameter(0, ShapeUtil::MakeShape(F32, {3, 0}), "param0");
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(3, 0),
                              {param0_data.get()}, ErrorSpec(0.01f));
@@ -110,7 +110,7 @@ XLA_TEST_F(ParamsTest, ConstantR2F32Param) {
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
-  auto p = builder.Parameter(0, ShapeUtil::MakeShape(F32, {3, 2}), "param0");
+  builder.Parameter(0, ShapeUtil::MakeShape(F32, {3, 2}), "param0");
 
   Array2D<float> expected_array(
       {{3.14f, -100.25f}, {7e8f, 7e-9f}, {30.3f, -100.0f}});
@@ -142,7 +142,7 @@ XLA_TEST_F(ParamsTest, TwoParameters) {
   // parameters to test that the parameters are not swapped.
   //
   // {11, 22} * {10, 20} = {110, 440}
-  auto prod = builder.Mul(sum, param1);
+  builder.Mul(sum, param1);
 
   ComputeAndCompareR1<float>(&builder, {110, 440},
                              {param0_data.get(), param1_data.get()},
@@ -157,7 +157,7 @@ XLA_TEST_F(ParamsTest, MissingParameter) {
       client_->TransferToServer(*literal).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto p = builder.Parameter(2, ShapeUtil::MakeShape(F32, {}), "param2");
+  builder.Parameter(2, ShapeUtil::MakeShape(F32, {}), "param2");
   auto computation_status = builder.Build();
 
   ASSERT_NE(computation_status.status(), Status::OK());
@@ -169,12 +169,12 @@ XLA_TEST_F(ParamsTest, UnusedParameter) {
   std::unique_ptr<Literal> literal0 = Literal::CreateR1<float>({1, 2});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*literal0).ConsumeValueOrDie();
-  auto param0 = builder.Parameter(0, literal0->shape(), "param0");
+  builder.Parameter(0, literal0->shape(), "param0");
 
   std::unique_ptr<Literal> literal1 = Literal::CreateR1<float>({10, 20});
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(*literal1).ConsumeValueOrDie();
-  auto param1 = builder.Parameter(1, literal1->shape(), "param1");
+  builder.Parameter(1, literal1->shape(), "param1");
 
   ComputeAndCompareR1<float>(&builder, {10, 20},
                              {param0_data.get(), param1_data.get()},
@@ -478,7 +478,8 @@ XLA_TEST_F(ParamsTest, R2_2x2_Layout_10) {
 
 XLA_TEST_F(ParamsTest, R2_2x2_TryToPassReverseLayoutToParameter) {
   std::unique_ptr<Literal> literal = Literal::CreateR2<float>({
-      {1, 3}, {2, 4},
+      {1, 3},
+      {2, 4},
   });
   const Shape original = literal->shape();
   {

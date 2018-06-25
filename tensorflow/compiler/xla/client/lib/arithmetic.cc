@@ -111,7 +111,7 @@ XlaComputation CreateScalarOrComputation(XlaBuilder* builder) {
       });
 }
 
-StatusOr<XlaOp> Any(const XlaOp& predicates, XlaBuilder* builder) {
+StatusOr<XlaOp> Any(XlaOp predicates, XlaBuilder* builder) {
   auto f = builder->ConstantR0<bool>(false);
   XlaComputation logical_or = CreateScalarOrComputation(builder);
   TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
@@ -164,7 +164,7 @@ std::array<float, 6> kErfUCoefficient = {
 
 // Evaluate the polynomial given coefficients and `x`.
 // N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(const XlaOp& x,
+XlaOp EvaluatePolynomial(XlaOp x,
                          tensorflow::gtl::ArraySlice<float> coefficients,
                          PrimitiveType data_type) {
   XlaBuilder* b = x.builder();
@@ -176,7 +176,7 @@ XlaOp EvaluatePolynomial(const XlaOp& x,
 }
 
 // Compute an approximation of the error function complement (1 - erf(x)).
-XlaOp Erfc(const XlaOp& x, PrimitiveType data_type) {
+XlaOp Erfc(XlaOp x, PrimitiveType data_type) {
   XlaBuilder* b = x.builder();
   XlaOp zero = FloatLiteral(b, data_type, 0.0);
   XlaOp two = FloatLiteral(b, data_type, 2.0);
@@ -197,7 +197,7 @@ XlaOp Erfc(const XlaOp& x, PrimitiveType data_type) {
 }
 
 // Compute a polynomial approximation of the error function.
-XlaOp Erf(const XlaOp& x, PrimitiveType data_type) {
+XlaOp Erf(XlaOp x, PrimitiveType data_type) {
   XlaBuilder* b = x.builder();
   XlaOp z = b->Mul(x, x);
   XlaOp pt = EvaluatePolynomial(z, kErfTCoefficient, data_type);
@@ -217,7 +217,7 @@ XlaOp Erf(const XlaOp& x, PrimitiveType data_type) {
 //     p = sum_{i=1}^n gq[i]*w^i
 //   }
 //   return p*x
-StatusOr<XlaOp> ErfInv(const XlaOp& x) {
+StatusOr<XlaOp> ErfInv(XlaOp x) {
   XlaBuilder* b = x.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, b->GetShape(x));
   constexpr int kDegree = 9;

@@ -1001,8 +1001,8 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
       Any(cond.Eq(cond_t, cond.ConstantR1<float>({42, 42})), &cond).status());
 
   XlaBuilder body("body");
-  auto body_t = body.Parameter(0, element_shape, "t");
-  auto e = body.Broadcast(body.ConstantR0<float>(1.0), {2});
+  body.Parameter(0, element_shape, "t");
+  body.Broadcast(body.ConstantR0<float>(1.0), {2});
 
   TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
   TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
@@ -1029,7 +1029,7 @@ TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
   auto body_t = body.Parameter(0, element_shape, "t");
   auto tuple =
       body.Tuple({body_t, body.Add(body_t, body.ConstantR0<float>(1))});
-  auto e = body.GetTupleElement(tuple, 1);
+  body.GetTupleElement(tuple, 1);
 
   TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
   TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
@@ -1068,7 +1068,7 @@ TEST_F(WhileTest, WhileWithMixedTupleElements) {
   XlaBuilder body("body");
   auto body_t = body.Parameter(0, result_shape, "t");
 
-  auto tuple = body.Tuple(
+  body.Tuple(
       {body.Add(body.GetTupleElement(body_t, 0), body.ConstantR0<int32>(1)),
        body.Add(body.GetTupleElement(body_t, 1), body.ConstantR0<int32>(1))});
 

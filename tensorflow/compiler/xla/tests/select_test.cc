@@ -38,7 +38,7 @@ TEST_F(SelectTest, SelectScalarF32True) {
   auto pred = builder.ConstantR0<bool>(true);
   auto on_true = builder.ConstantR0<float>(123.0f);
   auto on_false = builder.ConstantR0<float>(42.0f);
-  auto result = builder.Select(pred, on_true, on_false);
+  builder.Select(pred, on_true, on_false);
 
   ComputeAndCompareR0<float>(&builder, 123.0f, {}, error_spec_);
 }
@@ -48,7 +48,7 @@ TEST_F(SelectTest, SelectScalarS32True) {
   auto pred = builder.ConstantR0<bool>(true);
   auto on_true = builder.ConstantR0<int32>(-42);
   auto on_false = builder.ConstantR0<int32>(42);
-  auto result = builder.Select(pred, on_true, on_false);
+  builder.Select(pred, on_true, on_false);
 
   ComputeAndCompareR0<int32>(&builder, -42, {});
 }
@@ -58,7 +58,7 @@ TEST_F(SelectTest, SelectScalarF32False) {
   auto pred = builder.ConstantR0<bool>(false);
   auto on_true = builder.ConstantR0<float>(123.0f);
   auto on_false = builder.ConstantR0<float>(42.0f);
-  auto result = builder.Select(pred, on_true, on_false);
+  builder.Select(pred, on_true, on_false);
 
   ComputeAndCompareR0<float>(&builder, 42.0f, {}, error_spec_);
 }
@@ -68,7 +68,7 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithConstantR1S0PRED) {
   auto pred = builder.ConstantR1<bool>({});
   auto on_true = builder.ConstantR1<float>({});
   auto on_false = builder.ConstantR1<float>({});
-  auto select = builder.Select(pred, on_true, on_false);
+  builder.Select(pred, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
 }
@@ -78,7 +78,7 @@ TEST_F(SelectTest, SelectR1F32WithConstantR1PRED) {
   auto pred = builder.ConstantR1<bool>({false, true, false, true, false});
   auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
   auto on_false = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, -6.0f});
-  auto select = builder.Select(pred, on_true, on_false);
+  builder.Select(pred, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {10.0f, 25.5f, 1.0f, -10.0f, -6.0f}, {},
                              error_spec_);
@@ -93,7 +93,7 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithCmpR1S0S32s) {
   auto cmp = builder.Eq(v1, v2);
   auto on_true = builder.ConstantR1<float>({});
   auto on_false = builder.ConstantR1<float>({});
-  auto select = builder.Select(cmp, on_true, on_false);
+  builder.Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
 }
@@ -107,7 +107,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32s) {
   auto cmp = builder.Eq(v1, v2);
   auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
   auto on_false = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, -6.0f});
-  auto select = builder.Select(cmp, on_true, on_false);
+  builder.Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {10.0f, 25.5f, 1.0f, -10.0f, -6.0f}, {},
                              error_spec_);
@@ -121,7 +121,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32s) {
   auto cmp = builder.Gt(v1, v2);
   auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
   auto on_false = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, -6.0f});
-  auto select = builder.Select(cmp, on_true, on_false);
+  builder.Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f, 1.0f, 10.0f, 6.0f}, {},
                              error_spec_);
@@ -141,7 +141,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsSmall) {
       /*builder=*/&builder, /*data_handle=*/&v2);
 
   auto cmp = builder.Gt(v1, v2);
-  auto select = builder.Select(cmp, v1, v2);
+  builder.Select(cmp, v1, v2);
   ComputeAndCompareR1<float>(&builder, {41.0f, 22.0f, 23.0f, 84.0f},
                              {param0_data.get(), param1_data.get()},
                              error_spec_);
@@ -182,7 +182,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsLarge) {
                                /*builder=*/&builder, /*data_handle=*/&v2);
 
   auto cmp = builder.Gt(v1, v2);
-  auto select = builder.Select(cmp, v1, v2);
+  builder.Select(cmp, v1, v2);
   ComputeAndCompareR1<float>(&builder, expected_vec,
                              {param0_data.get(), param1_data.get()},
                              error_spec_);
@@ -199,7 +199,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32ToScalar) {
   auto on_true = builder.ConstantR1<float>({11.0f, 22.0f, 33.0f, 44.0f});
   auto on_false =
       builder.ConstantR1<float>({-111.0f, -222.0f, -333.0f, -444.0f});
-  auto select = builder.Select(cmp, on_true, on_false);
+  builder.Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {11.0f, -222.0f, 33.0f, -444.0f}, {},
                              error_spec_);
@@ -216,7 +216,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32ToScalar) {
   auto on_true = builder.ConstantR1<float>({11.0f, 22.0f, 33.0f, 44.0f});
   auto on_false =
       builder.ConstantR1<float>({-111.0f, -222.0f, -333.0f, -444.0f});
-  auto select = builder.Select(cmp, on_true, on_false);
+  builder.Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {-111.0f, -222.0f, 33.0f, 44.0f}, {},
                              error_spec_);
@@ -228,7 +228,7 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithScalarPredicate) {
     auto pred = builder.ConstantR0<bool>(which);
     auto on_true = builder.ConstantR1<float>({});
     auto on_false = builder.ConstantR1<float>({});
-    auto select = builder.Select(pred, on_true, on_false);
+    builder.Select(pred, on_true, on_false);
 
     ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
   }
@@ -239,7 +239,7 @@ TEST_F(SelectTest, SelectR1F32WithScalarPredicateTrue) {
   auto pred = builder.ConstantR0<bool>(true);
   auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f});
   auto on_false = builder.ConstantR1<float>({10.0f, 5.0f});
-  auto select = builder.Select(pred, on_true, on_false);
+  builder.Select(pred, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f}, {}, error_spec_);
 }
@@ -249,7 +249,7 @@ TEST_F(SelectTest, SelectR1F32WithScalarPredicateFalse) {
   auto pred = builder.ConstantR0<bool>(false);
   auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f});
   auto on_false = builder.ConstantR1<float>({10.0f, 5.0f});
-  auto select = builder.Select(pred, on_true, on_false);
+  builder.Select(pred, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {10.0f, 5.0f}, {}, error_spec_);
 }

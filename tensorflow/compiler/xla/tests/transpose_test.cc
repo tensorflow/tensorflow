@@ -39,7 +39,7 @@ class TransposeTest : public ClientLibraryTestBase {
 XLA_TEST_F(TransposeTest, Transpose0x0) {
   XlaBuilder builder("Transpose");
   auto lhs = builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 0));
-  auto result = builder.Transpose(lhs, {1, 0});
+  builder.Transpose(lhs, {1, 0});
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 0), {}, error_spec_);
 }
@@ -47,7 +47,7 @@ XLA_TEST_F(TransposeTest, Transpose0x0) {
 XLA_TEST_F(TransposeTest, Transpose0x42) {
   XlaBuilder builder("Transpose");
   auto lhs = builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 42));
-  auto result = builder.Transpose(lhs, {1, 0});
+  builder.Transpose(lhs, {1, 0});
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(42, 0), {}, error_spec_);
 }
@@ -55,7 +55,7 @@ XLA_TEST_F(TransposeTest, Transpose0x42) {
 XLA_TEST_F(TransposeTest, Transpose7x0) {
   XlaBuilder builder("Transpose");
   auto lhs = builder.ConstantR2FromArray2D<float>(Array2D<float>(7, 0));
-  auto result = builder.Transpose(lhs, {1, 0});
+  builder.Transpose(lhs, {1, 0});
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 7), {}, error_spec_);
 }
@@ -65,7 +65,7 @@ TEST_F(TransposeTest, Transpose2x2) {
   auto lhs = builder.ConstantR2<float>({
       {1.0, 2.0}, {3.0, 4.0},
   });
-  auto result = builder.Transpose(lhs, {1, 0});
+  builder.Transpose(lhs, {1, 0});
 
   Array2D<float> expected({{1.0f, 3.0f}, {2.0f, 4.0f}});
 
@@ -75,7 +75,7 @@ TEST_F(TransposeTest, Transpose2x2) {
 XLA_TEST_F(TransposeTest, Transpose0x2x3_2x3x0) {
   XlaBuilder builder("Transpose");
   auto operand = builder.ConstantR3FromArray3D<int32>(Array3D<int32>(0, 2, 3));
-  auto result = builder.Transpose(operand, {1, 2, 0});
+  builder.Transpose(operand, {1, 2, 0});
 
   ComputeAndCompareR3<int32>(&builder, Array3D<int32>(2, 3, 0), {});
 }
@@ -83,7 +83,7 @@ XLA_TEST_F(TransposeTest, Transpose0x2x3_2x3x0) {
 TEST_F(TransposeTest, Transpose1x2x3_2x3x1) {
   XlaBuilder builder("Transpose");
   auto operand = builder.ConstantR3FromArray3D<int32>({{{1, 2, 3}, {4, 5, 6}}});
-  auto result = builder.Transpose(operand, {1, 2, 0});
+  builder.Transpose(operand, {1, 2, 0});
 
   Array3D<int32> expected({{{1}, {2}, {3}}, {{4}, {5}, {6}}});
 
@@ -93,7 +93,7 @@ TEST_F(TransposeTest, Transpose1x2x3_2x3x1) {
 TEST_F(TransposeTest, Transpose1x2x3_3x2x1) {
   XlaBuilder builder("Transpose");
   auto operand = builder.ConstantR3FromArray3D<int32>({{{1, 2, 3}, {4, 5, 6}}});
-  auto result = builder.Transpose(operand, {2, 1, 0});
+  builder.Transpose(operand, {2, 1, 0});
 
   Array3D<int32> expected({{{1}, {4}}, {{2}, {5}}, {{3}, {6}}});
 
@@ -103,7 +103,7 @@ TEST_F(TransposeTest, Transpose1x2x3_3x2x1) {
 TEST_F(TransposeTest, Transpose1x2x3_1x2x3) {
   XlaBuilder builder("Transpose");
   auto operand = builder.ConstantR3FromArray3D<int32>({{{1, 2, 3}, {4, 5, 6}}});
-  auto result = builder.Transpose(operand, {0, 1, 2});
+  builder.Transpose(operand, {0, 1, 2});
 
   Array3D<int32> expected({{{1, 2, 3}, {4, 5, 6}}});
 

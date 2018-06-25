@@ -109,7 +109,7 @@ TEST_F(ConstantsTest, Small_2x2) {
 
 TEST_F(ConstantsTest, Empty_3x0x2) {
   XlaBuilder builder(TestName());
-  auto constant = builder.ConstantLiteral(
+  builder.ConstantLiteral(
       *Literal::CreateR3FromArray3D<float>(Array3D<float>(3, 0, 2)));
 
   ComputeAndCompareR3<float>(&builder, Array3D<float>(3, 0, 2), {});
@@ -125,8 +125,7 @@ TEST_F(ConstantsTest, Small_2x2x2) {
       {{5.f, 6.f},   // y0
        {7.f, 8.f}},  // y1
   });
-  auto constant =
-      builder.ConstantLiteral(*Literal::CreateR3FromArray3D<float>(array3d));
+  builder.ConstantLiteral(*Literal::CreateR3FromArray3D<float>(array3d));
 
   ComputeAndCompareR3<float>(&builder, array3d, {});
 }

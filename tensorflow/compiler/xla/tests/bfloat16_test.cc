@@ -92,8 +92,8 @@ XLA_TEST_F(Bfloat16Test, BatchNormTraining) {
   auto offset = builder.ConstantR1<bfloat16>(
       {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(2.0f)});
 
-  auto tuple = builder.BatchNormTraining(operand, scale, offset,
-                                         /*epsilon=*/0.001, kFeatureIndex);
+  builder.BatchNormTraining(operand, scale, offset, /*epsilon=*/0.001,
+                            kFeatureIndex);
 
   auto expected = Literal::MakeTuple(
       {Literal::CreateR4<bfloat16>(

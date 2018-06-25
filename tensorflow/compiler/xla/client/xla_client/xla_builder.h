@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "tensorflow/compiler/xla/client/padding.h"
@@ -46,8 +47,11 @@ class XlaBuilder;
 // instruction as an operand.
 class XlaOp {
  public:
-  XlaOp() : handle_(-1), builder_(nullptr) {}
-  ~XlaOp() {}
+  XlaOp() : handle_(-1), builder_(nullptr) {
+    static_assert(std::is_trivially_destructible<XlaOp>::value,
+                  "XlaOp should be trivially destructible");
+  }
+  ~XlaOp() = default;
 
   XlaBuilder* builder() const { return builder_; }
 
