@@ -42,8 +42,7 @@ class SequenceFileDatasetTest(test.TestCase):
     filename = os.path.join(
         resource_loader.get_data_files_path(), 'testdata/string.seq')
 
-    filenames = array_ops.placeholder_with_default(
-        constant_op.constant([filename], dtypes.string), shape=[None])
+    filenames = constant_op.constant([filename], dtypes.string)
     num_repeats = 2
 
     dataset = hadoop_dataset_ops.SequenceFileDataset(

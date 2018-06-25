@@ -30,7 +30,7 @@ class SequenceFileReader {
             new io::BufferedInputStream(file, kSequenceFileBufferSize)) {}
 
   Status ReadHeader() {
-    std::string version;
+    string version;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(4, &version));
     if (version.substr(0, 3) != "SEQ" || version[3] != 6) {
       return errors::InvalidArgument(
@@ -49,7 +49,7 @@ class SequenceFileReader {
                                    "' is currently not supported");
     }
 
-    std::string buffer;
+    string buffer;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(2, &buffer));
     compression_ = buffer[0];
     block_compression_ = buffer[1];
@@ -83,12 +83,12 @@ class SequenceFileReader {
     return Status::OK();
   }
 
-  Status ReadRecord(std::string* key, std::string* value) {
+  Status ReadRecord(string* key, string* value) {
     uint32 length = 0;
     TF_RETURN_IF_ERROR(ReadUInt32(&length));
     if (length == static_cast<uint32>(-1)) {
       // Sync marker.
-      std::string sync_marker;
+      string sync_marker;
       TF_RETURN_IF_ERROR(
           input_stream_->ReadNBytes(kSyncMarkerSize, &sync_marker));
       if (sync_marker != sync_marker_) {
@@ -114,7 +114,7 @@ class SequenceFileReader {
     return Status::OK();
   }
 
-  Status ReadString(std::string* value) {
+  Status ReadString(string* value) {
     int64 length = 0;
     TF_RETURN_IF_ERROR(ReadVInt(&length));
     if (value == nullptr) {
@@ -124,7 +124,7 @@ class SequenceFileReader {
   }
 
   Status ReadUInt32(uint32* value) {
-    std::string buffer;
+    string buffer;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(4, &buffer));
     *value = (uint32(buffer[0]) << 24) | (uint32(buffer[1]) << 16) |
              (uint32(buffer[2]) << 8) | uint32(buffer[3]);
@@ -132,7 +132,7 @@ class SequenceFileReader {
   }
 
   Status ReadVInt(int64* value) {
-    std::string buffer;
+    string buffer;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(1, &buffer));
     if (buffer[0] >= -112) {
       *value = static_cast<int64>(buffer[0]);
@@ -165,15 +165,14 @@ class SequenceFileReader {
 
  private:
   std::unique_ptr<io::InputStreamInterface> input_stream_;
-  std::string key_class_name_;
-  std::string value_class_name_;
-  std::string sync_marker_;
+  string key_class_name_;
+  string value_class_name_;
+  string sync_marker_;
   bool compression_;
   bool block_compression_;
-  std::string compression_codec_class_name_;
+  string compression_codec_class_name_;
   TF_DISALLOW_COPY_AND_ASSIGN(SequenceFileReader);
 };
-}
 class SequenceFileDatasetOp : public DatasetOpKernel {
  public:
   using DatasetOpKernel::DatasetOpKernel;
@@ -252,17 +251,17 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
         do {
           // We are currently processing a file, so try to read the next record.
           if (reader_) {
-            std::string key, value;
+            string key, value;
             Status status = reader_->ReadRecord(&key, &value);
             if (!errors::IsOutOfRange(status)) {
               TF_RETURN_IF_ERROR(status);
 
               Tensor key_tensor(ctx->allocator({}), DT_STRING, {});
-              key_tensor.scalar<std::string>()() = key;
+              key_tensor.scalar<string>()() = key;
               out_tensors->emplace_back(std::move(key_tensor));
 
               Tensor value_tensor(ctx->allocator({}), DT_STRING, {});
-              value_tensor.scalar<std::string>()() = value;
+              value_tensor.scalar<string>()() = value;
               out_tensors->emplace_back(std::move(value_tensor));
 
               *end_of_sequence = false;
@@ -312,7 +311,7 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
         return reader_->ReadHeader();
       }
 
-      // Resets all Parquet streams.
+      // Resets all Hadoop SequenceFile streams.
       void ResetStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         reader_.reset();
         file_.reset();
@@ -329,6 +328,8 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
   };
   DataTypeVector output_types_;
 };
+
+}
 
 REGISTER_KERNEL_BUILDER(Name("SequenceFileDataset").Device(DEVICE_CPU),
                         SequenceFileDatasetOp);
