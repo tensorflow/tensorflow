@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "StringStrip"
+  endpoint {
+    name: "strings.strip"
+  }
+  endpoint {
+    name: "string_strip"
+    deprecation_message: "tf.string_strip is deprecated, please use tf.strings.strip instead."
+  }
+}

@@ -20,7 +20,8 @@ namespace tensorflow {
 const std::unordered_set<std::string>* GetExcludedOps() {
   static std::unordered_set<std::string>* excluded_ops =
       new std::unordered_set<std::string>(
-          {"BigQueryReader", "GenerateBigQueryReaderPartitions"});
+          {"BigQueryReader", "GenerateBigQueryReaderPartitions",
+           "GcsConfigureBlockCache", "GcsConfigureCredentials"});
   return excluded_ops;
 }
 }  // namespace tensorflow

@@ -25,6 +25,67 @@ namespace tflite {
 enum class FusedActivationFunctionType : uint8 { kNone, kRelu6, kRelu1, kRelu };
 enum class PaddingType { kNone, kSame, kValid };
 
+// This enumeration allows for non-default formats for the weights array
+// of a fully-connected operator, allowing the use of special optimized
+// runtime paths.
+enum class FullyConnectedWeightsFormat : uint8 {
+  // Default format (flat 2D layout, the inner contiguous dimension
+  // is input_depth, the outer non-contiguous dimension is output_depth)
+  kDefault,
+  // Summary: optimized layout for fast CPU runtime implementation,
+  // aimed specifically at ARM CPUs at the moment, and specialized for
+  // 8-bit quantized layers.
+  //
+  // The use case we're concerned with here is: 8-bit quantization,
+  // large weights matrix that doesn't fit in cache (e.g. 4096x2048 in
+  // a key application that drove this), very small batch size (e.g. 1 -- 4).
+  //
+  // Even with 8-bit quantization of weights, the performance of memory
+  // accesses to the weights can become the dominant issue when
+  // the batch size is small, so each weight value is used in only a few
+  // arithmetic ops, i.e. the fully-connected node has a low arithmetic
+  // intensity. The specific issues that arise are of three kinds:
+  // (1) One may, ideally, max out DRAM bandwidth, i.e. be truly memory
+  //     bound. That's the "good" issue to run into.
+  // (2) One may run into sub-optimal pre-fetching: the data hasn't been
+  //     prefetched into the cache by the time we need it.
+  // (3) One may run into cache aliasing: multiple values that are
+  //     pre-fetched, alias each other in the L1 cache (which typically
+  //     has only 4-way set associativity in ARM CPUs) and thus evict
+  //     each other before we get to using them.
+  //
+  // The point of this shuffling is to avoid issues (2) and (3) so that
+  // we get as fast as possible given only the hard constraint (1).
+  // This is achieved by turning the difficulty into a solution: the
+  // difficulty, that each value loaded from memory is used only in
+  // one kernel iteration, making this operation memory-intensive, hints at
+  // the solution, of shuffling the weights so that they are stored in the
+  // exact order as the kernel needs to load them, so that the memory
+  // accesses made by the kernel are trivial. This solves (2) because the
+  // trivial memory access pattern allows the CPU's automatic prefetching
+  // to perform very well (no need even for preload instructions), and this
+  // solves (3) because the values being loaded concurrently are now
+  // contiguous in the address space, thus don't alias each other in the cache.
+  //
+  // On ARM, we typically want our kernel to process a 4x16 block of weights
+  // at a time, because:
+  //   - 16 is the number of bytes in a NEON register.
+  //   - 4 is how many rows we need to handle concurrently in the kernel in
+  //     order to have sufficient mutual independence of instructions to
+  //     maximize arithmetic throughput.
+  //
+  // Finally, the 'Int8' part in the name refers to the fact that this
+  // weights format has each weights value encoded as a signed int8 value,
+  // even if the data type of the weights buffer is uint8.  This is intended
+  // to save runtime kernels the effort to have to XOR the top bit of these
+  // bytes before using them in signed arithmetic, see this file for more
+  // explanations on the 'signed int8 trick' in matrix multiplication kernels:
+  //
+  //   tensorflow/contrib/lite/toco/graph_transformations/ensure_uint8_weights_safe_for_fast_int8_kernels.cc
+  //
+  kShuffled4x16Int8,
+};
+
 // Quantization parameters, determining the mapping of quantized values
 // to real values (i.e. determining how quantized values are mathematically
 // interpreted).
@@ -63,6 +124,10 @@ class RuntimeShape {
 
   RuntimeShape(int dimensions_count, const int32* dims_data) : size_(0) {
     ReplaceWith(dimensions_count, dims_data);
+  }
+
+  RuntimeShape(const std::initializer_list<int> init_list) : size_(0) {
+    BuildFrom(init_list);
   }
 
   ~RuntimeShape() {
@@ -214,6 +279,15 @@ inline size_t ReducedOutputOffset(const int num_dims, const int* dims,
   return offset;
 }
 
+inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
+  TFLITE_DCHECK(i0 >= 0 && i0 < shape.Dims(0));
+  TFLITE_DCHECK(i1 >= 0 && i1 < shape.Dims(1));
+  TFLITE_DCHECK(i2 >= 0 && i2 < shape.Dims(2));
+  TFLITE_DCHECK(i3 >= 0 && i3 < shape.Dims(3));
+  const int* dims_data = shape.DimsData();
+  return ((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3;
+}
+
 inline int Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK(i0 >= 0 && i0 < dims.sizes[0]);
   TFLITE_DCHECK(i1 >= 0 && i1 < dims.sizes[1]);
@@ -228,6 +302,9 @@ inline int Offset(const Dims<4>& dims, int* index) {
 }
 
 // Get array size, DCHECKing that the dim index is in range.
+//
+// Note that this will be phased out with Dims<4>, since RuntimeShape::Dims()
+// already performs this check.
 template <int N>
 int ArraySize(const Dims<N>& array, int index) {
   TFLITE_DCHECK(index >= 0 && index < N);
@@ -249,6 +326,21 @@ int MatchingArraySize(const ArrayType1& array1, int index1,
   return MatchingArraySize(array1, index1, args...);
 }
 
+// Get common shape dim, DCHECKing that they all agree.
+inline int MatchingDim(const RuntimeShape& shape1, int index1,
+                       const RuntimeShape& shape2, int index2) {
+  TFLITE_DCHECK_EQ(shape1.Dims(index1), shape2.Dims(index2));
+  return shape1.Dims(index1);
+}
+
+template <typename... Args>
+int MatchingDim(const RuntimeShape& shape1, int index1,
+                const RuntimeShape& shape2, int index2, Args... args) {
+  TFLITE_DCHECK_EQ(shape1.Dims(index1), shape2.Dims(index2));
+  return MatchingDim(shape1, index1, args...);
+}
+
+// Will be phased out with Dims<4>, replaced by RuntimeShape::FlatSize().
 template <int N>
 inline int FlatSize(const Dims<N>& dims) {
   int flat_size = 1;
@@ -261,6 +353,50 @@ inline int FlatSize(const Dims<N>& dims) {
 // Deprecated. Prefer FlatSize.
 inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
   return FlatSize(dims);
+}
+
+// Flat size calculation, checking that dimensions match with one or more other
+// arrays.
+inline int MatchingFlatSize(const RuntimeShape& shape,
+                            const RuntimeShape& check_shape_0) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+  }
+  return shape.FlatSize();
+}
+
+inline int MatchingFlatSize(const RuntimeShape& shape,
+                            const RuntimeShape& check_shape_0,
+                            const RuntimeShape& check_shape_1) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+  }
+  return MatchingFlatSize(shape, check_shape_1);
+}
+
+inline int MatchingFlatSize(const RuntimeShape& shape,
+                            const RuntimeShape& check_shape_0,
+                            const RuntimeShape& check_shape_1,
+                            const RuntimeShape& check_shape_2) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+  }
+  return MatchingFlatSize(shape, check_shape_1, check_shape_2);
+}
+
+inline int MatchingFlatSize(const RuntimeShape& shape,
+                            const RuntimeShape& check_shape_0,
+                            const RuntimeShape& check_shape_1,
+                            const RuntimeShape& check_shape_2,
+                            const RuntimeShape& check_shape_3) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+  }
+  return MatchingFlatSize(shape, check_shape_1, check_shape_2, check_shape_3);
 }
 
 // Flat size calculation, checking that dimensions match with one or more other
@@ -289,7 +425,7 @@ inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
   for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
-  return FlatSize(dims, check_dims_1, check_dims_2);
+  return MatchingFlatSize(dims, check_dims_1, check_dims_2);
 }
 
 template <int N>
@@ -300,7 +436,7 @@ inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
   for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
-  return FlatSize(dims, check_dims_1, check_dims_2, check_dims_3);
+  return MatchingFlatSize(dims, check_dims_1, check_dims_2, check_dims_3);
 }
 
 // Data is required to be contiguous, and so many operators can use either the
@@ -366,6 +502,72 @@ inline int MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
   }
   return MatchingFlatSizeSkipDim(dims, skip_dim, check_dims_1, check_dims_2,
                                  check_dims_3);
+}
+
+// Data is required to be contiguous, and so many operators can use either the
+// full array flat size or the flat size with one dimension skipped (commonly
+// the depth).
+inline int FlatSizeSkipDim(const RuntimeShape& shape, int skip_dim) {
+  const int dims_count = shape.DimensionsCount();
+  TFLITE_DCHECK(skip_dim >= 0 && skip_dim < dims_count);
+  const auto* dims_data = shape.DimsData();
+  int flat_size = 1;
+  for (int i = 0; i < dims_count; ++i) {
+    flat_size *= (i == skip_dim) ? 1 : dims_data[i];
+  }
+  return flat_size;
+}
+
+// A combination of MatchingFlatSize() and FlatSizeSkipDim().
+inline int MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
+                                   const RuntimeShape& check_shape_0) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    if (i != skip_dim) {
+      TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+    }
+  }
+  return FlatSizeSkipDim(shape, skip_dim);
+}
+
+inline int MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
+                                   const RuntimeShape& check_shape_0,
+                                   const RuntimeShape& check_shape_1) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    if (i != skip_dim) {
+      TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+    }
+  }
+  return MatchingFlatSizeSkipDim(shape, skip_dim, check_shape_1);
+}
+
+inline int MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
+                                   const RuntimeShape& check_shape_0,
+                                   const RuntimeShape& check_shape_1,
+                                   const RuntimeShape& check_shape_2) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    if (i != skip_dim) {
+      TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+    }
+  }
+  return MatchingFlatSizeSkipDim(shape, skip_dim, check_shape_1, check_shape_2);
+}
+
+inline int MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
+                                   const RuntimeShape& check_shape_0,
+                                   const RuntimeShape& check_shape_1,
+                                   const RuntimeShape& check_shape_2,
+                                   const RuntimeShape& check_shape_3) {
+  const int dims_count = shape.DimensionsCount();
+  for (int i = 0; i < dims_count; ++i) {
+    if (i != skip_dim) {
+      TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
+    }
+  }
+  return MatchingFlatSizeSkipDim(shape, skip_dim, check_shape_1, check_shape_2,
+                                 check_shape_3);
 }
 
 template <int N>

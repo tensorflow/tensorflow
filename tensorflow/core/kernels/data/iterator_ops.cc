@@ -779,7 +779,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
   }
 
  private:
-  void Init(OpKernelContext* ctx, DoneCallback done) {
+  void Init(OpKernelContext* ctx, const DoneCallback& done) {
     IteratorResource* iterator = nullptr;
     ContainerInfo cinfo;
     Status s = TryInit(ctx, &iterator, &cinfo);

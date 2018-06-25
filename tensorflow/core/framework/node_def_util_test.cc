@@ -495,5 +495,19 @@ TEST(NameRangesForNodeTest, TypeList) {
   EXPECT_FALSE(NameRangesForNode(bad_node_def, op_def, &inputs, &outputs).ok());
 }
 
+TEST(AddPrefixAndSuffixToNode, Enter) {
+  NodeDef node_def;
+  node_def.set_name("enter");
+  node_def.set_op("Enter");
+  AddNodeAttr("frame_name", "test_frame", &node_def);
+  const string prefix = "prefix/";
+  const string suffix = "/suffix";
+  TF_ASSERT_OK(AddPrefixAndSuffixToNode(prefix, suffix, &node_def));
+  EXPECT_EQ("prefix/enter/suffix", node_def.name());
+  string frame_name;
+  TF_ASSERT_OK(GetNodeAttr(node_def, "frame_name", &frame_name));
+  EXPECT_EQ("prefix/test_frame/suffix", frame_name);
+}
+
 }  // namespace
 }  // namespace tensorflow

@@ -45,8 +45,24 @@ tensorflow::Status TRTOptimizationPass::Init(
   if (params.count("max_batch_size")) {
     maximum_batch_size_ = params.at("max_batch_size").i();
   }
-  if (params.count("max_workspace_size_bytes"))
+  is_dynamic_op_ = false;
+  if (params.count("is_dynamic_op")) {
+    is_dynamic_op_ = params.at("is_dynamic_op").b();
+  }
+  if (params.count("cached_engine_batches")) {
+    auto batch_vec = params.at("cached_engine_batches").list();
+    batches_.reserve(batch_vec.i_size());
+    for (const auto i : batch_vec.i()) {
+      batches_.push_back(i);
+    }
+  }
+  max_cached_batches_ = 1;
+  if (params.count("maximum_cached_engines")) {
+    max_cached_batches_ = params.at("maximum_cached_engines").i();
+  }
+  if (params.count("max_workspace_size_bytes")) {
     maximum_workspace_size_ = params.at("max_workspace_size_bytes").i();
+  }
   if (params.count("precision_mode")) {
     string pm = Uppercase(params.at("precision_mode").s());
     if (pm == "FP32") {
@@ -175,6 +191,17 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   if (VLOG_IS_ON(1)) {
     PrintDebugInfo(cluster, item);
   }
+  // This is a hack to workaround optimizer issue. MetaOptimizer calls
+  // optimization passes on function objects as well, we should not modify
+  // generated funcdefs! This is fragile but we don't have any other option
+  // until framework fixes it.
+  if (item.id != "tf_graph") {
+    LOG(WARNING) << name_
+                 << " is probably called on funcdef! This optimizer must *NOT* "
+                    "be called on function objects.";
+    *optimized_graph = item.graph;
+    return tensorflow::Status::OK();
+  }
   int max_dim = -1;
   if (item.feed.size()) {
     for (const auto& f : item.feed) {
@@ -204,11 +231,22 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   }
   tensorflow::grappler::GraphProperties static_graph_properties(item);
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
-  auto status = tensorflow::tensorrt::convert::ConvertAfterShapes(
-      item.graph, item.fetch, maximum_batch_size_, maximum_workspace_size_,
-      optimized_graph, precision_mode_, minimum_segment_size_,
-      static_graph_properties, cluster);
+  tensorflow::tensorrt::convert::ConversionParams cp;
+  cp.input_graph_def = &item.graph;
+  cp.output_names = &item.fetch;
+  cp.max_batch_size = maximum_batch_size_;
+  cp.max_workspace_size_bytes = maximum_workspace_size_;
+  cp.output_graph_def = optimized_graph;
+  cp.precision_mode = precision_mode_;
+  cp.minimum_segment_size = minimum_segment_size_;
+  cp.graph_properties = &static_graph_properties;
+  cp.cluster = cluster;
+  cp.is_dyn_op = is_dynamic_op_;
+  cp.cached_engine_batches = batches_;
+  cp.max_cached_engines = max_cached_batches_;
+  auto status = tensorflow::tensorrt::convert::ConvertAfterShapes(cp);
   VLOG(2) << optimized_graph->DebugString();
+  VLOG(1) << "Returning from " << name_;
   return status;
 }
 

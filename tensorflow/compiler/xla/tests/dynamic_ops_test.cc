@@ -716,8 +716,10 @@ void BM_DynamicSlice(int num_iters) {
                     .ConsumeValueOrDie();
 
   auto start_indices_literal = Literal::CreateR1<int32>({0, 1, 2, 3});
+  auto stream =
+      client->mutable_backend()->BorrowStream(device_ordinal).ValueOrDie();
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *start_indices_literal, buffer));
+      stream.get(), *start_indices_literal, buffer));
 
   std::unique_ptr<LocalExecutable> executable =
       client

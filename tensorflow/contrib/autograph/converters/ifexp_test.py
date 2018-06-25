@@ -19,12 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.autograph import utils
-from tensorflow.contrib.autograph.converters import converter_test_base
 from tensorflow.contrib.autograph.converters import ifexp
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.platform import test
 
 
-class IfExpTest(converter_test_base.TestCase):
+class IfExpTest(converter_testing.TestCase):
 
   def compiled_fn(self, test_fn, *args):
     node = self.parse_and_analyze(test_fn, {})

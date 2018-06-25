@@ -828,7 +828,8 @@ def _dynamic_rnn_loop(cell,
   final_outputs = nest.pack_sequence_as(
       structure=cell.output_size, flat_sequence=final_outputs)
   if not in_graph_mode:
-    final_outputs = array_ops.stack(final_outputs, axis=0)
+    final_outputs = nest.map_structure_up_to(
+        cell.output_size, lambda x: array_ops.stack(x, axis=0), final_outputs)
 
   return (final_outputs, final_state)
 

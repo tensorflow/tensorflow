@@ -187,7 +187,7 @@ class LocalComputationBuilder {
   LocalOp Parameter(int64 parameter_number, const Shape& shape,
                     const string& name);
 
-  std::unique_ptr<Shape> GetShape(const LocalOp& operand);
+  StatusOr<Shape> GetShape(const LocalOp& operand);
 
   // Returns the shape of the current return value for the computation.
   StatusOr<Shape> GetReturnValueShape();

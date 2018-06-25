@@ -227,7 +227,7 @@ NodeProperties GetPropertiesForArray(const Model& model,
 
 NodeProperties GetPropertiesForOperator(const Operator& op) {
   NodeProperties node_properties;
-  if (op.type == OperatorType::kTensorFlowUnsupported) {
+  if (op.type == OperatorType::kUnsupported) {
     node_properties.label =
         static_cast<const TensorFlowUnsupportedOperator&>(op).tensorflow_op;
   } else {

@@ -34,10 +34,11 @@ class FusedBatchNormOp : public XlaOpKernel {
         ctx, FormatFromString(data_format_str, &data_format_),
         errors::InvalidArgument("Invalid data format: ", data_format_str));
     OP_REQUIRES(ctx,
-                (data_format_ == FORMAT_NHWC || data_format_ == FORMAT_NCHW),
+                (data_format_ == FORMAT_NHWC || data_format_ == FORMAT_NCHW ||
+                 data_format_ == FORMAT_HWNC || data_format_ == FORMAT_HWCN),
                 errors::InvalidArgument(
                     "Unsupported data format ", ToString(data_format_),
-                    "; supported formats are NHWC and NCHW"));
+                    "; supported formats are NHWC, NCHW, HWNC and HWCN"));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -111,10 +112,11 @@ class FusedBatchNormGradOp : public XlaOpKernel {
         ctx, FormatFromString(data_format_str, &data_format_),
         errors::InvalidArgument("Invalid data format: ", data_format_str));
     OP_REQUIRES(ctx,
-                (data_format_ == FORMAT_NHWC || data_format_ == FORMAT_NCHW),
+                (data_format_ == FORMAT_NHWC || data_format_ == FORMAT_NCHW ||
+                 data_format_ == FORMAT_HWNC || data_format_ == FORMAT_HWCN),
                 errors::InvalidArgument(
                     "Unsupported data format ", ToString(data_format_),
-                    "; supported formats are NHWC and NCHW"));
+                    "; supported formats are NHWC, NCHW, HWNC and HWCN"));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

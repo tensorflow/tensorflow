@@ -913,7 +913,7 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} cross-replica-sum(input), to_apply=add
+  ROOT crs = f32[8]{0} cross-replica-sum(input), replica_group_ids={}, to_apply=add
 }
 
 )"
@@ -931,7 +931,7 @@ add {
 
 ENTRY CrossReplicaSumWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), to_apply=add, replica_group_ids={0,0,1,1}, barrier="abc"
+  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_group_ids={0,0,1,1}, barrier="abc", to_apply=add
 }
 
 )"
@@ -1302,7 +1302,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   auto module = ParseHloString(original);
   TF_ASSERT_OK(module.status());
-  auto program_layout = module.ValueOrDie()->host_entry_computation_layout();
+  auto program_layout = module.ValueOrDie()->entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
   auto param_layout = program_layout.parameter_layout(0).layout();
   auto result_layout = program_layout.result_layout().layout();

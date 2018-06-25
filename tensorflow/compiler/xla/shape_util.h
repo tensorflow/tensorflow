@@ -175,8 +175,11 @@ class ShapeUtil {
   // Precondition: IsArray(shape)
   static int64 ElementsIn(const Shape& shape);
 
-  // Returns true if 'shape' has zero elements.
-  static bool HasZeroElements(const Shape& shape);
+  // As ElementsIn(), but recurses through tuples.
+  static int64 ElementsInRecursive(const Shape& shape);
+
+  // Returns true if 'shape' is an array with zero elements.
+  static bool IsZeroElementArray(const Shape& shape);
 
   // Returns the number of bytes required for an allocation of shape.  The
   // |pointer_size| parameter is used for calculating the size of tuple
@@ -336,7 +339,7 @@ class ShapeUtil {
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 
-  // Returns an empty tuple shape. Can be used to indicate side-effects.
+  // Returns an empty tuple shape. Can be used as a sentinel Shape value.
   static Shape MakeNil() { return MakeTupleShape({}); }
 
   // Checks whether the shape is initialized.
@@ -446,7 +449,7 @@ class ShapeUtil {
   // Returns true if shape is an empty tuple.
   static bool IsEmptyTuple(const Shape& shape);
 
-  // Returns true if shape is an empty tuple, or is an array with no elements.
+  // Returns true if shape is the nil shape (an empty tuple).
   static bool IsNil(const Shape& shape);
 
   // Returns the number of elements in the given tuple shape.
@@ -456,6 +459,9 @@ class ShapeUtil {
   // Returns the tuple element shape at given index.
   // Precondition: IsTuple(shape) && TupleElementCount(shape) > index
   static const Shape& GetTupleElementShape(const Shape& shape, int64 index);
+
+  // Returns the number of elements, recursively, in the given shape.
+  static int64 SubshapeCount(const Shape& shape);
 
   // Slices tuple elements in the range [start, limit) and returns a new tuple
   // shape. E.g. a tuple like (f32, s32, u32) would slice via 1,3 to (s32, u32).
@@ -476,8 +482,11 @@ class ShapeUtil {
   static bool IndexIsValid(const Shape& shape, ShapeIndexView index);
 
   // GetSubshape and GetMutableSubshape return a particular nested Shape within
-  // the given Shape argument.
+  // the given Shape argument. The non-Try variants check fail if index is
+  // invalid.
   static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);
+  static StatusOr<const Shape*> TryGetSubshape(const Shape& shape,
+                                               ShapeIndexView index);
   static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);
 
   // Returns whether the given index in the given shape is a leaf element of the
@@ -512,6 +521,10 @@ class ShapeUtil {
       std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
   static Status ForEachMutableSubshapeWithStatus(
       Shape* shape, const MutatingStatusVisitorFunction& func);
+
+  // Returns true if `shape` (which must be an array) with degenerate dimensions
+  // (dimensions with bound 1).
+  static bool HasDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[permutation[i]] = argument.dimensions[i]
@@ -697,7 +710,7 @@ class ShapeUtil {
                                      tensorflow::gtl::ArraySlice<int64> incr,
                                      const FnType& visitor_function,
                                      bool parallel = false) {
-    if (ShapeUtil::HasZeroElements(shape)) {
+    if (ShapeUtil::IsZeroElementArray(shape)) {
       return Status::OK();
     }
     CHECK_EQ(Rank(shape), base.size());

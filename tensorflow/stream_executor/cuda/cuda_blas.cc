@@ -2183,10 +2183,12 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
 
   // Return false if we might be hitting a cuBLAS bug that produces the wrong
   // result. See nvbugs/2156201, b/79126339.
-  if (CUDA_VERSION < 9020 && algorithm != CUBLAS_GEMM_ALGO12 &&
+#if CUDA_VERSION >= 9000 && CUDA_VERSION < 9020
+  if ((algorithm == CUBLAS_GEMM_DEFAULT || algorithm >= CUBLAS_GEMM_ALGO13) &&
       std::max({m, n, k}) >= 2097153 && cc_major < 7) {
     return false;
   }
+#endif
 
   cudaDataType_t cuda_in_type = CUDADataType<InT>::type;
   // Since we are converting 'algorithm' to cublasGemmAlgo_t by static_cast,

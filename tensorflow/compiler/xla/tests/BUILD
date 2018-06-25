@@ -1986,6 +1986,7 @@ xla_test(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core:test",
     ],
 )
 

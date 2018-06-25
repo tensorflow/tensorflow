@@ -42,11 +42,22 @@ py_test(
 )
 
 py_library(
-    name = "data_structures_base",
-    srcs = ["data_structures_base.py"],
+    name = "tracking",
+    srcs = ["tracking.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":base",
+    ],
+)
+
+py_test(
+    name = "tracking_test",
+    srcs = ["tracking_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base",
+        ":tracking",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -56,7 +67,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base",
-        ":data_structures_base",
     ],
 )
 
@@ -83,6 +93,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base",
+        ":tracking",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",

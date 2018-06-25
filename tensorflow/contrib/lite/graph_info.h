@@ -46,6 +46,9 @@ class GraphInfo {
 
   // Returns the indices of the output tensors.
   virtual const std::vector<int>& outputs() const = 0;
+
+  // Returns the indices of the variable tensors.
+  virtual const std::vector<int>& variables() const = 0;
 };
 
 // Represents a subgraph of a TensorFlow Lite graph.

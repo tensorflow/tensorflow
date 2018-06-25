@@ -435,9 +435,9 @@ class HloInstruction {
   // For example, we have 4 replicas, then replica_group_ids={0,1,0,1} means,
   // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
   //
-  // `channel_id`: for Allreduce nodes from different models, if they have the
-  // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
-  // applied cross models.
+  // `all_reduce_id`: for Allreduce nodes from different modules, if they have
+  // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
+  // not be applied cross modules.
   //
   // TODO(b/79737069): Rename this to AllReduce.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
@@ -445,7 +445,7 @@ class HloInstruction {
       HloComputation* reduce_computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
       tensorflow::StringPiece barrier,
-      const tensorflow::gtl::optional<int64>& channel_id =
+      const tensorflow::gtl::optional<int64>& all_reduce_id =
           tensorflow::gtl::nullopt);
 
   // Creates a conversion instruction, where operand is the data to convert and
@@ -824,13 +824,6 @@ class HloInstruction {
   // root to new_producer.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
 
-  // Detaches an instruction from its operands. That is, remove the instruction
-  // from each operand's user set. This should only be called prior to
-  // deallocating the instruction.
-  //
-  // TODO(b/78305363): Make this automatic when deleting an instruction.
-  void DetachFromOperands();
-
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
   // complete. If ignore_control_predecessors is true, instructions only
@@ -903,18 +896,6 @@ class HloInstruction {
   HloComputation* to_apply() const;
   void set_to_apply(HloComputation* to_apply);
 
-  // Returns the custom_call_target for CustomCall.
-  // Precondition: opcode() == HloOpcode::kCustomCall
-  const string& custom_call_target() const;
-
-  // Returns the config for the Outfeed instruction.
-  // Precondition: opcode() == HloOpcode::kOutfeed
-  const string& outfeed_config() const;
-
-  // Returns the shape for the Outfeed instruction.
-  // Precondition: opcode() == HloOpcode::kOutfeed
-  const Shape& outfeed_shape() const;
-
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
   //
@@ -923,15 +904,6 @@ class HloInstruction {
   HloComputation* while_body() const;
   void set_while_condition(HloComputation* while_condition);
   void set_while_body(HloComputation* while_body);
-
-  // Gets/sets the select or scatter HloComputation for SelectAndScatter. The
-  // setters should only be called by HloModule or HloComputation methods.
-  //
-  // Precondition: opcode() == HloOpcode::kSelectAndScatter.
-  HloComputation* select() const;
-  HloComputation* scatter() const;
-  void set_select(HloComputation* select);
-  void set_scatter(HloComputation* scatter);
 
   // Gets/sets the true and false HloComputation for Conditional. The setters
   // should only be called by HloModule or HloComputation methods.
@@ -974,25 +946,13 @@ class HloInstruction {
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
-  string ToCategory() const;
+  virtual string ToCategory() const;
 
   // Returns a logging instruction, if the output of this instruction is logged.
   //
   // Postcondition: retval == nullptr || retval->opcode() == HloOpcode::kTrace
   HloInstruction* tracing() const;
   void set_tracing(HloInstruction* trace_instruction);
-
-  // Returns the channel name associated with the instruction. The name is
-  // used to identify host Send/Recv operations.
-  //
-  // Precondition: opcode() == HloOpcode::kHostCompute
-  string channel_name() const { return channel_name_; }
-
-  // Returns the infeed configuration string. The infeed configuration includes
-  // any metadata needed for the backend compiler (e.g., infeed buffer address)
-  // and is target-dependent.
-  string infeed_config() const { return infeed_config_; }
-  void set_infeed_config(const string& config) { infeed_config_ = config; }
 
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
@@ -1060,54 +1020,17 @@ class HloInstruction {
   // instruction.
   void SetupDerivedInstruction(HloInstruction* derived_instruction) const;
 
-  // Returns the size of the slice in the given dimension for a dynamic
-  // slice node.
-  //
-  // Precondition: opcode() == HloOpcode::kDynamicSlice
-  int64 slice_sizes(int64 dimension) const {
-    CHECK_EQ(HloOpcode::kDynamicSlice, opcode_);
-    return dynamic_slice_sizes_[dimension];
-  }
-  const std::vector<int64>& dynamic_slice_sizes() const {
-    CHECK_EQ(HloOpcode::kDynamicSlice, opcode_);
-    return dynamic_slice_sizes_;
+  // TODO(b/80249101): Remove these methods once HLO scheduling and copy
+  // insertion are integrated, and we don't need to run a separate pass
+  // of copy elision anymore.
+  bool CopyElisionAllowed() const {
+    CHECK_EQ(HloOpcode::kCopy, opcode_);
+    return copy_elision_allowed_;
   }
 
-  // Returns data on the window in a windowed operation such as
-  // convolution.
-  const Window& window() const {
-    CHECK(window_ != nullptr);
-    return *window_;
-  }
-
-  // Sets the window data in a windowed operation such as convolution.
-  void set_window(const Window& window) {
-    window_ = MakeUnique<Window>(window);
-  }
-
-  // Returns the padding configuration for a pad node.
-  //
-  // Precondition: opcode() == HloOpcode::kPad
-  const PaddingConfig& padding_config() const {
-    CHECK(padding_config_ != nullptr);
-    return *padding_config_;
-  }
-
-  // Returns data on the dimension numbers used for a convolution operation,
-  // which may be a kConvolution instruction or a kCustomCall that implements a
-  // convolution.
-  const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
-    CHECK(convolution_dimension_numbers_ != nullptr);
-    return *convolution_dimension_numbers_;
-  }
-
-  // Sets the convolution dimension numbers on this instruction.  In general you
-  // shouldn't need to call this; instead, specify the convolution dimension
-  // numbers when you create the instruction.
-  void set_convolution_dimension_numbers(
-      const ConvolutionDimensionNumbers& dnums) {
-    convolution_dimension_numbers_ =
-        MakeUnique<ConvolutionDimensionNumbers>(dnums);
+  void SetCopyElisionAllowed(bool value) {
+    CHECK_EQ(HloOpcode::kCopy, opcode_);
+    copy_elision_allowed_ = value;
   }
 
   // Returns data on the dimension numbers used for a dot operation.
@@ -1422,26 +1345,83 @@ class HloInstruction {
   // Delegates to HloGetTupleElementInstruction::tuple_index.
   int64 tuple_index() const;
 
-  // Returns the number of exponent bits for a reduce-precision node.
+  // Delegates to HloReducePrecisionInstruction::exponent_bits.
   int32 exponent_bits() const;
 
-  // Returns the number of mantissa bits for a reduce-precision node.
+  // Delegates to HloReducePrecisionInstruction::mantissa_bits.
   int32 mantissa_bits() const;
+
+  // Delegates to HloInfeedInstruction::infeed_config.
+  string infeed_config() const;
+
+  // Delegates to HloInfeedInstruction::set_infeed_config.
+  void set_infeed_config(const string& config);
+
+  // Returns the config for the Outfeed instruction.
+  const string& outfeed_config() const;
+
+  // Returns the shape for the Outfeed instruction.
+  const Shape& outfeed_shape() const;
+
+  // Delegates to HloAllReduceInstruction::replica_group_ids.
+  const std::vector<int64>& replica_group_ids() const;
+
+  // Delegates to HloAllReduceInstruction::cross_replica_sum_barrier.
+  string cross_replica_sum_barrier() const;
+  void set_cross_replica_sum_barrier(const string& barrier);
+
+  // Delegates to HloAllReduceInstruction::all_reduce_id.
+  tensorflow::gtl::optional<int64> all_reduce_id() const;
+
+  // Returns data on the window in a windowed operation such as
+  // convolution.
+  virtual const Window& window() const {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Sets the window data in a windowed operation such as convolution.
+  virtual void set_window(const Window& window) {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Returns data on the dimension numbers used for a convolution operation,
+  // which may be a kConvolution instruction or a kCustomCall that implements a
+  // convolution.
+  const ConvolutionDimensionNumbers& convolution_dimension_numbers() const;
+
+  // Sets the convolution dimension numbers on this instruction.  In general you
+  // shouldn't need to call this; instead, specify the convolution dimension
+  // numbers when you create the instruction.
+  void set_convolution_dimension_numbers(
+      const ConvolutionDimensionNumbers& dnums);
+
+  // Delegates to HloSelectAndScatterInstruction::select.
+  HloComputation* select() const;
+
+  // Delegates to HloSelectAndScatterInstruction::scatter.
+  HloComputation* scatter() const;
+
+  // Delegates to HloSelectAndScatterInstruction::set_select.
+  void set_select(HloComputation* computation);
+
+  // Delegates to HloSelectAndScatterInstruction::set_scatter.
+  void set_scatter(HloComputation* computation);
+
+  // Delegates to HloCustomCallInstruction::custom_call_target.
+  const string& custom_call_target() const;
+
+  // Delegates to HloHostComputeInstruction::channel_name.
+  const string& channel_name() const;
+
+  // Delegates to HloPadInstruction::padding_config.
+  const PaddingConfig& padding_config() const;
+
+  // Delegates to HloDynamicSliceInstruction::slice_sizes.
+  int64 slice_sizes(int64 dimension) const;
+
+  // Delegates to HloDynamicSliceInstruction::dynamic_slice_sizes.
+  const std::vector<int64>& dynamic_slice_sizes() const;
   // Old methods kept for smooth subclassing transition END.
-
-  // Returns the group ids of each replica for CrossReplicaSum op.
-  const std::vector<int64>& replica_group_ids() const {
-    return replica_group_ids_;
-  }
-
-  // Returns the barrier config used for the CrossReplicaSum implementation of
-  // each backend.
-  string cross_replica_sum_barrier() const {
-    return cross_replica_sum_barrier_;
-  }
-  void set_cross_replica_sum_barrier(string barrier) {
-    cross_replica_sum_barrier_ = barrier;
-  }
 
  protected:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
@@ -1465,6 +1445,25 @@ class HloInstruction {
   }
 
   void DetachFrom(HloInstruction* usee) { usee->RemoveUser(this); }
+
+  void set_called_computation(int index, HloComputation* computation) {
+    called_computations_[index] = computation;
+  }
+  // Indices of computations in called_computations_ for instructions which call
+  // multiple computations.
+  enum {
+    // kWhile computations.
+    kBodyComputationIndex = 0,
+    kConditionComputationIndex = 1,
+
+    // kSelectAndScatter computations.
+    kSelectComputationIndex = 0,
+    kScatterComputationIndex = 1,
+
+    // kConditional computations.
+    kTrueComputationIndex = 0,
+    kFalseComputationIndex = 1,
+  };
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -1555,17 +1554,8 @@ class HloInstruction {
   // The computation in which this instruction is contained.
   HloComputation* parent_ = nullptr;
 
-  // Shape of outfeed request.
-  Shape outfeed_shape_;
-
   // Result shape of this instruction.
   Shape shape_;
-
-  // Describes the window in a windowed operation such as convolution.
-  std::unique_ptr<Window> window_;
-
-  // Describes the dimension numbers used for a convolution.
-  std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
 
   // Describes the dimension numbers used for a dot.
   std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
@@ -1573,13 +1563,8 @@ class HloInstruction {
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_window_bounds_;
 
-  // Describes the [start, start + size) range size for a dynamic slice
-  // ('start' is specified dynamically in the second operand of the operation).
-  std::vector<int64> dynamic_slice_sizes_;
-
-  // The padding configuration that describes the edge padding and interior
-  // padding of this pad instruction. Only set for pad instructions.
-  std::unique_ptr<PaddingConfig> padding_config_;
+  // Used to tag kCopy instructions that are eligible for copy elision.
+  bool copy_elision_allowed_ = true;
 
   // The sharding, if one exists.
   std::unique_ptr<HloSharding> sharding_;
@@ -1588,36 +1573,8 @@ class HloInstruction {
   std::unique_ptr<DomainMetadata> operand_side_metadata_;
   std::unique_ptr<DomainMetadata> user_side_metadata_;
 
-  // Name of a global symbol to call, only present for kCustomCall.
-  string custom_call_target_;
-
-  // Name to use for host send/recv channels, only present for kHostCompute.
-  string channel_name_;
-
-  // Estimate of the duration of a host computation in nanoseconds.
-  int64 cost_estimate_ns_ = 0;
-
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;
-
-  // Indices of computations in called_computations_ for instructions which call
-  // multiple computations.
-  enum {
-    // kWhile computations.
-    kBodyComputationIndex = 0,
-    kConditionComputationIndex = 1,
-
-    // kSelectAndScatter computations.
-    kSelectComputationIndex = 0,
-    kScatterComputationIndex = 1,
-
-    // kConditional computations.
-    kTrueComputationIndex = 0,
-    kFalseComputationIndex = 1,
-  };
-
-  // Outfeed configuration information, only present for kOutfeed.
-  string outfeed_config_;
 
   // A trace instruction that consumes this instruction.
   //
@@ -1625,18 +1582,9 @@ class HloInstruction {
   // an operand.
   HloInstruction* trace_instruction_ = nullptr;
 
-  // The string representation of the infeed configuration.
-  string infeed_config_;
-
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   string backend_config_;
-
-  // The group id of each replica for CrossReplicaSum.
-  std::vector<int64> replica_group_ids_;
-
-  // The string representation of the barrier config used for CrossReplicaSum.
-  string cross_replica_sum_barrier_;
 
   // String identifier for instruction.
   string name_;

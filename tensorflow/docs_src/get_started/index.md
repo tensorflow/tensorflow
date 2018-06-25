@@ -23,7 +23,7 @@ For more advanced users:
   * The @{$low_level_intro$Low Level Introduction} demonstrates how to use
     TensorFlow outside of the Estimator framework, for debugging and
     experimentation.
-  * The @{$programmers_guide$Programmer's Guide} details major
+  * The @{$guide$Programmer's Guide} details major
     TensorFlow components.
   * The @{$tutorials$Tutorials} provide walkthroughs of a variety of
     TensorFlow models.

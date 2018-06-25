@@ -47,6 +47,7 @@ class LaunchDimensions {
 
   int64 block_count() const { return block_count_; }
   int64 threads_per_block() const { return threads_per_block_; }
+  int64 launch_bound() const { return block_count() * threads_per_block(); }
 
  private:
   int64 block_count_;

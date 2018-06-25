@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "LogicalOr"
+  endpoint {
+    name: "math.logical_or"
+  }
+  endpoint {
+    name: "logical_or"
+    deprecation_message: "tf.logical_or is deprecated, please use tf.math.logical_or instead."
+  }
+}

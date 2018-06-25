@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "GreaterEqual"
+  endpoint {
+    name: "math.greater_equal"
+  }
+  endpoint {
+    name: "greater_equal"
+    deprecation_message: "tf.greater_equal is deprecated, please use tf.math.greater_equal instead."
+  }
+}
