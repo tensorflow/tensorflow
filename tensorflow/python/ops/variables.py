@@ -1093,39 +1093,40 @@ class Variable(checkpointable.CheckpointableBase):
   def __imul__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable *= will be deprecated. Use variable.assign_mul"
-        " if you want assignment to the variable value or 'x = x * y'"
+        "Variable *= will be deprecated. Use `var.assign(var * other)`"
+        " if you want assignment to the variable value or `x = x * y`"
         " if you want a new python Tensor object.", 1)
     return self * other
 
   def __idiv__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable /= will be deprecated. Use variable.assign_div"
-        " if you want assignment to the variable value or 'x = x / y'"
+        "Variable /= will be deprecated. Use `var.assign(var / other)`"
+        " if you want assignment to the variable value or `x = x / y`"
         " if you want a new python Tensor object.", 1)
     return self / other
 
   def __itruediv__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable /= will be deprecated. Use variable.assign_div"
-        " if you want assignment to the variable value or 'x = x / y'"
+        "Variable /= will be deprecated. Use `var.assign(var / other)`"
+        " if you want assignment to the variable value or `x = x / y`"
         " if you want a new python Tensor object.", 1)
     return self / other
 
   def __irealdiv__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable /= will be deprecated. Use variable.assign_div"
-        " if you want assignment to the variable value or 'x = x / y'"
+        "Variable /= will be deprecated. Use `var.assign(var / other)`"
+        " if you want assignment to the variable value or `x = x / y`"
         " if you want a new python Tensor object.", 1)
     return self / other
 
   def __ipow__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable **= will be deprecated. Use 'x = x ** y'"
+        "Variable **= will be deprecated. Use `var.assign(var ** other)`"
+        " if you want assignment to the variable value or `x = x ** y`"
         " if you want a new python Tensor object.", 1)
     return self ** other
 
