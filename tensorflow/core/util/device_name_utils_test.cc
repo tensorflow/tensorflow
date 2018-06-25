@@ -467,18 +467,41 @@ TEST(DeviceNameUtilsTest, GetNamesForDeviceMappings) {
 }
 
 TEST(DeviceNameUtilsTest, CanonicalizeDeviceName) {
-  EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:1",
-            DeviceNameUtils::CanonicalizeDeviceName(
-                "/job:foo/replica:10/task:0/device:CPU:1"));
-  EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:1",
-            DeviceNameUtils::CanonicalizeDeviceName(
-                "/job:foo/task:0/replica:10/device:CPU:1"));
-  EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:1",
-            DeviceNameUtils::CanonicalizeDeviceName(
-                "/job:foo/task:0/replica:10/cpu:1"));
-  EXPECT_EQ("/device:CPU:0", DeviceNameUtils::CanonicalizeDeviceName("CPU:0"));
-  EXPECT_EQ("", DeviceNameUtils::CanonicalizeDeviceName(
-                    "/job:foo/task:0/replica/cpu:1"));
+  string canonical_name;
+  {
+    // Good basename.
+    string basename = "/job:foo/replica:10/task:0/device:CPU:0";
+    TF_EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName(
+        "/job:foo/replica:10/task:0/device:CPU:1", basename, &canonical_name));
+    EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:1", canonical_name);
+    TF_EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName(
+        "/job:foo/task:0/replica:10/device:CPU:1", basename, &canonical_name));
+    EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:1", canonical_name);
+    TF_EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName(
+        "/job:foo/task:0/replica:10/cpu:1", basename, &canonical_name));
+    EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:1", canonical_name);
+    TF_EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName("CPU:0", basename,
+                                                         &canonical_name));
+    EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:0", canonical_name);
+    Status s = DeviceNameUtils::CanonicalizeDeviceName(
+        "/job:foo/task:0/replica/cpu:1", basename, &canonical_name);
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_EQ("", canonical_name);
+  }
+
+  {
+    // Try out malformed basenames.
+    string fullname = "/device:CPU:0";
+
+    Status s = DeviceNameUtils::CanonicalizeDeviceName(
+        fullname, "/device:CPU:0", &canonical_name);
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_EQ("", canonical_name);
+    s = DeviceNameUtils::CanonicalizeDeviceName(
+        fullname, "/job:foo/task:0/replica/cpu:1", &canonical_name);
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_EQ("", canonical_name);
+  }
 }
 
 static void BM_ParseFullName(int iters) {
