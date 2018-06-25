@@ -42,8 +42,12 @@ enum ParseResult {
 /// Main parser implementation.
 class Parser {
  public:
-  Parser(llvm::SourceMgr &sourceMgr, MLIRContext *context)
-     : context(context), lex(sourceMgr), curToken(lex.lexToken()){
+  Parser(llvm::SourceMgr &sourceMgr, MLIRContext *context,
+         const SMDiagnosticHandlerTy &errorReporter)
+      : context(context),
+        lex(sourceMgr, errorReporter),
+        curToken(lex.lexToken()),
+        errorReporter(errorReporter) {
     module.reset(new Module());
   }
 
@@ -57,6 +61,9 @@ private:
 
   // This is the next token that hasn't been consumed yet.
   Token curToken;
+
+  // The diagnostic error reporter.
+  const SMDiagnosticHandlerTy &errorReporter;
 
   // This is the result module we are parsing into.
   std::unique_ptr<Module> module;
@@ -131,13 +138,12 @@ private:
 
 ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
   // If we hit a parse error in response to a lexer error, then the lexer
-  // already emitted an error.
+  // already reported the error.
   if (curToken.is(Token::error))
     return ParseFailure;
 
-  // TODO(clattner): If/when we want to implement a -verify mode, this will need
-  // to package up errors into SMDiagnostic and report them.
-  lex.getSourceMgr().PrintMessage(loc, SourceMgr::DK_Error, message);
+  errorReporter(
+      lex.getSourceMgr().GetMessage(loc, SourceMgr::DK_Error, message));
   return ParseFailure;
 }
 
@@ -705,6 +711,7 @@ Module *Parser::parseModule() {
 
 /// This parses the file specified by the indicated SourceMgr and returns an
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns null.
-Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context){
-  return Parser(sourceMgr, context).parseModule();
+Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context,
+                              const SMDiagnosticHandlerTy &errorReporter) {
+  return Parser(sourceMgr, context, errorReporter).parseModule();
 }

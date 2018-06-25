@@ -64,9 +64,14 @@ bool parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
   SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(buffer), SMLoc());
 
-  // Parse the input file and emit any errors.
+  // Parse the input file.
   MLIRContext context;
-  std::unique_ptr<Module> module(parseSourceFile(sourceMgr, &context));
+  // Error reporter that simply prints the errors reported.
+  SMDiagnosticHandlerTy errorReporter = [&sourceMgr](llvm::SMDiagnostic err) {
+    sourceMgr.PrintMessage(err.getLoc(), err.getKind(), err.getMessage());
+  };
+  std::unique_ptr<Module> module(
+      parseSourceFile(sourceMgr, &context, errorReporter));
   if (!module) return false;
 
   // Print the output.

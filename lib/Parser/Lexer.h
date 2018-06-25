@@ -22,17 +22,15 @@
 #ifndef MLIR_LIB_PARSER_LEXER_H
 #define MLIR_LIB_PARSER_LEXER_H
 
+#include "mlir/Parser.h"
 #include "Token.h"
-
-namespace llvm {
-  class SourceMgr;
-}
 
 namespace mlir {
 
 /// This class breaks up the current file into a token stream.
 class Lexer {
   llvm::SourceMgr &sourceMgr;
+  const SMDiagnosticHandlerTy &errorReporter;
 
   StringRef curBuffer;
   const char *curPtr;
@@ -40,7 +38,8 @@ class Lexer {
   Lexer(const Lexer&) = delete;
   void operator=(const Lexer&) = delete;
 public:
-  explicit Lexer(llvm::SourceMgr &sourceMgr);
+  explicit Lexer(llvm::SourceMgr &sourceMgr,
+                 const SMDiagnosticHandlerTy &errorReporter);
 
   llvm::SourceMgr &getSourceMgr() { return sourceMgr; }
 
@@ -48,9 +47,7 @@ public:
 
   /// Change the position of the lexer cursor.  The next token we lex will start
   /// at the designated point in the input.
-  void resetPointer(const char *newPointer) {
-    curPtr = newPointer;
-  }
+  void resetPointer(const char *newPointer) { curPtr = newPointer; }
 private:
   // Helpers.
   Token formToken(Token::TokenKind kind, const char *tokStart) {

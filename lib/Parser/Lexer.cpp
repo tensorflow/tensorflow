@@ -25,7 +25,9 @@ using namespace mlir;
 using llvm::SMLoc;
 using llvm::SourceMgr;
 
-Lexer::Lexer(llvm::SourceMgr &sourceMgr) : sourceMgr(sourceMgr) {
+Lexer::Lexer(llvm::SourceMgr &sourceMgr,
+             const SMDiagnosticHandlerTy &errorReporter)
+    : sourceMgr(sourceMgr), errorReporter(errorReporter) {
   auto bufferID = sourceMgr.getMainFileID();
   curBuffer = sourceMgr.getMemoryBuffer(bufferID)->getBuffer();
   curPtr = curBuffer.begin();
@@ -33,10 +35,8 @@ Lexer::Lexer(llvm::SourceMgr &sourceMgr) : sourceMgr(sourceMgr) {
 
 /// emitError - Emit an error message and return an Token::error token.
 Token Lexer::emitError(const char *loc, const Twine &message) {
-  // TODO(clattner): If/when we want to implement a -verify mode, this will need
-  // to package up errors into SMDiagnostic and report them.
-  sourceMgr.PrintMessage(SMLoc::getFromPointer(loc), SourceMgr::DK_Error,
-                         message);
+  errorReporter(sourceMgr.GetMessage(SMLoc::getFromPointer(loc),
+                                     SourceMgr::DK_Error, message));
   return formToken(Token::error, loc);
 }
 
