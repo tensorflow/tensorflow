@@ -100,4 +100,6 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/estimator:baseline_test \
     -//tensorflow/python/estimator:dnn_test \
     -//tensorflow/python/estimator:estimator_test \
-    -//tensorflow/python/estimator:linear_test
+    -//tensorflow/python/estimator:linear_test \
+    -//tensorflow/python/kernel_tests:topk_op_test \
+    -//tensorflow/python/kernel_tests/distributions:gamma_test
