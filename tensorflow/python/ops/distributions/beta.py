@@ -89,13 +89,19 @@ class Beta(distribution.Distribution):
   Make sure to round the samples to `np.finfo(dtype).tiny` before computing the
   density.
 
+  Samples of this distribution are reparameterized (pathwise differentiable).
+  The derivatives are computed using the approach described in the paper
+
+  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
+  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
+
   #### Examples
 
   ```python
   # Create a batch of three Beta distributions.
   alpha = [1, 2, 3]
   beta = [1, 2, 3]
-  dist = Beta(alpha, beta)
+  dist = tf.distributions.Beta(alpha, beta)
 
   dist.sample([4, 5])  # Shape [4, 5, 3]
 
@@ -111,7 +117,7 @@ class Beta(distribution.Distribution):
   # Create batch_shape=[2, 3] via parameter broadcast:
   alpha = [[1.], [2]]      # Shape [2, 1]
   beta = [3., 4, 5]        # Shape [3]
-  dist = Beta(alpha, beta)
+  dist = tf.distributions.Beta(alpha, beta)
 
   # alpha broadcast as: [[1., 1, 1,],
   #                      [2, 2, 2]]
@@ -125,6 +131,18 @@ class Beta(distribution.Distribution):
   #                         [.2, .3, .5]],
   # thus matching batch_shape [2, 3].
   dist.prob(x)         # Shape [2, 3]
+  ```
+
+  Compute the gradients of samples w.r.t. the parameters:
+
+  ```python
+  alpha = tf.constant(1.0)
+  beta = tf.constant(2.0)
+  dist = tf.distributions.Beta(alpha, beta)
+  samples = dist.sample(5)  # Shape [5]
+  loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
+  # Unbiased stochastic gradients of the loss function
+  grads = tf.gradients(loss, [alpha, beta])
   ```
 
   """
@@ -170,7 +188,7 @@ class Beta(distribution.Distribution):
         dtype=self._total_concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._concentration1,
                        self._concentration0,

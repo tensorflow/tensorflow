@@ -27,6 +27,7 @@ from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.utils import py_func
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
+from tensorflow.python.util import tf_inspect
 
 
 tf = utils.fake_tf()
@@ -153,6 +154,22 @@ class ApiTest(test.TestCase):
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
       self.assertListEqual([0, 1], sess.run(x).tolist())
+
+  def test_decorator_preserves_argspec(self):
+
+    class TestClass(object):
+
+      def called_member(self, a):
+        if a < 0:
+          a = -a
+        return a
+
+      called_member_converted = api.convert()(called_member)
+
+    tc = TestClass()
+    self.assertListEqual(
+        list(tf_inspect.getfullargspec(tc.called_member)),
+        list(tf_inspect.getfullargspec(tc.called_member_converted)))
 
   def test_convert_call_site_decorator(self):
 

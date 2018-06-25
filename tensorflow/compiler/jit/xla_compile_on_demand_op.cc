@@ -71,14 +71,8 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(ctx->step_id());
 
-  xla::StatusOr<xla::ScopedShapedBuffer> run_result;
-  {
-    // TODO(b/110383871): fix concurrency problems and remove this mutex.
-    static mutex* mu = new mutex;
-    mutex_lock lock(*mu);
-
-    run_result = executable->Run(launch_context.arguments(), run_options);
-  }
+  xla::StatusOr<xla::ScopedShapedBuffer> run_result =
+      executable->Run(launch_context.arguments(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
 
   launch_context.PopulateOutputs(ctx, result, run_result.ConsumeValueOrDie());

@@ -46,7 +46,7 @@ class ScaleTriLBijectorTest(test.TestCase):
     x_ = self.evaluate(b.inverse(y))
     self.assertAllClose(x, x_)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInvertible(self):
 
     # Generate random inputs from an unconstrained space, with

@@ -257,9 +257,12 @@ class Shape(object):
             self._dimensions == other._dimensions and
             self._minor_to_major == other._minor_to_major)
 
+  def __ne__(self, other):
+    return not self == other
+
   def __repr__(self):
     return ('xla_client.Shape(_dtype={!r}, _dimensions={!r}, '
-            '_is_tuple={!r}), _minor_to_major={!r}').format(
+            '_is_tuple={!r}, _minor_to_major={!r})').format(
                 self._dtype, self._dimensions, self._is_tuple,
                 self._minor_to_major)
 

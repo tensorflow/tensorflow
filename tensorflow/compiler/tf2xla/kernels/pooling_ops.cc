@@ -694,5 +694,18 @@ REGISTER_XLA_OP(Name("MaxPoolGradGradV2")
                     .CompileTimeConstInput("strides"),
                 MaxPool2DGradGradOp);
 
+class MaxPool3DGradGradOp : public MaxPoolGradGradOp {
+ public:
+  explicit MaxPool3DGradGradOp(OpKernelConstruction* ctx)
+      : MaxPoolGradGradOp(ctx, /*num_spatial_dims=*/3) {
+    string data_format;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+  }
+};
+REGISTER_XLA_OP(Name("MaxPool3DGradGrad").TypeConstraint("T", DT_FLOAT),
+                MaxPool3DGradGradOp);
+
 }  // anonymous namespace
 }  // namespace tensorflow

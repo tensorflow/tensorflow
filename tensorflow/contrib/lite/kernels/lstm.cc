@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
+#include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
@@ -856,13 +857,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, node->inputs->size == kInputNum);
   TF_LITE_ENSURE(context, node->outputs->size == kOutputNum);
 
-  // Only Float32 is supported currently.
-  // TODO(ycling): Implement quantize uint8 support.
-  for (int index = 0; index < node->inputs->size; ++index) {
-    TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
-    TF_LITE_ENSURE_EQ(context, tensor->type, kTfLiteFloat32);
-  }
-
   const TfLiteTensor* input = GetInput(context, node, kInputData);
   const TfLiteTensor* prev_activation =
       GetInput(context, node, kInputPrevActivation);
@@ -872,15 +866,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_EQ(context, input->dims->size, 2);
   const int num_batches = input->dims->data[0];
+  const int input_depth = input->dims->data[1];
 
   TF_LITE_ENSURE_EQ(context, prev_activation->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, prev_activation->dims->data[0], num_batches);
+  const int activation_depth = prev_activation->dims->data[1];
+  const int total_depth = input_depth + activation_depth;
 
   TF_LITE_ENSURE_EQ(context, weights->dims->size, 2);
+  TF_LITE_ENSURE_EQ(context, weights->dims->data[0], 4 * activation_depth);
+  TF_LITE_ENSURE_EQ(context, weights->dims->data[1], total_depth);
+
   TF_LITE_ENSURE_EQ(context, bias->dims->size, 1);
+  TF_LITE_ENSURE_EQ(context, bias->dims->data[0], 4 * activation_depth);
 
   TF_LITE_ENSURE_EQ(context, prev_state->dims->size, 2);
   TF_LITE_ENSURE_EQ(context, prev_state->dims->data[0], num_batches);
+  TF_LITE_ENSURE_EQ(context, prev_state->dims->data[1], activation_depth);
 
   TfLiteTensor* activation_out = GetOutput(context, node, kOutputActivation);
   TfLiteTensor* state_out = GetOutput(context, node, kOutputState);
@@ -894,14 +896,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(
       context, context->ResizeTensor(context, state_out,
                                      TfLiteIntArrayCopy(prev_state->dims)));
+
   TfLiteIntArray* concat_temp_size = TfLiteIntArrayCreate(2);
   concat_temp_size->data[0] = num_batches;
-  concat_temp_size->data[1] = weights->dims->data[1];
+  concat_temp_size->data[1] = total_depth;
   TF_LITE_ENSURE_OK(
       context, context->ResizeTensor(context, concat_temp, concat_temp_size));
   TfLiteIntArray* activation_temp_size = TfLiteIntArrayCreate(2);
   activation_temp_size->data[0] = num_batches;
-  activation_temp_size->data[1] = weights->dims->data[0];
+  activation_temp_size->data[1] = 4 * activation_depth;
   TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, activation_temp,
                                                    activation_temp_size));
 
@@ -927,18 +930,73 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* activation_temp =
       GetOutput(context, node, kOutputActivationTemp);
 
-  optimized_ops::LstmCell(
-      // Inputs.
-      GetTensorData<float>(input), GetTensorDims(input),
-      GetTensorData<float>(prev_activation), GetTensorDims(prev_activation),
-      GetTensorData<float>(weights), GetTensorDims(weights),
-      GetTensorData<float>(bias), GetTensorDims(bias),
-      GetTensorData<float>(prev_state), GetTensorDims(prev_state),
-      // Outputs.
-      GetTensorData<float>(state_out), GetTensorDims(state_out),
-      GetTensorData<float>(activation_out), GetTensorDims(activation_out),
-      GetTensorData<float>(concat_temp), GetTensorDims(concat_temp),
-      GetTensorData<float>(activation_temp), GetTensorDims(activation_temp));
+  if (input->type == kTfLiteFloat32 &&
+      prev_activation->type == kTfLiteFloat32 &&
+      weights->type == kTfLiteFloat32 && bias->type == kTfLiteFloat32 &&
+      prev_state->type == kTfLiteFloat32 && state_out->type == kTfLiteFloat32 &&
+      activation_out->type == kTfLiteFloat32 &&
+      concat_temp->type == kTfLiteFloat32 &&
+      activation_temp->type == kTfLiteFloat32) {
+    optimized_ops::LstmCell(
+        // Inputs.
+        GetTensorData<float>(input), GetTensorDims(input),
+        GetTensorData<float>(prev_activation), GetTensorDims(prev_activation),
+        GetTensorData<float>(weights), GetTensorDims(weights),
+        GetTensorData<float>(bias), GetTensorDims(bias),
+        GetTensorData<float>(prev_state), GetTensorDims(prev_state),
+        // Outputs.
+        GetTensorData<float>(state_out), GetTensorDims(state_out),
+        GetTensorData<float>(activation_out), GetTensorDims(activation_out),
+        GetTensorData<float>(concat_temp), GetTensorDims(concat_temp),
+        GetTensorData<float>(activation_temp), GetTensorDims(activation_temp));
+  } else if (input->type == kTfLiteUInt8 &&
+             prev_activation->type == kTfLiteUInt8 &&
+             weights->type == kTfLiteUInt8 && bias->type == kTfLiteInt32 &&
+             prev_state->type == kTfLiteInt16 &&
+             state_out->type == kTfLiteInt16 &&
+             activation_out->type == kTfLiteUInt8 &&
+             concat_temp->type == kTfLiteUInt8 &&
+             activation_temp->type == kTfLiteInt16) {
+    gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
+    int state_scale_log2_rounded;
+    if (!CheckedLog2(state_out->params.scale, &state_scale_log2_rounded)) {
+      context->ReportError(
+          context,
+          "The internal state of a LSTM cell must have a power-of-two scale.");
+      return kTfLiteError;
+    }
+    const int state_integer_bits = 15 + state_scale_log2_rounded;
+    if (state_integer_bits != 4) {
+      context->ReportError(context,
+                           "The only case of quantized LstmCell currently "
+                           "supported is with StateIntegerBits==4");
+      return kTfLiteError;
+    }
+
+    double real_accum_multiplier = 4096 * bias->params.scale;
+    int32 accum_multiplier;
+    int accum_shift;
+    tflite::QuantizeMultiplier(real_accum_multiplier, &accum_multiplier,
+                               &accum_shift);
+    optimized_ops::LstmCell<4>(
+        // Inputs.
+        GetTensorData<uint8_t>(input), GetTensorDims(input),
+        GetTensorData<uint8_t>(prev_activation), GetTensorDims(prev_activation),
+        GetTensorData<uint8_t>(weights), GetTensorDims(weights),
+        GetTensorData<int32_t>(bias), GetTensorDims(bias),
+        GetTensorData<int16_t>(prev_state), GetTensorDims(prev_state),
+        // Outputs.
+        GetTensorData<int16_t>(state_out), GetTensorDims(state_out),
+        GetTensorData<uint8_t>(activation_out), GetTensorDims(activation_out),
+        GetTensorData<uint8_t>(concat_temp), GetTensorDims(concat_temp),
+        GetTensorData<int16_t>(activation_temp), GetTensorDims(activation_temp),
+        weights->params.zero_point, accum_multiplier, accum_shift,
+        gemm_context);
+  } else {
+    context->ReportError(context,
+                         "Unsupported combination of data types for LstmCell");
+    return kTfLiteError;
+  }
 
   // TODO(ycling): Investigate if this copy can be avoided with the 5-inputs
   // LSTM kernel.
@@ -952,6 +1010,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace basic
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  gemm_support::IncrementUsageCounter(context);
+
   const auto* params = reinterpret_cast<const TfLiteLSTMParams*>(buffer);
   switch (params->kernel_type) {
     case kTfLiteLSTMFullKernel:
@@ -961,6 +1021,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   }
 }
 void Free(TfLiteContext* context, void* buffer) {
+  gemm_support::DecrementUsageCounter(context);
+
   delete reinterpret_cast<OpData*>(buffer);
 }
 

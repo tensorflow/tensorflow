@@ -227,33 +227,6 @@ def bucket_by_sequence_length(element_length_func,
     return _apply_fn
 
 
-class _VariantDataset(dataset_ops.Dataset):
-  """A Dataset wrapper for a tf.variant-typed function argument."""
-
-  def __init__(self, dataset_variant, output_types, output_shapes,
-               output_classes):
-    super(_VariantDataset, self).__init__()
-    self._dataset_variant = dataset_variant
-    self._output_types = output_types
-    self._output_shapes = output_shapes
-    self._output_classes = output_classes
-
-  def _as_variant_tensor(self):
-    return self._dataset_variant
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-
 class _GroupByReducerDataset(dataset_ops.Dataset):
   """A `Dataset` that groups its input and performs a reduction."""
 
@@ -431,24 +404,19 @@ class _GroupByWindowDataset(dataset_ops.Dataset):
 
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping Defun for reduce_func."""
-    def reduce_func_wrapper(key, window_dataset_variant):
-      """Wrapper that converts between tf.variant and Dataset objects."""
-      window_dataset = _VariantDataset(
-          window_dataset_variant, input_dataset.output_types,
-          input_dataset.output_shapes, input_dataset.output_classes)
-      output_dataset = reduce_func(key, window_dataset)
-      if not isinstance(output_dataset, dataset_ops.Dataset):
-        raise TypeError("`reduce_func` must return a `Dataset` object.")
-      self._output_classes = output_dataset.output_classes
-      self._output_types = output_dataset.output_types
-      self._output_shapes = output_dataset.output_shapes
-      return output_dataset._as_variant_tensor()  # pylint: disable=protected-access
-
+    nested_dataset = dataset_ops._NestedDatasetComponent(input_dataset)  # pylint: disable=protected-access
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
-        reduce_func_wrapper, "tf.contrib.data.reduce_by_window()",
-        input_classes=(ops.Tensor, ops.Tensor),
-        input_shapes=(tensor_shape.scalar(), tensor_shape.scalar()),
-        input_types=(dtypes.int64, dtypes.variant))
+        reduce_func, "tf.contrib.data.reduce_by_window()",
+        input_classes=(ops.Tensor, nested_dataset),
+        input_shapes=(tensor_shape.scalar(), nested_dataset),
+        input_types=(dtypes.int64, nested_dataset),
+        experimental_nested_dataset_support=True)
+    if not isinstance(
+        wrapped_func.output_classes, dataset_ops._NestedDatasetComponent):  # pylint: disable=protected-access
+      raise TypeError("`reduce_func` must return a `Dataset` object.")
+    self._output_classes = wrapped_func.output_classes.output_classes
+    self._output_types = wrapped_func.output_types.output_types
+    self._output_shapes = wrapped_func.output_shapes.output_shapes
     self._reduce_func = wrapped_func.function
 
   @property

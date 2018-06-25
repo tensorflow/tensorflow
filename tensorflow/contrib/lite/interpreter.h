@@ -397,6 +397,13 @@ class Interpreter {
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ResetVariableTensorsToZero();
 
+  // Retrieve an operator's description of its work, for profiling purposes.
+  const char* OpProfilingString(const TfLiteRegistration& op_reg,
+                                const TfLiteNode* node) const {
+    if (op_reg.profiling_string == nullptr) return nullptr;
+    return op_reg.profiling_string(&context_, node);
+  }
+
  private:
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'.

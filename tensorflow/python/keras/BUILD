@@ -136,7 +136,7 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python/data",
-        "//tensorflow/python/training/checkpointable:data_structures_base",
+        "//tensorflow/python/training/checkpointable:data_structures",
         "@six_archive//:six",
     ],
 )
@@ -859,7 +859,7 @@ py_test(
 
 py_test(
     name = "backend_test",
-    size = "small",
+    size = "medium",
     srcs = ["backend_test.py"],
     srcs_version = "PY2AND3",
     deps = [

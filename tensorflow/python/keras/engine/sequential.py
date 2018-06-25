@@ -24,10 +24,10 @@ import copy
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.training import Model
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
@@ -179,7 +179,7 @@ class Sequential(Model):
                            'use the functional API.')
 
         self.outputs = [layer._inbound_nodes[-1].output_tensors[0]]
-        self.inputs = network.get_source_inputs(self.outputs[0])
+        self.inputs = layer_utils.get_source_inputs(self.outputs[0])
     elif self.outputs:
       output_tensor = layer(self.outputs[0])
       if isinstance(output_tensor, list):

@@ -941,7 +941,7 @@ class ConstantValueTest(test.TestCase):
 
 class ConstantValueAsShapeTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConstant(self):
     np_val = np.random.rand(3).astype(np.int32)
     tf_val = constant_op.constant(np_val)
@@ -954,13 +954,13 @@ class ConstantValueAsShapeTest(test.TestCase):
         tensor_shape.TensorShape([]),
         tensor_util.constant_value_as_shape(tf_val))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testShape(self):
     tf_val = array_ops.shape(constant_op.constant(0.0, shape=[1, 2, 3]))
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual(tensor_shape.TensorShape([1, 2, 3]), c_val)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMinusOneBecomesNone(self):
     tf_val = constant_op.constant([-1, 1, -1], shape=[3])
     c_val = tensor_util.constant_value_as_shape(tf_val)

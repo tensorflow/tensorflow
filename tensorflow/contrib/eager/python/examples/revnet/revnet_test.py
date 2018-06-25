@@ -107,8 +107,9 @@ class RevnetTest(tf.test.TestCase):
       model = revnet.RevNet(config=self.config)
       grads_all, vars_all, _ = model.compute_gradients(x, t, training=True)
       optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
-      # TODO(lxuechen): This doesn't work due to b/110145168
-      with tf.control_dependencies(model.updates):
+      updates = model.get_updates_for(x)
+      self.assertEqual(len(updates), 192)
+      with tf.control_dependencies(model.get_updates_for(x)):
         train_op = optimizer.apply_gradients(
             zip(grads_all, vars_all), global_step=global_step)
 

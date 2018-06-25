@@ -1159,6 +1159,33 @@ TEST_F(AlgebraicSimplifierTest, RemoveCopy) {
   EXPECT_THAT(computation->root_instruction(), param0);
 }
 
+TEST_F(AlgebraicSimplifierTest, CopyEqualsBitcast) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {1, 14, 14, 64}), "param"));
+  *param->mutable_shape()->mutable_layout() =
+      LayoutUtil::MakeLayout({0, 1, 2, 3});
+  HloInstruction* copy = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1, 14, 14, 64}), HloOpcode::kCopy, param));
+  *copy->mutable_shape()->mutable_layout() =
+      LayoutUtil::MakeLayout({1, 2, 0, 3});
+  auto computation = module().AddEntryComputation(builder.Build());
+  EXPECT_THAT(computation->root_instruction(), op::Copy(param));
+
+  AlgebraicSimplifier simplifier1(/*is_layout_sensitive=*/true,
+                                  non_bitcasting_callback());
+  ASSERT_FALSE(simplifier1.Run(&module()).ValueOrDie());
+  // Verify that the copy is not replaced.
+  EXPECT_THAT(computation->root_instruction(), op::Copy(param));
+
+  AlgebraicSimplifier simplifier2(/*is_layout_sensitive=*/true,
+                                  bitcasting_callback());
+  ASSERT_TRUE(simplifier2.Run(&module()).ValueOrDie());
+  // Verify that the copy is replaced.
+  EXPECT_THAT(computation->root_instruction(), op::Bitcast(param));
+}
+
 // Test that unary concatenates are removed.
 TEST_F(AlgebraicSimplifierTest, RemoveUnaryConcatenate) {
   Shape r1f32 = ShapeUtil::MakeShape(F32, {100});

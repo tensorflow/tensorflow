@@ -26,13 +26,13 @@ from tensorflow.python.keras import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.checkpointable import util
 
 
 class UniqueNameTrackerTests(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNames(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
@@ -48,11 +48,11 @@ class UniqueNameTrackerTests(test.TestCase):
     slots.track(y, "y")
     self.evaluate((x1.initializer, x2.initializer, x3.initializer,
                    y.initializer))
-    save_root = checkpointable_utils.Checkpoint(slots=slots)
+    save_root = util.Checkpoint(slots=slots)
     save_path = save_root.save(checkpoint_prefix)
 
-    restore_slots = checkpointable.Checkpointable()
-    restore_root = checkpointable_utils.Checkpoint(
+    restore_slots = tracking.Checkpointable()
+    restore_root = util.Checkpoint(
         slots=restore_slots)
     status = restore_root.restore(save_path)
     restore_slots.x = resource_variable_ops.ResourceVariable(0.)
@@ -65,9 +65,9 @@ class UniqueNameTrackerTests(test.TestCase):
     self.assertEqual(4., self.evaluate(restore_slots.x_1_1))
     self.assertEqual(5., self.evaluate(restore_slots.y))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testExample(self):
-    class SlotManager(checkpointable.Checkpointable):
+    class SlotManager(tracking.Checkpointable):
 
       def __init__(self):
         self.slotdeps = containers.UniqueNameTracker()
@@ -83,11 +83,11 @@ class UniqueNameTrackerTests(test.TestCase):
 
     manager = SlotManager()
     self.evaluate([v.initializer for v in manager.slots])
-    checkpoint = checkpointable_utils.Checkpoint(slot_manager=manager)
+    checkpoint = util.Checkpoint(slot_manager=manager)
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     save_path = checkpoint.save(checkpoint_prefix)
-    metadata = checkpointable_utils.object_metadata(save_path)
+    metadata = util.object_metadata(save_path)
     dependency_names = []
     for node in metadata.nodes:
       for child in node.children:
@@ -97,7 +97,7 @@ class UniqueNameTrackerTests(test.TestCase):
         dependency_names,
         ["x", "x_1", "y", "slot_manager", "slotdeps", "save_counter"])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLayers(self):
     tracker = containers.UniqueNameTracker()
     tracker.track(layers.Dense(3), "dense")
