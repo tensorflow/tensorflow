@@ -534,10 +534,10 @@ def gradients(ys,
     RuntimeError: if called in Eager mode.
 
   """
-  # Creating the gradient graph for control flow mutates Operations. _lock
-  # ensures a Session.run call cannot occur between creating and mutating new
-  # ops.
-  with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+  # Creating the gradient graph for control flow mutates Operations.
+  # _mutation_lock ensures a Session.run call cannot occur between creating and
+  # mutating new ops.
+  with ops.get_default_graph()._mutation_lock():  # pylint: disable=protected-access
     return _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
                             gate_gradients, aggregation_method, stop_gradients)
 

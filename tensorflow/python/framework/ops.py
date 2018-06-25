@@ -55,6 +55,7 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import lock_util
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
@@ -2599,6 +2600,10 @@ def _name_from_scope_name(name):
   return name[:-1] if (name and name[-1] == "/") else name
 
 
+_MUTATION_LOCK_GROUP = 0
+_SESSION_RUN_LOCK_GROUP = 1
+
+
 @tf_export("Graph")
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
@@ -2648,20 +2653,21 @@ class Graph(object):
 
   def __init__(self):
     """Creates a new, empty Graph."""
-    # Protects core state that can be returned via public accessors, as well as
-    # synchronizes Session.run calls with methods that create and mutate ops
-    # (e.g. Graph.create_op()). This synchronization is necessary because it's
-    # illegal to modify an operation after it's been run. Thread-safety is
-    # provided on a best-effort basis to support buggy programs, and is not
-    # guaranteed by the public `tf.Graph` API.
-    #
-    # The lock must be reentrant because create_op can be called recursively due
-    # to control flow. Without a reentrant lock, many methods would also need a
-    # "locked" version or parameter (including generated code).
+    # Protects core state that can be returned via public accessors.
+    # Thread-safety is provided on a best-effort basis to support buggy
+    # programs, and is not guaranteed by the public `tf.Graph` API.
     #
     # NOTE(mrry): This does not protect the various stacks. A warning will
     # be reported if these are used from multiple threads
     self._lock = threading.RLock()
+    # The group lock synchronizes Session.run calls with methods that create
+    # and mutate ops (e.g. Graph.create_op()). This synchronization is
+    # necessary because it's illegal to modify an operation after it's been run.
+    # The group lock allows any number of threads to mutate ops at the same time
+    # but if any modification is going on, all Session.run calls have to wait.
+    # Similarly, if one or more Session.run calls are going on, all mutate ops
+    # have to wait until all Session.run calls have finished.
+    self._group_lock = lock_util.GroupLock(num_groups=2)
     self._nodes_by_id = dict()  # GUARDED_BY(self._lock)
     self._next_id_counter = 0  # GUARDED_BY(self._lock)
     self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
@@ -3192,9 +3198,9 @@ class Graph(object):
 
     input_ops = set([t.op for t in inputs])
     control_inputs = self._control_dependencies_for_inputs(input_ops)
-    # _create_op_helper mutates the new Operation. _lock ensures a Session.run
-    # call cannot occur between creating and mutating the op.
-    with self._lock:
+    # _create_op_helper mutates the new Operation. `_mutation_lock` ensures a
+    # Session.run call cannot occur between creating and mutating the op.
+    with self._mutation_lock():
       ret = Operation(
           node_def,
           self,
@@ -4718,6 +4724,20 @@ class Graph(object):
       self._thread_local._control_dependencies_stack = control_dependencies
     else:
       self._graph_control_dependencies_stack = control_dependencies
+
+  def _mutation_lock(self):
+    """Returns a lock to guard code that creates & mutates ops.
+
+    See the comment for self._group_lock for more info.
+    """
+    return self._group_lock.group(_MUTATION_LOCK_GROUP)
+
+  def _session_run_lock(self):
+    """Returns a lock to guard code for Session.run.
+
+    See the comment for self._group_lock for more info.
+    """
+    return self._group_lock.group(_SESSION_RUN_LOCK_GROUP)
 
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
