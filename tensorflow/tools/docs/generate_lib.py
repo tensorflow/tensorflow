@@ -21,6 +21,7 @@ from __future__ import print_function
 import argparse
 import fnmatch
 import os
+import shutil
 
 import six
 
@@ -81,12 +82,8 @@ def write_docs(output_dir,
     raise ValueError("'output_dir' must be an absolute path.\n"
                      "    output_dir='%s'" % output_dir)
 
-  try:
-    if not os.path.exists(output_dir):
-      os.makedirs(output_dir)
-  except OSError as e:
-    print('Creating output dir "%s" failed: %s' % (output_dir, e))
-    raise
+  if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
   # These dictionaries are used for table-of-contents generation below
   # They will contain, after the for-loop below::
@@ -129,8 +126,6 @@ def write_docs(output_dir,
           module_children.setdefault(subname, []).append(full_name)
           break
 
-    print('Writing docs for %s (%r).' % (full_name, py_object))
-
     # Generate docs for `py_object`, resolving references.
     page_info = parser.docs_for_object(full_name, py_object, parser_config)
 
@@ -151,10 +146,9 @@ def write_docs(output_dir,
         text = text.encode('utf-8')
       with open(path, 'wb') as f:
         f.write(text)
-    except OSError as e:
-      print('Cannot write documentation for %s to %s: %s' % (full_name,
-                                                             directory, e))
-      raise
+    except OSError:
+      raise OSError(
+          'Cannot write documentation for %s to %s' % (full_name, directory))
 
   if yaml_toc:
     # Generate table of contents
@@ -433,16 +427,11 @@ def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
     # Make the directory under output_dir.
     new_dir = os.path.join(output_dir,
                            os.path.relpath(path=dirpath, start=src_dir))
-    try:
-      if not os.path.exists(new_dir):
-        os.makedirs(new_dir)
-    except OSError as e:
-      print('Creating output dir "%s" failed: %s' % (new_dir, e))
-      raise
+    if not os.path.exists(new_dir):
+      os.makedirs(new_dir)
 
     for base_name in filenames:
       if base_name in EXCLUDED:
-        print('Skipping excluded file %s...' % base_name)
         continue
       full_in_path = os.path.join(dirpath, base_name)
 
@@ -451,23 +440,18 @@ def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
       suffix = os.path.relpath(path=full_in_path, start=src_dir)
       full_out_path = os.path.join(output_dir, suffix)
       if not fnmatch.fnmatch(base_name, file_pattern):
-        print('Copying un-matched file %s...' % suffix)
-        open(full_out_path, 'wb').write(open(full_in_path, 'rb').read())
+        shutil.copyfile(full_in_path, full_out_path)
         continue
       if dirpath.endswith('/api_guides/python'):
-        print('Processing Python guide %s...' % base_name)
         content = tag_updater.process(full_in_path)
       else:
-        print('Processing doc %s...' % suffix)
-        content = open(full_in_path, 'rb').read().decode('utf-8')
+        with open(full_in_path, 'rb') as f:
+          content = f.read().decode('utf-8')
 
       content = reference_resolver.replace_references(content,
                                                       relative_path_to_root)
       with open(full_out_path, 'wb') as f:
         f.write(content.encode('utf-8'))
-
-  print('Done.')
-
 
 class DocGenerator(object):
   """Main entry point for generating docs."""

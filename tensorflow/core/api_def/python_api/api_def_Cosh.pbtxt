@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Cosh"
+  endpoint {
+    name: "math.cosh"
+  }
+  endpoint {
+    name: "cosh"
+    deprecation_message: "tf.cosh is deprecated, please use tf.math.cosh instead."
+  }
+}

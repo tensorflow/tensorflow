@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -539,6 +540,11 @@ int64 FindIndex(const C& c, Value&& value) {
   return std::distance(c.begin(), it);
 }
 
+template <typename T>
+bool ArrayContains(tensorflow::gtl::ArraySlice<T> c, const T& value) {
+  return c_find(c, value) != c.end();
+}
+
 template <typename C, typename Value>
 void InsertAt(C* c, int64 index, Value&& value) {
   c->insert(c->begin() + index, std::forward<Value>(value));
@@ -547,6 +553,12 @@ void InsertAt(C* c, int64 index, Value&& value) {
 template <typename C>
 void EraseAt(C* c, int64 index) {
   c->erase(c->begin() + index);
+}
+
+template <typename T, int N>
+std::vector<T> InlinedVectorToVector(
+    const tensorflow::gtl::InlinedVector<T, N>& inlined_vector) {
+  return std::vector<T>(inlined_vector.begin(), inlined_vector.end());
 }
 
 // Returns true if `x` fits in 32-bits.

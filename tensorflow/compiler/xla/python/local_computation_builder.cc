@@ -344,11 +344,8 @@ LocalOp LocalComputationBuilder::Parameter(int64 parameter_number,
   return builder_.Parameter(parameter_number, shape, name);
 }
 
-std::unique_ptr<Shape> LocalComputationBuilder::GetShape(
-    const LocalOp& operand) {
-  auto result = MakeUnique<Shape>();
-  *result = builder_.GetShape(operand.op()).ValueOrDie();
-  return result;
+StatusOr<Shape> LocalComputationBuilder::GetShape(const LocalOp& operand) {
+  return builder_.GetShape(operand.op());
 }
 
 StatusOr<Shape> LocalComputationBuilder::GetReturnValueShape() {

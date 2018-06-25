@@ -25,7 +25,6 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import variables
 from tensorflow.python.training.checkpointable import base as checkpointable_lib
-from tensorflow.python.training.checkpointable import data_structures_base
 
 
 # TODO(allenl): We could track regular Python data structures which get assigned
@@ -36,8 +35,7 @@ from tensorflow.python.training.checkpointable import data_structures_base
 # user's updated structure, but would have no way to support restore-on-create
 # for those modifications).
 # TODO(allenl): A dictionary data structure would be good too.
-class CheckpointableDataStructure(
-    data_structures_base.CheckpointableDataStructureBase):
+class CheckpointableDataStructure(checkpointable_lib.CheckpointableBase):
   """Base class for data structures which contain checkpointable objects."""
 
   def __init__(self):
@@ -56,9 +54,7 @@ class CheckpointableDataStructure(
           ("Only checkpointable objects (such as Layers or Optimizers) may be "
            "stored in a List object. Got %s, which does not inherit from "
            "CheckpointableBase.") % (value,))
-    if isinstance(value, (
-        base_layer.Layer,
-        data_structures_base.CheckpointableDataStructureBase)):
+    if isinstance(value, (base_layer.Layer, CheckpointableDataStructure)):
       if value not in self._layers:
         self._layers.append(value)
         if hasattr(value, "_use_resource_variables"):

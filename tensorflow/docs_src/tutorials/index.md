@@ -2,9 +2,8 @@
 
 
 This section contains tutorials demonstrating how to do specific tasks
-in TensorFlow.  If you are new to TensorFlow, we recommend reading the
-documents in the "@{$get_started$Get Started}" section before reading
-these tutorials.
+in TensorFlow.  If you are new to TensorFlow, we recommend reading
+[Get Started with TensorFlow](/get_started/).
 
 ## Images
 

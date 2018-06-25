@@ -155,14 +155,7 @@ bool ResolveConstantStridedSlice::Run(Model* model, std::size_t op_index) {
       break;
   }
 
-  // Erase input array if no longer used
-  if (IsDiscardableArray(*model, op->inputs[0]) &&
-      CountOpsWithInput(*model, op->inputs[0]) == 1) {
-    model->EraseArray(op->inputs[0]);
-  }
-
-  // Erase the operator
-  model->operators.erase(it);
+  DeleteOpAndArraysIfUnused(model, it->get());
 
   return true;
 }

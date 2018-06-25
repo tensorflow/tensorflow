@@ -117,7 +117,7 @@ py_library(
 
 py_test(
     name = "dnn_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/dnn_test.py"],
     srcs_version = "PY2AND3",
     tags = [

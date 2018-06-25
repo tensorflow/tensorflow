@@ -102,5 +102,8 @@ gpu_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    tags = ["nopip"],
+    tags = [
+        "nopip",
+        "optonly",
+    ],
 )

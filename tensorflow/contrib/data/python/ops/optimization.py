@@ -39,17 +39,17 @@ def optimize(optimizations=None):
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return OptimizeDataset(dataset, optimizations)
+    return _OptimizeDataset(dataset, optimizations)
 
   return _apply_fn
 
 
-class OptimizeDataset(dataset_ops.Dataset):
+class _OptimizeDataset(dataset_ops.Dataset):
   """A `Dataset` that acts as an identity, and applies optimizations."""
 
   def __init__(self, input_dataset, optimizations):
     """See `optimize()` for details."""
-    super(OptimizeDataset, self).__init__()
+    super(_OptimizeDataset, self).__init__()
     self._input_dataset = input_dataset
     if optimizations is None:
       optimizations = []
@@ -61,6 +61,7 @@ class OptimizeDataset(dataset_ops.Dataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._optimizations,
         **dataset_ops.flat_structure(self))
+
   @property
   def output_classes(self):
     return self._input_dataset.output_classes

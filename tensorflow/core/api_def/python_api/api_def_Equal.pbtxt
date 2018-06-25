@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Equal"
+  endpoint {
+    name: "math.equal"
+  }
+  endpoint {
+    name: "equal"
+    deprecation_message: "tf.equal is deprecated, please use tf.math.equal instead."
+  }
+}

@@ -262,6 +262,59 @@ TEST_F(GraphPropertiesTest, VarHandles) {
   EXPECT_EQ(7, prop.shape().dim(1).size());
 }
 
+TEST_F(GraphPropertiesTest, QueueWithOnlyDequeue_NoShapeAttr) {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto q1 = ops::FIFOQueue(root.WithOpName("Queue1"), {DataType::DT_FLOAT});
+  auto dequeue1 =
+      ops::QueueDequeue(root.WithOpName("Dequeue1"), q1, {DataType::DT_FLOAT});
+
+  GrapplerItem item;
+  TF_CHECK_OK(root.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  const auto props1 = properties.GetOutputProperties("Dequeue1");
+  ASSERT_EQ(1, props1.size());
+  EXPECT_EQ("float: ?", PropToString(props1[0]));
+}
+
+TEST_F(GraphPropertiesTest, QueueWithOnlyDequeue_ShapeAttr) {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto q1 = ops::FIFOQueue(root.WithOpName("Queue1"), {DataType::DT_FLOAT},
+                           ops::FIFOQueue::Attrs().Shapes({{3, 7, 1}}));
+  auto dequeue1 =
+      ops::QueueDequeue(root.WithOpName("Dequeue1"), q1, {DataType::DT_FLOAT});
+
+  GrapplerItem item;
+  TF_CHECK_OK(root.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  const auto props1 = properties.GetOutputProperties("Dequeue1");
+  ASSERT_EQ(1, props1.size());
+  EXPECT_EQ("float: [3,7,1]", PropToString(props1[0]));
+}
+
+TEST_F(GraphPropertiesTest, QueueWithOnlyDequeue_PartialShapeAttr) {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto q1 = ops::FIFOQueue(root.WithOpName("Queue1"), {DataType::DT_FLOAT},
+                           ops::FIFOQueue::Attrs().Shapes({{3, 7, -1}}));
+  auto dequeue1 =
+      ops::QueueDequeue(root.WithOpName("Dequeue1"), q1, {DataType::DT_FLOAT});
+
+  GrapplerItem item;
+  TF_CHECK_OK(root.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  const auto props1 = properties.GetOutputProperties("Dequeue1");
+  ASSERT_EQ(1, props1.size());
+  EXPECT_EQ("float: [3,7,-1]", PropToString(props1[0]));
+}
+
 TEST_F(GraphPropertiesTest, Queues) {
   // Create a graph with known input shapes, and propagate the shapes through a
   // couple of queues.

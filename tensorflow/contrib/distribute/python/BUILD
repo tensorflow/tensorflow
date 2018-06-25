@@ -587,7 +587,6 @@ gpu_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-        "noguitar",
         "notsan",
     ],
 )

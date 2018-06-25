@@ -35,7 +35,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import tracking as checkpointable
 from tensorflow.python.util.tf_export import tf_export
 
 

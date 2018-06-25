@@ -447,6 +447,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   // Create a run state and start execution.
   RunState run_state(step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
+#ifndef __ANDROID__
   // Set up for collectives if the RunOption declares a key.
   if (run_options.experimental().collective_graph_key() > 0) {
     if (!collective_executor_mgr_) {
@@ -461,6 +462,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     run_state.collective_executor.reset(new CollectiveExecutor::Handle(
         collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));
   }
+#endif
 
   // Start parallel Executors.
   const size_t num_executors = executors_and_keys->items.size();

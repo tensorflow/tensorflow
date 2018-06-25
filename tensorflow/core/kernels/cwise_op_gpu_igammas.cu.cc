@@ -16,10 +16,15 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
+#include "tensorflow/core/kernels/cwise_ops_gpu_gradients.cu.h"
 
 namespace tensorflow {
 namespace functor {
 DEFINE_BINARY2(igamma, float, double);
+// XXX FIXME ROCM TODO fix after Eigen gets updated
+#if 0
+DEFINE_BINARY2(igamma_grad_a, float, double);
+#endif
 DEFINE_BINARY2(igammac, float, double);
 }  // namespace functor
 }  // namespace tensorflow

@@ -14,8 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 
+#include <algorithm>
+#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
+#include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
@@ -25,144 +33,556 @@ limitations under the License.
 #include "cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
-static ::tensorflow::tensorrt::Logger logger;
-using IRuntime = nvinfer1::IRuntime;
-using Dims = nvinfer1::Dims;
-
 namespace tensorrt {
+static Logger logger;
+using ::nvinfer1::IRuntime;
+using ::tensorflow::strings::StrAppend;
+using ::tensorflow::strings::StrCat;
 
-TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
-  // read serialized_engine
-  OP_REQUIRES_OK(context,
-                 context->GetAttr("serialized_engine", &serialized_engine_));
+// A helper class to call done() when destructed for asynchronous execution.
+// Helps simultaneous execution of native and TRT engines.
+class AsyncHelper : public tensorflow::core::RefCounted {
+ public:
+  AsyncHelper(tensorflow::AsyncOpKernel::DoneCallback done) { done_ = done; }
+  ~AsyncHelper() override { done_(); }
 
-  // register input output node name in trt_sub_graph
-  OP_REQUIRES_OK(context, context->GetAttr("input_nodes", &input_nodes_));
-  OP_REQUIRES_OK(context, context->GetAttr("output_nodes", &output_nodes_));
+ private:
+  tensorflow::AsyncOpKernel::DoneCallback done_;
+};
+
+#define TYPECASE(dt, X, Y)                                                \
+  case dt: {                                                              \
+    return (void*)X->flat<tensorflow::EnumToDataType<dt>::Type>().data(); \
+  }
+
+void* GetTensorAddress(const Tensor* tensor_ptr) {
+  auto tensor_type = tensor_ptr->dtype();
+  switch (tensor_type) {
+    TYPECASE(tensorflow::DT_FLOAT, tensor_ptr, dest_ptr);
+    TYPECASE(tensorflow::DT_HALF, tensor_ptr, dest_ptr);
+    TYPECASE(tensorflow::DT_INT8, tensor_ptr, dest_ptr);
+    default: {
+      LOG(ERROR) << "Unsupported Data type "
+                 << tensorflow::DataTypeString(tensor_type);
+      return nullptr;
+    }
+  }
 }
 
-void TRTEngineOp::Compute(OpKernelContext* context) {
-  // TODO(samikama) runtime should be taken from a resourcemanager as well.
-  // Only engine should be in the op and context and runtime should be taken
-  // from resourcemanager
-
-  if (!trt_execution_context_ptr_) {
-    IRuntime* infer = nvinfer1::createInferRuntime(logger);
-#if NV_TENSORRT_MAJOR > 3
-    auto device = context->device();
-    auto dev_allocator =
-        device->GetAllocator(tensorflow::AllocatorAttributes());
-    if (!dev_allocator) {
-      LOG(FATAL) << "Can't find device allocator for gpu device "
-                 << device->name();
-    }
-    allocator_ = std::make_shared<TRTDeviceAllocator>(dev_allocator);
-    infer->setGpuAllocator(allocator_.get());
-#endif
-    trt_engine_ptr_.reset(infer->deserializeCudaEngine(
-        serialized_engine_.c_str(), serialized_engine_.size(),
-        PluginFactoryTensorRT::GetInstance()));
-    trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
-    // Runtime is safe to delete after engine creation
-    infer->destroy();
-    serialized_engine_.clear();
+tensorflow::Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
+  VLOG(1) << "Constructing function handle";
+  auto lib = ctx->function_library();
+  if (lib == nullptr) {
+    return tensorflow::errors::Internal("Context function library is null");
   }
-  int num_binding = context->num_inputs() + context->num_outputs();
-  std::vector<void*> buffers(num_binding);
+  auto fdef = lib->GetFunctionLibraryDefinition()->Find(funcdef_name_);
+  if (fdef == nullptr) {
+    return tensorflow::errors::Internal("Native FunctionDef ", funcdef_name_,
+                                        " can't be found in function library");
+  }
+  tensorflow::FunctionLibraryRuntime::InstantiateOptions inst_ops;
+  inst_ops.overlay_lib = nullptr;
+  inst_ops.state_handle = "";
+  inst_ops.target = ctx->device()->name();
+  native_func_ = 0;
+  auto status = lib->Instantiate(funcdef_name_, AttrSlice(&fdef->attr()),
+                                 inst_ops, &native_func_);
+  if (!status.ok()) {
+    LOG(ERROR) << " Instantiating native function " << funcdef_name_
+               << " failed!";
+  }
+  return status;
+}
 
-  size_t binding_index;
-  int num_batch = 0;
-  for (int i = 0; i < context->num_inputs(); i++) {
-    // Grab the input tensor
-    binding_index = trt_engine_ptr_->getBindingIndex(input_nodes_[i].c_str());
+TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
+    : AsyncOpKernel(context) {
+  // read serialized_engine
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("serialized_segment", &serialized_segment_));
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("workspace_size_bytes", &workspace_size_));
+  OP_REQUIRES_OK(context, context->GetAttr("static_engine", &static_engine_));
+  if (!static_engine_) {
+    if (!segment_graph_.ParseFromString(serialized_segment_)) {
+      LOG(ERROR) << "Parsing segment graph failed!";
+      context->SetStatus(tensorflow::errors::InvalidArgument(
+          "Failed to parse segment graphdef!"));
+      return;
+    }
+    serialized_segment_.resize(0);
+  }
+  VLOG(1) << "Constructing " << name();
+  string precision_string;
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("precision_mode", &precision_string));
+  string calibration_data;
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("calibration_data", &calibration_data));
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("segment_funcdef_name", &funcdef_name_));
+  if (precision_string == "FP32") {
+    precision_mode_ = convert::FP32MODE;
+  } else if (precision_string == "FP16") {
+    precision_mode_ = convert::FP16MODE;
+  } else if (precision_string == "INT8") {
+    precision_mode_ = convert::INT8MODE;
+  }
+  calibration_mode_ =
+      (precision_mode_ == convert::INT8MODE && calibration_data.size() == 0);
+  if (calibration_data.size()) {
+    calibrator_.reset(new TRTInt8Calibrator(calibration_data));
+    calibration_data.resize(0);
+  }
+  native_func_ = tensorflow::kInvalidHandle;
+  OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
+                                           &max_cached_engines_));
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("fixed_input_size", &fixed_input_size_));
+  OP_REQUIRES_OK(context, context->GetAttr("cached_engine_batches",
+                                           &cached_engine_batches_));
+  std::sort(cached_engine_batches_.begin(), cached_engine_batches_.end());
+  if (VLOG_IS_ON(1)) {
+    string s("Engine Batches= ");
+    for (auto i : cached_engine_batches_) {
+      StrAppend(&s, i, " ");
+    }
+    VLOG(1) << s;
+  }
+}
 
-    const Tensor& input_tensor = context->input(i);
-    const TensorShape& input_shape = input_tensor.shape();
-    if (i == 0) {
-      num_batch = input_shape.dim_size(0);
-      if (num_batch > trt_engine_ptr_->getMaxBatchSize()) {
-        LOG(FATAL) << "input tensor batch larger than max_batch_size: "
-                   << trt_engine_ptr_->getMaxBatchSize();
-      }
-    } else if (num_batch != input_shape.dim_size(0)) {
-      LOG(FATAL) << "input data inconsistent batch size";
+void TRTEngineOp::ExecuteNativeSegment(tensorflow::OpKernelContext* ctx,
+                                       AsyncHelper* helper) {
+  if (!calibration_mode_) {
+    VLOG(1) << "Executing native engine";
+  }
+  std::vector<Tensor> inputs;
+  std::vector<Tensor>* outputs = new std::vector<Tensor>();
+  if (native_func_ == tensorflow::kInvalidHandle) {
+    auto status = ConstructFunctionHandle(ctx);
+    if (!status.ok()) {
+      LOG(ERROR) << "Couldn't construct function handle " << funcdef_name_;
+      ctx->SetStatus(status);
+      return;
+    }
+  }
+  auto lib = ctx->function_library();
+  tensorflow::FunctionLibraryRuntime::Options opts;
+  opts.step_id = ctx->step_id();
+  opts.rendezvous = ctx->rendezvous();
+  opts.cancellation_manager = ctx->cancellation_manager();
+  opts.runner = ctx->runner();
+  for (int i = 0; i < ctx->num_inputs(); i++) {
+    inputs.push_back(ctx->input(i));
+  }
+  helper->Ref();  // Increment count for calculating native graph
+  VLOG(1) << "Executing native segment " << name();
+  lib->Run(opts, native_func_, inputs, outputs,
+           [ctx, outputs, helper](const tensorflow::Status& s) {
+             tensorflow::core::ScopedUnref sc(helper);
+             VLOG(1) << "Native Segment completed";
+             if (!s.ok()) {
+               ctx->SetStatus(s);
+               return;
+             }
+             for (size_t t = 0; t < outputs->size(); ++t) {
+               ctx->set_output(t, outputs->at(t));
+             }
+             delete outputs;
+           });
+}
+
+void TRTEngineOp::ExecuteCalibration(tensorflow::OpKernelContext* ctx,
+                                     AsyncHelper* helper) {
+  helper->Ref();
+  tensorflow::core::ScopedUnref sc(helper);
+  // TODO(aaroey): remove the ResourceMgr singleton.
+  auto trt_rm = TRTResourceManager::instance();
+  auto res_mgr = trt_rm->getManager("TRTCalibration");
+  TRTCalibrationResource* calib_res = nullptr;
+  auto status = res_mgr->LookupOrCreate(
+      funcdef_name_, "Calibrator", &calib_res,
+      {[ctx, this](TRTCalibrationResource** cr) -> tensorflow::Status {
+        return this->AllocateCalibrationResources(ctx, cr);
+      }});
+  if (!status.ok()) {
+    ctx->SetStatus(status);
+    return;
+  }
+  int num_inputs = ctx->num_inputs();
+  // Pass input data to calibrator
+  std::unordered_map<string, void*> input_data;
+  for (int i = 0; i < num_inputs; i++) {
+    const Tensor& t = ctx->input(i);
+    void* data_address = GetTensorAddress(&t);
+    if (data_address == nullptr) {
+      ctx->SetStatus(tensorflow::errors::InvalidArgument(
+          "Unsupported data type encountered in input ", i));
+      return;
+    }
+    // Check the allocated buffer is sufficient for input
+    const auto device_tensor = dev_tensors_.at(i).AccessTensor(ctx);
+    CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
+    input_data.emplace(StrCat(kInputPHName, i), data_address);
+  }
+  VLOG(2) << "Filled map for sending";
+  // copied from cuda_kernel_helper since it seems only valid in *.cu.cc files
+  const cudaStream_t* stream = CHECK_NOTNULL(
+      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
+                                                ->stream()
+                                                ->implementation()
+                                                ->CudaStreamMemberHack()));
+  calib_res->calibrator_->setBatch(input_data, *stream);
+  VLOG(2) << "Passed calibration data";
+  ExecuteNativeSegment(ctx, helper);
+}
+
+int TRTEngineOp::GetEngineBatch(tensorflow::OpKernelContext* ctx) {
+  int num_batch = ctx->input(0).shape().dim_size(0);
+  int smallest_engine = 0;
+  for (const auto i : cached_engine_batches_) {
+    if (i >= num_batch) {
+      smallest_engine = i;
       break;
     }
-    auto dtype = trt_engine_ptr_->getBindingDataType(binding_index);
+  }
+  // TODO(sami): Need an LRU here
+  if (smallest_engine == 0) {
+    if (max_cached_engines_ > cached_engine_batches_.size()) {
+      smallest_engine = num_batch;
+      cached_engine_batches_.push_back(num_batch);
+      VLOG(1) << "Running with batch size " << num_batch;
+    } else {
+      string s("Engine buffer is full. buffer limit= ");
+      StrAppend(&s, max_cached_engines_, ", current entries= ");
+      for (auto i : cached_engine_batches_) StrAppend(&s, i, ", ");
+      StrAppend(&s, "Requested batch= ", num_batch);
+      LOG(ERROR) << s;
+      ctx->SetStatus(tensorflow::errors::ResourceExhausted(
+          "Requested batch size is not available and engine cache is full"));
+      return -1;
+    }
+  }
+  return smallest_engine;
+}
+
+void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
+                               tensorflow::AsyncOpKernel::DoneCallback done) {
+  auto helper = new AsyncHelper(done);
+  tensorflow::core::ScopedUnref sc(helper);
+  if (calibration_mode_) {
+    ExecuteCalibration(ctx, helper);
+    return;
+  }
+  const int smallest_engine = GetEngineBatch(ctx);
+  if (smallest_engine < 0) return;  // GetEngineBatch already set the status.
+
+  const int num_batch = ctx->input(0).shape().dim_size(0);
+  auto& engine_ctx_pair = GetEngine(smallest_engine, ctx);
+  auto& trt_engine_ptr = engine_ctx_pair.first;
+  if (!trt_engine_ptr) {
+    LOG(WARNING) << "Engine retrieval for batch size " << num_batch
+                 << " failed Running native segment";
+    ExecuteNativeSegment(ctx, helper);
+    return;
+  }
+
+  const int num_binding = ctx->num_inputs() + ctx->num_outputs();
+  std::vector<void*> buffers(num_binding);
+  for (int i = 0; i < ctx->num_inputs(); i++) {
+    const string inp_name = StrCat(kInputPHName, i);
+    const size_t binding_index =
+        trt_engine_ptr->getBindingIndex(inp_name.c_str());
+
+    const Tensor& input_tensor = ctx->input(i);
+    const TensorShape& input_shape = input_tensor.shape();
+    if (num_batch != input_shape.dim_size(0)) {
+      LOG(ERROR) << "input data inconsistent batch size";
+      ctx->SetStatus(tensorflow::errors::FailedPrecondition(
+          "Different batch sizes between input tensors"));
+      return;
+    }
+    auto dtype = trt_engine_ptr->getBindingDataType(binding_index);
     switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
         buffers[binding_index] = (void*)(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(FATAL) << "half size is not supported yet!";
-        break;
+        LOG(ERROR) << "FP16 inputs are not supported yet!";
+        ctx->SetStatus(tensorflow::errors::InvalidArgument(
+            "FP16 inputs are not supported!"));
+        return;
       case nvinfer1::DataType::kINT8:
-        LOG(FATAL) << "int8 is not supported yet!";
-        break;
+        LOG(ERROR) << "INT8 inputs are not supported yet!";
+        ctx->SetStatus(tensorflow::errors::InvalidArgument(
+            "INT8 inputs are not supported!"));
+        return;
       default:
-        LOG(FATAL) << "Unknown data type: " << int(dtype);
-        break;
+        LOG(ERROR) << "Unknown TRT data type: " << int(dtype);
+        ctx->SetStatus(tensorflow::errors::InvalidArgument(
+            "Unknown ouput TRT data type! ", static_cast<int>(dtype)));
+        return;
     }
   }
 
-  for (int i = 0; i < static_cast<int>(output_nodes_.size()); i++) {
-    // This is bad that we have to reallocate output buffer every run.
+  for (int i = 0; i < ctx->num_outputs(); i++) {
     // Create an output tensor
-    binding_index = trt_engine_ptr_->getBindingIndex(output_nodes_[i].c_str());
+    const string output_name = StrCat(kOutputPHName, i);
+    const size_t binding_index = trt_engine_ptr->getBindingIndex(
+        output_name.c_str());
     Tensor* output_tensor = nullptr;
 
     TensorShape output_shape;
     if (binding_index != -1) {
-      auto dims = trt_engine_ptr_->getBindingDimensions(binding_index);
+      auto dims = trt_engine_ptr->getBindingDimensions(binding_index);
       std::vector<int> trt_shape(dims.nbDims + 1);
       trt_shape[0] = num_batch;
       for (int j = 0; j < dims.nbDims; j++) trt_shape[j + 1] = dims.d[j];
-      OP_REQUIRES_OK(context,
-                     TensorShapeUtils::MakeShape(
-                         trt_shape.data(), trt_shape.size(), &output_shape));
+      OP_REQUIRES_OK(
+          ctx, TensorShapeUtils::MakeShape(trt_shape.data(), trt_shape.size(),
+                                           &output_shape));
     } else {
-      LOG(FATAL) << "output node not found, at " << output_nodes_[i];
-      break;
+      LOG(ERROR) << "output node not found, at " << output_name;
+      ctx->SetStatus(tensorflow::errors::Internal("output ", output_name,
+                                                  " couldn't be found!"));
+      return;
     }
-
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(i, output_shape, &output_tensor));
-    auto dtype = trt_engine_ptr_->getBindingDataType(binding_index);
+    auto status = ctx->allocate_output(i, output_shape, &output_tensor);
+    if (!status.ok()) {
+      LOG(ERROR) << "Allocating output failed with " << status;
+      ctx->SetStatus(status);
+      return;
+    }
+    auto dtype = trt_engine_ptr->getBindingDataType(binding_index);
     switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
         buffers[binding_index] =
             reinterpret_cast<void*>(output_tensor->flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(FATAL) << "half size is not supported yet!";
-        break;
+        LOG(ERROR) << "half size is not supported yet!";
+        ctx->SetStatus(tensorflow::errors::InvalidArgument(
+            "Half outputs are not supported!"));
+        return;
       case nvinfer1::DataType::kINT8:
-        LOG(FATAL) << "int8 is not supported yet!";
-        break;
+        LOG(ERROR) << "int8 is not supported yet!";
+        ctx->SetStatus(tensorflow::errors::InvalidArgument(
+            "INT8 outputs are not supported!"));
+        return;
       default:
-        LOG(FATAL) << "Unknown data type: " << int(dtype);
-        break;
+        LOG(ERROR) << "Unknown TRT data type: " << static_cast<int>(dtype);
+        ctx->SetStatus(tensorflow::errors::InvalidArgument(
+            "Unsupported output data type! ", int(dtype)));
+        return;
     }
   }
   // copied from cuda_kernel_helper since it seems only valid in *.cu.cc files
   const cudaStream_t* stream = CHECK_NOTNULL(
-      reinterpret_cast<const cudaStream_t*>(context->op_device_context()
+      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
                                                 ->stream()
                                                 ->implementation()
                                                 ->GPUStreamMemberHack()));
 
   // TODO(jie): trt enqueue does not return error
-  auto ret = trt_execution_context_ptr_->enqueue(num_batch, &buffers[0],
-                                                 *stream, nullptr);
-  VLOG(2) << "enqueue returns: " << ret;
+  auto& trt_execution_context_ptr = engine_ctx_pair.second;
+  auto ret = trt_execution_context_ptr->enqueue(num_batch, &buffers[0], *stream,
+                                                nullptr);
+  if (!ret) {
+    LOG(ERROR) << "Failed to enqueue batch for TRT engine: " << name();
+    ctx->SetStatus(tensorflow::errors::Internal(
+        "Failed to enqueue batch for TRT engine: ", name()));
+  }
   // sync should be done by TF.
 }
+
 TRTEngineOp::~TRTEngineOp() {
-  // Order matters!
-  trt_execution_context_ptr_.reset();
-  trt_engine_ptr_.reset();
+  // We need to manually destroy the engine and execution context before
+  // the allocator is destructed.
+  for (auto& eng : engine_map_) {
+    eng.second.first.reset();
+    eng.second.second.reset();
+  }
   allocator_.reset();
 }
+
+nvinfer1::IGpuAllocator* TRTEngineOp::GetAllocator(OpKernelContext* ctx) {
+  if (allocator_) return allocator_.get();
+  auto device = ctx->device();
+  auto alloc = device->GetAllocator(tensorflow::AllocatorAttributes());
+  if (!alloc) {
+    LOG(ERROR) << "Can't find device allocator for gpu device "
+               << device->name();
+    ctx->SetStatus(tensorflow::errors::Internal(
+        "Can't get device allocator for device ", device->name()));
+    return nullptr;
+  }
+  allocator_.reset(new TRTDeviceAllocator(alloc));
+  return allocator_.get();
+}
+
+TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
+                                                  OpKernelContext* ctx) {
+  static EngineCtxPair null_pair = {
+    TrtUniquePtrType<nvinfer1::ICudaEngine>(nullptr),
+    TrtUniquePtrType<nvinfer1::IExecutionContext>(nullptr)};
+  // TODO(sami): This method needs to be re-written to use resource manager and
+  // with LRU mechanism option.
+  tensorflow::mutex_lock lock(engine_mutex_);
+
+  if (static_engine_) {
+    if (engine_map_.size()) {
+      if (engine_map_.begin()->first >= batch_size) {
+        return engine_map_.begin()->second;
+      }
+      return null_pair;
+    }
+    TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
+#if NV_TENSORRT_MAJOR > 3
+    auto allocator = GetAllocator(ctx);
+    if (allocator == nullptr) {
+      // GetAllocator already set the Status.
+      return null_pair;
+    }
+    infer->setGpuAllocator(allocator);
+#endif
+    TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
+        infer->deserializeCudaEngine(serialized_segment_.c_str(),
+                                     serialized_segment_.size(), nullptr));
+    auto raw_static_engine = static_engine.get();
+    const auto max_batch_size = raw_static_engine->getMaxBatchSize();
+    engine_map_[max_batch_size] = {
+      std::move(static_engine),
+      TrtUniquePtrType<nvinfer1::IExecutionContext>(
+          raw_static_engine->createExecutionContext())};
+    // Runtime is safe to delete after engine creation
+    serialized_segment_.clear();
+    if (max_batch_size < batch_size) return null_pair;
+    return engine_map_.at(max_batch_size);
+  }  // static_engine_
+
+  // Handle the dynamic engine case.
+  auto engine_it = engine_map_.find(batch_size);
+  if (engine_it == engine_map_.end() &&
+      engine_map_.size() < (size_t)max_cached_engines_) {
+    nvinfer1::IGpuAllocator* allocator = nullptr;
+#if NV_TENSORRT_MAJOR > 3
+    allocator = GetAllocator(ctx);
+    if (allocator == nullptr) {
+      // GetAllocator already set the Status.
+      return null_pair;
+    }
+#endif
+    std::vector<tensorflow::PartialTensorShape> shapes;
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      shapes.emplace_back(ctx->input(i).shape());
+    }
+    TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
+    bool convert_successfully = false;
+    VLOG(0) << name() << " Constructing a new engine with batch size "
+            << batch_size;
+    // Up to this point, calibrator_ can never be empty, since otherwise it
+    // means calibration_mode_ is true and this path won't get executed.
+    auto status = convert::ConvertGraphDefToEngine(
+        segment_graph_, precision_mode_, batch_size, workspace_size_, shapes,
+        &logger, allocator, calibrator_.get(), &engine, &convert_successfully);
+    if (!status.ok()) {
+      if (convert_successfully) {
+        // This means it fail to build the engine even when the network is built
+        // successfully, probably due to internal issues. In this case we don't
+        // retry in the future.
+        engine_map_[batch_size] = {nullptr, nullptr};
+      }
+      LOG(ERROR) << "Engine creation for batch size " << batch_size
+                 << " failed " << status;
+      ctx->SetStatus(tensorflow::errors::Internal("Engine creation failed!"));
+      return null_pair;
+    }
+    VLOG(1) << "Conversion is done";
+    TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
+        engine->createExecutionContext());
+    engine_map_[batch_size] = {std::move(engine), std::move(exec_context)};
+  }
+  return engine_map_.at(batch_size);
+}
+
+tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
+    tensorflow::OpKernelContext* ctx, TRTCalibrationResource** cr) {
+  auto cres = new TRTCalibrationResource();
+  *cr = cres;
+  // Get the allocator.
+  auto alloc = ctx->device()->GetAllocator(tensorflow::AllocatorAttributes());
+  if (!alloc) {
+    LOG(WARNING) << "Can't get device allocator will not be able to "
+                    "allocate memory from TensorFlow memory pool";
+    cres->allocator_.reset(new TRTCudaAllocator);
+  } else {
+    cres->allocator_.reset(new TRTDeviceAllocator(alloc));
+  }
+  // Get the input shapes.
+  const int batch_size = ctx->input(0).dim_size(0);
+  const int num_inputs = ctx->num_inputs();
+  std::vector<tensorflow::PartialTensorShape> shapes;
+  dev_tensors_.resize(num_inputs);
+  VLOG(1) << " Constructing calibrator";
+  for (int i = 0; i < num_inputs; i++) {
+    // allocate workspace on device for inputs
+    const tensorflow::Tensor& t = ctx->input(i);
+    shapes.emplace_back(t.shape());
+    Tensor* device_tensor;
+    TF_RETURN_IF_ERROR(ctx->allocate_persistent(
+        t.dtype(), t.shape(), &dev_tensors_.at(i), &device_tensor));
+    CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
+    void* device_address = GetTensorAddress(device_tensor);
+    if (device_address == nullptr) {
+      return tensorflow::errors::InvalidArgument(
+          "Unsupported data type encountered in input ", i);
+    }
+    device_buffers_.emplace(
+        StrCat(kInputPHName, i),
+        std::pair<void*, size_t>(device_address, device_tensor->TotalBytes()));
+  }
+  cres->calibrator_.reset(
+      new TRTInt8Calibrator(device_buffers_, batch_size, name()));
+  const string label(name());
+  auto segment_graph = &segment_graph_;
+  const int cuda_gpu_id = ctx->device()->tensorflow_gpu_device_info()->gpu_id;
+  if (cuda_gpu_id < 0) {
+    LOG(ERROR) << "Can't get gpu_device_info from context->device()";
+    return tensorflow::errors::InvalidArgument(
+        "Context->device doesn't contain device info!");
+  }
+  const int64 workspace_size_bytes = workspace_size_;
+  cres->thr_.reset(new std::thread([cres, label, segment_graph, shapes,
+                                    cuda_gpu_id, workspace_size_bytes]() {
+    VLOG(0) << "Starting calibration thread on device " << cuda_gpu_id
+            << ", Calibration Resource @ " << cres;
+    auto err = cudaSetDevice(cuda_gpu_id);
+    if (err != cudaSuccess) {
+      // TODO(aaroey): should return error here.
+      LOG(ERROR) << "Couldn't set cuda device to " << cuda_gpu_id
+                 << " in calibration thread";
+    }
+    // ConvertGraphDefToEngine() will try to build the engine. This thread
+    // will loop inside buildCudaEngine() consuming the calibration data
+    // that is set by the TF op, and drive the builder until calibrator returns
+    // false. Engine is discarded after calibration table is generated
+    //
+    // TODO(aaroey): maybe setting the max batch size using the python
+    // calibration wrapper class.
+    auto s = convert::ConvertGraphDefToEngine(
+        *segment_graph, convert::INT8MODE, cres->calibrator_->getBatchSize(),
+        workspace_size_bytes, shapes, &cres->logger_, cres->allocator_.get(),
+        cres->calibrator_.get(), &cres->engine_,
+        /*convert_successfully=*/nullptr);
+    if (!s.ok()) {
+      LOG(ERROR) << "Calibration failed: " << s;
+      cres->calibrator_->setDone();  // Ignore further pushes
+    }
+    VLOG(1) << "Calibration loop terminated " << label;
+  }));
+  VLOG(1) << "initialized calibrator resource";
+  return tensorflow::Status::OK();
+}
+
 REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);
 
 }  // namespace tensorrt

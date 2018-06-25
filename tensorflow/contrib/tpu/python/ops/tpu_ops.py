@@ -38,9 +38,8 @@ if platform.system() != "Windows":
 
   @ops.RegisterGradient("CrossReplicaSum")
   def _cross_replica_sum_grad(op, grad):
-    del op  # Unused
     # The gradient of a cross replica sum is also a cross-replica sum.
-    return gen_tpu_ops.cross_replica_sum(grad)
+    return gen_tpu_ops.cross_replica_sum(grad, op.get_attr("group_assignment"))
 
   # This extra type checking exists to give a more helpful error message in
   # the common case that uint8 and int64 values are infed. Remove when both

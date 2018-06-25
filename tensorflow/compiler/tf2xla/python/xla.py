@@ -77,4 +77,6 @@ def reduce_window(operand,
 recv = gen_xla_ops.xla_recv
 send = gen_xla_ops.xla_send
 
+sort = gen_xla_ops.xla_sort
+
 while_loop = gen_xla_ops.xla_while

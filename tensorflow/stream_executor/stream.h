@@ -156,14 +156,13 @@ class Stream {
                      const TypedKernel<Params...> &kernel, Args... args);
 
   // Record a "start" event for the interval timer at this point in the
-  // stream's
-  // execution (relative to the previously and subsequently enqueued items in
-  // the stream's execution). Streams may be started/stopped multiple times.
+  // stream's execution (relative to the previously and subsequently enqueued
+  // items in the stream's execution). Streams may be started/stopped multiple
+  // times.
   Stream &ThenStartTimer(Timer *t);
 
   // Record a "stop" event for the interval timer at this point in the
-  // stream's
-  // execution. See also Stream::ThenStartTimer.
+  // stream's execution. See also Stream::ThenStartTimer.
   Stream &ThenStopTimer(Timer *t);
 
   // TODO(leary) If work is added to the stream that is being depended upon,
@@ -179,8 +178,7 @@ class Stream {
   //
   // Checks that a stream does not wait for itself, and it is up to the
   // user to guarantee that a stream does not come to wait on itself in a
-  // cyclic
-  // manner; in that case, behavior is undefined.
+  // cyclic manner; in that case, behavior is undefined.
   //
   // N.B. Base recursion case for the variadic ThenWaitFor.
   Stream &ThenWaitFor(Stream *other);

@@ -54,7 +54,6 @@ tf_gpu_library(
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
-        "//tensorflow/core/distributed_runtime/rpc/eager:eager_grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
@@ -93,10 +92,10 @@ tf_gpu_library(
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
-        "//tensorflow/core/distributed_runtime/rpc/eager:eager_grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
     ],
 )
@@ -122,6 +121,7 @@ tf_gpu_library(
 
 tf_gpu_cc_test(
     name = "c_api_test",
+    size = "small",
     srcs = [
         "c_api_debug_test.cc",
         "c_api_test.cc",
@@ -139,7 +139,7 @@ tf_gpu_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/distributed_runtime/rpc/eager:eager_grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
     ],
 )
 

@@ -33,7 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_parsing_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -76,7 +76,7 @@ class CsvDatasetOpTest(test.TestCase):
     filenames = self.setup_files(inputs)
     dataset_expected = core_readers.TextLineDataset(filenames)
     dataset_expected = dataset_expected.map(
-        lambda l: gen_parsing_ops.decode_csv(l, **kwargs))
+        lambda l: parsing_ops.decode_csv(l, **kwargs))
     dataset_actual = readers.CsvDataset(filenames, **kwargs)
     return (dataset_actual, dataset_expected)
 
@@ -581,7 +581,7 @@ class CsvDatasetBenchmark(test.Benchmark):
       num_cols = self._num_cols[i]
       kwargs = {'record_defaults': [[0.0]] * num_cols}
       dataset = core_readers.TextLineDataset(self._filenames[i]).repeat()
-      dataset = dataset.map(lambda l: gen_parsing_ops.decode_csv(l, **kwargs))  # pylint: disable=cell-var-from-loop
+      dataset = dataset.map(lambda l: parsing_ops.decode_csv(l, **kwargs))  # pylint: disable=cell-var-from-loop
       self._runBenchmark(dataset, num_cols, 'csv_float_map_decode_csv')
     self._tearDown()
 
@@ -591,7 +591,7 @@ class CsvDatasetBenchmark(test.Benchmark):
       num_cols = self._num_cols[i]
       kwargs = {'record_defaults': [['']] * num_cols}
       dataset = core_readers.TextLineDataset(self._filenames[i]).repeat()
-      dataset = dataset.map(lambda l: gen_parsing_ops.decode_csv(l, **kwargs))  # pylint: disable=cell-var-from-loop
+      dataset = dataset.map(lambda l: parsing_ops.decode_csv(l, **kwargs))  # pylint: disable=cell-var-from-loop
       self._runBenchmark(dataset, num_cols, 'csv_strings_map_decode_csv')
     self._tearDown()
 

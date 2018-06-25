@@ -775,6 +775,13 @@ struct minimum : base<T, Eigen::internal::scalar_min_op<T>> {};
 template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
 
+// XXX FIXME ROCM TODO remove this after Eigen is updated
+#if !defined(TENSORFLOW_USE_ROCM)
+template <typename T>
+struct random_gamma_grad
+    : base<T, Eigen::internal::scalar_gamma_sample_der_alpha_op<T>> {};
+#endif
+
 template <typename T>
 struct igammac : base<T, Eigen::internal::scalar_igammac_op<T>> {};
 

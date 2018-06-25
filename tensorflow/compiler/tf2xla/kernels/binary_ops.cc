@@ -96,6 +96,7 @@ XLA_MAKE_BINARY(FloorMod,
 
 XLA_MAKE_BINARY(BitwiseAnd, b->And(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(BitwiseOr, b->Or(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(BitwiseXor, b->Xor(lhs, rhs, extend_dimensions));
 
 XLA_MAKE_BINARY(LeftShift, b->ShiftLeft(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(RightShift,

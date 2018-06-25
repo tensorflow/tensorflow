@@ -664,6 +664,7 @@ def generate_per_core_enqueue_ops_fn_for_host(
     ctx, input_fn, inputs_structure_recorder, host_device, host_id):
   """Generates infeed enqueue ops for per-core input_fn on a single host."""
   captured_infeed_queue = _CapturedObject()
+  tpu_ordinal_function_impl = ctx.tpu_ordinal_function(host_id)
 
   def enqueue_ops_fn():
     """A fn returns enqueue_ops."""
@@ -699,7 +700,7 @@ def generate_per_core_enqueue_ops_fn_for_host(
         per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
-        per_host_sharded_inputs, tpu_ordinal_function=ctx.tpu_ordinal_function)
+        per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
     return per_host_enqueue_ops
 
   return enqueue_ops_fn, captured_infeed_queue
@@ -734,19 +735,7 @@ def generate_per_host_enqueue_ops_fn_for_host(
     if is_dataset:
       hooks.append(inputs.dataset_initializer_hook())
 
-  # TODO(ylc): Refactoring the code to merge the tpu ordinal logic here and the
-  # _InternalTPUContext.tpu_ordinal_function. We should either introduce another
-  # abstraction or a different helper method.
-  def _tpu_ordinal_function_impl(shard_index_in_host):
-    # We put both enqueue/dequeue op at tpu.core(0) in each replica.
-    replica = ctx.device_assignment.lookup_replicas(
-        host_id, (0, 0, 0))[shard_index_in_host]
-    return ctx.device_assignment.tpu_ordinal(replica=replica)
-
-  if ctx.model_parallelism_enabled:
-    tpu_ordinal_function = _tpu_ordinal_function_impl
-  else:
-    tpu_ordinal_function = None
+    tpu_ordinal_function_impl = ctx.tpu_ordinal_function(host_id)
 
   def enqueue_ops_fn():
     """A Fn returning the TPU infeed enqueue ops.
@@ -782,7 +771,7 @@ def generate_per_host_enqueue_ops_fn_for_host(
           infeed_queue.split_inputs_and_generate_enqueue_ops(
               unsharded_tensor_list,
               placement_function=lambda x: device,
-              tpu_ordinal_function=tpu_ordinal_function))
+              tpu_ordinal_function=tpu_ordinal_function_impl))
       if signals is None:
         return per_host_enqueue_ops
       else:
@@ -816,6 +805,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
       raise TypeError('Most PREDICT not yet supported in PER_HOST_V2 mode.')
 
     hooks.append(inputs.dataset_initializer_hook())
+    tpu_ordinal_function_impl = ctx.tpu_ordinal_function(host_id)
 
   def enqueue_ops_fn():
     """Generates the per_host enqueue ops."""
@@ -846,7 +836,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
         per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
-        per_host_sharded_inputs, tpu_ordinal_function=ctx.tpu_ordinal_function)
+        per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
     return per_host_enqueue_ops
 
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
@@ -1146,7 +1136,7 @@ class _InputPipeline(object):
       err_msg = ('Input pipeline contains one or more QueueRunners. '
                  'It could be slow and not scalable. Please consider '
                  'converting your input pipeline to use `tf.data` instead (see '
-                 'https://www.tensorflow.org/programmers_guide/datasets for '
+                 'https://www.tensorflow.org/guide/datasets for '
                  'instructions.')
       if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
         raise RuntimeError(err_msg)
@@ -3115,7 +3105,7 @@ class _SignalsHelper(object):
 
   def __init__(self, signals):
     self._signal_keys = []
-    for key in sorted(signals.iterkeys()):
+    for key in sorted(iter(signals.keys())):
       self._signal_keys.append(key)
 
   @property
@@ -3127,7 +3117,7 @@ class _SignalsHelper(object):
 
   @staticmethod
   def as_tensor_list(signals):
-    return [signals[key] for key in sorted(signals.iterkeys())]
+    return [signals[key] for key in sorted(iter(signals.keys()))]
 
 
 def _verify_cross_hosts_transfer_size(tensor_dict, message):
