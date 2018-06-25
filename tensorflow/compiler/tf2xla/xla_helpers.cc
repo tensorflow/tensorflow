@@ -97,10 +97,46 @@ xla::XlaOp XlaHelpers::MinValue(xla::XlaBuilder* b, DataType data_type) {
   return b->ConstantLiteral(xla::Literal::MinValue(type));
 }
 
+xla::XlaOp XlaHelpers::MinFiniteValue(xla::XlaBuilder* b, DataType data_type) {
+  xla::PrimitiveType type;
+  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  switch (type) {
+    case xla::F16:
+      return b->ConstantR0<Eigen::half>(
+          Eigen::NumTraits<Eigen::half>::lowest());
+    case xla::BF16:
+      return b->ConstantR0<bfloat16>(bfloat16::lowest());
+    case xla::F32:
+      return b->ConstantR0<float>(-std::numeric_limits<float>::max());
+    case xla::F64:
+      return b->ConstantR0<double>(-std::numeric_limits<double>::max());
+    default:
+      return b->ConstantLiteral(xla::Literal::MinValue(type));
+  }
+}
+
 xla::XlaOp XlaHelpers::MaxValue(xla::XlaBuilder* b, DataType data_type) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   return b->ConstantLiteral(xla::Literal::MaxValue(type));
+}
+
+xla::XlaOp XlaHelpers::MaxFiniteValue(xla::XlaBuilder* b, DataType data_type) {
+  xla::PrimitiveType type;
+  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  switch (type) {
+    case xla::F16:
+      return b->ConstantR0<Eigen::half>(
+          Eigen::NumTraits<Eigen::half>::highest());
+    case xla::BF16:
+      return b->ConstantR0<bfloat16>(bfloat16::highest());
+    case xla::F32:
+      return b->ConstantR0<float>(std::numeric_limits<float>::max());
+    case xla::F64:
+      return b->ConstantR0<double>(std::numeric_limits<double>::max());
+    default:
+      return b->ConstantLiteral(xla::Literal::MaxValue(type));
+  }
 }
 
 xla::XlaOp XlaHelpers::Zero(xla::XlaBuilder* b, DataType data_type) {
