@@ -21,13 +21,14 @@ limitations under the License.
 #include <functional>
 #include <unordered_map>
 #include <vector>
+#include "tensorflow/contrib/lite/toco/toco_port.h"
 #if defined(PLATFORM_GOOGLE)
 #include "strings/split.h"
+#include "strings/strip.h"
 #endif
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 
 namespace toco {
@@ -145,8 +146,10 @@ class Arg<toco::StringMapList> final {
       }
       string outer_member_copy = outer_member;
       absl::StripAsciiWhitespace(&outer_member);
-      if (!TryStripPrefixString(outer_member, "{", &outer_member)) return false;
-      if (!TryStripSuffixString(outer_member, "}", &outer_member)) return false;
+      if (!strings::TryStripPrefixString(outer_member, "{", &outer_member))
+        return false;
+      if (!strings::TryStripSuffixString(outer_member, "}", &outer_member))
+        return false;
       const std::vector<string> inner_fields_vector =
           absl::StrSplit(outer_member, ',');
 

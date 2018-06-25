@@ -3143,7 +3143,7 @@ def _add_item_to_params(params, key, value):
   if isinstance(params, hparam.HParams):
     # For HParams, we need to use special API.
     if key in params:
-      params.key = value
+      params.set_hparam(key, value)
     else:
       params.add_hparam(key, value)
   else:
