@@ -27,6 +27,7 @@ from __future__ import print_function
 import functools
 import operator
 
+import six
 import tensorflow as tf
 from tensorflow.contrib.eager.python.examples.revnet import blocks
 
@@ -47,6 +48,7 @@ class RevNet(tf.keras.Model):
     self._init_block = self._construct_init_block()
     self._block_list = self._construct_intermediate_blocks()
     self._final_block = self._construct_final_block()
+    self._moving_stats_vars = None
 
   def _construct_init_block(self):
     init_block = tf.keras.Sequential(
@@ -153,7 +155,6 @@ class RevNet(tf.keras.Model):
   def call(self, inputs, training=True):
     """Forward pass."""
 
-    # Only store hidden states during training
     if training:
       saved_hidden = [inputs]
 
@@ -181,17 +182,22 @@ class RevNet(tf.keras.Model):
   def compute_gradients(self, inputs, labels, training=True):
     """Manually computes gradients.
 
+    This method also SILENTLY updates the running averages of batch
+    normalization when `training` is set to True.
+
     Args:
       inputs: Image tensor, either NHWC or NCHW, conforming to `data_format`
       labels: One-hot labels for classification
-      training: for batch normalization
+      training: Use the mini-batch stats in batch norm if set to True
 
     Returns:
-      list of tuple each being (grad, var) for optimizer use
+      list of tuples each being (grad, var) for optimizer to use
     """
 
-    # Forward pass record hidden states before downsampling
+    # Run forward pass to record hidden states; avoid updating running averages
+    vars_and_vals = self.get_moving_stats()
     _, saved_hidden = self.call(inputs, training=training)
+    self.restore_moving_stats(vars_and_vals)
 
     grads_all = []
     vars_all = []
@@ -201,6 +207,7 @@ class RevNet(tf.keras.Model):
     with tf.GradientTape() as tape:
       x = tf.identity(x)  # TODO(lxuechen): Remove after b/110264016 is fixed
       tape.watch(x)
+      # Running stats updated below
       logits = self._final_block(x, training=training)
       loss = self.compute_loss(logits, labels)
 
@@ -226,16 +233,38 @@ class RevNet(tf.keras.Model):
 
     with tf.GradientTape() as tape:
       x = tf.identity(x)  # TODO(lxuechen): Remove after b/110264016 is fixed
+      # Running stats updated below
       y = self._init_block(x, training=training)
 
     grads_all += tape.gradient(
         y, self._init_block.trainable_variables, output_gradients=[dy])
     vars_all += self._init_block.trainable_variables
 
+    # Apply weight decay
     grads_all = self._apply_weight_decay(grads_all, vars_all)
 
     return grads_all, vars_all, loss
 
   def _apply_weight_decay(self, grads, vars_):
     """Update gradients to reflect weight decay."""
-    return [g + self.config.weight_decay * v for g, v in zip(grads, vars_)]
+    # Don't decay bias
+    return [
+        g + self.config.weight_decay * v if v.name.endswith("kernel:0") else g
+        for g, v in zip(grads, vars_)
+    ]
+
+  def get_moving_stats(self):
+    vars_and_vals = {}
+
+    def _is_moving_var(v):
+      n = v.name
+      return n.endswith("moving_mean:0") or n.endswith("moving_variance:0")
+
+    for v in filter(_is_moving_var, self.variables):
+      vars_and_vals[v] = v.read_value()
+
+    return vars_and_vals
+
+  def restore_moving_stats(self, vars_and_vals):
+    for var_, val in six.iteritems(vars_and_vals):
+      var_.assign(val)
