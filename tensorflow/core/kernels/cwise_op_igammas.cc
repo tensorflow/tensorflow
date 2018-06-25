@@ -17,8 +17,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 namespace tensorflow {
-// XXX FIXME ROCM TODO re-enable after Eigen is updated
-#if 0
 REGISTER2(BinaryOp, CPU, "Igamma", functor::igamma, float, double);
 REGISTER2(BinaryOp, CPU, "IgammaGradA", functor::igamma_grad_a, float, double);
 REGISTER2(BinaryOp, CPU, "Igammac", functor::igammac, float, double);
@@ -26,6 +24,5 @@ REGISTER2(BinaryOp, CPU, "Igammac", functor::igammac, float, double);
 REGISTER2(BinaryOp, GPU, "Igamma", functor::igamma, float, double);
 REGISTER2(BinaryOp, GPU, "IgammaGradA", functor::igamma_grad_a, float, double);
 REGISTER2(BinaryOp, GPU, "Igammac", functor::igammac, float, double);
-#endif
 #endif
 }  // namespace tensorflow

@@ -21,10 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 DEFINE_BINARY2(igamma, float, double);
-// XXX FIXME ROCM TODO fix after Eigen gets updated
-#if 0
 DEFINE_BINARY2(igamma_grad_a, float, double);
-#endif
 DEFINE_BINARY2(igammac, float, double);
 }  // namespace functor
 }  // namespace tensorflow
