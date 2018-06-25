@@ -96,21 +96,21 @@ TEST_F(PredTest, ConstantR2Pred) {
 TEST_F(PredTest, AnyR1True) {
   XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<bool>({true, false});
-  TF_ASSERT_OK(Any(a, &builder).status());
+  Any(a);
   ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
 TEST_F(PredTest, AnyR1False) {
   XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<bool>({false, false});
-  TF_ASSERT_OK(Any(a, &builder).status());
+  Any(a);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 
 TEST_F(PredTest, AnyR1VacuouslyFalse) {
   XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<bool>({});
-  TF_ASSERT_OK(Any(a, &builder).status());
+  Any(a);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 
@@ -121,7 +121,7 @@ TEST_F(PredTest, AnyR2True) {
       {false, false, false},
       {false, false, true},
   });
-  TF_ASSERT_OK(Any(a, &builder).status());
+  Any(a);
   ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
@@ -132,7 +132,7 @@ TEST_F(PredTest, AnyR2False) {
       {false, false, false},
       {false, false, false},
   });
-  TF_ASSERT_OK(Any(a, &builder).status());
+  Any(a);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 

@@ -965,10 +965,8 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
 
   XlaBuilder cond("cond");
   auto cond_t = cond.Parameter(0, tuple_shape, "t");
-  TF_ASSERT_OK(Any(cond.Eq(cond.GetTupleElement(cond_t, 0),
-                           cond.ConstantR1<float>({42, 42})),
-                   &cond)
-                   .status());
+  Any(cond.Eq(cond.GetTupleElement(cond_t, 0),
+              cond.ConstantR1<float>({42, 42})));
 
   XlaBuilder body("body");
   auto body_t = body.Parameter(0, tuple_shape, "t");
@@ -997,8 +995,7 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
 
   XlaBuilder cond("cond");
   auto cond_t = cond.Parameter(0, element_shape, "t");
-  TF_ASSERT_OK(
-      Any(cond.Eq(cond_t, cond.ConstantR1<float>({42, 42})), &cond).status());
+  Any(cond.Eq(cond_t, cond.ConstantR1<float>({42, 42})));
 
   XlaBuilder body("body");
   body.Parameter(0, element_shape, "t");

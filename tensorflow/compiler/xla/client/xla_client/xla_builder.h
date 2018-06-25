@@ -826,6 +826,24 @@ class XlaBuilder {
   // Returns the (inferred) result for the current computation's shape.
   StatusOr<ProgramShape> GetProgramShape() const;
 
+  // Reports an error to the builder, by
+  // * storing it internally and capturing a backtrace if it's the first error
+  //   (this deferred value will be produced on the call to
+  //    Build()/GetShape()/...)
+  // * dying if die_immediately_on_error_ is true.
+  // Returns an XlaOp with an invalid handle but a valid builder. This value can
+  // be returned in place of a value in APIs that return an XlaOp.
+  XlaOp ReportError(const Status& error);
+
+  // A helper function that converts a StatusOr<XlaOp> into an XlaOp.
+  // If the Status was an error, reports the error to builder and returns an
+  // invalid XlaOp handle.
+  XlaOp ReportErrorOrReturn(const StatusOr<XlaOp>& op);
+
+  // A helper function that runs a function that returns a StatusOr<XlaOp> and
+  // returns an XlaOp.
+  XlaOp ReportErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
+
  private:
   StatusOr<XlaOp> AddInstruction(
       HloInstructionProto&& instr, HloOpcode opcode,
@@ -833,14 +851,6 @@ class XlaBuilder {
 
   void AddCalledComputation(const XlaComputation& computation,
                             HloInstructionProto* instr);
-
-  // Notes that the error occurred by:
-  // * storing it internally and capturing a backtrace if it's the first error
-  //   (this deferred value will be produced on the call to Build())
-  // * dying if die_immediately_on_error_ is true
-  void NoteError(const Status& error);
-
-  XlaOp NoteErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
 
   StatusOr<const HloInstructionProto*> LookUpInstruction(const XlaOp& op) const;
 

@@ -221,5 +221,32 @@ TEST_F(XlaBuilderTest, Transpose) {
   EXPECT_THAT(root, op::Transpose(op::Parameter()));
 }
 
+TEST_F(XlaBuilderTest, ReportError) {
+  XlaBuilder b(TestName());
+  auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  b.Add(b.ReportError(InvalidArgument("a test error")), x);
+  auto statusor = b.Build();
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(), HasSubstr("a test error"));
+}
+
+TEST_F(XlaBuilderTest, ReportErrorOrReturnHandlesNonErrors) {
+  XlaBuilder b(TestName());
+  StatusOr<XlaOp> op(b.ConstantR0<float>(1.0));
+  b.Add(b.ReportErrorOrReturn(op), b.ConstantR0<float>(2.0));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add(op::Constant(), op::Constant()));
+}
+
+TEST_F(XlaBuilderTest, ReportErrorOrReturnHandlesErrors) {
+  XlaBuilder b(TestName());
+  StatusOr<XlaOp> op(InvalidArgument("a test error"));
+  b.Add(b.ReportErrorOrReturn(op), b.ConstantR0<float>(2.0));
+  auto statusor = b.Build();
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(), HasSubstr("a test error"));
+}
+
 }  // namespace
 }  // namespace xla
