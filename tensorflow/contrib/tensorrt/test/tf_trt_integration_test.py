@@ -119,9 +119,8 @@ def GetMultiEngineGraphDef(dtype=dtypes.float32):
   return g.as_graph_def()
 
 
-TestGraph = namedtuple(
-    "TestGraph",
-    ["gdef", "num_expected_engines", "expected_output_dims"])
+TestGraph = namedtuple("TestGraph",
+                       ["gdef", "num_expected_engines", "expected_output_dims"])
 
 TEST_GRAPHS = {
     "SingleEngineGraph":
@@ -237,18 +236,10 @@ class TfTrtIntegrationTest(test_util.TensorFlowTestCase):
       self.assertEquals(num_engines,
                         TEST_GRAPHS[graph_key].num_expected_engines)
 
-  def laigdwritegraph(self, gdef, suffix, g, u=None, p=None, i=None, c=None):
-    graph_io.write_graph(
-        gdef, "/usr/local/google/home/laigd/ShareWithMac/tmp/",
-        "graph=%s-use_optimizer=%s-precision_mode=%s-dynamic_infer_engine=%s-dynamic_calib_engine=%s.pbtxt"
-        % (g, u, p, i, c)
-        if suffix != "original" else "graph=%s-%s.pbtxt" % (g, suffix))
-
   def _RunTest(self, graph_key, use_optimizer, precision_mode,
                dynamic_infer_engine, dynamic_calib_engine):
     assert precision_mode in [MODE_FP32, MODE_FP16, MODE_INT8]
     input_gdef = TEST_GRAPHS[graph_key].gdef
-    self.laigdwritegraph(input_gdef, "original", graph_key)
     self._VerifyGraphDef(graph_key, input_gdef)
 
     # Get reference result without running trt.
@@ -272,9 +263,6 @@ class TfTrtIntegrationTest(test_util.TensorFlowTestCase):
       else:
         calib_gdef = self._GetTrtGraph(input_gdef, precision_mode,
                                        dynamic_calib_engine)
-        self.laigdwritegraph(calib_gdef, "calibration", graph_key,
-                             use_optimizer, precision_mode,
-                             dynamic_infer_engine, dynamic_calib_engine)
         self._VerifyGraphDef(graph_key, calib_gdef, precision_mode, False,
                              dynamic_calib_engine)
         result = self._RunCalibration(graph_key, calib_gdef, self._input,
@@ -295,9 +283,6 @@ class TfTrtIntegrationTest(test_util.TensorFlowTestCase):
     else:
       trt_infer_gdef = self._GetTrtGraph(infer_gdef, precision_mode,
                                          dynamic_infer_engine)
-      self.laigdwritegraph(trt_infer_gdef, "inference", graph_key,
-                           use_optimizer, precision_mode, dynamic_infer_engine,
-                           dynamic_calib_engine)
       self._VerifyGraphDef(graph_key, trt_infer_gdef, precision_mode, True,
                            dynamic_infer_engine)
       result = self._RunGraph(graph_key, trt_infer_gdef, self._input,
