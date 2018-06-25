@@ -1,18 +1,38 @@
 # Release 1.9.0
 
 ## Major Features And Improvements
-* Update tf.keras to the Keras 2.1.6 API.
-* `tfe.Network` is deprecated. Please inherit from `tf.keras.Model`.
-* Adding support of core feature columns and losses to gradient boosted trees estimators.
-* The distributions.Bijector API supports broadcasting for Bijectors with new API changes. See [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/distributions/bijectors/Bijector) for more details.
-* Layered variable names have changed in the following conditions:
-  * Using `tf.keras.layers` with custom variable scopes.
-  * Using `tf.layers` in  a subclassed `tf.keras.Model` class. See [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers) for more details
-
+* Updated docs for `tf.keras`: New Keras-based [get started](http://tensorflow.org/versions/r1.9/get_started),
+  and [programmers guide page](http://tensorflow.org/versions/r1.9/programmers_guide/keras).
+* Update `tf.keras` to the Keras 2.1.6 API.
+* Added [`tf.keras.layers.CuDNNGRU`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/keras/layers/CuDNNGRU) and [`tf.keras.layers.CuDNNLSTM`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/keras/layers/CuDNNLSTM) layers. [Try it](https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb?linkId=53292082).
+* Adding support of core [feature columns](https://www.tensorflow.org/get_started/feature_columns) and [losses](https://www.tensorflow.org/api_docs/python/tf/losses) to [gradient boosted trees estimators](https://github.com/tensorflow/models/tree/master/official/boosted_trees).
+* The [python interface](https://tensorflow-dot-devsite.googleplex.com/versions/r1.9/api_docs/python/tf/contrib/lite)
+  for the [TFLite Optimizing Converter](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/toco/README.md)
+  has been expanded, and the command line interface (AKA: `toco`, `tflite_convert`) is once again
+  included in the standard `pip` installation.
+* Improved data-loading and text processing with:
+    * [`tf.decode_compressed`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/decode_compressed)
+    * [`tf.string_strip`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/string_strip)
+    * [`tf.strings.regex_full_match`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/strings/regex_full_match)
+* Added experimental support for new pre-made Estimators:
+  * [`tf.contrib.estimator.BaselineEstimator`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/estimator/BaselineEstimator)
+  * [`tf.contrib.estimator.RNNClassifier`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/estimator/RNNEstimator)
+  * [`tf.contrib.estimator.RNNEstimator`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/estimator/RNNClassifier)
+* The [distributions.Bijector](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/distributions/bijectors/Bijector)
+  API supports broadcasting for Bijectors with new API changes.
+  
 ## Breaking Chances
-  * If you're opening empty variable scopes; replace `variable_scope`('', ...) by `variable_scope`(`tf.get_variable_scope()`, ...).
+  * If you're opening empty variable scopes; replace `variable_scope('', ...)` by
+    `variable_scope(tf.get_variable_scope(), ...)`.
 
 ## Bug Fixes and Other Changes
+
+* `tfe.Network` is deprecated. Please inherit from `tf.keras.Model`.
+* Layered variable names have changed in the following conditions:
+  * Using `tf.keras.layers` with custom variable scopes.
+  * Using `tf.layers` in  a subclassed `tf.keras.Model` class. See
+    [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers) for more details
+
 * `tf.data`:
   * `Dataset.from_generator()` now accepts an `args` list, in order to create nested generators.
   * `Dataset.list_files()` now produces determinstic results when `shuffle=False` or a `seed` is passed.
