@@ -18,18 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 import itertools
+import warnings
 import numpy as np
 import six
-import warnings
-from collections import namedtuple
 
 from tensorflow.contrib import tensorrt as trt
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -38,7 +37,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
-# from tensorflow.python.platform import tf_logging
 
 INPUT_NAME = "input"
 OUTPUT_NAME = "output"
@@ -222,8 +220,6 @@ class TfTrtIntegrationTest(test_util.TensorFlowTestCase):
     for n in gdef.node:
       if n.op == "TRTEngineOp":
         num_engines += 1
-        # self.assertEquals(n.attr['serialized_segment'].WhichOneof('value'), 's')
-        # self.assertTrue(n.attr['serialized_segment'].HasField('s'))
         self.assertNotEqual("", n.attr["serialized_segment"].s)
         self.assertNotEqual("", n.attr["segment_funcdef_name"].s)
         self.assertEquals(n.attr["precision_mode"].s, precision_mode)
@@ -316,7 +312,7 @@ def GetTests():
   dynamic_calib_engine_options = [False, True]
   for (graph_key, use_optimizer, precision_mode,
        dynamic_infer_engine, dynamic_calib_engine) in itertools.product(
-           TEST_GRAPHS.keys(), use_optimizer_options, precision_mode_options,
+           TEST_GRAPHS, use_optimizer_options, precision_mode_options,
            dynamic_infer_engine_options, dynamic_calib_engine_options):
     if precision_mode == MODE_INT8:
       if not dynamic_calib_engine and dynamic_infer_engine:
