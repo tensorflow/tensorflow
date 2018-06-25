@@ -270,8 +270,7 @@ class LocalComputationBuilder {
 
   LocalOp Map(tensorflow::gtl::ArraySlice<LocalOp> operands,
               const LocalComputation& local_computation,
-              tensorflow::gtl::ArraySlice<int64> dimensions,
-              tensorflow::gtl::ArraySlice<LocalOp> static_operands);
+              tensorflow::gtl::ArraySlice<int64> dimensions);
 
   LocalOp Reduce(const LocalOp& operand, const LocalOp& init_value,
                  const LocalComputation& local_computation,

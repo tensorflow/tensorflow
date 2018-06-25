@@ -511,22 +511,14 @@ LocalOp LocalComputationBuilder::Rev(
 LocalOp LocalComputationBuilder::Map(
     tensorflow::gtl::ArraySlice<LocalOp> operands,
     const LocalComputation& local_computation,
-    tensorflow::gtl::ArraySlice<int64> dimensions,
-    tensorflow::gtl::ArraySlice<LocalOp> static_operands) {
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
   std::vector<XlaOp> xla_ops;
   xla_ops.reserve(operands.size());
   for (const auto& op : operands) {
     xla_ops.push_back(op.op());
   }
 
-  std::vector<XlaOp> static_xla_ops;
-  static_xla_ops.reserve(static_operands.size());
-  for (const auto& op : static_operands) {
-    static_xla_ops.push_back(op.op());
-  }
-
-  return builder_.Map(xla_ops, local_computation.computation(), dimensions,
-                      static_xla_ops);
+  return builder_.Map(xla_ops, local_computation.computation(), dimensions);
 }
 
 LocalOp LocalComputationBuilder::Reduce(

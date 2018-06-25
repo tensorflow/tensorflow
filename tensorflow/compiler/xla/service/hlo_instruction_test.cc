@@ -763,12 +763,12 @@ TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
   HloComputation::Builder builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
-  auto map_1_x = builder.AddInstruction(HloInstruction::CreateMap(
-      scalar_shape, {constant}, computation_x, /*static_operands=*/{}));
-  auto map_2_x = builder.AddInstruction(HloInstruction::CreateMap(
-      scalar_shape, {map_1_x}, computation_x, /*static_operands=*/{}));
-  auto map_3_y = builder.AddInstruction(HloInstruction::CreateMap(
-      scalar_shape, {map_2_x}, computation_y, /*static_operands=*/{}));
+  auto map_1_x = builder.AddInstruction(
+      HloInstruction::CreateMap(scalar_shape, {constant}, computation_x));
+  auto map_2_x = builder.AddInstruction(
+      HloInstruction::CreateMap(scalar_shape, {map_1_x}, computation_x));
+  auto map_3_y = builder.AddInstruction(
+      HloInstruction::CreateMap(scalar_shape, {map_2_x}, computation_y));
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto* fusion = computation->CreateFusionInstruction(
