@@ -1,37 +1,32 @@
 ; TODO(andydavis) Resolve relative path issue w.r.t invoking mlir-opt in RUN
 ; statements (perhaps through using lit config substitutions).
 ;
-; RUN: %S/../../mlir-opt %s -o - -check-parser-errors 2>&1 | FileCheck %s
+; RUN: %S/../../mlir-opt %s -o - -check-parser-errors
 
 ; Check different error cases.
-; TODO(jpienaar): This is checking the errors by simplify verifying the output.
 ; -----
 
-; CHECK: expected type
-; CHECK-NEXT: illegaltype
-extfunc @illegaltype(i42)
+extfunc @illegaltype(i42) ; expected-error {{expected type}}
 
 ; -----
-; CHECK: expected type
-; CHECK-NEXT: nestedtensor
-extfunc @nestedtensor(tensor<tensor<i8>>) -> ()
+
+extfunc @nestedtensor(tensor<tensor<i8>>) -> () ; expected-error {{expected type}}
 
 ; -----
-; CHECK: expected '{' in CFG function
+
 cfgfunc @foo()
-cfgfunc @bar()
+cfgfunc @bar() ; expected-error {{expected '{' in CFG function}}
 
 ; -----
-; CHECK: expected a function identifier like
-; CHECK-NEXT: missingsigil
-extfunc missingsigil() -> (i1, int, f32)
+
+extfunc missingsigil() -> (i1, int, f32) ; expected-error {{expected a function identifier like}}
 
 
 ; -----
 
 cfgfunc @bad_branch() {
 bb42:
-  br missing  ; CHECK: error: reference to an undefined basic block 'missing'
+  br missing  ; expected-error {{reference to an undefined basic block 'missing'}}
 }
 
 ; -----
@@ -39,6 +34,16 @@ bb42:
 cfgfunc @block_redef() {
 bb42:
   return
-bb42:        ; CHECK: error: redefinition of block 'bb42'
+bb42:        ; expected-error {{redefinition of block 'bb42'}}
+  return
+}
+
+; -----
+
+cfgfunc @no_terminator() {
+bb40:
+  return
+bb41:
+bb42:        ; expected-error {{expected terminator}}
   return
 }
