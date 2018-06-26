@@ -69,7 +69,7 @@ inline int32 LogPositiveValuesViaFloat(int32 input_val, int input_integer_bits,
 void CheckOutputData(const std::vector<int32>& test_output,
                      const std::vector<int32>& reference_output,
                      const std::vector<int32>& test_input,
-                     const string& check_label, int input_integer_bits,
+                     const std::string& check_label, int input_integer_bits,
                      int output_integer_bits, int tolerance) {
   // In the special case of small input, specifically raw value of 5, a rounding
   // up leads to difference in the output.  We do not aim to be accurate for
@@ -117,7 +117,7 @@ void RightShiftVector(const std::vector<int32>& shifts,
 
 template <int OutputIntegerBits, int InputIntegerBits>
 void RunSingleTest(const std::vector<int32>& test_input,
-                   const string& check_label, int tolerance) {
+                   const std::string& check_label, int tolerance) {
   const int n = test_input.size();
   std::vector<int32> float_gen_output(n, 0);
   std::vector<int32> reference_output(n, 0);
@@ -175,7 +175,7 @@ void RunSingleTest(const std::vector<int32>& test_input,
 
 template <int OutputIntegerBits>
 void RunSingleTest(const std::vector<int32>& test_input, int input_integer_bits,
-                   const string& check_label, int tolerance) {
+                   const std::string& check_label, int tolerance) {
 #define INPUT_CASE(K)                                                   \
   case K:                                                               \
     return RunSingleTest<OutputIntegerBits, K>(test_input, check_label, \
@@ -219,7 +219,7 @@ void RunSingleTest(const std::vector<int32>& test_input, int input_integer_bits,
 }
 
 void RunSingleTest(const std::vector<int32>& test_input, int input_integer_bits,
-                   int output_integer_bits, const string& check_label,
+                   int output_integer_bits, const std::string& check_label,
                    int tolerance) {
 #define OUTPUT_CASE(K)                                                   \
   case K:                                                                \
@@ -264,7 +264,7 @@ void RunSingleTest(const std::vector<int32>& test_input, int input_integer_bits,
 }
 
 void RunUniformTest(int test_size, int input_integer_bits,
-                    int output_integer_bits, const string& check_label,
+                    int output_integer_bits, const std::string& check_label,
                     int tolerance, NumberGenerator* generator) {
   std::vector<int> test_data = generator->RandomIntVector(
       test_size, 2, std::numeric_limits<int>::max() - 1);
@@ -281,7 +281,7 @@ void RunUniformTest(int test_size, int input_integer_bits,
 
 void RunUniformShiftUniformTest(int test_size, int input_integer_bits,
                                 int output_integer_bits,
-                                const string& check_label, int tolerance,
+                                const std::string& check_label, int tolerance,
                                 NumberGenerator* generator) {
   std::vector<int> test_data = generator->RandomIntVector(
       test_size, 2, std::numeric_limits<int>::max() - 1);
