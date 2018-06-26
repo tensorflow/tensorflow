@@ -552,6 +552,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "ignite",
       urls = [
+          "https://mirror.bazel.build/github.com/apache-ignite/apache-ignite/archive/apche-ignite-2.4.0-src.zip",
           "https://archive.apache.org/dist/ignite/2.4.0/apache-ignite-2.4.0-src.zip",
       ],
       sha256 = "8e613f10deaa6f5fd0e49744e7280c09a510c9fb85ad661f1b1ca322d627e90a",
