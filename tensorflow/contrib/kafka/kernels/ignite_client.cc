@@ -24,7 +24,7 @@ limitations under the License.
 #include <unistd.h>
 #include <map>
 
-#include "ignite_binary_object_parser.h"
+// #include "ignite_binary_object_parser.h"
 
 namespace ignite {
 
