@@ -7,6 +7,7 @@ import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/function.proto";
 import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
 
 message RemoteTensorHandle {
   // The ID of the operation that produced this tensor.
@@ -43,6 +44,10 @@ message QueueItem {
     RemoteTensorHandle handle_to_decref = 1;
     Operation operation = 2;
   }
+}
+
+message QueueResponse {
+  repeated TensorShapeProto shape = 1;
 }
 
 message CreateContextRequest {
@@ -84,6 +89,8 @@ message EnqueueRequest {
 }
 
 message EnqueueResponse {
+  // A single operation response for every item in the request.
+  repeated QueueResponse queue_response = 1;
 }
 
 message WaitQueueDoneRequest {
