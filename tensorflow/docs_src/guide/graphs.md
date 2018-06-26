@@ -93,7 +93,7 @@ to all API functions in the same context.  For example:
   stored value. The @{tf.Variable} object also has methods such as
   @{tf.Variable.assign$`assign`} and @{tf.Variable.assign_add$`assign_add`} that
   create @{tf.Operation} objects that, when executed, update the stored value.
-  (See @{$programmers_guide/variables} for more information about variables.)
+  (See @{$guide/variables} for more information about variables.)
 
 * Calling @{tf.train.Optimizer.minimize} will add operations and tensors to the
   default graph that calculates gradients, and return a @{tf.Operation} that,
