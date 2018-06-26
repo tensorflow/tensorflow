@@ -27,3 +27,11 @@ curl https://bazel.build/bazel-release.pub.gpg | sudo apt-key add -
 apt-get update
 rm -rf /usr/local/bin/bazel
 apt-get install -y bazel python3 python3-numpy python3-dev python3-pip
+
+# We're using Ubuntu 14.04 as our base image because that's needed by the Pi
+# cross-compilation chain, but that doesn't have built-in Python 3.5 support, so
+# install from a separate repository.
+apt-get install -y software-properties-common
+add-apt-repository ppa:fkrull/deadsnakes
+apt-get update
+apt-get install -y python3.5 python3.5-dev
