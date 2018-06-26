@@ -30,8 +30,13 @@ class IgniteDataset(Dataset):
   This dataset reads data from specified cache from Apache Ignite.
   For now (as long as connection is made with 'fat' client) only caches
   with integer keys and string values are supported.
-  To configure fat client environment variable 'TF_IGNITE_CLIENT_CONFIG' should be set and contain path
-  to Apache Ignite client config (sample config can be found in '../../sample_configs' folder).
+  To configure 'fat' client some environment variables should be set:
+  LD_LIBRARY_PATH should be set in such a way that it contains libjvm.so, for example
+  export LD_LIBRARY_PATH=/usr/lib/jvm/java-8-oracle/jre/lib/amd64/server/
+  IGNITE_HOME should point to Apache Ignite installation directory, for example
+  export IGNITE_HOME=~/apache-ignite-fabric-2.4.0-bin
+  TF_IGNITE_CLIENT_CONFIG should point to client ignite node config, for example
+  export TF_IGNITE_CLIENT_CONFIG=../../sample_configs/client.xml
   """
 
   def __init__(self, cache):
