@@ -314,16 +314,47 @@ class FullyConnected
       flatbuffers::FlatBufferBuilder* builder) const override {
     auto activation_function =
         ActivationFunction::Serialize(op.fused_activation_function);
-    return ::tflite::CreateFullyConnectedOptions(*builder, activation_function);
+    ::tflite::FullyConnectedOptionsWeightsFormat tflite_weights_format;
+    switch (op.weights_format) {
+      case FullyConnectedWeightsFormat::kDefault:
+        tflite_weights_format =
+            ::tflite::FullyConnectedOptionsWeightsFormat_DEFAULT;
+        break;
+      case FullyConnectedWeightsFormat::kShuffled4x16Int8:
+        tflite_weights_format =
+            ::tflite::FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8;
+        break;
+      default:
+        LOG(ERROR) << "Unhandled FC weights format";
+        tflite_weights_format =
+            ::tflite::FullyConnectedOptionsWeightsFormat_DEFAULT;
+    }
+    return ::tflite::CreateFullyConnectedOptions(*builder, activation_function,
+                                                 tflite_weights_format);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
+    switch (options.weights_format()) {
+      case ::tflite::FullyConnectedOptionsWeightsFormat_DEFAULT:
+        op->weights_format = FullyConnectedWeightsFormat::kDefault;
+        break;
+      case ::tflite::FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8:
+        op->weights_format = FullyConnectedWeightsFormat::kShuffled4x16Int8;
+        break;
+      default:
+        LOG(ERROR) << "Unhandled FC weights format";
+        op->weights_format = FullyConnectedWeightsFormat::kDefault;
+    }
   }
 
-  int GetVersion(const Operator& op) const override { return 1; }
+  int GetVersion(const Operator& op) const override {
+    const auto& fc_op = static_cast<const FullyConnectedOperator&>(op);
+    return fc_op.weights_format == FullyConnectedWeightsFormat::kDefault ? 1
+                                                                         : 2;
+  }
 };
 
 class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,

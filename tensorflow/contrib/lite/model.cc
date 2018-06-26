@@ -444,6 +444,18 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_FullyConnectedOptions()) {
         params->activation = parse_activation(
             fully_connected_params->fused_activation_function());
+        switch (fully_connected_params->weights_format()) {
+          case FullyConnectedOptionsWeightsFormat_DEFAULT:
+            params->weights_format = kTfLiteFullyConnectedWeightsFormatDefault;
+            break;
+          case FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8:
+            params->weights_format =
+                kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8;
+            break;
+          default:
+            error_reporter->Report("Unhandled fully-connected weights format.");
+            return kTfLiteError;
+        }
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;

@@ -294,9 +294,18 @@ table BidirectionalSequenceRNNOptions {
   fused_activation_function:ActivationFunctionType;
 }
 
+enum FullyConnectedOptionsWeightsFormat: byte {
+  DEFAULT = 0,
+  SHUFFLED4x16INT8 = 1,
+}
+
 // An implementation of TensorFlow fully_connected (a.k.a Dense) layer.
 table FullyConnectedOptions {
+  // Parameters for FullyConnected version 1 or above.
   fused_activation_function:ActivationFunctionType;
+
+  // Parameters for FullyConnected version 2 or above.
+  weights_format:FullyConnectedOptionsWeightsFormat = DEFAULT;
 }
 
 table SoftmaxOptions {
