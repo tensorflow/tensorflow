@@ -848,7 +848,8 @@ class Estimator(object):
                                strip_default_attrs,
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
-                               export_tags=None):
+                               export_tags=None,
+                               check_variables=True):
     # pylint: disable=line-too-long
     """Loads variables and adds them along with a MetaGraphDef for saving.
 
@@ -869,6 +870,10 @@ class Estimator(object):
       mode: tf.estimator.ModeKeys value indicating which mode will be exported.
       export_tags: The set of tags with which to save `MetaGraphDef`. If None,
         a default set will be selected to matched the passed mode.
+      check_variables: bool, whether to check the checkpoint has all variables.
+
+    Raises:
+      ValueError: if `save_variables` is `True` and `check_variable` is `False`.
     """
     # pylint: enable=line-too-long
     if export_tags is None:
@@ -909,16 +914,20 @@ class Estimator(object):
         # SavedModel for restore later.
         graph_saver = estimator_spec.scaffold.saver or saver.Saver(sharded=True)
 
-        try:
-          graph_saver.restore(session, checkpoint_path)
-        except errors.NotFoundError as e:
-          msg = ('Could not load all requested variables from the checkpoint. '
-                 'Please make sure your model_fn does not expect variables '
-                 'that were not saved in the checkpoint.\n\n'
-                 'Encountered error with mode `{}` while restoring checkpoint '
-                 'from: `{}`. Full Traceback:\n\n{}').format(
-                     mode, checkpoint_path, e)
-          raise ValueError(msg)
+        if save_variables and not check_variables:
+          raise ValueError('If `save_variables` is `True, `check_variables`'
+                           'must not be `False`.')
+        if check_variables:
+          try:
+            graph_saver.restore(session, checkpoint_path)
+          except errors.NotFoundError as e:
+            msg = ('Could not load all requested variables from checkpoint. '
+                   'Please make sure your model_fn does not expect variables '
+                   'that were not saved in the checkpoint.\n\n'
+                   'Encountered error with mode `{}` while restoring '
+                   'checkpoint from: `{}`. Full Traceback:\n\n{}').format(
+                       mode, checkpoint_path, e)
+            raise ValueError(msg)
 
         # We add the train op explicitly for now, so that we don't have to
         # change the Builder public interface. Note that this is a no-op
