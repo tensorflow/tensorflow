@@ -261,9 +261,9 @@ class _ResidualTest(tf.test.TestCase):
 
       y_tr, y_ev = residual(x, training=True), residual(x, training=False)
       x_ = residual.backward(y_ev, training=False)
-      self.assertAllClose(x, x_)
+      self.assertAllClose(x, x_, rtol=1e-4, atol=1e-4)
       x_ = residual.backward(y_tr, training=True)  # This updates moving avg
-      self.assertAllClose(x, x_)
+      self.assertAllClose(x, x_, rtol=1e-4, atol=1e-4)
 
   def test_backward_grads_and_vars_channels_first(self):
     """Test `backward_grads` function with `channels_first` data format."""
