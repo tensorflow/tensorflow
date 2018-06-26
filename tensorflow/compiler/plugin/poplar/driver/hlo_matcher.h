@@ -99,9 +99,6 @@ class HloMatcher : public HloPassInterface {
   // The list of patterns to try to find in the computations
   std::vector<HloMatcherPattern> patterns_;
 
-  // The list of instructions visited while searching for each pattern
-  std::set<HloInstruction*> visited_;
-
   // A vector of lists of matches found. One vector entry per pattern, one list
   // entry per match in the computation
   std::vector<std::list<HloMatcherMatched>> matches_;
