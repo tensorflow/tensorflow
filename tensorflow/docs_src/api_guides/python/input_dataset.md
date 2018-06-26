@@ -2,8 +2,7 @@
 [TOC]
 
 @{tf.data.Dataset} allows you to build complex input pipelines. See the
-@{$datasets$programmer's guide} for an in-depth explanation of how to use this
-API.
+@{$guide/datasets} for an in-depth explanation of how to use this API.
 
 ## Reader classes
 

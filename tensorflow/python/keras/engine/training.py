@@ -31,12 +31,11 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine.base_layer import DeferredTensor
-from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.ops import array_ops
@@ -523,7 +522,7 @@ class Model(Network):
 
             # Keep track of state updates created by
             # stateful metrics (i.e. metrics layers).
-            if isinstance(metric_fn, Layer) and metric_fn.stateful:
+            if isinstance(metric_fn, base_layer.Layer) and metric_fn.stateful:
               self.stateful_metric_names.append(metric_name)
               self.stateful_metric_functions.append(metric_fn)
               self.metrics_updates += metric_fn.updates
@@ -959,11 +958,17 @@ class Model(Network):
         whether to build the model's graph in inference mode (False), training
         mode (True), or using the Keras learning phase (None).
     """
-    if not getattr(self, '_uses_inputs_arg', True):
+    call_convention = getattr(
+        self,
+        '_call_convention',
+        base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT)
+    if call_convention not in (
+        base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT,
+        base_layer.CallConvention.SINGLE_POSITIONAL_ARGUMENT):
       raise NotImplementedError(
-          'Subclassed Models without "inputs" in their call() signatures do '
-          'not yet support shape inference. File a feature request if this '
-          'limitation bothers you.')
+          'Subclassed Models without "inputs" (or single positional arguments) '
+          'in their call() signatures do not yet support shape inference. File '
+          'a feature request if this limitation bothers you.')
     if self.__class__.__name__ == 'Sequential':
       # Note: we can't test whether the model is `Sequential` via `isinstance`
       # since `Sequential` depends on `Model`.
@@ -1020,11 +1025,11 @@ class Model(Network):
     else:
       dummy_output_values = [dummy_output_values]
     self.outputs = [
-        DeferredTensor(shape=(None for _ in v.shape),
-                       dtype=v.dtype) for v in dummy_output_values]
+        base_layer.DeferredTensor(shape=(None for _ in v.shape),
+                                  dtype=v.dtype) for v in dummy_output_values]
     self.inputs = [
-        DeferredTensor(shape=(None for _ in v.shape),
-                       dtype=v.dtype) for v in dummy_input_values]
+        base_layer.DeferredTensor(shape=(None for _ in v.shape),
+                                  dtype=v.dtype) for v in dummy_input_values]
     self.input_names = [
         'input_%d' % (i + 1) for i in range(len(dummy_input_values))]
     self.output_names = [
