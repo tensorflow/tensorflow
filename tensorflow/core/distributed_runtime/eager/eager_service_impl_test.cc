@@ -51,12 +51,6 @@ class TestEagerServiceImpl : public EagerServiceImpl {
   }
 };
 
-class TestEagerServiceImplEx : public EagerServiceImplEx {
- public:
-  explicit TestEagerServiceImplEx(const  WorkerEnv* rm) : EagerServiceImplEx(rm) {
- }
-};
-
 class EagerServiceImplTest : public ::testing::Test {
  public:
   EagerServiceImplTest()
@@ -158,77 +152,6 @@ tensorflow::FunctionDef MatMulFunction() {
   return def;
 }
 
-
-TEST(EagerServiceImplTestEx, BasicTest0) {
-  WorkerEnv worker_env_;
-  TestEagerServiceImplEx eager_service_impl(&worker_env_);
-
-  CreateContextRequest request;
-  request.mutable_server_def()->set_job_name("localhost");
-  request.mutable_server_def()->set_task_index(0);
-  request.set_rendezvous_id(random::New64());
-  CreateContextResponse response;
-
-  TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
-
-  uint64 context_id = response.context_id();
-
-  EnqueueRequest remote_enqueue_request;
-  remote_enqueue_request.set_context_id(context_id);
-  EnqueueResponse remote_enqueue_response;
-
-  std::unordered_map<string, AttrValue> const_attrs;
-  AttrValue val;
-  val.set_type(tensorflow::DataType::DT_FLOAT);
-  const_attrs.insert({"dtype", val});
-  val.Clear();
-  SetTensorProto(&val);
-  const_attrs.insert({"value", val});
-
-  AddOperationToEnqueueRequest(1, "Const", {}, const_attrs,
-                               "/job:localhost/replica:0/task:0/device:CPU:0",
-                               &remote_enqueue_request);
-
-  std::unordered_map<string, AttrValue> attrs;
-  val.Clear();
-  val.set_type(tensorflow::DataType::DT_FLOAT);
-  attrs.insert({"T", val});
-  val.Clear();
-  val.set_b(false);
-  attrs.insert({"transpose_a", val});
-  attrs.insert({"transpose_b", val});
-
-  AddOperationToEnqueueRequest(2, "MatMul", {{1, 0}, {1, 0}}, attrs,
-                               "/job:localhost/replica:0/task:0/device:CPU:0",
-                               &remote_enqueue_request);
-
-  TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
-                                          &remote_enqueue_response));
-
-  tensorflow::TensorHandle* tensor_handle;
-  TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
-      response.context_id(), RemoteTensorHandleInternal(2, 0), &tensor_handle));
-
-  // This should be OK to do since we've placed all computation on the CPU
-  // device.
-  const tensorflow::Tensor* t = nullptr;
-  TF_ASSERT_OK(tensor_handle->Tensor(&t));
-
-  auto actual = t->flat<float>();
-
-  EXPECT_EQ(4, actual.size());
-
-  EXPECT_EQ(7, actual(0));
-  EXPECT_EQ(10, actual(1));
-  EXPECT_EQ(15, actual(2));
-  EXPECT_EQ(22, actual(3));
-
-  CloseContextRequest close_context_request;
-  close_context_request.set_context_id(context_id);
-  CloseContextResponse close_context_response;
-  TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
-                                               &close_context_response));
-}
 // Test creates a context and attempts to execute some ops.
 TEST_F(EagerServiceImplTest, BasicTest) {
   TestEagerServiceImpl eager_service_impl(&worker_env_);
