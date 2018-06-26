@@ -80,6 +80,9 @@ TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
 TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s, const char* name = "min");
 
+TF_Operation* Mul(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                  TF_Status* s, const char* name = "mul");
+
 // If `op_device` is non-empty, set the created op on that device.
 TF_Operation* MinWithDevice(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                             const string& op_device, TF_Status* s,
