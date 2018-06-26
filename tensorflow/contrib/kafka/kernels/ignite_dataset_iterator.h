@@ -43,6 +43,7 @@ class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> 
   char* data;
   int remainder;
   bool last_page;
+  long cursor_id;
 };
 
 } // namespace ignite
