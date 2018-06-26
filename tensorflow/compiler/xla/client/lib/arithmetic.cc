@@ -111,14 +111,17 @@ XlaComputation CreateScalarOrComputation(XlaBuilder* builder) {
       });
 }
 
-StatusOr<XlaOp> Any(const XlaOp& predicates, XlaBuilder* builder) {
-  auto f = builder->ConstantR0<bool>(false);
-  XlaComputation logical_or = CreateScalarOrComputation(builder);
-  TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
-                      builder->GetShape(predicates));
-  std::vector<int64> all_dimensions(ShapeUtil::Rank(predicates_shape));
-  std::iota(all_dimensions.begin(), all_dimensions.end(), 0);
-  return builder->Reduce(predicates, f, logical_or, all_dimensions);
+XlaOp Any(XlaOp predicates) {
+  XlaBuilder* builder = predicates.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    auto f = builder->ConstantR0<bool>(false);
+    XlaComputation logical_or = CreateScalarOrComputation(builder);
+    TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
+                        builder->GetShape(predicates));
+    std::vector<int64> all_dimensions(ShapeUtil::Rank(predicates_shape));
+    std::iota(all_dimensions.begin(), all_dimensions.end(), 0);
+    return builder->Reduce(predicates, f, logical_or, all_dimensions);
+  });
 }
 
 namespace {
@@ -164,7 +167,7 @@ std::array<float, 6> kErfUCoefficient = {
 
 // Evaluate the polynomial given coefficients and `x`.
 // N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(const XlaOp& x,
+XlaOp EvaluatePolynomial(XlaOp x,
                          tensorflow::gtl::ArraySlice<float> coefficients,
                          PrimitiveType data_type) {
   XlaBuilder* b = x.builder();
@@ -176,7 +179,7 @@ XlaOp EvaluatePolynomial(const XlaOp& x,
 }
 
 // Compute an approximation of the error function complement (1 - erf(x)).
-XlaOp Erfc(const XlaOp& x, PrimitiveType data_type) {
+XlaOp Erfc(XlaOp x, PrimitiveType data_type) {
   XlaBuilder* b = x.builder();
   XlaOp zero = FloatLiteral(b, data_type, 0.0);
   XlaOp two = FloatLiteral(b, data_type, 2.0);
@@ -197,7 +200,7 @@ XlaOp Erfc(const XlaOp& x, PrimitiveType data_type) {
 }
 
 // Compute a polynomial approximation of the error function.
-XlaOp Erf(const XlaOp& x, PrimitiveType data_type) {
+XlaOp Erf(XlaOp x, PrimitiveType data_type) {
   XlaBuilder* b = x.builder();
   XlaOp z = b->Mul(x, x);
   XlaOp pt = EvaluatePolynomial(z, kErfTCoefficient, data_type);
@@ -217,38 +220,40 @@ XlaOp Erf(const XlaOp& x, PrimitiveType data_type) {
 //     p = sum_{i=1}^n gq[i]*w^i
 //   }
 //   return p*x
-StatusOr<XlaOp> ErfInv(const XlaOp& x) {
+XlaOp ErfInv(XlaOp x) {
   XlaBuilder* b = x.builder();
-  TF_ASSIGN_OR_RETURN(Shape shape, b->GetShape(x));
-  constexpr int kDegree = 9;
-  constexpr std::array<float, 9> w_less_than_5_constants = {
-      2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
-      -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
-      -0.00417768164f,  0.246640727f,    1.50140941f};
-  constexpr std::array<float, 9> w_greater_than_5_constants = {
-      -0.000200214257f, 0.000100950558f, 0.00134934322f,
-      -0.00367342844f,  0.00573950773f,  -0.0076224613f,
-      0.00943887047f,   1.00167406f,     2.83297682f};
+  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, b->GetShape(x));
+    constexpr int kDegree = 9;
+    constexpr std::array<float, 9> w_less_than_5_constants = {
+        2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
+        -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
+        -0.00417768164f,  0.246640727f,    1.50140941f};
+    constexpr std::array<float, 9> w_greater_than_5_constants = {
+        -0.000200214257f, 0.000100950558f, 0.00134934322f,
+        -0.00367342844f,  0.00573950773f,  -0.0076224613f,
+        0.00943887047f,   1.00167406f,     2.83297682f};
 
-  auto one = b->ConstantR0<float>(1.0);
-  auto w = b->Neg(b->Log(b->Mul(b->Sub(one, x), b->Add(one, x))));
+    auto one = b->ConstantR0<float>(1.0);
+    auto w = b->Neg(b->Log(b->Mul(b->Sub(one, x), b->Add(one, x))));
 
-  auto lt = b->Lt(w, b->ConstantR0<float>(5.0));
-  auto coefficient = [&](int i) {
-    return b->Select(
-        lt,
-        b->Broadcast(b->ConstantR0<float>(w_less_than_5_constants[i]),
-                     AsInt64Slice(shape.dimensions())),
-        b->Broadcast(b->ConstantR0<float>(w_greater_than_5_constants[i]),
-                     AsInt64Slice(shape.dimensions())));
-  };
-  w = b->Select(lt, b->Sub(w, b->ConstantR0<float>(2.5f)),
-                b->Sub(b->SqrtF32(w), b->ConstantR0<float>(3.0f)));
-  auto p = coefficient(0);
-  for (int i = 1; i < kDegree; ++i) {
-    p = b->Add(coefficient(i), b->Mul(p, w));
-  }
-  return b->Mul(p, x);
+    auto lt = b->Lt(w, b->ConstantR0<float>(5.0));
+    auto coefficient = [&](int i) {
+      return b->Select(
+          lt,
+          b->Broadcast(b->ConstantR0<float>(w_less_than_5_constants[i]),
+                       AsInt64Slice(shape.dimensions())),
+          b->Broadcast(b->ConstantR0<float>(w_greater_than_5_constants[i]),
+                       AsInt64Slice(shape.dimensions())));
+    };
+    w = b->Select(lt, b->Sub(w, b->ConstantR0<float>(2.5f)),
+                  b->Sub(b->SqrtF32(w), b->ConstantR0<float>(3.0f)));
+    auto p = coefficient(0);
+    for (int i = 1; i < kDegree; ++i) {
+      p = b->Add(coefficient(i), b->Mul(p, w));
+    }
+    return b->Mul(p, x);
+  });
 }
 
 }  // namespace xla

@@ -378,7 +378,7 @@ tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,
     for (int i = 0; i < input_flat_size; i++) {
       output_bool_data[i] = input_tensor.bool_val(0);
     }
-  } else if (input_tensor.int_val_size() == input_flat_size) {
+  } else if (input_tensor.bool_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.bool_val_size(); i++) {
       output_bool_data[i] = input_tensor.bool_val(i);
     }

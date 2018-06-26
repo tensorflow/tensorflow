@@ -282,7 +282,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
   std::unique_ptr<GlobalData> rhs_data =
       client_->TransferToServer(*rhs_literal).ConsumeValueOrDie();
 
-  auto sub = b.Sub(lhs_param, rhs_param);
+  b.Sub(lhs_param, rhs_param);
 
   std::vector<int64> expected(lhs.size());
   for (int64 i = 0; i < lhs.size(); ++i) {
@@ -2456,7 +2456,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Eq) {
   // comparison.
   auto cmp_dim_0 = builder.Eq(v, m, /*broadcast_dimensions=*/{1});
   auto cmp_dim_1 = builder.Eq(v, m, /*broadcast_dimensions=*/{0});
-  auto result = builder.Tuple({cmp_dim_0, cmp_dim_1});
+  builder.Tuple({cmp_dim_0, cmp_dim_1});
 
   auto expected = Literal::MakeTuple(
       {Literal::CreateR2<bool>({{true, true}, {true, false}}).get(),

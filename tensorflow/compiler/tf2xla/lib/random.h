@@ -21,15 +21,15 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
+
 // Builds an array filled with values sampled from a truncated normal
 // distribution such that no values are greater than two or less than negative
 // two.
 //
 // The "uniform" parameter must be an array of random numbers distributed in
 // (0,1).
-xla::StatusOr<xla::XlaOp> TruncatedNormal(DataType dtype,
-                                          const xla::XlaOp& uniform,
-                                          xla::XlaBuilder* builder);
+xla::XlaOp TruncatedNormal(DataType dtype, xla::XlaOp uniform);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_LIB_RANDOM_H_

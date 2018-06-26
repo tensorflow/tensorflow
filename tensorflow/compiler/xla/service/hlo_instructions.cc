@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 namespace {
@@ -553,10 +554,8 @@ HloBroadcastInstruction::CloneWithNewOperandsImpl(
 
 HloMapInstruction::HloMapInstruction(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* map_computation,
-    tensorflow::gtl::ArraySlice<HloInstruction*> static_operands)
+    HloComputation* map_computation)
     : HloInstruction(HloOpcode::kMap, shape) {
-  CHECK(static_operands.empty()) << "static_operands not yet supported";
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -1210,6 +1209,26 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
                                           new_fused_computation);
 }
 
+Status HloFusionInstruction::DeduplicateFusionOperands() {
+  tensorflow::gtl::FlatMap<const HloInstruction*, int> operand_indices;
+  std::vector<int> operands_to_remove;
+  for (int i = 0; i < operand_count(); ++i) {
+    auto emplace_result = operand_indices.emplace(operand(i), i);
+    if (!emplace_result.second) {
+      TF_RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
+          fused_parameter(emplace_result.first->second)));
+      operands_to_remove.push_back(i);
+    }
+  }
+  if (operands_to_remove.empty()) {
+    return Status::OK();
+  }
+  TF_RETURN_IF_ERROR(
+      fused_instructions_computation()->RemoveUnusedParameters());
+  RemoveOperandsAtAscendingIndices(operands_to_remove);
+  return Status::OK();
+}
+
 HloRngInstruction::HloRngInstruction(
     const Shape& shape, RandomDistribution distribution,
     tensorflow::gtl::ArraySlice<HloInstruction*> parameters)
@@ -1365,9 +1384,22 @@ HloReducePrecisionInstruction::CloneWithNewOperandsImpl(
       shape, new_operands[0], exponent_bits(), mantissa_bits());
 }
 
-HloInfeedInstruction::HloInfeedInstruction(const Shape& shape,
+HloInfeedInstruction::HloInfeedInstruction(const Shape& infeed_shape,
+                                           HloInstruction* token_operand,
                                            const string& config)
-    : HloInstruction(HloOpcode::kInfeed, shape), infeed_config_(config) {}
+    : HloInstruction(HloOpcode::kInfeed,
+                     ShapeUtil::MakeTupleShape(
+                         {infeed_shape, ShapeUtil::MakeTokenShape()})),
+      infeed_config_(config) {
+  AppendOperand(token_operand);
+}
+
+HloInfeedInstruction::HloInfeedInstruction(const Shape& infeed_shape,
+                                           const string& config)
+    : HloInstruction(HloOpcode::kInfeed,
+                     ShapeUtil::MakeTupleShape(
+                         {infeed_shape, ShapeUtil::MakeTokenShape()})),
+      infeed_config_(config) {}
 
 HloInstructionProto HloInfeedInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
@@ -1395,19 +1427,37 @@ std::unique_ptr<HloInstruction> HloInfeedInstruction::CloneWithNewOperandsImpl(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 0);
-  return MakeUnique<HloInfeedInstruction>(shape, infeed_config());
+  if (new_operands.empty()) {
+    return MakeUnique<HloInfeedInstruction>(infeed_shape(), infeed_config());
+  } else {
+    CHECK_EQ(new_operands.size(), 1);
+    return MakeUnique<HloInfeedInstruction>(infeed_shape(), new_operands[0],
+                                            infeed_config());
+  }
 }
 
 HloOutfeedInstruction::HloOutfeedInstruction(
-    const Shape& shape, HloInstruction* operand,
-    tensorflow::StringPiece outfeed_config)
-    : HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()),
-      outfeed_shape_(shape),
+    const Shape& outfeed_shape, HloInstruction* operand,
+    HloInstruction* token_operand, tensorflow::StringPiece outfeed_config)
+    : HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeTokenShape()),
+      outfeed_shape_(outfeed_shape),
       outfeed_config_(outfeed_config.begin(), outfeed_config.end()) {
-  CHECK(ShapeUtil::Compatible(operand->shape(), shape))
-      << "Outfeed shape " << shape << " must be compatible with operand shape "
-      << operand->shape();
+  CHECK(ShapeUtil::Compatible(operand->shape(), outfeed_shape))
+      << "Outfeed shape " << outfeed_shape
+      << " must be compatible with operand shape " << operand->shape();
+  AppendOperand(operand);
+  AppendOperand(token_operand);
+}
+
+HloOutfeedInstruction::HloOutfeedInstruction(
+    const Shape& outfeed_shape, HloInstruction* operand,
+    tensorflow::StringPiece outfeed_config)
+    : HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeTokenShape()),
+      outfeed_shape_(outfeed_shape),
+      outfeed_config_(outfeed_config.begin(), outfeed_config.end()) {
+  CHECK(ShapeUtil::Compatible(operand->shape(), outfeed_shape))
+      << "Outfeed shape " << outfeed_shape
+      << " must be compatible with operand shape " << operand->shape();
   AppendOperand(operand);
 }
 
@@ -1438,9 +1488,14 @@ std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 1);
-  return MakeUnique<HloOutfeedInstruction>(outfeed_shape(), new_operands[0],
-                                           outfeed_config());
+  if (new_operands.size() == 1) {
+    return MakeUnique<HloOutfeedInstruction>(outfeed_shape(), new_operands[0],
+                                             outfeed_config());
+  } else {
+    CHECK_EQ(new_operands.size(), 2);
+    return MakeUnique<HloOutfeedInstruction>(outfeed_shape(), new_operands[0],
+                                             new_operands[1], outfeed_config());
+  }
 }
 
 HloConvolutionInstruction::HloConvolutionInstruction(

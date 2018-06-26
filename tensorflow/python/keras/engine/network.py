@@ -44,6 +44,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -665,14 +666,14 @@ class Network(base_layer.Layer):
 
   @property
   def trainable_weights(self):
-    return layer_utils.gather_trainable_weights(
+    return checkpointable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
         sub_layers=self.layers,
         extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
-    return layer_utils.gather_non_trainable_weights(
+    return checkpointable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
         sub_layers=self.layers,
         extra_variables=self._extra_variables)

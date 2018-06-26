@@ -414,8 +414,28 @@ def assert_no_new_pyobjects_executing_eagerly(f):
       f(self, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
+      collection_sizes_before = {
+          collection: len(ops.get_collection(collection))
+          for collection in ops.get_default_graph().collections}
       for _ in range(3):
         f(self, **kwargs)
+      # Note that gc.get_objects misses anything that isn't subject to garbage
+      # collection (C types). Collections are a common source of leaks, so we
+      # test for collection sizes explicitly.
+      for collection_key in ops.get_default_graph().collections:
+        collection = ops.get_collection(collection_key)
+        size_before = collection_sizes_before.get(collection_key, 0)
+        if len(collection) > size_before:
+          raise AssertionError(
+              ("Collection %s increased in size from "
+               "%d to %d (current items %s).")
+              % (collection_key, size_before, len(collection), collection))
+        # Make sure our collection checks don't show up as leaked memory by
+        # removing references to temporary variables.
+        del collection
+        del collection_key
+        del size_before
+      del collection_sizes_before
       gc.collect()
       # There should be no new Python objects hanging around.
       new_count = len(gc.get_objects())
