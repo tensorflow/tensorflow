@@ -89,7 +89,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
       {1.0f, 0.0f},   // row 0
       {-1.0f, 0.5f},  // row 1
   });
-  auto map = builder.Map({data}, add_half, {0, 1});
+  builder.Map({data}, add_half, {0, 1});
 
   std::unique_ptr<Literal> expected =
       Literal::CreateR2FromArray2D<T>({{1.5f, 0.5f},     // row 0
@@ -108,7 +108,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
       {5.0f, 6.0f},   // row 0
       {1.0f, -8.0f},  // row 1
   });
-  auto max = builder.Max(lhs, rhs);
+  builder.Max(lhs, rhs);
 
   std::unique_ptr<Literal> expected =
       Literal::CreateR2FromArray2D<T>({{7.0f, 6.0f},     // row 0
@@ -139,7 +139,7 @@ class TestLinspaceMaxParametric
         tensorflow::strings::Printf("max_%lldx%lld_linspace", rows, cols));
     auto lhs = builder.ConstantR2FromArray2D<T>(*alhs);
     auto rhs = builder.ConstantR2FromArray2D<T>(*arhs);
-    auto max = builder.Max(lhs, rhs);
+    builder.Max(lhs, rhs);
 
     Array2D<T> expected(rows, cols);
     for (int row = 0; row < rows; ++row) {

@@ -47,8 +47,11 @@ def capture_value(tensor_map, value, dtype, name):
   """Capture a value from outside the function, to pass in as an extra arg."""
   captured_value = tensor_map.get(ops.tensor_id(value), None)
   if captured_value is None:
-    captured_value = graph_placeholder(
-        dtype=dtype or value.dtype, shape=value.shape, name=name)
+    # Note: setting ops.control_dependencies(None) ensures we always put
+    # capturing placeholders outside of any control flow context.
+    with ops.control_dependencies(None):
+      captured_value = graph_placeholder(
+          dtype=dtype or value.dtype, shape=value.shape, name=name)
     if captured_value.dtype == dtypes_module.resource:
       if ops._USE_C_SHAPES:  # pylint: disable=protected-access
         if isinstance(value, ops.EagerTensor):

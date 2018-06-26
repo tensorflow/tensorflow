@@ -187,7 +187,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
                           ClientLibrary::GetOrCreateLocalClient(platform));
 
   XlaBuilder builder(TestName());
-  auto result = builder.Tanh(builder.Add(
+  builder.Tanh(builder.Add(
       builder.Parameter(0, ShapeUtil::MakeShape(F32, {m, k}), "dot_lhs"),
       builder.Parameter(1, ShapeUtil::MakeShape(F32, {k, n}), "dot_rhs")));
 

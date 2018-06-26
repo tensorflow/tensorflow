@@ -139,7 +139,7 @@ TEST_F(HloCostAnalysisTest, MatrixMultiply) {
   XlaBuilder builder("matrix_multiply");
   auto lhs = builder.Parameter(0, ShapeUtil::MakeShape(F32, {10, 5}), "lhs");
   auto rhs = builder.Parameter(1, ShapeUtil::MakeShape(F32, {5, 30}), "rhs");
-  auto result = builder.Dot(lhs, rhs);
+  builder.Dot(lhs, rhs);
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -160,7 +160,7 @@ TEST_F(HloCostAnalysisTest, MatrixMultiply) {
 TEST_F(HloCostAnalysisTest, Map) {
   XlaBuilder builder("map");
   auto input = builder.Parameter(0, ShapeUtil::MakeShape(F32, {10}), "in");
-  auto result = builder.Map({input}, add_and_exp_, {0});
+  builder.Map({input}, add_and_exp_, {0});
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -186,7 +186,7 @@ TEST_F(HloCostAnalysisTest, Convolution) {
       ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
                                  /*x_dim=*/3}),
       "kernel");
-  auto result = builder.Conv(input, kernel, {1, 1}, Padding::kValid);
+  builder.Conv(input, kernel, {1, 1}, Padding::kValid);
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -207,8 +207,7 @@ TEST_F(HloCostAnalysisTest, Reduce) {
   XlaBuilder builder("reduce");
   auto input =
       builder.Parameter(0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
-  auto result =
-      builder.Reduce(input, builder.ConstantR0<float>(0.0f), add_, {1});
+  builder.Reduce(input, builder.ConstantR0<float>(0.0f), add_, {1});
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -225,8 +224,8 @@ TEST_F(HloCostAnalysisTest, ReduceWindow) {
   XlaBuilder builder("reduce_window");
   auto input =
       builder.Parameter(0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
-  auto result = builder.ReduceWindow(input, builder.ConstantR0<float>(0), add_,
-                                     {4, 5}, {4, 5}, Padding::kValid);
+  builder.ReduceWindow(input, builder.ConstantR0<float>(0), add_, {4, 5},
+                       {4, 5}, Padding::kValid);
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -244,9 +243,8 @@ TEST_F(HloCostAnalysisTest, SelectAndScatter) {
       builder.Parameter(0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
   auto source =
       builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 4}), "source");
-  auto result =
-      builder.SelectAndScatter(operand, gt_, {4, 5}, {4, 5}, Padding::kValid,
-                               source, builder.ConstantR0<float>(0), add_);
+  builder.SelectAndScatter(operand, gt_, {4, 5}, {4, 5}, Padding::kValid,
+                           source, builder.ConstantR0<float>(0), add_);
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -278,8 +276,8 @@ TEST_F(HloCostAnalysisTest, FullyConnectedForward) {
       builder.Parameter(1, ShapeUtil::MakeShape(F32, {5, 20}), "weight");
   auto bias = builder.Parameter(2, ShapeUtil::MakeShape(F32, {20}), "bias");
   // sigmoid(input * weight + bias)
-  auto result = builder.Map(
-      {builder.Add(builder.Dot(input, weight), bias, {1})}, sigmoid_, {0, 1});
+  builder.Map({builder.Add(builder.Dot(input, weight), bias, {1})}, sigmoid_,
+              {0, 1});
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -421,7 +419,7 @@ TEST_F(HloCostAnalysisTest, TupleCost) {
     XlaBuilder builder("matmul");
     auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {123}), "x");
     auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {42}), "y");
-    auto tuple = builder.Tuple({x, y});
+    builder.Tuple({x, y});
     auto hlo_module = BuildHloGraph(&builder);
 
     ASSERT_IS_OK(
@@ -446,10 +444,10 @@ TEST_F(HloCostAnalysisTest, BaseDilatedConvolution) {
                                  /*x_dim=*/3}),
       "kernel");
 
-  auto result = builder.ConvGeneralDilated(
-      input, kernel, /*window_strides=*/{1, 1}, /*padding=*/{{1, 1}, {1, 1}},
-      /*lhs_dilation=*/{3, 5}, /*rhs_dilation=*/{7, 11},
-      XlaBuilder::CreateDefaultConvDimensionNumbers(2));
+  builder.ConvGeneralDilated(input, kernel, /*window_strides=*/{1, 1},
+                             /*padding=*/{{1, 1}, {1, 1}},
+                             /*lhs_dilation=*/{3, 5}, /*rhs_dilation=*/{7, 11},
+                             XlaBuilder::CreateDefaultConvDimensionNumbers(2));
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -464,7 +462,7 @@ TEST_F(HloCostAnalysisTest, Slice) {
   // Test the analysis on a slice.
   XlaBuilder builder("slice");
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2}), "x");
-  auto slice = builder.Slice(x, {0}, {1}, {1});
+  builder.Slice(x, {0}, {1}, {1});
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
@@ -479,7 +477,7 @@ TEST_F(HloCostAnalysisTest, DynamicSlice) {
   // Test the analysis on a slice.
   XlaBuilder builder("dynamic-slice");
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2}), "x");
-  auto slice = builder.DynamicSlice(x, builder.ConstantR1<int32>({1}), {1});
+  builder.DynamicSlice(x, builder.ConstantR1<int32>({1}), {1});
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
@@ -494,8 +492,8 @@ TEST_F(HloCostAnalysisTest, DynamicUpdateSlice) {
   // Test the analysis on a slice.
   XlaBuilder builder("dynamic-update-slice");
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2}), "x");
-  auto slice = builder.DynamicUpdateSlice(x, builder.ConstantR1<float>({1.0}),
-                                          builder.ConstantR1<int32>({1}));
+  builder.DynamicUpdateSlice(x, builder.ConstantR1<float>({1.0}),
+                             builder.ConstantR1<int32>({1}));
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.

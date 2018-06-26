@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/kernel_def.pb_text.h"
+#include "tensorflow/core/framework/kernel_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -969,62 +970,6 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
 
 namespace {
 
-// Helper for AttrsMatch().
-bool InTypeList(DataType dt, const AttrValue& type_list) {
-  for (int in_list : type_list.list().type()) {
-    if (dt == in_list) return true;
-  }
-  return false;
-}
-
-// Returns whether the attrs satisfy the constraints in the kernel_def.  Returns
-// an error if attrs in kernel_def are not found, or have a mismatching type.
-Status AttrsMatch(AttrSlice attrs, const KernelDef& kernel_def, bool* match) {
-  *match = false;
-  for (const auto& constraint : kernel_def.constraint()) {
-    if (constraint.allowed_values().list().type_size() == 0) {
-      return errors::Unimplemented(
-          "KernelDef '", ProtoShortDebugString(kernel_def),
-          " has constraint on attr '", constraint.name(),
-          "' with unsupported type: ",
-          SummarizeAttrValue(constraint.allowed_values()));
-    }
-
-    const AttrValue* found = attrs.Find(constraint.name());
-    if (found) {
-      if (found->type() != DT_INVALID) {
-        if (!InTypeList(found->type(), constraint.allowed_values())) {
-          return Status::OK();
-        }
-      } else {
-        if (!AttrValueHasType(*found, "list(type)").ok()) {
-          return errors::InvalidArgument(
-              "KernelDef '", ProtoShortDebugString(kernel_def),
-              "' has constraint on attr '", constraint.name(),
-              "' that has value '", SummarizeAttrValue(*found),
-              "' that does not have type 'type' or 'list(type)' in NodeDef "
-              "'",
-              attrs.SummarizeNode(), "'");
-        }
-
-        for (int t : found->list().type()) {
-          if (!InTypeList(static_cast<DataType>(t),
-                          constraint.allowed_values())) {
-            return Status::OK();
-          }
-        }
-      }
-    } else {
-      return errors::InvalidArgument(
-          "OpKernel '", kernel_def.op(), "' has constraint on attr '",
-          constraint.name(), "' not in NodeDef '", attrs.SummarizeNode(),
-          "', KernelDef: '", ProtoShortDebugString(kernel_def), "'");
-    }
-  }
-  *match = true;
-  return Status::OK();
-}
-
 static const StringPiece kKernelAttr("_kernel");
 
 // TODO(irving): Replace with const Node& version below.
@@ -1043,7 +988,7 @@ Status FindKernelRegistration(const DeviceType& device_type,
     // If there is a kernel registered for the op and device_type,
     // check that the attrs match.
     bool match;
-    TF_RETURN_IF_ERROR(AttrsMatch(node_def, iter->second.def, &match));
+    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_def, &match));
     if (match) {
       if (*reg != nullptr) {
         return errors::InvalidArgument(

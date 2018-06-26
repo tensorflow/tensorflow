@@ -252,7 +252,7 @@ XLA_TEST_P(BatchNormalizationTest, BasicTraining) {
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.1));
 }
 
-XLA_TEST_P(BatchNormalizationTest, BasicTrainingOnSublane) {
+XLA_TEST_P(BatchNormalizationTest, BasicTrainingOnDimension2) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
 

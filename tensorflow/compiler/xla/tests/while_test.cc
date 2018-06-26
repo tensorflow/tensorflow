@@ -184,8 +184,7 @@ TEST_F(WhileTest, WhileWithPredicateResult) {
 // while (result.sum() < 15.5f) {
 //   result = result + vector<float>(0);
 // }
-// TODO(b/29185393): does not terminate on CPU.
-TEST_F(WhileTest, DISABLED_WhileWithEmptyVectorResult) {
+TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithEmptyVectorResult)) {
   Shape result_shape = ShapeUtil::MakeShape(F32, {0});
 
   // Create a computation for the reduction.
@@ -965,10 +964,8 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
 
   XlaBuilder cond("cond");
   auto cond_t = cond.Parameter(0, tuple_shape, "t");
-  TF_ASSERT_OK(Any(cond.Eq(cond.GetTupleElement(cond_t, 0),
-                           cond.ConstantR1<float>({42, 42})),
-                   &cond)
-                   .status());
+  Any(cond.Eq(cond.GetTupleElement(cond_t, 0),
+              cond.ConstantR1<float>({42, 42})));
 
   XlaBuilder body("body");
   auto body_t = body.Parameter(0, tuple_shape, "t");
@@ -997,12 +994,11 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
 
   XlaBuilder cond("cond");
   auto cond_t = cond.Parameter(0, element_shape, "t");
-  TF_ASSERT_OK(
-      Any(cond.Eq(cond_t, cond.ConstantR1<float>({42, 42})), &cond).status());
+  Any(cond.Eq(cond_t, cond.ConstantR1<float>({42, 42})));
 
   XlaBuilder body("body");
-  auto body_t = body.Parameter(0, element_shape, "t");
-  auto e = body.Broadcast(body.ConstantR0<float>(1.0), {2});
+  body.Parameter(0, element_shape, "t");
+  body.Broadcast(body.ConstantR0<float>(1.0), {2});
 
   TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
   TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
@@ -1029,7 +1025,7 @@ TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
   auto body_t = body.Parameter(0, element_shape, "t");
   auto tuple =
       body.Tuple({body_t, body.Add(body_t, body.ConstantR0<float>(1))});
-  auto e = body.GetTupleElement(tuple, 1);
+  body.GetTupleElement(tuple, 1);
 
   TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
   TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
@@ -1068,7 +1064,7 @@ TEST_F(WhileTest, WhileWithMixedTupleElements) {
   XlaBuilder body("body");
   auto body_t = body.Parameter(0, result_shape, "t");
 
-  auto tuple = body.Tuple(
+  body.Tuple(
       {body.Add(body.GetTupleElement(body_t, 0), body.ConstantR0<int32>(1)),
        body.Add(body.GetTupleElement(body_t, 1), body.ConstantR0<int32>(1))});
 

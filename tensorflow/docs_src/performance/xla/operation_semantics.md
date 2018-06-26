@@ -1308,12 +1308,10 @@ See also
 :                   :                        : parameters of type T and M of  :
 :                   :                        : arbitrary type                 :
 | `dimensions`      | `int64` array          | array of map dimensions        |
-| `static_operands` | sequence of M `XlaOp`s | M arrays of arbitrary type     |
 
 Applies a scalar function over the given `operands` arrays, producing an array
 of the same dimensions where each element is the result of the mapped function
-applied to the corresponding elements in the input arrays with `static_operands`
-given as additional input to `computation`.
+applied to the corresponding elements in the input arrays.
 
 The mapped function is an arbitrary computation with the restriction that it has
 N inputs of scalar type `T` and a single output with type `S`. The output has

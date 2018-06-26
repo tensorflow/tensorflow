@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "tensorflow/compiler/xla/client/padding.h"
@@ -46,21 +47,24 @@ class XlaBuilder;
 // instruction as an operand.
 class XlaOp {
  public:
-  XlaOp() : handle_(-1), builder_(nullptr) {}
-  ~XlaOp() {}
+  XlaOp() : handle_(-1), builder_(nullptr) {
+    static_assert(std::is_trivially_destructible<XlaOp>::value,
+                  "XlaOp should be trivially destructible");
+  }
+  ~XlaOp() = default;
 
   XlaBuilder* builder() const { return builder_; }
 
-  bool operator==(const XlaOp& rhs) const {
-    return handle_ == rhs.handle_ && builder_ == rhs.builder_;
-  }
-
-  bool operator!=(const XlaOp& rhs) const {
-    return handle_ != rhs.handle_ || builder_ != rhs.builder_;
-  }
-
   // Returns true if the XlaOp represents valid, non-erroneous value.
   bool valid() const { return handle_ >= 0; }
+
+  // Returns true if the XlaOp was created by the XlaOp() constructor and
+  // not returned by a builder.
+  bool IsUninitialized() const { return builder_ == nullptr; }
+
+  bool IsIdenticalTo(const XlaOp& rhs) const {
+    return handle_ == rhs.handle_ && builder_ == rhs.builder_;
+  }
 
   friend std::ostream& operator<<(std::ostream& out, const XlaOp& op) {
     out << op.handle();
@@ -83,6 +87,30 @@ class XlaOp {
   // handle is invalid.
   XlaBuilder* builder_;
 };
+
+// Arithmetic operator overloads for the XlaOp type.
+XlaOp operator-(const XlaOp& x);
+XlaOp operator+(const XlaOp& x, const XlaOp& y);
+XlaOp operator-(const XlaOp& x, const XlaOp& y);
+XlaOp operator*(const XlaOp& x, const XlaOp& y);
+XlaOp operator/(const XlaOp& x, const XlaOp& y);
+XlaOp operator%(const XlaOp& x, const XlaOp& y);
+
+// Bitwise operator overloads for the XlaOp type.
+XlaOp operator~(const XlaOp& x);
+XlaOp operator&(const XlaOp& x, const XlaOp& y);
+XlaOp operator|(const XlaOp& x, const XlaOp& y);
+XlaOp operator^(const XlaOp& x, const XlaOp& y);
+XlaOp operator<<(const XlaOp& x, const XlaOp& y);
+// Performs a right arithmetic shift if 'x' is a signed type, otherwise performs
+// a right logical shift.
+XlaOp operator>>(const XlaOp& x, const XlaOp& y);
+
+// We don't overload the relational operators (==, !=, <, <=, >, >=) because the
+// semantics might be surprising since their result types are usually 'bool'.
+// Further programmers may expect == to be a structural equality.
+// We also choose not to overload any of the mutating operators (e.g., +=, -=)
+// because the semantics might be misleading — XLA computations are immutable.
 
 // A convenient interface for building up computations.
 //
@@ -822,6 +850,24 @@ class XlaBuilder {
   // Returns the (inferred) result for the current computation's shape.
   StatusOr<ProgramShape> GetProgramShape() const;
 
+  // Reports an error to the builder, by
+  // * storing it internally and capturing a backtrace if it's the first error
+  //   (this deferred value will be produced on the call to
+  //    Build()/GetShape()/...)
+  // * dying if die_immediately_on_error_ is true.
+  // Returns an XlaOp with an invalid handle but a valid builder. This value can
+  // be returned in place of a value in APIs that return an XlaOp.
+  XlaOp ReportError(const Status& error);
+
+  // A helper function that converts a StatusOr<XlaOp> into an XlaOp.
+  // If the Status was an error, reports the error to builder and returns an
+  // invalid XlaOp handle.
+  XlaOp ReportErrorOrReturn(const StatusOr<XlaOp>& op);
+
+  // A helper function that runs a function that returns a StatusOr<XlaOp> and
+  // returns an XlaOp.
+  XlaOp ReportErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
+
  private:
   StatusOr<XlaOp> AddInstruction(
       HloInstructionProto&& instr, HloOpcode opcode,
@@ -829,14 +875,6 @@ class XlaBuilder {
 
   void AddCalledComputation(const XlaComputation& computation,
                             HloInstructionProto* instr);
-
-  // Notes that the error occurred by:
-  // * storing it internally and capturing a backtrace if it's the first error
-  //   (this deferred value will be produced on the call to Build())
-  // * dying if die_immediately_on_error_ is true
-  void NoteError(const Status& error);
-
-  XlaOp NoteErrorOrReturn(const std::function<StatusOr<XlaOp>()>& op_creator);
 
   StatusOr<const HloInstructionProto*> LookUpInstruction(const XlaOp& op) const;
 

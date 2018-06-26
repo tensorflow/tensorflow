@@ -74,6 +74,9 @@ def _get_toco_converter(flags):
     converter_kwargs["saved_model_dir"] = flags.saved_model_dir
     converter_kwargs["tag_set"] = _parse_set(flags.saved_model_tag_set)
     converter_kwargs["signature_key"] = flags.saved_model_signature_key
+  elif flags.keras_model_file:
+    converter_fn = lite.TocoConverter.from_keras_model_file
+    converter_kwargs["model_file"] = flags.keras_model_file
 
   return converter_fn(**converter_kwargs)
 
@@ -227,6 +230,10 @@ def run_main(_):
       "--saved_model_dir",
       type=str,
       help="Full filepath of directory containing the SavedModel.")
+  input_file_group.add_argument(
+      "--keras_model_file",
+      type=str,
+      help="Full filepath of HDF5 file containing tf.Keras model.")
 
   # Model format flags.
   parser.add_argument(
