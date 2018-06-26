@@ -85,6 +85,10 @@ tf_module {
     argspec: "args=[\'input\', \'size\', \'offsets\', \'centered\', \'normalized\', \'uniform_noise\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'True\', \'None\'], "
   }
   member_method {
+    name: "extract_image_patches"
+    argspec: "args=[\'images\', \'ksizes\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "extract_jpeg_shape"
     argspec: "args=[\'contents\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
@@ -171,6 +175,10 @@ tf_module {
   member_method {
     name: "resize_image_with_crop_or_pad"
     argspec: "args=[\'image\', \'target_height\', \'target_width\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "resize_image_with_pad"
+    argspec: "args=[\'image\', \'target_height\', \'target_width\', \'method\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
     name: "resize_images"

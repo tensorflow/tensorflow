@@ -41,6 +41,9 @@ public final class NativeInterpreterWrapperTest {
   private static final String BYTE_MODEL_PATH =
       "tensorflow/contrib/lite/java/src/testdata/uint8.bin";
 
+  private static final String QUANTIZED_MODEL_PATH =
+      "tensorflow/contrib/lite/java/src/testdata/quantized.bin";
+
   private static final String INVALID_MODEL_PATH =
       "tensorflow/contrib/lite/java/src/testdata/invalid_model.bin";
 
@@ -535,5 +538,17 @@ public final class NativeInterpreterWrapperTest {
     wrapper = new NativeInterpreterWrapper(BYTE_MODEL_PATH);
     assertThat(wrapper.getOutputDataType(0)).contains("byte");
     wrapper.close();
+  }
+
+  @Test
+  public void testGetOutputQuantizationParams() {
+    try (NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH)) {
+      assertThat(wrapper.getOutputQuantizationZeroPoint(0)).isEqualTo(0);
+      assertThat(wrapper.getOutputQuantizationScale(0)).isWithin(1e-6f).of(0.0f);
+    }
+    try (NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(QUANTIZED_MODEL_PATH)) {
+      assertThat(wrapper.getOutputQuantizationZeroPoint(0)).isEqualTo(127);
+      assertThat(wrapper.getOutputQuantizationScale(0)).isWithin(1e-6f).of(0.25f);
+    }
   }
 }

@@ -75,21 +75,22 @@ bool TransposeIsBitcast(const HloInstruction* transpose) {
                                        transpose->dimensions());
 }
 
-// Returns true if the given reshape produces a result which is bit-wise
+// Returns true if the given reshape/copy produces a result which is bit-wise
 // identical to its operand and thus may be replaced with a bitcast.
 //
 // This function is conservative -- even if this function returns false, the
 // reshape may still be a bitcast. For example, a reshape from [28x28] to [784].
-bool ReshapeIsBitcast(
-    const HloInstruction* reshape,
+bool ReshapeOrCopyIsBitcast(
+    const HloInstruction* instr,
     const AlgebraicSimplifier::ValidBitcastCallback& valid_bitcast_callback) {
-  CHECK_EQ(HloOpcode::kReshape, reshape->opcode());
+  CHECK(HloOpcode::kReshape == instr->opcode() ||
+        HloOpcode::kCopy == instr->opcode());
 
-  const HloInstruction* operand = reshape->operand(0);
+  const HloInstruction* operand = instr->operand(0);
   // Can't insert bitcasts if the compiler used a memory layout which isn't
   // compatible.
-  return ShapeUtil::ReshapeIsBitcast(operand->shape(), reshape->shape()) &&
-         valid_bitcast_callback(operand->shape(), reshape->shape());
+  return ShapeUtil::ReshapeIsBitcast(operand->shape(), instr->shape()) &&
+         valid_bitcast_callback(operand->shape(), instr->shape());
 }
 
 // AlgebraicSimplifierVisitor traverses the HLO computation and reduces certain
@@ -433,7 +434,15 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
         copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy, op));
   }
   // All copies can be eliminated (assuming layout constraints are satisified).
-  ReplaceInstructionIfSameShape(copy, copy->mutable_operand(0));
+  if (ReplaceInstructionIfSameShape(copy, copy->mutable_operand(0))) {
+    return Status::OK();
+  }
+
+  if (is_layout_sensitive_ &&
+      ReshapeOrCopyIsBitcast(copy, valid_bitcast_callback_)) {
+    ReplaceWithBitcast(copy);
+  }
+
   return Status::OK();
 }
 
@@ -449,7 +458,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
   // Filter out and remove empty operands.
   std::vector<HloInstruction*> nonempty_operands;
   for (HloInstruction* operand : operands) {
-    if (!ShapeUtil::HasZeroElements(operand->shape())) {
+    if (!ShapeUtil::IsZeroElementArray(operand->shape())) {
       nonempty_operands.push_back(operand);
     }
   }
@@ -1058,9 +1067,9 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   }
 
   // Replace a zero element dot with a broadcast of the constant 0.
-  if (ShapeUtil::HasZeroElements(dot->shape()) ||
-      ShapeUtil::HasZeroElements(lhs->shape()) ||
-      ShapeUtil::HasZeroElements(rhs->shape())) {
+  if (ShapeUtil::IsZeroElementArray(dot->shape()) ||
+      ShapeUtil::IsZeroElementArray(lhs->shape()) ||
+      ShapeUtil::IsZeroElementArray(rhs->shape())) {
     auto zero = computation_->AddInstruction(
         HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
     return ReplaceWithNewInstruction(
@@ -1392,7 +1401,7 @@ Status AlgebraicSimplifierVisitor::HandleImag(HloInstruction* imag) {
 }
 
 Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
-  if (ShapeUtil::HasZeroElements(pad->operand(0)->shape())) {
+  if (ShapeUtil::IsZeroElementArray(pad->operand(0)->shape())) {
     return ReplaceWithNewInstruction(
         pad, HloInstruction::CreateBroadcast(pad->shape(),
                                              pad->mutable_operand(1), {}));
@@ -1638,7 +1647,7 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
 
   // Reshape directly to empty constant if the shape contains zero-element
   // dimension.
-  if (ShapeUtil::HasZeroElements(reshape->shape())) {
+  if (ShapeUtil::IsZeroElementArray(reshape->shape())) {
     auto empty_constant = HloInstruction::CreateConstant(
         Literal::CreateFromShape(reshape->shape()));
 
@@ -1672,7 +1681,7 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
 
   // Make this a bitcast if possible.
   if (is_layout_sensitive_ &&
-      ReshapeIsBitcast(reshape, valid_bitcast_callback_)) {
+      ReshapeOrCopyIsBitcast(reshape, valid_bitcast_callback_)) {
     ReplaceWithBitcast(reshape);
     return Status::OK();
   }
@@ -1739,7 +1748,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // If any dimension of update is 0, elide the DynamicUpdateSlice.  This
   // optimization becomes invalid should we later prefer to warn about out of
   // bound indices.
-  if (ShapeUtil::HasZeroElements(update->shape())) {
+  if (ShapeUtil::IsZeroElementArray(update->shape())) {
     return ReplaceInstruction(dynamic_update_slice,
                               dynamic_update_slice->mutable_operand(0));
   }
@@ -1751,8 +1760,8 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
   auto init_value = reduce->mutable_operand(1);
   tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
-  if (ShapeUtil::HasZeroElements(arg->shape()) ||
-      ShapeUtil::HasZeroElements(reduce->shape())) {
+  if (ShapeUtil::IsZeroElementArray(arg->shape()) ||
+      ShapeUtil::IsZeroElementArray(reduce->shape())) {
     return ReplaceWithNewInstruction(
         reduce,
         HloInstruction::CreateBroadcast(reduce->shape(), init_value, {}));
@@ -1863,7 +1872,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
 
 Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     HloInstruction* reduce_window) {
-  if (ShapeUtil::HasZeroElements(reduce_window->operand(0)->shape())) {
+  if (ShapeUtil::IsZeroElementArray(reduce_window->operand(0)->shape())) {
     return ReplaceWithNewInstruction(
         reduce_window,
         HloInstruction::CreateBroadcast(reduce_window->shape(),
@@ -2059,8 +2068,8 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
     HloInstruction* convolution) {
   auto lhs = convolution->mutable_operand(0);
   auto rhs = convolution->mutable_operand(1);
-  if (ShapeUtil::HasZeroElements(lhs->shape()) ||
-      ShapeUtil::HasZeroElements(rhs->shape())) {
+  if (ShapeUtil::IsZeroElementArray(lhs->shape()) ||
+      ShapeUtil::IsZeroElementArray(rhs->shape())) {
     return ReplaceWithNewInstruction(
         convolution,
         HloInstruction::CreateBroadcast(

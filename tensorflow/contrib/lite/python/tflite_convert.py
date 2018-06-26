@@ -23,19 +23,15 @@ import os
 import sys
 
 from tensorflow.contrib.lite.python import lite
+from tensorflow.contrib.lite.python import lite_constants
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.contrib.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.platform import app
 
 
-def _parse_array(values):
+def _parse_array(values, type_fn=str):
   if values:
-    return values.split(",")
-
-
-def _parse_int_array(values):
-  if values:
-    return [int(val) for val in values.split(",")]
+    return [type_fn(val) for val in values.split(",") if val]
 
 
 def _parse_set(values):
@@ -57,7 +53,8 @@ def _get_toco_converter(flags):
   input_shapes = None
   if flags.input_shapes:
     input_shapes_list = [
-        _parse_int_array(shape) for shape in flags.input_shapes.split(":")
+        _parse_array(shape, type_fn=int)
+        for shape in flags.input_shapes.split(":")
     ]
     input_shapes = dict(zip(input_arrays, input_shapes_list))
   output_arrays = _parse_array(flags.output_arrays)
@@ -103,8 +100,8 @@ def _convert_model(flags):
 
   if flags.mean_values and flags.std_dev_values:
     input_arrays = converter.get_input_arrays()
-    std_dev_values = _parse_int_array(flags.std_dev_values)
-    mean_values = _parse_int_array(flags.mean_values)
+    std_dev_values = _parse_array(flags.std_dev_values, type_fn=int)
+    mean_values = _parse_array(flags.mean_values, type_fn=int)
     quant_stats = zip(mean_values, std_dev_values)
     if ((not flags.input_arrays and len(input_arrays) > 1) or
         (len(input_arrays) != len(quant_stats))):
@@ -130,6 +127,9 @@ def _convert_model(flags):
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
   if flags.quantize_weights:
+    if flags.inference_type == lite_constants.QUANTIZED_UINT8:
+      raise ValueError("--quantized_weights is not supported with "
+                       "--inference_type=QUANTIZED_UINT8")
     converter.quantize_weights = flags.quantize_weights
   if flags.dump_graphviz_dir:
     converter.dump_graphviz_dir = flags.dump_graphviz_dir
@@ -200,6 +200,9 @@ def _check_flags(flags, unparsed):
     raise ValueError("--default_ranges_min and --default_ranges_max must be "
                      "used together")
 
+  if flags.dump_graphviz_video and not flags.dump_graphviz:
+    raise ValueError("--dump_graphviz_video must be used with --dump_graphviz")
+
 
 def run_main(_):
   """Main in toco_convert.py."""
@@ -234,14 +237,14 @@ def run_main(_):
   parser.add_argument(
       "--inference_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8", "STRING"],
-      help="Target data type of arrays in the output file.")
+      choices=["FLOAT", "QUANTIZED_UINT8"],
+      help="Target data type of real-number arrays in the output file.")
   parser.add_argument(
       "--inference_input_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8", "STRING"],
-      help=("Target data type of input arrays. Allows for a different type for "
-            "input arrays in the case of quantization."))
+      choices=["FLOAT", "QUANTIZED_UINT8"],
+      help=("Target data type of real-number input arrays. Allows for a "
+            "different type for input arrays in the case of quantization."))
 
   # Input and output arrays flags.
   parser.add_argument(
@@ -275,12 +278,12 @@ def run_main(_):
       "--std_dev_values",
       type=str,
       help=("Standard deviation of training data for each input tensor, "
-            "comma-separated. Used for quantization. (default None)"))
+            "comma-separated integers. Used for quantization. (default None)"))
   parser.add_argument(
       "--mean_values",
       type=str,
-      help=("Mean of training data for each input tensor, comma-separated. "
-            "Used for quantization. (default None)"))
+      help=("Mean of training data for each input tensor, comma-separated "
+            "integers. Used for quantization. (default None)"))
   parser.add_argument(
       "--default_ranges_min",
       type=int,

@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "WriteFile"
+  endpoint {
+    name: "io.write_file"
+  }
+  endpoint {
+    name: "write_file"
+    deprecation_message: "tf.write_file is deprecated, please use tf.io.write_file instead."
+  }
+}

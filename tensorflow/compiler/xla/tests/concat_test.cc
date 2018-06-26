@@ -417,7 +417,22 @@ XLA_TEST_F(ConcatTest, CannotConcatOpaques) {
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(
       computation_status.status().ToString(),
-      HasSubstr("Expected non-opaque argument for operand of concatenation"));
+      HasSubstr("Expected array argument for operand of concatenation"));
+}
+
+// Show that we can't concatenate with tokens.
+XLA_TEST_F(ConcatTest, CannotConcatTokens) {
+  XlaBuilder builder(TestName());
+  auto token_shape = ShapeUtil::MakeTokenShape();
+  auto r1f32 = xla::ShapeUtil::MakeShape(xla::F32, {1});
+  auto x = builder.Parameter(0, r1f32, "x");
+  auto y = builder.Parameter(1, token_shape, "y");
+  builder.ConcatInDim({x, y}, 0);
+  StatusOr<XlaComputation> computation_status = builder.Build();
+  ASSERT_FALSE(computation_status.ok());
+  EXPECT_THAT(
+      computation_status.status().ToString(),
+      HasSubstr("Expected array argument for operand of concatenation"));
 }
 
 XLA_TEST_F(ConcatTest, ConcatSeveralBoxedPredicates) {

@@ -1004,7 +1004,6 @@ class OpKernelContext {
   // OpKernels can use these eigen devices to carry out their
   // numerical computation.
   const Eigen::ThreadPoolDevice& eigen_cpu_device() const {
-    if (eigen_cpu_device_ != nullptr) return *eigen_cpu_device_;
     return *device()->eigen_cpu_device();
   }
   const Eigen::GpuDevice& eigen_gpu_device() const {
@@ -1140,7 +1139,6 @@ class OpKernelContext {
   mutable mutex mu_;  // mutable so const accessors can acquire the lock
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
-  std::unique_ptr<Eigen::ThreadPoolDevice> eigen_cpu_device_;
 
   // Constructed only if <params->record_tensor_accesses>.
   ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
@@ -1306,8 +1304,8 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
 // missing kernel errors.
 void LogAllRegisteredKernels();
 
-// Gets a vector of all registered kernels.
-std::vector<KernelDef> GetAllRegisteredKernels();
+// Gets a list of all registered kernels.
+KernelList GetAllRegisteredKernels();
 
 namespace kernel_factory {
 

@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.autograph.converters import converter_test_base
 from tensorflow.contrib.autograph.converters import logical_expressions
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class GradientsFunctionTest(converter_test_base.TestCase):
+class GradientsFunctionTest(converter_testing.TestCase):
 
   def test_equals(self):
 

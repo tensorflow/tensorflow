@@ -39,6 +39,34 @@ HloSharding HloSharding::Tile1D(const Shape& input_shape, int64 num_tiles) {
   return HloSharding(tile_shape, assignment);
 }
 
+HloSharding HloSharding::Tuple(const ShapeTree<HloSharding>& sub_shardings) {
+  std::vector<HloSharding> flattened_list;
+  flattened_list.reserve(sub_shardings.leaf_count());
+  for (const auto& index_to_sharding : sub_shardings.leaves()) {
+    flattened_list.push_back(index_to_sharding.second);
+  }
+  if (flattened_list.empty()) {
+    // Empty tuple sharding ends up having no leaves, but we want to allow
+    // empty tuple HLO instruction results to have sharding, so we fetch the
+    // root ({}) sharding value from the ShapeTree.
+    // A ShapeTree created with ShapeTree<HloSharding>(shape, init) will have
+    // init as value at its root.
+    flattened_list.push_back(sub_shardings.element(ShapeIndex({})));
+  }
+  return HloSharding(flattened_list);
+}
+
+HloSharding HloSharding::Tuple(
+    const Shape& tuple_shape,
+    tensorflow::gtl::ArraySlice<HloSharding> shardings) {
+  CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+  std::vector<HloSharding> flattened_list(shardings.begin(), shardings.end());
+  CHECK_EQ(flattened_list.size(), RequiredLeaves(tuple_shape))
+      << "Flat list has " << flattened_list.size() << ", required "
+      << RequiredLeaves(tuple_shape);
+  return HloSharding(flattened_list);
+}
+
 string HloSharding::ToString() const {
   if (IsTuple()) {
     std::vector<string> parts;
@@ -70,6 +98,29 @@ bool HloSharding::UsesDevice(int64 device) const {
   const auto& devices = tile_assignment_;
   return replicated_ ||
          std::find(devices.begin(), devices.end(), device) != devices.end();
+}
+
+std::map<int64, int64> HloSharding::UsedDevices(int64* count) const {
+  int64 element_count = 1;
+  std::map<int64, int64> device_map;
+  if (IsTuple()) {
+    for (auto& tuple_element_sharding : tuple_elements()) {
+      auto unique_device = tuple_element_sharding.UniqueDevice();
+      if (unique_device.ok()) {
+        device_map[unique_device.ValueOrDie()] += 1;
+      }
+    }
+    element_count = tuple_elements().size();
+  } else {
+    auto unique_device = UniqueDevice();
+    if (unique_device.ok()) {
+      device_map[unique_device.ValueOrDie()] += 1;
+    }
+  }
+  if (count != nullptr) {
+    *count = element_count;
+  }
+  return device_map;
 }
 
 std::vector<int64> HloSharding::TileIndexForDevice(int64 device) const {
@@ -123,17 +174,34 @@ std::vector<int64> HloSharding::TileLimitForDevice(int64 device) const {
   return index;
 }
 
+int64 HloSharding::RequiredLeaves(const Shape& shape) {
+  // Empty tuples have no leaf nodes as far as ShapeUtil and ShapeTree are
+  // concerned, but they do have a single tuple_elements_ entry since we want
+  // to allow empty tuple results to have sharding.
+  return ShapeUtil::IsEmptyTuple(shape) ? 1 : ShapeUtil::GetLeafCount(shape);
+}
+
+Status HloSharding::CheckLeafCount(const Shape& shape) const {
+  int64 shape_leaves = RequiredLeaves(shape);
+  TF_RET_CHECK(shape_leaves == tuple_elements_.size())
+      << "Shape " << ShapeUtil::HumanString(shape) << " has " << shape_leaves
+      << " leaf nodes while this sharding has " << tuple_elements_.size();
+  return Status::OK();
+}
+
 StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
     const Shape& shape) const {
   if (IsTuple()) {
     ShapeTree<HloSharding> result(shape, HloSharding::Replicate());
-    int64 num_leaves = result.leaf_count();
-    TF_RET_CHECK(num_leaves == tuple_elements_.size())
-        << "Shape " << ShapeUtil::HumanString(shape) << " has " << num_leaves
-        << " leaf nodes while this sharding has " << tuple_elements_.size();
+    TF_RETURN_IF_ERROR(CheckLeafCount(shape));
     auto it = tuple_elements_.begin();
     for (auto& index_to_sharding : result.leaves()) {
       index_to_sharding.second = *it++;
+    }
+    if (ShapeUtil::IsEmptyTuple(shape)) {
+      // Empty tuples have no leaves, but we want to assign them a sharding
+      // anyway, so we use the root element sharding.
+      *result.mutable_element(ShapeIndex({})) = *it;
     }
     return std::move(result);
   } else {
@@ -143,13 +211,7 @@ StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
 
 StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
   if (IsTuple()) {
-    // TODO(b/109903108): An empty tuple has one leaf for ShapeTree, while it
-    // has zero leaves for ShapeUtil. This needs cleanup.
-    int64 shape_leaves =
-        ShapeUtil::IsEmptyTuple(shape) ? 1 : ShapeUtil::GetLeafCount(shape);
-    TF_RET_CHECK(shape_leaves == tuple_elements_.size())
-        << "Shape " << ShapeUtil::HumanString(shape) << " has " << shape_leaves
-        << " leaf nodes while this sharding has " << tuple_elements_.size();
+    TF_RETURN_IF_ERROR(CheckLeafCount(shape));
     return *this;
   }
   return Tuple(ShapeTree<HloSharding>(shape, *this));
@@ -196,28 +258,12 @@ Status HloSharding::ValidateTuple(const Shape& shape, int64 num_devices) const {
     return tensorflow::errors::InvalidArgument(
         StrCat("Sharding is tuple-shaped but validation shape is not."));
   }
-  // The easiest way to get the number of elements in a nested tuple is just to
-  // create a shape tree. We could call GetAsShapeTree, but that will try and
-  // apply our tuple_shardings_ to the shape tree, and that might cause a crash
-  // at this point as we haven't validated them.
-  ShapeTree<bool> bool_shape_tree(shape, false);
-  int64 num_leaves =
-      std::distance(bool_shape_tree.leaf_begin(), bool_shape_tree.leaf_end());
-  if (num_leaves != tuple_elements_.size()) {
-    return tensorflow::errors::InvalidArgument(
-        StrCat("Validation tuple shape has ", num_leaves,
-               " leaf elements, but this sharding contains ",
-               tuple_elements_.size(), " elements."));
-  }
+  TF_RETURN_IF_ERROR(CheckLeafCount(shape));
 
   // Now we've validated the number of tuple elements, it's safe to request a
   // shape tree.
   ShapeTree<HloSharding> shape_tree = GetAsShapeTree(shape);
   for (const auto& index_to_sharding : shape_tree.leaves()) {
-    if (index_to_sharding.first.empty()) {
-      // An empty tuple has a ShapeTree with a single leaf at the empty index.
-      continue;
-    }
     Status status = index_to_sharding.second.ValidateNonTuple(
         ShapeUtil::GetSubshape(shape, index_to_sharding.first), num_devices);
     if (!status.ok()) {
@@ -414,6 +460,27 @@ tensorflow::gtl::optional<HloSharding> HloSharding::ExtractSingleSharding()
     }
   }
   return tuple_elements_.front();
+}
+
+size_t HloSharding::Hash() const {
+  if (!tuple_) {
+    size_t h = 0;
+    for (const auto& element : tuple_elements_) {
+      h = tensorflow::Hash64Combine(h, element.Hash());
+    }
+    return h;
+  }
+  if (replicated_) {
+    return 0;
+  }
+  size_t h = 0;
+  for (uint32 v : tile_assignment_) {
+    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(v));
+  }
+  for (uint32 v : tile_shape_.dimensions()) {
+    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(v));
+  }
+  return h;
 }
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {

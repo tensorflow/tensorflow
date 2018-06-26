@@ -42,8 +42,8 @@ bool CanImplementAsCudnnForwardConv(HloInstruction* conv) {
   }
 
   // CuDNN does not accept zero-element arguments
-  if (ShapeUtil::HasZeroElements(conv->operand(0)->shape()) ||
-      ShapeUtil::HasZeroElements(conv->operand(1)->shape())) {
+  if (ShapeUtil::IsZeroElementArray(conv->operand(0)->shape()) ||
+      ShapeUtil::IsZeroElementArray(conv->operand(1)->shape())) {
     return false;
   }
 

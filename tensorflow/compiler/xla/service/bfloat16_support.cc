@@ -25,6 +25,7 @@ bool BFloat16Support::SupportsBF16Operand(const HloInstruction& hlo,
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
+    case HloOpcode::kDomain:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
@@ -43,6 +44,7 @@ bool BFloat16Support::SupportsBF16Output(const HloInstruction& hlo) const {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
+    case HloOpcode::kDomain:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
@@ -81,6 +83,7 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kDomain:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -92,6 +95,9 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
       return true;
+    case HloOpcode::kBitcast:
+      return hlo.shape().element_type() ==
+             hlo.operand(0)->shape().element_type();
     case HloOpcode::kDynamicSlice:
       return operand_index == 0;
     case HloOpcode::kDynamicUpdateSlice:

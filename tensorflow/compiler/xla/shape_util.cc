@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
@@ -263,6 +264,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     tensorflow::gtl::ArraySlice<Shape> shapes) {
   Shape result;
   result.set_element_type(TUPLE);
+  result.mutable_tuple_shapes()->Reserve(shapes.size());
   for (const auto& shape : shapes) {
     AppendShapeToTuple(shape, &result);
   }
@@ -363,7 +365,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::IsNil(const Shape& shape) {
-  return IsTuple(shape) ? IsEmptyTuple(shape) : HasZeroElements(shape);
+  return IsEmptyTuple(shape);
 }
 
 /* static */ int64 ShapeUtil::TupleElementCount(const Shape& shape) {
@@ -377,6 +379,13 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   CHECK_GT(TupleElementCount(shape), index);
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape.tuple_shapes(index)));
   return shape.tuple_shapes(index);
+}
+
+/* static */ int64 ShapeUtil::SubshapeCount(const Shape& shape) {
+  int64 n = 0;
+  ForEachSubshape(shape, [&](const Shape& literal_subshape,
+                             const ShapeIndex& index) { ++n; });
+  return n;
 }
 
 /* static */ Shape ShapeUtil::SliceTuple(const Shape& tuple, int64 start,
@@ -413,14 +422,25 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       std::multiplies<int64>());
 }
 
-/* static */ bool ShapeUtil::HasZeroElements(const Shape& shape) {
-  return ElementsIn(shape) == 0;
+/* static */ int64 ShapeUtil::ElementsInRecursive(const Shape& shape) {
+  CHECK(IsArray(shape) || IsTuple(shape));
+  if (IsArray(shape)) {
+    return ElementsIn(shape);
+  }
+  int64 count = 0;
+  for (const Shape& element_shape : shape.tuple_shapes()) {
+    count += ElementsInRecursive(element_shape);
+  }
+  return count;
+}
+
+/* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
+  return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
 }
 
 /* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
   return shape.element_type() == F32 && Rank(shape) == 0;
 }
-
 
 namespace {
 
@@ -645,15 +665,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
-  if (IsArray(lhs)) {
-    return SameElementType(lhs, rhs) && SameDimensions(lhs, rhs);
-  } else if (lhs.element_type() == TUPLE) {
-    return rhs.element_type() == TUPLE &&
-           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(), Compatible);
-  } else {
-    // Opaque, token, etc types are vacuously compatible.
-    return true;
-  }
+  return CompareShapes(lhs, rhs, /*compare_layouts=*/false);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
@@ -903,6 +915,21 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return *return_shape;
 }
 
+/* static */ StatusOr<const Shape*> ShapeUtil::TryGetSubshape(
+    const Shape& shape, ShapeIndexView index) {
+  const Shape* return_shape = &shape;
+  for (auto i : index) {
+    if (!IsTuple(*return_shape) || i < 0 ||
+        i >= return_shape->tuple_shapes_size()) {
+      return InvalidArgument(
+          "Shape index %s not a valid subshape index for tuple with shape %s",
+          index.ToString().c_str(), shape.DebugString().c_str());
+    }
+    return_shape = &return_shape->tuple_shapes(i);
+  }
+  return return_shape;
+}
+
 /* static */ Shape* ShapeUtil::GetMutableSubshape(Shape* shape,
                                                   ShapeIndexView index) {
   Shape* return_shape = shape;
@@ -939,66 +966,9 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
   return leaves;
 }
 
-/* static */ Shape ShapeUtil::StripDegenerateDimensions(const Shape& shape) {
-  CHECK(IsArray(shape));
-
-  std::vector<int64> dimension_sizes;
-  std::vector<int64> degenerate_dimensions;
-  for (int64 i = 0; i < shape.dimensions_size(); ++i) {
-    if (shape.dimensions(i) == 1) {
-      degenerate_dimensions.push_back(i);
-    } else {
-      dimension_sizes.push_back(shape.dimensions(i));
-    }
-  }
-
-  // Construct minor_to_major of stripped shape. The order of the non-degenerate
-  // dimensions should be preserved from the original shape. First, create
-  // vector of the non-degenerate dimensions from the original minor_to_major
-  // array.
-  std::vector<int64> minor_to_major;
-  for (int64 i : shape.layout().minor_to_major()) {
-    if (std::find(degenerate_dimensions.begin(), degenerate_dimensions.end(),
-                  i) == degenerate_dimensions.end()) {
-      minor_to_major.push_back(i);
-    }
-  }
-
-  // The dimensions in minor_to_major need to be renumbered to account for the
-  // degenerate dimensions which have removed. Decrement each dimension number
-  // once for each degenerate dimension which has a smaller number.
-  for (int i = 0; i < minor_to_major.size(); ++i) {
-    int adjustment = 0;
-    for (int64 dim : degenerate_dimensions) {
-      if (minor_to_major[i] > dim) {
-        adjustment++;
-      }
-    }
-    minor_to_major[i] -= adjustment;
-  }
-
-  {
-    std::vector<int64> dims(minor_to_major.size());
-    std::iota(dims.begin(), dims.end(), 0);
-    DCHECK(minor_to_major.size() == dims.size() &&
-           std::is_permutation(minor_to_major.begin(), minor_to_major.end(),
-                               dims.begin()));
-  }
-  Shape stripped_shape;
-  if (LayoutUtil::IsDenseArray(shape)) {
-    stripped_shape = MakeShapeWithLayout(shape.element_type(), dimension_sizes,
-                                         minor_to_major);
-  } else if (LayoutUtil::IsSparseArray(shape)) {
-    stripped_shape =
-        MakeShapeWithSparseLayout(shape.element_type(), dimension_sizes,
-                                  shape.layout().max_sparse_elements());
-  } else {
-    stripped_shape = MakeShape(shape.element_type(), dimension_sizes);
-  }
-
-  VLOG(10) << "Original_shape: " << HumanStringWithLayout(shape);
-  VLOG(10) << "Stripped_shape: " << HumanStringWithLayout(stripped_shape);
-  return stripped_shape;
+/* static */ bool ShapeUtil::HasDegenerateDimensions(const Shape& shape) {
+  CHECK(ShapeUtil::IsArray(shape));
+  return ArrayContains<int64>(AsInt64Slice(shape.dimensions()), 1);
 }
 
 namespace {

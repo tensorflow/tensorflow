@@ -41,7 +41,8 @@ class HloReachabilityMap {
  public:
   // Sets up a graph with no edges and where the nodes correspond to the given
   // instructions.
-  explicit HloReachabilityMap(const std::list<HloInstruction*>& instructions);
+  explicit HloReachabilityMap(
+      tensorflow::gtl::ArraySlice<const HloInstruction*> instructions);
 
   // Set the reachability set of 'instruction' to the union of the reachability
   // sets of 'inputs'. Upon return, IsReachable(x, instruction) where

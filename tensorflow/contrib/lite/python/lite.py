@@ -22,10 +22,10 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 @@Interpreter
 @@OpHint
 @@convert_op_hints_to_stubs
+@@build_toco_convert_protos
 
 @@FLOAT
 @@QUANTIZED_UINT8
-@@STRING
 @@TFLITE
 @@GRAPHVIZ_DOT
 
@@ -56,6 +56,7 @@ from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops.variables import global_variables_initializer
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+# from tensorflow.python.util.all_util import remove_undocumented
 
 
 class TocoConverter(object):
@@ -66,11 +67,11 @@ class TocoConverter(object):
 
   Attributes:
 
-    inference_type: Target data type of arrays in the output file. Currently
-      must be `{FLOAT, QUANTIZED_UINT8, STRING}`.  (default FLOAT)
-    inference_input_type: Target data type of input arrays. Allows for a
-      different type for input arrays in the case of quantization. Currently
-      must be `{FLOAT, QUANTIZED_UINT8, STRING}`. (default `inference_type`)
+    inference_type: Target data type of real-number arrays in the output file.
+      Must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+    inference_input_type: Target data type of real-number input arrays. Allows
+      for a different type for input arrays in the case of quantization.
+      Must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: Dict of strings representing input tensor names
@@ -390,3 +391,5 @@ def _freeze_graph(sess, output_tensors):
                                                         output_arrays)
   else:
     return sess.graph_def
+
+# remove_undocumented(__name__)
