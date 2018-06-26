@@ -184,8 +184,7 @@ TEST_F(WhileTest, WhileWithPredicateResult) {
 // while (result.sum() < 15.5f) {
 //   result = result + vector<float>(0);
 // }
-// TODO(b/29185393): does not terminate on CPU.
-TEST_F(WhileTest, DISABLED_WhileWithEmptyVectorResult) {
+TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithEmptyVectorResult)) {
   Shape result_shape = ShapeUtil::MakeShape(F32, {0});
 
   // Create a computation for the reduction.
