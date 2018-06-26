@@ -31,12 +31,19 @@ bool ProcessLinearOperator(Model* model, Operator* op) {
     return false;
   }
   const string& output_name = op->outputs[0];
+  const auto& output_array = model->GetArray(output_name);
+  if (!output_array.has_shape()) {
+    return false;
+  }
+  const int depth = output_array.shape().dims().back();
   const string& bias_name = AvailableArrayName(*model, output_name + "_bias");
   op->inputs.push_back(bias_name);
   DCHECK_EQ(op->inputs.size(), 3);
   auto& bias_array = model->GetOrCreateArray(bias_name);
   bias_array.data_type = ArrayDataType::kFloat;
-
+  bias_array.mutable_shape()->mutable_dims()->push_back(depth);
+  auto& bias_buffer = bias_array.GetMutableBuffer<ArrayDataType::kFloat>();
+  bias_buffer.data.resize(depth, 0.f);
   return true;
 }
 }  // namespace
