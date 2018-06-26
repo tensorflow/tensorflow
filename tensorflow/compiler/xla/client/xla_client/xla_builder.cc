@@ -2122,4 +2122,500 @@ StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
   return &instructions_[op.handle()];
 }
 
+// Enqueues a "retrieve parameter value" instruction for a parameter that was
+// passed to the computation.
+XlaOp Parameter(XlaBuilder* builder, int64 parameter_number, const Shape& shape,
+                const string& name) {
+  return builder->Parameter(parameter_number, shape, name);
+}
+
+// Enqueues a constant with the value of the given literal onto the
+// computation.
+XlaOp ConstantLiteral(XlaBuilder* builder, const LiteralSlice& literal) {
+  return builder->ConstantLiteral(literal);
+}
+
+XlaOp Broadcast(const XlaOp& operand,
+                tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
+  return operand.builder()->Broadcast(operand, broadcast_sizes);
+}
+
+XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
+          const PaddingConfig& padding_config) {
+  return operand.builder()->Pad(operand, padding_value, padding_config);
+}
+
+XlaOp Reshape(const XlaOp& operand,
+              tensorflow::gtl::ArraySlice<int64> dimensions,
+              tensorflow::gtl::ArraySlice<int64> new_sizes) {
+  return operand.builder()->Reshape(operand, dimensions, new_sizes);
+}
+
+XlaOp Reshape(const XlaOp& operand,
+              tensorflow::gtl::ArraySlice<int64> new_sizes) {
+  return operand.builder()->Reshape(operand, new_sizes);
+}
+
+XlaOp Collapse(const XlaOp& operand,
+               tensorflow::gtl::ArraySlice<int64> dimensions) {
+  return operand.builder()->Collapse(operand, dimensions);
+}
+
+XlaOp Slice(const XlaOp& operand,
+            tensorflow::gtl::ArraySlice<int64> start_indices,
+            tensorflow::gtl::ArraySlice<int64> limit_indices,
+            tensorflow::gtl::ArraySlice<int64> strides) {
+  return operand.builder()->Slice(operand, start_indices, limit_indices,
+                                  strides);
+}
+
+XlaOp SliceInDim(const XlaOp& operand, int64 start_index, int64 limit_index,
+                 int64 stride, int64 dimno) {
+  return operand.builder()->SliceInDim(operand, start_index, limit_index,
+                                       stride, dimno);
+}
+
+XlaOp DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
+                   tensorflow::gtl::ArraySlice<int64> slice_sizes) {
+  return operand.builder()->DynamicSlice(operand, start_indices, slice_sizes);
+}
+
+XlaOp DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
+                         const XlaOp& start_indices) {
+  return operand.builder()->DynamicUpdateSlice(operand, update, start_indices);
+}
+
+XlaOp ConcatInDim(XlaBuilder* builder,
+                  tensorflow::gtl::ArraySlice<XlaOp> operands,
+                  int64 dimension) {
+  return builder->ConcatInDim(operands, dimension);
+}
+
+void Trace(const string& tag, const XlaOp& operand) {
+  return operand.builder()->Trace(tag, operand);
+}
+
+XlaOp Select(const XlaOp& pred, const XlaOp& on_true, const XlaOp& on_false) {
+  return pred.builder()->Select(pred, on_true, on_false);
+}
+
+XlaOp Tuple(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> elements) {
+  return builder->Tuple(elements);
+}
+
+XlaOp GetTupleElement(const XlaOp& tuple_data, int64 index) {
+  return tuple_data.builder()->GetTupleElement(tuple_data, index);
+}
+
+XlaOp Eq(const XlaOp& lhs, const XlaOp& rhs,
+         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Eq(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Ne(const XlaOp& lhs, const XlaOp& rhs,
+         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Ne(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Ge(const XlaOp& lhs, const XlaOp& rhs,
+         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Ge(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Gt(const XlaOp& lhs, const XlaOp& rhs,
+         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Gt(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
+         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Lt(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
+         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Le(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs) {
+  return lhs.builder()->Dot(lhs, rhs);
+}
+
+XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
+                 const DotDimensionNumbers& dimension_numbers) {
+  return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers);
+}
+
+XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
+           tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding) {
+  return lhs.builder()->Conv(lhs, rhs, window_strides, padding);
+}
+
+XlaOp ConvWithGeneralPadding(
+    const XlaOp& lhs, const XlaOp& rhs,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+  return lhs.builder()->ConvWithGeneralPadding(lhs, rhs, window_strides,
+                                               padding);
+}
+
+XlaOp ConvWithGeneralDimensions(
+    const XlaOp& lhs, const XlaOp& rhs,
+    tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding,
+    const ConvolutionDimensionNumbers& dimension_numbers) {
+  return lhs.builder()->ConvWithGeneralDimensions(lhs, rhs, window_strides,
+                                                  padding, dimension_numbers);
+}
+
+XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
+                  tensorflow::gtl::ArraySlice<int64> window_strides,
+                  tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+                  const ConvolutionDimensionNumbers& dimension_numbers) {
+  return lhs.builder()->ConvGeneral(lhs, rhs, window_strides, padding,
+                                    dimension_numbers);
+}
+
+XlaOp ConvGeneralDilated(
+    const XlaOp& lhs, const XlaOp& rhs,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    tensorflow::gtl::ArraySlice<int64> lhs_dilation,
+    tensorflow::gtl::ArraySlice<int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers) {
+  return lhs.builder()->ConvGeneralDilated(lhs, rhs, window_strides, padding,
+                                           lhs_dilation, rhs_dilation,
+                                           dimension_numbers);
+}
+
+XlaOp Fft(const XlaOp& operand, FftType fft_type,
+          tensorflow::gtl::ArraySlice<int64> fft_length) {
+  return operand.builder()->Fft(operand, fft_type, fft_length);
+}
+
+XlaOp Infeed(XlaBuilder* builder, const Shape& shape, const string& config) {
+  return builder->Infeed(shape, config);
+}
+
+void Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
+             const string& outfeed_config) {
+  return operand.builder()->Outfeed(operand, shape_with_layout, outfeed_config);
+}
+
+XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
+           tensorflow::gtl::ArraySlice<XlaOp> operands) {
+  return builder->Call(computation, operands);
+}
+
+XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
+                 tensorflow::gtl::ArraySlice<XlaOp> operands,
+                 const Shape& shape) {
+  return builder->CustomCall(call_target_name, operands, shape);
+}
+
+XlaOp HostCompute(XlaBuilder* builder,
+                  tensorflow::gtl::ArraySlice<XlaOp> operands,
+                  const string& channel_name, int64 cost_estimate_ns,
+                  const Shape& shape) {
+  return builder->HostCompute(operands, channel_name, cost_estimate_ns, shape);
+}
+
+XlaOp Complex(const XlaOp& real, const XlaOp& imag,
+              tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return real.builder()->Add(real, imag, broadcast_dimensions);
+}
+
+XlaOp Conj(const XlaOp& operand) { return operand.builder()->Conj(operand); }
+
+XlaOp Add(const XlaOp& lhs, const XlaOp& rhs,
+          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Add(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Sub(const XlaOp& lhs, const XlaOp& rhs,
+          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Sub(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Mul(const XlaOp& lhs, const XlaOp& rhs,
+          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Mul(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Div(const XlaOp& lhs, const XlaOp& rhs,
+          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Div(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Rem(const XlaOp& lhs, const XlaOp& rhs,
+          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Rem(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Max(const XlaOp& lhs, const XlaOp& rhs,
+          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Max(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
+          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Min(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
+          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->And(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
+         tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Or(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
+          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Xor(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Not(const XlaOp& operand) { return operand.builder()->Not(operand); }
+
+XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
+                tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->ShiftLeft(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp ShiftRightArithmetic(
+    const XlaOp& lhs, const XlaOp& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->ShiftRightArithmetic(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp ShiftRightLogical(
+    const XlaOp& lhs, const XlaOp& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->ShiftRightLogical(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
+             const XlaComputation& computation,
+             tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
+  return operand.builder()->Reduce(operand, init_value, computation,
+                                   dimensions_to_reduce);
+}
+
+XlaOp ReduceAll(const XlaOp& operand, const XlaOp& init_value,
+                const XlaComputation& computation) {
+  return operand.builder()->ReduceAll(operand, init_value, computation);
+}
+
+XlaOp ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
+                   const XlaComputation& computation,
+                   tensorflow::gtl::ArraySlice<int64> window_dimensions,
+                   tensorflow::gtl::ArraySlice<int64> window_strides,
+                   Padding padding) {
+  return operand.builder()->ReduceWindow(operand, init_value, computation,
+                                         window_dimensions, window_strides,
+                                         padding);
+}
+
+XlaOp ReduceWindowWithGeneralPadding(
+    const XlaOp& operand, const XlaOp& init_value,
+    const XlaComputation& computation,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+  return operand.builder()->ReduceWindowWithGeneralPadding(
+      operand, init_value, computation, window_dimensions, window_strides,
+      padding);
+}
+
+XlaOp CrossReplicaSum(const XlaOp& operand,
+                      tensorflow::gtl::ArraySlice<int64> replica_group_ids) {
+  return operand.builder()->CrossReplicaSum(operand, replica_group_ids);
+}
+
+XlaOp CrossReplicaSum(
+    const XlaOp& operand, const XlaComputation& computation,
+    tensorflow::gtl::ArraySlice<int64> replica_group_ids,
+    const tensorflow::gtl::optional<ChannelHandle>& channel_id) {
+  return operand.builder()->CrossReplicaSum(operand, computation,
+                                            replica_group_ids, channel_id);
+}
+
+XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
+                       tensorflow::gtl::ArraySlice<int64> window_dimensions,
+                       tensorflow::gtl::ArraySlice<int64> window_strides,
+                       Padding padding, const XlaOp& source,
+                       const XlaOp& init_value, const XlaComputation& scatter) {
+  return operand.builder()->SelectAndScatter(operand, select, window_dimensions,
+                                             window_strides, padding, source,
+                                             init_value, scatter);
+}
+
+XlaOp SelectAndScatterWithGeneralPadding(
+    const XlaOp& operand, const XlaComputation& select,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    const XlaOp& source, const XlaOp& init_value,
+    const XlaComputation& scatter) {
+  return operand.builder()->SelectAndScatterWithGeneralPadding(
+      operand, select, window_dimensions, window_strides, padding, source,
+      init_value, scatter);
+}
+
+XlaOp Abs(const XlaOp& operand) { return operand.builder()->Abs(operand); }
+
+XlaOp Atan2(const XlaOp& y, const XlaOp& x,
+            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return y.builder()->Atan2(y, x, broadcast_dimensions);
+}
+
+XlaOp Exp(const XlaOp& operand) { return operand.builder()->Exp(operand); }
+
+XlaOp Expm1(const XlaOp& operand) { return operand.builder()->Expm1(operand); }
+
+XlaOp Floor(const XlaOp& operand) { return operand.builder()->Floor(operand); }
+
+XlaOp Ceil(const XlaOp& operand) { return operand.builder()->Ceil(operand); }
+
+XlaOp Round(const XlaOp& operand) { return operand.builder()->Round(operand); }
+
+XlaOp Log(const XlaOp& operand) { return operand.builder()->Log(operand); }
+
+XlaOp Log1p(const XlaOp& operand) { return operand.builder()->Log1p(operand); }
+
+XlaOp Sign(const XlaOp& operand) { return operand.builder()->Sign(operand); }
+
+XlaOp Clz(const XlaOp& operand) { return operand.builder()->Clz(operand); }
+
+XlaOp Cos(const XlaOp& operand) { return operand.builder()->Cos(operand); }
+
+XlaOp Sin(const XlaOp& operand) { return operand.builder()->Sin(operand); }
+
+XlaOp Tanh(const XlaOp& operand) { return operand.builder()->Tanh(operand); }
+
+XlaOp Real(const XlaOp& operand) { return operand.builder()->Real(operand); }
+
+XlaOp Imag(const XlaOp& operand) { return operand.builder()->Imag(operand); }
+
+XlaOp SqrtF32(const XlaOp& operand) {
+  return operand.builder()->SqrtF32(operand);
+}
+
+XlaOp SquareF32(const XlaOp& operand) {
+  return operand.builder()->SquareF32(operand);
+}
+
+XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
+          tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return lhs.builder()->Pow(lhs, rhs, broadcast_dimensions);
+}
+
+XlaOp IsFinite(const XlaOp& operand) {
+  return operand.builder()->IsFinite(operand);
+}
+
+XlaOp ConvertElementType(const XlaOp& operand, PrimitiveType new_element_type) {
+  return operand.builder()->ConvertElementType(operand, new_element_type);
+}
+
+XlaOp BitcastConvertType(const XlaOp& operand, PrimitiveType new_element_type) {
+  return operand.builder()->BitcastConvertType(operand, new_element_type);
+}
+
+XlaOp ReciprocalF32(const XlaOp& operand) {
+  return operand.builder()->ReciprocalF32(operand);
+}
+
+XlaOp Neg(const XlaOp& operand) { return operand.builder()->Neg(operand); }
+
+XlaOp Transpose(const XlaOp& operand,
+                tensorflow::gtl::ArraySlice<int64> permutation) {
+  return operand.builder()->Transpose(operand, permutation);
+}
+
+XlaOp Rev(const XlaOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions) {
+  return operand.builder()->Rev(operand, dimensions);
+}
+
+XlaOp Sort(const XlaOp& operand) { return operand.builder()->Sort(operand); }
+
+XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max) {
+  return min.builder()->Clamp(min, operand, max);
+}
+
+XlaOp Map(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> operands,
+          const XlaComputation& computation,
+          tensorflow::gtl::ArraySlice<int64> dimensions,
+          tensorflow::gtl::ArraySlice<XlaOp> static_operands) {
+  return builder->Map(operands, computation, dimensions, static_operands);
+}
+
+XlaOp RngNormal(const XlaOp& mu, const XlaOp& sigma, const Shape& shape) {
+  return mu.builder()->RngNormal(mu, sigma, shape);
+}
+
+XlaOp RngUniform(const XlaOp& a, const XlaOp& b, const Shape& shape) {
+  return a.builder()->RngUniform(a, b, shape);
+}
+
+XlaOp While(const XlaComputation& condition, const XlaComputation& body,
+            const XlaOp& init) {
+  return init.builder()->While(condition, body, init);
+}
+
+XlaOp Conditional(const XlaOp& predicate, const XlaOp& true_operand,
+                  const XlaComputation& true_computation,
+                  const XlaOp& false_operand,
+                  const XlaComputation& false_computation) {
+  return predicate.builder()->Conditional(predicate, true_operand,
+                                          true_computation, false_operand,
+                                          false_computation);
+}
+
+XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
+                      const int mantissa_bits) {
+  return operand.builder()->ReducePrecision(operand, exponent_bits,
+                                            mantissa_bits);
+}
+
+XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
+             const GatherDimensionNumbers& dimension_numbers,
+             tensorflow::gtl::ArraySlice<int64> window_bounds) {
+  return input.builder()->Gather(input, gather_indices, dimension_numbers,
+                                 window_bounds);
+}
+
+void Send(const XlaOp& operand, const ChannelHandle& handle) {
+  return operand.builder()->Send(operand, handle);
+}
+
+XlaOp Recv(XlaBuilder* builder, const Shape& shape,
+           const ChannelHandle& handle) {
+  return builder->Recv(shape, handle);
+}
+
+XlaOp BatchNormTraining(const XlaOp& operand, const XlaOp& scale,
+                        const XlaOp& offset, float epsilon,
+                        int64 feature_index) {
+  return operand.builder()->BatchNormTraining(operand, scale, offset, epsilon,
+                                              feature_index);
+}
+
+XlaOp BatchNormInference(const XlaOp& operand, const XlaOp& scale,
+                         const XlaOp& offset, const XlaOp& mean,
+                         const XlaOp& variance, float epsilon,
+                         int64 feature_index) {
+  return operand.builder()->BatchNormInference(
+      operand, scale, offset, mean, variance, epsilon, feature_index);
+}
+
+XlaOp BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
+                    const XlaOp& batch_mean, const XlaOp& batch_var,
+                    const XlaOp& grad_output, float epsilon,
+                    int64 feature_index) {
+  return operand.builder()->BatchNormGrad(operand, scale, batch_mean, batch_var,
+                                          grad_output, epsilon, feature_index);
+}
+
 }  // namespace xla
