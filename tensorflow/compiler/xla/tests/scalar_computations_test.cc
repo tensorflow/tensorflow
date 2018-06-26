@@ -51,7 +51,7 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = builder.ConstantR0<NativeT>(lhs);
     XlaOp rhs_op = builder.ConstantR0<NativeT>(rhs);
-    XlaOp result = (builder.*op)(lhs_op, rhs_op, {});
+    (builder.*op)(lhs_op, rhs_op, {});
     ComputeAndCompareR0<bool>(&builder, expected, {});
   }
 
@@ -62,7 +62,7 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = builder.ConstantR0<NativeT>(lhs);
     XlaOp rhs_op = builder.ConstantR0<NativeT>(rhs);
-    XlaOp result = (builder.*op)(lhs_op, rhs_op, {});
+    (builder.*op)(lhs_op, rhs_op, {});
     ComputeAndCompareR0<NativeT>(&builder, expected, {});
   }
 };

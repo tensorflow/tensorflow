@@ -248,6 +248,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     }
   }
 
+  if (layout.format() == SPARSE) {
+    if (!layout.padded_dimensions().empty()) {
+      return InvalidArgument("Sparse layout has padded dimensions");
+    }
+  }
+
   return Status::OK();
 }
 

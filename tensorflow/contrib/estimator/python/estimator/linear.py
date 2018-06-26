@@ -39,6 +39,18 @@ class LinearEstimator(estimator.Estimator):
       feature_columns=[categorical_column_a,
                        categorical_feature_a_x_categorical_feature_b])
 
+  # Or estimator using an optimizer with a learning rate decay.
+  estimator = LinearEstimator(
+      head=tf.contrib.estimator.multi_label_head(n_classes=3),
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
+      optimizer=lambda: tf.train.FtrlOptimizer(
+          learning_rate=tf.exponential_decay(
+              learning_rate=0.1,
+              global_step=tf.get_global_step(),
+              decay_steps=10000,
+              decay_rate=0.96))
+
   # Or estimator using the FTRL optimizer with regularization.
   estimator = LinearEstimator(
       head=tf.contrib.estimator.multi_label_head(n_classes=3),
@@ -99,8 +111,9 @@ class LinearEstimator(estimator.Estimator):
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator
         to continue training a previously saved model.
-      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
-        to FTRL optimizer.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Can also
+        be a string (one of 'Adagrad', 'Adam', 'Ftrl', 'RMSProp', 'SGD'), or
+        callable. Defaults to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
     """

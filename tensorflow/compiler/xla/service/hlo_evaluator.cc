@@ -902,7 +902,7 @@ Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   return Status::OK();
 }
 
-Status HloEvaluator::HandleGenerateToken(HloInstruction* token) {
+Status HloEvaluator::HandleAfterAll(HloInstruction* token) {
   evaluated_[token] = Literal::CreateToken();
   return Status::OK();
 }

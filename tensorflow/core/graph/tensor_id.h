@@ -68,6 +68,7 @@ struct SafeTensorId : public std::pair<string, int> {
   // NOTE(skyewm): this is required on some platforms. I'm not sure why the
   // using statement above isn't always sufficient.
   SafeTensorId() : Base() {}
+  SafeTensorId(StringPiece str, int idx);
   SafeTensorId(const TensorId& id);
 
   string ToString() const {

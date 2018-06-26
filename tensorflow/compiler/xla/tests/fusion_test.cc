@@ -557,8 +557,7 @@ XLA_TEST_F(FusionTest, ReshapeNegate) {
                              *ExecuteAndTransfer(std::move(hlo_module), {})));
 }
 
-// TODO(b/64070202): Investigate failure.
-XLA_TEST_F(FusionTest, DISABLED_ON_GPU(TransposeNegate)) {
+XLA_TEST_F(FusionTest, TransposeNegate) {
   auto builder = HloComputation::Builder(TestName());
   auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
@@ -800,7 +799,7 @@ void BM_ParallelFusion(int num_iters) {
   auto param2 = builder.Parameter(2, shape2, "param2");
 
   auto x = builder.Mul(param0, param1);
-  auto y = builder.Add(x, param2);
+  builder.Add(x, param2);
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Transfer literals to device.

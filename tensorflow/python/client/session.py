@@ -1291,7 +1291,7 @@ class BaseSession(SessionInterface):
       raise type(e)(node_def, op, message)
 
   def _extend_graph(self):
-    with self._graph._lock:  # pylint: disable=protected-access
+    with self._graph._session_run_lock():  # pylint: disable=protected-access
       tf_session.ExtendSession(self._session)
 
   # The threshold to run garbage collection to delete dead tensors.

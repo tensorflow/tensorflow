@@ -29,12 +29,20 @@ namespace tensorflow {
 class XlaHelpers {
  public:
   // Returns a handle representing the minimum value of a scalar
-  // element of data_type.
+  // element of data_type. -inf for floating-point types.
   static xla::XlaOp MinValue(xla::XlaBuilder* b, DataType data_type);
 
-  // Returns a handle representing the maximum value of a scalar
+  // Returns a handle representing the minimum finite value of a scalar
   // element of data_type.
+  static xla::XlaOp MinFiniteValue(xla::XlaBuilder* b, DataType data_type);
+
+  // Returns a handle representing the maximum value of a scalar
+  // element of data_type. inf for floating point types.
   static xla::XlaOp MaxValue(xla::XlaBuilder* b, DataType data_type);
+
+  // Returns a handle representing the maximum finite value of a scalar
+  // element of data_type.
+  static xla::XlaOp MaxFiniteValue(xla::XlaBuilder* b, DataType data_type);
 
   // Returns a handle representing the zero value of a scalar
   // element of data_type.

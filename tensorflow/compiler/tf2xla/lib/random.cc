@@ -23,9 +23,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace tensorflow {
-xla::StatusOr<xla::XlaOp> TruncatedNormal(const DataType dtype,
-                                          const xla::XlaOp& uniform,
-                                          xla::XlaBuilder* builder) {
+
+xla::XlaOp TruncatedNormal(const DataType dtype, xla::XlaOp uniform) {
+  xla::XlaBuilder* builder = uniform.builder();
   auto normal_cdf = [](double x) {
     return (1.0 + std::erf(x / std::sqrt(2.0))) / 2.0;
   };
@@ -51,7 +51,7 @@ xla::StatusOr<xla::XlaOp> TruncatedNormal(const DataType dtype,
   // probit(p) = sqrt(2) * erfinv(2*p-1)
   auto p = builder->Add(alpha_normal_cdf, builder->Mul(z, uniform));
   auto erfinv_input = builder->Sub(builder->Mul(p, two), one);
-  TF_ASSIGN_OR_RETURN(auto erfinv_or_status, ErfInv(erfinv_input));
-  return builder->Mul(sqrt_2, erfinv_or_status);
+  return builder->Mul(sqrt_2, ErfInv(erfinv_input));
 }
+
 }  // namespace tensorflow

@@ -2094,6 +2094,7 @@ cc_library(
     hdrs = ["hlo_verifier.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_pass",
         ":shape_inference",
         "//tensorflow/compiler/xla:status_macros",

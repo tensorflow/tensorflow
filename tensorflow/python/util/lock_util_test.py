@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import random
-import threading
 import time
 
 from absl.testing import parameterized
@@ -48,7 +47,7 @@ class GroupLockTest(test.TestCase, parameterized.TestCase):
         finished.add(thread_id)
 
     threads = [
-        threading.Thread(target=thread_fn, args=(i,))
+        self.checkedThread(target=thread_fn, args=(i,))
         for i in range(num_threads)
     ]
 

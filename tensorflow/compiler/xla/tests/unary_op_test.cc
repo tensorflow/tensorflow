@@ -39,7 +39,7 @@ class UnaryOpTest : public ClientLibraryTestBase {
   void AbsSize0TestHelper() {
     XlaBuilder builder(TestName());
     auto arg = builder.ConstantR1<T>({});
-    auto abs = builder.Abs(arg);
+    builder.Abs(arg);
 
     if (primitive_util::NativeToPrimitiveType<T>() == C64) {
       ComputeAndCompareR1<float>(&builder, {}, {});
@@ -52,7 +52,7 @@ class UnaryOpTest : public ClientLibraryTestBase {
   void AbsTestHelper() {
     XlaBuilder builder(TestName());
     auto arg = builder.ConstantR1<T>({-2, 25, 0, -123, inf<T>(), -inf<T>()});
-    auto abs = builder.Abs(arg);
+    builder.Abs(arg);
 
     ComputeAndCompareR1<T>(&builder, {2, 25, 0, 123, inf<T>(), inf<T>()}, {});
   }
@@ -62,7 +62,7 @@ class UnaryOpTest : public ClientLibraryTestBase {
     XlaBuilder builder(TestName());
     auto arg = builder.ConstantR1<T>(
         {-2, 25, 0, static_cast<T>(-0.0), -123, inf<T>(), -inf<T>()});
-    auto sign = builder.Sign(arg);
+    builder.Sign(arg);
 
     ComputeAndCompareR1<T>(&builder, {-1, 1, 0, 0, -1, 1, -1}, {});
   }
@@ -98,7 +98,7 @@ void UnaryOpTest::AbsTestHelper<complex64>() {
                                             {-0.3f, 0.4f},
                                             {0, inf<float>()},
                                             {-inf<float>(), 0}});
-  auto abs = builder.Abs(arg);
+  builder.Abs(arg);
 
   std::unique_ptr<Literal> expected =
       Literal::CreateR1<float>({2, 25, 0, 0.5, inf<float>(), inf<float>()});
@@ -110,7 +110,7 @@ void UnaryOpTest::SignTestHelper<complex64>() {
   XlaBuilder builder(TestName());
   auto arg = builder.ConstantR1<complex64>(
       {{-2, 0}, {0, 25}, {0, 0}, {static_cast<float>(-0.0), 0}, {-1, 1}});
-  auto sign = builder.Sign(arg);
+  builder.Sign(arg);
 
   std::unique_ptr<Literal> expected = Literal::CreateR1<complex64>(
       {{-1, 0}, {0, 1}, {0, 0}, {0, 0}, {-std::sqrt(0.5f), std::sqrt(0.5f)}});
@@ -196,7 +196,7 @@ XLA_TEST_F(UnaryOpTest, UnsignedAbsTestR1) {
   XlaBuilder builder(TestName());
   auto arg = builder.ConstantR1<unsigned int>(
       {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()});
-  auto abs = builder.Abs(arg);
+  builder.Abs(arg);
 
   ComputeAndCompareR1<unsigned int>(
       &builder, {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()}, {});
@@ -206,7 +206,7 @@ XLA_TEST_F(UnaryOpTest, UnsignedSignTestR1) {
   XlaBuilder builder(TestName());
   auto arg = builder.ConstantR1<unsigned int>(
       {2, 25, 0, 123, std::numeric_limits<unsigned int>::max()});
-  auto sign = builder.Sign(arg);
+  builder.Sign(arg);
 
   ComputeAndCompareR1<unsigned int>(&builder, {1, 1, 0, 1, 1}, {});
 }

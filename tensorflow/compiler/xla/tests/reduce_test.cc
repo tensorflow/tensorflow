@@ -829,8 +829,8 @@ XLA_TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
   auto input_activations =
       builder.Parameter(0, input_literal->shape(), "input");
   XlaComputation add = CreateScalarAddComputation(F32, &builder);
-  auto sum = builder.Reduce(input_activations, builder.ConstantR0<float>(0.0f),
-                            add, GetParam().reduce_dims);
+  builder.Reduce(input_activations, builder.ConstantR0<float>(0.0f), add,
+                 GetParam().reduce_dims);
 
   auto expected =
       ReferenceUtil::Reduce3DTo2D(input_array, 0.0f, GetParam().reduce_dims,
@@ -878,7 +878,7 @@ XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OperationOnConstantAsInitValue)) {
   std::unique_ptr<GlobalData> b_data =
       client_->TransferToServer(*b_literal).ConsumeValueOrDie();
   auto b = builder.Parameter(0, b_literal->shape(), "b");
-  auto max = builder.Reduce(b, a2, max_f32, {0});
+  builder.Reduce(b, a2, max_f32, {0});
 
   ComputeAndCompareR0<float>(&builder, 4.0f, {b_data.get()});
 }

@@ -32,7 +32,6 @@
   * Using `tf.keras.layers` with custom variable scopes.
   * Using `tf.layers` in  a subclassed `tf.keras.Model` class. See
     [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers) for more details
-
 * `tf.data`:
   * The `DatasetBase::DebugString()` method is now `const`.
   * Added the `tf.contrib.data.sample_from_datasets()` API for randomly sampling from multiple datasets.

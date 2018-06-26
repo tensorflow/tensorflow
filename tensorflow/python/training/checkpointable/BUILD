@@ -62,11 +62,18 @@ py_test(
 )
 
 py_library(
+    name = "layer_utils",
+    srcs = ["layer_utils.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
     name = "data_structures",
     srcs = ["data_structures.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":base",
+        ":layer_utils",
     ],
 )
 

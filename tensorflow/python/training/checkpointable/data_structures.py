@@ -21,10 +21,9 @@ import collections
 
 import six
 
-from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import variables
 from tensorflow.python.training.checkpointable import base as checkpointable_lib
+from tensorflow.python.training.checkpointable import layer_utils
 
 
 # TODO(allenl): We could track regular Python data structures which get assigned
@@ -54,7 +53,8 @@ class CheckpointableDataStructure(checkpointable_lib.CheckpointableBase):
           ("Only checkpointable objects (such as Layers or Optimizers) may be "
            "stored in a List object. Got %s, which does not inherit from "
            "CheckpointableBase.") % (value,))
-    if isinstance(value, (base_layer.Layer, CheckpointableDataStructure)):
+    if (isinstance(value, CheckpointableDataStructure)
+        or layer_utils.is_layer(value)):
       if value not in self._layers:
         self._layers.append(value)
         if hasattr(value, "_use_resource_variables"):
