@@ -92,6 +92,19 @@ class TPUContext(object):
     """
     return self._internal_ctx.num_replicas
 
+  @property
+  def num_hosts(self):
+    """The number of hosts for the TPU system."""
+    return self._internal_ctx.num_hosts
+
+  @property
+  def num_of_replicas_per_host(self):
+    """The number of replicas for each host."""
+    if self._internal_ctx.model_parallelism_enabled:
+      raise ValueError(
+          'num_of_replicas_per_host is not supported for model_parallelism')
+    return self._internal_ctx.num_of_replicas_per_host
+
   def device_for_replica(self, replica_id):
     """Returns the tuple of (CPU device and device ordinal) for replica.
 
