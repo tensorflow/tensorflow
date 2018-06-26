@@ -42,8 +42,9 @@ REGISTER_OP("TRTEngineOp")
     .Attr("precision_mode: {'FP32', 'FP16', 'INT8', 'INT8CALIB'}")
     .Attr("calibration_data: string = ''")
     .Input("in_tensor: InT")
-    .Output("out_tensor: OutT")
-    .SetShapeFn(shape_inference::TRTEngineOpShapeInference);
+    .Output("out_tensor: OutT");
+    // TODO(Sami): shape inference not working for concrete input shape 
+    //.SetShapeFn(shape_inference::TRTEngineOpShapeInference);
 
 }  // namespace tensorflow
 
