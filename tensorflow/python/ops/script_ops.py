@@ -267,7 +267,7 @@ def eager_py_func(func, inp, Tout, name=None):
   or print statements as desired, and wrap those functions in
   `tf.contrib.eager.py_func`.
 
-  For more information on eager execution, see @{$programmers_guide/eager}.
+  For more information on eager execution, see @{$guide/eager}.
 
   `tf.contrib.eager.py_func` is similar in spirit to @{tf.py_func}, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped

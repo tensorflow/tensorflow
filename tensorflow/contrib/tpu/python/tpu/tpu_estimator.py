@@ -1103,7 +1103,7 @@ class _InputPipeline(object):
       err_msg = ('Input pipeline contains one or more QueueRunners. '
                  'It could be slow and not scalable. Please consider '
                  'converting your input pipeline to use `tf.data` instead (see '
-                 'https://www.tensorflow.org/programmers_guide/datasets for '
+                 'https://www.tensorflow.org/guide/datasets for '
                  'instructions.')
       if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
         raise RuntimeError(err_msg)
