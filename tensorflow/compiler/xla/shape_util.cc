@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -885,6 +886,50 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     }
   }
 
+  TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
+  return Status::OK();
+}
+
+/* static */ Status ShapeUtil::ValidateShapeSize(const Shape& shape) {
+  VLOG(3) << "Validating shape size: " << ShapeUtil::HumanString(shape);
+  auto invalid_argument =
+      InvalidArgument("Shape %s size may overflow int64.",
+                      ShapeUtil::HumanString(shape).c_str());
+  if (!IsArray(shape)) {
+    return Status::OK();
+  }
+  int64 shape_size;
+  if (LayoutUtil::IsSparseArray(shape)) {
+    shape_size = LayoutUtil::MaxSparseElements(shape.layout());
+    shape_size = MultiplyWithoutOverflow(shape_size, ShapeUtil::Rank(shape));
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
+    shape_size = MultiplyWithoutOverflow(shape_size, sizeof(int64));
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
+  }
+
+  // This is intentionally unconditional: even if the shape is sparse, we want
+  // to verify the densified version has a reasonable size.
+  if (shape.dimensions().empty()) {
+    return Status::OK();
+  }
+  shape_size = 1;
+  for (int64 dim : shape.dimensions()) {
+    shape_size = MultiplyWithoutOverflow(shape_size, dim);
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
+  }
+  shape_size = MultiplyWithoutOverflow(
+      shape_size, ByteSizeOfPrimitiveType(shape.element_type()));
+  if (shape_size < 0) {
+    return invalid_argument;
+  }
+
+  VLOG(3) << "Shape size is valid: " << shape_size;
   return Status::OK();
 }
 

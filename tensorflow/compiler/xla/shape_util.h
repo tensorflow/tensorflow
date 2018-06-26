@@ -702,6 +702,10 @@ class ShapeUtil {
   static size_t Hash(const Shape& shape);
 
  private:
+  // Validates the shape size is sane. This makes sure it's safe to do
+  // calculations in int64 without overflowing.
+  static Status ValidateShapeSize(const Shape& shape);
+
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);
