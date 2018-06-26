@@ -54,29 +54,6 @@ cc_library(
 )
 
 cc_library(
-    name = "external_constant_pool",
-    srcs = ["external_constant_pool.cc"],
-    hdrs = ["external_constant_pool.h"],
-    deps = [
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_test(
-    name = "external_constant_pool_test",
-    srcs = ["external_constant_pool_test.cc"],
-    deps = [
-        ":external_constant_pool",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
-    ],
-)
-
-cc_library(
     name = "cpu_compiler",
     srcs = ["cpu_compiler.cc"],
     hdrs = ["cpu_compiler.h"],
@@ -168,7 +145,6 @@ cc_library(
         ":cpu_runtime",
         ":custom_call_target_registry",
         ":disassembler",
-        ":external_constant_pool",
         ":orc_jit_memory_mapper",
         ":runtime_fp16",
         ":runtime_conv2d",
@@ -249,7 +225,6 @@ cc_library(
         ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
-        ":external_constant_pool",
         ":ir_emission_utils",
         ":ir_function",
         ":parallel_loop_emitter",

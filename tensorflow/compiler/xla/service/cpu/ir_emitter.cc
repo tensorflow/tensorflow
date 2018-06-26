@@ -85,8 +85,7 @@ IrEmitter::IrEmitter(
     llvm::Module* llvm_module,
     std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx,
     std::unordered_map<const HloComputation*, int64> computation_to_profile_idx,
-    const TargetMachineFeatures* target_machine_features,
-    ExternalConstantPool* external_constant_pool)
+    const TargetMachineFeatures* target_machine_features)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
@@ -96,8 +95,7 @@ IrEmitter::IrEmitter(
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
       is_top_level_computation_(false),
-      target_machine_features_(*target_machine_features),
-      external_constant_pool_(external_constant_pool) {
+      target_machine_features_(*target_machine_features) {
   ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config_.debug_options()
           .xla_enable_fast_math()));
@@ -163,45 +161,18 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
 }
 
 llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
-  llvm::Constant* result;
-
-  // We avoid creating large constants in the LLVM IR since LLVM is not
-  // efficient for large constant arrays.  We still emit "small enough" constant
-  // arrays into the Ir, in the off chance the LLVM optimizer can do something
-  // interesting with it.
-  //
-  // TODO(b/29904935): Remove the large constant pool.
-  const int kMaxInternalConstantSizeInBytes = 128;
-  if (external_constant_pool_ &&
-      ByteSizeOf(literal.shape()) >= kMaxInternalConstantSizeInBytes) {
-    string global_name = tensorflow::strings::StrCat(
-        "constant_global_", external_global_constant_counter_++);
-    llvm::GlobalVariable* result_global = new llvm::GlobalVariable(
-        /*Module=*/*module_,
-        /*Type=*/IrShapeType(literal.shape()),
-        /*isConstant=*/true,
-        /*Linkage=*/llvm::GlobalValue::ExternalLinkage,
-        /*Initializer=*/nullptr,
-        /*Name=*/AsStringRef(global_name));
-    result_global->setAlignment(MinimumAlignmentForShape(literal.shape()));
-    external_constant_pool_->Insert(global_name, literal,
-                                    MinimumAlignmentForShape(literal.shape()));
-    result = result_global;
-  } else {
-    llvm::Constant* initializer =
-        llvm_ir::ConvertLiteralToIrConstant(literal, module_);
-    llvm::GlobalVariable* result_global = new llvm::GlobalVariable(
-        /*Module=*/*module_,
-        /*Type=*/initializer->getType(),
-        /*isConstant=*/true,
-        /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-        /*Initializer=*/initializer,
-        /*Name=*/"");
-    result_global->setAlignment(MinimumAlignmentForShape(literal.shape()));
-    result = llvm::ConstantExpr::getBitCast(
-        result_global, IrShapeType(literal.shape())->getPointerTo());
-  }
-  return result;
+  llvm::Constant* initializer =
+      llvm_ir::ConvertLiteralToIrConstant(literal, module_);
+  llvm::GlobalVariable* result_global = new llvm::GlobalVariable(
+      /*Module=*/*module_,
+      /*Type=*/initializer->getType(),
+      /*isConstant=*/true,
+      /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
+      /*Initializer=*/initializer,
+      /*Name=*/"");
+  result_global->setAlignment(MinimumAlignmentForShape(literal.shape()));
+  return llvm::ConstantExpr::getBitCast(
+      result_global, IrShapeType(literal.shape())->getPointerTo());
 }
 
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
