@@ -133,7 +133,36 @@ int GetOutputDepthFromWeights(const Model& model, const Operator& op) {
   }
 }
 
+bool EnsureBiasVectorShape(Model* model, Operator* op) {
+  const string& weights_name = op->inputs[1];
+  const auto& weights_array = model->GetArray(weights_name);
+  // Yield until weights shape has been resolved.
+  if (!weights_array.has_shape()) {
+    return false;
+  }
+
+  if (op->inputs.size() < 3) {
+    return false;
+  }
+  auto& bias_array = model->GetArray(op->inputs[2]);
+  if (bias_array.has_shape()) {
+    return true;
+  }
+
+  const int output_depth = GetOutputDepthFromWeights(*model, *op);
+  bias_array.copy_shape(Shape({output_depth}));
+
+  auto& float_buffer = bias_array.GetMutableBuffer<ArrayDataType::kFloat>();
+  float_buffer.data.resize(output_depth, 0);
+
+  return true;
+}
+
 void ProcessConvOperator(Model* model, ConvOperator* op) {
+  if (!EnsureBiasVectorShape(model, op)) {
+    return;
+  }
+
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
@@ -263,6 +292,10 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
 }
 
 void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
+  if (!EnsureBiasVectorShape(model, op)) {
+    return;
+  }
+
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
@@ -377,6 +410,10 @@ void ProcessOpWithShapeInput(Model* model, Operator* op) {
 }
 
 void ProcessFullyConnectedOperator(Model* model, FullyConnectedOperator* op) {
+  if (!EnsureBiasVectorShape(model, op)) {
+    return;
+  }
+
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
