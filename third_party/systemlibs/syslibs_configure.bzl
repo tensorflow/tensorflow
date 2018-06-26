@@ -19,6 +19,7 @@ VALID_LIBS=[
     "grpc",
     "jemalloc",
     "jpeg",
+    "jsoncpp_git",
     "lmdb",
     "nasm",
     "org_sqlite",
