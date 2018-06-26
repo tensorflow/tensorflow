@@ -131,32 +131,6 @@ def _MarkReachedOps(from_ops, reached_ops):
           queue.extend(output.consumers())
 
 
-def _GatherInputs(to_ops, reached_ops):
-  """List all inputs of to_ops that are in reached_ops.
-
-  Args:
-    to_ops: list of Operations.
-    reached_ops: set of Operations.
-
-  Returns:
-    The list of all inputs of to_ops that are in reached_ops.
-    That list includes all elements of to_ops.
-  """
-  inputs = []
-  queue = collections.deque()
-  queue.extend(to_ops)
-  while queue:
-    op = queue.popleft()
-    # We are interested in this op.
-    if op in reached_ops:
-      inputs.append(op)
-      # Clear the boolean so we won't add the inputs again.
-      reached_ops.remove(op)
-      for inp in op.inputs:
-        queue.append(inp.op)
-  return inputs
-
-
 def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops):
   """Initialize the pending count for ops between two lists of Operations.
 
