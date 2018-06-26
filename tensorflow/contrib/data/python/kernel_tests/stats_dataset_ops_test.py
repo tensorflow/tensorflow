@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.contrib.data.python.ops import stats_ops
 from tensorflow.core.framework import summary_pb2
@@ -235,69 +234,6 @@ class FeatureStatsDatasetTest(
           sess.run(summary_t), "record_stats:feature-values",
           self._sum_keywords(1) * num_epochs + 2 * total_records)
 
-
-class StatsDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def _build_dataset_bytes_stats(self, num_elements):
-    return dataset_ops.Dataset.range(num_elements).map(
-        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).apply(
-            stats_ops.bytes_produced_stats("bytes_produced"))
-
-  def test_bytes_produced_stats_invalid_tag_shape(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
-      self.run_core_tests(
-          lambda: dataset_ops.Dataset.range(100).apply(
-              stats_ops.bytes_produced_stats(["bytes_produced"])),
-          None, 100)
-
-  def testBytesStatsDatasetSaveableCore(self):
-    num_outputs = 100
-    self.run_core_tests(
-        lambda: self._build_dataset_bytes_stats(num_outputs),
-        lambda: self._build_dataset_bytes_stats(num_outputs // 10), num_outputs)
-
-  def _build_dataset_latency_stats(self, num_elements, tag="record_latency"):
-    return dataset_ops.Dataset.range(num_elements).apply(
-        stats_ops.latency_stats(tag))
-
-  def _build_dataset_multiple_tags(self,
-                                   num_elements,
-                                   tag1="record_latency",
-                                   tag2="record_latency_2"):
-    return dataset_ops.Dataset.range(num_elements).apply(
-        stats_ops.latency_stats(tag1)).apply(stats_ops.latency_stats(tag2))
-
-  def test_latency_stats_invalid_tag_shape(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
-      self.run_core_tests(
-          lambda: dataset_ops.Dataset.range(100).apply(
-              stats_ops.latency_stats(["record_latency", "record_latency_2"])),
-          None, 100)
-
-  def testLatencyStatsDatasetSaveableCore(self):
-    num_outputs = 100
-
-    self.run_core_tests(
-        lambda: self._build_dataset_latency_stats(num_outputs),
-        lambda: self._build_dataset_latency_stats(num_outputs // 10),
-        num_outputs)
-
-    self.run_core_tests(lambda: self._build_dataset_multiple_tags(num_outputs),
-                        None, num_outputs)
-
-    tag1 = "record_latency"
-    tag2 = "record_latency"
-    self.run_core_tests(
-        lambda: self._build_dataset_multiple_tags(num_outputs, tag1, tag2),
-        None, num_outputs)
-
-
-# TODO(shivaniagrawal): Can not checkpoint input_pipeline with the
-# transformation `stats_ops.set_stats_aggregator`, since we don't support
-# serializing StatsAggregator yet.
 
 if __name__ == "__main__":
   test.main()

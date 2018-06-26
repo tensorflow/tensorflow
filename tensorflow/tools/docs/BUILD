@@ -37,7 +37,10 @@ py_library(
     srcs = ["parser.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["@astor_archive//:astor"],
+    deps = [
+        "//tensorflow/python:platform",
+        "@astor_archive//:astor",
+    ],
 )
 
 py_test(

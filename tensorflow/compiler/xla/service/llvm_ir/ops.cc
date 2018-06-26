@@ -45,7 +45,7 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
 
   // Read start indices from start_indices_generator.
   const int64 rank = ShapeUtil::Rank(output_shape);
-  IrArray::Index start_index(rank);
+  IrArray::Index start_index(ir_builder->getInt64Ty(), rank);
   for (int64 i = 0; i < rank; ++i) {
     IrArray::Index dim_index({ir_builder->getInt64(i)});
     TF_ASSIGN_OR_RETURN(start_index[i], start_indices_generator(dim_index));
@@ -79,7 +79,7 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     //
     //   output_index[dim] = start_index[dim] + update_index[dim]
     //
-    IrArray::Index output_index(rank);
+    IrArray::Index output_index(start_index.GetType(), rank);
     for (int64 i = 0; i < rank; ++i) {
       llvm::Value* start_index0 = ir_builder->CreateSExtOrBitCast(
           start_index[i], update_index[i]->getType());

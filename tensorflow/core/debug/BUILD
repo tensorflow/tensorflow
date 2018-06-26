@@ -143,6 +143,7 @@ tf_gpu_library(
         ":debug_node_key",
         ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
+        "//tensorflow:grpc++",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -150,7 +151,6 @@ tf_gpu_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
-        "@grpc//:grpc++",
     ],
     alwayslink = 1,
 )
@@ -166,11 +166,11 @@ tf_gpu_library(
         ":debug_io_utils",
         ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
+        "//tensorflow:grpc++",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@grpc//:grpc++",
     ],
     alwayslink = 1,
 )

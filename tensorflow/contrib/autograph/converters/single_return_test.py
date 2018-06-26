@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.autograph.converters import converter_test_base
 from tensorflow.contrib.autograph.converters import single_return
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.platform import test
 
 
-class SingleReturnTest(converter_test_base.TestCase):
+class SingleReturnTest(converter_testing.TestCase):
 
   def compiled_fn(self, test_fn, *args):
     node = self.parse_and_analyze(test_fn, {})

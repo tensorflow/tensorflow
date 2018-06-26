@@ -129,7 +129,7 @@ class TestModelCloning(test.TestCase):
 
 class CheckpointingTests(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_optimizer_dependency(self):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(1, input_shape=(4,)))

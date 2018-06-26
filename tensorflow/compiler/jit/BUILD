@@ -409,6 +409,32 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "xla_cluster_util_test",
+    size = "small",
+    srcs = [
+        "xla_cluster_util_test.cc",
+    ],
+    deps = [
+        ":common",
+        ":xla_cluster_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "xla_launch_util_test",
     size = "small",
     srcs = ["xla_launch_util_test.cc"],

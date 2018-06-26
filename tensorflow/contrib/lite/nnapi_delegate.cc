@@ -312,7 +312,7 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
     };
 
     auto add_mean_params = [&add_scalar_int32](void* data) {
-      auto builtin = reinterpret_cast<TfLiteMeanParams*>(data);
+      auto builtin = reinterpret_cast<TfLiteReducerParams*>(data);
       add_scalar_int32(builtin->keep_dims);
     };
 
@@ -500,6 +500,10 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_SPARSE_TO_DENSE:
       case tflite::BuiltinOperator_EQUAL:
       case tflite::BuiltinOperator_NOT_EQUAL:
+      case tflite::BuiltinOperator_SUM:
+      case tflite::BuiltinOperator_SQRT:
+      case tflite::BuiltinOperator_RSQRT:
+      case tflite::BuiltinOperator_SHAPE:
         FATAL("Op code %d is currently not delegated to NNAPI", builtin);
         nn_op_type = -1;  // set to invalid
         break;

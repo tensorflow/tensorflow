@@ -592,6 +592,27 @@ class EstimatorSpecInferTest(test.TestCase):
             predictions=predictions,
             export_outputs=export_outputs)
 
+  def testDefaultExportOutputCreated(self):
+    """Ensure that a default PredictOutput is created for export."""
+    with ops.Graph().as_default(), self.test_session():
+      predictions = constant_op.constant(1.)
+      self._assertDefaultExportOutputForPredictions(predictions)
+
+  def testDefaultExportOutputCreatedDict(self):
+    """Ensure that a default PredictOutput is created for export for dicts."""
+    with ops.Graph().as_default(), self.test_session():
+      predictions = {'loss': constant_op.constant(1.),
+                     'score': constant_op.constant(10.)}
+      self._assertDefaultExportOutputForPredictions(predictions)
+
+  def _assertDefaultExportOutputForPredictions(self, predictions):
+    spec = model_fn.EstimatorSpec(
+        mode=model_fn.ModeKeys.PREDICT, predictions=predictions)
+
+    expected = export_output.PredictOutput(predictions).outputs
+    serving_output = spec.export_outputs[
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+    self.assertEqual(serving_output.outputs, expected)
 
 if __name__ == '__main__':
   test.main()

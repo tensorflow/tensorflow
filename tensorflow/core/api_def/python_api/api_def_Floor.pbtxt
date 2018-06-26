@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Floor"
+  endpoint {
+    name: "math.floor"
+  }
+  endpoint {
+    name: "floor"
+    deprecation_message: "tf.floor is deprecated, please use tf.math.floor instead."
+  }
+}

@@ -24,6 +24,7 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/contrib/lite/schema:schema_fbs",
+        "//tensorflow/contrib/lite/toco:graph_transformations",
         "//tensorflow/contrib/lite/toco:model",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",

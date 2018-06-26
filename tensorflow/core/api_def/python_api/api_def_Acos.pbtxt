@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Acos"
+  endpoint {
+    name: "math.acos"
+  }
+  endpoint {
+    name: "acos"
+    deprecation_message: "tf.acos is deprecated, please use tf.math.acos instead."
+  }
+}

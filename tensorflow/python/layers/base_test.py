@@ -39,7 +39,7 @@ from tensorflow.python.platform import test
 
 class BaseLayerTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLayerProperties(self):
     layer = base_layers.Layer(name='my_layer')
     self.assertEqual(layer.variables, [])
@@ -53,13 +53,13 @@ class BaseLayerTest(test.TestCase):
     layer = base_layers.Layer(name='my_layer', trainable=False)
     self.assertEqual(layer.trainable, False)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInt64Layer(self):
     layer = base_layers.Layer(name='my_layer', dtype='int64')
     layer.add_variable('my_var', [2, 2])
     self.assertEqual(layer.name, 'my_layer')
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAddWeight(self):
     layer = base_layers.Layer(name='my_layer')
 
@@ -116,7 +116,7 @@ class BaseLayerTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'activity_regularizer'):
         core_layers.Dense(1, activity_regularizer=lambda *args, **kwargs: 0.)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCall(self):
 
     class MyLayer(base_layers.Layer):
@@ -132,7 +132,7 @@ class BaseLayerTest(test.TestCase):
       # op is only supported in GRAPH mode
       self.assertEqual(outputs.op.name, 'my_layer/Square')
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDeepCopy(self):
 
     class MyLayer(base_layers.Layer):
@@ -155,7 +155,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer_copy._graph, layer._graph)
     self.assertEqual(layer_copy._private_tensor, layer._private_tensor)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScopeNaming(self):
 
     class PrivateLayer(base_layers.Layer):
@@ -203,7 +203,7 @@ class BaseLayerTest(test.TestCase):
       my_layer_scoped1.apply(inputs)
       self.assertEqual(my_layer_scoped1._scope.name, 'var_scope/my_layer_1')
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInputSpecNdimCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -230,7 +230,7 @@ class BaseLayerTest(test.TestCase):
     layer = CustomerLayer()
     layer.apply(constant_op.constant([[1], [2]]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInputSpecMinNdimCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -258,7 +258,7 @@ class BaseLayerTest(test.TestCase):
     layer = CustomerLayer()
     layer.apply(constant_op.constant([[[1], [2]]]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInputSpecMaxNdimCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -286,7 +286,7 @@ class BaseLayerTest(test.TestCase):
     layer = CustomerLayer()
     layer.apply(constant_op.constant([[1], [2]]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInputSpecDtypeCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -306,7 +306,7 @@ class BaseLayerTest(test.TestCase):
     layer = CustomerLayer()
     layer.apply(constant_op.constant(1.0, dtype=dtypes.float32))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInputSpecAxesCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -328,7 +328,7 @@ class BaseLayerTest(test.TestCase):
     layer = CustomerLayer()
     layer.apply(constant_op.constant([[1, 2], [3, 4], [5, 6]]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInputSpecShapeCheck(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -348,7 +348,7 @@ class BaseLayerTest(test.TestCase):
     layer = CustomerLayer()
     layer.apply(constant_op.constant([[1, 2, 3], [4, 5, 6]]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoInputSpec(self):
 
     class CustomerLayer(base_layers.Layer):
@@ -369,7 +369,7 @@ class BaseLayerTest(test.TestCase):
       layer.apply(array_ops.placeholder('int32'))
       layer.apply(array_ops.placeholder('int32', shape=(2, 3)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_count_params(self):
     dense = core_layers.Dense(16)
     dense.build((None, 4))
@@ -379,7 +379,7 @@ class BaseLayerTest(test.TestCase):
     with self.assertRaises(ValueError):
       dense.count_params()
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDictInputOutput(self):
 
     class DictLayer(base_layers.Layer):
@@ -588,7 +588,6 @@ class BaseLayerTest(test.TestCase):
     with ops.Graph().as_default(), self.assertRaisesRegexp(
         ValueError, 'Input graph and Layer graph are not the same'):
       layer.apply(constant_op.constant([[1.]]))
-
 
 if __name__ == '__main__':
   test.main()

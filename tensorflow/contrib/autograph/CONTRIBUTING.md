@@ -1,4 +1,4 @@
-# How to Contribute
+# How to contribute
 
 We'd love to have your patches and contributions! Here are some guidelines. In general, we follow the [TensorFlow contributing guidelines](../../CONTRIBUTING.md), but have some [AutoGraph-specific style guidelines](STYLE_GUIDE.md). More details below.
 
@@ -46,3 +46,50 @@ bazel test --config=opt --copt=-O3 --copt=-march=native \
 ```
 
 from the root of the `tensorflow` repository. For more details see the [main TensorFlow Contributing File](../../CONTRIBUTING.md)
+
+## Developer info
+
+### Module structure
+
+The graph below describes the dependencies between AutoGraph modules (not to be mistaken with the directory structure for these modules, which is flat):
+
+```dot
+digraph d_modules {
+  autograph [style=filled];
+  converters;
+  core;
+  impl;
+  lang;
+  operators;
+
+  autograph -> impl
+  autograph -> lang
+
+  impl -> converters
+  impl -> core
+  impl -> operators
+
+  lang -> operators
+
+  converters -> core
+  converters -> lang
+}
+```
+
+`autograph` is the sole user-visible module.
+
+A short description of the modules:
+
+ * `autograph`: the main module imported by the user and by the generated code; only contains declarations
+ * `impl`: high level code and the implementation of the api frontend
+ * `core`: base classes for the AutoGraph source code transformation logic; see in particular `converter.py`
+ * `lang`: special user-visible functions that serve as extensions to the Python language
+ * `converters`: collection of source code transformation modules specialized for particular AutoGraph features
+ * `operators`: collection of operators that AutoGraph overloads; these correspond to Python operators as well as Python syntactic structures, like control flow
+
+There are two additional modules, `pyct` and `utils`. These are independent of AutoGraph:
+
+ * `pyct`: a general purpose Python source code transformation library
+ * `utils`: the kitchen sync; deprecated
+
+Note: we have a long term plan to factor out an implementation of `impl` and `converters` that is independent of autograph, into a general purpose Python operator overloading library.

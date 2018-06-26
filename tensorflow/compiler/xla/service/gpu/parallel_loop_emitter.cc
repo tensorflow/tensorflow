@@ -58,7 +58,7 @@ ParallelLoopEmitter::ParallelLoopEmitter(
 
 std::vector<llvm_ir::IrArray::Index>
 ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
-    tensorflow::StringPiece loop_name) {
+    tensorflow::StringPiece loop_name, llvm::Type* index_type) {
   // Emit the following code in LLVM IR:
   //   linear_index = blockIdx.x * blockDim.x + threadIdx.x;
   //   if (linear_index < num_elements) {
@@ -71,14 +71,13 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
   //
   // %nctaid.x is currently specified as 2147483647.
   VLOG(3) << "EmitIndexAndSetExitBasicBlock unroll_factor " << unroll_factor_;
+  CHECK_NE(index_type, nullptr);
   std::vector<llvm_ir::IrArray::Index> array_indices;
-
   llvm::Value* block_id = llvm_ir::EmitCallToIntrinsic(
       llvm::Intrinsic::amdgcn_workgroup_id_x, {}, {}, ir_builder_);
   llvm_ir::AddRangeMetadata(0, launch_dimensions_.block_count(),
                             static_cast<llvm::Instruction*>(block_id));
-  block_id =
-      ir_builder_->CreateZExt(block_id, ir_builder_->getInt64Ty(), "block_id");
+  block_id = ir_builder_->CreateZExtOrTrunc(block_id, index_type, "block_id");
 
   // Per the PTX documentation:
   //   "It is guaranteed that [...] 0  <=  %tid.x <  %ntid.x"
@@ -88,13 +87,15 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
       llvm::Intrinsic::amdgcn_workitem_id_x, {}, {}, ir_builder_);
   llvm_ir::AddRangeMetadata(0, launch_dimensions_.threads_per_block(),
                             static_cast<llvm::Instruction*>(thread_id));
-  thread_id = ir_builder_->CreateZExt(thread_id, ir_builder_->getInt64Ty(),
-                                      "thread_id");
+  thread_id =
+      ir_builder_->CreateZExtOrTrunc(thread_id, index_type, "thread_id");
 
   llvm::Value* linear_index_base = ir_builder_->CreateAdd(
       ir_builder_->CreateMul(
           block_id,
-          ir_builder_->getInt64(launch_dimensions_.threads_per_block()), "",
+          llvm::ConstantInt::get(index_type,
+                                 launch_dimensions_.threads_per_block()),
+          "",
           /*HasNUW=*/true, /*HasNSW=*/true),
       thread_id, "linear_index", /*HasNUW=*/true, /*HasNSW=*/true);
 
@@ -110,21 +111,23 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
       llvm::Intrinsic::assume,
       {ir_builder_->CreateICmpULT(
           linear_index_base,
-          ir_builder_->getInt64(launch_dimensions_.threads_per_block() *
-                                launch_dimensions_.block_count()),
+          llvm::ConstantInt::get(index_type,
+                                 launch_dimensions_.threads_per_block() *
+                                     launch_dimensions_.block_count()),
           "linear_index_in_range")},
       {}, ir_builder_);
 
   if (unroll_factor_ > 1) {
     linear_index_base = ir_builder_->CreateMul(
-        linear_index_base, ir_builder_->getInt64(unroll_factor_),
+        linear_index_base, llvm::ConstantInt::get(index_type, unroll_factor_),
         "linear_index_base", /*HasNUW=*/true, /*HasNSW=*/true);
   }
 
   array_indices.emplace_back(linear_index_base, shape_, ir_builder_);
   for (int i = 1; i < unroll_factor_; ++i) {
     llvm::Value* linear_index = ir_builder_->CreateAdd(
-        linear_index_base, ir_builder_->getInt64(i), "linear_index",
+        linear_index_base, llvm::ConstantInt::get(index_type, i),
+        "linear_index",
         /*HasNUW=*/true, /*HasNSW=*/true);
     array_indices.emplace_back(linear_index, shape_, ir_builder_);
   }
@@ -132,7 +135,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
   auto if_in_bounds = llvm_ir::EmitIfThenElse(
       ir_builder_->CreateICmpULT(
           linear_index_base,
-          ir_builder_->getInt64(ShapeUtil::ElementsIn(shape_))),
+          llvm::ConstantInt::get(index_type, ShapeUtil::ElementsIn(shape_))),
       llvm_ir::IrName(loop_name, "in_bounds"), ir_builder_, false);
 
   // Set exit_bb_ to the exit block of the if structure.

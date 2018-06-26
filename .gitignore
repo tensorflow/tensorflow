@@ -16,6 +16,7 @@ __pycache__
 cmake_build/
 .idea/**
 /build/
+[Bb]uild/
 /tensorflow/core/util/version_info.cc
 /tensorflow/python/framework/fast_tensor_util.cpp
 Pods

@@ -499,12 +499,15 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   const Shape& lhs_shape = lhs_instruction->shape();
   const Shape& rhs_shape = rhs_instruction->shape();
 
+  // TODO(b/110211620): Convert to use i32 index_type when it is possible.
+  llvm::Type* index_type = ir_builder_.getInt64Ty();
+  llvm_ir::IrArray::Index element_index(index_type);
   if (ShapeUtil::IsScalar(lhs_shape) && ShapeUtil::IsScalar(rhs_shape)) {
     // If the operands are scalar, don't emit any loops.
     llvm::Value* lhs_value =
-        lhs_array.EmitReadArrayElement(/*index=*/{}, &ir_builder_);
+        lhs_array.EmitReadArrayElement(/*index=*/element_index, &ir_builder_);
     llvm::Value* rhs_value =
-        rhs_array.EmitReadArrayElement(/*index=*/{}, &ir_builder_);
+        rhs_array.EmitReadArrayElement(/*index=*/element_index, &ir_builder_);
     llvm::Value* result;
     if (ShapeUtil::ElementIsComplex(lhs_shape)) {
       auto value = MultiplyComplex(lhs_value, rhs_value, &ir_builder_);
@@ -514,7 +517,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
     } else {
       result = ir_builder_.CreateFMul(lhs_value, rhs_value);
     }
-    target_array.EmitWriteArrayElement(/*index=*/{}, result, &ir_builder_);
+    target_array.EmitWriteArrayElement(/*index=*/element_index, result,
+                                       &ir_builder_);
     return Status::OK();
   }
 
@@ -605,7 +609,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // address. The index into the target address is the concatenation of the rhs
   // and lhs indexes with the reduction dimensions removed. The terms from the
   // rhs index are the lower dimensions in the index so we add them first.
-  llvm_ir::IrArray::Index target_index;
+  llvm_ir::IrArray::Index target_index(index_type);
   for (size_t dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
       target_index.push_back(lhs_index[dimension]);
@@ -631,7 +635,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
-  if (ShapeUtil::HasZeroElements(convolution->shape())) {
+  if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
     // Emit no code for an empty output.
     return Status::OK();
   }
@@ -641,7 +645,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 }
 
 Status IrEmitter::HandleFft(HloInstruction* fft) {
-  if (ShapeUtil::HasZeroElements(fft->shape())) {
+  if (ShapeUtil::IsZeroElementArray(fft->shape())) {
     // Emit no code for an empty output.
     return Status::OK();
   }

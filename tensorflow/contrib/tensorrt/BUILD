@@ -49,7 +49,6 @@ tf_gpu_cc_test(
 tf_custom_op_library(
     name = "python/ops/_trt_engine_op.so",
     srcs = [
-        "ops/trt_calib_op.cc",
         "ops/trt_engine_op.cc",
     ],
     deps = [
@@ -76,11 +75,9 @@ tf_gpu_library(
 cc_library(
     name = "trt_engine_op_kernel",
     srcs = [
-        "kernels/trt_calib_op.cc",
         "kernels/trt_engine_op.cc",
     ],
     hdrs = [
-        "kernels/trt_calib_op.h",
         "kernels/trt_engine_op.h",
     ],
     copts = tf_copts(),
@@ -89,20 +86,22 @@ cc_library(
         ":trt_logging",
         ":trt_plugins",
         ":trt_resources",
+        ":trt_conversion",
+        ":utils",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor_headers_lib",
+        "//tensorflow/core/grappler/costs:graph_properties",
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),
-    # TODO(laigd)
+    # TODO(laigd): fix this by merging header file in cc file.
     alwayslink = 1,  # buildozer: disable=alwayslink-with-hdrs
 )
 
 tf_gen_op_libs(
     op_lib_names = [
         "trt_engine_op",
-        "trt_calib_op",
     ],
 )
 
@@ -122,7 +121,6 @@ tf_gen_op_wrapper_py(
     name = "trt_engine_op",
     gen_locally = True,
     deps = [
-        ":trt_calib_op_op_lib",
         ":trt_engine_op_op_lib",
         ":trt_logging",
         ":trt_shape_function",
@@ -140,7 +138,6 @@ tf_custom_op_py_library(
     kernels = [
         ":trt_engine_op_kernel",
         ":trt_engine_op_op_lib",
-        ":trt_calib_op_op_lib",
         ":trt_shape_function",
     ],
     srcs_version = "PY2AND3",
@@ -191,7 +188,6 @@ tf_py_wrap_cc(
     deps = [
         ":trt_conversion",
         ":trt_engine_op_kernel",
-        "//tensorflow/core:framework_lite",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -211,6 +207,7 @@ tf_gpu_library(
     ],
     deps = [
         ":trt_logging",
+        ":utils",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
@@ -237,12 +234,12 @@ tf_gpu_library(
         ":trt_plugins",
         ":trt_logging",
         ":trt_resources",
+        ":utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
-        "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:graph",
@@ -342,4 +339,9 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+)
+
+cc_library(
+    name = "utils",
+    hdrs = ["convert/utils.h"],
 )

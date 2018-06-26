@@ -138,6 +138,7 @@ typedef enum {
   kTfLiteInt64 = 4,
   kTfLiteString = 5,
   kTfLiteBool = 6,
+  kTfLiteInt16 = 7,
 } TfLiteType;
 
 // Parameters for asymmetric quantization. Quantized values can be converted
@@ -148,7 +149,7 @@ typedef struct {
   int32_t zero_point;
 } TfLiteQuantizationParams;
 
-// A union of points that points to memory for a given tensor.
+// A union of pointers that points to memory for a given tensor.
 typedef union {
   int* i32;
   int64_t* i64;
@@ -157,6 +158,7 @@ typedef union {
   const char* raw_const;
   uint8_t* uint8;
   bool* b;
+  int16_t* i16;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
@@ -223,6 +225,9 @@ typedef struct {
   // delegate buffer.
   // WARNING: This is an // experimental interface that is subject to change.
   bool data_is_stale;
+
+  // True if the tensor is a variable.
+  bool is_variable;
 } TfLiteTensor;
 
 // Free data memory of tensor `t`;
@@ -235,7 +240,8 @@ void TfLiteTensorFree(TfLiteTensor* t);
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        TfLiteQuantizationParams quantization, char* buffer,
                        size_t size, TfLiteAllocationType allocation_type,
-                       const void* allocation, TfLiteTensor* tensor);
+                       const void* allocation, bool is_variable,
+                       TfLiteTensor* tensor);
 
 // Resize the allocated data of a (dynamic) tensor.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
@@ -367,6 +373,14 @@ typedef struct _TfLiteRegistration {
   // Execute the node (should read node->inputs and output to node->outputs).
   // Returns kTfLiteOk on success.
   TfLiteStatus (*invoke)(TfLiteContext* context, TfLiteNode* node);
+
+  // profiling_string is called during summarization of profiling information
+  // in order to group executions together. Providing a value here will cause a
+  // given op to appear multiple times is the profiling report. This is
+  // particularly useful for custom ops that can perform significantly
+  // different calculations depending on their `user-data`.
+  const char* (*profiling_string)(const TfLiteContext* context,
+                                  const TfLiteNode* node);
 
   // Builtin codes. If this kernel refers to a builtin this is the code
   // of the builtin. This is so we can do marshaling to other frameworks like

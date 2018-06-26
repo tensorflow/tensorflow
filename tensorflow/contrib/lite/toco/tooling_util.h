@@ -101,6 +101,8 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOp(Model& model,
 const char* OperatorTypeName(OperatorType type);
 string HelpfulOperatorTypeName(const Operator& op);
 
+// Whether the operator can be fused with an activation function. Note that this
+// will return false by default for new operators; fusing support is opt-in.
 bool OperatorSupportsFusedActivation(OperatorType type);
 
 void DumpGraphvizVideoFrame(const Model& model);

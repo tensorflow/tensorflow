@@ -50,6 +50,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteString";
     case kTfLiteBool:
       return "kTfLiteBool";
+    case kTfLiteInt16:
+      return "kTfLiteInt16";
   }
   return "(invalid)";
 }
@@ -82,13 +84,13 @@ void PrintInterpreterState(Interpreter* interpreter) {
   for (int tensor_index = 0; tensor_index < interpreter->tensors_size();
        tensor_index++) {
     TfLiteTensor* tensor = interpreter->tensor(tensor_index);
-    printf("Tensor %3d %10s %15s %10zu bytes (%4.1f MB) ", tensor_index,
-           TensorTypeName(tensor->type), AllocTypeName(tensor->allocation_type),
-           tensor->bytes, float(tensor->bytes) / float(1 << 20));
+    printf("Tensor %3d %-20s %10s %15s %10zu bytes (%4.1f MB) ", tensor_index,
+           tensor->name, TensorTypeName(tensor->type),
+           AllocTypeName(tensor->allocation_type), tensor->bytes,
+           (static_cast<float>(tensor->bytes) / (1 << 20)));
     PrintTfLiteIntVector(tensor->dims);
-    printf("\n");
   }
-
+  printf("\n");
   for (int node_index = 0; node_index < interpreter->nodes_size();
        node_index++) {
     const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
@@ -103,8 +105,5 @@ void PrintInterpreterState(Interpreter* interpreter) {
     PrintTfLiteIntVector(node.outputs);
   }
 }
-
-// Prints a dump of what tensors and what nodes are in the interpreter.
-TfLiteStatus ValidateInterpreterState(const Interpreter* interpreter);
 
 }  // namespace tflite

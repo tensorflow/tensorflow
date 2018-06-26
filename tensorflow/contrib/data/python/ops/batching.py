@@ -77,17 +77,17 @@ def dense_to_sparse_batch(batch_size, row_shape):
   """
 
   def _apply_fn(dataset):
-    return DenseToSparseBatchDataset(dataset, batch_size, row_shape)
+    return _DenseToSparseBatchDataset(dataset, batch_size, row_shape)
 
   return _apply_fn
 
 
-class UnbatchDataset(dataset_ops.Dataset):
+class _UnbatchDataset(dataset_ops.Dataset):
   """A dataset that splits the elements of its input into multiple elements."""
 
   def __init__(self, input_dataset):
     """See `unbatch()` for more details."""
-    super(UnbatchDataset, self).__init__()
+    super(_UnbatchDataset, self).__init__()
     flat_shapes = nest.flatten(input_dataset.output_shapes)
     if any(s.ndims == 0 for s in flat_shapes):
       raise ValueError("Cannot unbatch an input with scalar components.")
@@ -144,7 +144,7 @@ def unbatch():
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
     if not sparse.any_sparse(dataset.output_classes):
-      return UnbatchDataset(dataset)
+      return _UnbatchDataset(dataset)
 
     # NOTE(mrry): We must ensure that any SparseTensors in `dataset`
     # are normalized to the rank-1 dense representation, so that the
@@ -170,7 +170,7 @@ def unbatch():
         dataset.output_shapes,
         dataset.output_classes,
         allow_unsafe_cast=True)
-    return UnbatchDataset(restructured_dataset)
+    return _UnbatchDataset(restructured_dataset)
 
   return _apply_fn
 
@@ -298,12 +298,12 @@ def padded_batch_and_drop_remainder(batch_size,
   return _apply_fn
 
 
-class DenseToSparseBatchDataset(dataset_ops.Dataset):
+class _DenseToSparseBatchDataset(dataset_ops.Dataset):
   """A `Dataset` that batches ragged dense elements into `tf.SparseTensor`s."""
 
   def __init__(self, input_dataset, batch_size, row_shape):
     """See `Dataset.dense_to_sparse_batch()` for more details."""
-    super(DenseToSparseBatchDataset, self).__init__()
+    super(_DenseToSparseBatchDataset, self).__init__()
     if not isinstance(input_dataset.output_types, dtypes.DType):
       raise TypeError("DenseToSparseDataset requires an input whose elements "
                       "have a single component, whereas the input has %r." %

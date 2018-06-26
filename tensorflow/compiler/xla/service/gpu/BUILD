@@ -243,6 +243,19 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_execution_profiler",
+    srcs = ["hlo_execution_profiler.cc"],
+    hdrs = ["hlo_execution_profiler.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_execution_profile",
+        "//tensorflow/compiler/xla/service:pool",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
     name = "gpu_executable",
     srcs = [
         "conditional_thunk.cc",
@@ -285,6 +298,7 @@ cc_library(
         ":backend_configs",
         ":buffer_allocations",
         ":cudnn_convolution_runner",
+        ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
         ":partition_assignment",
@@ -579,7 +593,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
-        "//tensorflow/compiler/xla/service:gather_expander",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
@@ -610,7 +623,6 @@ cc_library(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:core",
-        "@llvm//:support",
     ],
     alwayslink = True,  # Contains compiler registration
 )

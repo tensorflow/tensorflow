@@ -248,6 +248,9 @@ def tf_opts_nortti_if_android():
 
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
+def tf_features_nomodules_if_android():
+  return if_android(["-use_header_modules"])
+
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
 def tf_gen_op_libs(op_lib_names, deps=None, is_external=True):
@@ -949,6 +952,7 @@ def tf_gpu_kernel_library(srcs,
                           hdrs=[],
                           **kwargs):
   copts=copts + tf_copts() + _cuda_copts() + _rocm_copts() + if_cuda_is_configured(gpu_copts) + if_rocm_is_configured(gpu_copts)
+  kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
 
   native.cc_library(
       srcs=srcs,
@@ -994,6 +998,7 @@ def tf_gpu_library(deps=None, gpu_deps=None, copts=tf_copts(), **kwargs):
   if not gpu_deps:
     gpu_deps = []
 
+  kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
   native.cc_library(
       deps=deps +
           if_cuda_is_configured(gpu_deps + [
@@ -1344,6 +1349,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
         name=basename + "_gpu",
         srcs=gpu_srcs,
         copts=_cuda_copts() + _rocm_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
+        features = if_cuda(["-use_header_modules"]),
         deps=deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps))
     cuda_deps.extend([":" + basename + "_gpu"])
     rocm_deps.extend([":" + basename + "_gpu"])

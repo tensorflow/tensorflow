@@ -371,6 +371,38 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
   }
 }
 
+TEST_F(HloComputationTest, DeepCopyToken) {
+  // Test that DeepCopyInstruction properly handles tokens which should not be
+  // copied.
+  auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  auto copy = computation->DeepCopyInstruction(token).ValueOrDie();
+
+  // No copy should be added.
+  EXPECT_THAT(copy, op::GenerateToken());
+}
+
+TEST_F(HloComputationTest, DeepCopyTokenTuple) {
+  // Test that DeepCopyInstruction properly handles tokens which should not be
+  // copied.
+  auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+  auto tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({token, constant}));
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  auto copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
+
+  // Only the array (second tuple element) should be copied. The token is passed
+  // through transparently.
+  EXPECT_THAT(copy, op::Tuple(op::GetTupleElement(tuple),
+                              op::Copy(op::GetTupleElement(tuple))));
+}
+
 TEST_F(HloComputationTest, CycleDetection) {
   // Test whether the visitor can detect cycles in the graph.
   auto builder = HloComputation::Builder(TestName());
@@ -384,6 +416,9 @@ TEST_F(HloComputationTest, CycleDetection) {
   auto computation = module->AddEntryComputation(builder.Build());
   // Add a control dependency to create a cycle.
   ASSERT_IS_OK(add->AddControlDependencyTo(negate));
+
+  auto instructions = computation->MakeInstructionPostOrder();
+  EXPECT_EQ(3, instructions.size());
 
   const auto visitor = [](HloInstruction* instruction) { return Status::OK(); };
   auto visit_status = computation->Accept(visitor);
