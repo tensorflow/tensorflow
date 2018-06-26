@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
-namespace xla {
+namespace stream_executor {
+namespace port {
 namespace internal_statusor {
 
 void Helper::HandleInvalidStatusCtorArg(Status* status) {
@@ -35,4 +36,5 @@ void Helper::Crash(const Status& status) {
 }
 
 }  // namespace internal_statusor
-}  // namespace xla
+}  // namespace port
+}  // namespace stream_executor

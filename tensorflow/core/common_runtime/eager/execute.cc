@@ -606,7 +606,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 
     tensorflow::TensorHandle* input = op->Inputs()[i];
 
-    tensorflow::uint64 op_id;
+    tensorflow::int64 op_id;
     int32 output_num;
     TF_RETURN_IF_ERROR(input->RemoteAddress(&op_id, &output_num));
 
