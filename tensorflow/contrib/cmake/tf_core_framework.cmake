@@ -125,6 +125,7 @@ endfunction()
 
 file(GLOB_RECURSE tf_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
+    "${tensorflow_source_dir}/tensorflow/compiler/xla/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tpu/proto/*.proto"
 )
