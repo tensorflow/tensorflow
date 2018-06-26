@@ -94,8 +94,11 @@ bool IsArrayPrimitiveType(PrimitiveType primitive_type) {
 // Recursive helper for comparing the equality of two shapes. Returns true if
 // the shapes are the same. If compare_layouts is true, then layouts must also
 // match.
-bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
-  if (!ShapeUtil::SameElementType(lhs, rhs)) {
+bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
+                   bool ignore_fp_precision) {
+  if ((ignore_fp_precision &&
+       !ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) ||
+      (!ignore_fp_precision && !ShapeUtil::SameElementType(lhs, rhs))) {
     VLOG(3) << "CompareShapes: lhs element type != rhs element type";
     return false;
   }
@@ -103,7 +106,8 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   if (ShapeUtil::IsTuple(lhs)) {
     return ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
                            [=](const Shape& l, const Shape& r) {
-                             return CompareShapes(l, r, compare_layouts);
+                             return CompareShapes(l, r, compare_layouts,
+                                                  ignore_fp_precision);
                            });
   } else if (!ShapeUtil::IsArray(lhs)) {
     // Non-tuple, non-array tupes such as opaque and token types are trivially
@@ -170,10 +174,23 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
-  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true);
+  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true,
+                             /*ignore_fp_precision=*/false);
   if (!equal && VLOG_IS_ON(3)) {
     VLOG(3) << "ShapeUtil::Equal differ: lhs = " << lhs.ShortDebugString()
             << ", rhs = " << rhs.ShortDebugString();
+  }
+
+  return equal;
+}
+
+/* static */ bool ShapeUtil::EqualIgnoringFpPrecision(const Shape& lhs,
+                                                      const Shape& rhs) {
+  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true,
+                             /*ignore_fp_precision=*/true);
+  if (!equal && VLOG_IS_ON(3)) {
+    VLOG(3) << "ShapeUtil::EqualIgnoringFpPrecision differ: lhs = "
+            << lhs.ShortDebugString() << ", rhs = " << rhs.ShortDebugString();
   }
 
   return equal;
@@ -665,7 +682,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
-  return CompareShapes(lhs, rhs, /*compare_layouts=*/false);
+  return CompareShapes(lhs, rhs, /*compare_layouts=*/false,
+                       /*ignore_fp_precision=*/false);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
