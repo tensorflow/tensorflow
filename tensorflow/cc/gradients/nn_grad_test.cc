@@ -120,9 +120,6 @@ TEST_F(NNGradTest, SoftmaxCrossEntropyWithLogitsGrad) {
       {5});  // batch size of 5, 1 value for each entry in the batch
              // loss is the difference between logits and labels
 
-  TensorShape backpropShape(
-      {5, 3});  // the docmentation says the backprop output
-                // will have batch size x num classes as its shape
   auto logits = Placeholder(scope_, DT_FLOAT,
                             Placeholder::Shape(logitsShape));  // estimation
   auto labels =
@@ -130,9 +127,9 @@ TEST_F(NNGradTest, SoftmaxCrossEntropyWithLogitsGrad) {
   auto y =
       tensorflow::ops::SoftmaxCrossEntropyWithLogits(scope_, logits, labels);
   // Please note the reversal of the backprop and loss orders. A separate issue
-  // has been opened for this.
+  // #18734 has been opened for this.
   RunTest({logits, labels}, {logitsShape, logitsShape}, {y.backprop, y.loss},
-          {backpropShape, lossShape});
+          {logitsShape, lossShape});
 }
 
 TEST_F(NNGradTest, LogSoftmaxGrad) {
