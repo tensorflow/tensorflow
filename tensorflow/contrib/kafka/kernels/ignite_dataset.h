@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 
 namespace ignite {
-	
+
 class IgniteDataset : public tensorflow::GraphDatasetBase {
  public:
-  IgniteDataset(tensorflow::OpKernelContext* ctx, std::string host, tensorflow::int32 port, bool local, tensorflow::int32 part);
+  IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache_name, std::string host, tensorflow::int32 port, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema);
   std::unique_ptr<tensorflow::IteratorBase> MakeIteratorInternal(const tensorflow::string& prefix) const override;
   const tensorflow::DataTypeVector& output_dtypes() const override;
   const std::vector<tensorflow::PartialTensorShape>& output_shapes() const override;
@@ -29,10 +29,12 @@ class IgniteDataset : public tensorflow::GraphDatasetBase {
   tensorflow::Status AsGraphDefInternal(DatasetGraphDefBuilder* b, tensorflow::Node** output) const override;
 
  private:
+  const std::string cache_name_;
   const std::string host_;
   const tensorflow::int32 port_;
   const bool local_;
   const tensorflow::int32 part_;
+  const std::vector<tensorflow::int32> schema_;
 };
 
 } // namespace ignite

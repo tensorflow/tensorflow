@@ -24,55 +24,47 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 
+import ignite_util;
+
 
 class KafkaDataset(Dataset):
   """A Kafka Dataset that consumes the message.
   """
 
-  def __init__(self, host="localhost", port=10800, local=False, part=-1):
+  def __init__(self, cache_name, host="localhost", port=10800, local=False, part=-1):
     """Create a KafkaReader.
 
     Args:
+      cache_name: Cache Name.
       host: Host.
       port: Port.
       local: Local.
       part: Part.
     """
     super(KafkaDataset, self).__init__()
+
+    with ignite_util.IgniteClient(host, port) as client:
+      client.handshake()
+      self._cache_type = client.get_cache_type(cache_name)
+
+    self._cache_name = ops.convert_to_tensor(cache_name, dtype=dtypes.string, name="cache_name")
     self._host = ops.convert_to_tensor(host, dtype=dtypes.string, name="host")
     self._port = ops.convert_to_tensor(port, dtype=dtypes.int32, name="port")
     self._local = ops.convert_to_tensor(local, dtype=dtypes.bool, name="local")
     self._part = ops.convert_to_tensor(part, dtype=dtypes.int32, name="part")
+    self._schema = ops.convert_to_tensor(self._cache_type.to_flat(), dtype=dtypes.int32, name="schema")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.kafka_dataset(self._host, self._port, self._local, self._part)
+    return gen_dataset_ops.kafka_dataset(self._cache_name, self._host, self._port, self._local, self._part, self._schema)
 
   @property
   def output_classes(self):
-    return {
-      'key' : ops.Tensor,
-	    'val' : {
-	      'pixels' : ops.Tensor,
-	      'label' : ops.Tensor
-	     }
-    }
+    return self._cache_type.to_output_classes()
 
   @property
   def output_shapes(self):
-    return {
-	    'key' : tensor_shape.scalar(),
-      'val' : {
-        'pixels' : tensor_shape.TensorShape([784]),
-	      'label' : tensor_shape.scalar()
-      }
-    }
+    return self._cache_type.to_output_shapes()
 
   @property
   def output_types(self):
-    return {
-    	'key' : dtypes.int32,
-      'val' : {
-        'pixels' : dtypes.double,
-        'label' : dtypes.int32
-      }
-    }
+    return self._cache_type.to_output_types()

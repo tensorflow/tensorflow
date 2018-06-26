@@ -37,10 +37,6 @@ cc_library(
     name = "dataset_kernels",
     srcs = [
         "kernels/kafka_dataset_ops.cc",
-        "kernels/ignite_binary_object_parser.h",
-        "kernels/ignite_binary_object_parser.cc",
-        "kernels/ignite_client.h",
-        "kernels/ignite_client.cc",
         "kernels/ignite_dataset.h",
         "kernels/ignite_dataset.cc",
         "kernels/ignite_dataset_iterator.h",

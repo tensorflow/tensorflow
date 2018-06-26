@@ -14,17 +14,32 @@ limitations under the License.
 ==============================================================================*/
 
 #include "ignite_dataset.h"
+// #include "ignite_binary_object_parser.h"
 
 namespace ignite {
 
 class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> {
  public:
-  explicit IgniteDatasetIterator(const Params& params, Client* client, std::string cache_name, bool local, int part);
+  explicit IgniteDatasetIterator(const Params& params);
+  ~IgniteDatasetIterator();
   tensorflow::Status GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) override;
 
  protected:
   tensorflow::Status SaveInternal(tensorflow::IteratorStateWriter* writer) override;
   tensorflow::Status RestoreInternal(tensorflow::IteratorContext* ctx, tensorflow::IteratorStateReader* reader) override;
+  // bool Handshake();
+  // int JavaHashCode(std::string str);
+
+ // private:
+ //  Client* client;
+ //  std::string cache_name;
+ //  bool local;
+ //  int part;
+ //  char* ptr;
+ //  int reminder;
+ //  bool last_page;
+ //  long cursor_id;
+ //  IgniteBinaryParser* parser;
 };
 
 } // namespace ignite

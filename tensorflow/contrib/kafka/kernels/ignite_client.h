@@ -14,51 +14,35 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
-#include <map>
+// #include <map>
 #include <netinet/in.h>
 
-#include "tensorflow/core/framework/dataset.h"
-
 namespace ignite {
-
-struct BinaryField {
-  std::string field_name;
-  int type_id;
-  int field_id;
-};
-
-struct BinaryType {
-  int type_id;
-  std::string type_name;
-  int field_cnt;
-  BinaryField** fields;
-};
 
 class Client {
  public:
   Client(std::string host, int port);
-  BinaryType* GetType(int type_id);
- private:
-  std::string host;
-  int port;
+  
+  void Connect();
+  void Disconnect();
 
-  int sock;
-  struct sockaddr_in server;
-  // Read data
   char ReadByte();
   short ReadShort();
   int ReadInt();
   long ReadLong();
+  void ReadData(char* buf, int length);
 
-  void ParseBinaryObject(char* arr, int offset);
-  // Write data
   void WriteByte(char data);
   void WriteShort(short data);
   void WriteInt(int data);
   void WriteLong(long data);
-  // Network
-  void Connect(std::string address, int port);
-  int JavaHashCode(std::string str);
+  void WriteData(char* buf, int length);
+ private:
+  std::string cache_name;
+  std::string host;
+  int port;
+  int sock;
+  struct sockaddr_in server;
 };
 
 } // namespace ignite
