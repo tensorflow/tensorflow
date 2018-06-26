@@ -38,7 +38,6 @@ class Client {
   void WriteLong(long data);
   void WriteData(char* buf, int length);
  private:
-  std::string cache_name;
   std::string host;
   int port;
   int sock;

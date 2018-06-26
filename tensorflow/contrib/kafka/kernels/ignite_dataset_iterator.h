@@ -14,32 +14,31 @@ limitations under the License.
 ==============================================================================*/
 
 #include "ignite_dataset.h"
+#include "ignite_client.h"
 // #include "ignite_binary_object_parser.h"
 
 namespace ignite {
 
 class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> {
  public:
-  explicit IgniteDatasetIterator(const Params& params);
-  ~IgniteDatasetIterator();
+  explicit IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema);
   tensorflow::Status GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) override;
 
  protected:
   tensorflow::Status SaveInternal(tensorflow::IteratorStateWriter* writer) override;
   tensorflow::Status RestoreInternal(tensorflow::IteratorContext* ctx, tensorflow::IteratorStateReader* reader) override;
-  // bool Handshake();
-  // int JavaHashCode(std::string str);
 
- // private:
- //  Client* client;
- //  std::string cache_name;
- //  bool local;
- //  int part;
- //  char* ptr;
- //  int reminder;
- //  bool last_page;
- //  long cursor_id;
- //  IgniteBinaryParser* parser;
+ private:
+  void Handshake();
+
+  Client client_;
+  std::string cache_name_;
+  bool local_;
+  tensorflow::int32 part_;
+  std::vector<tensorflow::int32> schema_;
+
+  int remainder;
+  bool next_page;
 };
 
 } // namespace ignite

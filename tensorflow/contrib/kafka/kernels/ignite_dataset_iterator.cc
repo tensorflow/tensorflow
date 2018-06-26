@@ -18,21 +18,23 @@ limitations under the License.
 
 namespace ignite {
 
-IgniteDatasetIterator::IgniteDatasetIterator(const Params& params) : tensorflow::DatasetIterator<IgniteDataset>(params) {
-	// this->client = client;	  	
-	// this->cache_name = cache_name;
-	// this->local = local;
-	// this->part = part;
-	// this->reminder = -1;
-	// this->last_page = false;
-	// this->parser = new IgniteBinaryObjectParser();
-}
-
-IgniteDatasetIterator::~IgniteDatasetIterator() {
-	// delete parser;
-}
+IgniteDatasetIterator::IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema) : tensorflow::DatasetIterator<IgniteDataset>(params),
+ client_(Client(host, port)),
+ cache_name_(cache_name),
+ local_(local),
+ part_(part),
+ schema_(schema),
+ remainder(-1),
+ next_page(false) {}
 
 tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) {
+  client_.Connect();
+  std::cout << "Client connected!";
+
+  Handshake();
+
+  client_.Disconnect();
+  std::cout << "Client disconnected!";
   // if (reminder == -1) {
   // 	// first query
   // 	client->Connect();
@@ -94,25 +96,24 @@ tensorflow::Status IgniteDatasetIterator::RestoreInternal(tensorflow::IteratorCo
   return tensorflow::Status::OK();
 }
 
-// bool IgniteDatasetIterator::Handshake() {
-//   WriteInt(8);
-//   WriteByte(1);
-//   WriteShort(1);
-//   WriteShort(0);
-//   WriteShort(0);
-//   WriteByte(2);
+void IgniteDatasetIterator::Handshake() {
+  client_.WriteInt(8);
+  client_.WriteByte(1);
+  client_.WriteShort(1);
+  client_.WriteShort(0);
+  client_.WriteShort(0);
+  client_.WriteByte(2);
 
-//   int handshake_res_len = ReadInt();
-//   char handshake_res = ReadByte();
+  int handshake_res_len = client_.ReadInt();
+  char handshake_res = client_.ReadByte();
 
-//   if (handshake_res == 1) {
-//   	return true;
-//   }
-//   else {
-//   	std::cout << "Handshake error!\n";
-//   	return false;
-//   }
-// }
+  if (handshake_res == 1) {
+  	std::cout << "Handshake passed\n";
+  }
+  else {
+  	std::cout << "Handshake error!\n";
+  }
+}
 
 // int IgniteDatasetIterator::JavaHashCode(std::string str) {
 //   int h = 0;
