@@ -144,7 +144,7 @@ class EagerServiceImpl {
 
   TF_DISALLOW_COPY_AND_ASSIGN(EagerServiceImpl);
 };
-  
+
 }  // namespace eager
 }  // namespace tensorflow
 
