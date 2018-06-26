@@ -795,7 +795,7 @@ ENTRY ReduceR3ToR2.v3 {
 R"(HloModule outfeed_module
 
 ENTRY InfeedToOutfeed {
-  token = token[] generate-token()
+  token = token[] after-all()
   infeed = ((u32[3]{0}, pred[]), token[]) infeed(token)
   infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
   outfeed = token[] outfeed(infeed.data, token)
@@ -1425,7 +1425,7 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
 TEST_F(HloParserTest, NontupleInfeed) {
   const string original = R"(HloModule nontuple_infeed:
 ENTRY nontuple_infeed {
-  token = token[] generate-token()
+  token = token[] after-all()
   ROOT infeed = pred[] infeed(token)
 })";
   ExpectHasSubstr(ParseHloString(original).status().error_message(),

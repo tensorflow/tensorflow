@@ -1605,8 +1605,8 @@ HloModule TokensShouldNotBeCopied
   %constant.1 = s32[] constant(1)
   %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
   %get-tuple-element.2 = token[] get-tuple-element((s32[], token[]) %param.1), index=1
-  %generate-token = token[] generate-token(token[] %get-tuple-element.2)
-  ROOT %tuple = (s32[], token[]) tuple(s32[] %add, token[] %generate-token)
+  %after-all = token[] after-all(token[] %get-tuple-element.2)
+  ROOT %tuple = (s32[], token[]) tuple(s32[] %add, token[] %after-all)
 }
 
 %Cond (param: (s32[], token[])) -> pred[] {
@@ -1619,7 +1619,7 @@ HloModule TokensShouldNotBeCopied
 ENTRY %TokensShouldNotBeCopied () -> s32[] {
   %one = s32[] constant(1)
   %negative_one = s32[] negate(%one)
-  %init_token = token[] generate-token()
+  %init_token = token[] after-all()
   %init_tuple = (s32[], token[]) tuple(s32[] %negative_one, token[] %init_token)
   %while = (s32[], token[]) while((s32[], token[]) %init_tuple), condition=%Cond, body=%Body
   ROOT %root = s32[] get-tuple-element((s32[], token[]) %while), index=0

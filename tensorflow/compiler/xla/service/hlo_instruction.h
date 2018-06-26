@@ -680,9 +680,9 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> dimensions);
 
-  // Creates a token instruction used for joining or creating token types which
-  // thread through side-effecting operations.
-  static std::unique_ptr<HloInstruction> CreateGenerateToken(
+  // Creates a token instruction used for joining or creating new values of
+  // token type which thread through side-effecting operations.
+  static std::unique_ptr<HloInstruction> CreateAfterAll(
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
   // Creates an instance of GatherDimensionNumbers.

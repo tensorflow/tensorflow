@@ -716,7 +716,7 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
       })));
   auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
   auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1});
-  auto token = builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto outfeed10 = builder.AddInstruction(
       HloInstruction::CreateOutfeed(shape10, constant, token, ""));
   auto outfeed01 = builder.AddInstruction(

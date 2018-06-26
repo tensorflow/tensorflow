@@ -235,7 +235,7 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
     auto param = body_builder.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "param"));
     auto token =
-        body_builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
+        body_builder.AddInstruction(HloInstruction::CreateAfterAll({}));
     auto infeed = body_builder.AddInstruction(
         HloInstruction::CreateInfeed(shape, token, ""));
     body_builder.AddInstruction(
@@ -280,7 +280,7 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
     auto param = nested_callee_builder.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "param"));
     auto token = nested_callee_builder.AddInstruction(
-        HloInstruction::CreateGenerateToken({}));
+        HloInstruction::CreateAfterAll({}));
     nested_callee_builder.AddInstruction(
         HloInstruction::CreateOutfeed(shape, param, token, ""));
   }

@@ -340,7 +340,7 @@ TEST_F(HloDomainTest, CheckNormalizationOnInfeedTuple) {
 HloModule Module
 
 ENTRY entry {
-  token = token[] generate-token()
+  token = token[] after-all()
   infeed = ((f32[4], f32[4]), token[]) infeed(token),
     sharding={{maximal device=1}, {maximal device=0}, {maximal device=0}}
   infeed.data = (f32[4], f32[4]) get-tuple-element(infeed), index=0

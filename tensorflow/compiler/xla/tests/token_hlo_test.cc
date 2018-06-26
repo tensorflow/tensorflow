@@ -31,7 +31,7 @@ class TokenHloTest : public HloTestBase {};
 XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
   std::unique_ptr<HloModule> module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
-  builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
+  builder.AddInstruction(HloInstruction::CreateAfterAll({}));
 
   module->AddEntryComputation(builder.Build());
 
@@ -43,11 +43,11 @@ XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
 XLA_TEST_F(TokenHloTest, TokenTree) {
   std::unique_ptr<HloModule> module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
-  auto token0 = builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
-  auto token1 = builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
-  auto token2 = builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
+  auto token0 = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token1 = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token2 = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   builder.AddInstruction(
-      HloInstruction::CreateGenerateToken({token0, token0, token1, token2}));
+      HloInstruction::CreateAfterAll({token0, token0, token1, token2}));
 
   module->AddEntryComputation(builder.Build());
 
@@ -96,7 +96,7 @@ XLA_TEST_F(TokenHloTest, InvalidOperandToTokenInstruction) {
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
-  builder.AddInstruction(HloInstruction::CreateGenerateToken({param}));
+  builder.AddInstruction(HloInstruction::CreateAfterAll({param}));
   builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<int32>(123)));
   module->AddEntryComputation(builder.Build());
@@ -110,7 +110,7 @@ XLA_TEST_F(TokenHloTest, InvalidOperandToTokenInstruction) {
 
 XLA_TEST_F(TokenHloTest, TokenInWhileLoop) {
   // Thread a token around a while loop. Token is created and consumed by a
-  // GenerateToken instruction in the while body.
+  // AfterAll instruction in the while body.
   string module_string = R"(
 HloModule TokenInWhileLoop
 
@@ -120,8 +120,8 @@ HloModule TokenInWhileLoop
   %constant.1 = s32[] constant(1)
   %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
   %get-tuple-element.2 = token[] get-tuple-element((s32[], token[]) %param.1), index=1
-  %generate-token = token[] generate-token(token[] %get-tuple-element.2)
-  ROOT %tuple = (s32[], token[]) tuple(s32[] %add, token[] %generate-token)
+  %after-all = token[] after-all(token[] %get-tuple-element.2)
+  ROOT %tuple = (s32[], token[]) tuple(s32[] %add, token[] %after-all)
 }
 
 %Cond (param: (s32[], token[])) -> pred[] {
@@ -133,7 +133,7 @@ HloModule TokenInWhileLoop
 
 ENTRY %TokenInWhileLoop () -> s32[] {
   %zero = s32[] constant(0)
-  %init_token = token[] generate-token()
+  %init_token = token[] after-all()
   %init_tuple = (s32[], token[]) tuple(s32[] %zero, token[] %init_token)
   %while = (s32[], token[]) while((s32[], token[]) %init_tuple), condition=%Cond, body=%Body
   ROOT %root = s32[] get-tuple-element((s32[], token[]) %while), index=0
@@ -162,13 +162,13 @@ HloModule TokenInConditional
 
 %False (param.2: s32[]) -> (s32[], token[]) {
   %param.2 = s32[] parameter(0)
-  %new_token = token[] generate-token()
+  %new_token = token[] after-all()
   ROOT %tuple = (s32[], token[]) tuple(s32[] %param.2, token[] %new_token)
 }
 
 ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
   %param.3 = pred[] parameter(0)
-  %init_token = token[] generate-token()
+  %init_token = token[] after-all()
   %seven = s32[] constant(7)
   %cond = (s32[], token[]) conditional(pred[] %param.3, token[] %init_token, s32[] %seven), true_computation=True, false_computation=False
   ROOT %root = s32[] get-tuple-element((s32[], token[]) %cond), index=0

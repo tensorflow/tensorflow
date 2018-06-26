@@ -617,12 +617,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateReshape(shape, operands[0]));
       break;
     }
-    case HloOpcode::kGenerateToken: {
+    case HloOpcode::kAfterAll: {
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateGenerateToken(operands));
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
       break;
     }
     case HloOpcode::kTuple: {

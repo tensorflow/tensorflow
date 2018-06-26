@@ -682,11 +682,10 @@ HloInstruction::CreateCrossReplicaSum(
   return MakeUnique<HloReverseInstruction>(shape, operand, dimensions);
 }
 
-/* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateGenerateToken(
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAfterAll(
     tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  auto instruction = WrapUnique(new HloInstruction(
-      HloOpcode::kGenerateToken, ShapeUtil::MakeTokenShape()));
+  auto instruction = WrapUnique(
+      new HloInstruction(HloOpcode::kAfterAll, ShapeUtil::MakeTokenShape()));
   for (auto operand : operands) {
     instruction->AppendOperand(operand);
   }
@@ -1213,8 +1212,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
           CreateDomain(shape, new_operands[0], operand_side_metadata_->Clone(),
                        user_side_metadata_->Clone());
       break;
-    case HloOpcode::kGenerateToken:
-      clone = CreateGenerateToken(new_operands);
+    case HloOpcode::kAfterAll:
+      clone = CreateAfterAll(new_operands);
       break;
   }
   SetupDerivedInstruction(clone.get());
@@ -1501,7 +1500,7 @@ bool HloInstruction::IdenticalSlowPath(
     // These opcodes have complex or special behavior so just return false.
     case HloOpcode::kDomain:
     case HloOpcode::kWhile:
-    case HloOpcode::kGenerateToken:
+    case HloOpcode::kAfterAll:
       return false;
 
     // Check dot dimension numbers.
@@ -2287,8 +2286,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleGather(this);
     case HloOpcode::kDomain:
       return visitor->HandleDomain(this);
-    case HloOpcode::kGenerateToken:
-      return visitor->HandleGenerateToken(this);
+    case HloOpcode::kAfterAll:
+      return visitor->HandleAfterAll(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:

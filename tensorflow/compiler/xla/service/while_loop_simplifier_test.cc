@@ -208,8 +208,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedNotSimplified) {
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
-  auto token =
-      while_body->AddInstruction(HloInstruction::CreateGenerateToken({}));
+  auto token = while_body->AddInstruction(HloInstruction::CreateAfterAll({}));
   while_body->AddInstruction(HloInstruction::CreateInfeed(
       ShapeUtil::MakeShape(F32, {1}), token, "config"));
   EXPECT_FALSE(WhileLoopSimplifier().Run(the_module).ValueOrDie());

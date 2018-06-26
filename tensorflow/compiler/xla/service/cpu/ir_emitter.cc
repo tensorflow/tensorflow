@@ -2553,7 +2553,7 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleGenerateToken(HloInstruction* gen_token) {
+Status IrEmitter::HandleAfterAll(HloInstruction* gen_token) {
   TF_RET_CHECK(ByteSizeOf(gen_token->shape()) == 0);
   // No code to generate, but we need to emit an address for book-keeping.
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(gen_token));

@@ -150,7 +150,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleConcatenate(HloInstruction* concatenate) override;
   Status HandleConditional(HloInstruction* conditional) override;
-  Status HandleGenerateToken(HloInstruction* gen_token) override;
+  Status HandleAfterAll(HloInstruction* gen_token) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;

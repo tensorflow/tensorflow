@@ -456,13 +456,12 @@ Status ShapeVerifier::HandleGather(HloInstruction* gather) {
           gather->gather_dimension_numbers(), gather->gather_window_bounds()));
 }
 
-Status ShapeVerifier::HandleGenerateToken(HloInstruction* token) {
+Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : token->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(token,
-                    ShapeInference::InferGenerateTokenShape(operand_shapes));
+  return CheckShape(token, ShapeInference::InferAfterAllShape(operand_shapes));
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,

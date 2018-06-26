@@ -771,7 +771,7 @@ TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {
         HloInstruction::CreateParameter(0, tshape, "param"));
     // Using infeed as layout assignment does not mess up with it.
     auto token =
-        false_builder.AddInstruction(HloInstruction::CreateGenerateToken({}));
+        false_builder.AddInstruction(HloInstruction::CreateAfterAll({}));
     auto infeed = false_builder.AddInstruction(
         HloInstruction::CreateInfeed(xshape, token, ""));
     auto infeed_data = false_builder.AddInstruction(
