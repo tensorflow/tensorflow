@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "igntie_binary_object_parser.h"
 #include "ignite_dataset_iterator.h"
 // #include "ignite_client.h"
 
 namespace ignite {
 
-IgniteDatasetIterator::IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema) : tensorflow::DatasetIterator<IgniteDataset>(params),
+IgniteDatasetIterator::IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation) : tensorflow::DatasetIterator<IgniteDataset>(params),
  client_(Client(host, port)),
  cache_name_(cache_name),
  local_(local),
  part_(part),
  schema_(schema),
+ permutation_(permutation),
  remainder(-1),
  last_page(false) {
   client_.Connect();
@@ -82,6 +84,15 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
     }
 
     srd::cout << "Remainder: " << remainder << std::endl;
+
+    char* initial_ptr = ptr;
+    std::vector<int>* types = new std::vector<int>();
+
+    BinaryObjectParser parser;
+    // Parse key 
+    parser.Parse(ptr, out_tensors, types);
+    // Parse val
+    parser.Parse(ptr, out_tensors, types);
 
     *end_of_sequence = false;
     return tensorflow::Status::OK();

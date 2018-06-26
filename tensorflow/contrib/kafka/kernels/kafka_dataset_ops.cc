@@ -35,17 +35,29 @@ class KafkaDatasetOp : public DatasetOpKernel {
   	int32 part = -1;
   	OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "part", &part));
 	
-	const Tensor* schema_tensor;
-	OP_REQUIRES_OK(ctx, ctx->input("schema", &schema_tensor));
-	OP_REQUIRES(ctx, schema_tensor->dims() == 1, errors::InvalidArgument("`schema` must be a vector."));
+  	const Tensor* schema_tensor;
+  	OP_REQUIRES_OK(ctx, ctx->input("schema", &schema_tensor));
+  	OP_REQUIRES(ctx, schema_tensor->dims() == 1, errors::InvalidArgument("`schema` must be a vector."));
 
-	std::vector<int32> schema;
-	schema.reserve(schema_tensor->NumElements());
-	for (int i = 0; i < schema_tensor->NumElements(); i++) {
-		schema.push_back(schema_tensor->flat<int32>()(i));
-	}
+  	std::vector<int32> schema;
+  	schema.reserve(schema_tensor->NumElements());
+  	for (int i = 0; i < schema_tensor->NumElements(); i++) {
+  		schema.push_back(schema_tensor->flat<int32>()(i));
+  	}
 	
-    	*output = new ignite::IgniteDataset(ctx, cache_name, host, port, local, part, schema);
+    *output = new ignite::IgniteDataset(ctx, cache_name, host, port, local, part, schema);
+
+    const Tensor* permutation_tensor;
+    OP_REQUIRES_OK(ctx, ctx->input("permutation", &permutation_tensor));
+    OP_REQUIRES(ctx, schema_tensor->dims() == 1, errors::InvalidArgument("`permutation` must be a vector."));
+
+    std::vector<int32> permutation;
+    permutation.reserve(permutation_tensor->NumElements());
+    for (int i = 0; i < permutation_tensor->NumElements(); i++) {
+      permutation.push_back(permutation_tensor->flat<int32>()(i));
+    }
+  
+    *output = new ignite::IgniteDataset(ctx, cache_name, host, port, local, part, schema, permutation);
   }
 };
 

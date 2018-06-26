@@ -19,7 +19,7 @@ namespace ignite {
 
 class IgniteDataset : public tensorflow::GraphDatasetBase {
  public:
-  IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache_name, std::string host, tensorflow::int32 port, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema);
+  IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache_name, std::string host, tensorflow::int32 port, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation);
   std::unique_ptr<tensorflow::IteratorBase> MakeIteratorInternal(const tensorflow::string& prefix) const override;
   const tensorflow::DataTypeVector& output_dtypes() const override;
   const std::vector<tensorflow::PartialTensorShape>& output_shapes() const override;
@@ -35,6 +35,7 @@ class IgniteDataset : public tensorflow::GraphDatasetBase {
   const bool local_;
   const tensorflow::int32 part_;
   const std::vector<tensorflow::int32> schema_;
+  const std::vector<tensorflow::int32> permutation_;
 };
 
 } // namespace ignite

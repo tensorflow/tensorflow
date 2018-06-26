@@ -13,28 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensor.h"
+// #include "tensor.h"
 #include <map>
 #include <vector>
 
 namespace ignite {
 
-struct BinaryField {
-  std::string field_name;
-  int type_id;
-  int field_id;
-};
-
-struct BinaryType {
-  int type_id;
-  std::string type_name;
-  int field_cnt;
-  BinaryField** fields;
-};
-
 class BinaryObjectParser {
  public:
-  char* Parse(char *ptr, std::map<int, BinaryType*>* types, std::vector<tensorflow::Tensor>* out_tensors);
+  char* Parse(char *ptr, std::vector<tensorflow::Tensor>* out_tensors, std::vector<int>* types);
  private:
   char ReadByte(char*& ptr);
   short ReadShort(char*& ptr);

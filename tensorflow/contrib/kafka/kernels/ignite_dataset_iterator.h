@@ -21,7 +21,7 @@ namespace ignite {
 
 class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> {
  public:
-  explicit IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema);
+  explicit IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation);
   ~IgniteDatasetIterator();
   tensorflow::Status GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) override;
 
@@ -38,6 +38,7 @@ class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> 
   bool local_;
   tensorflow::int32 part_;
   std::vector<tensorflow::int32> schema_;
+  std::vector<tensorflow::int32> permutation_;
 
   char* data;
   int remainder;

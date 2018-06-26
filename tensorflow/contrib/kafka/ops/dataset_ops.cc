@@ -26,6 +26,7 @@ REGISTER_OP("KafkaDataset")
 	.Input("local: bool")
 	.Input("part: int32")
 	.Input("schema: int32")
+	.Input("permutation: int32")
     .Output("handle: variant")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
@@ -38,6 +39,7 @@ port: Port.
 local: Local.
 part: Part.
 schema: Schema.
+permutation: Permutation.
 )doc");
 
 }  // namespace tensorflow

@@ -17,24 +17,32 @@ limitations under the License.
 
 namespace ignite {
 
-IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache_name, std::string host, tensorflow::int32 port, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema) 
+IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache_name, std::string host, tensorflow::int32 port, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation) 
   : GraphDatasetBase(ctx),
     cache_name_(cache_name),
     host_(host),
     port_(port),
     local_(local),
     part_(part),
-    schema_(schema) {
+    schema_(schema),
+    permutation_(permutation) {
+  // Print schema    
 	std::cout << "Schema: ";
 	for (auto e: schema_) {
 		std::cout << e << " ";
 	}	
 	std::cout << "\n";
+  // Print permutation
+  std::cout << "Permutation: ";
+  for (auto e: permutation_) {
+    std::cout << e << " ";
+  } 
+  std::cout << "\n";
 }
 
 std::unique_ptr<tensorflow::IteratorBase> IgniteDataset::MakeIteratorInternal(const tensorflow::string& prefix) const {
   return std::unique_ptr<tensorflow::IteratorBase>(new IgniteDatasetIterator({this, tensorflow::strings::StrCat(prefix, "::Kafka")}, 
-    this->host_, this->port_, this->cache_name_, this->local_, this->part_, this->schema_));
+    this->host_, this->port_, this->cache_name_, this->local_, this->part_, this->schema_, this->_permutation));
 }
 
 const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {

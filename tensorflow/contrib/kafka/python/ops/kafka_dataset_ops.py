@@ -123,10 +123,11 @@ class BinaryField():
         self.field_id = field_id
         
 class TypeTreeNode():
-    def __init__(self, name, type_id, fields=None):
+    def __init__(self, name, type_id, fields=None, permutation=None):
         self.name = name
         self.type_id = type_id
         self.fields = fields
+        self.permutation = permutation
 
     def to_output_classes(self):
         if self.fields is None:
@@ -182,12 +183,36 @@ class TypeTreeNode():
     def to_flat(self):
         return self.__to_flat([])
     
+    def to_permutation(self):
+        a = {}
+        self.__traversal(a, 0)
+        b = []
+        self.__traversal_permutation(b)
+        return [a[x] for x in b]
+
     def __to_flat(self, res):
         res.append(self.type_id)
         if self.fields is not None:
             for field in self.fields:
                 field.__to_flat(res)
         return res
+
+    def __traversal_permutation(self, d):
+        if self.fields is None:
+            d.append(self)
+        else:
+            for idx in self.permutation:
+                field = self.fields[idx]
+                field.__traversal_permutation(d)
+        
+    def __traversal(self, d, i):
+        if self.fields is None:
+            d[self] = i
+            i += 1
+        else:
+            for field in self.fields:
+                i = field.__traversal(d, i)
+        return i
 
 class IgniteClient(TcpClient):
     def __init__(self, host, port):
@@ -239,7 +264,7 @@ class IgniteClient(TcpClient):
         res = TypeTreeNode("root", 0, [
             self.__collect_types("key", payload), 
             self.__collect_types("val", payload)
-        ])
+        ], [0, 1])
         
         return res        
             
@@ -288,11 +313,13 @@ class IgniteClient(TcpClient):
                 child = self.__collect_types(obj_field.field_name, data)
                 children.append(child)
 
-            children = sorted(children, key=lambda child: child.name)
+            children_sorted = sorted(children, key=lambda child: child.name)
+            permutation = [children_sorted.index(child) for child in children]
+            children = children_sorted
 
             data.skip(2)
 
-            return TypeTreeNode(field_name, type_id, children)
+            return TypeTreeNode(field_name, type_id, children, permutation)
         
         else:
             raise Exception("Unknown binary type " + str(type_id))
@@ -366,9 +393,10 @@ class KafkaDataset(Dataset):
     self._local = ops.convert_to_tensor(local, dtype=dtypes.bool, name="local")
     self._part = ops.convert_to_tensor(part, dtype=dtypes.int32, name="part")
     self._schema = ops.convert_to_tensor(self._cache_type.to_flat(), dtype=dtypes.int32, name="schema")
+    self._permutation = ops.convert_to_tensor(self._cache_type.to_permutation(), dtype=dtypes.int32, name="permutation")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.kafka_dataset(self._cache_name, self._host, self._port, self._local, self._part, self._schema)
+    return gen_dataset_ops.kafka_dataset(self._cache_name, self._host, self._port, self._local, self._part, self._schema, self._permutation)
 
   @property
   def output_classes(self):

@@ -18,7 +18,7 @@ limitations under the License.
 
 namespace ignite {
 
-char* BinaryObjectParser::Parse(char *ptr, std::map<int, BinaryType*>* types, std::vector<tensorflow::Tensor>* out_tensors) {
+char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_tensors, std::vector<int>* types) {
   char object_type_id = *ptr;
   ptr += 1;
 
@@ -29,7 +29,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::map<int, BinaryType*>* types, st
       int val = ReadInt(ptr);
     	
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_INT32, {});
-      // tensor.scalar<tensorflow::int32>()() = val;
+      tensor.scalar<tensorflow::int32>()() = val;
       out_tensors->emplace_back(std::move(tensor));
 
       break;
@@ -47,7 +47,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::map<int, BinaryType*>* types, st
 
       std::cout << "Array length: " << length << "\n";
       for (int i = 0; i < length; i++) {
-        // tensor.vec<double>()(i) = arr[i];
+        tensor.vec<tensorflow::double>()(i) = arr[i];
       }
 
       out_tensors->emplace_back(std::move(tensor));
@@ -55,9 +55,10 @@ char* BinaryObjectParser::Parse(char *ptr, std::map<int, BinaryType*>* types, st
       break;
     }
     case 27: {
+      std::cout << "Wrapped object..." << std::endl;
       int byte_arr_size = ReadInt(ptr);
       // payload
-      ptr = Parse(ptr, types, out_tensors);
+      ptr = Parse(ptr);
 
       int offset = ReadInt(ptr);
 
@@ -66,6 +67,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::map<int, BinaryType*>* types, st
       break;
     }
   	case 103: {
+      std::cout << "Complex object..." << std::endl;
   	  char version = ReadByte(ptr);
   	  short flags = ReadShort(ptr); // USER_TYPE = 1, HAS_SCHEMA = 2
   	  int type_id = ReadInt(ptr);
@@ -74,25 +76,15 @@ char* BinaryObjectParser::Parse(char *ptr, std::map<int, BinaryType*>* types, st
   	  int schema_id = ReadInt(ptr);
   	  int schema_offset = ReadInt(ptr);
 
-      auto type_it = types->find(type_id);
-
-      if(type_it != types->end()) {
-        BinaryType* type = type_it->second;
-        // printf("Version: %d, TypeId: %d, offset: %d, TypeName: %s\n", version, type_id, schema_offset, type->type_name.c_str());
-
-        // printf("Type : %s, fields: %d\n", type->type_name.c_str(), type->field_cnt);
-        for (int i = 0; i < type->field_cnt; i++) {
-          BinaryField* field = type->fields[i];
-          std::cout << "Field : " << field->field_name << "\n";
-          ptr = Parse(ptr, types, out_tensors);
-        }
-
-        ReadShort(ptr);
+      char* end = ptr + length - 26;
+      int i = 0;
+      while (ptr < end) {
+        std::cout << "Parse field " << i << ", ptr = " << (long) ptr << ", end = " << (long) end << std::endl;
+        i++;
+        ptr = Parse(ptr);
       }
-      else {
-        // TODO: Error!
-        std::cout << "Unexpected type " << object_type_id << "\n";
-      }
+
+      ptr += 2; // TODO: WHY?
 
   	  break;
   	}
@@ -101,6 +93,8 @@ char* BinaryObjectParser::Parse(char *ptr, std::map<int, BinaryType*>* types, st
       std::cout << "Unknown type " << object_type_id << "\n";
   	}
   }
+
+  return ptr;
 }
 
 char BinaryObjectParser::ReadByte(char*& ptr) {
