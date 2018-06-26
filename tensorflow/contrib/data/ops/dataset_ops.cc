@@ -104,6 +104,7 @@ REGISTER_OP("FunctionBufferingResource")
     .Attr("container: string")
     .Attr("f: func")
     .Attr("buffer_size: int")
+    .Attr("output_types: list(type)")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Creates a resource that fills up a buffer by making function calls.
@@ -117,6 +118,7 @@ container: If non-empty, this resource is placed in the given container.
   Otherwise, a default container is used.
 shared_name: If non-empty, this resource will be shared under the given name
   across multiple sessions.
+output_types: The type list for the return values.
 )doc");
 
 REGISTER_OP("FunctionBufferingResourceGetNext")
