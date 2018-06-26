@@ -24,7 +24,13 @@ IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache
     port_(port),
     local_(local),
     part_(part),
-    schema_(schema) {}
+    schema_(schema) {
+	std::cout << "Schema: ";
+	for (auto e: schema_) {
+		std::cout << e << " ";
+	}	
+	std::cout << "\n";
+}
 
 std::unique_ptr<tensorflow::IteratorBase> IgniteDataset::MakeIteratorInternal(const tensorflow::string& prefix) const {
   return std::unique_ptr<tensorflow::IteratorBase>(new IgniteDatasetIterator({this, tensorflow::strings::StrCat(prefix, "::Kafka")}));
@@ -33,6 +39,7 @@ std::unique_ptr<tensorflow::IteratorBase> IgniteDataset::MakeIteratorInternal(co
 const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
   static tensorflow::DataTypeVector* dtypes = new tensorflow::DataTypeVector();
 
+  std::cout << "DTypes: ";
   for (auto e: schema_) {
     if (e == 1 || e == 12) {
       dtypes->push_back(tensorflow::DT_INT8);
@@ -41,16 +48,18 @@ const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
       dtypes->push_back(tensorflow::DT_INT16);
     }
     else if (e == 3 || e == 14) {
+      std::cout << "int32 ";
       dtypes->push_back(tensorflow::DT_INT32);
     }
     else if (e == 4 || e == 15) {
       dtypes->push_back(tensorflow::DT_INT64);
     }
     else if (e == 5 || e == 16) {
-      dtypes->push_back(tensorflow::DT_FLOAT16);
+      dtypes->push_back(tensorflow::DT_FLOAT);
     }
     else if (e == 6 || e == 17) {
-      dtypes->push_back(tensorflow::DT_FLOAT64);
+      std::cout << "double ";
+      dtypes->push_back(tensorflow::DT_DOUBLE);
     }
     else if (e == 7 || e == 18) {
       dtypes->push_back(tensorflow::DT_UINT8);
@@ -64,6 +73,7 @@ const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
     else {
       // skip.
     }
+    std::cout << "\n";
   }
 
   return *dtypes;
@@ -74,10 +84,10 @@ const std::vector<tensorflow::PartialTensorShape>& IgniteDataset::output_shapes(
 
   for (auto e: schema_) {
     if (e >= 1 && e < 10) {
-      shapes->push_back(tensorflow::PartialTensorShape());
+      shapes->push_back(tensorflow::PartialTensorShape({}));
     }
     else if (e >= 12 && e < 21) {
-      shapes->push_back(tensorflow::PartialTensorShape(null));
+      shapes->push_back(tensorflow::PartialTensorShape({-1}));
     }
     else {
       // skip.

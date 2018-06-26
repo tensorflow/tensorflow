@@ -55,7 +55,6 @@ py_library(
     name = "dataset_ops",
     srcs = [
         "python/ops/kafka_dataset_ops.py",
-        "python/ops/ignite_util.py"
     ],
     srcs_version = "PY2AND3",
     deps = [
