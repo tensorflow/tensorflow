@@ -1399,6 +1399,30 @@ void HloInstruction::AppendOperand(HloInstruction* operand) {
   operand->AddUser(this);
 }
 
+void HloInstruction::RemoveOperandsAtAscendingIndices(
+    tensorflow::gtl::ArraySlice<int> ascending_indices) {
+  if (ascending_indices.empty()) {
+    return;
+  }
+  int next_index = 0;
+  int removed_count = 0;
+  for (int to_remove : ascending_indices) {
+    while (next_index < to_remove) {
+      operands_[next_index - removed_count] = operands_[next_index];
+      ++next_index;
+    }
+    CHECK_LT(to_remove, operands_.size());
+    ++removed_count;
+    ++next_index;
+  }
+  while (next_index < operands_.size()) {
+    operands_[next_index - removed_count] = operands_[next_index];
+    ++next_index;
+  }
+  CHECK_EQ(removed_count, ascending_indices.size());
+  operands_.resize(operands_.size() - removed_count);
+}
+
 void HloInstruction::AddUser(HloInstruction* user) {
   if (!ContainsKey(user_set_, user)) {
     user_set_.insert(user);
@@ -1568,6 +1592,10 @@ Status HloInstruction::ReplaceUseWith(HloInstruction* user,
   std::replace(user->operands_.begin(), user->operands_.end(), this,
                new_producer);
   new_producer->AddUser(user);
+  if (user->opcode() == HloOpcode::kFusion) {
+    TF_RETURN_IF_ERROR(
+        Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
+  }
   return Status::OK();
 }
 
@@ -1606,6 +1634,10 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
       std::replace(user->operands_.begin(), user->operands_.end(), this,
                    new_producer);
       new_producer->AddUser(user);
+      if (user->opcode() == HloOpcode::kFusion) {
+        TF_RETURN_IF_ERROR(
+            Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
+      }
     }
   }
   users_.clear();

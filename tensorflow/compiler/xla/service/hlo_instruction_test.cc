@@ -1137,6 +1137,40 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   EXPECT_TRUE(StructuralEqual(*fusion, *fusion2));
 }
 
+TEST_F(HloInstructionTest, NoRedundantFusionOperandsAfterReplacingUse) {
+  // Fused expression:
+  //
+  // x     y
+  // |     |
+  // |  transpose
+  //  \   /
+  //   dot
+  const Shape s = ShapeUtil::MakeShape(F32, {10, 10});
+
+  HloComputation::Builder builder("TransposeDot");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, s, "y"));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateTranspose(s, y, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateDot(s, x, reshape, dot_dnums));
+
+  auto module = CreateNewModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* fusion = computation->CreateFusionInstruction(
+      {dot, reshape}, HloInstruction::FusionKind::kLoop);
+
+  EXPECT_TRUE(x->ReplaceAllUsesWith(y).ok());
+
+  EXPECT_THAT(fusion->operands(), UnorderedElementsAre(y));
+  EXPECT_EQ(fusion->fused_instructions_computation()->num_parameters(), 1);
+}
+
 TEST_F(HloInstructionTest, FusionEquality) {
   auto module = CreateNewModule();
   HloComputation::Builder builder(TestName());

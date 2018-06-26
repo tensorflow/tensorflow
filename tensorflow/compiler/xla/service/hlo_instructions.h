@@ -635,6 +635,9 @@ class HloFusionInstruction : public HloInstruction {
 
   void set_fusion_kind(FusionKind kind) { fusion_kind_ = kind; }
 
+  // If multiple operands are the same instruction, keeps only one of them.
+  Status DeduplicateFusionOperands();
+
  private:
   // Fuses the given instruction into this fusion instruction. When add_output
   // is false (which is the default), instruction_to_fuse is cloned and the

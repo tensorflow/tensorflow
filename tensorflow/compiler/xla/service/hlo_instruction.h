@@ -826,9 +826,15 @@ class HloInstruction {
   // Replaces the use of this instruction in "user" with "new_producer". Note
   // that there might be multiple uses of this instruction in "user"; all will
   // be replaced.
+  //
+  // If user is a fusion instruction, this function will remove any duplicated
+  // operands of it which could be created due to this replacement.
   Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
 
   // Replaces the specified operand with new_operand.
+  //
+  // This function does NOT remove duplicated operands even if this instruction
+  // is a fusion, so that the existing operand numbers do not change.
   Status ReplaceOperandWith(int64 operand_no, HloInstruction* new_operand);
 
   // Replaces all uses of this instruction with the new producer. If
@@ -837,6 +843,9 @@ class HloInstruction {
   //
   // If this instruction is the root of its computation, sets the computation's
   // root to new_producer.
+  //
+  // If a user is a fusion instruction, this function will remove any duplicated
+  // operands of it which could be created due to this replacement.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
 
   // Performs a postorder DFS visit using this node as the root. If
@@ -1454,6 +1463,10 @@ class HloInstruction {
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);
   }
+
+  // Removes a list of operands with the given indices in ascending order.
+  void RemoveOperandsAtAscendingIndices(
+      tensorflow::gtl::ArraySlice<int> ascending_indices);
 
   void AppendComputation(HloComputation* computation) {
     called_computations_.push_back(computation);

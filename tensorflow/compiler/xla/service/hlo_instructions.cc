@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 namespace {
@@ -1206,6 +1207,26 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
   }
   return MakeUnique<HloFusionInstruction>(shape, fusion_kind(), new_operands,
                                           new_fused_computation);
+}
+
+Status HloFusionInstruction::DeduplicateFusionOperands() {
+  tensorflow::gtl::FlatMap<const HloInstruction*, int> operand_indices;
+  std::vector<int> operands_to_remove;
+  for (int i = 0; i < operand_count(); ++i) {
+    auto emplace_result = operand_indices.emplace(operand(i), i);
+    if (!emplace_result.second) {
+      TF_RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
+          fused_parameter(emplace_result.first->second)));
+      operands_to_remove.push_back(i);
+    }
+  }
+  if (operands_to_remove.empty()) {
+    return Status::OK();
+  }
+  TF_RETURN_IF_ERROR(
+      fused_instructions_computation()->RemoveUnusedParameters());
+  RemoveOperandsAtAscendingIndices(operands_to_remove);
+  return Status::OK();
 }
 
 HloRngInstruction::HloRngInstruction(
