@@ -22,6 +22,7 @@ namespace ignite {
 class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> {
  public:
   explicit IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema);
+  ~IgniteDatasetIterator();
   tensorflow::Status GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) override;
 
  protected:
@@ -30,6 +31,7 @@ class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> 
 
  private:
   void Handshake();
+  int JavaHashCode(std::string str);
 
   Client client_;
   std::string cache_name_;
@@ -37,8 +39,9 @@ class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> 
   tensorflow::int32 part_;
   std::vector<tensorflow::int32> schema_;
 
+  char* data;
   int remainder;
-  bool next_page;
+  bool last_page;
 };
 
 } // namespace ignite

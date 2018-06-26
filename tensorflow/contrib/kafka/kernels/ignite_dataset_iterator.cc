@@ -25,65 +25,69 @@ IgniteDatasetIterator::IgniteDatasetIterator(const Params& params, std::string h
  part_(part),
  schema_(schema),
  remainder(-1),
- next_page(false) {}
+ last_page(false) {
+  client_.Connect();
+  std::cout << "Client connected!" << std::endl;
+  Handshake();
+ }
+
+IgniteDatasetIterator::~IgniteDatasetIterator() {
+  client_.Disconnect();
+  std::cout << "Client disconnected!" << std::endl;
+}
 
 tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) {
-  client_.Connect();
-  std::cout << "Client connected!";
+  if (reminder == 0) {
+  	if (last_page) {
+  		*end_of_sequence = true;
+  		return tensorflow::Status::OK();
+  	}
+  	else {
+  		// query next page 
+  		*end_of_sequence = false;
+  		return tensorflow::Status::OK();
+  	}
+  }
+  else {
+    if (reminder == -1) {
+      // ---------- Scan Query ---------- //
+      client->WriteInt(25); // Message length
+      client->WriteShort(2000); // Operation code
+      client->WriteLong(42); // Request id
+      client->WriteInt(JavaHashCode(cache_name));
+      client->WriteByte(0); // Some flags...
+      client->WriteByte(101); // Filter object (NULL).
+      client->WriteInt(1); // Cursor page size
+      client->WriteInt(-1); // Partition to query
+      client->WriteByte(0); // Local flag
 
-  Handshake();
+      int res_len = ReadInt();
+      long req_id = ReadLong();
+      int status = ReadInt();
 
-  client_.Disconnect();
-  std::cout << "Client disconnected!";
-  // if (reminder == -1) {
-  // 	// first query
-  // 	client->Connect();
-  // 	Handshake();
+      if (status != 0) {
+        std::cout << "Scan Query status error\n";
+      }
 
-  // 	// ---------- Scan Query ---------- //
-	 //  client->WriteInt(25); // Message length
-	 //  client->WriteShort(2000); // Operation code
-	 //  client->WriteLong(42); // Request id
-	 //  client->WriteInt(JavaHashCode(cache_name));
-	 //  client->WriteByte(0); // Some flags...
-	 //  client->WriteByte(101); // Filter object (NULL).
-	 //  client->WriteInt(1); // Cursor page size
-	 //  client->WriteInt(-1); // Partition to query
-	 //  client->WriteByte(0); // Local flag
+      cursor_id = client->ReadLong();
+      int row_cnt = client->ReadInt();
+      
+      std::cout << "Row count: " << row_cnt << std::endl;
 
-	 //  int res_len = ReadInt();
-	 //  long req_id = ReadLong();
-	 //  int status = ReadInt();
+      remainder = res_len - 25;
+      data = (char*) malloc(remainder);
+      client->ReadData(data, remainder);
 
-	 //  if (status != 0) {
-	 //  	std::cout << "Scan Query status error\n";
-	 //  }
+      next_page = client->ReadByte() != 0;
+    }
 
-	 //  cursor_id = client->ReadLong();
-	 //  int row_cnt = client->ReadInt();
-	  
-	 //  int data_len = res_len - 8 - 4 - 8 - 4 - 1;
+    srd::cout << "Remainder: " << remainder << std::endl;
 
-	 //  char* data = (char*) malloc(data_len);
-	 //  client->ReadData(data, data_len);
+    *end_of_sequence = false;
+    return tensorflow::Status::OK();
+  }
 
-	 //  next_page = client->ReadByte() != 0;
 
-	 //  parser->Parse(data, types, out_tensors);
-	 //  parser->Parse(data, types, out_tensors);
-  // }
-  // else if (reminder == 0) {
-  // 	if (last_page) {
-  // 		*end_of_sequence = true;
-  // 		return tensorflow::Status::OK();
-  // 	}
-  // 	else {
-  // 		// query next page 
-
-  // 		*end_of_sequence = false;
-  // 		return tensorflow::Status::OK();
-  // 	}
-  // }
   *end_of_sequence = true;
   return tensorflow::Status::OK();
 }
@@ -115,12 +119,12 @@ void IgniteDatasetIterator::Handshake() {
   }
 }
 
-// int IgniteDatasetIterator::JavaHashCode(std::string str) {
-//   int h = 0;
-//   for (char &c : str) {
-//     h = 31 * h + c;
-//   }
-//   return h;
-// }
+int IgniteDatasetIterator::JavaHashCode(std::string str) {
+  int h = 0;
+  for (char &c : str) {
+    h = 31 * h + c;
+  }
+  return h;
+}
 
 } // namespace ignite
