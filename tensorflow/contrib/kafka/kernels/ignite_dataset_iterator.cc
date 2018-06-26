@@ -37,7 +37,7 @@ IgniteDatasetIterator::~IgniteDatasetIterator() {
 }
 
 tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) {
-  if (reminder == 0) {
+  if (remainder == 0) {
   	if (last_page) {
   		*end_of_sequence = true;
   		return tensorflow::Status::OK();
@@ -49,39 +49,39 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
   	}
   }
   else {
-    if (reminder == -1) {
+    if (remainder == -1) {
       // ---------- Scan Query ---------- //
-      client->WriteInt(25); // Message length
-      client->WriteShort(2000); // Operation code
-      client->WriteLong(42); // Request id
-      client->WriteInt(JavaHashCode(cache_name));
-      client->WriteByte(0); // Some flags...
-      client->WriteByte(101); // Filter object (NULL).
-      client->WriteInt(1); // Cursor page size
-      client->WriteInt(-1); // Partition to query
-      client->WriteByte(0); // Local flag
+      client_.WriteInt(25); // Message length
+      client_.WriteShort(2000); // Operation code
+      client_.WriteLong(42); // Request id
+      client_.WriteInt(JavaHashCode(cache_name_));
+      client_.WriteByte(0); // Some flags...
+      client_.WriteByte(101); // Filter object (NULL).
+      client_.WriteInt(1); // Cursor page size
+      client_.WriteInt(-1); // Partition to query
+      client_.WriteByte(0); // Local flag
 
-      int res_len = ReadInt();
-      long req_id = ReadLong();
-      int status = ReadInt();
+      int res_len = client_.ReadInt();
+      long req_id = client_.ReadLong();
+      int status = client_.ReadInt();
 
       if (status != 0) {
         std::cout << "Scan Query status error\n";
       }
 
-      cursor_id = client->ReadLong();
-      int row_cnt = client->ReadInt();
+      cursor_id = client_.ReadLong();
+      int row_cnt = client_.ReadInt();
       
       std::cout << "Row count: " << row_cnt << std::endl;
 
       remainder = res_len - 25;
       data = (char*) malloc(remainder);
-      client->ReadData(data, remainder);
+      client_.ReadData(data, remainder);
 
-      next_page = client->ReadByte() != 0;
+      last_page = client_.ReadByte() != 0;
     }
 
-    srd::cout << "Remainder: " << remainder << std::endl;
+    std::cout << "Remainder: " << remainder << std::endl;
 
     *end_of_sequence = false;
     return tensorflow::Status::OK();
