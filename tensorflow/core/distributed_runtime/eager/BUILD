@@ -37,6 +37,7 @@ cc_library(
         "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:eager_executor",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )
 
