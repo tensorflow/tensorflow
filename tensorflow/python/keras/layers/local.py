@@ -23,8 +23,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine import InputSpec
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -140,9 +140,9 @@ class LocallyConnected1D(Layer):
     if input_dim is None:
       raise ValueError('Axis 2 of input should be fully-defined. '
                        'Found shape:', input_shape)
-    output_length = conv_utils.conv_output_length(
+    self.output_length = conv_utils.conv_output_length(
         input_length, self.kernel_size[0], self.padding, self.strides[0])
-    self.kernel_shape = (output_length, self.kernel_size[0] * input_dim,
+    self.kernel_shape = (self.output_length, self.kernel_size[0] * input_dim,
                          self.filters)
     self.kernel = self.add_weight(
         shape=self.kernel_shape,
@@ -152,7 +152,7 @@ class LocallyConnected1D(Layer):
         constraint=self.kernel_constraint)
     if self.use_bias:
       self.bias = self.add_weight(
-          shape=(output_length, self.filters),
+          shape=(self.output_length, self.filters),
           initializer=self.bias_initializer,
           name='bias',
           regularizer=self.bias_regularizer,
@@ -182,12 +182,13 @@ class LocallyConnected1D(Layer):
       return (input_shape[0], length, self.filters)
 
   def call(self, inputs):
-    output = K.local_conv1d(inputs, self.kernel, self.kernel_size,
-                            self.strides, self.data_format)
+    output = K.local_conv(inputs, self.kernel, self.kernel_size, self.strides,
+                          (self.output_length,), self.data_format)
+
     if self.use_bias:
       output = K.bias_add(output, self.bias, data_format=self.data_format)
-    if self.activation is not None:
-      output = self.activation(output)
+
+    output = self.activation(output)
     return output
 
   def get_config(self):
@@ -400,9 +401,8 @@ class LocallyConnected2D(Layer):
       return (input_shape[0], rows, cols, self.filters)
 
   def call(self, inputs):
-    output = K.local_conv2d(inputs, self.kernel, self.kernel_size, self.strides,
-                            (self.output_row, self.output_col),
-                            self.data_format)
+    output = K.local_conv(inputs, self.kernel, self.kernel_size, self.strides,
+                          (self.output_row, self.output_col), self.data_format)
 
     if self.use_bias:
       output = K.bias_add(output, self.bias, data_format=self.data_format)

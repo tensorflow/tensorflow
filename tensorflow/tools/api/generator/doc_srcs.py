@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.util import tf_export
+
 
 # Specifies docstring source for a module.
 # Only one of docstring or docstring_module_name should be set.
@@ -31,7 +33,7 @@ DocSource = collections.namedtuple(
 # Each attribute of DocSource is optional.
 DocSource.__new__.__defaults__ = (None,) * len(DocSource._fields)
 
-TENSORFLOW_DOC_SOURCES = {
+_TENSORFLOW_DOC_SOURCES = {
     'app': DocSource(docstring_module_name='platform.app'),
     'compat': DocSource(docstring_module_name='util.compat'),
     'distributions': DocSource(
@@ -41,7 +43,7 @@ TENSORFLOW_DOC_SOURCES = {
     'gfile': DocSource(docstring_module_name='platform.gfile'),
     'graph_util': DocSource(docstring_module_name='framework.graph_util'),
     'image': DocSource(docstring_module_name='ops.image_ops'),
-    'keras.estimator': DocSource(docstring_module_name='estimator.keras'),
+    'keras.estimator': DocSource(docstring_module_name='keras.estimator'),
     'linalg': DocSource(docstring_module_name='ops.linalg_ops'),
     'logging': DocSource(docstring_module_name='ops.logging_ops'),
     'losses': DocSource(docstring_module_name='ops.losses.losses'),
@@ -63,3 +65,28 @@ TENSORFLOW_DOC_SOURCES = {
     'train.queue_runner': DocSource(
         docstring_module_name='training.queue_runner'),
 }
+
+_ESTIMATOR_DOC_SOURCES = {
+    'estimator': DocSource(
+        docstring_module_name='estimator_lib'),
+    'estimator.export': DocSource(
+        docstring_module_name='export.export_lib'),
+    'estimator.inputs': DocSource(
+        docstring_module_name='inputs.inputs'),
+}
+
+
+def get_doc_sources(api_name):
+  """Get a map from module to a DocSource object.
+
+  Args:
+    api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
+
+  Returns:
+    Map from module name to DocSource object.
+  """
+  if api_name == tf_export.TENSORFLOW_API_NAME:
+    return _TENSORFLOW_DOC_SOURCES
+  if api_name == tf_export.ESTIMATOR_API_NAME:
+    return _ESTIMATOR_DOC_SOURCES
+  return {}

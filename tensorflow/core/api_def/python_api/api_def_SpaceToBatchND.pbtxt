@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "SpaceToBatchND"
+  endpoint {
+    name: "manip.space_to_batch_nd"
+  }
+  endpoint {
+    name: "space_to_batch_nd"
+    deprecation_message: "tf.space_to_batch_nd is deprecated, please use tf.manip.space_to_batch_nd instead."
+  }
+}

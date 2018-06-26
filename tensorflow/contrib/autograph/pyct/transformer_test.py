@@ -21,7 +21,6 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.autograph.pyct import anno
-from tensorflow.contrib.autograph.pyct import context
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.python.platform import test
@@ -29,16 +28,14 @@ from tensorflow.python.platform import test
 
 class TransformerTest(test.TestCase):
 
-  def _context_for_testing(self):
-    return context.EntityContext(
-        namer=None,
+  def _simple_source_info(self):
+    return transformer.EntityInfo(
         source_code=None,
         source_file=None,
         namespace=None,
         arg_values=None,
         arg_types=None,
-        owner_type=None,
-        recursive=False)
+        owner_type=None)
 
   def test_entity_scope_tracking(self):
 
@@ -55,7 +52,7 @@ class TransformerTest(test.TestCase):
         anno.setanno(node, 'enclosing_entities', self.enclosing_entities)
         return self.generic_visit(node)
 
-    tr = TestTransformer(self._context_for_testing())
+    tr = TestTransformer(self._simple_source_info())
 
     def test_function():
       a = 0
@@ -118,7 +115,7 @@ class TransformerTest(test.TestCase):
       def visit_For(self, node):
         return self._annotate_result(node)
 
-    tr = TestTransformer(self._context_for_testing())
+    tr = TestTransformer(self._simple_source_info())
 
     def test_function(a):
       """Docstring."""
@@ -157,7 +154,7 @@ class TransformerTest(test.TestCase):
         self.exit_local_scope()
         return node
 
-    tr = TestTransformer(self._context_for_testing())
+    tr = TestTransformer(self._simple_source_info())
 
     def no_exit(a):
       if a > 0:
@@ -196,7 +193,7 @@ class TransformerTest(test.TestCase):
       z = y
       return z
 
-    tr = TestTransformer(self._context_for_testing())
+    tr = TestTransformer(self._simple_source_info())
 
     node, _ = parser.parse_entity(test_function)
     node = tr.visit(node)

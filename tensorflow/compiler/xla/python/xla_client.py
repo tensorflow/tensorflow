@@ -186,6 +186,14 @@ class LocalBuffer(object):
       self._delete(self.c_local_shaped_buffer)
       self.c_local_shaped_buffer = None
 
+  def destructure(self):
+    assert self.c_local_shaped_buffer is not None
+    result = c_api.DestructureLocalShapedBufferTuple(self.c_local_shaped_buffer)
+    self.c_local_shaped_buffer = None
+    size = result.size()
+    destructured = tuple(LocalBuffer(result.Release(i)) for i in xrange(size))
+    return destructured
+
   def is_deleted(self):
     return self.c_local_shaped_buffer is None
 
@@ -249,9 +257,12 @@ class Shape(object):
             self._dimensions == other._dimensions and
             self._minor_to_major == other._minor_to_major)
 
+  def __ne__(self, other):
+    return not self == other
+
   def __repr__(self):
     return ('xla_client.Shape(_dtype={!r}, _dimensions={!r}, '
-            '_is_tuple={!r}), _minor_to_major={!r}').format(
+            '_is_tuple={!r}, _minor_to_major={!r})').format(
                 self._dtype, self._dimensions, self._is_tuple,
                 self._minor_to_major)
 

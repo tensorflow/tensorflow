@@ -44,7 +44,7 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("Interpreter");
 
   pipeline.AddPass<LayoutAssignment>(
-      hlo_module->mutable_device_entry_computation_layout());
+      hlo_module->mutable_entry_computation_layout());
   return pipeline.Run(hlo_module).status();
 }
 

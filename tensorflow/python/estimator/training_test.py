@@ -29,17 +29,21 @@ import time
 
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import exporter as exporter_lib
+from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator import training
 from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export as export_lib
-from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import metrics as metrics_lib
+from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -49,6 +53,7 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 _DEFAULT_EVAL_STEPS = 100
@@ -885,7 +890,8 @@ class TrainingExecutorRunMasterTest(test.TestCase):
       # `after_save`.
       del args, kwargs
       saving_listeners[0].begin()
-      saving_listeners[0].after_save(session=None, global_step_value=None)
+      saving_listeners[0].after_save(session=None, global_step_value=0)
+      saving_listeners[0].after_save(session=None, global_step_value=10)
 
     mock_est = test.mock.Mock(
         spec=estimator_lib.Estimator, model_dir='path/', train=estimator_train)
@@ -930,7 +936,10 @@ class TrainingExecutorRunMasterTest(test.TestCase):
       del args, kwargs
       saving_listeners[0].begin()
 
-      # Call three times.
+      # Call four times.
+      mock_timer.should_trigger_for_step.return_value = True
+      saving_listeners[0].after_save(session=None, global_step_value=None)
+
       mock_timer.should_trigger_for_step.return_value = True
       saving_listeners[0].after_save(session=None, global_step_value=None)
 
@@ -979,14 +988,19 @@ class TrainingExecutorRunMasterTest(test.TestCase):
       del args, kwargs
       saving_listeners[0].begin()
 
-      # Call two times.
+      # Call tree times (one for first saving).
       mock_timer.should_trigger_for_step.return_value = True
-      saving_listeners[0].after_save(session=None, global_step_value=None)
+      saving_listeners[0].after_save(session=None, global_step_value=0)
 
-      # The final ckpt is skipped by the timer. It will be picked up the final
-      # export check in the code.
+      mock_timer.should_trigger_for_step.return_value = True
+      saving_listeners[0].after_save(session=None, global_step_value=125)
+
       mock_timer.should_trigger_for_step.return_value = False
-      saving_listeners[0].after_save(session=None, global_step_value=None)
+      saving_listeners[0].after_save(session=None, global_step_value=250)
+
+      # At the end evaluate should be called even if throttle secs prevents it.
+      mock_timer.should_trigger_for_step.return_value = False
+      saving_listeners[0].end(session=None, global_step_value=300)
 
     mock_est.train = estimator_train
     mock_est.latest_checkpoint.side_effect = ['ckpt1', 'ckpt2']
@@ -1566,28 +1580,31 @@ class StopAtSecsHookTest(test.TestCase):
 class TrainingExecutorRunLocalTest(test.TestCase):
   """Tests run_local of _TrainingExecutor."""
 
+  def _model_fn(self, features, labels, mode):
+    del labels
+    with ops.control_dependencies([features]):
+      train_op = state_ops.assign_add(training_util.get_global_step(), 1)
+    return model_fn_lib.EstimatorSpec(
+        mode,
+        loss=constant_op.constant(0.),
+        train_op=train_op,
+        predictions=constant_op.constant([[10.]]),
+        eval_metric_ops={'mean_of_features': metrics_lib.mean(features)})
+
+  def _input_fn(self, repeat=True):
+    ds = dataset_ops.Dataset.from_tensors([1])
+    if repeat:
+      return ds.repeat()
+    return ds
+
   def unique_checkpoint_every_time_fn(self):
     return 'checkpoint_path_%s/' % random.random()
 
-  def test_send_stop_at_secs_to_train(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
-    mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
-    train_spec = training.TrainSpec(
-        input_fn=lambda: 1, max_steps=2, hooks=[_FakeHook()])
-    eval_spec = training.EvalSpec(
-        input_fn=lambda: 1, hooks=[_FakeHook()], throttle_secs=100)
-    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: train_spec.max_steps}
-
-    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
-    executor.run_local()
-
-    stop_hook = mock_est.train.call_args[1]['hooks'][-1]
-    self.assertIsInstance(stop_hook, training._StopAtSecsHook)
-    self.assertEqual(eval_spec.throttle_secs, stop_hook._stop_after_secs)
-
-  def test_runs_in_a_loop_until_max_steps(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
-    mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
+  def test_runs_evaluate_with_every_new_checkpoint(self):
+    est = estimator_lib.Estimator(
+        model_fn=self._model_fn,
+        config=run_config_lib.RunConfig(save_checkpoints_steps=10))
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, wraps=est)
 
     mock_est.times_export_was_called = 0
     mock_est.times_final_export_was_called = 0
@@ -1604,42 +1621,30 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     exporter.name = 'see_how_many_times_export_is_called'
     exporter.export = export
 
-    train_spec = training.TrainSpec(
-        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+    train_spec = training.TrainSpec(input_fn=self._input_fn, max_steps=22)
     eval_spec = training.EvalSpec(
-        input_fn=lambda: 1,
-        hooks=[_FakeHook()],
-        throttle_secs=100,
+        input_fn=lambda: self._input_fn(repeat=False),
+        throttle_secs=0,
         exporters=exporter)
-    # should be called 3 times.
-    mock_est.evaluate.side_effect = [{
-        _GLOBAL_STEP_KEY: train_spec.max_steps - 100
-    }, {
-        _GLOBAL_STEP_KEY: train_spec.max_steps - 50
-    }, {
-        _GLOBAL_STEP_KEY: train_spec.max_steps
-    }]
 
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     executor.run_local()
 
-    self.assertEqual(3, mock_est.train.call_count)
+    self.assertEqual(1, mock_est.train.call_count)
     self.assertEqual(3, mock_est.evaluate.call_count)
     self.assertEqual(3, mock_est.times_export_was_called)
     self.assertEqual(1, mock_est.times_final_export_was_called)
 
   def test_runs_with_eval_listener_before_eval(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
+    est = estimator_lib.Estimator(
+        model_fn=self._model_fn,
+        config=run_config_lib.RunConfig(save_checkpoints_steps=10))
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, wraps=est)
     mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
 
-    train_spec = training.TrainSpec(input_fn=lambda: 1, max_steps=300)
-    eval_spec = training.EvalSpec(input_fn=lambda: 1, throttle_secs=100)
-    # should be called 2 times without the evallistener
-    mock_est.evaluate.side_effect = [{
-        _GLOBAL_STEP_KEY: train_spec.max_steps - 50
-    }, {
-        _GLOBAL_STEP_KEY: train_spec.max_steps
-    }]
+    train_spec = training.TrainSpec(input_fn=self._input_fn, max_steps=12)
+    eval_spec = training.EvalSpec(input_fn=lambda: self._input_fn(repeat=False))
+    mock_est.evaluate.side_effect = [{_GLOBAL_STEP_KEY: train_spec.max_steps}]
 
     class _Listener(training._ContinuousEvalListener):
 
@@ -1658,67 +1663,61 @@ class TrainingExecutorRunLocalTest(test.TestCase):
 
     self.assertEqual(1, mock_est.train.call_count)
     self.assertEqual(0, mock_est.evaluate.call_count)
-    self.assertEqual(1, listener.call_count)
 
   def test_runs_with_eval_listener_after_eval(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
-    mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
+    est = estimator_lib.Estimator(
+        model_fn=self._model_fn,
+        config=run_config_lib.RunConfig(save_checkpoints_steps=10))
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, wraps=est)
 
-    train_spec = training.TrainSpec(input_fn=lambda: 1, max_steps=300)
-    eval_spec = training.EvalSpec(input_fn=lambda: 1, throttle_secs=100)
-    # should be called 2 times without the evallistener
-    mock_est.evaluate.side_effect = [{
-        _GLOBAL_STEP_KEY: train_spec.max_steps - 50
-    }, {
-        _GLOBAL_STEP_KEY: train_spec.max_steps
-    }]
+    train_spec = training.TrainSpec(input_fn=self._input_fn, max_steps=3000)
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: self._input_fn(repeat=False), throttle_secs=0)
 
     class _Listener(training._ContinuousEvalListener):
 
-      def __init__(self, test_case):
+      def __init__(self):
         self.call_count = 0
-        self._test_case = test_case
 
       def after_eval(self, eval_result):
         self.call_count += 1
-        self._test_case.assertEqual(
-            train_spec.max_steps - 50, eval_result.metrics[_GLOBAL_STEP_KEY])
         return False  # Will stop the run_local after first eval.
 
-    listener = _Listener(test_case=self)
+    listener = _Listener()
 
     executor = training._TrainingExecutor(
         mock_est, train_spec, eval_spec, continuous_eval_listener=listener)
-    executor.run_local()
+    metrics, _ = executor.run_local()  # pylint: disable=assignment-from-no-return
 
     self.assertEqual(1, mock_est.train.call_count)
     self.assertEqual(1, mock_est.evaluate.call_count)
     self.assertEqual(1, listener.call_count)
+    # Should be less than max_steps since listener did early stopping.
+    self.assertLess(metrics[_GLOBAL_STEP_KEY], train_spec.max_steps)
 
   def test_handles_no_new_checkpoint_found(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
-    mock_est.latest_checkpoint.return_value = (
-        'no_new_checkpoints_after_the_first_train_step')
+    est = estimator_lib.Estimator(
+        model_fn=self._model_fn,
+        # disable saving checkpoint
+        config=run_config_lib.RunConfig(
+            save_checkpoints_steps=None, save_checkpoints_secs=None))
     train_spec = training.TrainSpec(
-        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+        input_fn=self._input_fn, max_steps=300, hooks=[_FakeHook()])
     eval_spec = training.EvalSpec(
-        input_fn=lambda: 1, hooks=[_FakeHook()], throttle_secs=100)
-    # It was going to be called 3 times.
-    mock_est.evaluate.side_effect = [{
-        _GLOBAL_STEP_KEY: train_spec.max_steps - 100
-    }, {
-        _GLOBAL_STEP_KEY: train_spec.max_steps - 50
-    }, {
-        _GLOBAL_STEP_KEY: train_spec.max_steps
-    }]
+        input_fn=lambda: self._input_fn(repeat=False),
+        hooks=[_FakeHook()],
+        throttle_secs=100)
 
-    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
-    with self.assertRaisesRegexp(RuntimeError, _STALE_CHECKPOINT_MSG):
+    executor = training._TrainingExecutor(est, train_spec, eval_spec)
+    with self.assertRaisesRegexp(ValueError,
+                                 'There should be a CheckpointSaverHook'):
       executor.run_local()
 
   def test_final_export_is_true_in_the_end(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
-    mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
+    est = estimator_lib.Estimator(
+        model_fn=self._model_fn,
+        config=run_config_lib.RunConfig(save_checkpoints_steps=10))
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, wraps=est)
 
     mock_est.times_export_fn_was_called = 0
     mock_est.times_the_final_export_was_true = 0
@@ -1734,37 +1733,29 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     exporter.export = export
 
     train_spec = training.TrainSpec(
-        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+        input_fn=self._input_fn, max_steps=12, hooks=[_FakeHook()])
     eval_spec = training.EvalSpec(
-        input_fn=lambda: 1,
-        hooks=[_FakeHook()],
-        throttle_secs=100,
+        input_fn=lambda: self._input_fn(repeat=False),
+        throttle_secs=0,
         exporters=exporter)
-    # should be called 3 times.
-    mock_est.evaluate.side_effect = [{
-        _GLOBAL_STEP_KEY: train_spec.max_steps - 100
-    }, {
-        _GLOBAL_STEP_KEY: train_spec.max_steps - 50
-    }, {
-        _GLOBAL_STEP_KEY: train_spec.max_steps
-    }]
-
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     executor.run_local()
 
-    self.assertEqual(3, mock_est.train.call_count)
-    self.assertEqual(3, mock_est.evaluate.call_count)
-    self.assertEqual(3, mock_est.times_export_fn_was_called)
+    self.assertEqual(1, mock_est.train.call_count)
+    self.assertEqual(2, mock_est.evaluate.call_count)
+    self.assertEqual(2, mock_est.times_export_fn_was_called)
     self.assertEqual(1, mock_est.times_the_final_export_was_true)
 
   def test_train_and_evaluate_args(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
-    mock_est.latest_checkpoint.return_value = 'checkpoint_path/'
+    est = estimator_lib.Estimator(model_fn=self._model_fn)
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, wraps=est)
     train_spec = training.TrainSpec(
-        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+        input_fn=self._input_fn, max_steps=300, hooks=[_FakeHook()])
     eval_spec = training.EvalSpec(
-        input_fn=lambda: 1, steps=2, hooks=[_FakeHook()], name='local_eval')
-    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: train_spec.max_steps}
+        input_fn=lambda: self._input_fn(repeat=False),
+        steps=2,
+        hooks=[_FakeHook()],
+        name='local_eval')
 
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     executor.run_local()
@@ -1773,11 +1764,11 @@ class TrainingExecutorRunLocalTest(test.TestCase):
         name=eval_spec.name,
         input_fn=eval_spec.input_fn,
         steps=eval_spec.steps,
-        checkpoint_path='checkpoint_path/',
+        checkpoint_path=est.latest_checkpoint(),
         hooks=eval_spec.hooks)
 
     train_args = mock_est.train.call_args[1]
-    self.assertEqual(list(train_spec.hooks), list(train_args['hooks'][:-1]))
+    self.assertEqual(list(train_spec.hooks), list(train_args['hooks']))
     self.assertEqual(train_spec.input_fn, train_args['input_fn'])
     self.assertEqual(train_spec.max_steps, train_args['max_steps'])
 
@@ -1812,25 +1803,11 @@ class TrainingExecutorRunLocalTest(test.TestCase):
             if not isinstance(h, training._StopAtSecsHook)
         ])
 
-  def test_errors_out_if_throttle_secs_is_zero(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
-    train_spec = training.TrainSpec(input_fn=lambda: 1)
-    eval_spec = training.EvalSpec(input_fn=lambda: 1, throttle_secs=0)
-
-    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
-    with self.assertRaisesRegexp(ValueError, 'throttle_secs'):
-      executor.run_local()
-
   def test_that_export_is_called_with_run_local(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
-    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
-    mock_train_spec.max_steps = 200
-    mock_est.evaluate.return_value = {
-        _GLOBAL_STEP_KEY: mock_train_spec.max_steps
-    }
-    # _validate_hooks would have made sure that train_spec.hooks is [], when
-    # None were passed.
-    mock_train_spec.hooks = []
+    est = estimator_lib.Estimator(model_fn=self._model_fn)
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, wraps=est)
+    train_spec = training.TrainSpec(input_fn=self._input_fn, max_steps=12)
+    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: train_spec.max_steps}
 
     def export(estimator, *args, **kwargs):
       del args, kwargs
@@ -1842,13 +1819,13 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     exporter.export = export
 
     eval_spec = training.EvalSpec(
-        input_fn=lambda: 1,
+        input_fn=lambda: self._input_fn(repeat=False),
         steps=2,
         start_delay_secs=0,
         throttle_secs=213,
         exporters=exporter)
 
-    executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     # pylint: disable=assignment-from-no-return
     _, export_results = executor.run_local()
     # pylint: enable=assignment-from-no-return
@@ -1857,9 +1834,13 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     self.assertEqual(export_results, ['path_to_export'])
 
   def test_errors_out_if_evaluate_returns_empty_dict(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
-    train_spec = training.TrainSpec(input_fn=lambda: 1)
-    eval_spec = training.EvalSpec(input_fn=(lambda: 1), throttle_secs=123)
+    est = estimator_lib.Estimator(
+        model_fn=self._model_fn,
+        config=run_config_lib.RunConfig(save_checkpoints_steps=2))
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, wraps=est)
+    train_spec = training.TrainSpec(input_fn=self._input_fn)
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: self._input_fn(repeat=False), throttle_secs=0)
     mock_est.evaluate.return_value = {}
 
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
@@ -1867,18 +1848,26 @@ class TrainingExecutorRunLocalTest(test.TestCase):
       executor.run_local()
 
   def test_errors_out_if_evaluate_returns_non_dict(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
-    train_spec = training.TrainSpec(input_fn=lambda: 1)
-    eval_spec = training.EvalSpec(input_fn=(lambda: 1), throttle_secs=123)
+    est = estimator_lib.Estimator(
+        model_fn=self._model_fn,
+        config=run_config_lib.RunConfig(save_checkpoints_steps=2))
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, wraps=est)
+    train_spec = training.TrainSpec(input_fn=self._input_fn)
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: self._input_fn(repeat=False), throttle_secs=0)
     mock_est.evaluate.return_value = 123
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     with self.assertRaisesRegexp(TypeError, _INVALID_EVAL_RESULT_TYPE_ERR):
       executor.run_local()
 
   def test_errors_out_if_evaluate_returns_dict_without_global_step(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
-    train_spec = training.TrainSpec(input_fn=lambda: 1)
-    eval_spec = training.EvalSpec(input_fn=(lambda: 1), throttle_secs=123)
+    est = estimator_lib.Estimator(
+        model_fn=self._model_fn,
+        config=run_config_lib.RunConfig(save_checkpoints_steps=2))
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, wraps=est)
+    train_spec = training.TrainSpec(input_fn=self._input_fn)
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: self._input_fn(repeat=False), throttle_secs=0)
     mock_est.evaluate.return_value = {'loss': 123}
 
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
@@ -1887,19 +1876,21 @@ class TrainingExecutorRunLocalTest(test.TestCase):
       executor.run_local()
 
   def test_train_and_evaluate_return_metrics(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
-    mock_est.latest_checkpoint.return_value = 'checkpoint_path/'
+    est = estimator_lib.Estimator(model_fn=self._model_fn)
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, wraps=est)
     train_spec = training.TrainSpec(
-        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+        input_fn=self._input_fn, max_steps=12, hooks=[_FakeHook()])
     eval_spec = training.EvalSpec(
-        input_fn=lambda: 1, steps=2, hooks=[_FakeHook()], name='local_eval')
-    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: train_spec.max_steps}
+        input_fn=lambda: self._input_fn(repeat=False),
+        steps=2,
+        hooks=[_FakeHook()],
+        name='local_eval')
 
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     # pylint: disable=assignment-from-no-return
     metrics, _ = executor.run_local()
     # pylint: enable=assignment-from-no-return
-    self.assertEqual(metrics['global_step'], 300)
+    self.assertEqual(metrics['global_step'], 12)
 
 
 class TrainAndEvaluateRunTest(test.TestCase):
@@ -2096,7 +2087,7 @@ class TrainAndEvaluateIntegrationTest(test.TestCase):
 
     # max_steps should be larger than save_summary_steps
     max_steps = 10
-    save_summary_steps = 2
+    save_summary_steps = 9
 
     data = np.linspace(
         0., n_classes - 1., batch_size * input_dimension, dtype=np.float32)
@@ -2104,24 +2095,20 @@ class TrainAndEvaluateIntegrationTest(test.TestCase):
     y_data = np.reshape(self._as_label(data[:batch_size]), (batch_size, 1))
 
     # learn y = x
-    train_input_fn = numpy_io.numpy_input_fn(
-        x={'x': x_data},
-        y=y_data,
-        batch_size=batch_size,
-        num_epochs=None,
-        shuffle=True)
+    def train_input_fn():
+      return dataset_ops.Dataset.from_tensor_slices(({
+          'x': x_data
+      }, y_data)).batch(batch_size).repeat().shuffle(1000)
 
-    eval_input_fn = numpy_io.numpy_input_fn(
-        x={'x': x_data},
-        y=y_data,
-        batch_size=batch_size,
-        num_epochs=1,
-        shuffle=False)
+    def eval_input_fn():
+      return dataset_ops.Dataset.from_tensor_slices(({
+          'x': x_data
+      }, y_data)).batch(batch_size)
 
-    predict_input_fn = numpy_io.numpy_input_fn(
-        x={'x': x_data},
-        batch_size=batch_size,
-        shuffle=False)
+    def predict_input_fn():
+      return dataset_ops.Dataset.from_tensor_slices({
+          'x': x_data
+      }).batch(batch_size)
 
     feature_columns = [
         feature_column.numeric_column('x', shape=(input_dimension,))]
@@ -2137,9 +2124,11 @@ class TrainAndEvaluateIntegrationTest(test.TestCase):
                                     max_steps=max_steps)
 
     eval_spec = training.EvalSpec(
-        name=eval_name, input_fn=eval_input_fn, steps=None,
+        name=eval_name,
+        input_fn=eval_input_fn,
+        steps=None,
         exporters=self._get_exporter(exporter_name, feature_columns),
-        throttle_secs=2)
+        throttle_secs=0)
 
     training.train_and_evaluate(est, train_spec, eval_spec)
 
@@ -2148,15 +2137,12 @@ class TrainAndEvaluateIntegrationTest(test.TestCase):
 
     # Examine the training events. Use a range to check global step to avoid
     # flakyness due to global step race condition.
-    training_loss, training_global_step = self._extract_loss_and_global_step(
-        est.model_dir)
+    training_loss, _ = self._extract_loss_and_global_step(est.model_dir)
     self.assertIsNotNone(training_loss)
-    self.assertTrue(
-        max_steps - save_summary_steps < training_global_step <= max_steps)
 
     # Examine the eval events. The global step should be accurate.
     eval_loss, eval_global_step = self._extract_loss_and_global_step(
-        event_folder=os.path.join(est.model_dir, 'eval_' + eval_name))
+        event_folder=est.eval_dir(eval_name))
     self.assertIsNotNone(eval_loss)
     self.assertEqual(max_steps, eval_global_step)
 

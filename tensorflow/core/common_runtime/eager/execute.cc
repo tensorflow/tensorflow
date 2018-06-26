@@ -24,8 +24,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
+#endif
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -38,6 +40,11 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+// Copy of the definition in third_party/tensorflow/compiler/jit/defs.h
+// Copied here because we don't currently compile XLA on windows. So, can't
+// depend on it directly.
+const char* const kXlaCompileAttr = "_XlaCompile";
 
 // Initializes the step stats if needed.
 void MaybeInitializeStepStats(StepStats* step_stats, EagerContext* ctx) {
@@ -472,6 +479,15 @@ Status EagerLocalExecute(EagerOperation* op,
       device == nullptr ? "unspecified" : device->name());
   KernelAndDevice* kernel = ctx->GetCachedKernel(cache_key);
   if (kernel == nullptr) {
+    // If we are running a function on explicitly requested TPU,
+    // compile it with XLA.
+    // Note that it is not ideal, but currently ok, to set this
+    // attribute after computing the kernel cache key above.
+    if (op->is_function() && device != nullptr &&
+        device->device_type() == "TPU") {
+      op->MutableAttrs()->Set(kXlaCompileAttr, true);
+    }
+
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
       status = SelectDevice(ndef, ctx, &device);
@@ -559,9 +575,19 @@ Status EagerLocalExecute(EagerOperation* op,
   return status;
 }
 
-Status EagerRemoteExecute(EagerOperation* op, eager::EagerClient* eager_client,
-                          uint64 context_id, TensorHandle** retvals,
+Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                           int* num_retvals) {
+#ifdef __ANDROID__
+  return errors::Unimplemented(
+      "Eager's remote execution is not available on Android devices.");
+#else
+  EagerContext* ctx = op->EagerContext();
+
+  eager::EagerClient* eager_client;
+  uint64 context_id;
+  TF_RETURN_IF_ERROR(
+      ctx->GetClientAndContextID(op->Device(), &eager_client, &context_id));
+
   eager::EnqueueRequest request;
   eager::EnqueueResponse response;
 
@@ -622,7 +648,6 @@ Status EagerRemoteExecute(EagerOperation* op, eager::EagerClient* eager_client,
   }
 
   tensorflow::Device* op_device = op->Device();
-  EagerContext* ctx = op->EagerContext();
 
   const tensorflow::uint64 id = remote_op->id();
   for (int i = 0; i < *num_retvals; i++) {
@@ -657,6 +682,7 @@ Status EagerRemoteExecute(EagerOperation* op, eager::EagerClient* eager_client,
   }
 
   return Status::OK();
+#endif
 }
 }  // namespace
 
@@ -669,15 +695,7 @@ Status EagerExecute(EagerOperation* op,
     return EagerLocalExecute(op, retvals, num_retvals);
   }
 
-  auto* ctx = op->EagerContext();
-
-  tensorflow::eager::EagerClient* eager_client;
-  tensorflow::uint64 context_id;
-  TF_RETURN_IF_ERROR(
-      ctx->GetClientAndContextID(op->Device(), &eager_client, &context_id));
-
-  return EagerRemoteExecute(op, eager_client, context_id, retvals->data(),
-                            num_retvals);
+  return EagerRemoteExecute(op, retvals->data(), num_retvals);
 }
 
 Status EagerExecute(EagerContext* ctx, Device* device,

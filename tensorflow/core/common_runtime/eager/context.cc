@@ -38,10 +38,11 @@ EagerContext::EagerContext(const SessionOptions& opts,
   InitDeviceMapAndAsync();
 }
 
+#ifndef __ANDROID__
 EagerContext::EagerContext(
     const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
     bool async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
-    std::unique_ptr<GrpcServer> server,
+    std::unique_ptr<ServerInterface> server,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DeviceMgr> remote_device_manager,
     const gtl::FlatMap<string, uint64>& remote_contexts)
@@ -55,12 +56,13 @@ EagerContext::EagerContext(
           &func_lib_def_, {}, thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
       async_default_(async),
+      remote_device_manager_(std::move(remote_device_manager)),
       server_(std::move(server)),
       remote_eager_workers_(std::move(remote_eager_workers)),
-      remote_device_manager_(std::move(remote_device_manager)),
       remote_contexts_(remote_contexts) {
   InitDeviceMapAndAsync();
 }
+#endif
 
 void EagerContext::InitDeviceMapAndAsync() {
   if (async_default_) {
@@ -125,10 +127,11 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() {
 }
 
 EagerContext::~EagerContext() {
+#ifndef __ANDROID__
   if (server_) {
     // TODO(nareshmodi): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
-                    "GrpcServer doesn't support clean shutdown.";
+                    "Servers don't support clean shutdown.";
     server_.release();
   }
 
@@ -158,6 +161,7 @@ EagerContext::~EagerContext() {
   }
 
   counter.Wait();
+#endif
 
   executor_.WaitForAllPendingNodes().IgnoreError();
   ClearCaches();
@@ -224,6 +228,7 @@ Status GetTaskName(Device* d, string* task_name) {
 }
 }  // namespace
 
+#ifndef __ANDROID__
 Status EagerContext::GetClientAndContextID(Device* device,
                                            eager::EagerClient** client,
                                            uint64* context_id) {
@@ -253,5 +258,6 @@ Status EagerContext::GetClientAndContextID(Device* device,
 
   return Status::OK();
 }
+#endif
 
 }  // namespace tensorflow
