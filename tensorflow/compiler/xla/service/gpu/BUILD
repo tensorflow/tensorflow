@@ -770,6 +770,7 @@ cc_library(
     hdrs = ["stream_executor_util.h"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:stream_executor_no_cuda",
     ],

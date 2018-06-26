@@ -74,7 +74,7 @@ class TensorHandle : public core::RefCounted {
   }
 
   // Remote tensor handle constructor.
-  TensorHandle(uint64 op_id, int32 output_num, DataType dtype,
+  TensorHandle(int64 op_id, int32 output_num, DataType dtype,
                std::function<void()> call_on_destroy, Device* d,
                Device* op_device, EagerContext* ctx)
       : dtype(dtype),
@@ -107,7 +107,7 @@ class TensorHandle : public core::RefCounted {
                          tensorflow::Device** op_device);
 
   // Return the op_id and output num if the handle refers to a remote tensor.
-  Status RemoteAddress(uint64* op_id, int32* output_num);
+  Status RemoteAddress(int64* op_id, int32* output_num);
 
   // Note that this can be called at most once, and only on non-ready handles,
   // and makes them ready.
@@ -159,7 +159,7 @@ class TensorHandle : public core::RefCounted {
   tensorflow::Device* op_device_;
 
   // IDs required when this class is representing a remote tensor handle.
-  const uint64 remote_op_id_;
+  const int64 remote_op_id_;
   const int32 remote_output_num_;
 
   // A callback that is executed when the class is destroyed.

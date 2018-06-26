@@ -32,7 +32,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_util
 
 
-def _validate_destinations(destinations):
+def validate_destinations(destinations):
   if not isinstance(destinations,
                     (value_lib.DistributedValues, six.string_types, list)):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
@@ -55,7 +55,7 @@ def _validate_value_destination_pairs(value_destination_pairs):
 
 
 # TODO(yuefengz): consider calling this function in the caller of CrossTowerOps.
-def _get_devices_from(destinations):
+def get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
     return list(destinations.devices)
   elif isinstance(destinations, six.string_types):
@@ -65,7 +65,7 @@ def _get_devices_from(destinations):
 
 
 def _devices_match(left, right):
-  return set(_get_devices_from(left)) == set(_get_devices_from(right))
+  return set(get_devices_from(left)) == set(get_devices_from(right))
 
 
 def _all_devices_match(value_destination_pairs):
@@ -80,7 +80,7 @@ def _all_devices_match(value_destination_pairs):
 
 def _simple_broadcast(value, destinations):
   index = {}
-  devices = _get_devices_from(destinations)
+  devices = get_devices_from(destinations)
   for d in devices:
     index[d] = cross_tower_utils.copy_tensor_or_indexed_slices_to_device(
         value, d)
@@ -146,7 +146,7 @@ class CrossTowerOps(object):
     if not isinstance(per_device_value, value_lib.PerDevice):
       raise ValueError("`per_device_value` must be a `PerDevice` object.")
     if destinations is not None:
-      _validate_destinations(destinations)
+      validate_destinations(destinations)
     return self._reduce(method_string, per_device_value, destinations)
 
   def batch_reduce(self, method_string, value_destination_pairs):
@@ -173,7 +173,7 @@ class CrossTowerOps(object):
                        "tuples of PerDevice objects and destinations")
     for _, d in value_destination_pairs:
       if d is not None:
-        _validate_destinations(d)
+        validate_destinations(d)
 
     return self._batch_reduce(method_string, value_destination_pairs)
 
@@ -187,7 +187,7 @@ class CrossTowerOps(object):
     Returns:
       a Mirrored object.
     """
-    _validate_destinations(destinations)
+    validate_destinations(destinations)
     return self._broadcast(tensor, destinations)
 
   def _reduce(self, method_string, per_device_value, destinations):
@@ -221,7 +221,7 @@ class ReductionToOneDeviceCrossTowerOps(CrossTowerOps):
     super(ReductionToOneDeviceCrossTowerOps, self).__init__()
 
   def _reduce(self, method_string, per_device_value, destinations):
-    devices = _get_devices_from(destinations or per_device_value)
+    devices = get_devices_from(destinations or per_device_value)
     reduce_to_device = self.reduce_to_device or devices[0]
     reduced = _simple_reduce(per_device_value, reduce_to_device,
                              self.accumulation_fn, method_string)
@@ -501,7 +501,7 @@ class AllReduceCrossTowerOps(CrossTowerOps):
             logging.WARN,
             "Efficient allreduce is not supported for IndexedSlices.", 10)
 
-      devices = _get_devices_from(destinations or per_device_value)
+      devices = get_devices_from(destinations or per_device_value)
       reduce_to_device = devices[0]
       reduced = _simple_reduce(per_device_value, reduce_to_device,
                                math_ops.add_n, method_string)
