@@ -60,7 +60,7 @@ class EagerServiceImplTest : public ::testing::Test {
             std::unique_ptr<WorkerCacheInterface>(),
             [](const ServerDef& server_def,
                WorkerCacheInterface** worker_cache) {
-              *worker_cache= nullptr;
+              *worker_cache = nullptr;
               return Status::OK();
             })) {
     worker_env_.env = Env::Default();
