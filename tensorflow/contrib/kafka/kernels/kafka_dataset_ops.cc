@@ -45,8 +45,6 @@ class KafkaDatasetOp : public DatasetOpKernel {
   		schema.push_back(schema_tensor->flat<int32>()(i));
   	}
 	
-    *output = new ignite::IgniteDataset(ctx, cache_name, host, port, local, part, schema);
-
     const Tensor* permutation_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("permutation", &permutation_tensor));
     OP_REQUIRES(ctx, schema_tensor->dims() == 1, errors::InvalidArgument("`permutation` must be a vector."));

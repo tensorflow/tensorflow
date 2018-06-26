@@ -42,7 +42,7 @@ IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache
 
 std::unique_ptr<tensorflow::IteratorBase> IgniteDataset::MakeIteratorInternal(const tensorflow::string& prefix) const {
   return std::unique_ptr<tensorflow::IteratorBase>(new IgniteDatasetIterator({this, tensorflow::strings::StrCat(prefix, "::Kafka")}, 
-    this->host_, this->port_, this->cache_name_, this->local_, this->part_, this->schema_, this->_permutation));
+    this->host_, this->port_, this->cache_name_, this->local_, this->part_, this->schema_, this->permutation_));
 }
 
 const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {

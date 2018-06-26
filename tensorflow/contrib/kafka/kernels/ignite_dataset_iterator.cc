@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "igntie_binary_object_parser.h"
+#include "ignite_binary_object_parser.h"
 #include "ignite_dataset_iterator.h"
 // #include "ignite_client.h"
 
@@ -85,14 +85,25 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
 
     std::cout << "Remainder: " << remainder << std::endl;
 
-    char* initial_ptr = ptr;
+    char* initial_ptr = data;
     std::vector<int>* types = new std::vector<int>();
+    std::vector<tensorflow::Tensor>* tensors = new std::vector<tensorflow::Tensor>();
 
     BinaryObjectParser parser;
     // Parse key 
-    parser.Parse(ptr, out_tensors, types);
+    data = parser.Parse(data, tensors, types);
     // Parse val
-    parser.Parse(ptr, out_tensors, types);
+    data = parser.Parse(data, tensors, types);
+
+    remainder -= (data - initial_ptr);
+
+    std::cout << "Tensors size : " << tensors->size() << std::endl;
+
+    out_tensors->reserve(tensors->size());
+
+    for (int i = 0; i < tensors->size(); i++) {
+        out_tensors[permutation_[i]] = tensors[i];
+    }
 
     *end_of_sequence = false;
     return tensorflow::Status::OK();

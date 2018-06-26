@@ -47,7 +47,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
 
       std::cout << "Array length: " << length << "\n";
       for (int i = 0; i < length; i++) {
-        tensor.vec<tensorflow::double>()(i) = arr[i];
+        tensor.vec<double>()(i) = arr[i];
       }
 
       out_tensors->emplace_back(std::move(tensor));
@@ -58,7 +58,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       std::cout << "Wrapped object..." << std::endl;
       int byte_arr_size = ReadInt(ptr);
       // payload
-      ptr = Parse(ptr);
+      ptr = Parse(ptr, out_tensors, types);
 
       int offset = ReadInt(ptr);
 
@@ -76,12 +76,12 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
   	  int schema_id = ReadInt(ptr);
   	  int schema_offset = ReadInt(ptr);
 
-      char* end = ptr + length - 26;
+      char* end = ptr + length - 28;//26;
       int i = 0;
       while (ptr < end) {
         std::cout << "Parse field " << i << ", ptr = " << (long) ptr << ", end = " << (long) end << std::endl;
         i++;
-        ptr = Parse(ptr);
+        ptr = Parse(ptr, out_tensors, types);
       }
 
       ptr += 2; // TODO: WHY?
