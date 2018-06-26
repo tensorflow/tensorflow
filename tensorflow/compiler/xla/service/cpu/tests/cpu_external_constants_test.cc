@@ -65,7 +65,7 @@ TEST_F(CpuExternalConstantsTest, BasicNegative) {
   // to externalize it.
   TestWithArray(/*rows=*/4, /*cols=*/4, R"(
 CHECK-NOT: @constant_global_0 = external constant [16 x float], align 8
-CHECK: @0 = private constant [16 x float] {{.*}}, align 8
+CHECK: @0 = private constant [64 x i8] {{.*}}, align 8
 )");
 }
 }  // namespace
