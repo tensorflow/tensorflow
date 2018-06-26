@@ -154,6 +154,19 @@ public final class Scope {
   public String makeOpName(String defaultName) {
     return nameScope.makeOpName(defaultName);
   }
+  
+  /**
+   * The name prefix of this scope
+   * <p>
+   * This value is the combination of the name of this scope and all of its parents, seperated by a '/', e.g.
+   * <pre>{@code
+   * Scope scope = new Scope(graph);
+   * assertEquals(scope.withSubScope("sub1").withSubScope("sub2").prefix(), "sub1/sub2");
+   * }</pre>
+   */
+  public String prefix() {
+    return nameScope.prefix();
+  }
 
   private Scope(Graph graph, NameScope nameScope) {
     this.graph = graph;

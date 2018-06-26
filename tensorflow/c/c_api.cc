@@ -2387,8 +2387,9 @@ void TF_FinishWhile(const TF_WhileParams* params, TF_Status* status,
 
 void TF_AbortWhile(const TF_WhileParams* params) { FreeWhileResources(params); }
 
-void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
-                     TF_Output* dx, TF_Status* status, TF_Output* dy) {
+void TF_AddGradients(TF_Graph* g, const char* scope_name, TF_Output* y,
+                     int ny, TF_Output* x, int nx, TF_Output* dx,
+                     TF_Status* status, TF_Output* dy) {
 #ifdef __ANDROID__
   status->status = tensorflow::errors::Unimplemented(
       "Adding gradients is not supported in Android. File a bug at "
@@ -2407,7 +2408,7 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
 
     tensorflow::Scope scope =
         NewInternalScope(&g->graph, &status->status, &g->refiner)
-            .NewSubScope("gradients");
+            .NewSubScope(scope_name != nullptr ? scope_name : "gradients");
 
     if (dx != nullptr) {
       std::vector<tensorflow::Output> dx_arg = OutputsFromTFOutputs(dx, ny);

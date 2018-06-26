@@ -431,8 +431,8 @@ TEST_F(CApiWhileLoopTest, Gradients) {
 
   // Create backprop graph
   TF_Output grad_output;
-  TF_AddGradients(graph_, outputs_.data(), outputs_.size(), inputs_.data(), 1,
-                  nullptr, s_, &grad_output);
+  TF_AddGradients(graph_, nullptr, outputs_.data(), outputs_.size(),
+                  inputs_.data(), 1, nullptr, s_, &grad_output);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
 
   // Run gradient
