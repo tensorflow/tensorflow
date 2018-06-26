@@ -29,9 +29,6 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -172,71 +169,6 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
     }
   }
   return tensorflow::Status::OK();
-}
-
-// Entry function from Python.
-tensorflow::Status ConvertGraphDefToTensorRT(
-    const tensorflow::GraphDef& graph_def,
-    const std::vector<string>& output_names, size_t max_batch_size,
-    size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
-    int precision_mode, int minimum_segment_size, bool is_dyn_op,
-    int max_cached_engines, std::vector<int> cached_engine_batches) {
-  // optimization pass
-  tensorflow::grappler::GrapplerItem item;
-  item.fetch = output_names;
-  item.graph = graph_def;
-  // grappler requires a virtual cluster with a proper GPU device
-  // in order to calculate flops>0 or fails with FATAL
-  // We add numbers from a Pascal card here to have flops>0
-  tensorflow::DeviceProperties device_properties;
-  device_properties.set_type("GPU");
-  device_properties.mutable_environment()->insert({"architecture", "6"});
-  device_properties.set_num_cores(3584);
-  device_properties.set_frequency(1531);
-  std::unique_ptr<tensorflow::grappler::Cluster> cluster(
-      new tensorflow::grappler::VirtualCluster(
-          {{"/GPU:0", device_properties}}));
-
-  // single machine
-  int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
-  int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
-  VLOG(2) << "cpu_cores: " << num_cpu_cores;
-  VLOG(2) << "gpus: " << num_gpus;
-  tensorflow::RewriterConfig rw_cfg;
-  // use only const folding and layout for the time being since new optimizers
-  // break the graph for us
-  rw_cfg.add_optimizers("constfold");
-  rw_cfg.add_optimizers("layout");
-  rw_cfg.set_meta_optimizer_iterations(tensorflow::RewriterConfig::ONE);
-  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
-  tensorflow::GraphDef gdef;
-  TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, &gdef));
-  item.graph = gdef;
-
-  // AJ refactoring shape inference through grappler/GraphProperties.
-  tensorflow::grappler::GraphProperties static_graph_properties(item);
-  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
-  // Build full graph
-  ConversionParams cp;
-  cp.input_graph_def = &gdef;
-  cp.output_names = &output_names;
-  cp.max_batch_size = max_batch_size;
-  cp.output_graph_def = new_graph_def;
-  cp.precision_mode = precision_mode;
-  cp.is_dyn_op = is_dyn_op;
-  cp.max_cached_engines = max_cached_engines;
-  cp.cached_engine_batches = cached_engine_batches;
-  cp.minimum_segment_size = minimum_segment_size;
-  cp.graph_properties = &static_graph_properties;
-  cp.max_workspace_size_bytes = max_workspace_size_bytes;
-  if (VLOG_IS_ON(5)) {
-    std::fstream f;
-    f.open("TRTConversionInput.pb",
-           std::fstream::out | std::fstream::binary | std::fstream::trunc);
-    f << gdef.SerializeAsString();
-    f.close();
-  }
-  return ConvertAfterShapes(cp);
 }
 
 // Function to get subsegment information structure.
@@ -633,72 +565,36 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
 }
 
 std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
-    ConversionParams& params, EngineInfo& engine) {
+    const ConversionParams& params, const EngineInfo& engine) {
   int cuda_device_id = -1;
-  auto check_device_id = [](int tfid) -> int {
-    tensorflow::TfGpuId tf_gpu_id(tfid);
-    CudaGpuId cuda_gpu_id;
-    Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
-    if (s.ok()) {
-      VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
-              << cuda_gpu_id.value();
-      return cuda_gpu_id.value();
-    }
-    VLOG(2) << "TF GPU with id " << tfid << " do not exist " << s;
-    return -1;
-  };
   tensorflow::Allocator* dev_allocator = nullptr;
-  // we need to us PM here since in python path there is no way to get
-  // to allocators.
-  // TODO(sami): when grappler devices become available else path will not be
-  // necessary
-  auto pm = tensorflow::ProcessState::singleton();
-  if (params.cluster) {  // get allocator
-    tensorflow::Device* device = nullptr;
-    if (params.cluster->GetDeviceSet()) {
-      device = params.cluster->GetDeviceSet()->FindDeviceByName(engine.device);
+  if (params.cluster) {
+    std::vector<tensorflow::Device*> devices;
+    if (!engine.device.empty() && params.cluster->GetDeviceSet()) {
+      DeviceNameUtils::ParsedName parsed_name;
+      if (DeviceNameUtils::ParseFullName(engine.device, &parsed_name) &&
+          parsed_name.has_id) {
+        params.cluster->GetDeviceSet()->FindMatchingDevices(
+            parsed_name, &devices);
+      }
     }
-    if (device) {
+    if (!devices.empty()) {
+      if (devices.size() > 1) {
+        string msg = "Found multiple matching devices using name '";
+        StrAppend(&msg, engine.device, "': ");
+        for (auto d : devices) StrAppend(&msg, d->name(), ", ");
+        StrAppend(&msg, ". Will get the allocator from first one.");
+        LOG(WARNING) << msg;
+      }
       tensorflow::AllocatorAttributes alloc_attr;
-      dev_allocator = device->GetAllocator(alloc_attr);
-      VLOG(1) << "Using allocator " << dev_allocator->Name();
+      cuda_device_id = devices[0]->tensorflow_gpu_device_info()->gpu_id;
+      dev_allocator = devices[0]->GetAllocator(alloc_attr);
+      VLOG(1) << "Using allocator " << dev_allocator->Name()
+              << " and cuda_device_id " << cuda_device_id;
     } else {
       LOG(WARNING) << "Cluster is set but device '" << engine.device
                    << "' is not found in the cluster";
     }
-  } else {  // cluster not found, possibly a python call
-    VLOG(1) << "Cluster is not set, probably called from python";
-    int found_device = 0;
-    bool try_gpu_ids = true;
-    // if device is set, try to find the device. Might be a problem for multi
-    // host case but TensorRT do not support multi host setups yet.
-    if (!engine.device.empty()) {
-      DeviceNameUtils::ParsedName parsed_name;
-      if (DeviceNameUtils::ParseFullName(engine.device, &parsed_name)) {
-        cuda_device_id = parsed_name.has_id ? parsed_name.id : -1;
-      }
-      try_gpu_ids = !parsed_name.has_id;
-    }
-    if (try_gpu_ids) {
-      while (found_device < 100) {
-        cuda_device_id = check_device_id(found_device);
-        if (cuda_device_id >= 0) break;
-        found_device++;
-      }
-    }
-    if (found_device == 100) {
-      LOG(ERROR) << " Can't find a GPU device to work with. Please "
-                    "instantiate a session to initialize devices";
-      return std::make_pair(cuda_device_id, dev_allocator);
-    }
-    LOG(WARNING)
-        << "Can't determine the device, constructing an allocator at device "
-        << found_device;
-    tensorflow::GPUOptions gpuoptions;
-    // this will be a noop if device is already initialized
-    gpuoptions.set_allow_growth(true);
-    tensorflow::TfGpuId tf_gpu_id(found_device);
-    dev_allocator = pm->GetGPUAllocator(gpuoptions, tf_gpu_id, 1);
   }
   return std::make_pair(cuda_device_id, dev_allocator);
 }
