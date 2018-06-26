@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -94,8 +95,11 @@ bool IsArrayPrimitiveType(PrimitiveType primitive_type) {
 // Recursive helper for comparing the equality of two shapes. Returns true if
 // the shapes are the same. If compare_layouts is true, then layouts must also
 // match.
-bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
-  if (!ShapeUtil::SameElementType(lhs, rhs)) {
+bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
+                   bool ignore_fp_precision) {
+  if ((ignore_fp_precision &&
+       !ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) ||
+      (!ignore_fp_precision && !ShapeUtil::SameElementType(lhs, rhs))) {
     VLOG(3) << "CompareShapes: lhs element type != rhs element type";
     return false;
   }
@@ -103,7 +107,8 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   if (ShapeUtil::IsTuple(lhs)) {
     return ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
                            [=](const Shape& l, const Shape& r) {
-                             return CompareShapes(l, r, compare_layouts);
+                             return CompareShapes(l, r, compare_layouts,
+                                                  ignore_fp_precision);
                            });
   } else if (!ShapeUtil::IsArray(lhs)) {
     // Non-tuple, non-array tupes such as opaque and token types are trivially
@@ -170,10 +175,23 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
-  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true);
+  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true,
+                             /*ignore_fp_precision=*/false);
   if (!equal && VLOG_IS_ON(3)) {
     VLOG(3) << "ShapeUtil::Equal differ: lhs = " << lhs.ShortDebugString()
             << ", rhs = " << rhs.ShortDebugString();
+  }
+
+  return equal;
+}
+
+/* static */ bool ShapeUtil::EqualIgnoringFpPrecision(const Shape& lhs,
+                                                      const Shape& rhs) {
+  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true,
+                             /*ignore_fp_precision=*/true);
+  if (!equal && VLOG_IS_ON(3)) {
+    VLOG(3) << "ShapeUtil::EqualIgnoringFpPrecision differ: lhs = "
+            << lhs.ShortDebugString() << ", rhs = " << rhs.ShortDebugString();
   }
 
   return equal;
@@ -665,7 +683,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
-  return CompareShapes(lhs, rhs, /*compare_layouts=*/false);
+  return CompareShapes(lhs, rhs, /*compare_layouts=*/false,
+                       /*ignore_fp_precision=*/false);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
@@ -867,6 +886,50 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     }
   }
 
+  TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
+  return Status::OK();
+}
+
+/* static */ Status ShapeUtil::ValidateShapeSize(const Shape& shape) {
+  VLOG(3) << "Validating shape size: " << ShapeUtil::HumanString(shape);
+  auto invalid_argument =
+      InvalidArgument("Shape %s size may overflow int64.",
+                      ShapeUtil::HumanString(shape).c_str());
+  if (!IsArray(shape)) {
+    return Status::OK();
+  }
+  int64 shape_size;
+  if (LayoutUtil::IsSparseArray(shape)) {
+    shape_size = LayoutUtil::MaxSparseElements(shape.layout());
+    shape_size = MultiplyWithoutOverflow(shape_size, ShapeUtil::Rank(shape));
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
+    shape_size = MultiplyWithoutOverflow(shape_size, sizeof(int64));
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
+  }
+
+  // This is intentionally unconditional: even if the shape is sparse, we want
+  // to verify the densified version has a reasonable size.
+  if (shape.dimensions().empty()) {
+    return Status::OK();
+  }
+  shape_size = 1;
+  for (int64 dim : shape.dimensions()) {
+    shape_size = MultiplyWithoutOverflow(shape_size, dim);
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
+  }
+  shape_size = MultiplyWithoutOverflow(
+      shape_size, ByteSizeOfPrimitiveType(shape.element_type()));
+  if (shape_size < 0) {
+    return invalid_argument;
+  }
+
+  VLOG(3) << "Shape size is valid: " << shape_size;
   return Status::OK();
 }
 

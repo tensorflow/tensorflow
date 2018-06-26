@@ -793,6 +793,7 @@ tf_cuda_library(
         "framework/graph_def_util.h",
         "framework/graph_to_functiondef.h",
         "framework/kernel_def_builder.h",
+        "framework/kernel_def_util.h",
         "framework/log_memory.h",
         "framework/lookup_interface.h",
         "framework/memory_types.h",
@@ -1198,6 +1199,7 @@ tf_cuda_library(
     hdrs = [
         "common_runtime/device.h",
         "common_runtime/device_factory.h",
+        "common_runtime/function.h",
         "common_runtime/optimization_registry.h",
         "common_runtime/shape_refiner.h",
         "graph/algorithm.h",
@@ -3377,6 +3379,7 @@ tf_cc_tests(
         "framework/graph_def_util_test.cc",
         "framework/graph_to_functiondef_test.cc",
         "framework/kernel_def_builder_test.cc",
+        "framework/kernel_def_util_test.cc",
         "framework/memory_types_test.cc",
         "framework/node_def_builder_test.cc",
         "framework/node_def_util_test.cc",

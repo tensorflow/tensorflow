@@ -384,13 +384,14 @@ Status BuildComputation(
     const XlaCompiler::Argument& arg = args[resource->arg_num()];
     const int core = arg_cores[resource->arg_num()];
     DCHECK_LT(resource->arg_num(), arg_cores.size());
-    bool modified = resource->value() != resource->initial_value();
+    bool modified = !resource->value().IsIdenticalTo(resource->initial_value());
     // TensorArray gradients were modified if their values changed or there are
     // any newly created gradients.
     for (const auto& grad : resource->tensor_array_gradients()) {
-      modified = modified ||
-                 grad.second->value() != grad.second->initial_value() ||
-                 arg.tensor_array_gradients.count(grad.first) == 0;
+      modified =
+          modified ||
+          !grad.second->value().IsIdenticalTo(grad.second->initial_value()) ||
+          arg.tensor_array_gradients.count(grad.first) == 0;
     }
     if (return_updated_values_for_all_resources || modified) {
       resource_updates->emplace_back();

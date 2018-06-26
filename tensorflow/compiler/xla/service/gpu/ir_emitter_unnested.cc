@@ -615,6 +615,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
             output_shape_index = {i};
           }
           if (inst->opcode() == HloOpcode::kReduce) {
+            CHECK(IsReductionToVector(*inst))
+                << "Only reductions to vector are supported";
             // Shapes, layouts and dimensions must be the same for all reduces
             // inside of this fusion.
             CHECK(ShapeUtil::Equal(first_reduce->shape(), inst->shape()));
@@ -1970,10 +1972,8 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
   HloComputation* reducer = reduce->to_apply();
   // HandleReduce specializes reduction from a multi-dimensional array to a 1D
   // array. The specialized version requires an initializer thunk that
-  // ingitializes the output array to the initial value of the reduce.
-  if (IsReductionToVector(*reduce) &&
-      // NVPTX backend can't do atomic cmpxchg any narrower than 32 bits
-      32 <= primitive_util::BitWidth(reduce->shape().element_type())) {
+  // initializes the output array to the initial value of the reduce.
+  if (IsReductionToVector(*reduce)) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
                         BuildInitializerThunk(reduce));
     std::vector<std::unique_ptr<Thunk>> thunks;
@@ -2311,7 +2311,7 @@ Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleGenerateToken(HloInstruction* gen_token) {
+Status IrEmitterUnnested::HandleAfterAll(HloInstruction* gen_token) {
   return Status::OK();
 }
 
@@ -2563,17 +2563,14 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildInfeedThunk(
     const HloInstruction* inst) {
   CHECK_EQ(HloOpcode::kInfeed, inst->opcode());
 
-  std::vector<BufferAllocation::Slice> tuple_element_buffers;
-  for (int64 i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
-    BufferAllocation::Slice buffer = ir_emitter_context_->buffer_assignment()
-                                         .GetUniqueSlice(inst, {i})
-                                         .ConsumeValueOrDie();
-    tuple_element_buffers.push_back(buffer);
-  }
-
-  return MakeUnique<InfeedThunk>(
-      tuple_element_buffers,
-      /*destination_buffer=*/GetAllocationSlice(*inst), inst);
+  ShapeTree<BufferAllocation::Slice> slices(inst->shape());
+  slices.ForEachMutableElement(
+      [this, inst](const ShapeIndex& index, BufferAllocation::Slice* slice) {
+        *slice = ir_emitter_context_->buffer_assignment()
+                     .GetUniqueSlice(inst, index)
+                     .ConsumeValueOrDie();
+      });
+  return MakeUnique<InfeedThunk>(slices, inst);
 }
 
 namespace {
@@ -2718,7 +2715,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
         uint8 b = literal_bytes.front();
         pattern16 = uint16{b} | (uint16{b} << 8);
       } else {
-        pattern16 = literal_bytes.front();
+        memcpy(&pattern16, literal_bytes.data(), sizeof(pattern16));
       }
       uint32 pattern32 = uint32{pattern16} | (uint32{pattern16} << 16);
       return {MakeUnique<Memset32BitValueThunk>(

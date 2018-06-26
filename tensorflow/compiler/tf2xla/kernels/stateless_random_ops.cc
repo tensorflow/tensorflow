@@ -207,10 +207,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
         RandomUniform(builder, seed, shape, std::nextafter(-1.0f, 0.0f), 1.0);
     // Convert uniform distribution to normal distribution by computing
     // sqrt(2) * erfinv(x)
-    auto erfinv_or_status = ErfInv(uniform);
-    OP_REQUIRES_OK(ctx, erfinv_or_status.status());
     auto normal = builder->Mul(builder->ConstantR0<float>(std::sqrt(2.0)),
-                               erfinv_or_status.ValueOrDie());
+                               ErfInv(uniform));
     ctx->SetOutput(0, normal);
   }
 
@@ -245,9 +243,7 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 
     auto uniform =
         RandomUniform(b, seed, shape, std::numeric_limits<float>::min(), 1.0);
-    auto truncated_normal_or_status = TruncatedNormal(dtype, uniform, b);
-    OP_REQUIRES_OK(ctx, truncated_normal_or_status.status());
-    ctx->SetOutput(0, truncated_normal_or_status.ValueOrDie());
+    ctx->SetOutput(0, TruncatedNormal(dtype, uniform));
   }
 
  private:

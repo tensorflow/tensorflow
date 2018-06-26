@@ -407,8 +407,7 @@ class HloMapInstruction : public HloInstruction {
  public:
   explicit HloMapInstruction(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* map_computation,
-      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands = {});
+      HloComputation* map_computation);
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
@@ -636,6 +635,9 @@ class HloFusionInstruction : public HloInstruction {
 
   void set_fusion_kind(FusionKind kind) { fusion_kind_ = kind; }
 
+  // If multiple operands are the same instruction, keeps only one of them.
+  Status DeduplicateFusionOperands();
+
  private:
   // Fuses the given instruction into this fusion instruction. When add_output
   // is false (which is the default), instruction_to_fuse is cloned and the
@@ -785,12 +787,25 @@ class HloReducePrecisionInstruction : public HloInstruction {
 
 class HloInfeedInstruction : public HloInstruction {
  public:
-  explicit HloInfeedInstruction(const Shape& shape, const string& config);
+  explicit HloInfeedInstruction(const Shape& infeed_shape,
+                                HloInstruction* token_operand,
+                                const string& config);
+  // TODO(b/80000000): Remove this constructor when all uses of infeed are
+  // converted to take tokens.
+  explicit HloInfeedInstruction(const Shape& infeed_shape,
+                                const string& config);
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
   // and is target-dependent.
   string infeed_config() const { return infeed_config_; }
   void set_infeed_config(const string& config) { infeed_config_ = config; }
+  // Returns the shape of the data received by the infeed. This is not the same
+  // as the shape of the infeed instruction which produces a tuple containing
+  // the infeed data shape and a TOKEN.
+  const Shape& infeed_shape() const {
+    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape()));
+    return ShapeUtil::GetSubshape(shape(), {0});
+  }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -813,11 +828,19 @@ class HloInfeedInstruction : public HloInstruction {
 
 class HloOutfeedInstruction : public HloInstruction {
  public:
-  explicit HloOutfeedInstruction(const Shape& shape, HloInstruction* operand,
+  explicit HloOutfeedInstruction(const Shape& outfeed_shape,
+                                 HloInstruction* operand,
+                                 HloInstruction* token_operand,
                                  tensorflow::StringPiece outfeed_config);
+  // TODO(b/80000000): Remove this constructor when all uses of outfeed are
+  // converted to take tokens.
+  explicit HloOutfeedInstruction(const Shape& outfeed_shape,
+                                 HloInstruction* operand,
+                                 tensorflow::StringPiece outfeed_config);
+
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const {
-    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape()));
+    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(outfeed_shape_));
     return outfeed_shape_;
   }
   // Returns the config for the Outfeed instruction.

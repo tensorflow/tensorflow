@@ -40,7 +40,7 @@ TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
 
   auto p0 = builder.Parameter(0, param_literal->shape(), "param0");
   auto p1 = builder.Parameter(1, param_literal->shape(), "param1");
-  auto add = builder.Add(p0, p1);
+  builder.Add(p0, p1);
 
   auto param0_data =
       client_->TransferToServer(*param_literal).ConsumeValueOrDie();
@@ -79,7 +79,7 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
 
   auto p0 = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param0");
   auto p1 = builder.Parameter(1, ShapeUtil::MakeShape(F32, {4}), "param1");
-  auto add = builder.Mul(p0, p1);
+  builder.Mul(p0, p1);
 
   auto computation_status = builder.Build();
   ASSERT_IS_OK(computation_status.status());

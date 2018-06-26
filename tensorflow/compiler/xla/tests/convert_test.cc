@@ -478,7 +478,7 @@ XLA_TEST_F(ConvertTest, ConvertBF16F32) {
   xla::XlaOp all_bfloats_bf16 = builder.ConstantR1<bfloat16>(all_bfloats);
   xla::XlaOp all_bfloats_f32 =
       builder.ConvertElementType(all_bfloats_bf16, F32);
-  xla::XlaOp all_bfloats_u32 = builder.BitcastConvertType(all_bfloats_f32, U32);
+  builder.BitcastConvertType(all_bfloats_f32, U32);
   ComputeAndCompareR1<uint32>(&builder, expected, {});
 }
 

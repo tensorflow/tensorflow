@@ -175,6 +175,7 @@ cc_library(
     hdrs = [
         "iterator_util.h",
         "map_util.h",
+        "overflow_util.h",
         "ptr_util.h",
         "util.h",
     ],
@@ -250,7 +251,7 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto",
-        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",

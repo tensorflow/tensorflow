@@ -210,6 +210,21 @@ class FunctionTest(test.TestCase):
     compiled = function.defun(f)
     compiled()
 
+  def testVariableInLoopInFunction(self):
+
+    @function.defun
+    def test_function():
+
+      def loop_test(_):
+        return False
+
+      def loop_body(_):
+        return variable_scope.get_variable('a', shape=())
+
+      return control_flow_ops.while_loop(loop_test, loop_body, [0.0])
+
+    self.assertEqual(test_function().shape, [])
+
   def testDefunShapeInferenceWithCapturedResourceVariableInGraphMode(self):
     with context.graph_mode():
       v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])

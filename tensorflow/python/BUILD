@@ -3925,7 +3925,7 @@ tf_cuda_library(
 
 tf_py_test(
     name = "session_test",
-    size = "small",
+    size = "medium",
     srcs = ["client/session_test.py"],
     additional_deps = [
         ":array_ops",

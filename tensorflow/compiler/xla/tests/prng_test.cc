@@ -294,9 +294,9 @@ XLA_TEST_F(PrngTest, RngUniformCrash) {
   XlaBuilder builder(TestName());
 
   // This used to crash XLA during LLVM IR generation for CPUs.
-  auto rng_uniform = builder.RngUniform(builder.ConstantR0<int32>(0),
-                                        builder.ConstantR0<int32>(1000 * 1000),
-                                        ShapeUtil::MakeShape(S32, {}));
+  builder.RngUniform(builder.ConstantR0<int32>(0),
+                     builder.ConstantR0<int32>(1000 * 1000),
+                     ShapeUtil::MakeShape(S32, {}));
   SetSeed(0);
   ExecuteAndTransfer(&builder, /*arguments=*/{}).ConsumeValueOrDie();
 }

@@ -191,6 +191,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
   HloOpcode root_opcode = computation.root_instruction()->opcode();
   PrimitiveType element_type =
       computation.root_instruction()->shape().element_type();
+  bool is_atomic_integral = element_type == S32 || element_type == U32 ||
+                            element_type == S64 || element_type == U64;
   llvm::Value* source = ir_builder_.CreateLoad(source_address, "source");
   if (root_opcode == HloOpcode::kAdd) {
     // NVPTX supports atomicAdd on F32 and integer types.
@@ -201,7 +203,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
                                    {output_address->getType()}, &ir_builder_);
       return true;
     }
-    if (primitive_util::IsIntegralType(element_type)) {
+    if (is_atomic_integral) {
       // integral + integral
       ir_builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Add, output_address,
                                   source,
@@ -210,9 +212,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     }
   }
 
-  // NVPTX supports atomicMax and atomicMin on only integer types.
-  if (root_opcode == HloOpcode::kMaximum &&
-      primitive_util::IsIntegralType(element_type)) {
+  // NVPTX supports atomicMax and atomicMin only on integer types.
+  if (root_opcode == HloOpcode::kMaximum && is_atomic_integral) {
     // max(integral, integral)
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Max
@@ -222,8 +223,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     return true;
   }
 
-  if (root_opcode == HloOpcode::kMinimum &&
-      primitive_util::IsIntegralType(element_type)) {
+  if (root_opcode == HloOpcode::kMinimum && is_atomic_integral) {
     // min(integral, integral)
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Min

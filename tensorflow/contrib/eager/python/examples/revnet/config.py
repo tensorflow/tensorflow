@@ -61,12 +61,13 @@ def get_hparams_cifar_38():
   config.add_hparam("max_train_iter", 80000)
   config.add_hparam("seed", 1234)
   config.add_hparam("shuffle", True)
-  config.add_hparam("prefetch", True)
-  config.add_hparam("log_every", 50)
-  config.add_hparam("save_every", 50)
+  config.add_hparam("log_every", 500)
+  config.add_hparam("save_every", 500)
   config.add_hparam("dtype", tf.float32)
-  config.add_hparam("eval_batch_size", 500)
+  config.add_hparam("eval_batch_size", 1000)
   config.add_hparam("div255", True)
+  # TODO(lxuechen): This is imprecise, when training with validation set,
+  # we only have 40k images in training data
   config.add_hparam("iters_per_epoch", 50000 // config.batch_size)
   config.add_hparam("epochs", config.max_train_iter // config.iters_per_epoch)
 
@@ -104,11 +105,10 @@ def get_hparams_imagenet_56():
   config.add_hparam("max_train_iter", 600000)
   config.add_hparam("seed", 1234)
   config.add_hparam("shuffle", True)
-  config.add_hparam("prefetch", True)
   config.add_hparam("log_every", 50)
   config.add_hparam("save_every", 50)
   config.add_hparam("dtype", tf.float32)
-  config.add_hparam("eval_batch_size", 500)
+  config.add_hparam("eval_batch_size", 1000)
   config.add_hparam("div255", True)
   # TODO(lxuechen): Update this according to ImageNet data
   config.add_hparam("iters_per_epoch", 50000 // config.batch_size)

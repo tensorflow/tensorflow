@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -87,6 +88,8 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
 }
 }  // namespace
 Status GraphCompiler::Compile() {
+  // Check that the graph has no illegal cycles.
+  TF_RETURN_IF_ERROR(graph::ValidateGraphHasNoCycle(*graph_));
   // Maintain a mapping from node id to node outputs.
   using NodeOutputs = std::vector<TensorValue>;
   std::vector<NodeOutputs> output_registry(graph_->num_node_ids());
