@@ -64,18 +64,6 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
     const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* new_graph_def,
     bool is_dyn_op);
 
-// - max_batch_size: maximum batch size which can be used for inference for
-//   optimization targets inference run with max batch size.
-// - max_workspace_size_bytes: The upper bound of memory allowance for engine
-//   building.
-tensorflow::Status ConvertGraphDefToTensorRT(
-    const tensorflow::GraphDef& graph_def,
-    const std::vector<string>& output_names, size_t max_batch_size,
-    size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
-    int precision_mode = 1, int minimum_segment_size = 3,
-    bool is_dyn_op = false, int max_cached_engines = 1,
-    std::vector<int> cached_engine_batches = {});
-
 // Method to call from optimization pass
 tensorflow::Status ConvertAfterShapes(ConversionParams& params);
 

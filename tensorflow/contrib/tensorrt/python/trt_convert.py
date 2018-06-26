@@ -23,22 +23,18 @@ import six as _six
 from tensorflow.contrib.tensorrt.wrap_conversion import calib_convert
 from tensorflow.contrib.tensorrt.wrap_conversion import get_linked_tensorrt_version
 from tensorflow.contrib.tensorrt.wrap_conversion import get_loaded_tensorrt_version
-from tensorflow.contrib.tensorrt.wrap_conversion import trt_convert
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python.framework import errors
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import errors_impl as _impl
-from tensorflow.python.framework import meta_graph
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.util import compat
-
+from tensorflow.python.training import saver
 # pylint: enable=unused-import,line-too-long
 
 
-# TODO(skama): get outputs from session when implemented as c++
-# optimization pass
 def create_inference_graph(input_graph_def,
                            outputs,
                            max_batch_size=1,
@@ -86,8 +82,7 @@ def create_inference_graph(input_graph_def,
         (".".join([str(x) for x in compiled_version]),
          ".".join([str(x) for x in loaded_version])) +
         ". Please make sure that correct version of TensorRT " +
-        "is available in the system and added to ldconfig or LD_LIBRARY_PATH"
-    )
+        "is available in the system and added to ldconfig or LD_LIBRARY_PATH")
     raise RuntimeError("Incompatible TensorRT library version")
   for i in zip(loaded_version, compiled_version):
     if i[0] != i[1]:
@@ -120,41 +115,40 @@ def create_inference_graph(input_graph_def,
     to_bytes = py3bytes
     to_string = py3string
 
-  out_names = []
-  for i in outputs:
-    if isinstance(i, ops.Tensor):
-      out_names.append(to_bytes(i.name))
-    else:
-      out_names.append(to_bytes(i))
+  # Create MetaGraphDef
+  graph = ops.Graph()
+  with graph.as_default():
+    importer.import_graph_def(input_graph_def, name="")
+  meta_graph = saver.export_meta_graph(
+      graph_def=graph.as_graph_def(), graph=graph)
+  if outputs:
+    output_collection = meta_graph_pb2.CollectionDef()
+    output_list = output_collection.node_list.value
+    for i in outputs:
+      if isinstance(i, ops.Tensor):
+        output_list.append(to_bytes(i.name))
+      else:
+        output_list.append(to_bytes(i))
+    meta_graph.collection_def["train_op"].CopyFrom(output_collection)
 
-  input_graph_def_str = input_graph_def.SerializeToString()
+  # Create RewriterConfig.
+  rewriter_cfg = rewriter_config_pb2.RewriterConfig()
+  rewriter_cfg.optimizers.extend(["constfold", "layout"])
+  optimizer = rewriter_cfg.custom_optimizers.add()
+  optimizer.name = "TensorRTOptimizer"
+  optimizer.parameter_map["minimum_segment_size"].i = minimum_segment_size
+  optimizer.parameter_map["max_batch_size"].i = max_batch_size
+  optimizer.parameter_map["is_dynamic_op"].b = is_dynamic_op
+  optimizer.parameter_map[
+      "max_workspace_size_bytes"].i = max_workspace_size_bytes
+  optimizer.parameter_map["precision_mode"].s = to_bytes(precision_mode)
+  optimizer.parameter_map["maximum_cached_engines"].i = maximum_cached_engines
+  if cached_engine_batches:
+    optimizer.parameter_map["cached_engine_batches"].list.extend(
+        cached_engine_batches)
 
-  # TODO(sami): Fix this when we can return status from C++ library
-  # There is a problem with the TF internal library setup that doesn't
-  # allow us to return a status object from C++.  Thus we return a
-  # pair or strings where first one is encoded status and the second
-  # one is the transformed graphs protobuf string.
-  out = trt_convert(input_graph_def_str, out_names, max_batch_size,
-                    max_workspace_size_bytes, mode, minimum_segment_size,
-                    is_dynamic_op, maximum_cached_engines,
-                    cached_engine_batches)
-  status = to_string(out[0])
-  output_graph_def_string = out[1]
-  del input_graph_def_str  # Save some memory
-  if len(status) < 2:
-    raise _impl.UnknownError(None, None, status)
-  if status[:2] != "OK":
-    msg = status.split(";")
-    if len(msg) == 1:
-      raise RuntimeError("Status message is malformed {}".format(status))
-    # pylint: disable=protected-access
-    raise _impl._make_specific_exception(None, None, ";".join(msg[1:]),
-                                         int(msg[0]))
-    # pylint: enable=protected-access
-  output_graph_def = graph_pb2.GraphDef()
-  output_graph_def.ParseFromString(output_graph_def_string)
-  del output_graph_def_string  # Save some memory
-  return output_graph_def
+  return tf_optimizer.OptimizeGraph(
+      rewriter_cfg, meta_graph, graph_id=b"tf_graph")
 
 
 def calib_graph_to_infer_graph(calibration_graph_def, is_dynamic_op=False):
