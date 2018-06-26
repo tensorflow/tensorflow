@@ -104,6 +104,27 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
       "DepthwiseConv2dNative",
       "FusedBatchNorm",
       "FusedBatchNormV2",
+      "Div",
+      "RealDiv",
+      "Rsqrt",
+      "Reciprocal",
+      "Exp",
+      "Log",
+      "Sqrt",
+      "Abs",
+      "Neg",
+#if NV_TENSORRT_MAJOR > 3
+      "MatMul",
+      "BatchMatMul",
+      "Softmax",
+      "Minimum",
+      "Maximum",
+      "TopKV2",
+      "Sum",
+      "Prod",
+      "Max",
+      "Min",
+#endif
       // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)

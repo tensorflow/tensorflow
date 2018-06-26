@@ -316,6 +316,11 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
         ctx->SetStatus(tensorflow::errors::InvalidArgument(
             "INT8 inputs are not supported!"));
         return;
+#if NV_TENSORRT_MAJOR > 3
+      case nvinfer1::DataType::kINT32:
+        buffers[binding_index] = (void*)(input_tensor.flat<int>().data());
+        break;
+#endif
       default:
         LOG(ERROR) << "Unknown TRT data type: " << int(dtype);
         ctx->SetStatus(tensorflow::errors::InvalidArgument(
@@ -368,6 +373,12 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
         ctx->SetStatus(tensorflow::errors::InvalidArgument(
             "INT8 outputs are not supported!"));
         return;
+#if NV_TENSORRT_MAJOR > 3
+      case nvinfer1::DataType::kINT32:
+        buffers[binding_index] =
+            reinterpret_cast<void*>(output_tensor->flat<int>().data());
+        break;
+#endif
       default:
         LOG(ERROR) << "Unknown TRT data type: " << static_cast<int>(dtype);
         ctx->SetStatus(tensorflow::errors::InvalidArgument(
