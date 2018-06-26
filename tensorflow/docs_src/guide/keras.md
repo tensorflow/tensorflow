@@ -221,7 +221,7 @@ To *evaluate* the inference-mode loss and metrics for the data provided:
 ```python
 model.evaluate(x, y, batch_size=32)
 
-model.evaluate(dataset, steps=30
+model.evaluate(dataset, steps=30)
 ```
 
 And to *predict* the output of the last layer in inference for the data provided,
