@@ -58,7 +58,7 @@ void RunSoftmaxFloatReference(const uint8* input_data,
 
 void CheckOutputData(const uint8* test_output, const uint8* reference_output,
                      const RuntimeShape& shape_common,
-                     const string& check_label, bool be_exacting) {
+                     const std::string& check_label, bool be_exacting) {
   const int buffer_size = shape_common.FlatSize();
   // While calculating some metrics in floating point, we work with quantized
   // scaling.
