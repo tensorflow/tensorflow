@@ -303,6 +303,8 @@ Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64 depth, int axis,
 }
 
 DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
+  // Upcast 16 bit sum reductions to 32 bit to reduce the precision loss from
+  // repeated floating point additions.
   if (dtype == DT_BFLOAT16 || dtype == DT_HALF) {
     return DT_FLOAT;
   }
