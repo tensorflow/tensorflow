@@ -1138,12 +1138,16 @@ TF_CAPI_EXPORT extern void TF_AbortWhile(const TF_WhileParams* params);
 // shapes in `y`.
 // The partial derivatives are returned in `dy`. `dy` should be allocated to
 // size `nx`.
+// `scope_name` names the scope (or sub-scope) into which all gradients
+// operations are added. If `scope_name` is nullptr, "gradients" is used by
+// default.
 //
 // WARNING: This function does not yet support all the gradients that python
 // supports. See
 // https://www.tensorflow.org/code/tensorflow/cc/gradients/README.md
 // for instructions on how to add C++ more gradients.
-TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
+TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, const char* scope_name,
+                                    TF_Output* y, int ny,
                                     TF_Output* x, int nx, TF_Output* dx,
                                     TF_Status* status, TF_Output* dy);
 
