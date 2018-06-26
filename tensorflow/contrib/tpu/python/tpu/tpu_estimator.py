@@ -2033,24 +2033,29 @@ class TPUEstimator(estimator_lib.Estimator):
                                strip_default_attrs,
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
-                               export_tags=None):
+                               export_tags=None,
+                               check_variables=True):
     if mode != model_fn_lib.ModeKeys.PREDICT:
       raise NotImplementedError(
           'TPUEstimator only handles mode PREDICT for export_savedmodel(); '
           'got {}.'.format(mode))
 
-    super(TPUEstimator, self)._add_meta_graph_for_mode(builder,
-                                                       input_receiver_fn_map,
-                                                       checkpoint_path,
-                                                       strip_default_attrs,
-                                                       save_variables,
-                                                       mode=mode)
+    (super(TPUEstimator, self).
+     _add_meta_graph_for_mode(builder,
+                              input_receiver_fn_map,
+                              checkpoint_path,
+                              strip_default_attrs,
+                              save_variables,
+                              mode=mode,
+                              export_tags=export_tags,
+                              check_variables=check_variables))
 
     if self._export_to_tpu:
       input_receiver_fn_map = {_REWRITE_FOR_INFERENCE_MODE:
                                input_receiver_fn_map[mode]}
       export_tags = [tag_constants.SERVING, tag_constants.TPU]
       mode = _REWRITE_FOR_INFERENCE_MODE
+      # See b/110052256 for why `check_variables` is `False`.
       (super(TPUEstimator, self).
        _add_meta_graph_for_mode(builder,
                                 input_receiver_fn_map,
@@ -2058,7 +2063,8 @@ class TPUEstimator(estimator_lib.Estimator):
                                 strip_default_attrs,
                                 save_variables=False,
                                 mode=mode,
-                                export_tags=export_tags))
+                                export_tags=export_tags,
+                                check_variables=False))
 
   def _call_model_fn(self, features, labels, mode, config):
     if mode == _REWRITE_FOR_INFERENCE_MODE:
