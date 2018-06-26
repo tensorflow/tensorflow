@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -98,7 +98,7 @@ namespace tensorflow {
 
                     if (iter != iter_end) {
                         std::string val = iter->GetValue();
-                        line_tensor.scalar<string>()() = val;
+                        line_tensor.scalar<string>()() = std::move(val);
                         out_tensors->emplace_back(std::move(line_tensor));
                         iter++;
                         *end_of_sequence = false;

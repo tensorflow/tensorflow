@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,11 +26,15 @@ from tensorflow.python.framework import tensor_shape
 
 
 class IgniteDataset(Dataset):
-  """An Ignite  Dataset that consumes the message.
+  """An Ignite  Dataset.
+  This dataset reads data from specified cache from Apache Ignite.
+  For now (as long as connection is made with 'fat' client) only caches
+  with integer keys and string values are supported.
+  To configure fat client environment variable 'TF_IGNITE_CLIENT_CONFIG' should be set and contain path
+  to Apache Ignite client config (sample config can be found in '../../sample_configs' folder).
   """
 
-  def __init__(self,
-               cache=""):
+  def __init__(self, cache):
     """Create a IgniteReader.
 
     Args:

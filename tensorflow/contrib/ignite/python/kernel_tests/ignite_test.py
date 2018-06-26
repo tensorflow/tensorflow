@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License.  You may obtain a copy of
@@ -60,12 +60,15 @@ class IgniteDatasetTest(test.TestCase):
 
         with tf.Session() as sess:
             it = ds.make_one_shot_iterator()
-            for i in range(0, size):
-                val = sess.run(it.get_next());
+            next_element = it.get_next();
+            for i in range(size):
+                val = sess.run(next_element);
                 if (val not in values):
                     values[val] = 0;
                 values[val] = values[val] + 1
                 print(val)
+            with self.assertRaises(errors.OutOfRangeError):
+                sess.run(next_element)
         self.assertEqual(expected_values,values)
 
     def collect_values(self, file_names):
