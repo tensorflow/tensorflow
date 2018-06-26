@@ -948,7 +948,7 @@ class GradientTape
         : id(id), variable(variable) {}
   };
   struct CompareById {
-    bool operator()(const IdAndVariable& lhs, const IdAndVariable& rhs) {
+    bool operator()(const IdAndVariable& lhs, const IdAndVariable& rhs) const {
       return lhs.id < rhs.id;
     }
   };
