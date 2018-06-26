@@ -648,7 +648,34 @@ template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMax(T* ptr, U value) {
   return atomicMax(ptr, value);
 }
+ 
+#if TENSORFLOW_USE_ROCM
 
+/*
+ * CUDA runtime headers have the following defined
+ *   __device__  int max(int, int)
+ *   __device__  float max(float, float)
+ *   __device__  double max(double, double)
+ * 
+ * and many others, where as HIP runtime headers only have the "int" version
+ * 
+ * Therefore need to special case ROCm version to call the correct underlying 
+ * routines for float and double types.
+ *
+ */
+ 
+__device__ inline float GpuAtomicMax(float* ptr, float value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](float a) { return fmaxf(a, value); });
+}
+
+__device__ inline double GpuAtomicMax(double* ptr, double value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](double a) { return fmax(a, value); });
+}
+
+#else
+ 
 __device__ inline float GpuAtomicMax(float* ptr, float value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](float a) { return max(a, value); });
@@ -659,6 +686,8 @@ __device__ inline double GpuAtomicMax(double* ptr, double value) {
       ptr, [value](double a) { return max(a, value); });
 }
 
+#endif
+ 
 __device__ inline Eigen::half GpuAtomicMax(Eigen::half* ptr,
                                             Eigen::half value) {
   return detail::GpuAtomicCasHelper(
@@ -678,7 +707,34 @@ template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMin(T* ptr, U value) {
   return atomicMin(ptr, value);
 }
+ 
+#if TENSORFLOW_USE_ROCM
 
+/* 
+ * CUDA runtime headers have the following defined
+ *   __device__  int min(int, int)
+ *   __device__  float min(float, float)
+ *   __device__  double min(double, double)
+ * 
+ * and many others, where as HIP runtime headers only have the "int" version
+ * 
+ * Therefore need to special case ROCm version to call the correct underlying 
+ * routines for float and double types.
+ *
+ */ 
+
+__device__ inline float GpuAtomicMin(float* ptr, float value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](float a) { return fminf(a, value); });
+}
+
+__device__ inline double GpuAtomicMin(double* ptr, double value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](double a) { return fmin(a, value); });
+}
+
+#else
+ 
 __device__ inline float GpuAtomicMin(float* ptr, float value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](float a) { return min(a, value); });
@@ -689,6 +745,8 @@ __device__ inline double GpuAtomicMin(double* ptr, double value) {
       ptr, [value](double a) { return min(a, value); });
 }
 
+#endif
+ 
 __device__ inline Eigen::half GpuAtomicMin(Eigen::half* ptr,
                                             Eigen::half value) {
   return detail::GpuAtomicCasHelper(
