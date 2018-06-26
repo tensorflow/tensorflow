@@ -309,9 +309,29 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return self._cross_tower_ops
 
   def _reduce(self, method_string, value, destinations):
-    if len(self._devices) == 1 and not isinstance(value, values.PerDevice):
-      value = values.PerDevice({self._devices[0]: value})
-    assert isinstance(value, values.PerDevice)
+    assert not isinstance(value, values.Mirrored)
+    if not isinstance(value, values.PerDevice):
+      if value == 0:
+        return 0
+      if method_string == "mean":
+        return self._broadcast(value, destinations)
+
+      cross_tower_ops_lib.validate_destinations(destinations)
+      if len(self._devices) == 1:
+        if destinations:
+          # TODO(anjalisridhar): Moves these methods to a device utility file?
+          devices = cross_tower_ops_lib.get_devices_from(destinations)
+          if len(devices) == 1:
+            with ops.device(devices[0]):
+              return array_ops.identity(value)
+          else:
+            value_updates = {}
+            for d in devices:
+              with ops.device(d):
+                value_updates[d] = array_ops.identity(value)
+            return values.Mirrored(value_updates)
+      raise ValueError("A non PerDevice value cannot be reduced with the given "
+                       "method_string.")
 
     return self._get_cross_tower_ops().reduce(
         method_string, value, destinations=destinations)
