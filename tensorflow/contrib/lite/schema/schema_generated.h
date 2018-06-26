@@ -1506,6 +1506,35 @@ inline const char *EnumNameLSHProjectionType(LSHProjectionType e) {
   return EnumNamesLSHProjectionType()[index];
 }
 
+enum FullyConnectedOptionsWeightsFormat {
+  FullyConnectedOptionsWeightsFormat_DEFAULT = 0,
+  FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8 = 1,
+  FullyConnectedOptionsWeightsFormat_MIN = FullyConnectedOptionsWeightsFormat_DEFAULT,
+  FullyConnectedOptionsWeightsFormat_MAX = FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8
+};
+
+inline FullyConnectedOptionsWeightsFormat (&EnumValuesFullyConnectedOptionsWeightsFormat())[2] {
+  static FullyConnectedOptionsWeightsFormat values[] = {
+    FullyConnectedOptionsWeightsFormat_DEFAULT,
+    FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8
+  };
+  return values;
+}
+
+inline const char **EnumNamesFullyConnectedOptionsWeightsFormat() {
+  static const char *names[] = {
+    "DEFAULT",
+    "SHUFFLED4x16INT8",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameFullyConnectedOptionsWeightsFormat(FullyConnectedOptionsWeightsFormat e) {
+  const size_t index = static_cast<int>(e);
+  return EnumNamesFullyConnectedOptionsWeightsFormat()[index];
+}
+
 enum LSTMKernelType {
   LSTMKernelType_FULL = 0,
   LSTMKernelType_BASIC = 1,
@@ -2558,22 +2587,29 @@ flatbuffers::Offset<BidirectionalSequenceRNNOptions> CreateBidirectionalSequence
 struct FullyConnectedOptionsT : public flatbuffers::NativeTable {
   typedef FullyConnectedOptions TableType;
   ActivationFunctionType fused_activation_function;
+  FullyConnectedOptionsWeightsFormat weights_format;
   FullyConnectedOptionsT()
-      : fused_activation_function(ActivationFunctionType_NONE) {
+      : fused_activation_function(ActivationFunctionType_NONE),
+        weights_format(FullyConnectedOptionsWeightsFormat_DEFAULT) {
   }
 };
 
 struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef FullyConnectedOptionsT NativeTableType;
   enum {
-    VT_FUSED_ACTIVATION_FUNCTION = 4
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_WEIGHTS_FORMAT = 6
   };
   ActivationFunctionType fused_activation_function() const {
     return static_cast<ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  FullyConnectedOptionsWeightsFormat weights_format() const {
+    return static_cast<FullyConnectedOptionsWeightsFormat>(GetField<int8_t>(VT_WEIGHTS_FORMAT, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<int8_t>(verifier, VT_WEIGHTS_FORMAT) &&
            verifier.EndTable();
   }
   FullyConnectedOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2586,6 +2622,9 @@ struct FullyConnectedOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_fused_activation_function(ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(FullyConnectedOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_weights_format(FullyConnectedOptionsWeightsFormat weights_format) {
+    fbb_.AddElement<int8_t>(FullyConnectedOptions::VT_WEIGHTS_FORMAT, static_cast<int8_t>(weights_format), 0);
   }
   explicit FullyConnectedOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -2601,8 +2640,10 @@ struct FullyConnectedOptionsBuilder {
 
 inline flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE) {
+    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE,
+    FullyConnectedOptionsWeightsFormat weights_format = FullyConnectedOptionsWeightsFormat_DEFAULT) {
   FullyConnectedOptionsBuilder builder_(_fbb);
+  builder_.add_weights_format(weights_format);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
 }
@@ -6335,6 +6376,7 @@ inline void FullyConnectedOptions::UnPackTo(FullyConnectedOptionsT *_o, const fl
   (void)_o;
   (void)_resolver;
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; };
+  { auto _e = weights_format(); _o->weights_format = _e; };
 }
 
 inline flatbuffers::Offset<FullyConnectedOptions> FullyConnectedOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const FullyConnectedOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -6346,9 +6388,11 @@ inline flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(fl
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const FullyConnectedOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _weights_format = _o->weights_format;
   return tflite::CreateFullyConnectedOptions(
       _fbb,
-      _fused_activation_function);
+      _fused_activation_function,
+      _weights_format);
 }
 
 inline SoftmaxOptionsT *SoftmaxOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

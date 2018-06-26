@@ -15,6 +15,7 @@ limitations under the License.
 // Unit test for TFLite FULLY_CONNECTED op.
 
 #include <iomanip>
+#include <random>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -133,9 +134,12 @@ static float fully_connected_golden_output[] = {
 class BaseFullyConnectedOpModel : public SingleOpModel {
  public:
   // TODO(ahentz): test different activation types too.
-  BaseFullyConnectedOpModel(TfLiteRegistration* registration, int units,
-                            int batches, const TensorData& input,
-                            const TensorData& output = {TensorType_FLOAT32})
+  BaseFullyConnectedOpModel(
+      TfLiteRegistration* registration, int units, int batches,
+      const TensorData& input, const TensorData& output = {TensorType_FLOAT32},
+      ActivationFunctionType activation_func = ActivationFunctionType_RELU,
+      FullyConnectedOptionsWeightsFormat weights_format =
+          FullyConnectedOptionsWeightsFormat_DEFAULT)
       : batches_(batches), units_(units) {
     int total_input_size = 1;
     for (int i = 0; i < input.shape.size(); ++i) {
@@ -159,10 +163,13 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
     }
 
     output_ = AddOutput(output);
+    if (weights_format != FullyConnectedOptionsWeightsFormat_DEFAULT) {
+      AddOutput({TensorType_UINT8, input.shape});
+    }
 
     SetBuiltinOp(
         BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
-        CreateFullyConnectedOptions(builder_, ActivationFunctionType_RELU)
+        CreateFullyConnectedOptions(builder_, activation_func, weights_format)
             .Union());
     resolver_ = absl::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
@@ -188,13 +195,11 @@ class FloatFullyConnectedOpModel : public BaseFullyConnectedOpModel {
  public:
   using BaseFullyConnectedOpModel::BaseFullyConnectedOpModel;
 
-  void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
+  void SetBias(const std::vector<float>& f) { PopulateTensor(bias_, f); }
 
-  void SetWeights(std::initializer_list<float> f) {
-    PopulateTensor(weights_, f);
-  }
+  void SetWeights(const std::vector<float>& f) { PopulateTensor(weights_, f); }
 
-  void SetInput(std::initializer_list<float> data) {
+  void SetInput(const std::vector<float>& data) {
     PopulateTensor(input_, data);
   }
   void SetInput(int offset, float* begin, float* end) {
@@ -208,20 +213,50 @@ class QuantizedFullyConnectedOpModel : public BaseFullyConnectedOpModel {
  public:
   using BaseFullyConnectedOpModel::BaseFullyConnectedOpModel;
 
-  void SetBias(std::initializer_list<float> data) {
+  void SetBias(const std::vector<float>& data) {
     QuantizeAndPopulate<int32_t>(bias_, data);
   }
-  void SetWeights(std::initializer_list<float> data) {
+  void SetWeights(const std::vector<float>& data) {
     QuantizeAndPopulate<uint8_t>(weights_, data);
   }
-  void SetInput(std::initializer_list<float> data) {
+  void ShuffleAndSetWeights(const std::vector<float>& data, int input_depth,
+                            int output_depth) {
+    std::vector<float> shuffled_data(data.size());
+    CHECK_EQ(input_depth % 16, 0);
+    CHECK_EQ(output_depth % 4, 0);
+    float* shuffled_data_ptr = shuffled_data.data();
+    for (int block_o = 0; block_o < output_depth; block_o += 4) {
+      for (int block_i = 0; block_i < input_depth; block_i += 16) {
+        for (int o = 0; o < 4; o++) {
+          for (int i = 0; i < 16; i++) {
+            *shuffled_data_ptr++ =
+                data[(block_o + o) * input_depth + block_i + i];
+          }
+        }
+      }
+    }
+    TfLiteTensor* t = interpreter_->tensor(weights_);
+    auto quantized_data =
+        Quantize<uint8_t>(shuffled_data, t->params.scale, t->params.zero_point);
+    for (uint8_t& q : quantized_data) {
+      q ^= 0x80;
+    }
+    PopulateTensor(weights_, 0, quantized_data.data(),
+                   quantized_data.data() + quantized_data.size());
+  }
+  void SetInput(const std::vector<float>& data) {
     QuantizeAndPopulate<uint8_t>(input_, data);
   }
 
-  std::vector<uint8_t> GetOutput() { return ExtractVector<uint8_t>(output_); }
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
+
+  template <typename T>
   std::vector<float> GetDequantizedOutput() {
-    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
-                               GetScale(output_), GetZeroPoint(output_));
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
   }
 };
 
@@ -256,12 +291,12 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
         ops::builtin::Register_FULLY_CONNECTED_PIE());
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)});
   }
-  void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
-  void SetWeights(std::initializer_list<float> data) {
+  void SetBias(const std::vector<float>& f) { PopulateTensor(bias_, f); }
+  void SetWeights(const std::vector<float>& data) {
     SymmetricQuantizeAndPopulate(weights_, data);
   }
 
-  void SetInput(std::initializer_list<float> f) { PopulateTensor(input_, f); }
+  void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 
   int input_size() { return input_size_; }
@@ -350,7 +385,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantized) {
   m.SetWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
   });
   m.SetBias({1, 2, 3});
 
@@ -361,11 +396,103 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantized) {
 
   m.Invoke();
 
-  EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear({
-                                            24, 25, 26,  //
-                                            58, 59, 60,  //
-                                        })));
-  EXPECT_THAT(m.GetOutput(), ElementsAre(151, 152, 153, 185, 186, 187));
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  24, 25, 26,  //
+                  58, 59, 60,  //
+              })));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAre(151, 152, 153, 185, 186, 187));
+}
+
+void SimpleTestShuffledQuantizedInt16OutputCase(
+    TfLiteRegistration* registration, int input_depth, int output_depth,
+    int batches) {
+  // The shuffled path currently supports only a restrictive subset of shapes,
+  // described by the following assertions:
+  CHECK_EQ(input_depth % 16, 0);
+  CHECK_EQ(output_depth % 4, 0);
+  CHECK(batches == 1 || batches == 4);
+
+  const uint8_t kWeightsZeroPoint = 128;
+  const float kWeightsScale = 1.f / 128.f;
+  const uint8_t kInputZeroPoint = 128;
+  const float kInputScale = 1.f / 128.f;
+  const float kInputMin = (0 - kInputZeroPoint) * kInputScale;
+  const float kInputMax = (255 - kInputZeroPoint) * kInputScale;
+  // Output ranges in [-8..8] encoded as int16
+  const float kOutputScale = 8.f / 32768.f;
+  const float kOutputMin = -32768 * kOutputScale;
+  const float kOutputMax = 32767 * kOutputScale;
+
+  QuantizedFullyConnectedOpModel m(
+      registration, output_depth, batches,
+      /*input=*/
+      {TensorType_UINT8, {batches, input_depth}, kInputMin, kInputMax},
+      /*output=*/{TensorType_INT16, {}, kOutputMin, kOutputMax},
+      /*activation_func=*/ActivationFunctionType_NONE,
+      /*weights_format=*/FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8);
+
+  std::mt19937 random_engine;
+  std::uniform_int_distribution<uint8_t> weights_dist;
+
+  std::vector<float> weights_data(input_depth * output_depth);
+  for (auto& w : weights_data) {
+    uint8_t q = weights_dist(random_engine);
+    w = (q - kWeightsZeroPoint) * kWeightsScale;
+  }
+
+  std::uniform_int_distribution<uint8_t> input_dist;
+  std::vector<float> input_data(input_depth * batches);
+  for (auto& i : input_data) {
+    uint8_t q = input_dist(random_engine);
+    i = (q - kInputZeroPoint) * kInputScale;
+  }
+
+  std::vector<float> bias_data(output_depth);
+  // As the output ranges in [-8, 8], it's reasonable to have bias values
+  // in [-1, 1], this won't result in too much saturation.
+  std::uniform_real_distribution<float> bias_dist(-1.f, 1.f);
+  for (auto& b : bias_data) {
+    b = bias_dist(random_engine);
+  }
+
+  m.ShuffleAndSetWeights(weights_data, input_depth, output_depth);
+  m.SetBias(bias_data);
+  m.SetInput(input_data);
+
+  m.Invoke();
+
+  std::vector<float> expected_output_data(output_depth * batches);
+  for (int b = 0; b < batches; b++) {
+    for (int o = 0; o < output_depth; o++) {
+      float accum = bias_data[o];
+      for (int i = 0; i < input_depth; i++) {
+        accum +=
+            input_data[b * input_depth + i] * weights_data[o * input_depth + i];
+      }
+      accum = std::min(accum, kOutputMax);
+      accum = std::max(accum, kOutputMin);
+      expected_output_data[b * output_depth + o] = accum;
+    }
+  }
+
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(expected_output_data, 3e-4f)));
+}
+
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestShuffledQuantizedInt16Output) {
+  // The shuffled block shape is 4x16. Testing an input shape equal to that
+  // block shape is a first step, but does not exercise actual shuffling.
+  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16, 4, 1);
+  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16, 4, 4);
+  // Test larger input shapes, that exercise actual shuffling.
+  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16 * 3, 4, 1);
+  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16 * 3, 4, 4);
+  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16 * 3, 4 * 3,
+                                             1);
+  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16 * 3, 4 * 3,
+                                             4);
 }
 
 TEST(HybridFullyConnectedOpTest, SimpleTestQuantized) {
@@ -444,11 +571,13 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTest4dInputQuantized) {
 
   m.Invoke();
 
-  EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear({
-                                            24, 25, 26,  //
-                                            58, 59, 60,  //
-                                        })));
-  EXPECT_THAT(m.GetOutput(), ElementsAre(151, 152, 153, 185, 186, 187));
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  24, 25, 26,  //
+                  58, 59, 60,  //
+              })));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAre(151, 152, 153, 185, 186, 187));
 }
 
 INSTANTIATE_TEST_CASE_P(
