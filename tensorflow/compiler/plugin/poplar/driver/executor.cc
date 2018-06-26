@@ -249,7 +249,7 @@ Status PoplarExecutor::InitializePoplarDevice(
   tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
   if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
-      type = tensorflow::IPUOptions::DeviceConfig::CPU;
+    type = tensorflow::IPUOptions::DeviceConfig::CPU;
   }
 
   switch (type) {
@@ -314,7 +314,7 @@ Status PoplarExecutor::InitializePoplarDevice(
           "Unrecognized poplar device type for ordinal %d: %d", ordinal_, type);
   }
 
-  if (!poplar_device_.tryToAcquire()) {
+  if (!poplar_device_.attach()) {
     return xla::ResourceExhausted(
         "Unable to acquire poplar device type for ordinal %d", ordinal_);
   }
@@ -349,7 +349,7 @@ Status PoplarExecutor::InitializePoplarDevice(
 
 Status PoplarExecutor::ClosePoplarDevice(void* device) {
   if (device == active_xla_device_) {
-    poplar_device_.release();
+    poplar_device_.detach();
     active_xla_device_ = nullptr;
   }
   return Status::OK();
