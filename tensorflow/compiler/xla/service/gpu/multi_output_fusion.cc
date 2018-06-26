@@ -181,12 +181,6 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     if (!IsInputFusibleReduction(consumer)) {
       continue;
     }
-    // TODO(b/110517657): Lowering multi-output reduce fusions with bfloat16
-    // output element types is not supported on GPU. However, bfloat16 is used
-    // in shared tests.
-    if (consumer->shape().element_type() == PrimitiveType::BF16) {
-      continue;
-    }
 
     auto consumer_operands = consumer->operands();
     for (size_t i = 0; i < consumer_operands.size(); ++i) {

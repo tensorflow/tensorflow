@@ -615,6 +615,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
             output_shape_index = {i};
           }
           if (inst->opcode() == HloOpcode::kReduce) {
+            CHECK(IsReductionToVector(*inst))
+                << "Only reductions to vector are supported";
             // Shapes, layouts and dimensions must be the same for all reduces
             // inside of this fusion.
             CHECK(ShapeUtil::Equal(first_reduce->shape(), inst->shape()));
@@ -1970,10 +1972,8 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
   HloComputation* reducer = reduce->to_apply();
   // HandleReduce specializes reduction from a multi-dimensional array to a 1D
   // array. The specialized version requires an initializer thunk that
-  // ingitializes the output array to the initial value of the reduce.
-  if (IsReductionToVector(*reduce) &&
-      // NVPTX backend can't do atomic cmpxchg any narrower than 32 bits
-      32 <= primitive_util::BitWidth(reduce->shape().element_type())) {
+  // initializes the output array to the initial value of the reduce.
+  if (IsReductionToVector(*reduce)) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
                         BuildInitializerThunk(reduce));
     std::vector<std::unique_ptr<Thunk>> thunks;
@@ -2715,7 +2715,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
         uint8 b = literal_bytes.front();
         pattern16 = uint16{b} | (uint16{b} << 8);
       } else {
-        pattern16 = literal_bytes.front();
+        memcpy(&pattern16, literal_bytes.data(), sizeof(pattern16));
       }
       uint32 pattern32 = uint32{pattern16} | (uint32{pattern16} << 16);
       return {MakeUnique<Memset32BitValueThunk>(
