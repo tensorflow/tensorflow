@@ -269,6 +269,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
         /*enable_dot_strength_reduction=*/false);
+    pass.AddPass<HloDCE>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
@@ -306,11 +307,16 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
       module->mutable_entry_computation_layout(), &target_machine_features);
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-      /*is_layout_sensitive=*/true,
-      [](const Shape&, const Shape&) { return true; },
-      /*enable_dot_strength_reduction=*/false);
-  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  {
+    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+        "after layout assignement");
+    pass.AddPass<HloPassFix<AlgebraicSimplifier>>(
+        /*is_layout_sensitive=*/true,
+        [](const Shape&, const Shape&) { return true; },
+        /*enable_dot_strength_reduction=*/false);
+    pass.AddPass<HloDCE>();
+    pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  }
   pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =

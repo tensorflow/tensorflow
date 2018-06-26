@@ -815,8 +815,7 @@ Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
   const Shape& out_shape = instruction->shape();
   for (HloInstruction* operand : instruction->operands()) {
     const Shape& operand_shape = operand->shape();
-    if (!ShapeUtil::IsScalar(operand_shape) &&
-        !ShapeUtil::CompatibleIgnoringElementType(operand_shape, out_shape)) {
+    if (!ShapeUtil::CompatibleIgnoringElementType(operand_shape, out_shape)) {
       return FailedPrecondition(
           "Implicit broadcast is not allowed in HLO."
           "Found non-compatible shapes for instruction %s.\n"
@@ -903,7 +902,9 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
             << " != " << ShapeUtil::Rank(instruction->operand(0)->shape());
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         TF_RETURN_IF_ERROR(CheckWhileInstruction(instruction));
-      } else if (instruction->IsElementwise()) {
+      } else if (instruction->opcode() !=
+                     HloOpcode::kRng /* Rng operands are always scalar. */
+                 && instruction->IsElementwise()) {
         TF_RETURN_IF_ERROR(CheckElementwiseInstruction(instruction));
       }
 

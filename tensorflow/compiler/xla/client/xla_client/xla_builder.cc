@@ -1434,7 +1434,6 @@ XlaOp XlaBuilder::Map(tensorflow::gtl::ArraySlice<XlaOp> operands,
     }
 
     HloInstructionProto instr;
-
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
     c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
@@ -1446,9 +1445,25 @@ XlaOp XlaBuilder::Map(tensorflow::gtl::ArraySlice<XlaOp> operands,
         ShapeInference::InferMapShape(operand_shape_ptrs, called_program_shape,
                                       dimensions));
 
+    const Shape& output_shape = instr.shape();
+    const int64 output_rank = ShapeUtil::Rank(output_shape);
     AddCalledComputation(computation, &instr);
+    std::vector<XlaOp> new_operands(operands.begin(), operands.end());
+    for (XlaOp& new_operand : new_operands) {
+      TF_ASSIGN_OR_RETURN(Shape shape, GetShape(new_operand));
+      const int64 rank = ShapeUtil::Rank(shape);
+      if (rank != output_rank) {
+        TF_ASSIGN_OR_RETURN(new_operand,
+                            InDimBroadcast(output_shape, new_operand, {}));
+        TF_ASSIGN_OR_RETURN(shape, GetShape(new_operand));
+      }
+      if (!ShapeUtil::SameDimensions(output_shape, shape)) {
+        TF_ASSIGN_OR_RETURN(new_operand,
+                            AddBroadcastSequence(output_shape, new_operand));
+      }
+    }
 
-    return AddInstruction(std::move(instr), HloOpcode::kMap, operands);
+    return AddInstruction(std::move(instr), HloOpcode::kMap, new_operands);
   });
 }
 
