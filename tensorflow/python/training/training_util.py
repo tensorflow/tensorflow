@@ -127,10 +127,8 @@ def create_global_step(graph=None):
           dtype=dtypes.int64,
           initializer=init_ops.zeros_initializer(),
           trainable=False,
-          collections=[
-              ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP
-          ],
-          use_resource=True)
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES,
+                       ops.GraphKeys.GLOBAL_STEP])
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
     return variable_scope.get_variable(
@@ -139,9 +137,8 @@ def create_global_step(graph=None):
         dtype=dtypes.int64,
         initializer=init_ops.zeros_initializer(),
         trainable=False,
-        collections=[ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP],
-        caching_device='cpu:0',
-        use_resource=True)
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES,
+                     ops.GraphKeys.GLOBAL_STEP])
 
 
 @tf_export('train.get_or_create_global_step')

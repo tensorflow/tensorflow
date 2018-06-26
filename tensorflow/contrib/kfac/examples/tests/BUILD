@@ -28,7 +28,6 @@ py_test(
     srcs = ["convnet_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss",
         "no_pip",
         "notsan",
     ],

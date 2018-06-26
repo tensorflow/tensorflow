@@ -28,7 +28,6 @@ from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
@@ -179,11 +178,11 @@ class SavedModelBuilder(object):
         stored as a collection with key TRAIN_OP_KEY, but not executed.
 
     Raises:
-      TypeError if Train op is not of type `Operation` or a Tensor.
+      TypeError if Train op is not of type `Operation`.
     """
     if train_op is not None:
-      if not (tensor_util.is_tensor(train_op) or
-              isinstance(train_op, ops.Operation)):
+      if (not isinstance(train_op, ops.Tensor) and
+          not isinstance(train_op, ops.Operation)):
         raise TypeError("train_op needs to be a Tensor or Op: %r" % train_op)
       ops.add_to_collection(constants.TRAIN_OP_KEY, train_op)
 

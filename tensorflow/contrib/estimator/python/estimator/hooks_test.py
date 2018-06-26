@@ -156,8 +156,8 @@ class InMemoryEvaluatorHookTest(test.TestCase):
         estimator.eval_dir())
     # w = 0 if step==0 else step+2
     self.assertEqual(0, step_keyword_to_value[0]['mean_of_const'])
-    self.assertEqual(5, step_keyword_to_value[4]['mean_of_const'])
-    self.assertEqual(11, step_keyword_to_value[10]['mean_of_const'])
+    self.assertEqual(6, step_keyword_to_value[4]['mean_of_const'])
+    self.assertEqual(12, step_keyword_to_value[10]['mean_of_const'])
 
   def test_dnn_classifier(self):
     embedding = feature_column_lib.embedding_column(
