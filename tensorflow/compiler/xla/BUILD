@@ -143,30 +143,15 @@ cc_library(
 
 cc_library(
     name = "statusor",
-    srcs = ["statusor.cc"],
     hdrs = [
         "statusor.h",
-        "statusor_internals.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
         ":status",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_cc_test(
-    name = "statusor_test",
-    size = "small",
-    srcs = ["statusor_test.cc"],
-    deps = [
-        ":statusor",
-        ":test",
-        ":types",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor",
     ],
 )
 
