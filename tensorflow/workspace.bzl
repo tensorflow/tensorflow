@@ -516,6 +516,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "c49deac9e0933bcb7044f08516861a2d560988540b23de2ac1ad443b219afdb6",
       strip_prefix = "jsoncpp-1.8.4",
       build_file = clean_dep("//third_party:jsoncpp.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:jsoncpp.BUILD"),
   )
 
   tf_http_archive(
