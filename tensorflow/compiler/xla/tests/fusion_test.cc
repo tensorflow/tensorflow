@@ -557,8 +557,7 @@ XLA_TEST_F(FusionTest, ReshapeNegate) {
                              *ExecuteAndTransfer(std::move(hlo_module), {})));
 }
 
-// TODO(b/64070202): Investigate failure.
-XLA_TEST_F(FusionTest, DISABLED_ON_GPU(TransposeNegate)) {
+XLA_TEST_F(FusionTest, TransposeNegate) {
   auto builder = HloComputation::Builder(TestName());
   auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
