@@ -534,7 +534,7 @@ embedding_column = tf.feature_column.embedding_column(
     dimension=embedding_dimensions)
 ```
 
-@{$programmers_guide/embedding$Embeddings} is a significant topic within machine
+@{$guide/embedding$Embeddings} is a significant topic within machine
 learning. This information was just to get you started using them as feature
 columns.
 

@@ -10,6 +10,7 @@ estimators.md: Introduction to Estimators
 premade_estimators.md
 custom_estimators.md
 feature_columns.md
+datasets_for_estimators.md
 checkpoints.md
 
 ### Accelerators

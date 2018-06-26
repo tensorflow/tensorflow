@@ -81,7 +81,7 @@ of the following four steps:
            ...  # manipulate dataset, extracting the feature dict and the label
            return feature_dict, label
 
-    (See @{$programmers_guide/datasets} for full details.)
+    (See @{$guide/datasets} for full details.)
 
 2.  **Define the feature columns.** Each @{tf.feature_column}
     identifies a feature name, its type, and any input pre-processing.
