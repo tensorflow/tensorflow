@@ -296,6 +296,13 @@ you would typically invoke the following command:
 $ <b>bazel build --config=opt //tensorflow/tools/pip_package:build_pip_package</b>
 </pre>
 
+To build a pip package for TensorFlow with CPU-only support using Intel(R) MKL DNN,
+invoke the following command:
+
+<pre>
+$ <b>bazel build --config=mkl --config=opt //tensorflow/tools/pip_package:build_pip_package</b>
+</pre>
+
 To build a pip package for TensorFlow with GPU support,
 invoke the following command:
 
