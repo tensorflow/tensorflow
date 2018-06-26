@@ -60,6 +60,54 @@ bool CanBeRoot(HloOpcode opcode) {
 
 }  // namespace
 
+XlaOp operator-(const XlaOp& x) { return x.builder()->Neg(x); }
+XlaOp operator+(const XlaOp& x, const XlaOp& y) {
+  return x.builder()->Add(x, y);
+}
+XlaOp operator-(const XlaOp& x, const XlaOp& y) {
+  return x.builder()->Sub(x, y);
+}
+XlaOp operator*(const XlaOp& x, const XlaOp& y) {
+  return x.builder()->Mul(x, y);
+}
+XlaOp operator/(const XlaOp& x, const XlaOp& y) {
+  return x.builder()->Div(x, y);
+}
+XlaOp operator%(const XlaOp& x, const XlaOp& y) {
+  return x.builder()->Rem(x, y);
+}
+
+XlaOp operator~(const XlaOp& x) { return x.builder()->Not(x); }
+XlaOp operator&(const XlaOp& x, const XlaOp& y) {
+  return x.builder()->And(x, y);
+}
+XlaOp operator|(const XlaOp& x, const XlaOp& y) {
+  return x.builder()->Or(x, y);
+}
+XlaOp operator^(const XlaOp& x, const XlaOp& y) {
+  return x.builder()->Xor(x, y);
+}
+XlaOp operator<<(const XlaOp& x, const XlaOp& y) {
+  return x.builder()->ShiftLeft(x, y);
+}
+
+XlaOp operator>>(const XlaOp& x, const XlaOp& y) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
+    if (!ShapeUtil::ElementIsIntegral(shape)) {
+      return InvalidArgument(
+          "Argument to >> operator does not have an integral type (%s).",
+          ShapeUtil::HumanString(shape).c_str());
+    }
+    if (ShapeUtil::ElementIsSigned(shape)) {
+      return builder->ShiftRightArithmetic(x, y);
+    } else {
+      return builder->ShiftRightLogical(x, y);
+    }
+  });
+}
+
 StatusOr<Shape> XlaBuilder::GetShape(const XlaOp& op) const {
   TF_RETURN_IF_ERROR(first_error_);
 

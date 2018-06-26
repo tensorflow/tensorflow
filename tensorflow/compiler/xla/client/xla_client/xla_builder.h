@@ -55,16 +55,16 @@ class XlaOp {
 
   XlaBuilder* builder() const { return builder_; }
 
-  bool operator==(const XlaOp& rhs) const {
-    return handle_ == rhs.handle_ && builder_ == rhs.builder_;
-  }
-
-  bool operator!=(const XlaOp& rhs) const {
-    return handle_ != rhs.handle_ || builder_ != rhs.builder_;
-  }
-
   // Returns true if the XlaOp represents valid, non-erroneous value.
   bool valid() const { return handle_ >= 0; }
+
+  // Returns true if the XlaOp was created by the XlaOp() constructor and
+  // not returned by a builder.
+  bool IsUninitialized() const { return builder_ == nullptr; }
+
+  bool IsIdenticalTo(const XlaOp& rhs) const {
+    return handle_ == rhs.handle_ && builder_ == rhs.builder_;
+  }
 
   friend std::ostream& operator<<(std::ostream& out, const XlaOp& op) {
     out << op.handle();
@@ -87,6 +87,30 @@ class XlaOp {
   // handle is invalid.
   XlaBuilder* builder_;
 };
+
+// Arithmetic operator overloads for the XlaOp type.
+XlaOp operator-(const XlaOp& x);
+XlaOp operator+(const XlaOp& x, const XlaOp& y);
+XlaOp operator-(const XlaOp& x, const XlaOp& y);
+XlaOp operator*(const XlaOp& x, const XlaOp& y);
+XlaOp operator/(const XlaOp& x, const XlaOp& y);
+XlaOp operator%(const XlaOp& x, const XlaOp& y);
+
+// Bitwise operator overloads for the XlaOp type.
+XlaOp operator~(const XlaOp& x);
+XlaOp operator&(const XlaOp& x, const XlaOp& y);
+XlaOp operator|(const XlaOp& x, const XlaOp& y);
+XlaOp operator^(const XlaOp& x, const XlaOp& y);
+XlaOp operator<<(const XlaOp& x, const XlaOp& y);
+// Performs a right arithmetic shift if 'x' is a signed type, otherwise performs
+// a right logical shift.
+XlaOp operator>>(const XlaOp& x, const XlaOp& y);
+
+// We don't overload the relational operators (==, !=, <, <=, >, >=) because the
+// semantics might be surprising since their result types are usually 'bool'.
+// Further programmers may expect == to be a structural equality.
+// We also choose not to overload any of the mutating operators (e.g., +=, -=)
+// because the semantics might be misleading — XLA computations are immutable.
 
 // A convenient interface for building up computations.
 //

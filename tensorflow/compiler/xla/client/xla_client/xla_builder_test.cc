@@ -59,6 +59,76 @@ TEST_F(XlaBuilderTest, OnePlusTwo) {
   EXPECT_THAT(root, op::Add(op::Constant(), op::Constant()));
 }
 
+TEST_F(XlaBuilderTest, UnaryOperatorsBuildExpectedHLO) {
+  auto test_unary_operator =
+      [&](std::function<XlaOp(XlaOp)> op,
+          ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
+        XlaBuilder b(TestName());
+        op(b.ConstantR0<int32>(1));
+        TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+        auto root = module->entry_computation()->root_instruction();
+        EXPECT_THAT(root, matches_pattern);
+      };
+  test_unary_operator([](XlaOp x) { return -x; }, op::Negate(op::Constant()));
+  test_unary_operator([](XlaOp x) { return ~x; }, op::Not(op::Constant()));
+}
+
+TEST_F(XlaBuilderTest, BinaryOperatorsBuildExpectedHLO) {
+  auto test_binary_operator =
+      [&](std::function<XlaOp(XlaOp, XlaOp)> op,
+          ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
+        XlaBuilder b(TestName());
+        op(b.ConstantR0<int32>(1), b.ConstantR0<int32>(2));
+        TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+        auto root = module->entry_computation()->root_instruction();
+        EXPECT_THAT(root, matches_pattern);
+      };
+
+  test_binary_operator([](XlaOp x, XlaOp y) { return x + y; },
+                       op::Add(op::Constant(), op::Constant()));
+  test_binary_operator([](XlaOp x, XlaOp y) { return x - y; },
+                       op::Subtract(op::Constant(), op::Constant()));
+  test_binary_operator([](XlaOp x, XlaOp y) { return x * y; },
+                       op::Multiply(op::Constant(), op::Constant()));
+  test_binary_operator([](XlaOp x, XlaOp y) { return x / y; },
+                       op::Divide(op::Constant(), op::Constant()));
+
+  test_binary_operator([](XlaOp x, XlaOp y) { return x & y; },
+                       op::And(op::Constant(), op::Constant()));
+  test_binary_operator([](XlaOp x, XlaOp y) { return x | y; },
+                       op::Or(op::Constant(), op::Constant()));
+  test_binary_operator([](XlaOp x, XlaOp y) { return x ^ y; },
+                       op::Xor(op::Constant(), op::Constant()));
+  test_binary_operator([](XlaOp x, XlaOp y) { return x << y; },
+                       op::ShiftLeft(op::Constant(), op::Constant()));
+  test_binary_operator(
+      [](XlaOp x, XlaOp y) { return x >> y; },
+      op::ShiftRightArithmetic(op::Constant(), op::Constant()));
+
+  auto test_unsigned_binary_operator =
+      [&](std::function<XlaOp(XlaOp, XlaOp)> op,
+          ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
+        XlaBuilder b(TestName());
+        op(b.ConstantR0<uint32>(1), b.ConstantR0<uint32>(2));
+        TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+        auto root = module->entry_computation()->root_instruction();
+        EXPECT_THAT(root, matches_pattern);
+      };
+  test_unsigned_binary_operator(
+      [](XlaOp x, XlaOp y) { return x >> y; },
+      op::ShiftRightLogical(op::Constant(), op::Constant()));
+}
+
+TEST_F(XlaBuilderTest, ShiftRightOperatorOnNonIntegerProducesError) {
+  XlaBuilder b(TestName());
+  b.ConstantR0<float>(1) >> b.ConstantR0<float>(2);
+  auto statusor = b.Build();
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr("Argument to >> operator does not have an integral type"));
+}
+
 TEST_F(XlaBuilderTest, ParamPlusConstantHasScalarBroadcast) {
   XlaBuilder b(TestName());
   auto x = b.Parameter(0, ShapeUtil::MakeShape(F32, {3, 5}), "x");
