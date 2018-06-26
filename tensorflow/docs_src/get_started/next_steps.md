@@ -1,4 +1,4 @@
-# Next Steps
+# Next steps
 
 ## Learn more about TensorFlow
 
