@@ -47,7 +47,12 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     return self._call_dataset_fn(dataset_fn)
 
   # TODO(priyag): Deal with OutOfRange errors.
-  def run_steps_on_dataset(self, fn, iterator, iterations):
+  # TODO(sourabhbajaj): Remove the initial_values parameter
+  def _run_steps_on_dataset(self, fn, iterator, iterations,
+                            initial_values=None):
+    if initial_values is None:
+      initial_values = []
+
     # Enqueue ops
     shapes = nest.flatten(iterator.output_shapes)
     if any([not s.is_fully_defined() for s in shapes]):
@@ -93,22 +98,34 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       return nest.pack_sequence_as(iterator.output_shapes, dequeued)
 
     # Wrap `fn` for repeat.
-    run_fn = lambda: fn(dequeue_fn())
+    def run_fn(*args, **kwargs):
+      del args, kwargs
+      return fn(dequeue_fn())
 
     # Repeat
+    # TODO(sourabhbajaj): The input to while loop should be based on the output
+    # type of the step_fn
     def iterate_on_tpu():
-      return tpu.repeat(iterations, run_fn, [])
+      return tpu.repeat(iterations, run_fn, initial_values)
 
     # Re-write and distribute computation.
+    # TODO(sourabhbajaj): Convert the output to perDevice variable and
+    # implement support for that in reduce.
     tpu_result = tpu.batch_parallel(
         iterate_on_tpu, [], num_shards=self._num_cores_per_host)
 
-    return control_flow_ops.group(tpu_result, enqueue_ops)
+    return control_flow_ops.group(tpu_result, enqueue_ops), tpu_result
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
     kwargs.pop('run_concurrently', None)
     with one_device_strategy._OneDeviceTowerContext(self):  # pylint: disable=protected-access
       return fn(*args, **kwargs)
+
+  def get_initialization_ops(self):
+    return [tpu.initialize_system()]
+
+  def get_finalize_ops(self):
+    return [tpu.shutdown_system()]
 
   def _reduce(self, method_string, value, destinations):
     del destinations  # TPU is graph mode only.  Rely on implicit Send/Recv.
