@@ -689,6 +689,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "sparse_to_dense_op_test",
+    size = "small",
+    srcs = ["sparse_to_dense_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:sparse_ops",
+    ],
+)
+
+tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
