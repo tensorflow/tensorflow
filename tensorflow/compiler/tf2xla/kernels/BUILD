@@ -82,6 +82,7 @@ tf_kernel_library(
         "sort_ops.cc",
         "spacetobatch_op.cc",
         "spacetodepth_op.cc",
+        "sparse_to_dense_op.cc",
         "split_op.cc",
         "stack_ops.cc",
         "stateless_random_ops.cc",
