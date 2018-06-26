@@ -24,7 +24,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from functools import reduce
-import tensorflow as tf
 from tensorflow.contrib.ignite.python.ops import ignite_dataset_ops
 
 class IgniteDatasetTest(test.TestCase):
@@ -58,7 +57,7 @@ class IgniteDatasetTest(test.TestCase):
 
         ds = ignite_dataset_ops.IgniteDataset(cache_name)
 
-        with tf.Session() as sess:
+        with self.test_session() as sess:
             it = ds.make_one_shot_iterator()
             next_element = it.get_next();
             for i in range(size):
