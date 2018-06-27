@@ -227,12 +227,16 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     class FakeOp(object):
       """A helper class to determine the current device.
 
-      Supports only the device set/get methods needed to run the
+      Supports only the type and device set/get methods needed to run the
       graph's _apply_device_function method.
       """
 
       def __init__(self):
         self._device = ""
+
+      @property
+      def type(self):
+        return "FakeOp"
 
       @property
       def device(self):
