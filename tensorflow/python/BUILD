@@ -279,6 +279,9 @@ cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
+    visibility = visibility + [
+        "//learning/deepmind/courier:__subpackages__",
+    ],
     deps = [
         ":bfloat16_lib",
         ":numpy_lib",
