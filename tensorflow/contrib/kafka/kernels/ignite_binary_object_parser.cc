@@ -25,9 +25,9 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
   switch(object_type_id) {
     case 3: {
       // int
-      std::cout << "Add integer\n";
+      //std::cout << "Add integer" << std::endl;
       int val = ReadInt(ptr);
-    	
+
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_INT32, {});
       tensor.scalar<tensorflow::int32>()() = val;
       out_tensors->emplace_back(std::move(tensor));
@@ -36,16 +36,14 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
     }
     case 17: {
       // double arr
-      std::cout << "Add array\n";
-
+      //std::cout << "Add double array" << std::endl;
       int length = ReadInt(ptr);
 
-	    double* arr = (double*)ptr;
+      double* arr = (double*)ptr;
       ptr += 8 * length;
-				
+
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_DOUBLE, tensorflow::TensorShape({length}));
 
-      std::cout << "Array length: " << length << "\n";
       for (int i = 0; i < length; i++) {
         tensor.vec<double>()(i) = arr[i];
       }
@@ -55,19 +53,19 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       break;
     }
     case 27: {
-      std::cout << "Wrapped object..." << std::endl;
+      //std::cout << "Wrapped object..." << std::endl;
       int byte_arr_size = ReadInt(ptr);
       // payload
       ptr = Parse(ptr, out_tensors, types);
 
       int offset = ReadInt(ptr);
 
-      std::cout << "Wrapped object " << byte_arr_size << ", offset " << offset << "\n";
+      //std::cout << "Wrapped object " << byte_arr_size << ", offset " << offset << "\n";
 
       break;
     }
   	case 103: {
-      std::cout << "Complex object..." << std::endl;
+      //std::cout << "Complex object..." << std::endl;
   	  char version = ReadByte(ptr);
   	  short flags = ReadShort(ptr); // USER_TYPE = 1, HAS_SCHEMA = 2
   	  int type_id = ReadInt(ptr);
@@ -76,15 +74,15 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
   	  int schema_id = ReadInt(ptr);
   	  int schema_offset = ReadInt(ptr);
 	  int field_cnt = (length - schema_offset) / 8;
-	  std::cout << "LENGTH : " << length << std::endl;
-          std::cout << "SCHMEA ID : " << schema_id << std::endl;
-	  std::cout << "SCHEMA OFFSET : " << schema_offset << std::endl;
-	  std::cout << "FIELD COUNT : " << field_cnt << std::endl;
+	  //std::cout << "LENGTH : " << length << std::endl;
+      //    std::cout << "SCHMEA ID : " << schema_id << std::endl;
+	  //std::cout << "SCHEMA OFFSET : " << schema_offset << std::endl;
+	  //std::cout << "FIELD COUNT : " << field_cnt << std::endl;
 
       char* end = ptr + schema_offset - 24;//26;
       int i = 0;
       while (ptr < end) {
-        std::cout << "Parse field " << i << ", ptr = " << (long) ptr << ", end = " << (long) end << std::endl;
+        //std::cout << "Parse field " << i << ", ptr = " << (long) ptr << ", end = " << (long) end << std::endl;
         i++;
         ptr = Parse(ptr, out_tensors, types);
       }

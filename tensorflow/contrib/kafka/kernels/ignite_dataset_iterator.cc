@@ -15,15 +15,15 @@ limitations under the License.
 
 #include "ignite_binary_object_parser.h"
 #include "ignite_dataset_iterator.h"
-// #include "ignite_client.h"
 
 namespace ignite {
 
-IgniteDatasetIterator::IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation) : tensorflow::DatasetIterator<IgniteDataset>(params),
+IgniteDatasetIterator::IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, tensorflow::int32 page_size, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation) : tensorflow::DatasetIterator<IgniteDataset>(params),
  client_(Client(host, port)),
  cache_name_(cache_name),
  local_(local),
  part_(part),
+ page_size_(page_size),
  schema_(schema),
  permutation_(permutation),
  remainder(-1),
@@ -39,18 +39,33 @@ IgniteDatasetIterator::~IgniteDatasetIterator() {
 }
 
 tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) {
-  if (remainder == 0) {
-  	if (last_page) {
-  		*end_of_sequence = true;
-  		return tensorflow::Status::OK();
-  	}
-  	else {
-  		// query next page 
-  		*end_of_sequence = false;
-  		return tensorflow::Status::OK();
-  	}
+  if (remainder == 0 && last_page) {
+    *end_of_sequence = true;
+    return tensorflow::Status::OK();
   }
   else {
+    if (remainder == 0) {
+      // query next page
+      client_.WriteInt(18);
+      client_.WriteShort(2001); 
+      client_.WriteLong(0); // Request id
+      client_.WriteLong(cursor_id); // Cursor ID
+
+      int res_len = client_.ReadInt();
+      long req_id = client_.ReadLong();
+      int status = client_.ReadInt();
+
+      if (status != 0) {
+        std::cout << "Query next page status error\n";
+      }
+
+      int row_cnt = client_.ReadInt();
+
+      remainder = res_len - 17;
+      data = (char*) malloc(remainder);
+      client_.ReadData(data, remainder);
+      last_page = !client_.ReadByte();
+    }
     if (remainder == -1) {
       // ---------- Scan Query ---------- //
       client_.WriteInt(25); // Message length
@@ -59,9 +74,9 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
       client_.WriteInt(JavaHashCode(cache_name_));
       client_.WriteByte(0); // Some flags...
       client_.WriteByte(101); // Filter object (NULL).
-      client_.WriteInt(100); // Cursor page size
-      client_.WriteInt(-1); // Partition to query
-      client_.WriteByte(0); // Local flag
+      client_.WriteInt(page_size_); // Cursor page size
+      client_.WriteInt(part_); // Partition to query
+      client_.WriteByte(local_); // Local flag
 
       int res_len = client_.ReadInt();
       long req_id = client_.ReadLong();
@@ -74,19 +89,11 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
       cursor_id = client_.ReadLong();
       int row_cnt = client_.ReadInt();
       
-      std::cout << "Row count: " << row_cnt << std::endl;
-      std::cout << "Length: " << res_len << std::endl;
-
       remainder = res_len - 25;
       data = (char*) malloc(remainder);
       client_.ReadData(data, remainder);
-
-      last_page = client_.ReadByte() != 0;
-
-      std::cout << "Last page " << last_page << std::endl;
+      last_page = !client_.ReadByte();
     }
-
-    std::cout << "Remainder: " << remainder << std::endl;
 
     char* initial_ptr = data;
     std::vector<int>* types = new std::vector<int>();
@@ -103,9 +110,9 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
     out_tensors->resize(tensors->size());
 
     for (int i = 0; i < tensors->size(); i++) {
-	int idx = permutation_[i];
-	auto a = (*tensors)[i];
-	(*out_tensors)[idx] = a;
+      int idx = permutation_[i];
+      auto a = (*tensors)[i];
+      (*out_tensors)[idx] = a;
     }
 
     *end_of_sequence = false;
@@ -137,10 +144,10 @@ void IgniteDatasetIterator::Handshake() {
   char handshake_res = client_.ReadByte();
 
   if (handshake_res == 1) {
-  	std::cout << "Handshake passed\n";
+    std::cout << "Handshake passed\n";
   }
   else {
-  	std::cout << "Handshake error!\n";
+    std::cout << "Handshake error!\n";
   }
 }
 

@@ -20,17 +20,18 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_OP("KafkaDataset")
-	.Input("cache_name: string")
-	.Input("host: string")
-	.Input("port: int32")
-	.Input("local: bool")
-	.Input("part: int32")
-	.Input("schema: int32")
-	.Input("permutation: int32")
-    .Output("handle: variant")
-    .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
+  .Input("cache_name: string")
+  .Input("host: string")
+  .Input("port: int32")
+  .Input("local: bool")
+  .Input("part: int32")
+  .Input("page_size: int32")
+  .Input("schema: int32")
+  .Input("permutation: int32")
+  .Output("handle: variant")
+  .SetIsStateful()
+  .SetShapeFn(shape_inference::ScalarShape)
+  .Doc(R"doc(
 Creates a dataset that emits the messages of one or more Kafka topics.
 
 cache_name: Cache Name.
@@ -38,6 +39,7 @@ host: Host.
 port: Port.
 local: Local.
 part: Part.
+page_size: Page size.
 schema: Schema.
 permutation: Permutation.
 )doc");
