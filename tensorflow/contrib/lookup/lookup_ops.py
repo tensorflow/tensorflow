@@ -408,6 +408,34 @@ class MutableHashTable(LookupInterface):
         values.set_shape(keys.get_shape().concatenate(self._value_shape))
     return values
 
+  def contain(self, keys, name=None):
+    """Looks up `keys` in a table, outputs true or false flags.
+
+
+    Args:
+      keys: Keys to look up. Can be a tensor of any shape. Must match the
+        table's key_dtype.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor containing the bool flag in the same shape as `keys`.
+
+    Raises:
+      TypeError: when `keys` do not match the table data types.
+    """
+    if keys.dtype.base_dtype != self._key_dtype:
+      raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
+                      (self._key_dtype, keys.dtype))
+
+    with ops.name_scope(name, "%s_lookup_table_contain" % self._name,
+                        (self._table_ref, keys)) as name:
+      with ops.colocate_with(self._table_ref):
+        values = gen_lookup_ops.lookup_table_contain_v2(
+            self._table_ref, keys, name=name)
+
+        values.set_shape(keys.get_shape().concatenate([1]))
+    return values
+
   def insert(self, keys, values, name=None):
     """Associates `keys` with `values`.
 
@@ -605,6 +633,36 @@ class MutableDenseHashTable(LookupInterface):
       values.set_shape(
           tensor_shape.TensorShape([keys.get_shape().dims[0]]).concatenate(
               self._value_shape))
+    return values
+
+  def contain(self, keys, name=None):
+    """Looks up `keys` in a table, outputs the true of false flags.
+
+    Args:
+      keys: Keys to look up. Can be a tensor of any shape. Must match the
+        table's key_dtype.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor containing the bool values in the same shape as `keys`.
+
+    Raises:
+      TypeError: when `keys` do not match the table data types.
+    """
+    if keys.dtype.base_dtype != self._key_dtype:
+      raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
+                      (self._key_dtype, keys.dtype))
+
+    with ops.name_scope(name, "%s_lookup_table_contain" % self._name,
+                        [self._table_ref, keys]) as name:
+      with ops.colocate_with(self._table_ref):
+        values = gen_lookup_ops.lookup_table_contain_v2(
+            self._table_ref, keys, name=name)
+
+    if keys.get_shape().ndims is not None and keys.get_shape().ndims > 0:
+      values.set_shape(
+          tensor_shape.TensorShape([keys.get_shape().dims[0]]).concatenate(
+              [1]))
     return values
 
   def insert(self, keys, values, name=None):

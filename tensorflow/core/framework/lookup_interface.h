@@ -50,6 +50,20 @@ class LookupInterface : public ResourceBase {
   virtual Status Find(OpKernelContext* ctx, const Tensor& keys, Tensor* values,
                       const Tensor& default_value) = 0;
 
+  // Performs batch lookups, for every element in the key tensor, Contain returns
+  // true or false into the values tensor.
+
+  // For tables that require initialization, Contain is available once the table
+  // is marked as initialized.
+
+  // Returns the following statuses:
+  // - OK: when the find finishes successfully.
+  // - FailedPrecondition: if the table is not initialized.
+  // - InvalidArgument: if any of the preconditions on the lookup key.
+  // - In addition, other implementations may provide another non-OK status
+  //   specific to their failure modes.
+  virtual Status Contain(OpKernelContext* ctx, const Tensor& keys, Tensor* values) = 0;
+
   // Inserts elements into the table. Each element of the key tensor is
   // associated with the corresponding element in the value tensor.
   // This method is only implemented in mutable tables that can be updated over

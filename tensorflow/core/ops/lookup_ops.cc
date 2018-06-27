@@ -106,6 +106,35 @@ REGISTER_OP("LookupTableFindV2")
 WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableFindV2");
 // TODO(b/72710477): Update this.
 
+REGISTER_OP("LookupTableContain")
+    .Input("table_handle: Ref(string)")
+    .Input("keys: Tin")
+    .Output("values: Tout")
+    .Attr("Tin: type")
+    .Attr("Tout: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
+
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    });
+
+REGISTER_OP("LookupTableContainV2")
+    .Input("table_handle: resource")
+    .Input("keys: Tin")
+    .Output("values: Tout")
+    .Attr("Tin: type")
+    .Attr("Tout: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    });
+
 REGISTER_OP("LookupTableInsert")
     .Input("table_handle: Ref(string)")
     .Input("keys: Tin")

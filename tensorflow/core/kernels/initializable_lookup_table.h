@@ -44,6 +44,20 @@ class InitializableLookupTable : public LookupInterface {
   Status Find(OpKernelContext* ctx, const Tensor& keys, Tensor* values,
               const Tensor& default_value) final;
 
+  // Performs batch lookups, for every element in the key tensor, Find returns
+  // the true or flase flag into the values tensor.
+  //
+  // For tables that require initialization, `Contain` is available once the table
+  // is marked as initialized.
+  //
+  // Returns the following statuses:
+  // - OK: when the find finishes successfully.
+  // - FailedPrecondition: if the table is not initialized.
+  // - InvalidArgument: if any of the preconditions on the lookup key.
+  // - In addition, other implementations may provide another non-OK status
+  //   specific to their failure modes.
+  Status Contain(OpKernelContext* ctx, const Tensor& keys, Tensor* values) final;
+
   // Returns errors::Unimplemented.
   Status Insert(OpKernelContext* ctx, const Tensor& keys,
                 const Tensor& values) final {
@@ -150,6 +164,9 @@ class InitializableLookupTable : public LookupInterface {
   // Performs the batch find operation on the underlying data structure.
   virtual Status DoFind(const Tensor& keys, Tensor* values,
                         const Tensor& default_value) = 0;
+
+  // Performs the batch find operation on the underlying data structure.
+  virtual Status DoContain(const Tensor& keys, Tensor* values) = 0;
 
   mutex mu_;
   bool is_initialized_ = false;

@@ -69,6 +69,19 @@ class MutableHashTableOfScalars final : public LookupInterface {
     return Status::OK();
   }
 
+  Status Contain(OpKernelContext* ctx, const Tensor& key, Tensor* value) override {
+    const auto key_values = key.flat<K>();
+    auto value_values = value->flat<bool>();
+
+    mutex_lock l(mu_);
+    for (int64 i = 0; i < key_values.size(); ++i) {
+      value_values(i) = gtl::FindOrNull(
+          table_, SubtleMustCopyIfIntegral(key_values(i))) != nullptr;
+    }
+
+    return Status::OK();
+  }
+
   Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
@@ -182,6 +195,19 @@ class MutableHashTableOfTensors final : public LookupInterface {
           value_values(i, j) = default_flat(j);
         }
       }
+    }
+
+    return Status::OK();
+  }
+
+  Status Contain(OpKernelContext* ctx, const Tensor& key, Tensor* value) override {
+    const auto key_values = key.flat<K>();
+    auto value_values = value->flat<bool>();
+
+    mutex_lock l(mu_);
+    for (int64 i = 0; i < key_values.size(); ++i) {
+      value_values(i) = gtl::FindOrNull(
+          table_, SubtleMustCopyIfIntegral(key_values(i))) != nullptr;
     }
 
     return Status::OK();
@@ -399,6 +425,13 @@ class MutableDenseHashTable final : public LookupInterface {
       }
     }
     return Status::OK();
+  }
+
+  Status Contain(OpKernelContext* ctx, const Tensor& key, Tensor* value)
+    override LOCKS_EXCLUDED(mu_) {
+    return errors::Unimplemented(
+        "Contain not supported by MutableDenseHashTable "
+        "implementations");
   }
 
   Status Insert(OpKernelContext* ctx, const Tensor& key,
@@ -680,6 +713,42 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableFind").Device(DEVICE_CPU),
                         LookupTableFindOp);
 REGISTER_KERNEL_BUILDER(Name("LookupTableFindV2").Device(DEVICE_CPU),
                         LookupTableFindOp);
+
+// Table lookup op. Perform the contain operation on the given table.
+class LookupTableContainOp : public OpKernel {
+ public:
+  explicit LookupTableContainOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table;
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
+    core::ScopedUnref unref_me(table);
+
+    // Input 0 could be a STRING_REF or a RESOURCE
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
+                                      table->value_dtype()};
+    DataTypeVector expected_outputs = {table->value_dtype()};
+    OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
+
+    const Tensor& key = ctx->input(1);
+
+    TensorShape output_shape = key.shape();
+    output_shape.RemoveLastDims(table->key_shape().dims());
+    TensorShape value_shape({1});
+    output_shape.AppendShape(value_shape);
+    Tensor* out;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output("flags", output_shape, &out));
+
+    OP_REQUIRES_OK(ctx, table->Contain(ctx, key, out));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("LookupTableContain").Device(DEVICE_CPU),
+                        LookupTableContainOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableContainV2").Device(DEVICE_CPU),
+                        LookupTableContainOp);
 
 // Table insert op.
 class LookupTableInsertOp : public OpKernel {

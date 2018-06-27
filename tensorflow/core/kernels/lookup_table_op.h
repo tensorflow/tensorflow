@@ -255,6 +255,17 @@ class HashTable : public InitializableLookupTable {
     return Status::OK();
   }
 
+  Status DoContain(const Tensor& key, Tensor* value) override {
+    const auto key_values = key.flat<K>();
+    auto value_values = value->flat<bool>();
+
+    for (int64 i = 0; i < key_values.size(); ++i) {
+      value_values(i) = gtl::FindOrNull(
+          *table_, SubtleMustCopyIfIntegral(key_values(i)));
+    }
+    return Status::OK();
+  }
+
   int64 MemoryUsed() const override {
     if (table_) {
       const int64 num_elements = table_->size();
