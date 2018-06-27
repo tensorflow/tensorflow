@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -98,7 +99,7 @@ class SplitOp : public XlaOpKernel {
       // Slice out the ith split from the split dimension.
       begin[split_dim] = i * slice_size;
       limits[split_dim] = (i + 1) * slice_size;
-      ctx->SetOutput(i, ctx->builder()->Slice(input, begin, limits, strides));
+      ctx->SetOutput(i, xla::Slice(input, begin, limits, strides));
     }
   }
 };
@@ -199,7 +200,7 @@ class SplitVOp : public XlaOpKernel {
 
       // Slice out the ith split from the split dimension.
       limits[split_dim] = begin[split_dim] + slice_size;
-      ctx->SetOutput(i, ctx->builder()->Slice(input, begin, limits, strides));
+      ctx->SetOutput(i, xla::Slice(input, begin, limits, strides));
       begin[split_dim] = limits[split_dim];
     }
   }

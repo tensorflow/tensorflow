@@ -86,9 +86,10 @@ XLA_TEST_F(UtilTest, Simple3dLookup) {
       CreateR3Parameter<float>(BatchedAValsFull(), 0, "a", &builder, &a);
   auto index_data = CreateR0Parameter<int>(1, 1, "index", &builder, &index);
 
-  TF_ASSERT_OK(DynamicSliceInMinorDims(
-                   &builder, a, {index, builder.ConstantR0<int32>(0)}, {1, 4})
-                   .status());
+  TF_ASSERT_OK(
+      DynamicSliceInMinorDims(
+          &builder, a, {index, xla::ConstantR0<int32>(&builder, 0)}, {1, 4})
+          .status());
 
   ComputeAndCompareR3<float>(&builder, {{{3, 6, 0, 1}}, {{24, 61, 82, 48}}},
                              {a_data.get(), index_data.get()});
@@ -129,8 +130,8 @@ XLA_TEST_F(UtilTest, RowBatchDot) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto l_index,
-      DynamicSliceInMinorDims(&builder, a,
-                              {index, builder.ConstantR0<int32>(0)}, {1, n}));
+      DynamicSliceInMinorDims(
+          &builder, a, {index, xla::ConstantR0<int32>(&builder, 0)}, {1, n}));
   TF_ASSERT_OK(BatchDot(&builder, l_index, row,
                         /*transpose_x=*/false, /*transpose_y=*/true)
                    .status());

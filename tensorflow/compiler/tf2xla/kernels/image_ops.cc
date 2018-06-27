@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -32,23 +33,26 @@ std::array<xla::XlaOp, 3> RGBToHSV(XlaOpKernelContext* ctx, xla::XlaBuilder* b,
   auto red = rgb[0];
   auto green = rgb[1];
   auto blue = rgb[2];
-  auto value = b->Max(b->Max(red, green), blue);
-  auto minimum = b->Min(b->Min(red, green), blue);
-  auto range = b->Sub(value, minimum);
+  auto value = xla::Max(xla::Max(red, green), blue);
+  auto minimum = xla::Min(xla::Min(red, green), blue);
+  auto range = xla::Sub(value, minimum);
 
-  auto zeros = b->Broadcast(zero, shape.dim_sizes());
-  auto saturation = b->Select(b->Gt(value, zero), b->Div(range, value), zeros);
+  auto zeros = xla::Broadcast(zero, shape.dim_sizes());
+  auto saturation =
+      xla::Select(xla::Gt(value, zero), xla::Div(range, value), zeros);
 
-  auto norm = b->Div(XlaHelpers::FloatLiteral(b, dtype, 1.0 / 6.0), range);
+  auto norm = xla::Div(XlaHelpers::FloatLiteral(b, dtype, 1.0 / 6.0), range);
 
-  auto hue = b->Select(b->Eq(green, value),
-                       b->Add(b->Mul(norm, b->Sub(blue, red)),
-                              XlaHelpers::FloatLiteral(b, dtype, 2.0 / 6.0)),
-                       b->Add(b->Mul(norm, b->Sub(red, green)),
-                              XlaHelpers::FloatLiteral(b, dtype, 4.0 / 6.0)));
-  hue = b->Select(b->Eq(red, value), b->Mul(norm, b->Sub(green, blue)), hue);
-  hue = b->Select(b->Gt(range, zero), hue, zeros);
-  hue = b->Select(b->Lt(hue, zero), b->Add(hue, one), hue);
+  auto hue =
+      xla::Select(xla::Eq(green, value),
+                  xla::Add(xla::Mul(norm, xla::Sub(blue, red)),
+                           XlaHelpers::FloatLiteral(b, dtype, 2.0 / 6.0)),
+                  xla::Add(xla::Mul(norm, xla::Sub(red, green)),
+                           XlaHelpers::FloatLiteral(b, dtype, 4.0 / 6.0)));
+  hue = xla::Select(xla::Eq(red, value), xla::Mul(norm, xla::Sub(green, blue)),
+                    hue);
+  hue = xla::Select(xla::Gt(range, zero), hue, zeros);
+  hue = xla::Select(xla::Lt(hue, zero), xla::Add(hue, one), hue);
   return {hue, saturation, value};
 }
 
@@ -66,15 +70,15 @@ std::array<xla::XlaOp, 3> HSVToRGB(xla::XlaBuilder* b,
   auto four = XlaHelpers::FloatLiteral(b, dtype, 4.0);
   auto six = XlaHelpers::FloatLiteral(b, dtype, 6.0);
 
-  auto dh = b->Mul(hue, six);
-  auto dr = b->Clamp(zero, b->Sub(b->Abs(b->Sub(dh, three)), one), one);
-  auto dg = b->Clamp(zero, b->Sub(two, b->Abs(b->Sub(dh, two))), one);
-  auto db = b->Clamp(zero, b->Sub(two, b->Abs(b->Sub(dh, four))), one);
-  auto one_minus_s = b->Sub(one, saturation);
+  auto dh = xla::Mul(hue, six);
+  auto dr = xla::Clamp(zero, xla::Sub(xla::Abs(xla::Sub(dh, three)), one), one);
+  auto dg = xla::Clamp(zero, xla::Sub(two, xla::Abs(xla::Sub(dh, two))), one);
+  auto db = xla::Clamp(zero, xla::Sub(two, xla::Abs(xla::Sub(dh, four))), one);
+  auto one_minus_s = xla::Sub(one, saturation);
 
-  auto red = b->Mul(b->Add(one_minus_s, b->Mul(saturation, dr)), value);
-  auto green = b->Mul(b->Add(one_minus_s, b->Mul(saturation, dg)), value);
-  auto blue = b->Mul(b->Add(one_minus_s, b->Mul(saturation, db)), value);
+  auto red = xla::Mul(xla::Add(one_minus_s, xla::Mul(saturation, dr)), value);
+  auto green = xla::Mul(xla::Add(one_minus_s, xla::Mul(saturation, dg)), value);
+  auto blue = xla::Mul(xla::Add(one_minus_s, xla::Mul(saturation, db)), value);
   return {red, green, blue};
 }
 
@@ -111,7 +115,7 @@ class RGBToHSVOp : public XlaOpKernel {
     auto hsv = RGBToHSV(context, b, {red, green, blue}, context->input_type(0),
                         channel_shape);
 
-    context->SetOutput(0, b->ConcatInDim(hsv, channel_dim));
+    context->SetOutput(0, xla::ConcatInDim(b, hsv, channel_dim));
   }
 };
 REGISTER_XLA_OP(Name("RGBToHSV"), RGBToHSVOp);
@@ -147,7 +151,7 @@ class HSVToRGBOp : public XlaOpKernel {
     auto rgb = HSVToRGB(context->builder(), {hue, saturation, value},
                         context->input_type(0));
 
-    context->SetOutput(0, b->ConcatInDim(rgb, channel_dim));
+    context->SetOutput(0, xla::ConcatInDim(b, rgb, channel_dim));
   }
 };
 REGISTER_XLA_OP(Name("HSVToRGB"), HSVToRGBOp);
@@ -182,18 +186,20 @@ class AdjustContrastOpV2 : public XlaOpKernel {
     const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
     auto converted =
         XlaHelpers::ConvertElementType(b, input, accumulation_type);
-    auto reduce = b->Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
-                            *context->GetOrCreateAdd(accumulation_type),
-                            {height_dim, width_dim});
+    auto reduce = xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                              *context->GetOrCreateAdd(accumulation_type),
+                              {height_dim, width_dim});
     auto output = XlaHelpers::ConvertElementType(b, reduce, type);
-    output = b->Div(output, XlaHelpers::FloatLiteral(b, type, height * width));
+    output =
+        xla::Div(output, XlaHelpers::FloatLiteral(b, type, height * width));
 
     std::vector<int64> broadcast_dims(input_shape.dims() - 2);
     std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
     broadcast_dims.back() = channel_dim;
-    output = b->Add(b->Mul(input, factor),
-                    b->Mul(output, b->Sub(XlaHelpers::One(b, type), factor)),
-                    broadcast_dims);
+    output =
+        xla::Add(xla::Mul(input, factor),
+                 xla::Mul(output, xla::Sub(XlaHelpers::One(b, type), factor)),
+                 broadcast_dims);
     context->SetOutput(0, output);
   }
 };
@@ -240,12 +246,12 @@ class AdjustSaturationOp : public XlaOpKernel {
     auto hsv = RGBToHSV(context, b, {red, green, blue}, context->input_type(0),
                         channel_shape);
 
-    hsv[1] = b->Clamp(XlaHelpers::Zero(b, type), b->Mul(hsv[1], scale),
-                      XlaHelpers::One(b, type));
+    hsv[1] = xla::Clamp(XlaHelpers::Zero(b, type), xla::Mul(hsv[1], scale),
+                        XlaHelpers::One(b, type));
 
     auto rgb = HSVToRGB(context->builder(), hsv, context->input_type(0));
 
-    context->SetOutput(0, b->ConcatInDim(rgb, channel_dim));
+    context->SetOutput(0, xla::ConcatInDim(b, rgb, channel_dim));
   }
 };
 REGISTER_XLA_OP(Name("AdjustSaturation"), AdjustSaturationOp);
@@ -294,12 +300,13 @@ class AdjustHueOp : public XlaOpKernel {
     auto one = XlaHelpers::One(b, type);
 
     auto& hue = hsv[0];
-    hue = b->Rem(b->Add(hsv[0], delta), one);
-    hue = b->Select(b->Lt(hue, zero), b->Rem(b->Add(one, hue), one), hue);
+    hue = xla::Rem(xla::Add(hsv[0], delta), one);
+    hue =
+        xla::Select(xla::Lt(hue, zero), xla::Rem(xla::Add(one, hue), one), hue);
 
     auto rgb = HSVToRGB(context->builder(), hsv, context->input_type(0));
 
-    context->SetOutput(0, b->ConcatInDim(rgb, channel_dim));
+    context->SetOutput(0, xla::ConcatInDim(b, rgb, channel_dim));
   }
 };
 REGISTER_XLA_OP(Name("AdjustHue"), AdjustHueOp);

@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -58,11 +59,11 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
       const xla::XlaComputation* fmax = ctx->GetOrCreateMax(data_type);
       const xla::XlaComputation* fmin = ctx->GetOrCreateMin(data_type);
       input_min =
-          b->ReduceAll(input, XlaHelpers::MaxValue(b, data_type), *fmin);
+          xla::ReduceAll(input, XlaHelpers::MaxValue(b, data_type), *fmin);
       input_max =
-          b->ReduceAll(input, XlaHelpers::MinValue(b, data_type), *fmax);
+          xla::ReduceAll(input, XlaHelpers::MinValue(b, data_type), *fmax);
     }
-    xla::XlaOp m = b->Max(b->Abs(input_min), b->Abs(input_max));
+    xla::XlaOp m = xla::Max(xla::Abs(input_min), xla::Abs(input_max));
 
     // Next, we choose our fixed-point quantization buckets, [min_fixed,
     // max_fixed]. If signed_input is true, this is
@@ -86,14 +87,14 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
     //
     // s = (max_fixed - min_fixed) / (2 * m).
     xla::XlaOp s =
-        b->Div(XlaHelpers::FloatLiteral(b, data_type, max_fixed - min_fixed),
-               b->Mul(XlaHelpers::FloatLiteral(b, data_type, 2.0), m));
+        xla::Div(XlaHelpers::FloatLiteral(b, data_type, max_fixed - min_fixed),
+                 xla::Mul(XlaHelpers::FloatLiteral(b, data_type, 2.0), m));
 
     // Now we can quantize and dequantize the elements of our tensor. An element
     // e is transformed into e':
     //
     // e' = (e * s).round_to_nearest() / s.
-    xla::XlaOp result = b->Div(b->Round(b->Mul(input, s)), s);
+    xla::XlaOp result = xla::Div(xla::Round(xla::Mul(input, s)), s);
 
     ctx->SetOutput(0, result);
   }

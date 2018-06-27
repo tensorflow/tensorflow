@@ -68,7 +68,7 @@ class TopKOp : public XlaOpKernel {
     // TODO(b/73891930): add a key-value sort to HLO, rather than using
     // bit-packing tricks here.
 
-    xla::XlaOp zero = b->ConstantR0<int32>(0);
+    xla::XlaOp zero = xla::ConstantR0<int32>(b, 0);
 
     // max can either be 0x7FFFFFFF or 0x8000000. Neither choice is totally
     // ideal. The implications of the choice are:
@@ -83,22 +83,22 @@ class TopKOp : public XlaOpKernel {
     // 1. +0.0 == -0.0
     // 2. All -0.0 in the input are replaced with +0.0 in the output.
     // 3. The sort is stable.
-    xla::XlaOp max = b->ConstantR0<int32>(0x80000000);
-    xla::XlaOp index_mask = b->ConstantR0<int32>(0x0000FFFF);
-    xla::XlaOp value_mask = b->ConstantR0<int32>(0xFFFF0000);
+    xla::XlaOp max = xla::ConstantR0<int32>(b, 0x80000000);
+    xla::XlaOp index_mask = xla::ConstantR0<int32>(b, 0x0000FFFF);
+    xla::XlaOp value_mask = xla::ConstantR0<int32>(b, 0xFFFF0000);
 
     // Convert to from bf16 to f32. The lower 16-bits are zero due to the
     // definition of bf16.
-    xla::XlaOp input_f32 = b->ConvertElementType(input_bf16, xla::F32);
+    xla::XlaOp input_f32 = xla::ConvertElementType(input_bf16, xla::F32);
 
     // Negate the input to reverse sort it. The lower 16-bits are zero, because
     // negating a float is just inverting the high-bit.
-    xla::XlaOp negative_input_f32 = b->Neg(input_f32);
+    xla::XlaOp negative_input_f32 = xla::Neg(input_f32);
 
     // Convert to a sign magnitude integer. The lower 16-bits are zero, since
     // bitcast convert doesn't change any bits.
     xla::XlaOp negative_input_sm32 =
-        b->BitcastConvertType(negative_input_f32, xla::S32);
+        xla::BitcastConvertType(negative_input_f32, xla::S32);
 
     // Convert from sign magnitude integer to two's complement integer. The
     // lower 16-bits are zero on both sides of the select. On the false side,
@@ -106,8 +106,8 @@ class TopKOp : public XlaOpKernel {
     // are all zero, so the lower 16-bits of the result of the subtraction will
     // also be zero.
     xla::XlaOp negative_input_s32 =
-        b->Select(b->Lt(negative_input_sm32, zero),
-                  b->Sub(max, negative_input_sm32), negative_input_sm32);
+        xla::Select(xla::Lt(negative_input_sm32, zero),
+                    xla::Sub(max, negative_input_sm32), negative_input_sm32);
 
     // In order for the Or with iota_s32 to to work properly, the lower 16-bits
     // of negative_input_32 must be zero.
@@ -115,32 +115,32 @@ class TopKOp : public XlaOpKernel {
     // Pack elements as:
     // * upper 16 bits are the value
     // * lower 16 bits are the index.
-    xla::XlaOp packed_s32 = b->Or(negative_input_s32, iota_s32);
+    xla::XlaOp packed_s32 = xla::Or(negative_input_s32, iota_s32);
 
     // TODO(phawkins): use a more efficient algorithm that does not require a
     // full sort.
-    xla::XlaOp sorted_s32 = b->Slice(b->Sort(packed_s32),
-                                     /*start_indices=*/{0},
-                                     /*limit_indices=*/{k},
-                                     /*strides=*/{1});
+    xla::XlaOp sorted_s32 = xla::Slice(xla::Sort(packed_s32),
+                                       /*start_indices=*/{0},
+                                       /*limit_indices=*/{k},
+                                       /*strides=*/{1});
 
     // Unpack the value/index.
-    xla::XlaOp indices_s32 = b->And(sorted_s32, index_mask);
-    xla::XlaOp negative_values_s32 = b->And(sorted_s32, value_mask);
+    xla::XlaOp indices_s32 = xla::And(sorted_s32, index_mask);
+    xla::XlaOp negative_values_s32 = xla::And(sorted_s32, value_mask);
 
     // Convert from two's complement integer to sign magnitude integer.
     xla::XlaOp negative_values_sm32 =
-        b->Select(b->Lt(negative_values_s32, zero),
-                  b->Sub(max, negative_values_s32), negative_values_s32);
+        xla::Select(xla::Lt(negative_values_s32, zero),
+                    xla::Sub(max, negative_values_s32), negative_values_s32);
 
     xla::XlaOp negative_values_f32 =
-        b->BitcastConvertType(negative_values_sm32, xla::F32);
+        xla::BitcastConvertType(negative_values_sm32, xla::F32);
 
     // Negate the values to get back the original inputs.
-    xla::XlaOp values_f32 = b->Neg(negative_values_f32);
+    xla::XlaOp values_f32 = xla::Neg(negative_values_f32);
 
     // Convert from f32 to bf16.
-    xla::XlaOp values_bf16 = b->ConvertElementType(values_f32, xla::BF16);
+    xla::XlaOp values_bf16 = xla::ConvertElementType(values_f32, xla::BF16);
 
     context->SetOutput(0, values_bf16);
     context->SetOutput(1, indices_s32);
