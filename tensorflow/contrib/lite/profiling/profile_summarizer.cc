@@ -83,7 +83,7 @@ OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
   OperatorDetails details;
   details.name = op_name;
   if (profiling_string) {
-    details.name += ":" + string(profiling_string);
+    details.name += ":" + std::string(profiling_string);
   }
   details.inputs = GetTensorNames(interpreter, inputs);
   details.outputs = GetTensorNames(interpreter, outputs);
