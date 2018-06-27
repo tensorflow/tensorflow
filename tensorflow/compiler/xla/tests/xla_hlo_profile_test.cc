@@ -168,6 +168,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       auto execution_result,
       executable->ExecuteOnStream(&run_options, {&lhs_arg, &rhs_arg},
                                   &hlo_execution_profile));
+  TF_ASSERT_OK(stream_ptr->BlockHostUntilDone());
   (void)execution_result;
 
   *profile_output =
