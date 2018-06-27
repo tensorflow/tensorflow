@@ -382,8 +382,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteTensor* filter, TfLiteTensor* bias, TfLiteTensor* im2col,
                TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
-  CalculateActivationRangeFloat(params->activation, &output_activation_min,
-                                &output_activation_max);
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
   KernelType effective_kernel_type;
   if (((kernel_type == kMultithreadOptimized) ||
        (kernel_type == kCblasOptimized)) &&
