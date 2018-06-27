@@ -44,7 +44,7 @@ Installation instructions at https://www.tensorflow.org/install/
 
 For an introduction to eager execution in TensorFlow, see:
 
-- [User Guide](https://www.tensorflow.org/guide/eager) ([source](../../docs_src/guide/eager.md))
+- [User Guide](https://www.tensorflow.org/get_started/eager) ([source](../../docs_src/guide/eager.md))
 - Notebook: [Basic Usage](python/examples/notebooks/1_basics.ipynb)
 - Notebook: [Gradients](python/examples/notebooks/2_gradients.ipynb)
 - Notebook: [Importing Data](python/examples/notebooks/3_datasets.ipynb)
