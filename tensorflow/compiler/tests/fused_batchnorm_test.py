@@ -126,10 +126,6 @@ class FusedBatchNormTest(XLATestCase, parameterized.TestCase):
     y_ref, mean_ref, var_ref = self._reference_training(
         x_val, scale_val, offset_val, epsilon, data_format_src)
 
-    # TODO(b/110530713): Support data format HWCN on GPU
-    if self.device == "XLA_GPU" and data_format == "HWCN":
-      self.skipTest("GPU does not support data format HWCN.")
-
     with self.test_session() as sess, self.test_scope():
       # To avoid constant folding
       x_val_converted = test_utils.ConvertBetweenDataFormats(
@@ -214,10 +210,6 @@ class FusedBatchNormTest(XLATestCase, parameterized.TestCase):
     grad_x_ref, grad_scale_ref, grad_offset_ref = self._reference_grad(
         x_val, grad_val, scale_val, mean_val, var_val, epsilon, data_format_src)
 
-    # TODO(b/110530713): Support data format HWCN on GPU
-    if self.device == "XLA_GPU" and data_format == "HWCN":
-      self.skipTest("GPU does not support data format HWCN.")
-
     with self.test_session() as sess, self.test_scope():
       grad_val_converted = test_utils.ConvertBetweenDataFormats(
           grad_val, data_format_src, data_format)
@@ -267,10 +259,6 @@ class FusedBatchNormTest(XLATestCase, parameterized.TestCase):
     mean_val = np.random.random_sample(scale_shape).astype(np.float32)
     var_val = np.random.random_sample(scale_shape).astype(np.float32)
     data_format_src = "NHWC"
-
-    # TODO(b/110530713): Support data format HWCN on GPU
-    if self.device == "XLA_GPU" and data_format == "HWCN":
-      self.skipTest("GPU does not support data format HWCN.")
 
     with self.test_session() as sess, self.test_scope():
       grad_val_converted = test_utils.ConvertBetweenDataFormats(
