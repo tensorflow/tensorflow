@@ -90,7 +90,17 @@ class EqualitySplitHandlerTest(test_util.TensorFlowTestCase):
           empty_hessians,
           example_weights,
           is_active=array_ops.constant([True, True]))
-      with ops.control_dependencies([update_1]):
+      update_2 = split_handler.update_stats_sync(
+          0,
+          partition_ids,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
+
+      with ops.control_dependencies([update_1, update_2]):
         are_splits_ready, partitions, gains, splits = (
             split_handler.make_splits(0, 1, class_id))
         are_splits_ready, partitions, gains, splits = (sess.run(
@@ -141,6 +151,129 @@ class EqualitySplitHandlerTest(test_util.TensorFlowTestCase):
     expected_right_gain = 0
     # (-4 + 0.1) ** 2 / (0.13 + 1)
     expected_bias_gain = 13.460176991150442
+
+    # Verify candidate for partition 1, there's only one active feature here
+    # so zero gain is expected.
+    split_info = split_info_pb2.SplitInfo()
+    split_info.ParseFromString(splits[1])
+    left_child = split_info.left_child.vector
+    right_child = split_info.right_child.vector
+    split_node = split_info.split_node.categorical_id_binary_split
+    self.assertAllClose(0.0, gains[1], 0.00001)
+
+    self.assertAllClose([expected_left_weight], left_child.value, 0.00001)
+
+    self.assertAllClose([expected_right_weight], right_child.value, 0.00001)
+
+    self.assertEqual(0, split_node.feature_column)
+
+    self.assertEqual(1, split_node.feature_id)
+
+  def testGenerateFeatureSplitCandidatesSumReduction(self):
+    with self.test_session() as sess:
+      # The data looks like the following:
+      # Example |  Gradients    | Partition | Feature ID     |
+      # i0      |  (0.2, 0.12)  | 0         | 1,2            |
+      # i1      |  (-0.5, 0.07) | 0         |                |
+      # i2      |  (1.2, 0.2)   | 0         | 2              |
+      # i3      |  (4.0, 0.13)  | 1         | 1              |
+      gradients = array_ops.constant([0.2, -0.5, 1.2, 4.0])
+      hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
+      partition_ids = [0, 0, 0, 1]
+      indices = [[0, 0], [0, 1], [2, 0], [3, 0]]
+      values = array_ops.constant([1, 2, 2, 1], dtype=dtypes.int64)
+
+      gradient_shape = tensor_shape.scalar()
+      hessian_shape = tensor_shape.scalar()
+      class_id = -1
+
+      split_handler = categorical_split_handler.EqualitySplitHandler(
+          l1_regularization=0.1,
+          l2_regularization=1,
+          tree_complexity_regularization=0,
+          min_node_weight=0,
+          sparse_int_column=sparse_tensor.SparseTensor(indices, values, [4, 1]),
+          feature_column_group_id=0,
+          gradient_shape=gradient_shape,
+          hessian_shape=hessian_shape,
+          multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS,
+          init_stamp_token=0,
+          loss_uses_sum_reduction=True)
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      empty_gradients, empty_hessians = get_empty_tensors(
+          gradient_shape, hessian_shape)
+      example_weights = array_ops.ones([4, 1], dtypes.float32)
+
+      update_1 = split_handler.update_stats_sync(
+          0,
+          partition_ids,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
+      update_2 = split_handler.update_stats_sync(
+          0,
+          partition_ids,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
+      with ops.control_dependencies([update_1, update_2]):
+        are_splits_ready, partitions, gains, splits = (
+            split_handler.make_splits(0, 1, class_id))
+        are_splits_ready, partitions, gains, splits = (
+            sess.run([are_splits_ready, partitions, gains, splits]))
+    self.assertTrue(are_splits_ready)
+    self.assertAllEqual([0, 1], partitions)
+
+    # Check the split on partition 0.
+    # -(0.4 + 2.4 - 0.1) / (0.24 + 0.4 + 1)
+    expected_left_weight = -1.6463414634146338
+
+    # (0.4 + 2.4 - 0.1) ** 2 / (0.24 + 0.4 + 1)
+    expected_left_gain = 4.445121951219511
+
+    # -(-1 + 0.1) / (0.14 + 1)
+    expected_right_weight = 0.789473684211
+
+    # (-1 + 0.1) ** 2 / (0.14 + 1)
+    expected_right_gain = 0.710526315789
+
+    # (0.4 + -1 + 2.4 - 0.1) ** 2 / (0.24 + 0.14 + 0.4 + 1)
+    expected_bias_gain = 1.6235955056179772
+
+    split_info = split_info_pb2.SplitInfo()
+    split_info.ParseFromString(splits[0])
+    left_child = split_info.left_child.vector
+    right_child = split_info.right_child.vector
+    split_node = split_info.split_node.categorical_id_binary_split
+
+    self.assertEqual(0, split_node.feature_column)
+
+    self.assertEqual(2, split_node.feature_id)
+
+    self.assertAllClose(
+        expected_left_gain + expected_right_gain - expected_bias_gain, gains[0],
+        0.00001)
+
+    self.assertAllClose([expected_left_weight], left_child.value, 0.00001)
+
+    self.assertAllClose([expected_right_weight], right_child.value, 0.00001)
+
+    # Check the split on partition 1.
+    # (-8 + 0.1) / (0.26 + 1)
+    expected_left_weight = -6.26984126984
+    # (-8 + 0.1) ** 2 / (0.26 + 1)
+    expected_left_gain = 49.5317460317
+    expected_right_weight = 0
+    expected_right_gain = 0
+    # (-8 + 0.1) ** 2 / (0.26 + 1)
+    expected_bias_gain = 49.5317460317
 
     # Verify candidate for partition 1, there's only one active feature here
     # so zero gain is expected.
