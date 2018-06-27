@@ -11581,6 +11581,33 @@ op {
   is_stateful: true
 }
 op {
+  name: "BoostedTreesExampleDebugOutputs"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "bucketized_features"
+    type: DT_INT32
+    number_attr: "num_bucketized_features"
+  }
+  output_arg {
+    name: "examples_debug_outputs_serialized"
+    type: DT_STRING
+  }
+  attr {
+    name: "num_bucketized_features"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+  }
+  is_stateful: true
+}
+op {
   name: "BoostedTreesGetEnsembleStates"
   input_arg {
     name: "tree_ensemble_handle"
