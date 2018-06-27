@@ -1,7 +1,7 @@
 ### Learn and use ML
-basic_classification.md
-basic_text_classification.md
-basic_regression.md
+basic_classification.md: Basic classification
+basic_text_classification.md: Text classification
+basic_regression.md: Regression
 overfit_and_underfit.md
 save_and_restore_models.md
 next_steps.md
