@@ -34,8 +34,8 @@ class PredTest : public ClientLibraryTestBase {
       XlaOp (XlaBuilder::*op)(const xla::XlaOp&, const xla::XlaOp&,
                               tensorflow::gtl::ArraySlice<int64>)) {
     XlaBuilder builder(TestName());
-    XlaOp lhs_op = builder.ConstantR0<bool>(lhs);
-    XlaOp rhs_op = builder.ConstantR0<bool>(rhs);
+    XlaOp lhs_op = ConstantR0<bool>(&builder, lhs);
+    XlaOp rhs_op = ConstantR0<bool>(&builder, rhs);
     (builder.*op)(lhs_op, rhs_op, {});
     ComputeAndCompareR0<bool>(&builder, expected, {});
   }
@@ -43,13 +43,13 @@ class PredTest : public ClientLibraryTestBase {
 
 TEST_F(PredTest, ConstantR0PredTrue) {
   XlaBuilder builder(TestName());
-  builder.ConstantR0<bool>(true);
+  ConstantR0<bool>(&builder, true);
   ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
 TEST_F(PredTest, ConstantR0PredFalse) {
   XlaBuilder builder(TestName());
-  builder.ConstantR0<bool>(false);
+  ConstantR0<bool>(&builder, false);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 
@@ -79,13 +79,13 @@ TEST_F(PredTest, ConstantR0PredCompareGt) {
 
 TEST_F(PredTest, ConstantR1Pred) {
   XlaBuilder builder(TestName());
-  builder.ConstantR1<bool>({true, false, false, true});
+  ConstantR1<bool>(&builder, {true, false, false, true});
   ComputeAndCompareR1<bool>(&builder, {true, false, false, true}, {});
 }
 
 TEST_F(PredTest, ConstantR2Pred) {
   XlaBuilder builder(TestName());
-  builder.ConstantR2<bool>({{false, true, true}, {true, false, false}});
+  ConstantR2<bool>(&builder, {{false, true, true}, {true, false, false}});
   const string expected = R"(pred[2,3] {
   { 011 },
   { 100 }
@@ -95,43 +95,43 @@ TEST_F(PredTest, ConstantR2Pred) {
 
 TEST_F(PredTest, AnyR1True) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<bool>({true, false});
+  auto a = ConstantR1<bool>(&builder, {true, false});
   Any(a);
   ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
 TEST_F(PredTest, AnyR1False) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<bool>({false, false});
+  auto a = ConstantR1<bool>(&builder, {false, false});
   Any(a);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 
 TEST_F(PredTest, AnyR1VacuouslyFalse) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<bool>({});
+  auto a = ConstantR1<bool>(&builder, {});
   Any(a);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 
 TEST_F(PredTest, AnyR2True) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR2<bool>({
-      {false, false, false},
-      {false, false, false},
-      {false, false, true},
-  });
+  auto a = ConstantR2<bool>(&builder, {
+                                          {false, false, false},
+                                          {false, false, false},
+                                          {false, false, true},
+                                      });
   Any(a);
   ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
 TEST_F(PredTest, AnyR2False) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR2<bool>({
-      {false, false, false},
-      {false, false, false},
-      {false, false, false},
-  });
+  auto a = ConstantR2<bool>(&builder, {
+                                          {false, false, false},
+                                          {false, false, false},
+                                          {false, false, false},
+                                      });
   Any(a);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }

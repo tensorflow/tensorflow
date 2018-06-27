@@ -792,14 +792,14 @@ void BM_ParallelFusion(int num_iters) {
   // Create computation.
   XlaBuilder builder("ParallelFusion");
   Shape shape0 = ShapeUtil::MakeShape(F32, {param0_dim0, param0_dim1});
-  auto param0 = builder.Parameter(0, shape0, "param0");
+  auto param0 = Parameter(&builder, 0, shape0, "param0");
   Shape shape1 = ShapeUtil::MakeShape(F32, {param1_dim0, param1_dim1});
-  auto param1 = builder.Parameter(1, shape1, "param1");
+  auto param1 = Parameter(&builder, 1, shape1, "param1");
   Shape shape2 = ShapeUtil::MakeShape(F32, {param2_dim0, param2_dim1});
-  auto param2 = builder.Parameter(2, shape2, "param2");
+  auto param2 = Parameter(&builder, 2, shape2, "param2");
 
-  auto x = builder.Mul(param0, param1);
-  builder.Add(x, param2);
+  auto x = Mul(param0, param1);
+  Add(x, param2);
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Transfer literals to device.

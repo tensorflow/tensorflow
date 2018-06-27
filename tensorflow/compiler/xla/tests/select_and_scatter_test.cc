@@ -73,16 +73,16 @@ XLA_TEST_P(SelectAndScatterTest, ParamTest) {
   auto operand_shape = GetParam().operand_shape;
   Array<float> o(operand_shape);
   o.FillRandom(1.5f);
-  auto operand = builder_.ConstantFromArray(o);
+  auto operand = ConstantFromArray(&builder_, o);
 
   auto source_shape = GetParam().source_shape;
   Array<float> s(source_shape);
   s.FillRandom(12.0f);
-  auto source = builder_.ConstantFromArray(s);
+  auto source = ConstantFromArray(&builder_, s);
 
-  builder_.SelectAndScatter(operand, ge_f32_, GetParam().window_dimensions,
-                            GetParam().window_strides, GetParam().padding_type,
-                            source, builder_.ConstantR0<float>(0.0f), add_f32_);
+  SelectAndScatter(operand, ge_f32_, GetParam().window_dimensions,
+                   GetParam().window_strides, GetParam().padding_type, source,
+                   ConstantR0<float>(&builder_, 0.0f), add_f32_);
 
   ComputeAndCompare(&builder_, {}, ErrorSpec(1e-5));
 }
@@ -197,110 +197,110 @@ INSTANTIATE_TEST_CASE_P(
 
 // Test for F32 1D array, with a zero-element input.
 XLA_TEST_F(SelectAndScatterTest, R1S0F32) {
-  const auto operand = builder_.ConstantR1<float>({});
-  const auto source = builder_.ConstantR1<float>({});
-  builder_.SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{3},
-                            /*window_strides=*/{3}, Padding::kValid, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
+  const auto operand = ConstantR1<float>(&builder_, {});
+  const auto source = ConstantR1<float>(&builder_, {});
+  SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{3},
+                   /*window_strides=*/{3}, Padding::kValid, source,
+                   ConstantR0<float>(&builder_, 0.0f), add_f32_);
   ComputeAndCompareR1<float>(&builder_, {}, {}, ErrorSpec(1e-7));
 }
 
 // Test for F32 1D array, when windows do not overlap.
 XLA_TEST_F(SelectAndScatterTest, R1F32) {
   const auto operand =
-      builder_.ConstantR1<float>({1.f, 9.f, 3.f, 7.f, 5.f, 6.f});
-  const auto source = builder_.ConstantR1<float>({34.f, 42.f});
+      ConstantR1<float>(&builder_, {1.f, 9.f, 3.f, 7.f, 5.f, 6.f});
+  const auto source = ConstantR1<float>(&builder_, {34.f, 42.f});
   const std::vector<float> expected = {0.f, 34.f, 0.f, 42.f, 0.f, 0.f};
-  builder_.SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{3},
-                            /*window_strides=*/{3}, Padding::kValid, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
+  SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{3},
+                   /*window_strides=*/{3}, Padding::kValid, source,
+                   ConstantR0<float>(&builder_, 0.0f), add_f32_);
   ComputeAndCompareR1<float>(&builder_, expected, {}, ErrorSpec(1e-7));
 }
 
 // Test for S32 1D array, when windows do not overlap and the init value is 1.
 XLA_TEST_F(SelectAndScatterTest, R1S32) {
-  const auto operand = builder_.ConstantR1<int32>({-1, 0, 6, 4, -4, 10});
-  const auto source = builder_.ConstantR1<int32>({-10, 20});
+  const auto operand = ConstantR1<int32>(&builder_, {-1, 0, 6, 4, -4, 10});
+  const auto source = ConstantR1<int32>(&builder_, {-10, 20});
   const std::vector<int32> expected = {1, 1, -9, 1, 1, 21};
-  builder_.SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{3},
-                            /*window_strides=*/{3}, Padding::kValid, source,
-                            builder_.ConstantR0<int32>(1), add_s32_);
+  SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{3},
+                   /*window_strides=*/{3}, Padding::kValid, source,
+                   ConstantR0<int32>(&builder_, 1), add_s32_);
   ComputeAndCompareR1<int32>(&builder_, expected, {});
 }
 
 // Test for S32 1D array, when windows overlap with each other.
 XLA_TEST_F(SelectAndScatterTest, R1S32OverlappingWindow) {
-  const auto operand = builder_.ConstantR1<int32>({1, 9, 3, 7, 5, 6});
-  const auto source = builder_.ConstantR1<int32>({34, 42, 53, 19});
+  const auto operand = ConstantR1<int32>(&builder_, {1, 9, 3, 7, 5, 6});
+  const auto source = ConstantR1<int32>(&builder_, {34, 42, 53, 19});
   const std::vector<int32> expected = {0, 76, 0, 72, 0, 0};
-  builder_.SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{3},
-                            /*window_strides=*/{1}, Padding::kValid, source,
-                            builder_.ConstantR0<int32>(0), add_s32_);
+  SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{3},
+                   /*window_strides=*/{1}, Padding::kValid, source,
+                   ConstantR0<int32>(&builder_, 0), add_s32_);
   ComputeAndCompareR1<int32>(&builder_, expected, {});
 }
 
 // Test for S32 2D array, when windows do not overlap.
 XLA_TEST_F(SelectAndScatterTest, R2S32) {
   const auto operand =
-      builder_.ConstantR2<int32>({{7, 2, 5, 3, 10, 2}, {3, 8, 9, 3, 4, 2}});
-  const auto source = builder_.ConstantR2<int32>({{2, 6}});
+      ConstantR2<int32>(&builder_, {{7, 2, 5, 3, 10, 2}, {3, 8, 9, 3, 4, 2}});
+  const auto source = ConstantR2<int32>(&builder_, {{2, 6}});
   Array2D<int32> expected({{0, 0, 0, 0, 6, 0}, {0, 0, 2, 0, 0, 0}});
-  builder_.SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{2, 3},
-                            /*window_strides=*/{2, 3}, Padding::kValid, source,
-                            builder_.ConstantR0<int32>(0), add_s32_);
+  SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{2, 3},
+                   /*window_strides=*/{2, 3}, Padding::kValid, source,
+                   ConstantR0<int32>(&builder_, 0), add_s32_);
   ComputeAndCompareR2<int32>(&builder_, expected, {});
 }
 
 // Test for tie breaking rule in ge_f32_. When a tie is present, the operand
 // that has the lower lexicographical order (smaller index) should be chosen.
 XLA_TEST_F(SelectAndScatterTest, R2F32Tie) {
-  const auto operand = builder_.ConstantR2<float>(
-      {{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}});
-  const auto source = builder_.ConstantR2<float>(
-      {{1.0f, 2.0f, 3.0f}, {4.f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}});
+  const auto operand = ConstantR2<float>(
+      &builder_, {{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}});
+  const auto source = ConstantR2<float>(
+      &builder_, {{1.0f, 2.0f, 3.0f}, {4.f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}});
   Array2D<float> expected(
       {{12.f, 9.f, 0.f}, {15.f, 9.f, 0.f}, {0.f, 0.f, 0.f}});
-  builder_.SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{3, 3},
-                            /*window_strides=*/{1, 1}, Padding::kSame, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
+  SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{3, 3},
+                   /*window_strides=*/{1, 1}, Padding::kSame, source,
+                   ConstantR0<float>(&builder_, 0.0f), add_f32_);
   ComputeAndCompareR2<float>(&builder_, expected, {}, ErrorSpec(1e-7));
 }
 
 // Similar to SelectAndScatterTest.R2S32 but the input is transposed.
 XLA_TEST_F(SelectAndScatterTest, ReshapeR2S32) {
-  const auto operand = builder_.ConstantR2<int32>(
-      {{7, 3}, {2, 8}, {5, 9}, {3, 3}, {10, 4}, {2, 2}});
+  const auto operand = ConstantR2<int32>(
+      &builder_, {{7, 3}, {2, 8}, {5, 9}, {3, 3}, {10, 4}, {2, 2}});
   const auto reshape =
-      builder_.Reshape(operand, /*dimensions=*/{1, 0}, /*new_sizes=*/{2, 6});
-  const auto source = builder_.ConstantR2<int32>({{2, 6}});
+      Reshape(operand, /*dimensions=*/{1, 0}, /*new_sizes=*/{2, 6});
+  const auto source = ConstantR2<int32>(&builder_, {{2, 6}});
   Array2D<int32> expected({{0, 0, 0, 0, 6, 0}, {0, 0, 2, 0, 0, 0}});
-  builder_.SelectAndScatter(reshape, ge_s32_, /*window_dimensions=*/{2, 3},
-                            /*window_strides=*/{2, 3}, Padding::kValid, source,
-                            builder_.ConstantR0<int32>(0), add_s32_);
+  SelectAndScatter(reshape, ge_s32_, /*window_dimensions=*/{2, 3},
+                   /*window_strides=*/{2, 3}, Padding::kValid, source,
+                   ConstantR0<int32>(&builder_, 0), add_s32_);
   ComputeAndCompareR2<int32>(&builder_, expected, {});
 }
 
 // Test for S32 2D array, when windows overlap with each other.
 XLA_TEST_F(SelectAndScatterTest, R2S32OverlappingWindow) {
   const auto operand =
-      builder_.ConstantR2<int32>({{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
-  const auto source = builder_.ConstantR2<int32>({{2, 6, 4}});
+      ConstantR2<int32>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
+  const auto source = ConstantR2<int32>(&builder_, {{2, 6, 4}});
   Array2D<int32> expected({{0, 0, 0, 0, 0}, {0, 0, 12, 0, 0}});
-  builder_.SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{2, 3},
-                            /*window_strides=*/{1, 1}, Padding::kValid, source,
-                            builder_.ConstantR0<int32>(0), add_s32_);
+  SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{2, 3},
+                   /*window_strides=*/{1, 1}, Padding::kValid, source,
+                   ConstantR0<int32>(&builder_, 0), add_s32_);
   ComputeAndCompareR2<int32>(&builder_, expected, {});
 }
 
 // Test for S32 2D array, when the padding is Padding::kSAME.
 XLA_TEST_F(SelectAndScatterTest, R2S32SamePadding) {
   const auto operand =
-      builder_.ConstantR2<int32>({{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
-  const auto source = builder_.ConstantR2<int32>({{2, 6, 4}});
+      ConstantR2<int32>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
+  const auto source = ConstantR2<int32>(&builder_, {{2, 6, 4}});
   Array2D<int32> expected({{0, 0, 0, 0, 4}, {0, 2, 6, 0, 0}});
-  builder_.SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{2, 2},
-                            /*window_strides=*/{2, 2}, Padding::kSame, source,
-                            builder_.ConstantR0<int32>(0), add_s32_);
+  SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{2, 2},
+                   /*window_strides=*/{2, 2}, Padding::kSame, source,
+                   ConstantR0<int32>(&builder_, 0), add_s32_);
   ComputeAndCompareR2<int32>(&builder_, expected, {});
 }
 
@@ -308,25 +308,26 @@ XLA_TEST_F(SelectAndScatterTest, R2S32SamePadding) {
 // with each other.
 XLA_TEST_F(SelectAndScatterTest, R2S32SamePaddingOverlappingWindow) {
   const auto operand =
-      builder_.ConstantR2<int32>({{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
+      ConstantR2<int32>(&builder_, {{7, 2, 5, 3, 8}, {3, 8, 9, 3, 4}});
   const auto source =
-      builder_.ConstantR2<int32>({{2, 6, 4, 7, 1}, {3, 5, 8, 9, 10}});
+      ConstantR2<int32>(&builder_, {{2, 6, 4, 7, 1}, {3, 5, 8, 9, 10}});
   Array2D<int32> expected({{0, 0, 0, 0, 8}, {0, 5, 23, 0, 19}});
-  builder_.SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{2, 2},
-                            /*window_strides=*/{1, 1}, Padding::kSame, source,
-                            builder_.ConstantR0<int32>(0), add_s32_);
+  SelectAndScatter(operand, ge_s32_, /*window_dimensions=*/{2, 2},
+                   /*window_strides=*/{1, 1}, Padding::kSame, source,
+                   ConstantR0<int32>(&builder_, 0), add_s32_);
   ComputeAndCompareR2<int32>(&builder_, expected, {});
 }
 
 XLA_TEST_F(SelectAndScatterTest, R2F32OverlappingR2Source) {
-  const auto operand = builder_.ConstantR2<float>(
-      {{1.5f, 2.5f, 1.5f}, {3.5f, 1.5f, 3.5f}, {4.5f, 2.5f, 4.5f}});
-  const auto source = builder_.ConstantR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}});
+  const auto operand = ConstantR2<float>(
+      &builder_, {{1.5f, 2.5f, 1.5f}, {3.5f, 1.5f, 3.5f}, {4.5f, 2.5f, 4.5f}});
+  const auto source =
+      ConstantR2<float>(&builder_, {{1.0f, 2.0f}, {3.0f, 4.0f}});
   Array2D<float> expected(
       {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 2.0f}, {3.0f, 0.0f, 4.0f}});
-  builder_.SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{2, 2},
-                            /*window_strides=*/{1, 1}, Padding::kValid, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
+  SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{2, 2},
+                   /*window_strides=*/{1, 1}, Padding::kValid, source,
+                   ConstantR0<float>(&builder_, 0.0f), add_f32_);
   ComputeAndCompareR2<float>(&builder_, expected, {}, ErrorSpec(1e-7));
 }
 
@@ -349,9 +350,9 @@ TEST_F(SelectAndScatterTest, R4F32Valid) {
   s.FillWithPZ(pzs);
   auto source = builder_.ConstantR4FromArray4D(s);
   s.FillWithPZ(pzs);
-  builder_.SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 3, 1, 1},
-                            Padding::kValid, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
+  SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 3, 1, 1},
+                   Padding::kValid, source, ConstantR0<float>(&builder_, 0.0f),
+                   add_f32_);
   ComputeAndCompareR4<float>(&builder_, e, {}, ErrorSpec(1e-7));
 }
 
@@ -374,9 +375,9 @@ TEST_F(SelectAndScatterTest, R4F32Overlap) {
   s.FillWithPZ(pzs);
   auto source = builder_.ConstantR4FromArray4D(s);
   s.FillWithPZ(pzs);
-  builder_.SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 2, 1, 1},
-                            Padding::kValid, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
+  SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 2, 1, 1},
+                   Padding::kValid, source, ConstantR0<float>(&builder_, 0.0f),
+                   add_f32_);
   ComputeAndCompareR4<float>(&builder_, e, {}, ErrorSpec(1e-7));
 }
 
@@ -399,9 +400,9 @@ TEST_F(SelectAndScatterTest, R4F32OverlapSmall) {
   s.FillWithPZ(pzs);
   auto source = builder_.ConstantR4FromArray4D(s);
   s.FillWithPZ(pzs);
-  builder_.SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 2, 1, 1},
-                            Padding::kValid, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
+  SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 2, 1, 1},
+                   Padding::kValid, source, ConstantR0<float>(&builder_, 0.0f),
+                   add_f32_);
   ComputeAndCompareR4<float>(&builder_, e, {}, ErrorSpec(1e-7));
 }
 
@@ -420,33 +421,33 @@ TEST_F(SelectAndScatterTest, R4F32RefValidFixedSmall) {
 
   auto source = builder_.ConstantR4FromArray4D(s);
   s.FillWithPZ(pzs);
-  builder_.SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 3, 1, 1},
-                            Padding::kValid, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
+  SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 3, 1, 1},
+                   Padding::kValid, source, ConstantR0<float>(&builder_, 0.0f),
+                   add_f32_);
   auto e = ReferenceUtil::SelectAndScatter4DGePlus(o, s, 0.0f, {2, 3, 1, 1},
                                                    {2, 3, 1, 1}, false);
   ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-7));
 }
 
 XLA_TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMaxScatter) {
-  const auto operand = builder_.ConstantR1<float>({1, 2, 3, 100, 3, 2, 1});
-  const auto source = builder_.ConstantR1<float>({34, 42, 53, 19});
+  const auto operand = ConstantR1<float>(&builder_, {1, 2, 3, 100, 3, 2, 1});
+  const auto source = ConstantR1<float>(&builder_, {34, 42, 53, 19});
   const std::vector<float> expected = {0, 0, 0, 53, 0, 0, 0};
-  builder_.SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{4},
-                            /*window_strides=*/{1}, Padding::kValid, source,
-                            builder_.ConstantR0<float>(0), max_f32_);
+  SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{4},
+                   /*window_strides=*/{1}, Padding::kValid, source,
+                   ConstantR0<float>(&builder_, 0), max_f32_);
   ComputeAndCompareR1<float>(&builder_, expected, {}, ErrorSpec(1e-7));
 }
 
 XLA_TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMinScatter) {
-  const auto operand = builder_.ConstantR1<float>({1, 2, 3, 100, 3, 2, 1});
-  const auto source = builder_.ConstantR1<float>({34, 42, 53, 19});
+  const auto operand = ConstantR1<float>(&builder_, {1, 2, 3, 100, 3, 2, 1});
+  const auto source = ConstantR1<float>(&builder_, {34, 42, 53, 19});
   const float max_float = std::numeric_limits<float>::max();
   const std::vector<float> expected = {max_float, max_float, max_float, 19,
                                        max_float, max_float, max_float};
-  builder_.SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{4},
-                            /*window_strides=*/{1}, Padding::kValid, source,
-                            builder_.ConstantR0<float>(max_float), min_f32_);
+  SelectAndScatter(operand, ge_f32_, /*window_dimensions=*/{4},
+                   /*window_strides=*/{1}, Padding::kValid, source,
+                   ConstantR0<float>(&builder_, max_float), min_f32_);
   ComputeAndCompareR1<float>(&builder_, expected, {}, ErrorSpec(1e-7));
 }
 

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -486,11 +487,11 @@ ClientLibraryTestBase::ComputeValueAndReference(
 XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
   XlaBuilder builder("relu");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
-  auto z_value = builder.Parameter(0, shape, "z_value");
+  auto z_value = Parameter(&builder, 0, shape, "z_value");
   auto zero = use_bfloat16_
-                  ? builder.ConstantR0<bfloat16>(static_cast<bfloat16>(0.0f))
-                  : builder.ConstantR0<float>(0.0f);
-  builder.Max(z_value, zero);
+                  ? ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(0.0f))
+                  : ConstantR0<float>(&builder, 0.0f);
+  Max(z_value, zero);
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
   return computation_status.ConsumeValueOrDie();
@@ -499,9 +500,9 @@ XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
 XlaComputation ClientLibraryTestBase::CreateScalarMax() {
   XlaBuilder builder("max");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
-  auto x = builder.Parameter(0, shape, "x");
-  auto y = builder.Parameter(1, shape, "y");
-  builder.Max(x, y);
+  auto x = Parameter(&builder, 0, shape, "x");
+  auto y = Parameter(&builder, 1, shape, "y");
+  Max(x, y);
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
   return computation_status.ConsumeValueOrDie();
@@ -510,13 +511,13 @@ XlaComputation ClientLibraryTestBase::CreateScalarMax() {
 XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
   XlaBuilder builder("relu_sensitivity");
   auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
-  auto activation = builder.Parameter(0, shape, "activation");
-  auto backprop = builder.Parameter(1, shape, "backprop");
+  auto activation = Parameter(&builder, 0, shape, "activation");
+  auto backprop = Parameter(&builder, 1, shape, "backprop");
   auto zero = use_bfloat16_
-                  ? builder.ConstantR0<bfloat16>(static_cast<bfloat16>(0.0f))
-                  : builder.ConstantR0<float>(0.0f);
-  auto activation_gtz = builder.Gt(activation, zero);
-  builder.Select(activation_gtz, /*on_true=*/backprop, /*on_false=*/zero);
+                  ? ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(0.0f))
+                  : ConstantR0<float>(&builder, 0.0f);
+  auto activation_gtz = Gt(activation, zero);
+  Select(activation_gtz, /*on_true=*/backprop, /*on_false=*/zero);
 
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
@@ -559,8 +560,8 @@ XlaOp ClientLibraryTestBase::AddParam(const Literal& argument,
 
 XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
                                                        XlaBuilder* builder) {
-  return builder->ConstantLiteral(
-      use_bfloat16_ ? *Literal::ConvertF32ToBF16(literal) : literal);
+  return ConstantLiteral(
+      builder, use_bfloat16_ ? *Literal::ConvertF32ToBF16(literal) : literal);
 }
 
 std::unique_ptr<GlobalData>
@@ -588,7 +589,7 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
       client_->TransferToServer(*param_literal, device_handle)
           .ConsumeValueOrDie();
   *data_handle =
-      builder->Parameter(parameter_number, param_literal->shape(), name);
+      Parameter(builder, parameter_number, param_literal->shape(), name);
   return data;
 }
 

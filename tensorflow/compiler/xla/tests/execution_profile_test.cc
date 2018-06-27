@@ -34,7 +34,7 @@ XLA_TEST_F(ExecutionProfileTest, ExecuteWithExecutionProfile) {
           *Literal::CreateR2F32Linspace(1e0, 1e5, 256, 256)));
 
   XlaBuilder b(TestName() + ".add");
-  b.Dot(b.Parameter(0, shape, "param_0"), b.Parameter(1, shape, "param_1"));
+  Dot(Parameter(&b, 0, shape, "param_0"), Parameter(&b, 1, shape, "param_1"));
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation dot_product, b.Build());
 
   ExecutionProfile execution_profile;
