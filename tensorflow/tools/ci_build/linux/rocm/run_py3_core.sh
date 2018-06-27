@@ -69,8 +69,6 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/kernel_tests:pool_test \
     -//tensorflow/python/kernel_tests:pooling_ops_3d_test \
     -//tensorflow/python/kernel_tests:pooling_ops_test \
-    -//tensorflow/python/kernel_tests:reduction_ops_test   \
-    -//tensorflow/python/kernel_tests:scatter_ops_test \
     -//tensorflow/python/profiler/internal:run_metadata_test \
     -//tensorflow/python/profiler:profile_context_test \
     -//tensorflow/python/profiler:profiler_test \
