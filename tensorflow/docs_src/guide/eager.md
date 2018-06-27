@@ -316,7 +316,7 @@ for (batch, (images, labels)) in enumerate(dataset):
 
 
 The following example creates a multi-layer model that classifies the standard
-[MNIST handwritten digits](https://www.tensorflow.org/tutorials/layers). It
+[MNIST handwritten digits](../tutorials/images/layers). It
 demonstrates the optimizer and layer APIs to build trainable graphs in an eager
 execution environment.
 

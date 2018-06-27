@@ -76,7 +76,7 @@ Let's walk through the `train_input_fn()`.
 The function starts by using the @{tf.data.Dataset.from_tensor_slices} function
 to create a @{tf.data.Dataset} representing slices of the array. The array is
 sliced across the first dimension. For example, an array containing the
-@{$tutorials/layers$mnist training data} has a shape of `(60000, 28, 28)`.
+@{$tutorials/images/layers$mnist training data} has a shape of `(60000, 28, 28)`.
 Passing this to `from_tensor_slices` returns a `Dataset` object containing
 60000 slices, each one a 28x28 image.
 
