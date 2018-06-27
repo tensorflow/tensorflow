@@ -16,6 +16,8 @@ limitations under the License.
 #include "ignite_binary_object_parser.h"
 #include "ignite_dataset_iterator.h"
 
+#include <time.h>
+
 namespace ignite {
 
 IgniteDatasetIterator::IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, tensorflow::int32 page_size, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation) : tensorflow::DatasetIterator<IgniteDataset>(params),
@@ -63,7 +65,12 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
 
       remainder = res_len - 17;
       data = (char*) malloc(remainder);
+      clock_t start = clock();
       client_.ReadData(data, remainder);
+      clock_t stop = clock();
+ 
+      double size_in_mb = 1.0 * remainder / 1024 / 1024;     
+      std::cout << "Page size " << size_in_mb << " Mb, download speed " << size_in_mb / ((stop - start) / (double) CLOCKS_PER_SEC) << " Mb/sec" << std::endl;
       last_page = !client_.ReadByte();
     }
     if (remainder == -1) {
