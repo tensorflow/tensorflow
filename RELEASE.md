@@ -21,7 +21,7 @@
 * The [distributions.Bijector](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/distributions/bijectors/Bijector)
   API supports broadcasting for Bijectors with new API changes.
   
-## Breaking Chances
+## Breaking Changes
   * If you're opening empty variable scopes; replace `variable_scope('', ...)` by
     `variable_scope(tf.get_variable_scope(), ...)`.
 
