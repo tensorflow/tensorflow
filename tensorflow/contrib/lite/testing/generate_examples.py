@@ -705,7 +705,7 @@ def make_constant_tests(zip_path):
 
 
 def make_binary_op_tests(zip_path, binary_operator):
-  """Make a set of tests to do add with and without broadcast."""
+  """Make a set of tests to do binary ops with and without broadcast."""
 
   # These parameters are split because we don't support broadcasting.
   test_parameters = [{
