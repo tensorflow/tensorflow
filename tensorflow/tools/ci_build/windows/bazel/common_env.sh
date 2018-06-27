@@ -49,3 +49,15 @@ export PATH="/c/Program Files/Git/cmd:$PATH"
 
 # Make sure we have pip in PATH
 export PATH="/c/${PYTHON_BASE_PATH}/Scripts:$PATH"
+
+# Setting default values to CUDA related environment variables
+export TF_CUDA_VERSION=${TF_CUDA_VERSION:-9.0}
+export TF_CUDNN_VERSION=${TF_CUDNN_VERSION:-7.0}
+export TF_CUDA_COMPUTE_CAPABILITIES=${TF_CUDA_COMPUTE_CAPABILITIES:-3.7}
+export CUDA_INSTALL_PATH=${CUDA_INSTALL_PATH:-"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v${TF_CUDA_VERSION}"}
+export CUDNN_INSTALL_PATH=${CUDNN_INSTALL_PATH:-"C:/tools/cuda"}
+
+# Add Cuda and Cudnn dll directories into PATH
+export PATH="$(cygpath -u "${CUDA_INSTALL_PATH}")/bin:$PATH"
+export PATH="$(cygpath -u "${CUDA_INSTALL_PATH}")/extras/CUPTI/libx64:$PATH"
+export PATH="$(cygpath -u "${CUDNN_INSTALL_PATH}")/bin:$PATH"
