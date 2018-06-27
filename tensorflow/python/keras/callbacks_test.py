@@ -282,7 +282,7 @@ class KerasCallbacksTest(test.TestCase):
       # This should allow training to go for at least `patience` epochs
       model.set_weights(weights)
       hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
-    assert len(hist.epoch) >= patience
+      assert len(hist.epoch) >= patience
 
   def test_RemoteMonitor(self):
     if requests is None:
