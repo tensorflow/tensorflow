@@ -33,8 +33,8 @@ class VarIsInitializedOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     XlaResource* variable;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &variable));
-    ctx->SetOutput(0,
-                   ctx->builder()->ConstantR0<bool>(variable->initialized()));
+    ctx->SetOutput(
+        0, xla::ConstantR0<bool>(ctx->builder(), variable->initialized()));
   }
 };
 REGISTER_XLA_OP(Name("VarIsInitializedOp"), VarIsInitializedOp);
@@ -96,7 +96,7 @@ class AssignAddVariableOp : public XlaOpKernel {
     xla::XlaOp handle;
     OP_REQUIRES_OK(ctx,
                    ctx->ReadVariableInput(0, type, /*shape=*/nullptr, &handle));
-    handle = ctx->builder()->Add(handle, ctx->Input(1));
+    handle = xla::Add(handle, ctx->Input(1));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
 };
@@ -112,7 +112,7 @@ class AssignSubVariableOp : public XlaOpKernel {
     xla::XlaOp handle;
     OP_REQUIRES_OK(ctx,
                    ctx->ReadVariableInput(0, type, /*shape=*/nullptr, &handle));
-    handle = ctx->builder()->Sub(handle, ctx->Input(1));
+    handle = xla::Sub(handle, ctx->Input(1));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
 };
@@ -191,7 +191,7 @@ class ResourceScatterAddOp : public ResourceScatterOp {
  private:
   static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
                             xla::XlaBuilder* builder) {
-    return builder->Add(x, y);
+    return xla::Add(x, y);
   }
 };
 REGISTER_XLA_OP(Name("ResourceScatterAdd"), ResourceScatterAddOp);
@@ -204,7 +204,7 @@ class ResourceScatterSubOp : public ResourceScatterOp {
  private:
   static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
                             xla::XlaBuilder* builder) {
-    return builder->Sub(x, y);
+    return xla::Sub(x, y);
   }
 };
 REGISTER_XLA_OP(Name("ResourceScatterSub"), ResourceScatterSubOp);
@@ -217,7 +217,7 @@ class ResourceScatterMulOp : public ResourceScatterOp {
  private:
   static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
                             xla::XlaBuilder* builder) {
-    return builder->Mul(x, y);
+    return xla::Mul(x, y);
   }
 };
 REGISTER_XLA_OP(Name("ResourceScatterMul"), ResourceScatterMulOp);
@@ -230,7 +230,7 @@ class ResourceScatterDivOp : public ResourceScatterOp {
  private:
   static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
                             xla::XlaBuilder* builder) {
-    return builder->Div(x, y);
+    return xla::Div(x, y);
   }
 };
 REGISTER_XLA_OP(Name("ResourceScatterDiv"), ResourceScatterDivOp);
@@ -243,7 +243,7 @@ class ResourceScatterMinOp : public ResourceScatterOp {
  private:
   static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
                             xla::XlaBuilder* builder) {
-    return builder->Min(x, y);
+    return xla::Min(x, y);
   }
 };
 REGISTER_XLA_OP(Name("ResourceScatterMin"), ResourceScatterMinOp);
@@ -256,7 +256,7 @@ class ResourceScatterMaxOp : public ResourceScatterOp {
  private:
   static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
                             xla::XlaBuilder* builder) {
-    return builder->Max(x, y);
+    return xla::Max(x, y);
   }
 };
 REGISTER_XLA_OP(Name("ResourceScatterMax"), ResourceScatterMaxOp);
@@ -286,7 +286,7 @@ class ResourceScatterNdAddOp : public ResourceScatterOp {
  private:
   static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
                             xla::XlaBuilder* builder) {
-    return builder->Add(x, y);
+    return xla::Add(x, y);
   }
 };
 REGISTER_XLA_OP(Name("ResourceScatterNdAdd"), ResourceScatterNdAddOp);

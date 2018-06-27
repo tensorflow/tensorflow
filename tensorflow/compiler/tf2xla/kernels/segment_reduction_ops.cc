@@ -75,7 +75,7 @@ class UnsortedSegmentReduce : public XlaOpKernel {
     buffer_shape.RemoveDimRange(0, indices_shape.dims());
     buffer_shape.InsertDim(0, num_segments);
     auto buffer =
-        builder->Broadcast(InitialValue(builder), buffer_shape.dim_sizes());
+        xla::Broadcast(InitialValue(builder), buffer_shape.dim_sizes());
 
     auto combiner = [this](xla::XlaOp a, xla::XlaOp b,
                            xla::XlaBuilder* builder) {
@@ -102,7 +102,7 @@ class UnsortedSegmentSum : public UnsortedSegmentReduce {
   };
   xla::XlaOp Combine(xla::XlaOp a, xla::XlaOp b,
                      xla::XlaBuilder* builder) override {
-    return builder->Add(a, b);
+    return xla::Add(a, b);
   };
 };
 
@@ -120,7 +120,7 @@ class UnsortedSegmentProd : public UnsortedSegmentReduce {
   };
   xla::XlaOp Combine(xla::XlaOp a, xla::XlaOp b,
                      xla::XlaBuilder* builder) override {
-    return builder->Mul(a, b);
+    return xla::Mul(a, b);
   };
 };
 
@@ -138,7 +138,7 @@ class UnsortedSegmentMin : public UnsortedSegmentReduce {
   };
   xla::XlaOp Combine(xla::XlaOp a, xla::XlaOp b,
                      xla::XlaBuilder* builder) override {
-    return builder->Min(a, b);
+    return xla::Min(a, b);
   };
 };
 
@@ -156,7 +156,7 @@ class UnsortedSegmentMax : public UnsortedSegmentReduce {
   };
   xla::XlaOp Combine(xla::XlaOp a, xla::XlaOp b,
                      xla::XlaBuilder* builder) override {
-    return builder->Max(a, b);
+    return xla::Max(a, b);
   };
 };
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -100,7 +101,7 @@ class ScanOp : public XlaOpKernel {
       init = XlaHelpers::One(builder, dtype);
       reducer = ctx->GetOrCreateMul(dtype);
     }
-    auto output = builder->ReduceWindowWithGeneralPadding(
+    auto output = xla::ReduceWindowWithGeneralPadding(
         XlaHelpers::ConvertElementType(builder, ctx->Input(0), dtype), init,
         *reducer, window_dims, window_strides, padding);
     output =

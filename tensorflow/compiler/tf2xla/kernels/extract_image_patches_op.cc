@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -114,9 +115,9 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     TF_CHECK_OK(XlaHelpers::Iota(builder, DataType::DT_INT32,
                                  kernel_size * depth, &iota));
 
-    auto lhs = builder->Reshape(iota, lhs_shape);
-    auto filter = builder->ConvertElementType(
-        builder->Eq(lhs, iota, {num_spatial_dims + 1}), type);
+    auto lhs = xla::Reshape(iota, lhs_shape);
+    auto filter = xla::ConvertElementType(
+        xla::Eq(lhs, iota, {num_spatial_dims + 1}), type);
 
     xla::ConvolutionDimensionNumbers dims;
     std::vector<int64> window_strides(num_spatial_dims);
@@ -148,8 +149,8 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     }
 
     xla::XlaOp conv =
-        builder->ConvGeneralDilated(ctx->Input(0), filter, window_strides,
-                                    padding, lhs_dilation, rhs_dilation, dims);
+        xla::ConvGeneralDilated(ctx->Input(0), filter, window_strides, padding,
+                                lhs_dilation, rhs_dilation, dims);
     ctx->SetOutput(0, conv);
   }
 

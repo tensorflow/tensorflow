@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {
@@ -128,7 +129,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   xla::XlaOp handle = expression->handle();
   if (new_shape != tensor.shape()) {
     // Reshape the handle to the desired shape.
-    handle = builder()->Reshape(handle, new_shape.dim_sizes());
+    handle = xla::Reshape(handle, new_shape.dim_sizes());
   }
 
   // The XLA layout is specified minor to major, and TensorFlow's minor
@@ -342,8 +343,7 @@ Status XlaOpKernelContext::ReadVariableInput(int index, DataType type,
   if (representation_shape == variable->shape()) {
     *value = variable->value();
   } else {
-    *value =
-        builder()->Reshape(variable->value(), variable->shape().dim_sizes());
+    *value = xla::Reshape(variable->value(), variable->shape().dim_sizes());
   }
   return Status::OK();
 }
@@ -394,7 +394,7 @@ void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
   xla::BorrowingLiteral literal;
   OP_REQUIRES_OK(context_, HostTensorToBorrowingLiteral(constant, &literal));
 
-  xla::XlaOp handle = builder()->ConstantLiteral(literal);
+  xla::XlaOp handle = xla::ConstantLiteral(builder(), literal);
   CHECK(handle.valid());
 
   // Make the Tensor that will refer to the expression.
@@ -462,7 +462,7 @@ Status XlaOpKernelContext::AssignVariable(int input_index, DataType type,
   TensorShape representation_shape =
       xla_context.RepresentationShape(shape, type);
   if (shape != representation_shape) {
-    handle = builder()->Reshape(handle, representation_shape.dim_sizes());
+    handle = xla::Reshape(handle, representation_shape.dim_sizes());
   }
   return variable->SetValue(handle);
 }

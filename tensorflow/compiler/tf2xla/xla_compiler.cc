@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -416,7 +417,7 @@ Status BuildComputation(
       // create a tuple/get-tuple-element combination so that sharding
       // assignment will be placed on this value, which will cause the resource
       // update to be returned from the same device that provided the resource.
-      handle = builder->GetTupleElement(builder->Tuple({handle}), 0);
+      handle = xla::GetTupleElement(xla::Tuple(builder, {handle}), 0);
 
       elems.push_back(handle);
     }
@@ -426,7 +427,7 @@ Status BuildComputation(
 
   // Builds the XLA computation.
   if (always_return_tuple || elems.size() != 1) {
-    builder->Tuple(elems);
+    xla::Tuple(builder, elems);
   }
   builder->ClearOpMetadata();
 
@@ -554,16 +555,16 @@ Status XlaCompiler::BuildArguments(
       }
       xla::XlaScopedShardingAssignment assign_tuple_sharding(builder,
                                                              tuple_sharding);
-      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+      tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     } else {
-      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+      tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
       const int core = (*arg_cores)[input_mapping->at(i)];
       xla::XlaScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] = builder->GetTupleElement(tuple, i);
+      arg_handles[i] = xla::GetTupleElement(tuple, i);
     }
   } else {
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
@@ -571,8 +572,8 @@ Status XlaCompiler::BuildArguments(
       xla::XlaScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] =
-          builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
+      arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
+                                      strings::StrCat("arg", i));
     }
   }
 
@@ -603,7 +604,7 @@ Status XlaCompiler::BuildArguments(
         // return values of functions, and then reshape unconditionally.
         if (is_entry_computation) {
           arg_expression.set_handle(
-              builder->Reshape(arg_handles[i], arg.shape.dim_sizes()));
+              xla::Reshape(arg_handles[i], arg.shape.dim_sizes()));
         } else {
           arg_expression.set_handle(arg_handles[i]);
         }
