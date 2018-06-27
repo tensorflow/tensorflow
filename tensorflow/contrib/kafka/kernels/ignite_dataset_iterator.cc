@@ -55,11 +55,11 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
       // ---------- Scan Query ---------- //
       client_.WriteInt(25); // Message length
       client_.WriteShort(2000); // Operation code
-      client_.WriteLong(42); // Request id
+      client_.WriteLong(0); // Request id
       client_.WriteInt(JavaHashCode(cache_name_));
       client_.WriteByte(0); // Some flags...
       client_.WriteByte(101); // Filter object (NULL).
-      client_.WriteInt(1); // Cursor page size
+      client_.WriteInt(100); // Cursor page size
       client_.WriteInt(-1); // Partition to query
       client_.WriteByte(0); // Local flag
 
@@ -75,12 +75,15 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
       int row_cnt = client_.ReadInt();
       
       std::cout << "Row count: " << row_cnt << std::endl;
+      std::cout << "Length: " << res_len << std::endl;
 
       remainder = res_len - 25;
       data = (char*) malloc(remainder);
       client_.ReadData(data, remainder);
 
       last_page = client_.ReadByte() != 0;
+
+      std::cout << "Last page " << last_page << std::endl;
     }
 
     std::cout << "Remainder: " << remainder << std::endl;
@@ -97,12 +100,12 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
 
     remainder -= (data - initial_ptr);
 
-    std::cout << "Tensors size : " << tensors->size() << std::endl;
-
-    out_tensors->reserve(tensors->size());
+    out_tensors->resize(tensors->size());
 
     for (int i = 0; i < tensors->size(); i++) {
-        out_tensors[permutation_[i]] = tensors[i];
+	int idx = permutation_[i];
+	auto a = (*tensors)[i];
+	(*out_tensors)[idx] = a;
     }
 
     *end_of_sequence = false;

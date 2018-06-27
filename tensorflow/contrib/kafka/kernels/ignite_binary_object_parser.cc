@@ -62,7 +62,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
 
       int offset = ReadInt(ptr);
 
-      std::cout << "Byte array size " << byte_arr_size << ", offset " << offset << "\n";
+      std::cout << "Wrapped object " << byte_arr_size << ", offset " << offset << "\n";
 
       break;
     }
@@ -75,8 +75,13 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
   	  int length = ReadInt(ptr);
   	  int schema_id = ReadInt(ptr);
   	  int schema_offset = ReadInt(ptr);
+	  int field_cnt = (length - schema_offset) / 8;
+	  std::cout << "LENGTH : " << length << std::endl;
+          std::cout << "SCHMEA ID : " << schema_id << std::endl;
+	  std::cout << "SCHEMA OFFSET : " << schema_offset << std::endl;
+	  std::cout << "FIELD COUNT : " << field_cnt << std::endl;
 
-      char* end = ptr + length - 28;//26;
+      char* end = ptr + schema_offset - 24;//26;
       int i = 0;
       while (ptr < end) {
         std::cout << "Parse field " << i << ", ptr = " << (long) ptr << ", end = " << (long) end << std::endl;
@@ -84,13 +89,13 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
         ptr = Parse(ptr, out_tensors, types);
       }
 
-      ptr += 2; // TODO: WHY?
+      ptr += (length - schema_offset); // TODO: WHY?
 
   	  break;
   	}
   	default: {
       // TODO: Error
-      std::cout << "Unknown type " << object_type_id << "\n";
+      std::cout << "Unknown type " << (int)object_type_id << std::endl;
   	}
   }
 
