@@ -51,6 +51,8 @@ import re
 import sys
 import time
 
+import numpy as np
+
 from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_resolver
 from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.contrib.framework.python.framework import experimental
@@ -362,7 +364,9 @@ class TPUFunction(object):
 
     batch_size = inputs[0].shape[0]
     assert batch_size % self._strategy.num_towers == 0, (
-        'batch_size must be divisible by strategy.num_towers')
+        'batch_size must be divisible by strategy.num_towers (%s vs %s)' %
+        (batch_size, self._strategy.num_towers)
+    )
     shard_size = batch_size // self._strategy.num_towers
     input_list = []
     for index in range(self._strategy.num_towers):
@@ -429,7 +433,20 @@ class TPUFunction(object):
       ], infeed_dict)
 
     # TODO(xiejw): Decide how to reduce outputs, or just discard all but first.
-    return outfeed_outputs[:len(outfeed_outputs) // self._strategy.num_towers]
+    if self.execution_mode == model_fn_lib.ModeKeys.PREDICT:
+      outputs = [[]] * len(self._outfeed_spec)
+      outputs_per_replica = len(self._outfeed_spec)
+
+      for i in range(self._strategy.num_towers):
+        output_group = outfeed_outputs[
+            i * outputs_per_replica:(i+1) * outputs_per_replica
+        ]
+        for j in range(outputs_per_replica):
+          outputs[j].append(output_group[j])
+
+      return [np.concatenate(group) for group in outputs]
+    else:
+      return outfeed_outputs[:len(outfeed_outputs) // self._strategy.num_towers]
 
 
 class KerasTPUModel(models.Model):
