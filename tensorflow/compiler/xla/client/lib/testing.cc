@@ -48,15 +48,15 @@ int64 DataSizeOfShape(const Shape& shape) {
 // Creates a XlaOp for an op what generates fake data with the given shape.
 XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
   if (ShapeUtil::IsArray(shape)) {
-    return builder->Broadcast(
-        builder->ConstantLiteral(Literal::One(shape.element_type())),
+    return Broadcast(
+        ConstantLiteral(builder, Literal::One(shape.element_type())),
         AsInt64Slice(shape.dimensions()));
   }
   std::vector<XlaOp> parts;
   for (const Shape& s : shape.tuple_shapes()) {
     parts.push_back(BuildFakeDataOpOnDevice(s, builder));
   }
-  return builder->Tuple(parts);
+  return Tuple(builder, parts);
 }
 
 std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,

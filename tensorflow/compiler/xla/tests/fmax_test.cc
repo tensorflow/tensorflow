@@ -28,11 +28,11 @@ class FmaxSimpleTest : public ClientLibraryTestBase {};
 
 TEST_F(FmaxSimpleTest, FmaxTenValues) {
   XlaBuilder builder(TestName());
-  auto x = builder.ConstantR1<float>(
-      {-0.0, 1.0, 2.0, -3.0, -4.0, 5.0, 6.0, -7.0, -8.0, 9.0});
-  auto y = builder.ConstantR1<float>(
-      {-0.0, -1.0, -2.0, 3.0, 4.0, -5.0, -6.0, 7.0, 8.0, -9.0});
-  builder.Max(x, y);
+  auto x = ConstantR1<float>(
+      &builder, {-0.0, 1.0, 2.0, -3.0, -4.0, 5.0, 6.0, -7.0, -8.0, 9.0});
+  auto y = ConstantR1<float>(
+      &builder, {-0.0, -1.0, -2.0, 3.0, 4.0, -5.0, -6.0, 7.0, 8.0, -9.0});
+  Max(x, y);
 
   std::vector<float> expected = {-0.0, 1.0, 2.0, 3.0, 4.0,
                                  5.0,  6.0, 7.0, 8.0, 9.0};

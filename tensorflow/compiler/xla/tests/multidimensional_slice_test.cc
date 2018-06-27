@@ -33,9 +33,10 @@ class SliceTest : public ClientLibraryTestBase {};
 
 XLA_TEST_F(SliceTest, Slice2D) {
   XlaBuilder builder("slice_2d");
-  auto original = builder.ConstantR2<float>(
+  auto original = ConstantR2<float>(
+      &builder,
       {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}, {7.0, 8.0, 9.0}, {10.0, 11.0, 12.0}});
-  builder.Slice(original, {2, 1}, {4, 3}, {1, 1});
+  Slice(original, {2, 1}, {4, 3}, {1, 1});
 
   Array2D<float> expected({{8.0f, 9.0f}, {11.0f, 12.0f}});
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.000001));
@@ -46,7 +47,7 @@ XLA_TEST_F(SliceTest, Slice3D) {
   Array3D<float> array_3d(
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}});
   auto original = builder.ConstantR3FromArray3D<float>(array_3d);
-  builder.Slice(original, {0, 0, 1}, {2, 1, 2}, {1, 1, 1});
+  Slice(original, {0, 0, 1}, {2, 1, 2}, {1, 1, 1});
 
   Array3D<float> expected_3d({{{2.0f}}, {{6.0f}}});
   ComputeAndCompareR3<float>(&builder, expected_3d, {}, ErrorSpec(0.000001));
