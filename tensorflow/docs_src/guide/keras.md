@@ -35,7 +35,7 @@ from tensorflow import keras
 * The `tf.keras` version in the latest TensorFlow release might not be the same
   as the latest `keras` version from PyPI. Check `tf.keras.__version__`.
 * When [saving a model's weights](#weights_only), `tf.keras` defaults to the
-  [checkpoint format](../get_started/checkpoints.md). Pass `save_format='h5'` to
+  [checkpoint format](./checkpoints.md). Pass `save_format='h5'` to
   use HDF5.
 
 ## Build a simple model
@@ -442,7 +442,7 @@ model.load_weights('my_model')
 ```
 
 By default, this saves the model's weights in the
-[TensorFlow checkpoint](../get_started/checkpoints.md) file format. Weights can
+[TensorFlow checkpoint](./checkpoints.md) file format. Weights can
 also be saved to the Keras HDF5 format (the default for the multi-backend
 implementation of Keras):
 
