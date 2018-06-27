@@ -384,7 +384,7 @@ class TowerOptimizer(optimizer_lib.Optimizer):
   class _PerGraphState(object):
     """Gradient reduction related state of a Tensorflow graph."""
 
-    def __init__(self):
+    def __init__(self, name="graph_reduction"):
       self._collected_grads_and_vars = defaultdict(list)
       self._current_tower_index = 0
       self._number_of_towers = 1
@@ -394,6 +394,7 @@ class TowerOptimizer(optimizer_lib.Optimizer):
       self._name_scope = None
       # If needed, alert that TowerOptimizer needs to be used with model_fn.
       self._has_tower_optimizer_been_used = False
+      self.name = name
 
     def collect_gradients(self, grads_and_vars):
       self._collected_grads_and_vars[self._current_tower_index].append(
