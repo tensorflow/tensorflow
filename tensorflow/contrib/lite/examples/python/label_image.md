@@ -1,8 +1,22 @@
-With model (mobilenet_v1_1.0_224_quant.tflite), input image
-(grace_hooper.bmp), and labels file (labels.txt) in /tmp.
+
+With model, input image (grace_hopper.bmp), and labels file (labels.txt)
+in /tmp.
+
+The example input image and labels file are from TensorFlow repo and
+MobileNet V1 model files.
+
+```
+curl https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/contrib/lite/examples/label_image/testdata/grace_hopper.bmp > /tmp/grace_hopper.bmp
+
+curl  https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_1.0_224_frozen.tgz  | tar xzv -C /tmp  mobilenet_v1_1.0_224/labels.txt
+mv /tmp/mobilenet_v1_1.0_224/labels.txt /tmp/
+
+```
+
 Run
 
 ```
+curl http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224_quant.tgz | tar xzv -C /tmp
 bazel run --config opt //tensorflow/contrib/lite/examples/python:label_image
 ```
 
@@ -19,8 +33,9 @@ We can get results like
 Run
 
 ```
+curl http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224.tgz | tar xzv -C /tmp
 bazel run --config opt //tensorflow/contrib/lite/examples/python:label_image \
--- --graph /tmp/mobilenet_v1_1.0_224.tflite
+-- --model_file /tmp/mobilenet_v1_1.0_224.tflite
 ```
 
 We can get results like
@@ -32,4 +47,4 @@ We can get results like
 0.011758: bolo tie
 ```
 
-Check [models](../../g3doc/models.md) hosted by Google.
+Check [models](../../g3doc/models.md) for models hosted by Google.
