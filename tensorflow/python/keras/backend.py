@@ -3161,10 +3161,16 @@ def rnn(step_function,
                                       array_ops.stack(
                                           [1, array_ops.shape(output)[1]]))
         output = array_ops.where(tiled_mask_t, output, states[0])
-        new_states = [
-            array_ops.where(tiled_mask_t, new_states[i], states[i])
-            for i in range(len(states))
-        ]
+
+        masked_states = []
+        for i in range(len(states)):
+          states_dim = array_ops.shape(new_states[i])[1]
+          stacked_states_dim = array_ops.stack([1, states_dim])
+          tiled_mask = array_ops.tile(mask_t, stacked_states_dim)
+          masked_state = array_ops.where(tiled_mask, new_states[i], states[i])
+          masked_states.append(masked_state)
+        new_states = masked_states
+
         output_ta_t = output_ta_t.write(time, output)
         return (time + 1, output_ta_t) + tuple(new_states)
     else:
