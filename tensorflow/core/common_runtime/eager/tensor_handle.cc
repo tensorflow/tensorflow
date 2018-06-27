@@ -222,6 +222,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   tensorflow::CopyTensor::ViaDMA("copy", src_device_context, dst_device_context,
                                  srcd, dstd, tensorflow::AllocatorAttributes(),
                                  tensorflow::AllocatorAttributes(), src, &dst,
+                                 0 /*dev_to_dev_stream_index*/,
                                  [&status, &n](const tensorflow::Status& s) {
                                    status = s;
                                    n.Notify();
