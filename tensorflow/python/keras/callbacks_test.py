@@ -273,14 +273,41 @@ class KerasCallbacksTest(test.TestCase):
               1, activation='sigmoid'),))
       model.compile(
           optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
-      stopper = keras.callbacks.EarlyStopping(monitor='acc', patience=patience)
       weights = model.get_weights()
 
+      stopper = keras.callbacks.EarlyStopping(monitor='acc', patience=patience)
       hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
       assert len(hist.epoch) >= patience
 
       # This should allow training to go for at least `patience` epochs
       model.set_weights(weights)
+      hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
+      assert len(hist.epoch) >= patience
+
+  def test_EarlyStopping_with_baseline(self):
+    with self.test_session():
+      np.random.seed(1337)
+      baseline = 0.5
+      (data, labels), _ = testing_utils.get_test_data(
+          train_samples=100,
+          test_samples=50,
+          input_shape=(1,),
+          num_classes=NUM_CLASSES)
+      model = keras.models.Sequential((keras.layers.Dense(
+          1, input_dim=1, activation='relu'), keras.layers.Dense(
+              1, activation='sigmoid'),))
+      model.compile(
+          optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
+
+      stopper = keras.callbacks.EarlyStopping(monitor='acc',
+                                              baseline=baseline)
+      hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
+      assert len(hist.epoch) == 1
+
+      patience = 3
+      stopper = keras.callbacks.EarlyStopping(monitor='acc',
+                                              patience=patience,
+                                              baseline=baseline)
       hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
       assert len(hist.epoch) >= patience
 
