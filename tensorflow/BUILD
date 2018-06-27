@@ -252,6 +252,13 @@ config_setting(
 )
 
 config_setting(
+    name = "with_cuda_support_windows_override",
+    define_values = {"using_cuda_nvcc": "true"},
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_gcp_support_android_override",
     define_values = {"with_gcp_support": "true"},
     values = {"crosstool_top": "//external:android/crosstool"},
