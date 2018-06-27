@@ -1773,6 +1773,20 @@ void ConvertSparseToDenseOperator(const Model& model,
       src_op.validate_indices);
 }
 
+void ConvertPowOperator(const Model& model, const PowOperator& src_op,
+                        const char* op_name, GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* pow_op = tensorflow_graph->add_node();
+  pow_op->set_op(op_name);
+  pow_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  for (int i = 0; i < 2; ++i) {
+    *pow_op->add_input() = src_op.inputs[i];
+  }
+  const tensorflow::DataType data_type =
+      GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*pow_op->mutable_attr())["T"].set_type(data_type);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -1987,6 +2001,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertTileOperator(model,
                         static_cast<const TensorFlowTileOperator&>(src_op),
                         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kPow) {
+    ConvertPowOperator(model, static_cast<const PowOperator&>(src_op), "Pow",
+                       tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

@@ -990,6 +990,10 @@ def make_mul_tests(zip_path):
   make_binary_op_tests(zip_path, tf.multiply)
 
 
+def make_pow_tests(zip_path):
+  make_binary_op_tests(zip_path, tf.pow)
+
+
 def make_gather_tests(zip_path):
   """Make a set of tests to do gather."""
 

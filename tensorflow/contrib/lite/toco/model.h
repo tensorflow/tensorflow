@@ -138,6 +138,7 @@ enum class OperatorType : uint8 {
   kSparseToDense,
   kEqual,
   kNotEqual,
+  kPow,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -1635,6 +1636,17 @@ struct DynamicStitchOperator : Operator {
 struct SparseToDenseOperator : Operator {
   SparseToDenseOperator() : Operator(OperatorType::kSparseToDense) {}
   bool validate_indices;
+};
+
+// Pow operator:
+//
+// Inputs:
+// Inputs[0]: required: A tensor.
+// Inputs[1]: required: A tensor.
+//
+// TensorFlow equivalent: Pow.
+struct PowOperator : Operator {
+  PowOperator() : Operator(OperatorType::kPow) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

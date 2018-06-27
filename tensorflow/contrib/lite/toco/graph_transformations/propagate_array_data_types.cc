@@ -175,6 +175,14 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       SetDataTypeForAllOutputs(model, op, data_type);
       break;
     }
+    case OperatorType::kPow: {
+      CHECK_EQ(op->inputs.size(), 2);
+      CHECK(model->GetArray(op->inputs[0]).data_type ==
+            model->GetArray(op->inputs[1]).data_type);
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
     default: {
       // These operators produce outputs with the same type as their 1st input
       CHECK_GT(op->inputs.size(), 0);
