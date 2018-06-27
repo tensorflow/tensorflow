@@ -757,7 +757,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
     }
 
     const TfLiteRegistration* registration =
-        flatbuffer_op_index_to_registration_[op->opcode_index()];
+        flatbuffer_op_index_to_registration_[index];
     if (registration == nullptr) {
       error_reporter_->Report("Skipping op for opcode_index %d\n", index);
       status = kTfLiteError;
