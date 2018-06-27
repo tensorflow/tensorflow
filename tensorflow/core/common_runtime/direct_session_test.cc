@@ -40,12 +40,18 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+
+#ifdef GOOGLE_CUDA
+#include "cuda/include/cuda.h"
+#include "cuda/include/cuda_runtime_api.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 namespace {
@@ -1233,36 +1239,23 @@ TEST(DirectSessionTest, TimeoutSession) {
       device: '/device:CPU:0'
       attr {
         key: 'capacity'
-        value {
-          i: 10
-        }
+        value { i: 10 }
       }
       attr {
         key: 'component_types'
-        value {
-          list {
-            type: DT_FLOAT
-          }
-        }
+        value { list { type: DT_FLOAT } }
       }
       attr {
         key: 'container'
-        value {
-          s: ''
-        }
+        value { s: '' }
       }
       attr {
         key: 'shapes'
-        value {
-          list {
-          }
-        }
+        value { list {} }
       }
       attr {
         key: 'shared_name'
-        value {
-          s: ''
-        }
+        value { s: '' }
       }
     }
     node {
@@ -1272,24 +1265,15 @@ TEST(DirectSessionTest, TimeoutSession) {
       device: '/device:CPU:0'
       attr {
         key: 'component_types'
-        value {
-          list {
-            type: DT_FLOAT
-          }
-        }
+        value { list { type: DT_FLOAT } }
       }
       attr {
         key: 'timeout_ms'
-        value {
-          i: -1
-        }
+        value { i: -1 }
       }
     }
-    versions {
-      producer: 9
-    }
-  )proto",
-                                        &graph);
+    versions { producer: 9 }
+  )proto", &graph);
 
   {
     // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
@@ -1352,11 +1336,8 @@ TEST(DirectSessionTest, TestTimeoutCleanShutdown) {
       op: 'CancellationMgrPollingOp'
       device: '/device:CPU:0'
     }
-    versions {
-      producer: 9
-    }
-  )proto",
-                                        &graph);
+    versions { producer: 9 }
+  )proto", &graph);
 
   // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
   SessionOptions options;
@@ -1728,6 +1709,292 @@ TEST(DirectSessionTest, LocalDeviceManager) {
   TF_ASSERT_OK(session->LocalDeviceManager(&mgr));
   ASSERT_TRUE(mgr != nullptr);
   EXPECT_GT(mgr->ListDevices().size(), 0);
+}
+
+// y = tf.square(x)
+GraphDef CreateGraphForYEqualsXSquared() {
+  GraphDef graph_def;
+  QCHECK(protobuf::TextFormat::ParseFromString(
+      R"EOF(
+node {
+  name: "x"
+  op: "Placeholder"
+  attr { key: "dtype" value { type: DT_FLOAT } }
+  attr { key: "shape" value { shape { unknown_rank: true } } }
+}
+node {
+  name: "y"
+  op: "Square"
+  input: "x"
+  attr { key: "T" value { type: DT_FLOAT } }
+}
+versions {
+  producer: 26
+}
+  )EOF",
+      &graph_def));
+  return graph_def;
+}
+
+// A graph that consumes and produces string tensors
+// (which are not GPU-compatible, i.e., there are no
+// GPU kernels for these operations).
+bool IsCUDATensor(const Tensor& t) {
+#ifdef GOOGLE_CUDA
+  cudaPointerAttributes attributes;
+  cudaError_t err =
+      cudaPointerGetAttributes(&attributes, t.tensor_data().data());
+  if (err == cudaErrorInvalidValue) return false;
+  CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
+  return (attributes.memoryType == cudaMemoryTypeDevice);
+#else
+  return false;
+#endif
+}
+
+string GPUDeviceName(Session* session) {
+  std::vector<DeviceAttributes> devices;
+  TF_CHECK_OK(session->ListDevices(&devices));
+  for (const DeviceAttributes& d : devices) {
+    if (d.device_type() == "GPU" || d.device_type() == "gpu") {
+      return d.name();
+    }
+  }
+  return "";
+}
+
+TEST(DirectSessionTest, FeedAndFetchTensorsInDeviceMemory) {
+  std::unique_ptr<Session> session(NewSession(SessionOptions()));
+  const string gpu_device_name = GPUDeviceName(session.get());
+  if (gpu_device_name.empty()) {
+    LOG(INFO) << "Skipping test since no GPU is available";
+    return;
+  }
+
+  TF_ASSERT_OK(session->Create(CreateGraphForYEqualsXSquared()));
+
+  CallableOptions opts;
+  opts.add_feed("x:0");
+  opts.add_fetch("y:0");
+
+  Tensor gpu_tensor;
+
+  {
+    Session::CallableHandle feed_cpu_fetch_gpu;
+    opts.mutable_fetch_devices()->insert({"y:0", gpu_device_name});
+    opts.set_fetch_skip_sync(true);
+    TF_ASSERT_OK(session->MakeCallable(opts, &feed_cpu_fetch_gpu));
+    Tensor input(DT_FLOAT, {});
+    input.scalar<float>()() = 2.0f;
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(
+        session->RunCallable(feed_cpu_fetch_gpu, {input}, &outputs, nullptr));
+    TF_ASSERT_OK(session->ReleaseCallable(feed_cpu_fetch_gpu));
+    ASSERT_EQ(1, outputs.size());
+    gpu_tensor = outputs[0];
+    ASSERT_TRUE(IsCUDATensor(gpu_tensor));
+  }
+
+  {
+    Session::CallableHandle feed_gpu_fetch_cpu;
+    opts.clear_fetch_devices();
+    opts.mutable_feed_devices()->insert({"x:0", gpu_device_name});
+    TF_ASSERT_OK(session->MakeCallable(opts, &feed_gpu_fetch_cpu));
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(feed_gpu_fetch_cpu, {gpu_tensor},
+                                      &outputs, nullptr));
+    TF_ASSERT_OK(session->ReleaseCallable(feed_gpu_fetch_cpu));
+    ASSERT_EQ(1, outputs.size());
+    // The output is in CPU/host memory, so it can be dereferenced.
+    ASSERT_EQ(16.0, outputs[0].scalar<float>()());
+  }
+}
+
+GraphDef CreateIdentityGraphDef(DataType dtype) {
+  GraphDef def;
+
+  AttrValue dtype_attr;
+  dtype_attr.set_type(dtype);
+
+  AttrValue shape_attr;
+  shape_attr.mutable_shape()->set_unknown_rank(true);
+
+  auto* placeholder = def.add_node();
+  placeholder->set_name("x");
+  placeholder->set_op("Placeholder");
+  placeholder->mutable_attr()->insert({"dtype", dtype_attr});
+  placeholder->mutable_attr()->insert({"shape", shape_attr});
+
+  auto* identity = def.add_node();
+  identity->set_name("y");
+  identity->set_op("Identity");
+  identity->add_input("x");
+  identity->mutable_attr()->insert({"T", dtype_attr});
+
+  return def;
+}
+
+void TestFeedAndFetchTensorsInDeviceMemory(
+    const SessionOptions& session_options, DataType dtype) {
+  std::unique_ptr<Session> session(NewSession(session_options));
+  const string gpu_device_name = GPUDeviceName(session.get());
+  if (gpu_device_name.empty()) {
+    LOG(INFO) << "Skipping test since no GPU is available";
+    return;
+  }
+
+  TF_ASSERT_OK(session->Create(CreateIdentityGraphDef(dtype)))
+      << DataType_Name(dtype);
+
+  CallableOptions opts;
+  opts.add_feed("x:0");
+  opts.add_fetch("y:0");
+
+  Tensor gpu_tensor;
+  Tensor host_tensor(dtype, {3});
+  {
+    // Ask for the fetched tensor to be backed by device memory.
+    // Even though the kernel that created the tensor produced it in host
+    // memory.
+    opts.mutable_fetch_devices()->insert({"y:0", gpu_device_name});
+    opts.set_fetch_skip_sync(true);
+    Session::CallableHandle handle;
+    TF_ASSERT_OK(session->MakeCallable(opts, &handle)) << DataType_Name(dtype);
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {host_tensor}, &outputs, nullptr))
+        << DataType_Name(dtype);
+    TF_ASSERT_OK(session->ReleaseCallable(handle)) << DataType_Name(dtype);
+    ASSERT_EQ(1, outputs.size()) << DataType_Name(dtype);
+    gpu_tensor = outputs[0];
+    ASSERT_TRUE(IsCUDATensor(gpu_tensor)) << DataType_Name(dtype);
+  }
+
+  {
+    // Feed a tensor backed by device memory, even though the operations in the
+    // graph expect it in host memory.
+    opts.clear_fetch_devices();
+    opts.mutable_feed_devices()->insert({"x:0", gpu_device_name});
+    Session::CallableHandle handle;
+    TF_ASSERT_OK(session->MakeCallable(opts, &handle)) << DataType_Name(dtype);
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {gpu_tensor}, &outputs, nullptr))
+        << DataType_Name(dtype);
+    TF_ASSERT_OK(session->ReleaseCallable(handle)) << DataType_Name(dtype);
+    ASSERT_EQ(1, outputs.size());
+    const StringPiece actual_data = outputs[0].tensor_data();
+    const StringPiece expected_data = host_tensor.tensor_data();
+    EXPECT_EQ(expected_data.size(), actual_data.size()) << DataType_Name(dtype);
+    EXPECT_EQ(0, memcmp(expected_data.data(), actual_data.data(),
+                        std::min(expected_data.size(), actual_data.size())))
+        << DataType_Name(dtype);
+  }
+}
+
+void TestFeedAndFetchTensorsInDeviceMemoryFailsToMakeCallable(
+    const SessionOptions& session_options, DataType dtype) {
+  std::unique_ptr<Session> session(NewSession(session_options));
+  const string gpu_device_name = GPUDeviceName(session.get());
+  if (gpu_device_name.empty()) {
+    LOG(INFO) << "Skipping test since no GPU is available";
+    return;
+  }
+
+  TF_ASSERT_OK(session->Create(CreateIdentityGraphDef(dtype)))
+      << DataType_Name(dtype);
+
+  CallableOptions opts;
+  opts.add_feed("x:0");
+  opts.add_fetch("y:0");
+
+  // Fail when asking to fetch into GPU memory.
+  {
+    opts.mutable_fetch_devices()->insert({"y:0", gpu_device_name});
+    opts.set_fetch_skip_sync(true);
+    Session::CallableHandle handle;
+    Status status = session->MakeCallable(opts, &handle);
+    EXPECT_FALSE(status.ok()) << DataType_Name(dtype);
+    EXPECT_TRUE(str_util::StrContains(
+        status.error_message(),
+        strings::StrCat(
+            "Cannot feed or fetch tensor 'y:0' from device ", gpu_device_name,
+            " as feeding/fetching from GPU devices is not yet supported for ",
+            DataTypeString(dtype), " tensors")))
+        << DataType_Name(dtype) << ", Status: " << status;
+  }
+
+  // Fail when feeding from GPU memory.
+  {
+    opts.clear_feed_devices();
+    opts.mutable_feed_devices()->insert({"x:0", gpu_device_name});
+    Session::CallableHandle handle;
+    Status status = session->MakeCallable(opts, &handle);
+    EXPECT_FALSE(status.ok());
+    EXPECT_TRUE(str_util::StrContains(
+        status.error_message(),
+        strings::StrCat(
+            "Cannot feed or fetch tensor 'x:0' from device ", gpu_device_name,
+            " as feeding/fetching from GPU devices is not yet supported for ",
+            DataTypeString(dtype), " tensors")))
+        << DataType_Name(dtype) << ", Status: " << status;
+  }
+}
+
+void TestFeedAndFetchTensorsInDeviceMemoryForAllDataTypes(
+    const SessionOptions& opts) {
+  // Feeding/fetching on device does not work for all DataTypes as it
+  // relies on the implementation of the _Arg and _Retval kernels which
+  // are not registered for some types or consume/produce inputs/outputs
+  // in host memory for some types.
+  //
+  // Run through all datatypes to validate that either:
+  // (a) MakeCallable fails (because the given type cannot be fed/fetched
+  //     in device memory),
+  //     OR
+  // (b) Succeeds: RunCallable should gladly accept inputs in device memory
+  //     and produce output tensors in device memory.
+  for (int i = DataType_MIN; i <= DataType_MAX; ++i) {
+    if (!DataType_IsValid(i)) continue;
+    const DataType dtype = static_cast<DataType>(i);
+    switch (dtype) {
+      case DT_INVALID:
+        break;
+      case DT_BFLOAT16:
+      case DT_BOOL:
+      case DT_COMPLEX128:
+      case DT_COMPLEX64:
+      case DT_DOUBLE:
+      case DT_FLOAT:
+      case DT_HALF:
+      case DT_INT16:
+      case DT_INT64:
+      case DT_INT8:
+      case DT_UINT16:
+      case DT_UINT8:
+        TestFeedAndFetchTensorsInDeviceMemory(opts, dtype);
+        break;
+      default:
+        // Ignore all REF types since Tensors of this type aren't intended to
+        // be fed (and attempting to create one via the Tensor constructor
+        // will result in a LOG(FATAL)).
+        if (!IsRefType(dtype)) {
+          TestFeedAndFetchTensorsInDeviceMemoryFailsToMakeCallable(opts, dtype);
+        }
+        break;
+    }
+  }
+}
+
+TEST(DirectSessionTest, FeedAndFetchTensorsInDeviceMemory_AllDataTypes) {
+  SessionOptions opts;
+  opts.config.set_allow_soft_placement(false);
+  TestFeedAndFetchTensorsInDeviceMemoryForAllDataTypes(opts);
+}
+
+TEST(DirectSessionTest,
+     FeedAndFetchTensorsInDeviceMemory_AllDataTypes_SoftPlacement) {
+  SessionOptions opts;
+  opts.config.set_allow_soft_placement(true);
+  TestFeedAndFetchTensorsInDeviceMemoryForAllDataTypes(opts);
 }
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
