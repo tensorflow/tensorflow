@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-package org.tensorflow.op.training;
+package org.tensorflow.op.core;
 
 import java.util.Arrays;
 import java.util.Iterator;

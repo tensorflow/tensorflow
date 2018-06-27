@@ -16,9 +16,34 @@ limitations under the License.
 package org.tensorflow;
 
 import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Collection;
 
 /** Static utility functions. */
 public class TestUtil {
+
+  public static final class AutoCloseableList<E extends AutoCloseable> extends ArrayList<E>
+      implements AutoCloseable {
+    AutoCloseableList(Collection<? extends E> c) {
+      super(c);
+    }
+
+    @Override
+    public void close() {
+      Exception toThrow = null;
+      for (AutoCloseable c : this) {
+        try {
+          c.close();
+        } catch (Exception e) {
+          toThrow = e;
+        }
+      }
+      if (toThrow != null) {
+        throw new RuntimeException(toThrow);
+      }
+    }
+  }
+
   public static <T> Output<T> constant(Graph g, String name, Object value) {
     try (Tensor<?> t = Tensor.create(value)) {
       return g.opBuilder("Const", name)
