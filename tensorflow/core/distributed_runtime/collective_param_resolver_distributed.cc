@@ -176,6 +176,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
                           const Status& fi_status, InstanceRec* ir) {
                         if (fi_status.ok()) {
                           mutex_lock l(ir->out_mu);
+                          ir->WaitForOutMu(l);
                           response->set_instance_key(cp->instance.instance_key);
                           response->set_source_rank(ir->source_rank);
                           done_and_cleanup(fi_status);
@@ -289,6 +290,7 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
     Status status;
     do {
       mutex_lock l(ir->out_mu);
+      ir->WaitForOutMu(l);
       if (ir->source_rank != source_rank) {
         if (ir->source_rank >= 0) {
           ir->status = errors::Internal(
