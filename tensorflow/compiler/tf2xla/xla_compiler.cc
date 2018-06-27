@@ -338,9 +338,9 @@ Status BuildComputation(
     const std::vector<int>& arg_cores,
     const std::vector<XlaContext::Retval>& retvals,
     const std::vector<std::unique_ptr<XlaResource>>& resources,
-    bool return_updated_values_for_all_resources, xla::XlaBuilder* builder,
-    xla::XlaComputation* computation, int* num_computation_outputs,
-    int* num_nonconst_outputs,
+    bool return_updated_values_for_all_resources, bool always_return_tuple,
+    xla::XlaBuilder* builder, xla::XlaComputation* computation,
+    int* num_computation_outputs, int* num_nonconst_outputs,
     std::vector<XlaCompiler::OutputDescription>* outputs,
     std::vector<XlaCompiler::ResourceUpdate>* resource_updates) {
   std::vector<xla::XlaOp> elems;
@@ -425,7 +425,9 @@ Status BuildComputation(
   *num_computation_outputs = elems.size();
 
   // Builds the XLA computation.
-  builder->Tuple(elems);
+  if (always_return_tuple || elems.size() != 1) {
+    builder->Tuple(elems);
+  }
   builder->ClearOpMetadata();
 
   xla::StatusOr<xla::XlaComputation> computation_status = builder->Build();
@@ -768,9 +770,10 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->outputs.resize(context->retvals().size());
   TF_RETURN_IF_ERROR(BuildComputation(
       args, arg_cores, context->retvals(), context->resources(),
-      options.return_updated_values_for_all_resources, &builder,
-      result->computation.get(), &num_computation_outputs,
-      &num_nonconst_outputs, &result->outputs, &result->resource_updates));
+      options.return_updated_values_for_all_resources,
+      options.always_return_tuple, &builder, result->computation.get(),
+      &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
+      &result->resource_updates));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
