@@ -2321,7 +2321,7 @@ XlaOp HostCompute(XlaBuilder* builder,
 
 XlaOp Complex(const XlaOp& real, const XlaOp& imag,
               tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return real.builder()->Add(real, imag, broadcast_dimensions);
+  return real.builder()->Complex(real, imag, broadcast_dimensions);
 }
 
 XlaOp Conj(const XlaOp& operand) { return operand.builder()->Conj(operand); }
