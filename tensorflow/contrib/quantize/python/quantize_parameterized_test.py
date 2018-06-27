@@ -276,6 +276,52 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         graph, scope, 'DepthwiseConv2dNative', activation_op_name, with_bypass,
         delay, use_resource)
 
+  def testQuantize_AtrousConvWithoutBatchNorm(self):
+    self._RunWithoutBatchNormTestOverParameters(
+        self._TestQuantize_AtrousConvWithoutBatchNorm)
+
+  def _TestQuantize_AtrousConvWithoutBatchNorm(
+      self, activation, activation_op_name, with_bypass, delay, use_resource):
+    """Tests quantization: inputs -> atrous conv no batch norm -> Activation.
+
+    Args:
+      activation: Callable that returns an Operation, a factory method for the
+        Activation.
+      activation_op_name: String, name of the Activation operation.
+      with_bypass: Bool, when true there is an extra connection added from
+        inputs to just before Activation.
+      delay: Int (optional), delay in number of steps until quantization starts.
+      use_resource: Bool, when true uses resource variables.
+    """
+    graph = ops.Graph()
+    with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
+      batch_size, height, width, depth = 5, 128, 128, 3
+      inputs = array_ops.zeros((batch_size, height, width, depth))
+      dilation_rate = 2
+      activation_fn = None if with_bypass else activation
+      scope = 'test/test2' if with_bypass else 'test'
+      node = separable_conv2d(
+          inputs,
+          None, [3, 3],
+          rate=dilation_rate,
+          depth_multiplier=1.0,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=activation_fn,
+          scope=scope)
+      if with_bypass:
+        node = math_ops.add(inputs, node, name='test/Add')
+        node = activation(node, name='test/' + activation_op_name)
+      update_barrier = control_flow_ops.no_op(name='update_barrier')
+      with ops.control_dependencies([update_barrier]):
+        array_ops.identity(node, name='control_dependency')
+      quantize.Quantize(graph, True, quant_delay=delay)
+
+    self._AssertCorrectQuantizedGraphWithoutBatchNorm(
+        graph, scope, 'DepthwiseConv2dNative', activation_op_name, with_bypass,
+        delay, use_resource)
+
   def _RunBatchNormTestOverParameters(self, test_fn):
     # TODO(suharshs): Use parameterized test once OSS TF supports it.
     parameters_list = [
@@ -518,6 +564,61 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           inputs,
           None, [5, 5],
           stride=stride,
+          depth_multiplier=1.0,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=None,
+          normalizer_fn=batch_norm,
+          normalizer_params=self._BatchNormParams(fused_batch_norm),
+          scope=scope)
+
+      # Manually add a bypass (optional) and an activation.
+      if with_bypass:
+        node = math_ops.add(inputs, node, name='test/Add')
+
+      node = activation(node, name='test/' + activation_op_name)
+
+      update_barrier = control_flow_ops.no_op(name='update_barrier')
+      with ops.control_dependencies([update_barrier]):
+        array_ops.identity(node, name='control_dependency')
+
+      fold_batch_norms.FoldBatchNorms(graph, is_training=True)
+      quantize.Quantize(graph, True, quant_delay=delay)
+
+      self._AssertCorrectQuantizedGraphWithBatchNorm(
+          graph, scope, 'DepthwiseConv2dNative', activation_op_name,
+          with_bypass, delay, use_resource)
+
+  def testQuantize_AtrousConvWithBatchNorm(self):
+    self._RunBatchNormTestOverParameters(
+        self._TestQuantize_AtrousConvWithBatchNorm)
+
+  def _TestQuantize_AtrousConvWithBatchNorm(
+      self, activation, activation_op_name, with_bypass, delay,
+      fused_batch_norm, use_resource):
+    """Tests quantization: inputs -> atrous conv with batch norm -> Activation.
+
+    Args:
+      activation: Callable that returns an Operation, a factory method for the
+        Activation.
+      activation_op_name: String, name of the Activation operation.
+      with_bypass: Bool, when true there is an extra connection added from
+        inputs to just before Activation.
+      delay: Int (optional), delay in number of steps until quantization starts.
+      fused_batch_norm: Bool, when true use FusedBatchNorm.
+      use_resource: Bool, when true uses resource variables.
+    """
+    graph = ops.Graph()
+    with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
+      batch_size, height, width, depth = 5, 128, 128, 3
+      inputs = array_ops.zeros((batch_size, height, width, depth))
+      dilation_rate = 2
+      scope = 'test/test2' if with_bypass else 'test'
+      node = separable_conv2d(
+          inputs,
+          None, [3, 3],
+          rate=dilation_rate,
           depth_multiplier=1.0,
           padding='SAME',
           weights_initializer=self._WeightInit(0.09),
