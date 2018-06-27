@@ -496,6 +496,9 @@ class EarlyStopping(Callback):
           monitored has stopped increasing; in `auto`
           mode, the direction is automatically inferred
           from the name of the monitored quantity.
+      baseline: baseline value for the monitored quantity.
+          Training will stop if the model doesn't show improvement over the
+          baseline.
   """
 
   def __init__(self,
@@ -503,13 +506,15 @@ class EarlyStopping(Callback):
                min_delta=0,
                patience=0,
                verbose=0,
-               mode='auto'):
+               mode='auto',
+               baseline=None):
     super(EarlyStopping, self).__init__()
 
     self.monitor = monitor
     self.patience = patience
     self.verbose = verbose
-    self.min_delta = min_delta
+    self.baseline = baseline
+    self.min_delta = abs(min_delta)
     self.wait = 0
     self.stopped_epoch = 0
 
@@ -537,7 +542,10 @@ class EarlyStopping(Callback):
     # Allow instances to be re-used
     self.wait = 0
     self.stopped_epoch = 0
-    self.best = np.Inf if self.monitor_op == np.less else -np.Inf
+    if self.baseline is not None:
+      self.best = self.baseline
+    else:
+      self.best = np.Inf if self.monitor_op == np.less else -np.Inf
 
   def on_epoch_end(self, epoch, logs=None):
     current = logs.get(self.monitor)
