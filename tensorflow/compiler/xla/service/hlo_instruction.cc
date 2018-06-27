@@ -1603,6 +1603,10 @@ Status HloInstruction::ReplaceOperandWith(int64 operand_num,
   TF_RET_CHECK(operand_num >= 0);
   TF_RET_CHECK(operand_num < operand_count());
   HloInstruction* old_operand = mutable_operand(operand_num);
+  if (old_operand == new_operand) {
+    return Status::OK();
+  }
+
   TF_RET_CHECK(ShapeUtil::CompatibleIgnoringFpPrecision(old_operand->shape(),
                                                         new_operand->shape()))
       << old_operand->shape().ShortDebugString() << " is not compatible with "
