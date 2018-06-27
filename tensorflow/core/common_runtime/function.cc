@@ -728,6 +728,24 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
     return;
   }
 
+  std::vector<AllocatorAttributes> args_alloc_attrs, rets_alloc_attrs;
+  args_alloc_attrs.reserve(fbody->arg_types.size());
+  rets_alloc_attrs.reserve(fbody->ret_types.size());
+  for (const auto& arg_type : fbody->arg_types) {
+    AllocatorAttributes arg_alloc_attrs;
+    if (DataTypeAlwaysOnHost(arg_type)) {
+      arg_alloc_attrs.set_on_host(true);
+    }
+    args_alloc_attrs.push_back(arg_alloc_attrs);
+  }
+  for (const auto& ret_type : fbody->ret_types) {
+    AllocatorAttributes ret_alloc_attrs;
+    if (DataTypeAlwaysOnHost(ret_type)) {
+      ret_alloc_attrs.set_on_host(true);
+    }
+    rets_alloc_attrs.push_back(ret_alloc_attrs);
+  }
+
   // The ProcFLR sends the arguments to the function from the source_device to
   // the target_device. So here we receive those arguments. Similarly, when the
   // computation is done and stored in *rets, we send the return values back
@@ -735,10 +753,10 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   std::vector<Tensor>* remote_args = new std::vector<Tensor>;
   ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
       source_device, target_device, "arg_", src_incarnation, args.size(),
-      device_context, {}, rendezvous, remote_args,
+      device_context, args_alloc_attrs, rendezvous, remote_args,
       [frame, remote_args, item, source_device, target_device,
-       target_incarnation, rendezvous, device_context, rets, done,
-       exec_args](const Status& status) {
+       target_incarnation, rendezvous, device_context, rets, done, exec_args,
+       rets_alloc_attrs](const Status& status) {
         Status s = status;
         if (s.ok()) {
           s = frame->SetArgs(*remote_args);
@@ -751,9 +769,10 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
           return;
         }
         item->exec->RunAsync(
-            *exec_args, [frame, rets, done, source_device, target_device,
-                         target_incarnation, rendezvous, device_context,
-                         remote_args, exec_args](const Status& status) {
+            *exec_args,
+            [frame, rets, done, source_device, target_device,
+             target_incarnation, rendezvous, device_context, remote_args,
+             exec_args, rets_alloc_attrs](const Status& status) {
               Status s = status;
               if (s.ok()) {
                 s = frame->ConsumeRetvals(rets);
@@ -767,7 +786,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
               }
               s = ProcessFunctionLibraryRuntime::SendTensors(
                   target_device, source_device, "ret_", target_incarnation,
-                  *rets, device_context, {}, rendezvous);
+                  *rets, device_context, rets_alloc_attrs, rendezvous);
               delete remote_args;
               delete exec_args;
               done(s);

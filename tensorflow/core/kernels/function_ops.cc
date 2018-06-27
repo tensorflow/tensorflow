@@ -297,6 +297,8 @@ class RemoteCallOp : public AsyncOpKernel {
   explicit RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, &func_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tin", &input_dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &output_dtypes_));
   }
 
   ~RemoteCallOp() override {}
@@ -361,6 +363,20 @@ class RemoteCallOp : public AsyncOpKernel {
     for (const Tensor& argument : arguments) {
       args.push_back(argument);
     }
+    for (const auto& dtype : input_dtypes_) {
+      AllocatorAttributes arg_alloc_attrs;
+      if (DataTypeAlwaysOnHost(dtype)) {
+        arg_alloc_attrs.set_on_host(true);
+      }
+      opts.args_alloc_attrs.push_back(arg_alloc_attrs);
+    }
+    for (const auto& dtype : output_dtypes_) {
+      AllocatorAttributes ret_alloc_attrs;
+      if (DataTypeAlwaysOnHost(dtype)) {
+        ret_alloc_attrs.set_on_host(true);
+      }
+      opts.rets_alloc_attrs.push_back(ret_alloc_attrs);
+    }
     auto* rets = new std::vector<Tensor>;
     auto* activity = new tracing::ScopedActivity(strings::StrCat(
         "RemoteCall: Run: ", func_.name(), " on ", target_device));
@@ -383,6 +399,8 @@ class RemoteCallOp : public AsyncOpKernel {
 
  private:
   NameAttrList func_;
+  DataTypeVector input_dtypes_;
+  DataTypeVector output_dtypes_;
 
   mutex mu_;
   typedef std::pair<string, FunctionLibraryRuntime*> FunctionTarget;
