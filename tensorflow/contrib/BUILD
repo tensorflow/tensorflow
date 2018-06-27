@@ -9,6 +9,7 @@ load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "if_not_windows_cuda")
 
 py_library(
     name = "contrib_py",
@@ -45,7 +46,6 @@ py_library(
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/feature_column:feature_column_py",
         "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/fused_conv:fused_conv_py",
         "//tensorflow/contrib/gan",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
@@ -123,7 +123,9 @@ py_library(
             "//tensorflow/contrib/kafka",
         ],
         "//conditions:default": [],
-    }) + if_not_windows([
+    }) + if_not_windows_cuda([
+        "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
+    ]) + if_not_windows([
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
     ]),
