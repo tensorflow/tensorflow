@@ -75,11 +75,11 @@ landing_page:
               <a href="/guide/keras">TensorFlow Keras guide</a>.
             </p>
             <ol style="padding-left:20px;">
-              <li><a href="/get_started/basic_classification">Basic classification</a></li>
-              <li><a href="/get_started/basic_text_classification">Text classification</a></li>
-              <li><a href="/get_started/basic_regression">Regression</a></li>
-              <li><a href="/get_started/overfit_and_underfit">Overfitting and underfitting</a></li>
-              <li><a href="/get_started/save_and_restore_models">Save and load</a></li>
+              <li><a href="./get_started/basic_classification">Basic classification</a></li>
+              <li><a href="./get_started/basic_text_classification">Text classification</a></li>
+              <li><a href="./get_started/basic_regression">Regression</a></li>
+              <li><a href="./get_started/overfit_and_underfit">Overfitting and underfitting</a></li>
+              <li><a href="./get_started/save_and_restore_models">Save and load</a></li>
             </ol>
           </div>
           <div class="devsite-landing-row-item-buttons" style="margin-top:0;">
@@ -150,7 +150,7 @@ landing_page:
                 <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_layers.ipynb" class="external">Custom layers</a>
                 {% dynamic endif %}
               </li>
-              <li><a href="/get_started/eager">Custom training walkthrough</a></li>
+              <li><a href="./eager/custom_training_walkthrough">Custom training walkthrough</a></li>
               <li>
                 {% dynamic if request.tld == 'cn' %}
                 <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb" class="external">Example: Neural machine translation w/ attention</a>
