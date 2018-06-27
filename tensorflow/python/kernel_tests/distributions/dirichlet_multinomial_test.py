@@ -250,9 +250,9 @@ class DirichletMultinomialTest(test.TestCase):
           dist.variance(),
           dist.stddev(),
       ])
-      self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.04)
-      self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.05)
-      self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.05)
+      self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.06)
+      self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.07)
+      self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.07)
       self.assertAllClose(sample_stddev_, analytic_stddev, atol=0., rtol=0.02)
 
   def testCovariance(self):
