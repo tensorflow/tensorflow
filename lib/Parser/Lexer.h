@@ -60,6 +60,7 @@ private:
   Token lexComment();
   Token lexBareIdentifierOrKeyword(const char *tokStart);
   Token lexAtIdentifier(const char *tokStart);
+  Token lexAffineMapId(const char *tokStart);
   Token lexNumber(const char *tokStart);
 };
 

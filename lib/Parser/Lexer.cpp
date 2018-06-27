@@ -25,6 +25,12 @@ using namespace mlir;
 using llvm::SMLoc;
 using llvm::SourceMgr;
 
+// Returns true if 'c' is an allowable puncuation character: [$._-]
+// Returns false otherwise.
+static bool isPunct(char c) {
+  return c == '$' || c == '.' || c == '_' || c == '-';
+}
+
 Lexer::Lexer(llvm::SourceMgr &sourceMgr,
              const SMDiagnosticHandlerTy &errorReporter)
     : sourceMgr(sourceMgr), errorReporter(errorReporter) {
@@ -92,6 +98,7 @@ Token Lexer::lexToken() {
 
   case ';': return lexComment();
   case '@': return lexAtIdentifier(tokStart);
+  case '#': return lexAffineMapId(tokStart);
 
   case '0': case '1': case '2': case '3': case '4':
   case '5': case '6': case '7': case '8': case '9':
@@ -172,6 +179,30 @@ Token Lexer::lexAtIdentifier(const char *tokStart) {
   while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_')
     ++curPtr;
   return formToken(Token::at_identifier, tokStart);
+}
+
+/// Lex an '#foo' identifier.
+///
+///   affine-map-id ::= `#` suffix-id
+///   suffix-id ::= digit+ | (letter|id-punct) (letter|id-punct|digit)*
+///
+// TODO(andydavis) Consider moving suffix-id parsing to a shared function
+// so it can be re-used to parse %suffix-id.
+Token Lexer::lexAffineMapId(const char *tokStart) {
+  // Parse suffix-id.
+  if (isdigit(*curPtr)) {
+    // If suffix-id starts with a digit, the rest must be digits.
+    while (isdigit(*curPtr)) {
+      ++curPtr;
+    }
+  } else if (isalpha(*curPtr) || isPunct(*curPtr)) {
+    do  {
+      ++curPtr;
+    } while (isalpha(*curPtr) || isdigit(*curPtr) || isPunct(*curPtr));
+  } else {
+    return emitError(curPtr-1, "invalid affine map id");
+  }
+  return formToken(Token::affine_map_id, tokStart);
 }
 
 /// Lex an integer literal.

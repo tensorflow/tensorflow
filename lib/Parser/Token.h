@@ -34,6 +34,7 @@ public:
     // Identifiers.
     bare_identifier,    // foo
     at_identifier,      // @foo
+    affine_map_id,      // #foo
     // TODO: @@foo, etc.
 
     integer,            // 42

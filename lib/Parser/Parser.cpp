@@ -21,6 +21,7 @@
 
 #include "mlir/Parser.h"
 #include "Lexer.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/Types.h"
@@ -67,6 +68,11 @@ private:
 
   // This is the result module we are parsing into.
   std::unique_ptr<Module> module;
+
+  // A map from affine map identifier to AffineMap.
+  // TODO(andydavis) Remove use of unique_ptr when AffineMaps are bump pointer
+  // allocated.
+  llvm::StringMap<std::unique_ptr<AffineMap>> affineMaps;
 
 private:
   // Helper methods.
@@ -120,6 +126,9 @@ private:
   Type *parseFunctionType();
   Type *parseType();
   ParseResult parseTypeList(SmallVectorImpl<Type*> &elements);
+
+  // Polyhedral structures
+  ParseResult parseAffineMapDef();
 
   // Functions.
   ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type);
@@ -461,6 +470,33 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type*> &elements) {
 }
 
 //===----------------------------------------------------------------------===//
+// Polyhedral structures.
+//===----------------------------------------------------------------------===//
+
+/// Affine map declaration.
+///
+///  affine-map-def ::= affine-map-id `=` affine-map-inline
+///  affine-map-inline ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
+///                        ( `size` `(` dim-size (`,` dim-size)* `)` )?
+///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
+///
+ParseResult Parser::parseAffineMapDef() {
+  assert(curToken.is(Token::affine_map_id));
+
+  StringRef affineMapId = curToken.getSpelling().drop_front();
+  // Check that 'affineMapId' is unique.
+  // TODO(andydavis) Add a unit test for this case.
+  if (affineMaps.count(affineMapId) > 0)
+    return emitError("encountered non-unique affine map id");
+
+  consumeToken(Token::affine_map_id);
+
+  // TODO(andydavis,bondhugula) Parse affine map definition.
+  affineMaps[affineMapId].reset(new AffineMap(1, 0));
+  return ParseSuccess;
+}
+
+//===----------------------------------------------------------------------===//
 // Functions
 //===----------------------------------------------------------------------===//
 
@@ -700,6 +736,9 @@ Module *Parser::parseModule() {
 
     case Token::kw_cfgfunc:
       if (parseCFGFunc()) return nullptr;
+      break;
+    case Token::affine_map_id:
+      if (parseAffineMapDef()) return nullptr;
       break;
 
     // TODO: mlfunc, affine entity declarations, etc.
