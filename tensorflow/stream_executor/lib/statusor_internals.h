@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_STATUSOR_INTERNALS_H_
-#define TENSORFLOW_COMPILER_XLA_STATUSOR_INTERNALS_H_
+#ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STATUSOR_INTERNALS_H_
+#define TENSORFLOW_STREAM_EXECUTOR_LIB_STATUSOR_INTERNALS_H_
 
-#include "tensorflow/compiler/xla/status.h"
+
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/stream_executor/lib/status.h"
 
-namespace xla {
+namespace stream_executor {
+namespace port {
 namespace internal_statusor {
 
 class Helper {
@@ -240,6 +242,7 @@ struct TraitsBase<false, false> {
 };
 
 }  // namespace internal_statusor
-}  // namespace xla
+}  // namespace port
+}  // namespace stream_executor
 
-#endif  // TENSORFLOW_COMPILER_XLA_STATUSOR_INTERNALS_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_STATUSOR_INTERNALS_H_
