@@ -121,7 +121,8 @@ def _FoldFusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
       scaled_weight_tensor = math_ops.multiply(
           weights, multiplier_tensor, name='mul_fold')
       new_layer_tensor = _CloneWithNewOperands(
-          match.layer_op, match.input_tensor, scaled_weight_tensor)
+          match.layer_op, match.input_tensor, scaled_weight_tensor,
+          match.batch_to_space_op)
 
       if correction_recip is not None:
         new_layer_tensor = math_ops.multiply(
@@ -149,6 +150,8 @@ def _FindFusedBatchNorms(graph):
     _FusedBatchNormMatches.
   """
   input_pattern = graph_matcher.OpTypePattern('*')
+  # In practice, the weight pattern can match a Variable or a SpaceToBatchND
+  # operation that follows a variable for atrous convolutions.
   weight_pattern = graph_matcher.OpTypePattern('*')
   gamma_pattern = graph_matcher.OpTypePattern('*')
   beta_pattern = graph_matcher.OpTypePattern('*')
@@ -160,16 +163,27 @@ def _FindFusedBatchNorms(graph):
   layer_pattern = graph_matcher.OpTypePattern(
       'Conv2D|DepthwiseConv2dNative|MatMul',
       inputs=[input_pattern, weight_pattern])
+  batch_to_space_pattern = graph_matcher.OpTypePattern(
+      'BatchToSpaceND',
+      inputs=[
+          layer_pattern,
+          graph_matcher.OpTypePattern('*'),
+          graph_matcher.OpTypePattern('*')
+      ])
+  layer_output_pattern = graph_matcher.OneofPattern(
+      [layer_pattern, batch_to_space_pattern])
   # MatMul has a Reshape between it and FusedBatchNorm.
   matmul_reshape_pattern = graph_matcher.OpTypePattern(
-      'Reshape', inputs=[layer_pattern,
-                         graph_matcher.OpTypePattern('*')])
+      'Reshape',
+      inputs=[layer_output_pattern,
+              graph_matcher.OpTypePattern('*')])
 
   batch_norm_pattern = graph_matcher.OpTypePattern(
       'FusedBatchNorm',
       inputs=[
-          graph_matcher.OneofPattern([matmul_reshape_pattern, layer_pattern]),
-          gamma_pattern, beta_pattern, mean_pattern, variance_pattern
+          graph_matcher.OneofPattern(
+              [matmul_reshape_pattern, layer_output_pattern]), gamma_pattern,
+          beta_pattern, mean_pattern, variance_pattern
       ])
   matmul_bn_output_reshape_pattern = graph_matcher.OpTypePattern(
       'Reshape', inputs=[batch_norm_pattern,
@@ -192,6 +206,7 @@ def _FindFusedBatchNorms(graph):
     moving_variance_tensor = None
     bn_decay_mean_tensor = None
     bn_decay_var_tensor = None
+    batch_to_space_op = None
     layer_op = match_result.get_op(layer_pattern)
     layer_tensor = match_result.get_tensor(layer_pattern)
     bn_op = match_result.get_op(batch_norm_pattern)
@@ -213,6 +228,7 @@ def _FindFusedBatchNorms(graph):
     if not output_tensor.consumers():
       continue
 
+    batch_to_space_op = match_result.get_op(batch_to_space_pattern)
     input_tensor = match_result.get_tensor(input_pattern)
     weight_tensor = match_result.get_tensor(weight_pattern)
     gamma_tensor = match_result.get_tensor(gamma_pattern)
@@ -276,7 +292,8 @@ def _FindFusedBatchNorms(graph):
         moving_variance_tensor=moving_variance_tensor,
         bn_decay_mean_tensor=bn_decay_mean_tensor,
         bn_decay_var_tensor=bn_decay_var_tensor,
-        batch_epsilon=batch_epsilon)
+        batch_epsilon=batch_epsilon,
+        batch_to_space_op=batch_to_space_op)
 
 
 def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
@@ -380,7 +397,8 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
   return correction_scale, correction_recip, correction_offset
 
 
-def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor):
+def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor,
+                          batch_to_space_op):
   """Clones layer_op with input_tensor and weight_tensor as new inputs."""
   new_layer_name = layer_op.name.split('/')[-1] + '_Fold'
   if layer_op.type == 'Conv2D':
@@ -400,12 +418,25 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor):
         transpose_b=layer_op.get_attr('transpose_b'),
         name=new_layer_name)
   elif layer_op.type == 'DepthwiseConv2dNative':
-    return nn.depthwise_conv2d(
+    conv = nn.depthwise_conv2d(
         input_tensor,
         weight_tensor,
+        rate=layer_op.get_attr('dilations'),
         strides=layer_op.get_attr('strides'),
         padding=layer_op.get_attr('padding'),
         name=new_layer_name)
+    # Copy the batch to space operation if we have a atrous convolution.
+    if batch_to_space_op:
+      batch_to_space_op = layer_op.outputs[0].consumers()[0]
+      # TODO(suharshs): It's hard to make this name match with the unfused name.
+      # Restructure this code to not rely on scope at all.
+      new_batch_to_space_name = batch_to_space_op.name.split('/')[-1] + '_Fold'
+      conv = array_ops.batch_to_space_nd(
+          conv,
+          batch_to_space_op.inputs[1],
+          batch_to_space_op.inputs[2],
+          name=new_batch_to_space_name)
+    return conv
   else:
     raise ValueError('Cannot handle operation of type: %s' % layer_op.type)
 
@@ -617,7 +648,8 @@ def _GetBatchNormParams(graph, context, has_scaling):
       moving_variance_tensor=moving_variance_tensor,
       bn_decay_mean_tensor=bn_decay_mean_tensor,
       bn_decay_var_tensor=bn_decay_var_tensor,
-      batch_epsilon=batch_epsilon)
+      batch_epsilon=batch_epsilon,
+      batch_to_space_op=None)
 
 
 def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
@@ -651,6 +683,11 @@ def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
                                           '/BatchNorm/batchnorm/' +
                                           mul_scale_name)
   op_below = mul_scale.inputs[0].op
+  # Skip over the BatchToSpace operation in the case of atrous convolutions.
+  batch_to_space_op = None
+  if op_below.type == 'BatchToSpaceND':
+    batch_to_space_op = op_below
+    op_below = op_below.inputs[0].op
   weights = op_below.inputs[1]
   match = _GetBatchNormParams(
       graph=graph, context=context, has_scaling=has_scaling)
@@ -691,7 +728,7 @@ def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
                                     context + '/correction_mult')
     mul_fold = _CloneOp(mul_scale, context + '/mul_fold', [(0, weights)])
   else:
-    raise ValueError('Cannot handle operation of type: %s' % op_below.op)
+    raise ValueError('Cannot handle operation of type: %s' % op_below.type)
   _AssertShapesMatch('mul_fold', mul_fold.inputs[0], mul_fold.outputs[0])
 
   conv_or_fc_folded = _CloneOp(op_below, op_below.name + '_Fold',
@@ -701,6 +738,13 @@ def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
       context + '/BatchNorm/batchnorm/add_1')
 
   corrected_output = conv_or_fc_folded.outputs[0]
+  # Copy the batch to space operation if we have a atrous convolution.
+  if batch_to_space_op:
+    corrected_output = array_ops.batch_to_space_nd(
+        corrected_output,
+        batch_to_space_op.inputs[1],
+        batch_to_space_op.inputs[2],
+        name=batch_to_space_op.name + '_Fold')
   if correction_offset is not None:
     with ops.device(conv_or_fc_folded.device):
       corrected_output = math_ops.multiply(correction_recip, corrected_output,
@@ -898,7 +942,8 @@ class _BatchNormMatch(object):
   def __init__(self, layer_op, bn_op, output_tensor, input_tensor,
                weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
                variance_tensor, moving_mean_tensor, moving_variance_tensor,
-               bn_decay_mean_tensor, bn_decay_var_tensor, batch_epsilon):
+               bn_decay_mean_tensor, bn_decay_var_tensor, batch_epsilon,
+               batch_to_space_op):
     self._layer_op = layer_op
     self._bn_op = bn_op
     self._output_tensor = output_tensor
@@ -913,6 +958,7 @@ class _BatchNormMatch(object):
     self._bn_decay_mean_tensor = bn_decay_mean_tensor
     self._bn_decay_var_tensor = bn_decay_var_tensor
     self._batch_epsilon = batch_epsilon
+    self._batch_to_space_op = batch_to_space_op
 
   @property
   def layer_op(self):
@@ -969,3 +1015,7 @@ class _BatchNormMatch(object):
   @property
   def bn_decay_var_tensor(self):
     return self._bn_decay_var_tensor
+
+  @property
+  def batch_to_space_op(self):
+    return self._batch_to_space_op
