@@ -1531,7 +1531,7 @@ Status IrEmitterUnnested::EmitRowReduction(
   //   for (element_id_in_tile : range(x_tile_size)) {
   //     int x = x_in_tiles * x_tile_size + element_id_in_tile;
   //     if (x < width)
-  //       partial_result = reducer(partial_result, input[z][y][z]);
+  //       partial_result = reducer(partial_result, input[z][y][x]);
   //   }
   //   AtomicReducer(&output[y], partial_result);
   // }
@@ -1585,10 +1585,11 @@ Status IrEmitterUnnested::EmitRowReduction(
   //     for (int element_id_in_z_tile = 0; element_id_in_z_tile < z_tile_size;
   //          ++element_id_in_z_tile) {
   //       z = z_in_tiles * z_tile_size + element_id_in_z_tile;
+  //       int tx = x;
   //       for (int element_id_in_x_tile = 0;
   //            element_id_in_x_tile < x_tile_size;
-  //            ++element_id_in_x_tile, x += warpSize) {
-  //         partial_result = Reducer(partial_result, input[z][y][x]);
+  //            ++element_id_in_x_tile, tx += warpSize) {
+  //         partial_result = Reducer(partial_result, input[z][y][tx]);
   //       }
   //     }
   //   } else {
@@ -1596,10 +1597,11 @@ Status IrEmitterUnnested::EmitRowReduction(
   //     for (int element_id_in_z_tile = 0; element_id_in_z_tile < z_tile_size;
   //          ++element_id_in_z_tile) {
   //       z = z_in_tiles * z_tile_size + element_id_in_z_tile;
+  //       int tx = x;
   //       for (int element_id_in_x_tile = 0; element_id_in_x_tile <
-  //            x_tile_size; ++element_id_in_tile, x += warpSize) {
-  //         if (x < width)
-  //           partial_result = Reducer(partial_result, input[z][y][x]);
+  //            x_tile_size; ++element_id_in_tile, tx += warpSize) {
+  //         if (tx < width)
+  //           partial_result = Reducer(partial_result, input[z][y][tx]);
   //       }
   //     }
   //   }
@@ -1838,15 +1840,17 @@ Status IrEmitterUnnested::EmitRowReduction(
                                              reduce_output_shapes[i]),
                       &ir_builder_),
                   &ir_builder_, "output_element_address");
-      if (x_tile_size * z_tile_size < depth * width) {
-        TF_RETURN_IF_ERROR(EmitAtomicOperationForNestedComputation(
-            *reducers[i], output_address,
-            partial_reduction_result_addresses[i]));
-      } else {
+      // We don't need to emit atomic operations if there is only one tile of
+      // results. 'depth' is the z dimension, 'width' is the x dimension.
+      if (z_tile_size >= depth && x_tile_size >= width) {
         TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
             *reducers[i],
             {output_address, partial_reduction_result_addresses[i]},
             output_address));
+      } else {
+        TF_RETURN_IF_ERROR(EmitAtomicOperationForNestedComputation(
+            *reducers[i], output_address,
+            partial_reduction_result_addresses[i]));
       }
     }
     return Status::OK();
