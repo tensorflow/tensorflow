@@ -360,14 +360,6 @@ class BaseLstmTest : public ::testing::Test {
       }
       EXPECT_THAT(lstm->GetOutput(),
                   ElementsAreArray(ArrayFloatNear(expected, tolerance)));
-      for (int i = 0; i < num_outputs; ++i) {
-        std::cout << lstm->GetOutput()[i] << ", ";
-      }
-      std::cout << std::endl;
-      for (int i = 0; i < num_outputs; ++i) {
-        std::cout << expected[i] << ", ";
-      }
-      std::cout << std::endl;
     }
   }
 };
