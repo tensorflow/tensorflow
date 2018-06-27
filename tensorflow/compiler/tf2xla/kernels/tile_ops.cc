@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -93,9 +94,9 @@ class TileOp : public XlaOpKernel {
     if (one_dimension_is_broadcasted_without_multiple) {
       // Create a constant Zero the size of the output shape to leverage binary
       // operation broadcast semantics.
-      auto broadcasted_zero = ctx->builder()->Broadcast(
+      auto broadcasted_zero = xla::Broadcast(
           XlaHelpers::Zero(ctx->builder(), ctx->input_type(0)), output_shape);
-      ctx->SetOutput(0, ctx->builder()->Add(broadcasted_zero, input));
+      ctx->SetOutput(0, xla::Add(broadcasted_zero, input));
       return;
     }
 
@@ -103,7 +104,7 @@ class TileOp : public XlaOpKernel {
     // dimension. This prepends the broadcasted dimensions, so an
     // input of shape [2,3,1] broadcast with multiples [5,4,3] will
     // end up with shape [5,4,3,2,3,1].
-    auto broadcasted = ctx->builder()->Broadcast(input, multiples_array);
+    auto broadcasted = xla::Broadcast(input, multiples_array);
     // Now flatten and reshape. The broadcasted dimensions are
     // paired with the original dimensions so in the above example
     // we flatten [0,3,1,4,2,5] then reshape to [10,12,3].
@@ -112,8 +113,7 @@ class TileOp : public XlaOpKernel {
       flattened.push_back(i);
       flattened.push_back(i + output_shape.size());
     }
-    xla::XlaOp output =
-        ctx->builder()->Reshape(broadcasted, flattened, output_shape);
+    xla::XlaOp output = xla::Reshape(broadcasted, flattened, output_shape);
 
     ctx->SetOutput(0, output);
   }

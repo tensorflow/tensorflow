@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -230,7 +231,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   XlaContext& context = XlaContext::Get(op_context);
   auto* b = context.builder();
 
-  auto output_handle = b->Call(*result.computation, handles);
+  auto output_handle = xla::Call(b, *result.computation, handles);
   // The output handle of `Call` computation is a tuple type. Unzip it so
   // that it can fit into future computations.
   int computation_output = 0;
@@ -239,7 +240,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
       xla_op_context.SetConstantOutput(i, result.outputs[i].constant_value);
     } else {
       xla_op_context.SetOutput(
-          i, b->GetTupleElement(output_handle, computation_output));
+          i, xla::GetTupleElement(output_handle, computation_output));
       ++computation_output;
     }
   }
