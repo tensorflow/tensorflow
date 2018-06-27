@@ -482,9 +482,12 @@ class LMS(object):
                 src_op.name, self._topo_sort.get_order(src_op),
                 src_op.type), 1)
 
-            # create swap_out node
-            swapout_op = self._add_swapout(src_op, t)
-            self._incpu_count = self._incpu_count + 1
+            # create a swap_out node only if there exists a real destination op
+            for op in bw_frontier_ops:
+                if self._topo_sort.get_order(op) >= 0:
+                    swapout_op = self._add_swapout(src_op, t)
+                    self._incpu_count = self._incpu_count + 1
+                    break
 
             # create swap_in nodes
             if self._fuse_swapins:
