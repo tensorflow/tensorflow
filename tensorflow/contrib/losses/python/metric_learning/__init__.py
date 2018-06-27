@@ -33,7 +33,6 @@ _allowed_symbols = [
     'npairs_loss',
     'npairs_loss_multilabel',
     'triplet_semihard_loss',
+    'pairwise_distance_cosine',
 ]
 remove_undocumented(__name__, _allowed_symbols)
-
-

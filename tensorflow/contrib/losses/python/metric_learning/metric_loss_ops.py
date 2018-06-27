@@ -83,7 +83,8 @@ def pairwise_distance(feature, squared=False):
 def pairwise_distance_cosine(feature, squared=True):
   """Computes the pairwise distance matrix using the cosine distance.
 
-  output[i, j] = 1 - tf.matmul(feature[i, :], feature[j, :]) / (tf.norm(feature[i, :]) * tf.norm(feature[j, :]))
+  output[i, j] = 1 - tf.matmul(feature[i, :], feature[j, :]) /
+                        (tf.norm(feature[i, :]) * tf.norm(feature[j, :]))
 
   Args:
     feature: 2-D Tensor of size [number of data, feature dimension].
@@ -94,7 +95,7 @@ def pairwise_distance_cosine(feature, squared=True):
   """
 
   # normalize feature tensor
-  epsilon=1e-12
+  epsilon = 1e-12
   square_sum = math_ops.reduce_sum(math_ops.square(feature), 1, keepdims=True)
   feature_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
   normalized = math_ops.multiply(feature, feature_inv_norm)
@@ -183,7 +184,8 @@ def masked_minimum(data, mask, dim=1):
   return masked_minimums
 
 
-def triplet_semihard_loss(labels, embeddings, margin=1.0, pairwise_dist_fn=pairwise_distance):
+def triplet_semihard_loss(labels, embeddings, margin=1.0,
+                          pairwise_dist_fn=pairwise_distance):
   """Computes the triplet loss with semi-hard negative mining.
 
   The loss encourages the positive distances (between a pair of embeddings with
