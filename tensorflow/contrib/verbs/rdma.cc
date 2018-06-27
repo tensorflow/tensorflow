@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 #endif
@@ -880,7 +880,7 @@ void RdmaMessageBuffer::SendNextItem() {
   }
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 static void CountCopies(const std::string& key, void* src_addr, void* dst_addr,
                         size_t tensor_bytes, bool is_gpu_to_cpu) {
 #ifdef RDMA_COUNT_COPIES
@@ -908,21 +908,21 @@ static void CountCopies(const std::string& key, void* src_addr, void* dst_addr,
               << " To: " << dst_addr;
 #endif  // RDMA_COUNT_COPIES
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef RDMA_DATA_VALIDATION
 static uint64_t Checksum(Device* device, const DeviceContext* device_context,
                          const Tensor& in) {
   uint64 checksum = 0;
   if (DataTypeCanUseMemcpy(in.dtype())) {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (in.TotalBytes() == 0) {
       return 0;
     }
     checksum = (device_context != nullptr)
                    ? GPUUtil::Checksum(device, device_context, in)
                    : GPUUtil::Checksum(in);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   } else {
     string s = in.SummarizeValue(999999);
     checksum = Hash64(s.c_str(), s.size(), 0);
@@ -959,7 +959,7 @@ static void ValidateChecksum(uint64_t expected, uint64_t actual,
 }
 #endif  // RDMA_DATA_VALIDATION
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Sync the 'done' operation on the GPU stream, but without all the data
 // copying.
 static void StreamGPUOp(Device* gpu_device, const DeviceContext* device_context,
@@ -968,7 +968,7 @@ static void StreamGPUOp(Device* gpu_device, const DeviceContext* device_context,
   GPUUtil::CopyGPUTensorToCPU(gpu_device, device_context, &dummy1, &dummy2,
                               done);
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 RdmaTensorResponse* RdmaChannel::AddTensorResponse(const RdmaMessage& rm) {
   mutex_lock lock{mu_};
@@ -1057,7 +1057,7 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
   TensorProto proto;
   const bool on_host = send_args.alloc_attrs.on_host();
   if (src_dev_->tensorflow_gpu_device_info() && !on_host) {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     DeviceContext* send_dev_context = send_args.device_context;
     CHECK(send_dev_context)
         << "send dev name: " << src_dev_->name()
@@ -1084,7 +1084,7 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
       // The tensor must be copied from GPU to CPU, because either:
       // 1. The tensor is located on a non GDR compatible GPU.
       // 2. The tensor's meta-data has changed.
-      Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+      Allocator* alloc = ProcessState::singleton()->GetGPUHostAllocator(0);
       copy = Tensor(alloc, in.dtype(), in.shape());
       CountCopies(rm_.name_, (void*)DMAHelper::base(&in),
                   (void*)DMAHelper::base(&copy), in.TotalBytes(), true);
@@ -1102,7 +1102,7 @@ void RdmaTensorResponse::RecvHandler(Rendezvous::ParsedKey parsed,
     }
 #else
     SendErrorStatus(errors::Internal("No GPU device in process"));
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   } else {
     // tensor is in CPU memory.
     if (!can_memcpy) {
@@ -1537,11 +1537,11 @@ bool RdmaTensorRequest::AllocateTensors() {
     }
     rdma_addr_ = DMAHelper::base(result_tensor_);
     mr_ = RdmaMemoryMgr::Singleton().FindMemoryRegion(rdma_addr_, tensor_size);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (mr_ == nullptr) {
       // Can't RDMA directly to result. Use a proxy.
       proxy_tensor_ =
-          new Tensor(ProcessState::singleton()->GetCUDAHostAllocator(0),
+          new Tensor(ProcessState::singleton()->GetGPUHostAllocator(0),
                      result_tensor_->dtype(), result_tensor_->shape());
       rdma_addr_ = DMAHelper::base(proxy_tensor_);
       mr_ =
@@ -1564,7 +1564,7 @@ void RdmaTensorRequest::AllocateTensorsAsync(StatusCallback done) {
   bool on_host = recv_args_.alloc_attrs.on_host();
   if (dst_dev_->tensorflow_gpu_device_info() && !on_host &&
       (proxy_tensor_ == nullptr)) {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     // We need to sync the memory allocation on the GPU:
     StreamGPUOp(dst_dev_, recv_args_.device_context, done);
 #endif
@@ -1622,7 +1622,7 @@ void RdmaTensorRequest::RecvTensorContent() {
 
   Tensor val;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (proxy_tensor_ != nullptr) {
     CountCopies(key_, (void*)DMAHelper::base(proxy_tensor_),
                 (void*)DMAHelper::base(result_tensor_),
