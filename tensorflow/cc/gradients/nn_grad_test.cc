@@ -113,7 +113,7 @@ TEST_F(NNGradTest, SoftmaxGrad) {
 
 TEST_F(NNGradTest, SoftmaxCrossEntropyWithLogitsGrad) {
   TensorShape logitsShape(
-      {5, 3});  // batch size of 5, 3 possible labels (classes),
+      {5, 3});  // batch size of 5,3 possible labels (classes),
                 // logits is what is produced by a network
                 // they are compared to labels which are the truth
   TensorShape lossShape(
