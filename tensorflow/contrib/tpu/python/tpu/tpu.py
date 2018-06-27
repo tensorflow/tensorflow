@@ -243,7 +243,10 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         return self._device
 
       def _set_device(self, device):
-        self._device = device.to_string()
+        if isinstance(device, pydev.DeviceSpec):
+          self._device = device.to_string()
+        else:
+          self._device = device
 
     if self._outside_compilation_cluster:
       raise NotImplementedError("Cannot nest outside_compilation clusters")
