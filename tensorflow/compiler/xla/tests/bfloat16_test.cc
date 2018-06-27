@@ -51,9 +51,9 @@ class Bfloat16Test : public ClientLibraryTestBase {
 
 XLA_TEST_F(Bfloat16Test, ScalarOperation) {
   XlaBuilder builder(TestName());
-  auto x = builder.ConstantR0<bfloat16>(static_cast<bfloat16>(2.0f));
-  auto y = builder.ConstantR0<bfloat16>(static_cast<bfloat16>(1.0f));
-  builder.Add(x, y);
+  auto x = ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(2.0f));
+  auto y = ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(1.0f));
+  Add(x, y);
 
   ComputeAndCompareR0<bfloat16>(&builder, static_cast<bfloat16>(3.0f), {},
                                 error_spec_);
@@ -61,8 +61,8 @@ XLA_TEST_F(Bfloat16Test, ScalarOperation) {
 
 XLA_TEST_F(Bfloat16Test, LogOperation) {
   XlaBuilder builder(TestName());
-  auto x = builder.ConstantR0<bfloat16>(static_cast<bfloat16>(4.0f));
-  builder.Log(x);
+  auto x = ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(4.0f));
+  Log(x);
 
   ComputeAndCompareR0<bfloat16>(&builder, static_cast<bfloat16>(1.387f), {},
                                 error_spec_);
@@ -70,7 +70,7 @@ XLA_TEST_F(Bfloat16Test, LogOperation) {
 
 XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
   XlaBuilder builder(TestName());
-  builder.Neg(builder.ConstantR0<bfloat16>(static_cast<bfloat16>(2.1f)));
+  Neg(ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(2.1f)));
 
   ComputeAndCompareR0<bfloat16>(&builder, static_cast<bfloat16>(-2.1f), {},
                                 error_spec_);
@@ -86,14 +86,13 @@ XLA_TEST_F(Bfloat16Test, BatchNormTraining) {
        {{{static_cast<bfloat16>(5.f)}, {static_cast<bfloat16>(6.f)}},
         {{static_cast<bfloat16>(7.f)}, {static_cast<bfloat16>(8.f)}}}});
 
-  auto scale = builder.ConstantR1<bfloat16>(
-      {static_cast<bfloat16>(2.0f), static_cast<bfloat16>(3.0f)});
+  auto scale = ConstantR1<bfloat16>(
+      &builder, {static_cast<bfloat16>(2.0f), static_cast<bfloat16>(3.0f)});
 
-  auto offset = builder.ConstantR1<bfloat16>(
-      {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(2.0f)});
+  auto offset = ConstantR1<bfloat16>(
+      &builder, {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(2.0f)});
 
-  builder.BatchNormTraining(operand, scale, offset, /*epsilon=*/0.001,
-                            kFeatureIndex);
+  BatchNormTraining(operand, scale, offset, /*epsilon=*/0.001, kFeatureIndex);
 
   auto expected = Literal::MakeTuple(
       {Literal::CreateR4<bfloat16>(
@@ -120,14 +119,14 @@ XLA_TEST_F(Bfloat16Test, BatchNormGrad) {
   auto operand = builder.ConstantR4FromArray4D<bfloat16>(
       Array4D<bfloat16>(2, 2, 2, 1, static_cast<bfloat16>(0.0f)));
 
-  auto scale = builder.ConstantR1<bfloat16>(
-      {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(1.0f)});
+  auto scale = ConstantR1<bfloat16>(
+      &builder, {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(1.0f)});
 
-  auto mean = builder.ConstantR1<bfloat16>(
-      {static_cast<bfloat16>(0.0f), static_cast<bfloat16>(0.0f)});
+  auto mean = ConstantR1<bfloat16>(
+      &builder, {static_cast<bfloat16>(0.0f), static_cast<bfloat16>(0.0f)});
 
-  auto var = builder.ConstantR1<bfloat16>(
-      {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(1.0f)});
+  auto var = ConstantR1<bfloat16>(
+      &builder, {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(1.0f)});
 
   auto grad_output = builder.ConstantR4FromArray4D<bfloat16>(
       {{{{static_cast<bfloat16>(1.f)}, {static_cast<bfloat16>(2.f)}},
@@ -135,8 +134,8 @@ XLA_TEST_F(Bfloat16Test, BatchNormGrad) {
        {{{static_cast<bfloat16>(5.f)}, {static_cast<bfloat16>(6.f)}},
         {{static_cast<bfloat16>(7.f)}, {static_cast<bfloat16>(8.f)}}}});
 
-  builder.BatchNormGrad(operand, scale, mean, var, grad_output,
-                        /*epsilon=*/0.0, kFeatureIndex);
+  BatchNormGrad(operand, scale, mean, var, grad_output,
+                /*epsilon=*/0.0, kFeatureIndex);
 
   auto expected = Literal::MakeTuple(
       {Literal::CreateR4<bfloat16>(

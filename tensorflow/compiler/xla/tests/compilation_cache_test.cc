@@ -77,7 +77,7 @@ class CompilationCacheTest : public ClientLibraryTestBase {
 // TODO(b/74197823): Disabled because there is no cache in the new design.
 XLA_TEST_F(CompilationCacheTest, DISABLED_ComputationCalledMultipleTimes) {
   XlaBuilder builder(TestName());
-  builder.Neg(builder.ConstantR0<float>(42.0));
+  Neg(ConstantR0<float>(&builder, 42.0));
   XlaComputation computation = builder.Build().ConsumeValueOrDie();
 
   ExecuteComputationR0F32(computation, {}, -42.0, /*expect_cache_hit=*/false);
@@ -99,7 +99,7 @@ XLA_TEST_F(CompilationCacheTest,
           .ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  builder.Neg(builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param"));
+  Neg(Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "param"));
   XlaComputation computation = builder.Build().ConsumeValueOrDie();
 
   ExecuteComputationR0F32(computation, {data_42.get()}, -42.0,
@@ -115,16 +115,16 @@ XLA_TEST_F(CompilationCacheTest,
 // TODO(b/74197823): Disabled because there is no cache in the new design.
 XLA_TEST_F(CompilationCacheTest, DISABLED_MultipleComputations) {
   XlaBuilder builder_neg(TestName() + "_neg");
-  builder_neg.Neg(builder_neg.ConstantR0<float>(42.0));
+  Neg(ConstantR0<float>(&builder_neg, 42.0));
   XlaComputation computation_neg = builder_neg.Build().ConsumeValueOrDie();
 
   XlaBuilder builder_exp(TestName() + "_exp");
-  builder_exp.Exp(builder_exp.ConstantR0<float>(1.0));
+  Exp(ConstantR0<float>(&builder_exp, 1.0));
   XlaComputation computation_exp = builder_exp.Build().ConsumeValueOrDie();
 
   XlaBuilder builder_add(TestName() + "_add");
-  builder_add.Add(builder_add.ConstantR0<float>(2.0),
-                  builder_add.ConstantR0<float>(3.0));
+  Add(ConstantR0<float>(&builder_add, 2.0),
+      ConstantR0<float>(&builder_add, 3.0));
   XlaComputation computation_add = builder_add.Build().ConsumeValueOrDie();
 
   ExecuteComputationR0F32(computation_neg, {}, -42.0,
@@ -154,7 +154,7 @@ XLA_TEST_F(CompilationCacheTest, DISABLED_DifferentParameterLayouts) {
       client_->TransferToServer(*colmaj_array).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2}), "param0");
+  Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "param0");
   XlaComputation computation = builder.Build().ConsumeValueOrDie();
 
   ExecuteComputationR2F32(computation, {colmaj_handle.get()},

@@ -39,7 +39,7 @@ class ConstantsTest : public ClientLibraryTestBase {
 
 TEST_F(ConstantsTest, ZeroCellF32) {
   XlaBuilder builder(TestName());
-  builder.ConstantR1<float>({});
+  ConstantR1<float>(&builder, {});
 
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
 }
@@ -48,7 +48,7 @@ TEST_F(ConstantsTest, OneCellF32) {
   std::vector<float> constant = {2.0};
 
   XlaBuilder builder(TestName());
-  builder.ConstantR1<float>(constant);
+  ConstantR1<float>(&builder, constant);
 
   ComputeAndCompareR1<float>(&builder, constant, {}, error_spec_);
 }
@@ -57,7 +57,7 @@ TEST_F(ConstantsTest, OneCellS32) {
   std::vector<int32> constant = {2};
 
   XlaBuilder builder(TestName());
-  builder.ConstantR1<int32>(constant);
+  ConstantR1<int32>(&builder, constant);
 
   ComputeAndCompareR1<int32>(&builder, constant, {});
 }
@@ -66,7 +66,7 @@ TEST_F(ConstantsTest, OneCellU32) {
   std::vector<uint32> constant = {2};
 
   XlaBuilder builder(TestName());
-  builder.ConstantR1<uint32>(constant);
+  ConstantR1<uint32>(&builder, constant);
 
   ComputeAndCompareR1<uint32>(&builder, constant, {});
 }
@@ -75,7 +75,7 @@ TEST_F(ConstantsTest, EightCells) {
   std::vector<float> constant = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
 
   XlaBuilder builder(TestName());
-  builder.ConstantR1<float>(constant);
+  ConstantR1<float>(&builder, constant);
 
   ComputeAndCompareR1<float>(&builder, constant, {}, error_spec_);
 }
@@ -85,14 +85,14 @@ TEST_F(ConstantsTest, SixteenCells) {
                                  8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0};
 
   XlaBuilder builder(TestName());
-  builder.ConstantR1<float>(constant);
+  ConstantR1<float>(&builder, constant);
 
   ComputeAndCompareR1<float>(&builder, constant, {}, error_spec_);
 }
 
 TEST_F(ConstantsTest, Empty_0x2) {
   XlaBuilder builder(TestName());
-  builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 2));
+  ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 2));
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 2), {}, error_spec_);
 }
@@ -102,15 +102,15 @@ TEST_F(ConstantsTest, Small_2x2) {
       MakeLinspaceArray2D(100.0, 200.0, 2, 2);
 
   XlaBuilder builder(TestName());
-  builder.ConstantR2FromArray2D<float>(*constant);
+  ConstantR2FromArray2D<float>(&builder, *constant);
 
   ComputeAndCompareR2<float>(&builder, *constant, {}, error_spec_);
 }
 
 TEST_F(ConstantsTest, Empty_3x0x2) {
   XlaBuilder builder(TestName());
-  builder.ConstantLiteral(
-      *Literal::CreateR3FromArray3D<float>(Array3D<float>(3, 0, 2)));
+  ConstantLiteral(
+      &builder, *Literal::CreateR3FromArray3D<float>(Array3D<float>(3, 0, 2)));
 
   ComputeAndCompareR3<float>(&builder, Array3D<float>(3, 0, 2), {});
 }
@@ -125,7 +125,7 @@ TEST_F(ConstantsTest, Small_2x2x2) {
       {{5.f, 6.f},   // y0
        {7.f, 8.f}},  // y1
   });
-  builder.ConstantLiteral(*Literal::CreateR3FromArray3D<float>(array3d));
+  ConstantLiteral(&builder, *Literal::CreateR3FromArray3D<float>(array3d));
 
   ComputeAndCompareR3<float>(&builder, array3d, {});
 }
@@ -144,7 +144,7 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
 
   {
     XlaBuilder builder(TestName());
-    builder.ConstantLiteral(*input_literal);
+    ConstantLiteral(&builder, *input_literal);
     ComputeAndCompareR4<float>(&builder, input_array, {}, error_spec_);
   }
 
@@ -158,9 +158,9 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
 // TODO(b/29263943): Support tuple constants.
 TEST_F(ConstantsTest, DISABLED_TupleConstant) {
   XlaBuilder builder(TestName());
-  builder.ConstantLiteral(
-      *Literal::MakeTuple({Literal::CreateR2<float>({{1.0}, {2.0}}).get(),
-                           Literal::CreateR1<float>({2.0, 42}).get()}));
+  ConstantLiteral(&builder, *Literal::MakeTuple(
+                                {Literal::CreateR2<float>({{1.0}, {2.0}}).get(),
+                                 Literal::CreateR1<float>({2.0, 42}).get()}));
 
   std::unique_ptr<Literal> result =
       ExecuteAndTransfer(&builder, {}).ConsumeValueOrDie();

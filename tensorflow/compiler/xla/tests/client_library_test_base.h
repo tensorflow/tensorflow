@@ -545,7 +545,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
   return data;
 }
 
@@ -559,7 +559,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
   return data;
 }
 
@@ -573,7 +573,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
   return data;
 }
 
@@ -587,7 +587,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
   return data;
 }
 

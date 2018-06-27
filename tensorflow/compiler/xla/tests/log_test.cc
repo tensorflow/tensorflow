@@ -31,7 +31,7 @@ class LogTest : public ClientLibraryTestBase {};
 XLA_TEST_F(LogTest, LogZeroValues) {
   XlaBuilder builder(TestName());
   auto x = builder.ConstantR3FromArray3D<float>(Array3D<float>(3, 0, 0));
-  builder.Log(x);
+  Log(x);
 
   ComputeAndCompareR3<float>(&builder, Array3D<float>(3, 0, 0), {},
                              ErrorSpec(0.0001));
@@ -42,8 +42,8 @@ TEST_F(LogTest, LogTenValues) {
                               5.0,  6.0, -7.0, -8.0, 9.0};
 
   XlaBuilder builder(TestName());
-  auto x = builder.ConstantR1<float>(input);
-  builder.Log(x);
+  auto x = ConstantR1<float>(&builder, input);
+  Log(x);
 
   std::vector<float> expected;
   expected.reserve(input.size());
