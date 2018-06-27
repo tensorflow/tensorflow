@@ -32,6 +32,7 @@ tf_proto_library_py(
     name = "hlo_proto",  # bzl adds a _py suffix only to the OSS target.
     srcs = ["hlo.proto"],
     visibility = ["//visibility:public"],
+    deps = ["//tensorflow/compiler/xla:xla_data_proto_py"],
 )
 
 xla_proto_library(
