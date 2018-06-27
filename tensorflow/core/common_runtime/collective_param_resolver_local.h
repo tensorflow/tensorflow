@@ -212,6 +212,10 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   void CallbackWithStatus(const InstanceRecCallback& done, InstanceRec* irec)
       LOCKS_EXCLUDED(irec->out_mu);
 
+  friend class CollectiveParamResolverLocalTest;
+  static void GenerateSubdivPerms(const string& device, int source_rank,
+                                  CollectiveParams* cp);
+
   const DeviceMgr* dev_mgr_;
   DeviceResolverInterface* dev_resolver_;  // Not owned.
   string task_name_;

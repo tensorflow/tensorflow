@@ -317,11 +317,14 @@ void SortDevicesAndTasks(CollectiveParams* cp) {
   VLOG(1) << "Modified device_names on " << cp;
   SetDevPerTask(cp);
 }
+}  // namespace
 
 // Establish the requested number of subdivision permutations based on the
 // ring order implicit in the device order.
-void GenerateSubdivPerms(const string& device, int source_rank,
-                         CollectiveParams* cp) {
+/*static*/
+void CollectiveParamResolverLocal::GenerateSubdivPerms(const string& device,
+                                                       int source_rank,
+                                                       CollectiveParams* cp) {
   // Each subdiv permutation is a ring formed by rotating each
   // single-task subsequence of devices by an offset.  This makes most
   // sense when each task has the same number of devices but we can't
@@ -360,15 +363,27 @@ void GenerateSubdivPerms(const string& device, int source_rank,
     std::vector<int>& perm = cp->instance.impl_details.subdiv_permutations[sdi];
     CHECK_EQ(perm.size(), 0);
     int offset = cp->instance.impl_details.subdiv_offsets[sdi];
-    int prior_dev_count = 0;
+    // A negative subdivision offset is interpreted as follows:
+    //  1. Reverse the local device ordering.
+    //  2. Begin the subdivision at abs(offset) in the reversed ordering.
+    bool reverse = false;
+    if (offset < 0) {
+      offset = abs(offset);
+      reverse = true;
+    }
+    int prior_dev_count = 0;  // sum over prior worker device counts
     for (int ti = 0; ti < cp->group.num_tasks; ++ti) {
       for (int di = 0; di < dev_per_task[ti]; ++di) {
-        int offset_di = (di + offset) % dev_per_task[ti];
+        int di_offset = (di + offset) % dev_per_task[ti];
+        int offset_di =
+            reverse ? (dev_per_task[ti] - (di_offset + 1)) : di_offset;
+        // Device index in global subdivision permutation.
         int permuted_di = prior_dev_count + offset_di;
+        int rank = static_cast<int>(perm.size());
         perm.push_back(permuted_di);
-        if (cp->instance.device_names[prior_dev_count + di] == device) {
-          CHECK_EQ(prior_dev_count + di, cp->default_rank);
-          cp->subdiv_rank[sdi] = permuted_di;
+        if (cp->instance.device_names[permuted_di] == device) {
+          CHECK_EQ(permuted_di, cp->default_rank);
+          cp->subdiv_rank[sdi] = rank;
         }
       }
       prior_dev_count += dev_per_task[ti];
@@ -414,8 +429,6 @@ void GenerateSubdivPerms(const string& device, int source_rank,
     }
   }
 }
-
-}  // namespace
 
 void CollectiveParamResolverLocal::CompleteTaskIsLocal(const string& task_name,
                                                        CollectiveParams* cp) {
