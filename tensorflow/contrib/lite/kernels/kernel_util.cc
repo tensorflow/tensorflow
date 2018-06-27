@@ -103,24 +103,6 @@ void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
                                         act_max);
 }
 
-void CalculateActivationRangeFloat(TfLiteFusedActivation activation,
-                                   float* activation_min,
-                                   float* activation_max) {
-  if (activation == kTfLiteActRelu) {
-    *activation_min = 0.f;
-    *activation_max = std::numeric_limits<float>::max();
-  } else if (activation == kTfLiteActRelu6) {
-    *activation_min = 0.f;
-    *activation_max = 6.f;
-  } else if (activation == kTfLiteActRelu1) {
-    *activation_min = -1.f;
-    *activation_max = 1.f;
-  } else {
-    *activation_min = std::numeric_limits<float>::lowest();
-    *activation_max = std::numeric_limits<float>::max();
-  }
-}
-
 bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }

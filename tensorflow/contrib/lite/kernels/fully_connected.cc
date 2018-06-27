@@ -357,8 +357,8 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
                        const TfLiteTensor* input, const TfLiteTensor* filter,
                        const TfLiteTensor* bias, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
-  CalculateActivationRangeFloat(params->activation, &output_activation_min,
-                                &output_activation_max);
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
 #define TF_LITE_FULLY_CONNECTED(type)                                       \
   type::FullyConnected(GetTensorData<float>(input), GetTensorDims(input),   \
                        GetTensorData<float>(filter), GetTensorDims(filter), \
