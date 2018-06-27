@@ -424,7 +424,13 @@ Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
   const auto& node_def = op->MutableAttrs()->BuildNodeDef();
   const OpDef* op_def = nullptr;
 
-  TF_RETURN_IF_ERROR(OpDefForOp(op->Name().c_str(), &op_def));
+  const FunctionDef* function_def =
+      op->EagerContext()->FuncLibDef()->Find(op->Name());
+  if (function_def != nullptr) {
+    op_def = &(function_def->signature());
+  } else {
+    TF_RETURN_IF_ERROR(OpDefForOp(op->Name().c_str(), &op_def));
+  }
 
   TF_RETURN_IF_ERROR(OutputTypesForNode(node_def, *op_def, output_dtypes));
 
@@ -708,12 +714,12 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                                });
     n.WaitForNotification();
 
+    if (!status.ok()) return status;
+
     for (int i = 0; i < *num_retvals; i++) {
       retvals[i]->SetRemoteShape(
           MakeUnique<TensorShape>(response.queue_response(0).shape(i)));
     }
-
-    if (!status.ok()) return status;
   }
 
   return Status::OK();
