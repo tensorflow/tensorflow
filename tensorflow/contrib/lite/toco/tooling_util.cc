@@ -396,6 +396,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(SparseToDense)
     HANDLE_OPERATORTYPENAME_CASE(Equal)
     HANDLE_OPERATORTYPENAME_CASE(NotEqual)
+    HANDLE_OPERATORTYPENAME_CASE(Pow)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE

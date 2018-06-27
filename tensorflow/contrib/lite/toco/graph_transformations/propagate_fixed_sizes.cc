@@ -1611,6 +1611,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kGreaterEqual:
     case OperatorType::kEqual:
     case OperatorType::kNotEqual:
+    case OperatorType::kPow:
       ProcessSimpleBinaryOperator(model, op);
       break;
     case OperatorType::kAddN:
