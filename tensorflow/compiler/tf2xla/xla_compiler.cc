@@ -685,7 +685,7 @@ string ValidateFunctionDef(const FunctionDef* fdef,
 Status ValidateGraph(const Graph* graph,
                      const FunctionLibraryDefinition& flib_def,
                      const DeviceType& device_type, const string& name) {
-  std::vector<string> invalid_ops;
+  std::set<string> invalid_ops;
   for (const Node* node : graph->nodes()) {
     if (node->type_string() == FunctionLibraryDefinition::kGradientOp) {
       continue;
@@ -694,19 +694,19 @@ Status ValidateGraph(const Graph* graph,
     if (fdef) {
       string error_msg = ValidateFunctionDef(fdef, flib_def);
       if (!error_msg.empty()) {
-        invalid_ops.push_back(
+        invalid_ops.insert(
             strings::StrCat(node->def().op(), ":{", error_msg, "}"));
       }
       continue;
     }
     const OpDef* op_def;
     if (!OpRegistry::Global()->LookUpOpDef(node->def().op(), &op_def).ok()) {
-      invalid_ops.push_back(node->def().op());
+      invalid_ops.insert(node->def().op());
       continue;
     }
     TF_RETURN_IF_ERROR(ValidateNodeDef(node->def(), *op_def));
     if (!FindKernelDef(device_type, node->def(), nullptr, nullptr).ok()) {
-      invalid_ops.push_back(node->def().op());
+      invalid_ops.insert(node->def().op());
     }
   }
   if (!invalid_ops.empty()) {
