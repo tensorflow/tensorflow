@@ -682,16 +682,14 @@ def convolution(
   of N `strides` (defaulting [1]*N), this computes for each N-D spatial output
   position (x[0], ..., x[N-1]):
 
-  ```
     output[b, x[0], ..., x[N-1], k] =
-        sum_{z[0], ..., z[N-1], q}
+        \\(sum_{z[0], ..., z[N-1], q}\\)
             filter[z[0], ..., z[N-1], q, k] *
             padded_input[b,
                          x[0]*strides[0] + dilation_rate[0]*z[0],
                          ...,
                          x[N-1]*strides[N-1] + dilation_rate[N-1]*z[N-1],
                          q]
-  ```
   where b is the index into the batch, k is the output channel number, q is the
   input channel number, and z is the N-D spatial offset within the filter. Here,
   `padded_input` is obtained by zero padding the input using an effective
@@ -886,15 +884,13 @@ def pool(
       0 <= x[i] < output_spatial_shape[i],
       0 <= c < num_channels:
 
-  ```
     output[b, x[0], ..., x[N-1], c] =
-      REDUCE_{z[0], ..., z[N-1]}
+      \\(REDUCE_{z[0], ..., z[N-1]}\\)
         input[b,
               x[0] * strides[0] - pad_before[0] + dilation_rate[0]*z[0],
               ...
               x[N-1]*strides[N-1] - pad_before[N-1] + dilation_rate[N-1]*z[N-1],
               c],
-  ```
 
   where the reduction function REDUCE depends on the value of `pooling_type`,
   and pad_before is defined based on the value of `padding` as described in the
@@ -1061,13 +1057,11 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
 
   More specifically:
 
-  ```
   output[batch, height, width, out_channel] =
-      sum_{dheight, dwidth, in_channel} (
+      \\(sum_{dheight, dwidth, in_channel}\\) (
           filters[dheight, dwidth, in_channel, out_channel] *
           value[batch, height + rate*dheight, width + rate*dwidth, in_channel]
       )
-  ```
 
   Atrous convolution allows us to explicitly control how densely to compute
   feature responses in fully convolutional networks. Used in conjunction with
@@ -2003,13 +1997,13 @@ def sparse_softmax_cross_entropy_with_logits(
 
   Args:
     _sentinel: Used to prevent positional parameters. Internal, do not use.
-    labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
+    labels: `Tensor` of shape [\\(d_0, d_1, ..., d_{r-1}\\)] (where `r` is rank of
       `labels` and result) and dtype `int32` or `int64`. Each entry in `labels`
       must be an index in `[0, num_classes)`. Other values will raise an
       exception when this op is run on CPU, and return `NaN` for corresponding
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
-      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
+      [\\(d_0, d_1, ..., d_{r-1}\\), num_classes] and dtype `float32` or `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -2613,7 +2607,7 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
   In detail, the grayscale morphological 2-D erosion is given by:
 
       output[b, y, x, c] =
-         min_{dy, dx} value[b,
+         \\(min_{dy, dx}\\) value[b,
                             strides[1] * y - rates[1] * dy,
                             strides[2] * x - rates[2] * dx,
                             c] -
