@@ -2166,7 +2166,7 @@ def _calc_conv_flops(graph, node):
   filter_height = int(filter_shape[0])
   filter_width = int(filter_shape[1])
   filter_in_depth = int(filter_shape[2])
-  output_count = np.prod(output_shape.as_list())
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
   return ops.OpStats(
       "flops",
       (output_count * filter_in_depth * filter_height * filter_width * 2))
@@ -2184,7 +2184,7 @@ def _calc_depthwise_conv_flops(graph, node):
   output_shape.assert_is_fully_defined()
   filter_height = int(filter_shape[0])
   filter_width = int(filter_shape[1])
-  output_count = np.prod(output_shape.as_list())
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
 
 
@@ -2594,7 +2594,7 @@ def _calc_dilation2d_flops(graph, node):
   output_shape.assert_is_fully_defined()
   filter_height = int(filter_shape[0])
   filter_width = int(filter_shape[1])
-  output_count = np.prod(output_shape.as_list())
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
 
 
