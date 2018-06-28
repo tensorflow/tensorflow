@@ -105,7 +105,7 @@ def _convert_model(flags):
     input_arrays = converter.get_input_arrays()
     std_dev_values = _parse_array(flags.std_dev_values, type_fn=int)
     mean_values = _parse_array(flags.mean_values, type_fn=int)
-    quant_stats = zip(mean_values, std_dev_values)
+    quant_stats = list(zip(mean_values, std_dev_values))
     if ((not flags.input_arrays and len(input_arrays) > 1) or
         (len(input_arrays) != len(quant_stats))):
       raise ValueError("Mismatching --input_arrays, --std_dev_values, and "
