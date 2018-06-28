@@ -900,6 +900,9 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   int64 shape_size;
   if (LayoutUtil::IsSparseArray(shape)) {
     shape_size = LayoutUtil::MaxSparseElements(shape.layout());
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
     shape_size = MultiplyWithoutOverflow(shape_size, ShapeUtil::Rank(shape));
     if (shape_size < 0) {
       return invalid_argument;
