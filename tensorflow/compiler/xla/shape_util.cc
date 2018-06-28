@@ -592,12 +592,11 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   // tensorflow::StringPiece is not compatible with internal RE2 StringPiece, so
   // we convert in to the RE2-consumable type and then consume the corresponding
   // amount from our StringPiece type.
+  static LazyRE2 shape_pattern = {
+      "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?"};
   tensorflow::RegexpStringPiece s_consumable(s->data(), s->size());
-  if (RE2::Consume(
-          &s_consumable,
-          "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?",
-          &element_type_string, &dimensions_string, &format_string,
-          &layout_string)) {
+  if (RE2::Consume(&s_consumable, *shape_pattern, &element_type_string,
+                   &dimensions_string, &format_string, &layout_string)) {
     size_t consumed = s->size() - s_consumable.size();
     s->remove_prefix(consumed);
     auto string_to_int64 = [&s](const string& input) -> StatusOr<int64> {
