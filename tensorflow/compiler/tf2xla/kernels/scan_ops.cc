@@ -111,12 +111,12 @@ class ScanOp : public XlaOpKernel {
     // of all the input elements. Slice off this extra "last" element.
     if (exclusive_) {
       if (reverse_) {
-        output = builder->SliceInDim(output, 1, input_shape.dim_size(axis) + 1,
-                                     1, axis);
+        output =
+            xla::SliceInDim(output, 1, input_shape.dim_size(axis) + 1, 1, axis);
 
       } else {
         output =
-            builder->SliceInDim(output, 0, input_shape.dim_size(axis), 1, axis);
+            xla::SliceInDim(output, 0, input_shape.dim_size(axis), 1, axis);
       }
     }
     ctx->SetOutput(0, output);
