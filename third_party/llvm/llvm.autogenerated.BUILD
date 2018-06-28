@@ -137,17 +137,6 @@ genrule(
 
 # Rules that apply the LLVM tblgen tool.
 gentbl(
-    name = "intrinsics_gen",
-    tbl_outs = [("-gen-intrinsic", "include/llvm/IR/Intrinsics.inc")],
-    tblgen = ":llvm-tblgen",
-    td_file = "include/llvm/IR/Intrinsics.td",
-    td_srcs = glob([
-        "include/llvm/CodeGen/*.td",
-        "include/llvm/IR/Intrinsics*.td",
-    ]),
-)
-
-gentbl(
     name = "attributes_gen",
     tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.inc")],
     tblgen = ":llvm-tblgen",
@@ -178,6 +167,28 @@ gentbl(
         "include/llvm/CodeGen/*.td",
         "include/llvm/IR/Intrinsics*.td",
     ]) + ["include/llvm/TableGen/SearchableTable.td"],
+)
+
+gentbl(
+    name = "intrinsic_enums_gen",
+    tbl_outs = [("-gen-intrinsic-enums", "include/llvm/IR/IntrinsicEnums.inc")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "intrinsics_impl_gen",
+    tbl_outs = [("-gen-intrinsic-impl", "include/llvm/IR/IntrinsicImpl.inc")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
 )
 
 # Binary targets used by Tensorflow.
@@ -466,7 +477,8 @@ cc_library(
         ":aarch64_target_gen",
         ":attributes_gen",
         ":config",
-        ":intrinsics_gen",
+        ":intrinsic_enums_gen",
+        ":intrinsics_impl_gen",
         ":mc",
         ":support",
     ],
@@ -893,7 +905,8 @@ cc_library(
         ":arm_target_gen",
         ":attributes_gen",
         ":config",
-        ":intrinsics_gen",
+        ":intrinsic_enums_gen",
+        ":intrinsics_impl_gen",
         ":mc",
         ":mc_disassembler",
         ":support",
@@ -1161,7 +1174,8 @@ cc_library(
         ":attributes_gen",
         ":binary_format",
         ":config",
-        ":intrinsics_gen",
+        ":intrinsic_enums_gen",
+        ":intrinsics_impl_gen",
         ":support",
     ],
 )
@@ -1670,9 +1684,11 @@ cc_library(
         ":config",
         ":core",
         ":execution_engine",
+        ":mc",
         ":object",
         ":runtime_dyld",
         ":support",
+        ":target",
         ":transform_utils",
     ],
 )
@@ -1720,7 +1736,8 @@ cc_library(
     deps = [
         ":attributes_gen",
         ":config",
-        ":intrinsics_gen",
+        ":intrinsic_enums_gen",
+        ":intrinsics_impl_gen",
         ":mc",
         ":powerpc_info",
         ":powerpc_target_gen",
@@ -1779,7 +1796,8 @@ cc_library(
     deps = [
         ":attributes_gen",
         ":config",
-        ":intrinsics_gen",
+        ":intrinsic_enums_gen",
+        ":intrinsics_impl_gen",
         ":mc",
         ":powerpc_asm_printer",
         ":powerpc_info",
@@ -1832,7 +1850,6 @@ cc_library(
         ":attributes_gen",
         ":config",
         ":core",
-        ":intrinsics_gen",
         ":powerpc_target_gen",
         ":support",
         ":target",
