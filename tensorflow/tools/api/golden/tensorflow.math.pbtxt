@@ -34,7 +34,7 @@ tf_module {
   }
   member_method {
     name: "bessel_i0"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'bessel_i0\'], "
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "bessel_i0e"
@@ -42,7 +42,7 @@ tf_module {
   }
   member_method {
     name: "bessel_i1"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'bessel_i1\'], "
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "bessel_i1e"
