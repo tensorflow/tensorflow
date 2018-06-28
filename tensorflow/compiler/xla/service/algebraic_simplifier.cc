@@ -530,6 +530,10 @@ Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant) {
         constant, BuildTupleConstant(computation_, constant->literal()));
   }
 
+  if (constant->shape().element_type() == TOKEN) {
+    return Status::OK();
+  }
+
   // If a literal is all the same element replace it with a scalar broadcast.
   if (ShapeUtil::ElementsIn(constant->shape()) > 1 &&
       constant->literal().IsAllFirst()) {
