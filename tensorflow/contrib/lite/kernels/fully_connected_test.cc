@@ -423,15 +423,9 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantized) {
               ElementsAre(151, 152, 153, 185, 186, 187));
 }
 
-void SimpleTestShuffledQuantizedInt16OutputCase(
+void SimpleTestQuantizedInt16OutputCase(
     TfLiteRegistration* registration, int input_depth, int output_depth,
-    int batches) {
-  // The shuffled path currently supports only a restrictive subset of shapes,
-  // described by the following assertions:
-  CHECK_EQ(input_depth % 16, 0);
-  CHECK_EQ(output_depth % 4, 0);
-  CHECK(batches == 1 || batches == 4);
-
+    int batches, FullyConnectedOptionsWeightsFormat weights_format) {
   const uint8_t kWeightsZeroPoint = 128;
   const float kWeightsScale = 1.f / 128.f;
   const uint8_t kInputZeroPoint = 128;
@@ -448,8 +442,7 @@ void SimpleTestShuffledQuantizedInt16OutputCase(
       /*input=*/
       {TensorType_UINT8, {batches, input_depth}, kInputMin, kInputMax},
       /*output=*/{TensorType_INT16, {}, kOutputMin, kOutputMax},
-      /*activation_func=*/ActivationFunctionType_NONE,
-      /*weights_format=*/FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8);
+      /*activation_func=*/ActivationFunctionType_NONE, weights_format);
 
   std::mt19937 random_engine;
   std::uniform_int_distribution<uint8_t> weights_dist;
@@ -458,6 +451,24 @@ void SimpleTestShuffledQuantizedInt16OutputCase(
   for (auto& w : weights_data) {
     uint8_t q = weights_dist(random_engine);
     w = (q - kWeightsZeroPoint) * kWeightsScale;
+  }
+
+  // Based on weights_format, enforce any shape requirement for that format/path
+  // and set the (possibly shuffled) weights.
+  switch (weights_format) {
+    case FullyConnectedOptionsWeightsFormat_DEFAULT:
+      m.SetWeights(weights_data);
+      break;
+    case FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8:
+      // The shuffled path currently supports only a restrictive subset of
+      // shapes, described by the following assertions:
+      CHECK_EQ(input_depth % 16, 0);
+      CHECK_EQ(output_depth % 4, 0);
+      CHECK(batches == 1 || batches == 4);
+      m.ShuffleAndSetWeights(weights_data, input_depth, output_depth);
+      break;
+    default:
+      LOG(FATAL) << "Unhandled weights format";
   }
 
   std::uniform_int_distribution<uint8_t> input_dist;
@@ -475,7 +486,6 @@ void SimpleTestShuffledQuantizedInt16OutputCase(
     b = bias_dist(random_engine);
   }
 
-  m.ShuffleAndSetWeights(weights_data, input_depth, output_depth);
   m.SetBias(bias_data);
   m.SetInput(input_data);
 
@@ -499,18 +509,41 @@ void SimpleTestShuffledQuantizedInt16OutputCase(
               ElementsAreArray(ArrayFloatNear(expected_output_data, 3e-4f)));
 }
 
-TEST_P(QuantizedFullyConnectedOpTest, SimpleTestShuffledQuantizedInt16Output) {
-  // The shuffled block shape is 4x16. Testing an input shape equal to that
-  // block shape is a first step, but does not exercise actual shuffling.
-  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16, 4, 1);
-  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16, 4, 4);
-  // Test larger input shapes, that exercise actual shuffling.
-  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16 * 3, 4, 1);
-  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16 * 3, 4, 4);
-  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16 * 3, 4 * 3,
-                                             1);
-  SimpleTestShuffledQuantizedInt16OutputCase(GetRegistration(), 16 * 3, 4 * 3,
-                                             4);
+TEST_P(QuantizedFullyConnectedOpTest,
+       SimpleTestQuantizedInt16OutputDefaultWeights) {
+  for (int input_depth : {1, 3, 10, 100}) {
+    for (int output_depth : {1, 3, 10, 100}) {
+      for (int batch : {1, 3, 10, 100}) {
+        SimpleTestQuantizedInt16OutputCase(
+            GetRegistration(), input_depth, output_depth, batch,
+            FullyConnectedOptionsWeightsFormat_DEFAULT);
+      }
+    }
+  }
+}
+
+TEST_P(QuantizedFullyConnectedOpTest,
+       SimpleTestQuantizedInt16OutputShuffled4x16Int8Weights) {
+  // The shuffled weights block shape is 4x16. The shape of the weights matrix
+  // is: rows = output_depth, cols = input_depth. It must be a multiple of 4x16.
+  // This means that output_depth must be a multiple of 4, and input_deth must
+  // be a multiple of 16.
+  for (int input_depth_numblocks : {1, 3}) {
+    for (int output_depth_numblocks : {1, 3}) {
+      int input_depth = 16 * input_depth_numblocks;
+      int output_depth = 4 * output_depth_numblocks;
+      // The fast shuffled path is currently supporting only batch sizes of 1
+      // and 4. The idea is that the whole point of that path is to go as fast
+      // as possible for small batch size, which requires fully specializing
+      // it for each batch size, and for larger batch sizes the generic
+      // gemmlowp-based implementation is fast enough.
+      for (int batch : {1, 4}) {
+        SimpleTestQuantizedInt16OutputCase(
+            GetRegistration(), input_depth, output_depth, batch,
+            FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8);
+      }
+    }
+  }
 }
 
 TEST(HybridFullyConnectedOpTest, SimpleTestQuantized) {
