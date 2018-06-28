@@ -130,7 +130,7 @@ TEST_F(BinopScalingTest, R4PlusR0S32) {
   });
   // clang-format on
 
-  auto lhs = builder.ConstantR4FromArray4D(lhs_array);
+  auto lhs = ConstantR4FromArray4D(&builder, lhs_array);
   auto rhs = ConstantR0<int>(&builder, 42);
   Add(lhs, rhs);
   ComputeAndCompareR4<int>(&builder, expected, {});

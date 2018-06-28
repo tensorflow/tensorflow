@@ -343,12 +343,12 @@ TEST_F(SelectAndScatterTest, R4F32Valid) {
                         {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}};
   Array4D<float> o(4, 6, 15, 220);
   o.FillWithPZ(pzo);
-  auto operand = builder_.ConstantR4FromArray4D(o);
+  auto operand = ConstantR4FromArray4D(&builder_, o);
   Array4D<float> e(4, 6, 15, 220);
   e.FillWithPZ(pze);
   Array4D<float> s(2, 2, 15, 220);
   s.FillWithPZ(pzs);
-  auto source = builder_.ConstantR4FromArray4D(s);
+  auto source = ConstantR4FromArray4D(&builder_, s);
   s.FillWithPZ(pzs);
   SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 3, 1, 1},
                    Padding::kValid, source, ConstantR0<float>(&builder_, 0.0f),
@@ -368,12 +368,12 @@ TEST_F(SelectAndScatterTest, R4F32Overlap) {
                         {0.0f, 0.0f, 0.0f, 1.0f, 0.0f}};
   Array4D<float> o(4, 5, 17, 128);
   o.FillWithPZ(pzo);
-  auto operand = builder_.ConstantR4FromArray4D(o);
+  auto operand = ConstantR4FromArray4D(&builder_, o);
   Array4D<float> e(4, 5, 17, 128);
   e.FillWithPZ(pze);
   Array4D<float> s(2, 2, 17, 128);
   s.FillWithPZ(pzs);
-  auto source = builder_.ConstantR4FromArray4D(s);
+  auto source = ConstantR4FromArray4D(&builder_, s);
   s.FillWithPZ(pzs);
   SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 2, 1, 1},
                    Padding::kValid, source, ConstantR0<float>(&builder_, 0.0f),
@@ -393,12 +393,12 @@ TEST_F(SelectAndScatterTest, R4F32OverlapSmall) {
                         {0.0f, 0.0f, 0.0f, 1.0f, 0.0f}};
   Array4D<float> o(4, 5, 1, 1);
   o.FillWithPZ(pzo);
-  auto operand = builder_.ConstantR4FromArray4D(o);
+  auto operand = ConstantR4FromArray4D(&builder_, o);
   Array4D<float> e(4, 5, 1, 1);
   e.FillWithPZ(pze);
   Array4D<float> s(2, 2, 1, 1);
   s.FillWithPZ(pzs);
-  auto source = builder_.ConstantR4FromArray4D(s);
+  auto source = ConstantR4FromArray4D(&builder_, s);
   s.FillWithPZ(pzs);
   SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 2, 1, 1},
                    Padding::kValid, source, ConstantR0<float>(&builder_, 0.0f),
@@ -415,11 +415,11 @@ TEST_F(SelectAndScatterTest, R4F32RefValidFixedSmall) {
   Array2D<float> pzs = {{2.0f, 6.0f}, {3.0f, 1.0f}};
   Array4D<float> o(4, 6, 4, 4);
   o.FillWithPZ(pzo);
-  auto operand = builder_.ConstantR4FromArray4D(o);
+  auto operand = ConstantR4FromArray4D(&builder_, o);
   Array4D<float> s(2, 2, 4, 4);
   s.FillWithPZ(pzs);
 
-  auto source = builder_.ConstantR4FromArray4D(s);
+  auto source = ConstantR4FromArray4D(&builder_, s);
   s.FillWithPZ(pzs);
   SelectAndScatter(operand, ge_f32_, {2, 3, 1, 1}, {2, 3, 1, 1},
                    Padding::kValid, source, ConstantR0<float>(&builder_, 0.0f),

@@ -80,7 +80,8 @@ XLA_TEST_F(Bfloat16Test, BatchNormTraining) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
 
-  auto operand = builder.ConstantR4FromArray4D<bfloat16>(
+  auto operand = ConstantR4FromArray4D<bfloat16>(
+      &builder,
       {{{{static_cast<bfloat16>(1.f)}, {static_cast<bfloat16>(2.f)}},
         {{static_cast<bfloat16>(3.f)}, {static_cast<bfloat16>(4.f)}}},
        {{{static_cast<bfloat16>(5.f)}, {static_cast<bfloat16>(6.f)}},
@@ -116,8 +117,8 @@ XLA_TEST_F(Bfloat16Test, BatchNormGrad) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
 
-  auto operand = builder.ConstantR4FromArray4D<bfloat16>(
-      Array4D<bfloat16>(2, 2, 2, 1, static_cast<bfloat16>(0.0f)));
+  auto operand = ConstantR4FromArray4D<bfloat16>(
+      &builder, Array4D<bfloat16>(2, 2, 2, 1, static_cast<bfloat16>(0.0f)));
 
   auto scale = ConstantR1<bfloat16>(
       &builder, {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(1.0f)});
@@ -128,7 +129,8 @@ XLA_TEST_F(Bfloat16Test, BatchNormGrad) {
   auto var = ConstantR1<bfloat16>(
       &builder, {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(1.0f)});
 
-  auto grad_output = builder.ConstantR4FromArray4D<bfloat16>(
+  auto grad_output = ConstantR4FromArray4D<bfloat16>(
+      &builder,
       {{{{static_cast<bfloat16>(1.f)}, {static_cast<bfloat16>(2.f)}},
         {{static_cast<bfloat16>(3.f)}, {static_cast<bfloat16>(4.f)}}},
        {{{static_cast<bfloat16>(5.f)}, {static_cast<bfloat16>(6.f)}},

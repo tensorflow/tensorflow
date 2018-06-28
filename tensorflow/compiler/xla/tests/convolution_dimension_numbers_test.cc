@@ -97,7 +97,7 @@ XLA_TEST_F(ConvolutionDimensionNumbersTest,
           .ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto input = builder.ConstantR4FromArray4D<float>(*input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, *input_array);
   auto weight =
       Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {4, 3, 1, 1}), "weight");
   auto conv1 = Conv(input, weight, {1, 1}, Padding::kValid);

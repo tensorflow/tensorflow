@@ -89,8 +89,8 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
     ASSERT_EQ(2, arhs->height());
 
     XlaBuilder builder(TestName());
-    auto lhs = builder.ConstantR4FromArray4D<T>(*alhs);
-    auto rhs = builder.ConstantR4FromArray4D<T>(*arhs);
+    auto lhs = ConstantR4FromArray4D<T>(&builder, *alhs);
+    auto rhs = ConstantR4FromArray4D<T>(&builder, *arhs);
     Conv(lhs, rhs, {1, 1}, Padding::kValid);
 
     ComputeAndCompare(&builder, {}, error_spec_);

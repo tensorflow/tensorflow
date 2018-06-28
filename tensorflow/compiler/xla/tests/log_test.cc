@@ -30,7 +30,7 @@ class LogTest : public ClientLibraryTestBase {};
 
 XLA_TEST_F(LogTest, LogZeroValues) {
   XlaBuilder builder(TestName());
-  auto x = builder.ConstantR3FromArray3D<float>(Array3D<float>(3, 0, 0));
+  auto x = ConstantR3FromArray3D<float>(&builder, Array3D<float>(3, 0, 0));
   Log(x);
 
   ComputeAndCompareR3<float>(&builder, Array3D<float>(3, 0, 0), {},

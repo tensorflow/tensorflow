@@ -42,7 +42,7 @@ TEST_F(SliceTest, Slice3x3x3_To_3x3x1_F32) {
   values.FillIota(0);
 
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR3FromArray3D<float>(values);
+  auto original = ConstantR3FromArray3D<float>(&builder, values);
   Slice(original, {0, 0, 0}, {3, 3, 1}, {1, 1, 1});
 
   Array3D<float> expected{
@@ -55,7 +55,7 @@ TEST_F(SliceTest, Slice3x3x3_To_3x1x3_F32) {
   values.FillIota(0);
 
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR3FromArray3D<float>(values);
+  auto original = ConstantR3FromArray3D<float>(&builder, values);
   Slice(original, {0, 0, 0}, {3, 1, 3}, {1, 1, 1});
 
   Array3D<float> expected{
@@ -68,7 +68,7 @@ TEST_F(SliceTest, Slice3x3x3_To_1x3x3_F32) {
   values.FillIota(0);
 
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR3FromArray3D<float>(values);
+  auto original = ConstantR3FromArray3D<float>(&builder, values);
   Slice(original, {0, 0, 0}, {1, 3, 3}, {1, 1, 1});
 
   Array3D<float> expected{
@@ -160,7 +160,7 @@ TEST_F(SliceTest, SliceR4ThreeDimsMiddleMinor) {
   auto expected = ReferenceUtil::Slice4D(
       values, {{1, 0, 8, 0}}, {{2, 2, 16, 128}}, /*strides=*/{{1, 1, 1, 1}});
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR4FromArray4D(values);
+  auto original = ConstantR4FromArray4D(&builder, values);
   Slice(original, {1, 0, 8, 0}, {2, 2, 16, 128}, {1, 1, 1, 1});
   ComputeAndCompareR4(&builder, *expected, {}, ErrorSpec(0.000001));
 }
@@ -173,7 +173,7 @@ XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
   auto expected_literal = Literal::CreateR4FromArray4DWithLayout(
       *expected, LayoutUtil::MakeLayout({0, 1, 2, 3}));
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR4FromArray4D(values);
+  auto original = ConstantR4FromArray4D(&builder, values);
   Slice(original, {0, 0, 0, 0}, {2, 4, 6, 8}, {1, 1, 2, 1});
   ComputeAndCompareLiteral(&builder, *expected_literal, {}, ErrorSpec(0.000001),
                            &expected_literal->shape());
