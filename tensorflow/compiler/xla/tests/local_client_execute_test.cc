@@ -771,10 +771,6 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   ScopedShapedBuffer result =
       executable->Run({&x_array}, DefaultExecutableRunOptions())
           .ConsumeValueOrDie();
-  ASSERT_IS_OK(local_client_->mutable_backend()
-                   ->BorrowStream(0)
-                   .ValueOrDie()
-                   ->BlockHostUntilDone());
 
   LiteralTestUtil::ExpectR1Near<float>(
       {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(result), error_spec_);

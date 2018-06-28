@@ -64,9 +64,8 @@ class XlaTransferManager {
  private:
   Status TransferLiteralToDevice(const Tensor& host_tensor,
                                  Tensor* device_tensor) const;
-  void TransferLiteralFromDevice(Tensor* host_tensor,
-                                 const Tensor& device_tensor,
-                                 const StatusCallback& done) const;
+  Status TransferLiteralFromDevice(Tensor* host_tensor,
+                                   const Tensor& device_tensor) const;
 
   // Stream obtained from a Device, used to transfer tensors between
   // CPU and device.
