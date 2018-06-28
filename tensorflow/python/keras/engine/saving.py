@@ -351,7 +351,10 @@ def preprocess_weights_for_loading(layer,
                                    weights,
                                    original_keras_version=None,
                                    original_backend=None):
-  """Converts layers weights from Keras 1 format to Keras 2.
+  """Preprocess layer weights between different Keras formats.
+
+  Converts layers weights from Keras 1 format to Keras 2 and also weights of
+  CuDNN layers in Keras 2.
 
   Arguments:
       layer: Layer instance.
@@ -363,7 +366,18 @@ def preprocess_weights_for_loading(layer,
   Returns:
       A list of weights values (Numpy arrays).
   """
-  if layer.__class__.__name__ == 'Bidirectional':
+  def convert_nested_bidirectional(weights):
+    """Converts layers nested in `Bidirectional` wrapper.
+
+    This function uses `preprocess_weights_for_loading()` for converting
+    layers.
+
+    Arguments:
+        weights: List of weights values (Numpy arrays).
+
+    Returns:
+        A list of weights values (Numpy arrays).
+    """
     num_weights_per_layer = len(weights) // 2
     forward_weights = preprocess_weights_for_loading(
         layer.forward_layer, weights[:num_weights_per_layer],
@@ -371,7 +385,52 @@ def preprocess_weights_for_loading(layer,
     backward_weights = preprocess_weights_for_loading(
         layer.backward_layer, weights[num_weights_per_layer:],
         original_keras_version, original_backend)
-    weights = forward_weights + backward_weights
+    return forward_weights + backward_weights
+
+  def convert_nested_model(weights):
+    """Converts layers nested in `Model` or `Sequential`.
+
+    This function uses `preprocess_weights_for_loading()` for converting nested
+    layers.
+
+    Arguments:
+        weights: List of weights values (Numpy arrays).
+
+    Returns:
+        A list of weights values (Numpy arrays).
+    """
+    new_weights = []
+    # trainable weights
+    for sublayer in layer.layers:
+      num_weights = len(sublayer.trainable_weights)
+      if num_weights > 0:
+        new_weights.extend(preprocess_weights_for_loading(
+            layer=sublayer,
+            weights=weights[:num_weights],
+            original_keras_version=original_keras_version,
+            original_backend=original_backend))
+        weights = weights[num_weights:]
+
+    # non-trainable weights
+    for sublayer in layer.layers:
+      num_weights = len([l for l in sublayer.weights
+                         if l not in sublayer.trainable_weights])
+      if num_weights > 0:
+        new_weights.extend(preprocess_weights_for_loading(
+            layer=sublayer,
+            weights=weights[:num_weights],
+            original_keras_version=original_keras_version,
+            original_backend=original_backend))
+        weights = weights[num_weights:]
+    return new_weights
+
+  # Convert layers nested in Bidirectional/Model/Sequential.
+  # Both transformation should be ran for both Keras 1->2 conversion
+  # and for conversion of CuDNN layers.
+  if layer.__class__.__name__ == 'Bidirectional':
+    weights = convert_nested_bidirectional(weights)
+  elif layer.__class__.__name__ in ['Model', 'Sequential']:
+    weights = convert_nested_model(weights)
 
   if original_keras_version == '1':
     if layer.__class__.__name__ == 'TimeDistributed':
@@ -446,35 +505,6 @@ def preprocess_weights_for_loading(layer,
           recurrent_kernel = np.transpose(recurrent_kernel, (2, 3, 1, 0))
         weights = [kernel, recurrent_kernel, bias]
 
-    if layer.__class__.__name__ in ['Model', 'Sequential']:
-      new_weights = []
-      # trainable weights
-      for sublayer in layer.layers:
-        num_weights = len(sublayer.trainable_weights)
-        if num_weights > 0:
-          new_weights.extend(
-              preprocess_weights_for_loading(
-                  layer=sublayer,
-                  weights=weights[:num_weights],
-                  original_keras_version=original_keras_version,
-                  original_backend=original_backend))
-          weights = weights[num_weights:]
-
-      # non-trainable weights
-      for sublayer in layer.layers:
-        num_weights = len([
-            l for l in sublayer.weights if l not in sublayer.trainable_weights
-        ])
-        if num_weights > 0:
-          new_weights.extend(
-              preprocess_weights_for_loading(
-                  layer=sublayer,
-                  weights=weights[:num_weights],
-                  original_keras_version=original_keras_version,
-                  original_backend=original_backend))
-          weights = weights[num_weights:]
-      weights = new_weights
-
   conv_layers = ['Conv1D', 'Conv2D', 'Conv3D', 'Conv2DTranspose', 'ConvLSTM2D']
   if layer.__class__.__name__ in conv_layers:
     if original_backend == 'theano':
@@ -486,6 +516,7 @@ def preprocess_weights_for_loading(layer,
       if layer.__class__.__name__ == 'ConvLSTM2D':
         weights[1] = np.transpose(weights[1], (3, 2, 0, 1))
 
+  # convert CuDNN layers
   return _convert_rnn_weights(layer, weights)
 
 
@@ -624,7 +655,7 @@ def _convert_rnn_weights(layer, weights):
       kernels = transform_kernels(weights[0], transpose_input(from_cudnn),
                                   n_gates)
       recurrent_kernels = transform_kernels(weights[1], lambda k: k.T, n_gates)
-      biases = weights[2].reshape((2, -1) if from_cudnn else -1)
+      biases = np.array(weights[2]).reshape((2, -1) if from_cudnn else -1)
       return [kernels, recurrent_kernels, biases]
 
     if bias_shape == (2 * units * n_gates,):

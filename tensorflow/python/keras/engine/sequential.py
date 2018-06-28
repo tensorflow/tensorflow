@@ -146,8 +146,6 @@ class Sequential(Model):
           first_layer = layer.layers[0]
           while isinstance(first_layer, (Model, Sequential)):
             first_layer = first_layer.layers[0]
-          batch_shape = first_layer._batch_input_shape
-          dtype = first_layer.dtype
 
         if hasattr(first_layer, '_batch_input_shape'):
           batch_shape = first_layer._batch_input_shape
