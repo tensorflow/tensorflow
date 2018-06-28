@@ -23,9 +23,11 @@ from __future__ import print_function
 
 from tensorflow.contrib import tpu
 from tensorflow.contrib.distribute.python import one_device_strategy
+from tensorflow.contrib.distribute.python import values
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.util import nest
 
@@ -47,12 +49,10 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     return self._call_dataset_fn(dataset_fn)
 
   # TODO(priyag): Deal with OutOfRange errors.
-  # TODO(sourabhbajaj): Remove the initial_values parameter
+  # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
+  # a mechanism to infer the outputs of `fn`. Pending b/110550782.
   def _run_steps_on_dataset(self, fn, iterator, iterations,
-                            initial_values=None):
-    if initial_values is None:
-      initial_values = []
-
+                            initial_loop_values=None):
     # Enqueue ops
     shapes = nest.flatten(iterator.output_shapes)
     if any([not s.is_fully_defined() for s in shapes]):
@@ -98,23 +98,33 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       return nest.pack_sequence_as(iterator.output_shapes, dequeued)
 
     # Wrap `fn` for repeat.
+    if initial_loop_values is None:
+      initial_loop_values = []
+    ctx = values.MultiStepContext(initial_loop_values)
     def run_fn(*args, **kwargs):
       del args, kwargs
-      return fn(dequeue_fn())
+      fn_result = fn(ctx, dequeue_fn())
+      if ctx.last_step_outputs is None:
+        ctx.last_step_outputs = []
+      with ops.control_dependencies([fn_result]):
+        return array_ops.identity(ctx.last_step_outputs)
 
     # Repeat
     # TODO(sourabhbajaj): The input to while loop should be based on the output
     # type of the step_fn
     def iterate_on_tpu():
-      return tpu.repeat(iterations, run_fn, initial_values)
+      return tpu.repeat(iterations, run_fn, [initial_loop_values])
 
     # Re-write and distribute computation.
-    # TODO(sourabhbajaj): Convert the output to perDevice variable and
+    # TODO(sourabhbajaj): Convert the output to PerDevice variable and
     # implement support for that in reduce.
-    tpu_result = tpu.batch_parallel(
+    last_step_tensor_outputs = tpu.batch_parallel(
         iterate_on_tpu, [], num_shards=self._num_cores_per_host)
 
-    return control_flow_ops.group(tpu_result, enqueue_ops), tpu_result
+    # Take index [0] of last_step_tensor_outputs as we wrapped
+    # initial_loop_values in a list in the `repeat` call.
+    return (control_flow_ops.group(last_step_tensor_outputs, enqueue_ops),
+            last_step_tensor_outputs[0], ctx)
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
     kwargs.pop('run_concurrently', None)
