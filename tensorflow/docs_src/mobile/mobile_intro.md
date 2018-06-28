@@ -39,7 +39,7 @@ the time a user isn’t giving commands, and so streaming audio continuously to 
 remote server would be a waste of bandwidth, since it would mostly be silence or
 background noises. To solve this problem it’s common to have a small neural
 network running on-device
-@{$tutorials/sequences/audio_recognition$listening out for a particular keyword}.
+[listening out for a particular keyword](../tutorials/sequences/audio_recognition).
 Once that keyword has been spotted, the rest of the
 conversation can be transmitted over to the server for further processing if
 more computing power is needed.
