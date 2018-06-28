@@ -1306,7 +1306,7 @@ tf_module {
   }
   member_method {
     name: "lbeta"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'lbeta\'], "
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "less"
