@@ -574,7 +574,11 @@ class GradientBoostedDecisionTreeModel(object):
           about predictions per example.
 
     Returns:
-      An op that adds a new tree to the ensemble.
+      Three values:
+        - An op that adds a new tree to the ensemble, and
+        - An op that increments the stamp but removes all the trees and resets
+            the handlers. This can be used to reset the state of the ensemble.
+        - A dict containing the training state.
 
     Raises:
       ValueError: if inputs are not valid.
@@ -871,10 +875,35 @@ class GradientBoostedDecisionTreeModel(object):
         bias_stats_accumulator=bias_stats_accumulator,
         steps_accumulator=steps_accumulator,
         handlers=handlers)
-    return stats_update_ops, training_state
 
-  def increment_step_counter_and_maybe_update_ensemble(
-      self, predictions_dict, batch_size, training_state):
+    reset_op = control_flow_ops.no_op()
+    if self._is_chief:
+      # Advance the ensemble stamp to throw away staggered workers.
+      stamp_token, _ = model_ops.tree_ensemble_serialize(self._ensemble_handle)
+      next_stamp_token = stamp_token + 1
+
+      reset_ops = []
+      for handler in handlers:
+        reset_ops.append(handler.make_splits(stamp_token, next_stamp_token, 0))
+      if self._center_bias:
+        reset_ops.append(
+            bias_stats_accumulator.flush(stamp_token, next_stamp_token))
+      reset_ops.append(steps_accumulator.flush(stamp_token, next_stamp_token))
+      reset_ops.append(self._finalized_trees.assign(0).op)
+      reset_ops.append(self._attempted_trees.assign(0).op)
+      reset_ops.append(
+          model_ops.tree_ensemble_deserialize(
+              self._ensemble_handle,
+              stamp_token=next_stamp_token,
+              tree_ensemble_config="",
+              name="reset_gbdt"))
+
+      reset_op = control_flow_ops.group([reset_ops])
+
+    return stats_update_ops, reset_op, training_state
+
+  def increment_step_counter_and_maybe_update_ensemble(self, predictions_dict,
+                                                       training_state):
     """Increments number of visited examples and grows the ensemble.
 
     If the number of visited examples reaches the target examples_per_layer,
@@ -883,12 +912,13 @@ class GradientBoostedDecisionTreeModel(object):
     Args:
       predictions_dict: Dictionary of Rank 2 `Tensor` representing information
           about predictions per example.
-      batch_size: Number of examples in the batch.
       training_state: `dict` returned by update_stats.
 
     Returns:
       An op that updates the counters and potientially grows the ensemble.
     """
+    batch_size = math_ops.cast(
+        array_ops.shape(predictions_dict[PREDICTIONS])[0], dtypes.float32)
     ensemble_stamp = predictions_dict[ENSEMBLE_STAMP]
     # Accumulate a step after updating stats.
 
@@ -1073,7 +1103,8 @@ class GradientBoostedDecisionTreeModel(object):
       loss: A scalar tensor representing average loss of examples.
       predictions_dict: Dictionary of Rank 2 `Tensor` representing information
           about predictions per example.
-      labels: Rank 2 `Tensor` representing labels per example.
+      labels: Rank 2 `Tensor` representing labels per example. Has no effect
+          on the training and is only kept for backward compatibility.
 
     Returns:
       An op that adds a new tree to the ensemble.
@@ -1081,11 +1112,11 @@ class GradientBoostedDecisionTreeModel(object):
     Raises:
       ValueError: if inputs are not valid.
     """
-    batch_size = math_ops.cast(array_ops.shape(labels)[0], dtypes.float32)
-    update_op, handlers = self.update_stats(loss, predictions_dict)
+    del labels  # unused; kept for backward compatibility.
+    update_op, _, training_state = self.update_stats(loss, predictions_dict)
     with ops.control_dependencies(update_op):
       return self.increment_step_counter_and_maybe_update_ensemble(
-          predictions_dict, batch_size, handlers)
+          predictions_dict, training_state)
 
   def _get_weights(self, hessian_shape, hessians):
     """Derives weights to be used based on hessians and multiclass strategy."""
