@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 #define TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 
+#include <complex>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -161,15 +162,16 @@ enum class AxesOrder {
 
 // The type of the scalars in an array.
 // Note that the type does not by itself tell whether the values in the array
-// are real (are literally interpreted as real numbers) or quantized (only
-// acquire a meaning as real numbers in conjunction with QuantizationParams).
+// are non-quantized (can be accessed directly) or quantized (must be
+// interpreted in conjunction with QuantizationParams).
 //
 // In practice though:
-//   float values are always real
+//   float values are never quantized
 //   uint8 values are always quantized
-//   int32 values are either real or quantized (depending on whether
+//   int32 values are sometimes quantized (depending on whether
 //   QuantizationParams are present).
-//   other types are unused at the moment.
+//   complex values are never quantized
+//   other types are never quantized at the moment.
 //
 // kNone means that we don't know the data type yet, or that we don't care
 // because we'll be dropping the array anyway (e.g. some exotic array types
@@ -187,7 +189,8 @@ enum class ArrayDataType : uint8 {
   kUint32,
   kInt64,
   kUint64,  // 10
-  kString
+  kString,
+  kComplex64,
 };
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type
@@ -240,6 +243,10 @@ struct DataTypeImpl<ArrayDataType::kUint64> {
 template <>
 struct DataTypeImpl<ArrayDataType::kString> {
   typedef string Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kComplex64> {
+  typedef std::complex<float> Type;
 };
 
 template <ArrayDataType A>
