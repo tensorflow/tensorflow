@@ -878,7 +878,8 @@ def sparse_softmax_cross_entropy(
       exception when this op is run on CPU, and return `NaN` for corresponding
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
-      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
+      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float16`, `float32` or
+      `float64`.
     weights: Coefficients for the loss. This must be scalar or broadcastable to
       `labels` (i.e. same rank and each dimension is either 1 or the same).
     scope: the scope for the operations performed in computing the loss.
