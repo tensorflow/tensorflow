@@ -387,6 +387,21 @@ def preprocess_weights_for_loading(layer,
         original_keras_version, original_backend)
     return forward_weights + backward_weights
 
+  def convert_nested_time_distributed(weights):
+    """Converts layers nested in `TimeDistributed` wrapper.
+
+    This function uses `preprocess_weights_for_loading()` for converting nested
+    layers.
+
+    Arguments:
+        weights: List of weights values (Numpy arrays).
+
+    Returns:
+        A list of weights values (Numpy arrays).
+    """
+    return preprocess_weights_for_loading(
+        layer.layer, weights, original_keras_version, original_backend)
+
   def convert_nested_model(weights):
     """Converts layers nested in `Model` or `Sequential`.
 
@@ -429,6 +444,8 @@ def preprocess_weights_for_loading(layer,
   # and for conversion of CuDNN layers.
   if layer.__class__.__name__ == 'Bidirectional':
     weights = convert_nested_bidirectional(weights)
+  if layer.__class__.__name__ == 'TimeDistributed':
+    weights = convert_nested_time_distributed(weights)
   elif layer.__class__.__name__ in ['Model', 'Sequential']:
     weights = convert_nested_model(weights)
 
