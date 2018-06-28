@@ -18,6 +18,7 @@ OPENBLAS_SRC_PATH=/tmp/openblas_src/
 POWER="POWER8"
 USE_OPENMP="USE_OPENMP=1"
 OPENBLAS_INSTALL_PATH="/usr"
+apt-get update
 apt-get install -y gfortran gfortran-5
 sudo rm -rf ${OPENBLAS_SRC_PATH}
 git clone -b release-0.3.0 https://github.com/xianyi/OpenBLAS ${OPENBLAS_SRC_PATH}
