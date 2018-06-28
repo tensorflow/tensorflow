@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -169,6 +170,14 @@ TEST_F(ConstantsTest, DISABLED_TupleConstant) {
       {{1.0}, {2.0}}, LiteralSlice(*result, {0}), error_spec_);
   LiteralTestUtil::ExpectR1Near<float>(
       {2.0, 42.0}, LiteralSlice(*result, {1}), error_spec_);
+}
+
+TEST_F(ConstantsTest, Token) {
+  XlaBuilder builder(TestName());
+  ConstantLiteral(&builder, *Literal::CreateToken());
+  // TODO(b/80000000): tokens cannot be returned from computations.
+  Tuple(&builder, {});
+  TF_ASSERT_OK(Execute(&builder, {}).status());
 }
 
 }  // namespace
