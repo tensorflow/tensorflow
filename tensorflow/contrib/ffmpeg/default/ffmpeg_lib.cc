@@ -227,10 +227,10 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
       << "Could not read FFmpeg file: " << filename;
 
   enum State {
-      STATE_OTHER = 0,
-      STATE_INPUT = 1,
-      STATE_OUTPUT = 2,
-      STATE_MAPPING = 3,
+    STATE_OTHER = 0,
+    STATE_INPUT = 1,
+    STATE_OUTPUT = 2,
+    STATE_MAPPING = 3,
   };
   enum State state = STATE_OTHER;
 
@@ -302,7 +302,7 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
       continue;
     }
   }
-  if (!(frames_done &&format_done)) {
+  if (!(frames_done && format_done)) {
     return errors::Unknown("Not enough video info returned by FFmpeg [",
                            frames_value, ", ", height_value, ", ", width_value,
                            ", 3]");
