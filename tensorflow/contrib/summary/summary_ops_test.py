@@ -81,6 +81,19 @@ class EagerFileTest(test_util.TensorFlowTestCase):
       # test here that we're calling them correctly.
       self.assertTrue(gfile.Exists(logdir))
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testEagerMemory(self):
+    training_util.get_or_create_global_step()
+    logdir = self.get_temp_dir()
+    with summary_ops.create_file_writer(
+        logdir, max_queue=0,
+        name='t0').as_default(), summary_ops.always_record_summaries():
+      summary_ops.generic('tensor', 1, '')
+      summary_ops.scalar('scalar', 2.0)
+      summary_ops.histogram('histogram', [1.0])
+      summary_ops.image('image', [[[[1.0]]]])
+      summary_ops.audio('audio', [[1.0]], 1.0, 1)
+
   def testDefunSummarys(self):
     training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()

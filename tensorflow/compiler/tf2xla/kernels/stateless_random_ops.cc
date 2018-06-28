@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 
+#include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -37,14 +38,6 @@ xla::XlaOp RotateLeftS32(xla::XlaBuilder* builder, const xla::XlaOp& v,
       builder->ShiftRightLogical(v, builder->ConstantR0<int>(32 - distance)));
 }
 
-// TODO(b/65209188): add a primitive XOR to XLA and call it here, rather than
-// building XOR out of other bitwise operators.
-xla::XlaOp BitwiseXor(xla::XlaBuilder* builder, const xla::XlaOp& x,
-                      const xla::XlaOp& y) {
-  return builder->Or(builder->And(x, builder->Not(y)),
-                     builder->And(builder->Not(x), y));
-}
-
 using ThreeFry2x32State = std::array<xla::XlaOp, 2>;
 
 // Implements the ThreeFry counter-based PRNG algorithm.
@@ -62,7 +55,7 @@ ThreeFry2x32State ThreeFry2x32(xla::XlaBuilder* builder,
   for (int i = 0; i < 2; ++i) {
     ks[i] = key[i];
     x[i] = input[i];
-    ks[2] = BitwiseXor(builder, ks[2], key[i]);
+    ks[2] = builder->Xor(ks[2], key[i]);
   }
 
   x[0] = builder->Add(x[0], ks[0]);
@@ -73,7 +66,7 @@ ThreeFry2x32State ThreeFry2x32(xla::XlaBuilder* builder,
   auto round = [builder](ThreeFry2x32State v, int rotation) {
     v[0] = builder->Add(v[0], v[1]);
     v[1] = RotateLeftS32(builder, v[1], rotation);
-    v[1] = BitwiseXor(builder, v[0], v[1]);
+    v[1] = builder->Xor(v[0], v[1]);
     return v;
   };
 
@@ -163,51 +156,6 @@ xla::XlaOp RandomUniform(xla::XlaBuilder* builder, const xla::XlaOp& seed,
   return floats;
 }
 
-// Approximation for the inverse error function from
-//   Giles, M., "Approximating the erfinv function".
-// The approximation has the form:
-//   w = -log((1 - x) * (1 + x))
-//   if ( w < 5 ) {
-//     w = w - 2.5
-//     p = sum_{i=1}^n lq[i]*w^i
-//   } else {
-//     w = sqrt(w) - 3
-//     p = sum_{i=1}^n gq[i]*w^i
-//   }
-//   return p*x
-xla::XlaOp ErfInvF32(xla::XlaBuilder* b, const xla::XlaOp& x,
-                     const TensorShape& shape) {
-  constexpr int kDegree = 9;
-  constexpr std::array<float, 9> w_less_than_5_constants = {
-      2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
-      -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
-      -0.00417768164f,  0.246640727f,    1.50140941f};
-  constexpr std::array<float, 9> w_greater_than_5_constants = {
-      -0.000200214257f, 0.000100950558f, 0.00134934322f,
-      -0.00367342844f,  0.00573950773f,  -0.0076224613f,
-      0.00943887047f,   1.00167406f,     2.83297682f};
-
-  auto one = b->ConstantR0<float>(1.0);
-  auto w = b->Neg(b->Log(b->Mul(b->Sub(one, x), b->Add(one, x))));
-
-  auto lt = b->Lt(w, b->ConstantR0<float>(5.0));
-  auto coefficient = [&](int i) {
-    return b->Select(
-        lt,
-        b->Broadcast(b->ConstantR0<float>(w_less_than_5_constants[i]),
-                     shape.dim_sizes()),
-        b->Broadcast(b->ConstantR0<float>(w_greater_than_5_constants[i]),
-                     shape.dim_sizes()));
-  };
-  w = b->Select(lt, b->Sub(w, b->ConstantR0<float>(2.5f)),
-                b->Sub(b->SqrtF32(w), b->ConstantR0<float>(3.0f)));
-  auto p = coefficient(0);
-  for (int i = 1; i < kDegree; ++i) {
-    p = b->Add(coefficient(i), b->Mul(p, w));
-  }
-  return b->Mul(p, x);
-}
-
 }  // namespace
 
 class StatelessRandomUniformOp : public XlaOpKernel {
@@ -260,7 +208,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     // Convert uniform distribution to normal distribution by computing
     // sqrt(2) * erfinv(x)
     auto normal = builder->Mul(builder->ConstantR0<float>(std::sqrt(2.0)),
-                               ErfInvF32(builder, uniform, shape));
+                               ErfInv(uniform));
     ctx->SetOutput(0, normal);
   }
 
@@ -274,5 +222,38 @@ REGISTER_XLA_OP(Name("StatelessRandomNormal")
                     .TypeConstraint("dtype", DT_FLOAT)
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomNormalOp);
+
+class StatelessTruncatedNormalOp : public XlaOpKernel {
+ public:
+  explicit StatelessTruncatedNormalOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const DataType dtype = output_type(0);
+
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+
+    TensorShape seed_shape = ctx->InputShape(1);
+    OP_REQUIRES(ctx, seed_shape == TensorShape({2}),
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_shape.DebugString()));
+    xla::XlaOp seed = ctx->Input(1);
+    xla::XlaBuilder* b = ctx->builder();
+
+    auto uniform =
+        RandomUniform(b, seed, shape, std::numeric_limits<float>::min(), 1.0);
+    ctx->SetOutput(0, TruncatedNormal(dtype, uniform));
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(StatelessTruncatedNormalOp);
+};
+
+REGISTER_XLA_OP(Name("StatelessTruncatedNormal")
+                    .CompileTimeConstInput("shape")
+                    .TypeConstraint("dtype", DT_FLOAT)
+                    .TypeConstraint("Tseed", DT_INT32),
+                StatelessTruncatedNormalOp);
 
 }  // namespace tensorflow

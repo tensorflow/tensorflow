@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
@@ -25,6 +27,10 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import versions
+from tensorflow.python.ops import cond_v2_impl
+
+# This is to avoid a circular dependency with cond_v2_impl.
+cond_v2_impl._function_def_to_graph = sys.modules[__name__]  # pylint: disable=protected-access
 
 
 def function_def_to_graph(fdef, input_shapes=None):

@@ -147,7 +147,7 @@ message GPUOptions {
 
   // Everything inside experimental is subject to change and is not subject
   // to API stability guarantees in
-  // https://www.tensorflow.org/programmers_guide/version_compat.
+  // https://www.tensorflow.org/guide/version_compat.
   Experimental experimental = 9;
 };
 
@@ -381,7 +381,7 @@ message ConfigProto {
 
   // Everything inside Experimental is subject to change and is not subject
   // to API stability guarantees in
-  // https://www.tensorflow.org/programmers_guide/version_compat.
+  // https://www.tensorflow.org/guide/version_compat.
   message Experimental {
     // Task name for group resolution.
     string collective_group_leader = 1;
@@ -426,7 +426,7 @@ message RunOptions {
 
   // Everything inside Experimental is subject to change and is not subject
   // to API stability guarantees in
-  // https://www.tensorflow.org/programmers_guide/version_compat.
+  // https://www.tensorflow.org/guide/version_compat.
   message Experimental {
     // If non-zero, declares that this graph is going to use collective
     // ops and must synchronize step_ids with any other graph with this

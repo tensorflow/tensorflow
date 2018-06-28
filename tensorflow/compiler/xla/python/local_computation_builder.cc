@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
-
 namespace swig {
 
 // TODO(b/34473877) Ideally XLA would support AllReduce among arbitrary sets of
@@ -96,6 +95,36 @@ LocalShapedBuffer::LocalShapedBuffer(ScopedShapedBuffer shaped_buffer)
 const ScopedShapedBuffer* LocalShapedBuffer::shaped_buffer() const {
   return &shaped_buffer_;
 }
+
+ShapedBuffer LocalShapedBuffer::Release() { return shaped_buffer_.release(); }
+
+LocalShapedBufferTuple::LocalShapedBufferTuple(
+    std::vector<LocalShapedBuffer*> elements)
+    : elements_(std::move(elements)) {
+  for (auto* element : elements_) {
+    DCHECK(element != nullptr);
+  }
+}
+
+LocalShapedBufferTuple::~LocalShapedBufferTuple() {
+  for (LocalShapedBuffer* element : elements_) {
+    if (element != nullptr) {
+      delete element;
+    }
+  }
+}
+
+StatusOr<LocalShapedBuffer*> LocalShapedBufferTuple::Release(int i) {
+  LocalShapedBuffer* element = elements_[i];
+  if (element == nullptr) {
+    return InvalidArgument("Attempted to release already-released element %d.",
+                           i);
+  }
+  elements_[i] = nullptr;
+  return element;
+}
+
+int LocalShapedBufferTuple::size() const { return elements_.size(); }
 
 static StatusOr<ScopedShapedBuffer> ToBuffer(LocalClient* client,
                                              int device_ordinal,
@@ -315,11 +344,8 @@ LocalOp LocalComputationBuilder::Parameter(int64 parameter_number,
   return builder_.Parameter(parameter_number, shape, name);
 }
 
-std::unique_ptr<Shape> LocalComputationBuilder::GetShape(
-    const LocalOp& operand) {
-  auto result = MakeUnique<Shape>();
-  *result = builder_.GetShape(operand.op()).ValueOrDie();
-  return result;
+StatusOr<Shape> LocalComputationBuilder::GetShape(const LocalOp& operand) {
+  return builder_.GetShape(operand.op());
 }
 
 StatusOr<Shape> LocalComputationBuilder::GetReturnValueShape() {
@@ -485,22 +511,14 @@ LocalOp LocalComputationBuilder::Rev(
 LocalOp LocalComputationBuilder::Map(
     tensorflow::gtl::ArraySlice<LocalOp> operands,
     const LocalComputation& local_computation,
-    tensorflow::gtl::ArraySlice<int64> dimensions,
-    tensorflow::gtl::ArraySlice<LocalOp> static_operands) {
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
   std::vector<XlaOp> xla_ops;
   xla_ops.reserve(operands.size());
   for (const auto& op : operands) {
     xla_ops.push_back(op.op());
   }
 
-  std::vector<XlaOp> static_xla_ops;
-  static_xla_ops.reserve(static_operands.size());
-  for (const auto& op : static_operands) {
-    static_xla_ops.push_back(op.op());
-  }
-
-  return builder_.Map(xla_ops, local_computation.computation(), dimensions,
-                      static_xla_ops);
+  return builder_.Map(xla_ops, local_computation.computation(), dimensions);
 }
 
 LocalOp LocalComputationBuilder::Reduce(
@@ -595,6 +613,7 @@ _FORWARD_BINOP(Max)
 _FORWARD_BINOP(Min)
 _FORWARD_BINOP(And)
 _FORWARD_BINOP(Or)
+_FORWARD_BINOP(Xor)
 _FORWARD_UNOP(Not)
 _FORWARD_UNOP(Abs)
 _FORWARD_UNOP(Exp)
@@ -633,6 +652,54 @@ void DeleteLocalComputation(LocalComputation* computation) {
   delete computation;
 }
 
-}  // namespace swig
+StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
+    LocalShapedBuffer* local_shaped_buffer) {
+  if (!ShapeUtil::IsTuple(
+          local_shaped_buffer->shaped_buffer()->on_device_shape())) {
+    return InvalidArgument(
+        "Attemped to destructure a LocalShapedBuffer that did not have a tuple "
+        "shape; shape: %s",
+        ShapeUtil::HumanString(
+            local_shaped_buffer->shaped_buffer()->on_device_shape())
+            .c_str());
+  }
 
+  DeviceMemoryAllocator* allocator =
+      local_shaped_buffer->shaped_buffer()->memory_allocator();
+  ShapedBuffer tuple_buffer = local_shaped_buffer->Release();
+
+  // Extract some metadata we use to construct scoped buffers.
+  const se::Platform* platform = tuple_buffer.platform();
+  int device_ordinal = tuple_buffer.device_ordinal();
+
+  ShapeTree<se::DeviceMemoryBase>& shape_tree = tuple_buffer.buffers();
+  const Shape& tuple_shape = tuple_buffer.on_device_shape();
+  std::vector<LocalShapedBuffer*> results;
+  for (int64 i = 0; i < ShapeUtil::TupleElementCount(tuple_shape); ++i) {
+    // Create a shaped buffer for this destructured tuple element.
+    const Shape& subshape = ShapeUtil::GetSubshape(tuple_shape, {i});
+    VLOG(3) << "Starting tuple element " << i << " subshape: " << subshape;
+    ShapedBuffer shaped_buffer(subshape, subshape, platform, device_ordinal);
+
+    ShapeUtil::ForEachSubshape(
+        subshape, [&](const Shape& s, const ShapeIndex& index) {
+          ShapeIndex original(index);
+          original.push_front(i);
+          se::DeviceMemoryBase* device_memory =
+              shape_tree.mutable_element(original);
+          shaped_buffer.set_buffer(*device_memory, index);
+          *device_memory = se::DeviceMemoryBase();
+        });
+
+    VLOG(3) << "Completed tuple element: " << i;
+    results.push_back(new LocalShapedBuffer(
+        ScopedShapedBuffer(std::move(shaped_buffer), allocator)));
+  }
+  // Deallocate the root buffer.
+  se::DeviceMemoryBase root_buffer = tuple_buffer.root_buffer();
+  TF_RETURN_IF_ERROR(allocator->Deallocate(device_ordinal, root_buffer));
+  return new LocalShapedBufferTuple(std::move(results));
+}
+
+}  // namespace swig
 }  // namespace xla

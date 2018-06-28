@@ -581,11 +581,20 @@ Computes a sum across replicas.
 Arguments | Type    | Semantics
 --------- | ------- | -----------------------------
 `operand` | `XlaOp` | Array to sum across replicas.
+| `replica_group_ids`    | `int64` vector | Group ID for each replica.      |
 
 The output shape is the same as the input shape. For example, if there are two
 replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.25)`
 respectively on the two replicas, then the output value from this op will be
 `(4.0, 7.75)` on both replicas.
+
+`replica_group_ids` identifies the group ID of each replica. The group ID must
+either be empty (all replicas belong to a single group), or contain the same
+number of elements as the number of replicas. For example, if
+`replica_group_ids` = {0, 1, 2, 3, 0, 1, 2, 3} has eight replicas, there are
+four subgroups of replica IDs: {0, 4}, {1, 5}, {2, 6}, and {3, 7}. The size of
+each subgroup *must* be identical, so, for example, using:
+`replica_group_ids` = {0, 1, 2, 0} for four replicas is invalid.
 
 Computing the result of CrossReplicaSum requires having one input from each
 replica, so if one replica executes a CrossReplicaSum node more times than
@@ -1299,12 +1308,10 @@ See also
 :                   :                        : parameters of type T and M of  :
 :                   :                        : arbitrary type                 :
 | `dimensions`      | `int64` array          | array of map dimensions        |
-| `static_operands` | sequence of M `XlaOp`s | M arrays of arbitrary type     |
 
 Applies a scalar function over the given `operands` arrays, producing an array
 of the same dimensions where each element is the result of the mapped function
-applied to the corresponding elements in the input arrays with `static_operands`
-given as additional input to `computation`.
+applied to the corresponding elements in the input arrays.
 
 The mapped function is an arbitrary computation with the restriction that it has
 N inputs of scalar type `T` and a single output with type `S`. The output has

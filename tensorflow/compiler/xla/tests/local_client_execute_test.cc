@@ -54,7 +54,7 @@ class LocalClientExecuteTest : public LocalClientTestBase {
 
 XLA_TEST_F(LocalClientExecuteTest, Constant) {
   XlaBuilder builder(TestName());
-  auto y = builder.ConstantR0<float>(123.0f);
+  builder.ConstantR0<float>(123.0f);
 
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {});
@@ -209,13 +209,12 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
   EXPECT_EQ(3, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {0}));
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{10.0f, 20.0f}, {30.0f, 40.0f}},
-      LiteralSlice(*result_literal, {1}));
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {2}));
+  LiteralTestUtil::ExpectR2Equal<float>({{1.0f, 2.0f}, {3.0f, 4.0f}},
+                                        LiteralSlice(*result_literal, {0}));
+  LiteralTestUtil::ExpectR2Equal<float>({{10.0f, 20.0f}, {30.0f, 40.0f}},
+                                        LiteralSlice(*result_literal, {1}));
+  LiteralTestUtil::ExpectR2Equal<float>({{1.0f, 2.0f}, {3.0f, 4.0f}},
+                                        LiteralSlice(*result_literal, {2}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
@@ -238,17 +237,14 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {1}));
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}},
-      LiteralSlice(*result_literal, {0, 0}));
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{10.0f, 20.0f}, {30.0f, 40.0f}},
-      LiteralSlice(*result_literal, {0, 1}));
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}},
-      LiteralSlice(*result_literal, {0, 2}));
+  LiteralTestUtil::ExpectR2Equal<float>({{1.0f, 2.0f}, {3.0f, 4.0f}},
+                                        LiteralSlice(*result_literal, {1}));
+  LiteralTestUtil::ExpectR2Equal<float>({{1.0f, 2.0f}, {3.0f, 4.0f}},
+                                        LiteralSlice(*result_literal, {0, 0}));
+  LiteralTestUtil::ExpectR2Equal<float>({{10.0f, 20.0f}, {30.0f, 40.0f}},
+                                        LiteralSlice(*result_literal, {0, 1}));
+  LiteralTestUtil::ExpectR2Equal<float>({{1.0f, 2.0f}, {3.0f, 4.0f}},
+                                        LiteralSlice(*result_literal, {0, 2}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
@@ -273,10 +269,10 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
                           options, DefaultExecutableRunOptions());
 
   std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {0}));
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LiteralSlice(*result_literal, {1}));
+  LiteralTestUtil::ExpectR2Equal<float>({{1.0f, 2.0f}, {3.0f, 4.0f}},
+                                        LiteralSlice(*result_literal, {0}));
+  LiteralTestUtil::ExpectR2Equal<float>({{1.0f, 2.0f}, {3.0f, 4.0f}},
+                                        LiteralSlice(*result_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
@@ -319,11 +315,10 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{56.0f, 46.0f}, {36.0f, 26.0f}},
-      LiteralSlice(*result_literal, {0}));
-  LiteralTestUtil::ExpectR1Equal<float>(
-      {40.0f, 71.0f, 117.0f}, LiteralSlice(*result_literal, {1}));
+  LiteralTestUtil::ExpectR2Equal<float>({{56.0f, 46.0f}, {36.0f, 26.0f}},
+                                        LiteralSlice(*result_literal, {0}));
+  LiteralTestUtil::ExpectR1Equal<float>({40.0f, 71.0f, 117.0f},
+                                        LiteralSlice(*result_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
@@ -360,10 +355,10 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
   ScopedShapedBuffer result = ExecuteLocallyOrDie(computation, {&arg_buffer});
 
   std::unique_ptr<Literal> result_literal = ShapedBufferToLiteral(result);
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{-1.0, -2.0}, {-3.0, -4}}, LiteralSlice(*result_literal, {0}));
-  LiteralTestUtil::ExpectR1Equal<float>(
-      {264.0, 73.0, 133.0}, LiteralSlice(*result_literal, {1}));
+  LiteralTestUtil::ExpectR2Equal<float>({{-1.0, -2.0}, {-3.0, -4}},
+                                        LiteralSlice(*result_literal, {0}));
+  LiteralTestUtil::ExpectR1Equal<float>({264.0, 73.0, 133.0},
+                                        LiteralSlice(*result_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
@@ -389,18 +384,17 @@ XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
 
   ScopedShapedBuffer result_0 = ExecuteLocallyOrDie(computation, {&arg_buffer});
   std::unique_ptr<Literal> result_0_literal = ShapedBufferToLiteral(result_0);
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{-1.0, -2.0}, {-3.0, -4.0}},
-      LiteralSlice(*result_0_literal, {0}));
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{22.0, 6.0}, {8.0, 10}}, LiteralSlice(*result_0_literal, {1}));
+  LiteralTestUtil::ExpectR2Equal<float>({{-1.0, -2.0}, {-3.0, -4.0}},
+                                        LiteralSlice(*result_0_literal, {0}));
+  LiteralTestUtil::ExpectR2Equal<float>({{22.0, 6.0}, {8.0, 10}},
+                                        LiteralSlice(*result_0_literal, {1}));
 
   ScopedShapedBuffer result_1 = ExecuteLocallyOrDie(computation, {&result_0});
   std::unique_ptr<Literal> result_1_literal = ShapedBufferToLiteral(result_1);
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{1.0, 2.0}, {3.0, 4.0}}, LiteralSlice(*result_1_literal, {0}));
-  LiteralTestUtil::ExpectR2Equal<float>(
-      {{44.0, 12.0}, {16.0, 20}}, LiteralSlice(*result_1_literal, {1}));
+  LiteralTestUtil::ExpectR2Equal<float>({{1.0, 2.0}, {3.0, 4.0}},
+                                        LiteralSlice(*result_1_literal, {0}));
+  LiteralTestUtil::ExpectR2Equal<float>({{44.0, 12.0}, {16.0, 20}},
+                                        LiteralSlice(*result_1_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
@@ -447,8 +441,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
 
   for (int i = 0; i < kElementCount; ++i) {
     LiteralTestUtil::ExpectR1Near<float>(
-        {2.0f * i, 0.0f}, LiteralSlice(*result_literal, {i}),
-        error_spec_);
+        {2.0f * i, 0.0f}, LiteralSlice(*result_literal, {i}), error_spec_);
   }
 }
 
@@ -547,8 +540,8 @@ XLA_TEST_F(LocalClientExecuteTest, DeepTuple) {
   for (int i = 0; i < kTupleDepth; ++i) {
     index.push_back(0);
   }
-  LiteralTestUtil::ExpectR0Equal<float>(
-      165.0, LiteralSlice(*result_literal, index));
+  LiteralTestUtil::ExpectR0Equal<float>(165.0,
+                                        LiteralSlice(*result_literal, index));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
@@ -708,7 +701,7 @@ XLA_TEST_F(LocalClientExecuteTest,
   TestAllocator allocator(wrong_platform);
 
   XlaBuilder builder(TestName());
-  auto y = builder.ConstantR0<float>(123.0f);
+  builder.ConstantR0<float>(123.0f);
 
   auto execute_status = ExecuteLocally(
       builder.Build().ValueOrDie(), {}, DefaultExecutableBuildOptions(),
@@ -753,10 +746,10 @@ XLA_TEST_F(LocalClientExecuteTest, SelectBetweenTuples) {
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {});
   std::unique_ptr<Literal> tuple_literal = ShapedBufferToLiteral(result);
-  LiteralTestUtil::ExpectR1Equal<float>(
-      {2.0f, 4.0f, 6.0f}, LiteralSlice(*tuple_literal, {0}));
-  LiteralTestUtil::ExpectR1Equal<float>(
-      {1.0f, 2.0f, 3.0f}, LiteralSlice(*tuple_literal, {1}));
+  LiteralTestUtil::ExpectR1Equal<float>({2.0f, 4.0f, 6.0f},
+                                        LiteralSlice(*tuple_literal, {0}));
+  LiteralTestUtil::ExpectR1Equal<float>({1.0f, 2.0f, 3.0f},
+                                        LiteralSlice(*tuple_literal, {1}));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
@@ -848,6 +841,31 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
                            Literal::CreateR0<int64>(123456789000LL).get()}));
 }
 
+XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
+  XlaBuilder builder(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {3});
+  auto in = builder.Infeed(shape);
+  auto constant = builder.ConstantR1<float>({1.0f, 2.0f, 3.0f});
+  builder.Add(in, constant);
+
+  std::unique_ptr<Literal> result;
+  std::unique_ptr<tensorflow::Thread> thread(
+      tensorflow::Env::Default()->StartThread(
+          tensorflow::ThreadOptions(), "execute_thread", [&] {
+            result = ShapedBufferToLiteral(ExecuteLocallyOrDie(
+                builder.Build().ValueOrDie(), /*arguments=*/{}));
+          }));
+
+  ASSERT_IS_OK(local_client_->TransferToInfeedLocal(
+      *Literal::CreateR1<float>({-5.0, 123.0, 42.0}),
+      local_client_->default_device_ordinal()));
+
+  // Join the thread.
+  thread.reset();
+
+  LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, *result);
+}
+
 // TODO(b/34359662): Support infeed/outfeed on GPU and CPU parallel.
 // 2017-10-18.
 XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(InfeedOutfeedTest)) {
@@ -900,8 +918,10 @@ void BM_LocalClientOverhead(int num_iters) {
           ->AllocateScopedShapedBuffer(shape, &allocator, /*device_ordinal=*/0)
           .ConsumeValueOrDie();
   auto literal = Literal::CreateR2<float>({{0, 0, 0}, {0, 0, 0}});
-  ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *literal, buffer));
+  auto stream =
+      client->mutable_backend()->BorrowStream(device_ordinal).ValueOrDie();
+  ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(stream.get(), *literal,
+                                                         buffer));
 
   const int kWarmups = 2;
 
@@ -911,11 +931,8 @@ void BM_LocalClientOverhead(int num_iters) {
   std::unique_ptr<LocalExecutable> executable =
       executable_status.ConsumeValueOrDie();
 
-  se::Stream stream(executors[client->default_device_ordinal()]);
-  stream.Init();
-
   ExecutableRunOptions run_options;
-  run_options.set_allocator(&allocator).set_stream(&stream);
+  run_options.set_allocator(&allocator).set_stream(stream.get());
 
   for (int i = 0; i < kWarmups; ++i) {
     auto result = executable->Run({&buffer}, run_options);

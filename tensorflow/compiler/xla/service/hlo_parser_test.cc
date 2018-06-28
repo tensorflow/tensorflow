@@ -795,10 +795,14 @@ ENTRY ReduceR3ToR2.v3 {
 R"(HloModule outfeed_module
 
 ENTRY InfeedToOutfeed {
-  infeed = (u32[3]{0}, pred[]) infeed()
-  outfeed = () outfeed(infeed)
-  ROOT infeed.1 = (u32[3]{0}, pred[]) infeed()
-  outfeed.1 = () outfeed(infeed.1)
+  token = token[] after-all()
+  infeed = ((u32[3]{0}, pred[]), token[]) infeed(token)
+  infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
+  outfeed = token[] outfeed(infeed.data, token)
+  ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token)
+  infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
+  infeed.1.token = token[] get-tuple-element(infeed.1), index=1
+  outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)
 }
 
 )"
@@ -913,11 +917,29 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} cross-replica-sum(input), to_apply=add
+  ROOT crs = f32[8]{0} cross-replica-sum(input), replica_group_ids={}, to_apply=add
 }
 
 )"
 },
+// cross-replica-sum with subgroups
+{
+"CrossReplicaSumWithSubgroups",
+R"(HloModule CRS_Subgroups
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CrossReplicaSumWithSubgroups {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_group_ids={0,0,1,1}, barrier="abc", to_apply=add
+}
+
+)"
+}
   });
   // clang-format on
 }
@@ -1284,7 +1306,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   auto module = ParseHloString(original);
   TF_ASSERT_OK(module.status());
-  auto program_layout = module.ValueOrDie()->host_entry_computation_layout();
+  auto program_layout = module.ValueOrDie()->entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
   auto param_layout = program_layout.parameter_layout(0).layout();
   auto result_layout = program_layout.result_layout().layout();
@@ -1398,6 +1420,16 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
                           ParseConvolutionDimensionNumbers(original));
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
+}
+
+TEST_F(HloParserTest, NontupleInfeed) {
+  const string original = R"(HloModule nontuple_infeed:
+ENTRY nontuple_infeed {
+  token = token[] after-all()
+  ROOT infeed = pred[] infeed(token)
+})";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "infeed must have a non-empty tuple shape");
 }
 
 }  // namespace

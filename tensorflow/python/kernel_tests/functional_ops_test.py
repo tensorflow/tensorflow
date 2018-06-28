@@ -56,7 +56,7 @@ def simple_scoped_fn(a, x):
 
 class FunctionalOpsTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFoldl_Simple(self):
     with self.test_session():
       elems = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
@@ -72,7 +72,7 @@ class FunctionalOpsTest(test.TestCase):
           initializer=10)
       self.assertAllEqual(880, self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFoldl_SingleInputMultiOutput(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -83,7 +83,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(22, r_value[0])
       self.assertAllEqual(20, r_value[1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFoldl_MultiInputSingleOutput(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -111,7 +111,7 @@ class FunctionalOpsTest(test.TestCase):
         self.assertEqual(len(variables.trainable_variables()), 1)
         self.assertAllEqual(880, self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFoldr_Simple(self):
     with self.test_session():
       elems = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
@@ -127,7 +127,7 @@ class FunctionalOpsTest(test.TestCase):
           initializer=10)
       self.assertAllEqual(1282, self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFoldr_SingleInputMultiOutput(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -138,7 +138,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(22, r_value[0])
       self.assertAllEqual(20, r_value[1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFoldr_MultiInputSingleOutput(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -182,7 +182,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(720.0, self.evaluate(r))
   # pylint: enable=unnecessary-lambda
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_Simple(self):
     with self.test_session():
       nums = [1, 2, 3, 4, 5, 6]
@@ -202,7 +202,7 @@ class FunctionalOpsTest(test.TestCase):
                 values=constant_op.constant([0, 1, 2]),
                 dense_shape=[2, 2]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):
     with self.assertRaisesRegexp(ValueError, "not scalars"):
       functional_ops.map_fn(lambda x: x, [1, 2])
@@ -251,7 +251,7 @@ class FunctionalOpsTest(test.TestCase):
       r = gradients_impl.gradients(y, elems)[0]
       self.assertAllEqual([4.0, 8.0, 12.0, 16.0, 20.0, 24.0], self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_SimpleNotTensor(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
@@ -260,7 +260,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(
           np.array([(x + 3) * 2 for x in nums]), self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_SingleInputMultiOutput(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
@@ -275,7 +275,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual((nums + 3) * 2, received[0])
       self.assertAllEqual(-(nums + 3) * 2, received[1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_MultiOutputMismatchedDtype(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
@@ -287,7 +287,7 @@ class FunctionalOpsTest(test.TestCase):
             nums,
             dtype=[dtypes.int64, dtypes.int64])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_MultiInputSingleOutput(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
@@ -298,7 +298,7 @@ class FunctionalOpsTest(test.TestCase):
       received = self.evaluate(r)
       self.assertAllEqual(nums * nums + (-nums), received)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_MultiInputSameStructureOutput(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
@@ -313,7 +313,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(-nums, received[1])
       self.assertAllEqual(nums, received[2])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScan_Simple(self):
     with self.test_session():
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
@@ -328,7 +328,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual([2., 4., 12., 48., 240., 1440.], self.evaluate(r))
       # pylint: enable=unnecessary-lambda
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScan_Reverse(self):
     with self.test_session():
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
@@ -345,7 +345,7 @@ class FunctionalOpsTest(test.TestCase):
                           self.evaluate(r))
       # pylint: enable=unnecessary-lambda
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScan_SingleInputMultiOutput(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -357,7 +357,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual([1.0, 2.0, 6.0, 24.0, 120.0, 720.0], r_value[0])
       self.assertAllEqual([1.0, -2.0, 6.0, -24.0, 120.0, -720.0], r_value[1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScan_MultiInputSingleOutput(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -367,7 +367,7 @@ class FunctionalOpsTest(test.TestCase):
                               (elems + 1, -elems), initializer)
       self.assertAllEqual([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScan_MultiInputSameTypeOutput(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -377,7 +377,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(np.cumsum(elems), r_value[0])
       self.assertAllEqual(np.cumsum(-elems), r_value[1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScan_MultiOutputMismatchedInitializer(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -408,7 +408,7 @@ class FunctionalOpsTest(test.TestCase):
         results = np.array([6, 16, 38, 84, 178, 368])
         self.assertAllEqual(results, self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScanFoldl_Nested(self):
     with self.test_session():
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0], name="data")
@@ -467,7 +467,7 @@ class FunctionalOpsTest(test.TestCase):
       variables.global_variables_initializer().run()
       sess.run(grad)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFoldShape(self):
     with self.test_session():
       x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
@@ -479,7 +479,7 @@ class FunctionalOpsTest(test.TestCase):
       y = functional_ops.foldl(fn, x, initializer=initializer)
       self.assertAllEqual(y.get_shape(), self.evaluate(y).shape)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMapShape(self):
     with self.test_session():
       x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
@@ -491,7 +491,7 @@ class FunctionalOpsTest(test.TestCase):
     y = functional_ops.map_fn(lambda e: e, x)
     self.assertIs(None, y.get_shape().dims)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMapEmptyScalar(self):
     with self.test_session():
       map_return = functional_ops.map_fn(lambda x: 1, constant_op.constant([]))
@@ -507,7 +507,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual([0, 3, 2], map_return.get_shape().dims)
       self.assertAllEqual([0, 3, 2], self.evaluate(map_return).shape)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScanShape(self):
     with self.test_session():
       x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
@@ -600,6 +600,25 @@ class FunctionalOpsTest(test.TestCase):
           target="/job:localhost/replica:0/task:0/cpu:1")
 
     with self.test_session(config=worker_config) as sess:
+      sess.run(variables.global_variables_initializer())
+      mul = sess.run(remote_op)
+      self.assertEqual(mul, [6])
+
+  def testRemoteFunctionSameDeviceDirectSession(self):
+
+    @function.Defun(dtypes.int32, dtypes.int32)
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    with ops.device("/cpu:0"):
+      a = variables.Variable(2, dtype=dtypes.int32)
+      b = variables.Variable(3, dtype=dtypes.int32)
+
+    with ops.device("/cpu:0"):
+      remote_op = functional_ops.remote_call(
+          args=[a, b], Tout=[dtypes.int32], f=_remote_fn, target="/cpu:0")
+
+    with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
       mul = sess.run(remote_op)
       self.assertEqual(mul, [6])

@@ -193,6 +193,17 @@ class LinearClassifier(estimator.Estimator):
         l1_regularization_strength=0.001
       ))
 
+  # Or estimator using an optimizer with a learning rate decay.
+  estimator = LinearClassifier(
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
+      optimizer=lambda: tf.train.FtrlOptimizer(
+          learning_rate=tf.exponential_decay(
+              learning_rate=0.1,
+              global_step=tf.get_global_step(),
+              decay_steps=10000,
+              decay_rate=0.96))
+
   # Or estimator with warm-starting from a previous checkpoint.
   estimator = LinearClassifier(
       feature_columns=[categorical_column_a,
@@ -227,7 +238,10 @@ class LinearClassifier(estimator.Estimator):
   Loss is calculated by using softmax cross entropy.
 
   @compatibility(eager)
-  Estimators are not compatible with eager execution.
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
   @end_compatibility
   """
 
@@ -269,8 +283,9 @@ class LinearClassifier(estimator.Estimator):
         encoded as integer values in {0, 1,..., n_classes-1} for `n_classes`>2 .
         Also there will be errors if vocabulary is not provided and labels are
         string.
-      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
-        to FTRL optimizer.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Can also
+        be a string (one of 'Adagrad', 'Adam', 'Ftrl', 'RMSProp', 'SGD'), or
+        callable. Defaults to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
       warm_start_from: A string filepath to a checkpoint to warm-start from, or
@@ -332,9 +347,30 @@ class LinearRegressor(estimator.Estimator):
 
   categorical_feature_a_x_categorical_feature_b = crossed_column(...)
 
+  # Estimator using the default optimizer.
   estimator = LinearRegressor(
       feature_columns=[categorical_column_a,
                        categorical_feature_a_x_categorical_feature_b])
+
+  # Or estimator using the FTRL optimizer with regularization.
+  estimator = LinearRegressor(
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
+      optimizer=tf.train.FtrlOptimizer(
+        learning_rate=0.1,
+        l1_regularization_strength=0.001
+      ))
+
+  # Or estimator using an optimizer with a learning rate decay.
+  estimator = LinearRegressor(
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
+      optimizer=lambda: tf.train.FtrlOptimizer(
+          learning_rate=tf.exponential_decay(
+              learning_rate=0.1,
+              global_step=tf.get_global_step(),
+              decay_steps=10000,
+              decay_rate=0.96))
 
   # Or estimator with warm-starting from a previous checkpoint.
   estimator = LinearRegressor(
@@ -370,7 +406,10 @@ class LinearRegressor(estimator.Estimator):
   Loss is calculated by using mean squared error.
 
   @compatibility(eager)
-  Estimators are not compatible with eager execution.
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
   @end_compatibility
   """
 
@@ -403,8 +442,9 @@ class LinearRegressor(estimator.Estimator):
         used as a key to fetch weight tensor from the `features`. If it is a
         `_NumericColumn`, raw tensor is fetched by key `weight_column.key`,
         then weight_column.normalizer_fn is applied on it to get weight tensor.
-      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
-        to FTRL optimizer.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Can also
+        be a string (one of 'Adagrad', 'Adam', 'Ftrl', 'RMSProp', 'SGD'), or
+        callable. Defaults to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
       warm_start_from: A string filepath to a checkpoint to warm-start from, or

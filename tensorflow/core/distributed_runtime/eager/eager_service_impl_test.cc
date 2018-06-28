@@ -20,15 +20,16 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
@@ -48,6 +49,39 @@ class TestEagerServiceImpl : public EagerServiceImpl {
 
     return context->GetTensorHandle(remote_handle, handle);
   }
+};
+
+class EagerServiceImplTest : public ::testing::Test {
+ public:
+  EagerServiceImplTest()
+      : rendezvous_mgr_(&worker_env_),
+        session_mgr_(new SessionMgr(
+            &worker_env_, "/job:localhost/replica:0/task:0/device:CPU:0",
+            std::unique_ptr<WorkerCacheInterface>(),
+            [](const ServerDef& server_def,
+               WorkerCacheInterface** worker_cache) {
+              *worker_cache = nullptr;
+              return Status::OK();
+            })) {
+    worker_env_.env = Env::Default();
+
+    worker_env_.rendezvous_mgr = &rendezvous_mgr_;
+    worker_env_.session_mgr = session_mgr_.get();
+
+    Device* device = DeviceFactory::NewDevice(
+        "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0");
+
+    worker_env_.local_devices = {device};
+
+    device_mgr_.reset(new DeviceMgr(worker_env_.local_devices));
+    worker_env_.device_mgr = device_mgr_.get();
+  }
+
+ protected:
+  WorkerEnv worker_env_;
+  tensorflow::RpcRendezvousMgr rendezvous_mgr_;
+  std::unique_ptr<SessionMgr> session_mgr_;
+  std::unique_ptr<DeviceMgr> device_mgr_;
 };
 
 void SetTensorProto(AttrValue* val) {
@@ -119,17 +153,13 @@ tensorflow::FunctionDef MatMulFunction() {
 }
 
 // Test creates a context and attempts to execute some ops.
-TEST(EagerServiceImplTest, BasicTest) {
-  WorkerEnv worker_env;
-  worker_env.env = Env::Default();
-  tensorflow::RpcRendezvousMgr rm(&worker_env);
-  worker_env.rendezvous_mgr = &rm;
-
-  TestEagerServiceImpl eager_service_impl(&worker_env);
+TEST_F(EagerServiceImplTest, BasicTest) {
+  TestEagerServiceImpl eager_service_impl(&worker_env_);
 
   CreateContextRequest request;
   request.mutable_server_def()->set_job_name("localhost");
   request.mutable_server_def()->set_task_index(0);
+  request.set_rendezvous_id(random::New64());
   CreateContextResponse response;
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
@@ -194,17 +224,13 @@ TEST(EagerServiceImplTest, BasicTest) {
 }
 
 // Test creates a context and attempts to execute a function.
-TEST(EagerServiceImplTest, BasicFunctionTest) {
-  WorkerEnv worker_env;
-  worker_env.env = Env::Default();
-  tensorflow::RpcRendezvousMgr rm(&worker_env);
-  worker_env.rendezvous_mgr = &rm;
-
-  TestEagerServiceImpl eager_service_impl(&worker_env);
+TEST_F(EagerServiceImplTest, BasicFunctionTest) {
+  TestEagerServiceImpl eager_service_impl(&worker_env_);
 
   CreateContextRequest request;
   request.mutable_server_def()->set_job_name("localhost");
   request.mutable_server_def()->set_task_index(0);
+  request.set_rendezvous_id(random::New64());
   CreateContextResponse response;
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));

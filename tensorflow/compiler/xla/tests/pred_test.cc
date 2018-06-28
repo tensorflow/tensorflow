@@ -36,20 +36,20 @@ class PredTest : public ClientLibraryTestBase {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = builder.ConstantR0<bool>(lhs);
     XlaOp rhs_op = builder.ConstantR0<bool>(rhs);
-    XlaOp result = (builder.*op)(lhs_op, rhs_op, {});
+    (builder.*op)(lhs_op, rhs_op, {});
     ComputeAndCompareR0<bool>(&builder, expected, {});
   }
 };
 
 TEST_F(PredTest, ConstantR0PredTrue) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR0<bool>(true);
+  builder.ConstantR0<bool>(true);
   ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
 TEST_F(PredTest, ConstantR0PredFalse) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR0<bool>(false);
+  builder.ConstantR0<bool>(false);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 
@@ -79,14 +79,13 @@ TEST_F(PredTest, ConstantR0PredCompareGt) {
 
 TEST_F(PredTest, ConstantR1Pred) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<bool>({true, false, false, true});
+  builder.ConstantR1<bool>({true, false, false, true});
   ComputeAndCompareR1<bool>(&builder, {true, false, false, true}, {});
 }
 
 TEST_F(PredTest, ConstantR2Pred) {
   XlaBuilder builder(TestName());
-  auto a =
-      builder.ConstantR2<bool>({{false, true, true}, {true, false, false}});
+  builder.ConstantR2<bool>({{false, true, true}, {true, false, false}});
   const string expected = R"(pred[2,3] {
   { 011 },
   { 100 }
@@ -97,21 +96,21 @@ TEST_F(PredTest, ConstantR2Pred) {
 TEST_F(PredTest, AnyR1True) {
   XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<bool>({true, false});
-  TF_ASSERT_OK(Any(a, &builder).status());
+  Any(a);
   ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
 TEST_F(PredTest, AnyR1False) {
   XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<bool>({false, false});
-  TF_ASSERT_OK(Any(a, &builder).status());
+  Any(a);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 
 TEST_F(PredTest, AnyR1VacuouslyFalse) {
   XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<bool>({});
-  TF_ASSERT_OK(Any(a, &builder).status());
+  Any(a);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 
@@ -122,7 +121,7 @@ TEST_F(PredTest, AnyR2True) {
       {false, false, false},
       {false, false, true},
   });
-  TF_ASSERT_OK(Any(a, &builder).status());
+  Any(a);
   ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
@@ -133,7 +132,7 @@ TEST_F(PredTest, AnyR2False) {
       {false, false, false},
       {false, false, false},
   });
-  TF_ASSERT_OK(Any(a, &builder).status());
+  Any(a);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 

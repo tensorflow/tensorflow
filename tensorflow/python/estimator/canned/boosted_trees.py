@@ -168,9 +168,10 @@ def _group_features_by_num_buckets(sorted_feature_columns):
   # pylint:enable=protected-access
   # Replace the dummy key with the real max num of buckets for all bucketized
   # columns.
-  bucket_size_to_feature_ids_dict[
-      max_buckets_for_bucketized] = bucket_size_to_feature_ids_dict[
-          _DUMMY_NUM_BUCKETS]
+  if max_buckets_for_bucketized not in bucket_size_to_feature_ids_dict:
+    bucket_size_to_feature_ids_dict[max_buckets_for_bucketized] = []
+  bucket_size_to_feature_ids_dict[max_buckets_for_bucketized].extend(
+      bucket_size_to_feature_ids_dict[_DUMMY_NUM_BUCKETS])
   del bucket_size_to_feature_ids_dict[_DUMMY_NUM_BUCKETS]
 
   feature_ids_list = list(bucket_size_to_feature_ids_dict.values())
@@ -714,7 +715,15 @@ def _create_regression_head(label_dimension, weight_column=None):
 
 @estimator_export('estimator.BoostedTreesClassifier')
 class BoostedTreesClassifier(estimator.Estimator):
-  """A Classifier for Tensorflow Boosted Trees models."""
+  """A Classifier for Tensorflow Boosted Trees models.
+
+  @compatibility(eager)
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
+  @end_compatibility
+  """
 
   def __init__(self,
                feature_columns,
@@ -832,7 +841,15 @@ class BoostedTreesClassifier(estimator.Estimator):
 
 @estimator_export('estimator.BoostedTreesRegressor')
 class BoostedTreesRegressor(estimator.Estimator):
-  """A Regressor for Tensorflow Boosted Trees models."""
+  """A Regressor for Tensorflow Boosted Trees models.
+
+  @compatibility(eager)
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
+  @end_compatibility
+  """
 
   def __init__(self,
                feature_columns,

@@ -107,7 +107,7 @@ Status TensorHandle::TensorAndDevice(const tensorflow::Tensor** tensor,
   return Status::OK();
 }
 
-Status TensorHandle::RemoteAddress(uint64* op_id, int32* output_num) {
+Status TensorHandle::RemoteAddress(int64* op_id, int32* output_num) {
   if (!IsRemote()) {
     return errors::FailedPrecondition(
         "This TensorHandle refers to a local tensor handle");

@@ -59,6 +59,9 @@
 #   TF_BUILD_BAZEL_CLEAN:
 #                      Will perform "bazel clean", if and only if this variable
 #                      is set to any non-empty and non-0 value
+#   TF_BAZEL_BUILD_ONLY:
+#                      If it is set to any non-empty value that is not "0", Bazel 
+#                      will only build specified targets
 #   TF_GPU_COUNT:
 #                      Run this many parallel tests for serial builds.
 #                      For now, only can be edited for PIP builds.
@@ -93,10 +96,6 @@
 #                     Only available inside GPU containers.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
-
-# TODO(jhseu): Temporary for the gRPC pull request due to the
-# protobuf -> protobuf_archive rename. Remove later.
-TF_BUILD_BAZEL_CLEAN=1
 
 # Helper function: Convert to lower case
 to_lower () {
@@ -262,9 +261,9 @@ function set_script_variable() {
 
 
 # Process container type
-if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
+if [[ ${CTYPE} == cpu* ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
   :
-elif [[ ${CTYPE} == "gpu" ]]; then
+elif [[ ${CTYPE} == gpu* ]]; then
   set_script_variable TF_NEED_CUDA 1
 
   if [[ $TF_CUDA_CLANG == "1" ]]; then
@@ -414,6 +413,11 @@ fi
 # this flag, and it only affects a few tests.
 EXTRA_ARGS="${EXTRA_ARGS} --distinct_host_configuration=false"
 
+if [[ ! -z "${TF_BAZEL_BUILD_ONLY}" ]] &&
+   [[ "${TF_BAZEL_BUILD_ONLY}" != "0" ]];then 
+  BAZEL_CMD=${BAZEL_BUILD_ONLY_CMD}
+fi
+
 # Process PIP install-test option
 if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
    [[ ${TF_BUILD_IS_PIP} == "both" ]]; then
@@ -422,12 +426,12 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
     BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}
   fi
 
-  if [[ ${CTYPE} == "cpu" ]] || \
+  if [[ ${CTYPE} == cpu* ]] || \
      [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
     # CPU only command, fully parallel.
     NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} -- "\
 "${BAZEL_TARGET}"
-  elif [[ ${CTYPE} == "gpu" ]]; then
+  elif [[ ${CTYPE} == gpu* ]]; then
     # GPU only command, run as many jobs as the GPU count only.
     NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
 "--local_test_jobs=${TF_GPU_COUNT} "\

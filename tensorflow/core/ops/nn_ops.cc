@@ -648,7 +648,7 @@ REGISTER_OP("MaxPool3DGradGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float}")
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Pool3DShape(c));
       ShapeHandle unused;

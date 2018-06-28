@@ -74,6 +74,9 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
   options.config.mutable_graph_options()
       ->mutable_rewrite_options()
       ->set_constant_folding(RewriterConfig::OFF);
+  options.config.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_min_graph_nodes(-1);
   std::unique_ptr<Session> session(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
@@ -109,15 +112,15 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
           // and deallocated. Each allocation calls the
           // (FindChunkPtr of BFCAllocator),
           // which increments the value of AllocationId. 
-          // Thus AllocationId becomes more than 3 and 4 if 
-          // MKL is used. Now they are 9 and 10 for MKL. 
-          EXPECT_EQ(19, cm->AllocationId(node, 0));
+          // Thus AllocationId becomes more than TF if MKL 
+          // is used. Now IDs for MKL are 8 more than TF. 
+          EXPECT_EQ(29, cm->AllocationId(node, 0));
 #else
           EXPECT_EQ(21, cm->AllocationId(node, 0));
 #endif 
         } else {
 #ifdef INTEL_MKL
-          EXPECT_EQ(20, cm->AllocationId(node, 0));
+          EXPECT_EQ(30, cm->AllocationId(node, 0));
 #else
           EXPECT_EQ(22, cm->AllocationId(node, 0));
 #endif 

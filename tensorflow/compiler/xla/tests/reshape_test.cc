@@ -125,10 +125,7 @@ XLA_TEST_P(ReshapeTest, ScalarToSingleElementArray) {
                            zero_error_spec_);
 }
 
-// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
-// does not handle zero-sized shapes correctly. Failed last on 2017-11-30
-// with an incorrect result rank.
-XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Trivial0x3)) {
+XLA_TEST_P(ReshapeTest, Trivial0x3) {
   XlaBuilder builder(TestName());
   Array2D<float> input_array(0, 3);
   auto input_literal = Literal::CreateR2FromArray2D(input_array);
@@ -141,10 +138,7 @@ XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Trivial0x3)) {
                            zero_error_spec_);
 }
 
-// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
-// does not handle zero-sized shapes correctly. Failed last on 2017-05-15
-// with an incorrect result rank.
-XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Trivial0x3WithParameter)) {
+XLA_TEST_P(ReshapeTest, Trivial0x3WithParameter) {
   XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> param0_literal =
@@ -158,10 +152,7 @@ XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Trivial0x3WithParameter)) {
                            zero_error_spec_);
 }
 
-// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
-// does not handle zero-sized shapes correctly. Failed last on 2017-11-30
-// with an incorrect result rank.
-XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Trivial3x0)) {
+XLA_TEST_P(ReshapeTest, Trivial3x0) {
   XlaBuilder builder(TestName());
   Array2D<float> input_array(3, 0);
   auto input_literal = Literal::CreateR2FromArray2D(input_array);
@@ -200,12 +191,8 @@ XLA_TEST_P(ReshapeTest, Trivial3x1) {
                            zero_error_spec_);
 }
 
-// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
-// does not handle zero-sized shapes correctly. Failed last on 2017-11-30
-// with an incorrect result rank.
-//
 // Splits an empty vector into an empty matrix.
-XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(R1ToR2_0_To_2x0)) {
+XLA_TEST_P(ReshapeTest, R1ToR2_0_To_2x0) {
   XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateR1<float>({});
   XlaOp parameter;
@@ -234,12 +221,8 @@ XLA_TEST_P(ReshapeTest, R1ToR2_6_To_2x3) {
                            zero_error_spec_);
 }
 
-// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
-// does not handle zero-sized shapes correctly. Failed last on 2017-11-30
-// with an incorrect result rank.
-//
 // Transposes a 2x0 array to a 0x2 array.
-XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Reshape0x2To2x0)) {
+XLA_TEST_P(ReshapeTest, Reshape0x2To2x0) {
   XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateFromArray(Array2D<float>(0, 2));
   XlaOp parameter;
@@ -286,12 +269,8 @@ XLA_TEST_P(ReshapeTest, TransposeAsReshape) {
                            zero_error_spec_);
 }
 
-// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
-// does not handle zero-sized shapes correctly. Failed last on 2017-11-30
-// with an incorrect result rank.
-//
 // Transposes a 0x4 array with XlaBuilder::Transpose.
-XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(Transpose0x4)) {
+XLA_TEST_P(ReshapeTest, Transpose0x4) {
   XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateFromArray(Array2D<float>(0, 4));
   XlaOp parameter;
@@ -319,13 +298,9 @@ XLA_TEST_P(ReshapeTest, Transpose4x3) {
                            zero_error_spec_);
 }
 
-// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
-// does not handle zero-sized shapes correctly. Failed last on 2017-11-30
-// with an incorrect result rank.
-//
 // Reshapes an empty 2-dimensional array with dimensions that are not just a
 // rearrangement of the originals (split), but no reordering (no shuffle).
-XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(ReshapeSplitNoShuffleZeroElements)) {
+XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffleZeroElements) {
   XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateFromArray(Array2D<float>(6, 0));
   XlaOp parameter;
@@ -338,10 +313,7 @@ XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(ReshapeSplitNoShuffleZeroElements)) {
                            zero_error_spec_);
 }
 
-// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
-// does not handle zero-sized shapes correctly. Failed last on 2017-11-30
-// with an incorrect result rank.
-XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(ReshapeR4ToR2ZeroElements)) {
+XLA_TEST_P(ReshapeTest, ReshapeR4ToR2ZeroElements) {
   XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateFromArray(Array4D<float>(2, 3, 4, 0));
   XlaOp parameter;
@@ -372,11 +344,7 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffle) {
                            zero_error_spec_);
 }
 
-// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
-// does not handle zero-sized shapes correctly. Failed last on 2017-11-30
-// with an incorrect result rank.
-//
-XLA_TEST_P(ReshapeTest, DISABLED_ON_GPU(ReshapeSplitAndShuffleZeroElements)) {
+XLA_TEST_P(ReshapeTest, ReshapeSplitAndShuffleZeroElements) {
   XlaBuilder builder(TestName());
   auto input_literal = Literal::CreateFromArray(Array2D<float>(0, 6));
   XlaOp parameter;

@@ -269,17 +269,19 @@ class FunctionBufferResourceHandleOp : public OpKernel {
     std::vector<Tensor> func_args;
     func_args.push_back(*string_arg);
 
+    const string& source_device = ctx->device()->name();
+
     // Obtain and canonicalize target_device.
     const Tensor* target_arg;
     OP_REQUIRES_OK(ctx, ctx->input("target_device", &target_arg));
-    const string& target_device =
-        DeviceNameUtils::CanonicalizeDeviceName(target_arg->scalar<string>()());
+    string target_device;
+    OP_REQUIRES_OK(ctx, DeviceNameUtils::CanonicalizeDeviceName(
+                            target_arg->scalar<string>()(), source_device,
+                            &target_device));
 
     FunctionLibraryRuntime* lib = ctx->function_library();
     OP_REQUIRES(ctx, lib != nullptr,
                 errors::Internal("No function library is provided."));
-
-    const string& source_device = ctx->device()->name();
 
     mutex_lock l(mu_);
     if (!initialized_) {

@@ -24,6 +24,14 @@ limitations under the License.
 // non-GPU targets. This only breaks in clang, because it's more strict for
 // template code and CudaAtomicMax is used in template context.
 
+
+// This file requires the following include because it uses CudaAtomicMax:
+// #include "tensorflow/core/util/cuda_kernel_helper.h"
+
+// Unfortunately we can't add the #include, since it breaks compilation for
+// non-GPU targets. This only breaks in clang, because it's more strict for
+// template code and CudaAtomicMax is used in template context.
+
 // This file requires the following include because it uses CudaAtomicMax:
 // #include "tensorflow/core/util/cuda_kernel_helper.h"
 
@@ -138,4 +146,4 @@ struct Highest {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_

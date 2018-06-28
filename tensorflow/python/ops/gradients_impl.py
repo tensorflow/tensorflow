@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import contextlib
+import sys
 import warnings
 
 import numpy as np
@@ -36,6 +37,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -47,11 +49,15 @@ from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import manip_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
+
+# This is to avoid a circular dependency with cond_v2_impl.
+cond_v2_impl._gradients_impl = sys.modules[__name__]  # pylint: disable=protected-access
 
 # Warn the user if we convert a sparse representation to dense with at
 # least this number of elements.
@@ -374,7 +380,11 @@ def _SymGrad(op, out_grads):
   f.name = op.type
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
-  in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
+  # TODO(apassos) use a better dtype here
+  in_grads = functional_ops.symbolic_gradient(
+      input=f_in,
+      Tout=[x if x != dtypes.resource else dtypes.float32 for x in f_types],
+      f=f)
   return in_grads
 
 
@@ -524,10 +534,10 @@ def gradients(ys,
     RuntimeError: if called in Eager mode.
 
   """
-  # Creating the gradient graph for control flow mutates Operations. _lock
-  # ensures a Session.run call cannot occur between creating and mutating new
-  # ops.
-  with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+  # Creating the gradient graph for control flow mutates Operations.
+  # _mutation_lock ensures a Session.run call cannot occur between creating and
+  # mutating new ops.
+  with ops.get_default_graph()._mutation_lock():  # pylint: disable=protected-access
     return _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
                             gate_gradients, aggregation_method, stop_gradients)
 
@@ -543,9 +553,8 @@ def _GradientsHelper(ys,
                      src_graph=None):
   """Implementation of gradients()."""
   if context.executing_eagerly():
-    raise RuntimeError("tf.gradients not supported when eager execution "
-                       "is enabled. Use tf.contrib.eager.GradientTape "
-                       "instead.")
+    raise RuntimeError("tf.gradients is not supported when eager execution "
+                       "is enabled. Use tf.GradientTape instead.")
   if src_graph is None:
     src_graph = ops.get_default_graph()
 

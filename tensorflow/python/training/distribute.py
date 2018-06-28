@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
-import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
@@ -527,7 +526,13 @@ class DistributionStrategy(object):
     V(`v`), output will have locality V(`v`) as well.
   * `d.update_non_slot(d.non_slot_devices(), fn)`: in cross-tower
     context, like `d.update()` except with locality N.
-  * `d.fetch(t)`: Copy `t` with any locality to the client's CPU device.
+  * `d.read_var(v)`: Gets the (read-only) value of the variable `v` (on
+    the device determined by the current device scope), aggregating
+    across towers for tower-local variables. Frequently, this will be
+    done automatically when using `v` in an expression or fetching it in
+    a cross-tower context, but this function can be used to force that
+    conversion happens at a particular point in time (for example, to
+    add the result of the conversion to a graph collection).
 
   The standard pattern for updating variables is to:
 
@@ -614,13 +619,13 @@ class DistributionStrategy(object):
 
     There will still be one component variable per tower, but there is
     no requirement that they stay in sync. Instead, when saving them
-    or calling `fetch()`, we use the value that results when calling
-    `reduce()` on all the towers' variables.
+    or calling `read_var()`, we use the value that results when
+    calling `reduce()` on all the towers' variables.
 
     Note: tower-local implies not trainable. Instead, it is expected
     that each tower will directly update (using `assign_add()` or
     whatever) its local variable instance but only the aggregated
-    value (accessible using `fetch()`) will be exported from the
+    value (accessible using `read_var()`) will be exported from the
     model. When it is acceptable to only aggregate on export, we
     greatly reduce communication overhead by using tower-local
     variables.
@@ -645,6 +650,21 @@ class DistributionStrategy(object):
 
     _require_distribution_strategy_scope(self)
     return variable_scope.variable_creator_scope(create_tower_local_variable)
+
+  def read_var(self, v):
+    """Reads the value of a variable.
+
+    Returns the aggregate value of a tower-local variable, or the
+    (read-only) value of any other variable.
+
+    Args:
+      v: A variable allocated within the scope of this `DistributionStrategy`.
+
+    Returns:
+      A tensor representing the value of `v`, aggregated across towers if
+      necessary.
+    """
+    raise NotImplementedError("must be implemented in descendants")
 
   def colocate_vars_with(self, colocate_with_variable):
     """Scope that controls which devices variables will be created on.
@@ -895,30 +915,6 @@ class DistributionStrategy(object):
     return self._update_non_slot(colocate_with, fn, *args, **kwargs)
 
   def _update_non_slot(self, colocate_with, fn, *args, **kwargs):
-    raise NotImplementedError("must be implemented in descendants")
-
-  def fetch(self, val, destination="/device:CPU:0", fn=lambda x: x):
-    """Return a copy of `val` or `fn(val)` on `destination`.
-
-    This is useful for getting a mirrored value onto a device.  It
-    will attempt to avoid a copy by checking if the value is already
-    on the destination device.
-
-    Args:
-      val: Value (which may be mirrored) to copy.
-      destination: A device string to copy the value to.
-      fn: An optional function to apply to the value on the source
-          device, before copying.
-
-    Returns:
-      A `Tensor` on `destination`.
-    """
-    _require_cross_tower_context(self)
-    assert isinstance(destination, six.string_types)
-    destination = device_util.resolve(destination)
-    return self._fetch(val, destination, fn)
-
-  def _fetch(self, val, destination, fn):
     raise NotImplementedError("must be implemented in descendants")
 
   def unwrap(self, value):
@@ -1197,11 +1193,8 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     with ops.colocate_with(colocate_with), UpdateContext(colocate_with):
       return fn(*args, **kwargs)
 
-  def _fetch(self, var, destination, fn):
-    with ops.colocate_with(var):
-      var = fn(var)
-    with ops.device(destination):
-      return array_ops.identity(var)
+  def read_var(self, tower_local_var):
+    return array_ops.identity(tower_local_var)
 
   def _unwrap(self, distributed_value):
     return [distributed_value]

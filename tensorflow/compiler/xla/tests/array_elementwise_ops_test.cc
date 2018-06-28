@@ -282,7 +282,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
   std::unique_ptr<GlobalData> rhs_data =
       client_->TransferToServer(*rhs_literal).ConsumeValueOrDie();
 
-  auto sub = b.Sub(lhs_param, rhs_param);
+  b.Sub(lhs_param, rhs_param);
 
   std::vector<int64> expected(lhs.size());
   for (int64 i = 0; i < lhs.size(); ++i) {
@@ -876,6 +876,89 @@ XLA_TEST_F(ArrayElementwiseOpTest, OrZeroElementU32R1) {
   ComputeAndCompareR1<uint32>(&builder, {}, {});
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, XorPredR1) {
+  XlaBuilder builder(TestName());
+  auto a = builder.ConstantR1<bool>({false, false, true, true});
+  auto b = builder.ConstantR1<bool>({false, true, false, true});
+  builder.Xor(a, b);
+
+  ComputeAndCompareR1<bool>(&builder, {false, true, true, false}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, XorPredR2) {
+  XlaBuilder builder(TestName());
+  auto a = builder.ConstantR2<bool>({{false, false}, {true, true}});
+  auto b = builder.ConstantR2<bool>({{false, true}, {false, true}});
+  builder.Xor(a, b);
+
+  Array2D<bool> expected_array({{false, true}, {true, false}});
+  ComputeAndCompareR2<bool>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, XorZeroElementPredR1) {
+  XlaBuilder builder(TestName());
+  auto a = builder.ConstantR1<bool>({});
+  auto b = builder.ConstantR1<bool>({});
+  builder.Xor(a, b);
+
+  ComputeAndCompareR1<bool>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, XorS32R1) {
+  XlaBuilder builder(TestName());
+  auto a = builder.ConstantR1<int32>({0, -1, 8});
+  auto b = builder.ConstantR1<int32>({5, -7, 4});
+  builder.Xor(a, b);
+
+  ComputeAndCompareR1<int32>(&builder, {5, 6, 12}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, XorS32R2) {
+  XlaBuilder builder(TestName());
+  auto a = builder.ConstantR2<int32>({{0, -1}, {8, 8}});
+  auto b = builder.ConstantR2<int32>({{5, -7}, {4, 1}});
+  builder.Xor(a, b);
+
+  Array2D<int32> expected_array({{5, 6}, {12, 9}});
+  ComputeAndCompareR2<int32>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, XorZeroElementS32R1) {
+  XlaBuilder builder(TestName());
+  auto a = builder.ConstantR1<int32>({});
+  auto b = builder.ConstantR1<int32>({});
+  builder.Xor(a, b);
+
+  ComputeAndCompareR1<int32>(&builder, {}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, XorU32R1) {
+  XlaBuilder builder(TestName());
+  auto a = builder.ConstantR1<uint32>({0, 1, 8});
+  auto b = builder.ConstantR1<uint32>({5, 7, 4});
+  builder.Xor(a, b);
+
+  ComputeAndCompareR1<uint32>(&builder, {5, 6, 12}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, XorU32R2) {
+  XlaBuilder builder(TestName());
+  auto a = builder.ConstantR2<uint32>({{0, 1}, {8, 8}});
+  auto b = builder.ConstantR2<uint32>({{5, 7}, {4, 1}});
+  builder.Xor(a, b);
+
+  Array2D<uint32> expected_array({{5, 6}, {12, 9}});
+  ComputeAndCompareR2<uint32>(&builder, expected_array, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, XorZeroElementU32R1) {
+  XlaBuilder builder(TestName());
+  auto a = builder.ConstantR1<uint32>({});
+  auto b = builder.ConstantR1<uint32>({});
+  builder.Xor(a, b);
+
+  ComputeAndCompareR1<uint32>(&builder, {}, {});
+}
 XLA_TEST_F(ArrayElementwiseOpTest, NotPredR1) {
   XlaBuilder builder(TestName());
   auto a = builder.ConstantR1<bool>({false, true, true, false});
@@ -2373,7 +2456,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Eq) {
   // comparison.
   auto cmp_dim_0 = builder.Eq(v, m, /*broadcast_dimensions=*/{1});
   auto cmp_dim_1 = builder.Eq(v, m, /*broadcast_dimensions=*/{0});
-  auto result = builder.Tuple({cmp_dim_0, cmp_dim_1});
+  builder.Tuple({cmp_dim_0, cmp_dim_1});
 
   auto expected = Literal::MakeTuple(
       {Literal::CreateR2<bool>({{true, true}, {true, false}}).get(),
@@ -2758,7 +2841,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(computation_status.status().ToString(),
               ::testing::ContainsRegex(
-                  "Expected non-opaque argument for lhs of binary operation"));
+                  "Expected array argument for lhs of binary operation"));
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, IdentityBroadcastOfSameRankIsAllowed) {

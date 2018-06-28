@@ -235,6 +235,36 @@ class PrefetchToDeviceTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
+  def testPrefetchToSameDevice(self):
+    host_dataset = dataset_ops.Dataset.range(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops.prefetch_to_device(
+            "/job:localhost/replica:0/task:0/device:CPU:0"))
+
+    # NOTE(mrry): This device block creates the "host" dataset and iterator on
+    # /cpu:0, and ensures that the prefetching is across devices. In typical use
+    # this would not be necessary, because the GPU device would not support any
+    # of the dataset-related ops.
+    with ops.device("/cpu:0"):
+      iterator = device_dataset.make_one_shot_iterator()
+
+    self.assertEqual(host_dataset.output_types, device_dataset.output_types)
+    self.assertEqual(host_dataset.output_types, iterator.output_types)
+    self.assertEqual(host_dataset.output_shapes, device_dataset.output_shapes)
+    self.assertEqual(host_dataset.output_shapes, iterator.output_shapes)
+    self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
+    self.assertEqual(host_dataset.output_classes, iterator.output_classes)
+
+    next_element = iterator.get_next()
+    self.assertEqual(dtypes.int64, next_element.dtype)
+    self.assertEqual([], next_element.shape)
+
+    with self.test_session() as sess:
+      for i in range(10):
+        self.assertEqual(i, sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
   def testPrefetchDictToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
     device_dataset = host_dataset.apply(

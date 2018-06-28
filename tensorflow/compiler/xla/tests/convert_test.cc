@@ -461,5 +461,26 @@ XLA_TEST_F(ConvertTest, ConvertS64U64) {
   ComputeAndCompareR1<uint64>(&builder, unsigned_x, {});
 }
 
+XLA_TEST_F(ConvertTest, ConvertBF16F32) {
+  XlaBuilder builder(TestName());
+
+  std::vector<bfloat16> all_bfloats(1 << 16);
+  for (int i = 0; i < all_bfloats.size(); ++i) {
+    all_bfloats[i].value = i;
+  }
+
+  std::vector<uint32> expected(all_bfloats.size());
+  for (int i = 0; i < expected.size(); ++i) {
+    expected[i] = (1U << 16) * i;
+  }
+
+  // Exhaustively test all bf16 to f32 conversions.
+  xla::XlaOp all_bfloats_bf16 = builder.ConstantR1<bfloat16>(all_bfloats);
+  xla::XlaOp all_bfloats_f32 =
+      builder.ConvertElementType(all_bfloats_bf16, F32);
+  builder.BitcastConvertType(all_bfloats_f32, U32);
+  ComputeAndCompareR1<uint32>(&builder, expected, {});
+}
+
 }  // namespace
 }  // namespace xla

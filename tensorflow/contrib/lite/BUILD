@@ -184,6 +184,7 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/kernels:kernel_util",
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "//tensorflow/contrib/lite/schema:schema_fbs",

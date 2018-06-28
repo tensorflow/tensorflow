@@ -40,6 +40,7 @@ bool IsFusile(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kDynamicSlice ||
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
          hlo.opcode() == HloOpcode::kFusion ||
+         hlo.opcode() == HloOpcode::kGather ||
          hlo.opcode() == HloOpcode::kPad ||
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||

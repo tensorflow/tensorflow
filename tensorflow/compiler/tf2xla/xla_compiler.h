@@ -52,13 +52,7 @@ class XlaContext;
 // (kind kResource).
 //
 // Only kParameter and initialized kResource arguments become runtime parameters
-// to the generated XLA computation. The XLA computation will have run-time
-// parameters in the following order:
-//   +---------------------+-----------------------------------------+
-//   |  kParameter values  |  Initial values of kResource arguments  |
-//   +---------------------+-----------------------------------------+
-// Within each block, the arguments are arranged by the _Arg index from which
-// they were derived.
+// to the generated XLA computation.
 //
 // The run-time outputs of the XLA computation are arranged in the following
 // order:
@@ -77,10 +71,10 @@ class XlaContext;
 // tensors with a different shape to their representation inside the XLA
 // computation.
 //
-// In both inputs and outputs, kResource values are placed the end. When
+// In computation outputs, updated kResource values are placed the end. When
 // emitting While loop bodies, we must ensure that the loop body has
-// identical input and output signatures. By moving variable values
-// to the end of the argument list and using the
+// identical input and output signatures. By passing variable values
+// at the end of the argument list and using the
 // `return_updated_values_for_all_variables` option, we can ensure that the
 // input and output values of resources appear at the same positions.
 //
@@ -234,7 +228,8 @@ class XlaCompiler {
     tf2xla::HostComputeMetadata host_compute_metadata;
 
     // Resources whose values were updated by the computation, ordered
-    // by return value position. Resource updates follow the non-constant
+    // by return value position (which is the same as the order the resources
+    // were passed as arguments). Resource updates follow the non-constant
     // results in the outputs of XLA computation.
     std::vector<ResourceUpdate> resource_updates;
 

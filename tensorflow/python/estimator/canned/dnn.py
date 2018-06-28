@@ -230,6 +230,17 @@ class DNNClassifier(estimator.Estimator):
         l1_regularization_strength=0.001
       ))
 
+  # Or estimator using an optimizer with a learning rate decay.
+  estimator = DNNClassifier(
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
+      hidden_units=[1024, 512, 256],
+      optimizer=lambda: tf.AdamOptimizer(
+          learning_rate=tf.exponential_decay(
+              learning_rate=0.1,
+              global_step=tf.get_global_step(),
+              decay_steps=10000,
+              decay_rate=0.96))
+
   # Or estimator with warm-starting from a previous checkpoint.
   estimator = DNNClassifier(
       feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
@@ -266,7 +277,10 @@ class DNNClassifier(estimator.Estimator):
   Loss is calculated by using softmax cross entropy.
 
   @compatibility(eager)
-  Estimators are not compatible with eager execution.
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
   @end_compatibility
   """
 
@@ -314,8 +328,9 @@ class DNNClassifier(estimator.Estimator):
         encoded as integer values in {0, 1,..., n_classes-1} for `n_classes`>2 .
         Also there will be errors if vocabulary is not provided and labels are
         string.
-      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
-        to Adagrad optimizer.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Can also
+        be a string (one of 'Adagrad', 'Adam', 'Ftrl', 'RMSProp', 'SGD'), or
+        callable. Defaults to Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
         use `tf.nn.relu`.
       dropout: When not `None`, the probability we will drop out a given
@@ -382,6 +397,17 @@ class DNNRegressor(estimator.Estimator):
         l1_regularization_strength=0.001
       ))
 
+  # Or estimator using an optimizer with a learning rate decay.
+  estimator = DNNRegressor(
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
+      hidden_units=[1024, 512, 256],
+      optimizer=lambda: tf.AdamOptimizer(
+          learning_rate=tf.exponential_decay(
+              learning_rate=0.1,
+              global_step=tf.get_global_step(),
+              decay_steps=10000,
+              decay_rate=0.96))
+
   # Or estimator with warm-starting from a previous checkpoint.
   estimator = DNNRegressor(
       feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
@@ -418,7 +444,10 @@ class DNNRegressor(estimator.Estimator):
   Loss is calculated by using mean squared error.
 
   @compatibility(eager)
-  Estimators are not compatible with eager execution.
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
   @end_compatibility
   """
 
@@ -459,8 +488,9 @@ class DNNRegressor(estimator.Estimator):
         used as a key to fetch weight tensor from the `features`. If it is a
         `_NumericColumn`, raw tensor is fetched by key `weight_column.key`,
         then weight_column.normalizer_fn is applied on it to get weight tensor.
-      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
-        to Adagrad optimizer.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Can also
+        be a string (one of 'Adagrad', 'Adam', 'Ftrl', 'RMSProp', 'SGD'), or
+        callable. Defaults to Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
         use `tf.nn.relu`.
       dropout: When not `None`, the probability we will drop out a given

@@ -5,5 +5,6 @@ op {
   }
   endpoint {
     name: "matrix_determinant"
+    deprecation_message: "tf.matrix_determinant is deprecated, please use tf.linalg.det instead."
   }
 }

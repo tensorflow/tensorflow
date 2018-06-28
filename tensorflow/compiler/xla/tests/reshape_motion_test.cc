@@ -48,7 +48,7 @@ TEST_F(ReshapeMotionTest, ElementwiseOfReshapesWithNonSameInputShapes) {
   auto b = builder.ConstantR2<int32>({{17, 19}, {23, 29}, {31, 37}});
   auto c = builder.Reshape(a, {6});
   auto d = builder.Reshape(b, {6});
-  auto e = builder.Mul(c, d);
+  builder.Mul(c, d);
 
   ComputeAndCompareR1<int32>(&builder, {34, 57, 115, 203, 341, 481}, {});
 }

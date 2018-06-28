@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -81,6 +83,7 @@ GrpcServer::~GrpcServer() {
 
   delete master_service_;
   delete worker_service_;
+  delete eager_service_;
 
   // TODO(mrry): Refactor the *Env classes so that it is less fiddly
   // to destroy them.
@@ -192,6 +195,8 @@ Status GrpcServer::Init(
       worker_func ? worker_func(&worker_env_) : NewGrpcWorker(&worker_env_);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
+  eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
+
   // extra service:
   if (service_func != nullptr) {
     service_func(&worker_env_, &builder);
@@ -284,6 +289,14 @@ Status GrpcServer::Init(
               nullptr);
 }
 
+
+Status GrpcServer::Init(
+    ServiceInitFunction service_func,
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
+  return Init(std::move(service_func), rendezvous_mgr_func, nullptr,
+              nullptr);
+}
+
 Status GrpcServer::Init() { return Init(nullptr, nullptr, nullptr, nullptr); }
 
 Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
@@ -357,6 +370,9 @@ Status GrpcServer::Start() {
       worker_thread_.reset(
           env_->StartThread(ThreadOptions(), "TF_worker_service",
                             [this] { worker_service_->HandleRPCsLoop(); }));
+      eager_thread_.reset(
+          env_->StartThread(ThreadOptions(), "TF_eager_service",
+                            [this] { eager_service_->HandleRPCsLoop(); }));
       state_ = STARTED;
       LOG(INFO) << "Started server with target: " << target();
       return Status::OK();
@@ -399,6 +415,7 @@ Status GrpcServer::Join() {
     case STOPPED:
       master_thread_.reset();
       worker_thread_.reset();
+      eager_thread_.reset();
       return Status::OK();
     default:
       LOG(FATAL);
@@ -427,6 +444,17 @@ std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<ServerInterface>* out_server) {
+  std::unique_ptr<GrpcServer> ret(
+      new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
+  ServiceInitFunction service_func = nullptr;
+  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr, nullptr));
+  *out_server = std::move(ret);
+  return Status::OK();
+}
+
+/* static */
+Status GrpcServer::Create(const ServerDef& server_def, Env* env,
+                          std::unique_ptr<GrpcServer>* out_server) {
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
   ServiceInitFunction service_func = nullptr;
