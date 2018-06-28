@@ -900,6 +900,33 @@ class BackpropTest(test.TestCase):
         'did you forget to return a value from fn?'):
       val_and_grads_fn(x, y)
 
+  def testZerosCacheDoesntLeakAcrossModes(self):
+    with ops.Graph().as_default():
+      t = random_ops.random_normal(shape=[100, 2])
+      x = random_ops.random_normal(shape=[100, 4])
+      dy = random_ops.random_normal(shape=[100, 4])
+      with backprop.GradientTape() as gradient_tape:
+        gradient_tape.watch(x)
+        x1, _ = array_ops.split(x, num_or_size_splits=2, axis=1)
+        y1 = x1 ** 2.
+        y = array_ops.concat([y1, t], axis=1)
+
+      dx = gradient_tape.gradient(y, x, output_gradients=dy)
+      with self.test_session() as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(dx)
+
+    t = random_ops.random_normal(shape=[100, 2])
+    x = random_ops.random_normal(shape=[100, 4])
+    dy = random_ops.random_normal(shape=[100, 4])
+    with backprop.GradientTape() as gradient_tape:
+      gradient_tape.watch(x)
+      x1, _ = array_ops.split(x, num_or_size_splits=2, axis=1)
+      y1 = x1 ** 2.
+      y = array_ops.concat([y1, t], axis=1)
+
+    dx = gradient_tape.gradient(y, x, output_gradients=dy)
+
 
 if __name__ == '__main__':
   test.main()
