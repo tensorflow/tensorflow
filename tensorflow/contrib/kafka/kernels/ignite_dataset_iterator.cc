@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "ignite_dataset_iterator.h"
 
-#include <time.h>
+//#include <time.h>
 
 namespace ignite {
 
