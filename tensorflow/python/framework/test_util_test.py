@@ -642,6 +642,29 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     test_util.run_in_graph_and_eager_modes(_test)(self)
     self.assertEqual(modes, ["graph"])
 
+  def test_run_in_graph_and_eager_modes_setup_in_same_mode(self):
+    modes = []
+    mode_name = lambda: "eager" if context.executing_eagerly() else "graph"
+
+    class ExampleTest(test_util.TensorFlowTestCase):
+
+      def runTest(self):
+        pass
+
+      def setUp(self):
+        modes.append("setup_" + mode_name())
+
+      @test_util.run_in_graph_and_eager_modes
+      def testBody(self):
+        modes.append("run_" + mode_name())
+
+    e = ExampleTest()
+    e.setUp()
+    e.testBody()
+
+    self.assertEqual(modes[0:2], ["setup_graph", "run_graph"])
+    self.assertEqual(modes[2:], ["setup_eager", "run_eager"])
+
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
