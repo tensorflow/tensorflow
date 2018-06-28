@@ -170,16 +170,9 @@ template <typename Scalar, int N>
 MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
                                                    const Dims<N>& dims,
                                                    int rows) {
-  int cols = 1;
-  bool matched_rows = false;
-  for (int d = 0; d < N; d++) {
-    cols *= dims.sizes[d];
-    if (cols == rows) {
-      matched_rows = true;
-      cols = 1;
-    }
-  }
-  TFLITE_DCHECK(matched_rows);
+  const int flatsize = FlatSize(dims);
+  TFLITE_DCHECK((flatsize % rows) == 0);
+  const int cols = flatsize / rows;
   return MatrixMap<Scalar>(data, rows, cols);
 }
 
