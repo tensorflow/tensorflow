@@ -170,8 +170,9 @@ class InstallHeaders(Command):
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
-    if 'external/eigen_archive/' in install_dir:
-      extra_dir = install_dir.replace('external/eigen_archive', '')
+    if 'tensorflow/include/external/eigen_archive/' in install_dir:
+      extra_dir = install_dir.replace(
+          'tensorflow/include/external/eigen_archive', '')
       if not os.path.exists(extra_dir):
         self.mkpath(extra_dir)
       self.copy_file(header, extra_dir)
@@ -204,13 +205,12 @@ def find_files(pattern, root):
       yield os.path.join(dirpath, filename)
 
 
-matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
-
 so_lib_paths = [
     i for i in os.listdir('.')
     if os.path.isdir(i) and fnmatch.fnmatch(i, '_solib_*')
 ]
 
+matches = []
 for path in so_lib_paths:
   matches.extend(
       ['../' + x for x in find_files('*', path) if '.py' not in x]
@@ -225,7 +225,7 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'tensorflow/stream_executor')) +
            list(find_files('*.h', 'google/protobuf_archive/src')) +
            list(find_files('*', 'third_party/eigen3')) +
-           list(find_files('*', 'external/eigen_archive')))
+           list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,
