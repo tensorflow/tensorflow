@@ -201,11 +201,11 @@ cc_library(
     srcs = ["grpc_remote_master.cc"],
     hdrs = ["grpc_remote_master.h"],
     deps = [
-        ":grpc_master_service_impl",
         ":grpc_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
+        "//tensorflow/core:master_service_proto_cc",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
     ],
@@ -219,25 +219,15 @@ cc_library(
     deps = [
         ":async_service_interface",
         ":grpc_call",
-        ":grpc_master_service_impl",
         ":grpc_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
+        "//tensorflow/core:master_service_proto_cc",
         "//tensorflow/core/distributed_runtime:master",
         "@grpc//:grpc++",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "grpc_master_service_impl",
-    srcs = ["grpc_master_service_impl.cc"],
-    hdrs = ["grpc_master_service_impl.h"],
-    deps = [
-        "//tensorflow/core:master_proto_cc",
-        "@grpc//:grpc++",
-    ],
 )
 
 cc_library(
