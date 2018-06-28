@@ -375,6 +375,24 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAre(24, 25, 26, 58, 59, 60));
 }
 
+TEST_P(FloatFullyConnectedOpTest, SimpleTest2) {
+  FloatFullyConnectedOpModel m(GetRegistration(), /*units=*/1, /*batches=*/2,
+                               /*input=*/{TensorType_FLOAT32, {2, 2}});
+  m.SetWeights({
+      2, 4,  // u = 0
+  });
+  m.SetBias({1});
+
+  m.SetInput({
+      1, 2,  // b = 0
+      2, 1,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAre(11, 9));
+}
+
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantized) {
   QuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
@@ -523,11 +541,11 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantized) {
                                  /*max_abs_error=*/1.3f)));
 }
 
-TEST(FloatFullyConnectedOpTest, SimpleTest4DInput) {
+TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput) {
   // Note that it is not required that the first dimension be the number of
   // batches. All we care is that the input can be evenly distributed in
   // batches. In this case, we need the input to have multiples of '2'.
-  FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),
+  FloatFullyConnectedOpModel m(GetRegistration(),
                                /*units=*/3, /*batches=*/2,
                                /*input=*/{TensorType_FLOAT32, {4, 1, 5, 1}});
   m.SetWeights({
