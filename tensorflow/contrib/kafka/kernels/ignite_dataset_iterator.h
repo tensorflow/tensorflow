@@ -41,7 +41,8 @@ class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> 
   std::vector<tensorflow::int32> schema_;
   std::vector<tensorflow::int32> permutation_;
 
-  char* data;
+  std::unique_ptr<char> page;
+  char* ptr;
   int remainder;
   bool last_page;
   long cursor_id;

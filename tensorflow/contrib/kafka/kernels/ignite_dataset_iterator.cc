@@ -64,13 +64,15 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
       int row_cnt = client_.ReadInt();
 
       remainder = res_len - 17;
-      data = (char*) malloc(remainder);
+      page = std::unique_ptr<char>(new char[remainder]);
+      ptr = page.get();
       clock_t start = clock();
-      client_.ReadData(data, remainder);
+      client_.ReadData(ptr, remainder);
       clock_t stop = clock();
  
       double size_in_mb = 1.0 * remainder / 1024 / 1024;     
-      std::cout << "Page size " << size_in_mb << " Mb, download speed " << size_in_mb / ((stop - start) / (double) CLOCKS_PER_SEC) << " Mb/sec" << std::endl;
+      double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
+      std::cout << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000 <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" << std::endl;
       last_page = !client_.ReadByte();
     }
     if (remainder == -1) {
@@ -97,28 +99,35 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
       int row_cnt = client_.ReadInt();
       
       remainder = res_len - 25;
-      data = (char*) malloc(remainder);
-      client_.ReadData(data, remainder);
+      page = std::unique_ptr<char>(new char[remainder]);
+      ptr = page.get();
+      clock_t start = clock();
+      client_.ReadData(ptr, remainder);
+      clock_t stop = clock();
+
+      double size_in_mb = 1.0 * remainder / 1024 / 1024;
+      double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
+      std::cout << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000 <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" << std::endl;
       last_page = !client_.ReadByte();
     }
 
-    char* initial_ptr = data;
-    std::vector<int>* types = new std::vector<int>();
-    std::vector<tensorflow::Tensor>* tensors = new std::vector<tensorflow::Tensor>();
+    char* initial_ptr = ptr;
+    std::vector<int> types;
+    std::vector<tensorflow::Tensor> tensors;
 
     BinaryObjectParser parser;
     // Parse key 
-    data = parser.Parse(data, tensors, types);
+    ptr = parser.Parse(ptr, &tensors, &types);
     // Parse val
-    data = parser.Parse(data, tensors, types);
+    ptr = parser.Parse(ptr, &tensors, &types);
 
-    remainder -= (data - initial_ptr);
+    remainder -= (ptr - initial_ptr);
 
-    out_tensors->resize(tensors->size());
+    out_tensors->resize(tensors.size());
 
-    for (int i = 0; i < tensors->size(); i++) {
+    for (int i = 0; i < tensors.size(); i++) {
       int idx = permutation_[i];
-      auto a = (*tensors)[i];
+      auto a = tensors[i];
       (*out_tensors)[idx] = a;
     }
 
