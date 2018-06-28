@@ -22,11 +22,6 @@ namespace ignite {
 class BinaryObjectParser {
  public:
   char* Parse(char *ptr, std::vector<tensorflow::Tensor>* out_tensors, std::vector<int>* types);
- private:
-  char ReadByte(char*& ptr);
-  short ReadShort(char*& ptr);
-  int ReadInt(char*& ptr);
-  long ReadLong(char*& ptr);
 };
 
 } // namespace ignite
