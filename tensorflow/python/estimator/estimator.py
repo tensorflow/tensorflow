@@ -38,6 +38,7 @@ from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export import export as export_helpers
 from tensorflow.python.estimator.export import export_output
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -71,7 +72,6 @@ from tensorflow.python.util.tf_export import estimator_export
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'self', 'config'])
-_INITIAL_TRAINING_LOSS = 1e7
 
 
 @estimator_export('estimator.Estimator')
@@ -1211,12 +1211,8 @@ class Estimator(object):
           ops.add_to_collection(training_util.GLOBAL_STEP_READ_KEY,
                                 self._distribution.read_var(global_step_tensor))
 
-          # TODO(sourabhbajaj): Remove this once the context input to step_fn
-          # is implemented
-          estimator_spec_wrapper = {}
-
           # Create a step_fn from the train_op of grouped_estimator_spec
-          def step_fn(inputs):
+          def step_fn(ctx, inputs):
             """A single step that is passed to run_on_dataset."""
             features, labels = inputs
             estimator_spec = self._distribution.call_for_each_tower(
@@ -1225,19 +1221,20 @@ class Estimator(object):
                 labels,
                 model_fn_lib.ModeKeys.TRAIN,
                 self.config)
-            estimator_spec_wrapper['grouped_estimator_spec'] = estimator_spec
+            ctx.last_step_outputs = estimator_spec.loss
+            ctx.non_tensor_outputs = {'estimator_spec': estimator_spec}
             with ops.control_dependencies([estimator_spec.train_op]):
               return array_ops.identity(estimator_spec.loss)
 
           # Create new train_op post graph rewrites
           # TODO(sourabhbajaj): Make sure train_steps and tpu_iterations
           # work correctly. Currently hardcoded at 2
-          distributed_train_op, tpu_result = \
+          initial_training_loss = constant_op.constant(1e7)
+          distributed_train_op, tpu_result, ctx = \
               self._distribution._run_steps_on_dataset(  # pylint: disable=protected-access
-                  step_fn, iterator, 2, [_INITIAL_TRAINING_LOSS])
-
-          grouped_estimator_spec = estimator_spec_wrapper[
-              'grouped_estimator_spec']
+                  step_fn, iterator, iterations=2,
+                  initial_loop_values=initial_training_loss)
+          grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
         else:
           features, labels, input_hooks = (
               self._get_features_and_labels_from_input_fn(
@@ -1345,7 +1342,7 @@ class Estimator(object):
         if is_tpu_strategy:
           loss = self._distribution.unwrap(
               self._distribution.reduce(distribute_lib.get_loss_reduction(),
-                                        tpu_result[0])[0])[0]
+                                        tpu_result)[0])[0]
           worker_hooks.append(
               estimator_util.StrategyInitFinalizeHook(
                   self._distribution.get_initialization_ops,
