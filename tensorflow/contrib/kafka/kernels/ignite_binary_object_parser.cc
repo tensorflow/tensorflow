@@ -171,8 +171,8 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
 
       double* arr = (double*)ptr;
       ptr += 8 * length;
-      for (int i = 0; i < length; i++) 
-        tensor.vec<double>()(i) = arr[i];
+      //for (int i = 0; i < length; i++) 
+      //  tensor.vec<double>()(i) = arr[i];
 
       out_tensors->emplace_back(std::move(tensor));
       break;

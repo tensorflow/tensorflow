@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "ignite_dataset.h"
 #include "ignite_client.h"
-// #include "ignite_binary_object_parser.h"
+#include "ignite_binary_object_parser.h"
 
 namespace ignite {
 
@@ -31,15 +31,19 @@ class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> 
 
  private:
   void Handshake();
+  void ScanQuery();
+  void LoadNextPage();
   int JavaHashCode(std::string str);
 
   Client client_;
-  std::string cache_name_;
-  bool local_;
-  tensorflow::int32 part_;
-  tensorflow::int32 page_size_;
-  std::vector<tensorflow::int32> schema_;
-  std::vector<tensorflow::int32> permutation_;
+  BinaryObjectParser parser;  
+ 
+  const std::string cache_name_;
+  const bool local_;
+  const tensorflow::int32 part_;
+  const tensorflow::int32 page_size_;
+  const std::vector<tensorflow::int32> schema_;
+  const std::vector<tensorflow::int32> permutation_;
 
   std::unique_ptr<char> page;
   char* ptr;

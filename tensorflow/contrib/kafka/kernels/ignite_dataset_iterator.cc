@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "ignite_binary_object_parser.h"
 #include "ignite_dataset_iterator.h"
 
 #include <time.h>
@@ -31,13 +30,11 @@ IgniteDatasetIterator::IgniteDatasetIterator(const Params& params, std::string h
  remainder(-1),
  last_page(false) {
   client_.Connect();
-  std::cout << "Client connected!" << std::endl;
   Handshake();
  }
 
 IgniteDatasetIterator::~IgniteDatasetIterator() {
   client_.Disconnect();
-  std::cout << "Client disconnected!" << std::endl;
 }
 
 tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) {
@@ -46,95 +43,27 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
     return tensorflow::Status::OK();
   }
   else {
-    if (remainder == 0) {
-      // query next page
-      client_.WriteInt(18);
-      client_.WriteShort(2001); 
-      client_.WriteLong(0); // Request id
-      client_.WriteLong(cursor_id); // Cursor ID
-
-      int res_len = client_.ReadInt();
-      long req_id = client_.ReadLong();
-      int status = client_.ReadInt();
-
-      if (status != 0) {
-        std::cout << "Query next page status error\n";
-      }
-
-      int row_cnt = client_.ReadInt();
-
-      remainder = res_len - 17;
-      page = std::unique_ptr<char>(new char[remainder]);
-      ptr = page.get();
-      clock_t start = clock();
-      client_.ReadData(ptr, remainder);
-      clock_t stop = clock();
- 
-      double size_in_mb = 1.0 * remainder / 1024 / 1024;     
-      double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
-      std::cout << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000 <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" << std::endl;
-      last_page = !client_.ReadByte();
-    }
-    if (remainder == -1) {
-      // ---------- Scan Query ---------- //
-      client_.WriteInt(25); // Message length
-      client_.WriteShort(2000); // Operation code
-      client_.WriteLong(0); // Request id
-      client_.WriteInt(JavaHashCode(cache_name_));
-      client_.WriteByte(0); // Some flags...
-      client_.WriteByte(101); // Filter object (NULL).
-      client_.WriteInt(page_size_); // Cursor page size
-      client_.WriteInt(part_); // Partition to query
-      client_.WriteByte(local_); // Local flag
-
-      int res_len = client_.ReadInt();
-      long req_id = client_.ReadLong();
-      int status = client_.ReadInt();
-
-      if (status != 0) {
-        std::cout << "Scan Query status error\n";
-      }
-
-      cursor_id = client_.ReadLong();
-      int row_cnt = client_.ReadInt();
-      
-      remainder = res_len - 25;
-      page = std::unique_ptr<char>(new char[remainder]);
-      ptr = page.get();
-      clock_t start = clock();
-      client_.ReadData(ptr, remainder);
-      clock_t stop = clock();
-
-      double size_in_mb = 1.0 * remainder / 1024 / 1024;
-      double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
-      std::cout << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000 <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" << std::endl;
-      last_page = !client_.ReadByte();
-    }
+    if (remainder == -1)
+      ScanQuery();
+    if (remainder == 0)
+      LoadNextPage();
 
     char* initial_ptr = ptr;
     std::vector<int> types;
     std::vector<tensorflow::Tensor> tensors;
 
-    BinaryObjectParser parser;
-    // Parse key 
-    ptr = parser.Parse(ptr, &tensors, &types);
-    // Parse val
-    ptr = parser.Parse(ptr, &tensors, &types);
-
+    ptr = parser.Parse(ptr, &tensors, &types); // Parse key
+    ptr = parser.Parse(ptr, &tensors, &types); // Parse val
     remainder -= (ptr - initial_ptr);
 
     out_tensors->resize(tensors.size());
-
     for (int i = 0; i < tensors.size(); i++) {
-      int idx = permutation_[i];
-      auto a = tensors[i];
-      (*out_tensors)[idx] = a;
+      (*out_tensors)[permutation_[i]] = std::move(tensors[i]);
     }
 
     *end_of_sequence = false;
     return tensorflow::Status::OK();
   }
-
 
   *end_of_sequence = true;
   return tensorflow::Status::OK();
@@ -159,12 +88,73 @@ void IgniteDatasetIterator::Handshake() {
   int handshake_res_len = client_.ReadInt();
   char handshake_res = client_.ReadByte();
 
-  if (handshake_res == 1) {
-    std::cout << "Handshake passed\n";
+  if (handshake_res != 1) {
+    std::cout << "Handshake error\n";
   }
-  else {
-    std::cout << "Handshake error!\n";
+}
+
+void IgniteDatasetIterator::ScanQuery() {
+  client_.WriteInt(25);                        // Message length
+  client_.WriteShort(2000);                    // Operation code
+  client_.WriteLong(0);                        // Request ID
+  client_.WriteInt(JavaHashCode(cache_name_)); // Cache name
+  client_.WriteByte(0);                        // Flags
+  client_.WriteByte(101);                      // Filter object
+  client_.WriteInt(page_size_);                // Cursor page size
+  client_.WriteInt(part_);                     // Partition to query
+  client_.WriteByte(local_);                   // Local flag
+
+  int res_len = client_.ReadInt();
+  long req_id = client_.ReadLong();
+  int status = client_.ReadInt();
+
+  if (status != 0) {
+    std::cout << "Scan Query status error\n";
   }
+
+  cursor_id = client_.ReadLong();
+  int row_cnt = client_.ReadInt();
+
+  remainder = res_len - 25;
+  page = std::unique_ptr<char>(new char[remainder]);
+  ptr = page.get();
+  // clock_t start = clock();
+  client_.ReadData(ptr, remainder);
+  // clock_t stop = clock();
+
+  // double size_in_mb = 1.0 * remainder / 1024 / 1024;
+  // double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
+  // std::cout << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000 <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" << std::endl;
+  last_page = !client_.ReadByte();
+}
+
+void IgniteDatasetIterator::LoadNextPage() {
+  client_.WriteInt(18);         // Message length
+  client_.WriteShort(2001);     // Operation code
+  client_.WriteLong(0);         // Request ID
+  client_.WriteLong(cursor_id); // Cursor ID
+
+  int res_len = client_.ReadInt();
+  long req_id = client_.ReadLong();
+  int status = client_.ReadInt();
+
+  if (status != 0) {
+    std::cout << "Query next page status error\n";
+  }
+
+  int row_cnt = client_.ReadInt();
+
+  remainder = res_len - 17;
+  page = std::unique_ptr<char>(new char[remainder]);
+  ptr = page.get();
+  // clock_t start = clock();
+  client_.ReadData(ptr, remainder);
+  // clock_t stop = clock();
+
+  // double size_in_mb = 1.0 * remainder / 1024 / 1024;
+  // double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
+  // std::cout << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000 <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" << std::endl;
+  last_page = !client_.ReadByte();
 }
 
 int IgniteDatasetIterator::JavaHashCode(std::string str) {

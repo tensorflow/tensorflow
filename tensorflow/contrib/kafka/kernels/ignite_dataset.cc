@@ -36,7 +36,6 @@ std::unique_ptr<tensorflow::IteratorBase> IgniteDataset::MakeIteratorInternal(co
 const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
   static tensorflow::DataTypeVector* dtypes = new tensorflow::DataTypeVector();
 
-  std::cout << "DTypes: ";
   for (auto e: schema_) {
     if (e == 1 || e == 12) {
       dtypes->push_back(tensorflow::DT_INT8);
@@ -45,7 +44,6 @@ const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
       dtypes->push_back(tensorflow::DT_INT16);
     }
     else if (e == 3 || e == 14) {
-      std::cout << "int32 ";
       dtypes->push_back(tensorflow::DT_INT32);
     }
     else if (e == 4 || e == 15) {
@@ -55,7 +53,6 @@ const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
       dtypes->push_back(tensorflow::DT_FLOAT);
     }
     else if (e == 6 || e == 17) {
-      std::cout << "double ";
       dtypes->push_back(tensorflow::DT_DOUBLE);
     }
     else if (e == 7 || e == 18) {
@@ -70,7 +67,6 @@ const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
     else {
       // skip.
     }
-    std::cout << "\n";
   }
 
   return *dtypes;

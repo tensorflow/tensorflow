@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/dataset.h"
-#include <map>
 #include <vector>
 
 namespace ignite {
