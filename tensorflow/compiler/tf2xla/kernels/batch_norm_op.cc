@@ -192,8 +192,8 @@ class FusedBatchNormGradOp : public XlaOpKernel {
                    XlaHelpers::ConvertElementType(b, x_backprop, input_dtype));
     ctx->SetOutput(1, scale_backprop);
     ctx->SetOutput(2, offset_backprop);
-    ctx->SetConstantOutput(3, Tensor(scale_dtype, {}));
-    ctx->SetConstantOutput(4, Tensor(scale_dtype, {}));
+    ctx->SetConstantOutput(3, Tensor());
+    ctx->SetConstantOutput(4, Tensor());
   }
 
  private:
