@@ -309,18 +309,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* hwcn_weights =
         &context->tensors[node->temporaries->data[data->hwcn_weights_index]];
     hwcn_weights->type = data_type;
-    hwcn_weights->allocation_type = kTfLiteDynamic;
-    // Make sure we release any previous allocations before we reallocate.
-    // TODO(petewarden): Persistent arenas would be a better fit for this, but
-    // they aren't fully implemented yet.
-    if (hwcn_weights->data.raw) {
-      free(hwcn_weights->data.raw);
-      hwcn_weights->data.raw = nullptr;
-    }
+    hwcn_weights->allocation_type = kTfLiteArenaRwPersistent;
 
-    // Note that hwcn_weights_status is a kTfLiteDynamic tensor, and
-    // ResizeTensor will actually allocate space for it. The would be more
-    // efficient if we placed hwcn_weights_status in the persistent arena.
     auto hwcn_weights_status =
         context->ResizeTensor(context, hwcn_weights, hwcn_weights_size);
     if (hwcn_weights_status != kTfLiteOk) return hwcn_weights_status;
