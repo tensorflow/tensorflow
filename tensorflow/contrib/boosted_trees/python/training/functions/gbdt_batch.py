@@ -666,7 +666,8 @@ class GradientBoostedDecisionTreeModel(object):
                 l2_regularization=l2_regularization,
                 tree_complexity_regularization=tree_complexity_regularization,
                 min_node_weight=min_node_weight,
-                feature_column_group_id=dense_float_column_idx,
+                feature_column_group_id=constant_op.constant(
+                    dense_float_column_idx),
                 epsilon=epsilon,
                 num_quantiles=num_quantiles,
                 dense_float_column=self._dense_floats[dense_float_column_idx],
@@ -688,7 +689,8 @@ class GradientBoostedDecisionTreeModel(object):
                 l2_regularization=l2_regularization,
                 tree_complexity_regularization=tree_complexity_regularization,
                 min_node_weight=min_node_weight,
-                feature_column_group_id=sparse_float_column_idx,
+                feature_column_group_id=constant_op.constant(
+                    sparse_float_column_idx),
                 epsilon=epsilon,
                 num_quantiles=num_quantiles,
                 sparse_float_column=sparse_tensor.SparseTensor(
@@ -712,7 +714,8 @@ class GradientBoostedDecisionTreeModel(object):
                 l2_regularization=l2_regularization,
                 tree_complexity_regularization=tree_complexity_regularization,
                 min_node_weight=min_node_weight,
-                feature_column_group_id=sparse_int_column_idx,
+                feature_column_group_id=constant_op.constant(
+                    sparse_int_column_idx),
                 sparse_int_column=sparse_tensor.SparseTensor(
                     self._sparse_int_indices[sparse_int_column_idx],
                     self._sparse_int_values[sparse_int_column_idx],
