@@ -25,6 +25,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
@@ -1349,33 +1350,39 @@ class Stream {
                        DeviceMemory<std::complex<double>> *x, int incx);
 
   // See BlasSupport::DoBlasGemm.
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, float alpha,
-                       const DeviceMemory<Eigen::half> &a, int lda,
-                       const DeviceMemory<Eigen::half> &b, int ldb, float beta,
-                       DeviceMemory<Eigen::half> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, float alpha,
-                       const DeviceMemory<float> &a, int lda,
-                       const DeviceMemory<float> &b, int ldb, float beta,
-                       DeviceMemory<float> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, double alpha,
-                       const DeviceMemory<double> &a, int lda,
-                       const DeviceMemory<double> &b, int ldb, double beta,
-                       DeviceMemory<double> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, std::complex<float> alpha,
-                       const DeviceMemory<std::complex<float>> &a, int lda,
-                       const DeviceMemory<std::complex<float>> &b, int ldb,
-                       std::complex<float> beta,
-                       DeviceMemory<std::complex<float>> *c, int ldc);
-  Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb, uint64 m,
-                       uint64 n, uint64 k, std::complex<double> alpha,
-                       const DeviceMemory<std::complex<double>> &a, int lda,
-                       const DeviceMemory<std::complex<double>> &b, int ldb,
-                       std::complex<double> beta,
-                       DeviceMemory<std::complex<double>> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k, float alpha,
+                                 const DeviceMemory<Eigen::half> &a, int lda,
+                                 const DeviceMemory<Eigen::half> &b, int ldb,
+                                 float beta, DeviceMemory<Eigen::half> *c,
+                                 int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k, float alpha,
+                                 const DeviceMemory<float> &a, int lda,
+                                 const DeviceMemory<float> &b, int ldb,
+                                 float beta, DeviceMemory<float> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k, double alpha,
+                                 const DeviceMemory<double> &a, int lda,
+                                 const DeviceMemory<double> &b, int ldb,
+                                 double beta, DeviceMemory<double> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k,
+                                 std::complex<float> alpha,
+                                 const DeviceMemory<std::complex<float>> &a,
+                                 int lda,
+                                 const DeviceMemory<std::complex<float>> &b,
+                                 int ldb, std::complex<float> beta,
+                                 DeviceMemory<std::complex<float>> *c, int ldc);
+  TF_EXPORT Stream &ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                                 uint64 m, uint64 n, uint64 k,
+                                 std::complex<double> alpha,
+                                 const DeviceMemory<std::complex<double>> &a,
+                                 int lda,
+                                 const DeviceMemory<std::complex<double>> &b,
+                                 int ldb, std::complex<double> beta,
+                                 DeviceMemory<std::complex<double>> *c,
+                                 int ldc);
 
   Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
                                     blas::Transpose transb, uint64 m, uint64 n,

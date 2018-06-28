@@ -105,8 +105,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                const TfLiteTensor* input1, const TfLiteTensor* input2,
                TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
-  CalculateActivationRangeFloat(params->activation, &output_activation_min,
-                                &output_activation_max);
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
 #define TF_LITE_MUL(type, opname)                                   \
   type::opname(GetTensorData<float>(input1), GetTensorDims(input1), \
                GetTensorData<float>(input2), GetTensorDims(input2), \

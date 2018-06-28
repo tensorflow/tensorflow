@@ -103,6 +103,7 @@ class FunctionTest(test.TestCase):
       grads, = gradients_impl.gradients(node, v)
       v.initializer.run()
       self.assertAllEqual(grads.eval(), 2.0)
+      self.assertEqual(grads.shape, v.shape)
 
   def testBasicDefunOpGraphMode(self):
     matmul = function.defun(math_ops.matmul)

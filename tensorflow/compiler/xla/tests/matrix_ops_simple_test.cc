@@ -56,11 +56,11 @@ TYPED_TEST_CASE(MatOpsSimpleTest_F16F32, TypesF16F32);
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   using T = TypeParam;
   XlaBuilder builder("exp_2x2");
-  auto data = builder.ConstantR2FromArray2D<T>({
-      {1.0f, 0.0f},   // row 0
-      {-1.0f, 0.5f},  // row 1
-  });
-  builder.Exp(data);
+  auto data = ConstantR2FromArray2D<T>(&builder, {
+                                                     {1.0f, 0.0f},   // row 0
+                                                     {-1.0f, 0.5f},  // row 1
+                                                 });
+  Exp(data);
 
   std::unique_ptr<Literal> expected =
       Literal::CreateR2FromArray2D<T>({{2.71828f, 1.00000f},    // row 0
@@ -76,20 +76,20 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
     // add_half(x) = x + 0.5
     XlaBuilder builder("add_half");
     auto x_value =
-        builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({}), "x_value");
-    auto half = builder.ConstantR0<T>(static_cast<T>(0.5));
-    builder.Add(x_value, half);
+        Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({}), "x_value");
+    auto half = ConstantR0<T>(&builder, static_cast<T>(0.5));
+    Add(x_value, half);
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
     add_half = computation_status.ConsumeValueOrDie();
   }
 
   XlaBuilder builder("map_2x2");
-  auto data = builder.ConstantR2FromArray2D<T>({
-      {1.0f, 0.0f},   // row 0
-      {-1.0f, 0.5f},  // row 1
-  });
-  builder.Map({data}, add_half, {0, 1});
+  auto data = ConstantR2FromArray2D<T>(&builder, {
+                                                     {1.0f, 0.0f},   // row 0
+                                                     {-1.0f, 0.5f},  // row 1
+                                                 });
+  Map(&builder, {data}, add_half, {0, 1});
 
   std::unique_ptr<Literal> expected =
       Literal::CreateR2FromArray2D<T>({{1.5f, 0.5f},     // row 0
@@ -100,15 +100,15 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
   using T = TypeParam;
   XlaBuilder builder("max_2x2");
-  auto lhs = builder.ConstantR2FromArray2D<T>({
-      {7.0f, 2.0f},   // row 0
-      {3.0f, -4.0f},  // row 1
-  });
-  auto rhs = builder.ConstantR2FromArray2D<T>({
-      {5.0f, 6.0f},   // row 0
-      {1.0f, -8.0f},  // row 1
-  });
-  builder.Max(lhs, rhs);
+  auto lhs = ConstantR2FromArray2D<T>(&builder, {
+                                                    {7.0f, 2.0f},   // row 0
+                                                    {3.0f, -4.0f},  // row 1
+                                                });
+  auto rhs = ConstantR2FromArray2D<T>(&builder, {
+                                                    {5.0f, 6.0f},   // row 0
+                                                    {1.0f, -8.0f},  // row 1
+                                                });
+  Max(lhs, rhs);
 
   std::unique_ptr<Literal> expected =
       Literal::CreateR2FromArray2D<T>({{7.0f, 6.0f},     // row 0
@@ -137,9 +137,9 @@ class TestLinspaceMaxParametric
 
     XlaBuilder builder(
         tensorflow::strings::Printf("max_%lldx%lld_linspace", rows, cols));
-    auto lhs = builder.ConstantR2FromArray2D<T>(*alhs);
-    auto rhs = builder.ConstantR2FromArray2D<T>(*arhs);
-    builder.Max(lhs, rhs);
+    auto lhs = ConstantR2FromArray2D<T>(&builder, *alhs);
+    auto rhs = ConstantR2FromArray2D<T>(&builder, *arhs);
+    Max(lhs, rhs);
 
     Array2D<T> expected(rows, cols);
     for (int row = 0; row < rows; ++row) {
@@ -208,23 +208,23 @@ class MatOpsDotAddTest
             rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
 
     XlaBuilder builder(TestName());
-    auto lhs_arg = builder.Parameter(0, lhs_shape, "lhs");
+    auto lhs_arg = Parameter(&builder, 0, lhs_shape, "lhs");
     auto lhs_mat_arg = lhs_arg;
     if (transpose) {
-      lhs_mat_arg = builder.Transpose(lhs_mat_arg, {1, 0});
+      lhs_mat_arg = Transpose(lhs_mat_arg, {1, 0});
     }
-    auto rhs_arg = builder.Parameter(1, rhs_shape, "rhs");
-    auto result = builder.Dot(lhs_mat_arg, rhs_arg);
+    auto rhs_arg = Parameter(&builder, 1, rhs_shape, "rhs");
+    auto result = Dot(lhs_mat_arg, rhs_arg);
     Array2D<T> expected;
     if (add_lhs) {
-      result = builder.Add(result, lhs_arg);
+      result = Add(result, lhs_arg);
       if (transpose) {
         expected = Array2D<T>({{47.0f, 52.0f}, {71.0f, 78.0f}});
       } else {
         expected = Array2D<T>({{35.0f, 39.0f}, {81.0f, 89.0f}});
       }
     } else {
-      result = builder.Add(result, rhs_arg);
+      result = Add(result, rhs_arg);
       if (transpose) {
         expected = Array2D<T>({{56.0f, 61.0f}, {80.0f, 87.0f}});
       } else {

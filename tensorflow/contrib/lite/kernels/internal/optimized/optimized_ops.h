@@ -170,16 +170,9 @@ template <typename Scalar, int N>
 MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
                                                    const Dims<N>& dims,
                                                    int rows) {
-  int cols = 1;
-  bool matched_rows = false;
-  for (int d = 0; d < N; d++) {
-    cols *= dims.sizes[d];
-    if (cols == rows) {
-      matched_rows = true;
-      cols = 1;
-    }
-  }
-  TFLITE_DCHECK(matched_rows);
+  const int flatsize = FlatSize(dims);
+  TFLITE_DCHECK((flatsize % rows) == 0);
+  const int cols = flatsize / rows;
   return MatrixMap<Scalar>(data, rows, cols);
 }
 
@@ -2711,6 +2704,20 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
     const int16 clamped_output = std::min(
         output_activation_max, std::max(output_activation_min, raw_output));
     output_data[i] = clamped_output;
+  }
+}
+
+inline void Add(const int32* input1_data, const Dims<4>& input1_dims,
+                const int32* input2_data, const Dims<4>& input2_dims,
+                int32 output_activation_min, int32 output_activation_max,
+                int32* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("Add/int32");
+
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(
+        input1_data[i] + input2_data[i], output_activation_min,
+        output_activation_max);
   }
 }
 

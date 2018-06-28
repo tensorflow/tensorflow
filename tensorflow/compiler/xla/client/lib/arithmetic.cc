@@ -42,8 +42,8 @@ XlaComputation CreateScalarComputation(const string& name, PrimitiveType type,
   }
 
   const Shape scalar = ShapeUtil::MakeShape(type, {});
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
+  auto lhs = Parameter(b.get(), 0, scalar, "lhs");
+  auto rhs = Parameter(b.get(), 1, scalar, "rhs");
   generator(b.get(), lhs, rhs);
   return b->BuildAndNoteError();
 }
@@ -55,7 +55,7 @@ XlaComputation CreateScalarAddComputation(PrimitiveType type,
   return CreateScalarComputation(
       "add", type, builder,
       [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return b->Add(lhs, rhs);
+        return Add(lhs, rhs);
       });
 }
 
@@ -64,17 +64,15 @@ XlaComputation CreateScalarMultiplyComputation(PrimitiveType type,
   return CreateScalarComputation(
       "mul", type, builder,
       [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return b->Mul(lhs, rhs);
+        return Mul(lhs, rhs);
       });
 }
 
 XlaComputation CreateScalarGeComputation(PrimitiveType type,
                                          XlaBuilder* builder) {
-  return CreateScalarComputation(
-      "ge", type, builder,
-      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return b->Ge(lhs, rhs);
-      });
+  return CreateScalarComputation("ge", type, builder,
+                                 [](XlaBuilder* b, const XlaOp& lhs,
+                                    const XlaOp& rhs) { return Ge(lhs, rhs); });
 }
 
 XlaComputation CreateScalarMaxComputation(PrimitiveType type,
@@ -82,7 +80,7 @@ XlaComputation CreateScalarMaxComputation(PrimitiveType type,
   return CreateScalarComputation(
       "max", type, builder,
       [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return b->Max(lhs, rhs);
+        return Max(lhs, rhs);
       });
 }
 
@@ -91,7 +89,7 @@ XlaComputation CreateScalarMinComputation(PrimitiveType type,
   return CreateScalarComputation(
       "min", type, builder,
       [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return b->Min(lhs, rhs);
+        return Min(lhs, rhs);
       });
 }
 
@@ -99,34 +97,32 @@ XlaComputation CreateScalarAndComputation(XlaBuilder* builder) {
   return CreateScalarComputation(
       "and", PRED, builder,
       [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return b->And(lhs, rhs);
+        return And(lhs, rhs);
       });
 }
 
 XlaComputation CreateScalarOrComputation(XlaBuilder* builder) {
-  return CreateScalarComputation(
-      "or", PRED, builder,
-      [](XlaBuilder* b, const XlaOp& lhs, const XlaOp& rhs) {
-        return b->Or(lhs, rhs);
-      });
+  return CreateScalarComputation("or", PRED, builder,
+                                 [](XlaBuilder* b, const XlaOp& lhs,
+                                    const XlaOp& rhs) { return Or(lhs, rhs); });
 }
 
 XlaOp Any(XlaOp predicates) {
   XlaBuilder* builder = predicates.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    auto f = builder->ConstantR0<bool>(false);
+    auto f = ConstantR0<bool>(builder, false);
     XlaComputation logical_or = CreateScalarOrComputation(builder);
     TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
                         builder->GetShape(predicates));
     std::vector<int64> all_dimensions(ShapeUtil::Rank(predicates_shape));
     std::iota(all_dimensions.begin(), all_dimensions.end(), 0);
-    return builder->Reduce(predicates, f, logical_or, all_dimensions);
+    return Reduce(predicates, f, logical_or, all_dimensions);
   });
 }
 
 namespace {
 XlaOp FloatLiteral(XlaBuilder* b, PrimitiveType data_type, float value) {
-  return b->ConvertElementType(b->ConstantR0(value), data_type);
+  return ConvertElementType(ConstantR0(b, value), data_type);
 }
 
 // Polynomials for computing erf/erfc.  Originally from cephes.
@@ -173,7 +169,7 @@ XlaOp EvaluatePolynomial(XlaOp x,
   XlaBuilder* b = x.builder();
   XlaOp poly = FloatLiteral(b, data_type, 0.0);
   for (float c : coefficients) {
-    poly = b->Add(b->Mul(poly, x), FloatLiteral(b, data_type, c));
+    poly = Add(Mul(poly, x), FloatLiteral(b, data_type, c));
   }
   return poly;
 }
@@ -185,27 +181,25 @@ XlaOp Erfc(XlaOp x, PrimitiveType data_type) {
   XlaOp two = FloatLiteral(b, data_type, 2.0);
   XlaOp eight = FloatLiteral(b, data_type, 8.0);
 
-  XlaOp abs_x = b->Abs(x);
-  XlaOp z = b->Exp(b->Mul(b->Neg(x), x));
+  XlaOp abs_x = Abs(x);
+  XlaOp z = Exp(Mul(Neg(x), x));
 
   XlaOp pp = EvaluatePolynomial(abs_x, kErfcPCoefficient, data_type);
   XlaOp pq = EvaluatePolynomial(abs_x, kErfcQCoefficient, data_type);
   XlaOp pr = EvaluatePolynomial(abs_x, kErfcRCoefficient, data_type);
   XlaOp ps = EvaluatePolynomial(abs_x, kErfcSCoefficient, data_type);
 
-  XlaOp y = b->Select(b->Lt(abs_x, eight), b->Div(b->Mul(z, pp), pq),
-                      b->Div(b->Mul(z, pr), ps));
+  XlaOp y = Select(Lt(abs_x, eight), Div(Mul(z, pp), pq), Div(Mul(z, pr), ps));
 
-  return b->Select(b->Lt(x, zero), b->Sub(two, y), y);
+  return Select(Lt(x, zero), Sub(two, y), y);
 }
 
 // Compute a polynomial approximation of the error function.
 XlaOp Erf(XlaOp x, PrimitiveType data_type) {
-  XlaBuilder* b = x.builder();
-  XlaOp z = b->Mul(x, x);
+  XlaOp z = Mul(x, x);
   XlaOp pt = EvaluatePolynomial(z, kErfTCoefficient, data_type);
   XlaOp pu = EvaluatePolynomial(z, kErfUCoefficient, data_type);
-  return b->Div(b->Mul(x, pt), pu);
+  return Div(Mul(x, pt), pu);
 }
 
 // Approximation for the inverse error function from
@@ -234,25 +228,25 @@ XlaOp ErfInv(XlaOp x) {
         -0.00367342844f,  0.00573950773f,  -0.0076224613f,
         0.00943887047f,   1.00167406f,     2.83297682f};
 
-    auto one = b->ConstantR0<float>(1.0);
-    auto w = b->Neg(b->Log(b->Mul(b->Sub(one, x), b->Add(one, x))));
+    auto one = ConstantR0<float>(b, 1.0);
+    auto w = Neg(Log(Mul(Sub(one, x), Add(one, x))));
 
-    auto lt = b->Lt(w, b->ConstantR0<float>(5.0));
+    auto lt = Lt(w, ConstantR0<float>(b, 5.0));
     auto coefficient = [&](int i) {
-      return b->Select(
+      return Select(
           lt,
-          b->Broadcast(b->ConstantR0<float>(w_less_than_5_constants[i]),
-                       AsInt64Slice(shape.dimensions())),
-          b->Broadcast(b->ConstantR0<float>(w_greater_than_5_constants[i]),
-                       AsInt64Slice(shape.dimensions())));
+          Broadcast(ConstantR0<float>(b, w_less_than_5_constants[i]),
+                    AsInt64Slice(shape.dimensions())),
+          Broadcast(ConstantR0<float>(b, w_greater_than_5_constants[i]),
+                    AsInt64Slice(shape.dimensions())));
     };
-    w = b->Select(lt, b->Sub(w, b->ConstantR0<float>(2.5f)),
-                  b->Sub(b->SqrtF32(w), b->ConstantR0<float>(3.0f)));
+    w = Select(lt, Sub(w, ConstantR0<float>(b, 2.5f)),
+               Sub(SqrtF32(w), ConstantR0<float>(b, 3.0f)));
     auto p = coefficient(0);
     for (int i = 1; i < kDegree; ++i) {
-      p = b->Add(coefficient(i), b->Mul(p, w));
+      p = Add(coefficient(i), Mul(p, w));
     }
-    return b->Mul(p, x);
+    return Mul(p, x);
   });
 }
 

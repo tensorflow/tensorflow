@@ -671,6 +671,24 @@ class FunctionalOpsTest(test.TestCase):
       mul = sess.run(remote_op)
       self.assertEqual(mul, 9.0)
 
+  def testRemoteFunctionGPUCPUStrings(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    @function.Defun(dtypes.string)
+    def _remote_fn(inp):
+      return array_ops.identity(inp)
+
+    a = array_ops.constant("a")
+
+    with ops.device("/gpu:0"):
+      remote_op = functional_ops.remote_call(
+          args=[a], Tout=[dtypes.string], f=_remote_fn, target="/cpu:0")
+
+    with self.test_session() as sess:
+      ret = sess.run(remote_op)
+      self.assertAllEqual(ret, [b"a"])
+
   def testRemoteFunctionCrossProcess(self):
     workers, _ = test_util.create_local_cluster(2, 1)
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -81,25 +82,26 @@ xla::StatusOr<xla::XlaOp> BatchDot(xla::XlaBuilder* builder, xla::XlaOp x,
     int y_outer_dim = transpose_y ? (ndims - 2) : (ndims - 1);
     dimensions.push_back(x_shape.dimensions(x_outer_dim));
     dimensions.push_back(y_shape.dimensions(y_outer_dim));
-    return builder->Broadcast(
-        builder->ConstantLiteral(xla::Literal::Zero(x_shape.element_type())),
+    return xla::Broadcast(
+        xla::ConstantLiteral(builder,
+                             xla::Literal::Zero(x_shape.element_type())),
         dimensions);
   }
 
   if (x_shape.element_type() == xla::C64 && conjugate_x) {
-    x = builder->Conj(x);
+    x = xla::Conj(x);
   }
   if (y_shape.element_type() == xla::C64 && conjugate_y) {
-    y = builder->Conj(y);
+    y = xla::Conj(y);
   }
 
   // If there are no batch dimensions, use a regular Dot.
   // TODO(b/69062148) Remove this code when Dot emitters can be passed
   // dimensions to transpose directly (i.e. without requiring a Transpose HLO).
   if (batch_dimension_numbers.empty()) {
-    auto lhs = transpose_x ? builder->Transpose(x, {1, 0}) : x;
-    auto rhs = transpose_y ? builder->Transpose(y, {1, 0}) : y;
-    return builder->Dot(lhs, rhs);
+    auto lhs = transpose_x ? xla::Transpose(x, {1, 0}) : x;
+    auto rhs = transpose_y ? xla::Transpose(y, {1, 0}) : y;
+    return xla::Dot(lhs, rhs);
   }
 
   xla::DotDimensionNumbers dot_dnums;
@@ -109,7 +111,7 @@ xla::StatusOr<xla::XlaOp> BatchDot(xla::XlaBuilder* builder, xla::XlaOp x,
     dot_dnums.add_lhs_batch_dimensions(batch_dimension_number);
     dot_dnums.add_rhs_batch_dimensions(batch_dimension_number);
   }
-  return builder->DotGeneral(x, y, dot_dnums);
+  return xla::DotGeneral(x, y, dot_dnums);
 }
 
 }  // namespace tensorflow

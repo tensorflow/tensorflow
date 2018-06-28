@@ -27,6 +27,7 @@ import random
 import re
 import tempfile
 import threading
+import unittest
 
 import numpy as np
 import six
@@ -645,16 +646,12 @@ def run_in_graph_and_eager_modes(func=None,
           "Did you mean to use `run_all_tests_in_graph_and_eager_modes`?")
 
     def decorated(self, **kwargs):
-      with context.graph_mode():
-        with self.test_session(use_gpu=use_gpu, config=config):
-          f(self, **kwargs)
-
-      if reset_test:
-        # This decorator runs the wrapped test twice.
-        # Reset the test environment between runs.
-        self.tearDown()
-        self._tempdir = None
-        self.setUp()
+      try:
+        with context.graph_mode():
+          with self.test_session(use_gpu=use_gpu, config=config):
+            f(self, **kwargs)
+      except unittest.case.SkipTest:
+        pass
 
       def run_eagerly(self, **kwargs):
         if not use_gpu:
@@ -669,6 +666,13 @@ def run_in_graph_and_eager_modes(func=None,
             assert_no_garbage_created(run_eagerly))
 
       with context.eager_mode():
+        if reset_test:
+          # This decorator runs the wrapped test twice.
+          # Reset the test environment between runs.
+          self.tearDown()
+          self._tempdir = None
+          self.setUp()
+
         run_eagerly(self, **kwargs)
 
     return decorated

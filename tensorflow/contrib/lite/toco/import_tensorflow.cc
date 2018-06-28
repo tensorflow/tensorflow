@@ -1899,6 +1899,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"ParallelDynamicStitch", ConvertDynamicStitchOperator},
       {"Placeholder", ConvertPlaceholderOperator},
       {"PlaceholderWithDefault", ConvertIdentityOperator},
+      {"Pow", ConvertSimpleOperator<PowOperator, 2>},
       {"RandomUniform", ConvertRandomUniform},
       {"Range", ConvertRangeOperator},
       {"Rank", ConvertSimpleOperator<RankOperator, 1>},

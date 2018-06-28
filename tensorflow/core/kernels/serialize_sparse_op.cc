@@ -340,7 +340,7 @@ class DeserializeSparseOp : public OpKernel {
             "but has a zero dimension ",
             serialized_sparse.shape().DebugString()));
 
-    if (num_sparse_tensors == 1 && serialized_sparse.shape().dims() == 0) {
+    if (num_sparse_tensors == 1 && ndims == 1) {
       // Special case with a single sparse tensor. We can avoid data
       // motion in the Concat and Reshape.
       const auto& serialized_sparse_t = serialized_sparse.vec<T>();
@@ -384,10 +384,12 @@ class DeserializeSparseOp : public OpKernel {
       const auto& output_indices_t = output_indices.matrix<int64>();
       auto expanded_indices_t = expanded_indices.matrix<int64>();
       expanded_indices_t.chip<1>(0).setZero();
-      Eigen::DSizes<Eigen::DenseIndex, 2> indices_start(0, 1);
-      Eigen::DSizes<Eigen::DenseIndex, 2> indices_sizes(num_entries, rank);
-      expanded_indices_t.slice(indices_start, indices_sizes) = output_indices_t;
-
+      if (rank > 0) {
+        Eigen::DSizes<Eigen::DenseIndex, 2> indices_start(0, 1);
+        Eigen::DSizes<Eigen::DenseIndex, 2> indices_sizes(num_entries, rank);
+        expanded_indices_t.slice(indices_start, indices_sizes) =
+            output_indices_t;
+      }
       Tensor expanded_shape(DT_INT64, TensorShape({1 + rank}));
       const auto& output_shape_t = output_shape.vec<int64>();
       auto expanded_shape_t = expanded_shape.vec<int64>();

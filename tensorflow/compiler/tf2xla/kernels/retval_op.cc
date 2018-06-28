@@ -69,8 +69,7 @@ class RetvalOp : public XlaOpKernel {
 
         xla::XlaOp output = input;
         if (tc.is_entry_computation()) {
-          output =
-              ctx->builder()->Reshape(input, representation_shape.dim_sizes());
+          output = xla::Reshape(input, representation_shape.dim_sizes());
         } else {
           // The core from which a return value is returned depends on the
           // device assignment of the input to the retval. Since we can't change
@@ -78,8 +77,8 @@ class RetvalOp : public XlaOpKernel {
           // introduce an operator here, even if the shape does not change.
           // TODO(b/76097077): propagate device assignments onto arguments and
           // return values of functions, and then reshape unconditionally.
-          output = ctx->builder()->GetTupleElement(
-              ctx->builder()->Tuple({output}), 0);
+          output =
+              xla::GetTupleElement(xla::Tuple(ctx->builder(), {output}), 0);
         }
         tc.AddRetval(index_, dtype_, shape, output);
       }

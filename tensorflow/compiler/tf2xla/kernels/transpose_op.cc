@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -84,12 +85,12 @@ class TransposeOp : public XlaOpKernel {
     if (dims <= 1 || is_identity) {
       transposed = ctx->Input(0);
     } else {
-      transposed = ctx->builder()->Transpose(ctx->Input(0), transposed_order);
+      transposed = xla::Transpose(ctx->Input(0), transposed_order);
     }
 
     // Conjugate the transposed result if this is ConjugateTransposeOp.
     if (conjugate_) {
-      ctx->SetOutput(0, ctx->builder()->Conj(transposed));
+      ctx->SetOutput(0, xla::Conj(transposed));
     } else {
       ctx->SetOutput(0, transposed);
     }
@@ -146,7 +147,7 @@ class InvertPermutationOp : public XlaOpKernel {
       output[d] = i;
     }
 
-    ctx->SetOutput(0, ctx->builder()->ConstantR1<int32>(output));
+    ctx->SetOutput(0, xla::ConstantR1<int32>(ctx->builder(), output));
   }
 };
 

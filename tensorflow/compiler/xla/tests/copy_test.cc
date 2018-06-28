@@ -248,7 +248,7 @@ XLA_TEST_F(CopyOpClientTest, Copy0x0) {
   auto empty = Literal::CreateFromShape(in_shape);
 
   XlaBuilder builder(TestName());
-  builder.Parameter(0, in_shape, "input");
+  Parameter(&builder, 0, in_shape, "input");
   auto input_data = client_->TransferToServer(*empty).ConsumeValueOrDie();
 
   auto actual = ExecuteAndTransfer(&builder, {input_data.get()}, &out_shape)

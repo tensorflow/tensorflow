@@ -59,6 +59,11 @@ class ProjectiveGenerator {
             ? transforms_.data()
             : &transforms_.data()[transforms_.dimension(1) * coords[0]];
     float projection = transform[6] * output_x + transform[7] * output_y + 1.f;
+    if (projection == 0) {
+      // Return the fill value (0) for infinite coordinates,
+      // which are outside the input image
+      return T(0);
+    }
     const float input_x =
         (transform[0] * output_x + transform[1] * output_y + transform[2]) /
         projection;

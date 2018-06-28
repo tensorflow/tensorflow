@@ -1051,10 +1051,11 @@ inline void L2Normalization(const uint8* input_data,
   }
 }
 
-inline void Add(const float* input1_data, const Dims<4>& input1_dims,
-                const float* input2_data, const Dims<4>& input2_dims,
-                float output_activation_min, float output_activation_max,
-                float* output_data, const Dims<4>& output_dims) {
+template <typename T>
+inline void Add(const T* input1_data, const Dims<4>& input1_dims,
+                const T* input2_data, const Dims<4>& input2_dims,
+                T output_activation_min, T output_activation_max,
+                T* output_data, const Dims<4>& output_dims) {
   const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
@@ -3342,7 +3343,7 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
 
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
-                         int begin_mask, int end_mask,
+                         int begin_mask, int end_mask, int shrink_axis_mask,
                          const std::vector<int>& start_indices,
                          const std::vector<int>& stop_indices,
                          const std::vector<int>& strides, T* output_data,
@@ -3354,20 +3355,24 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
   TFLITE_DCHECK_EQ(strides.size(), 4);
   const int start_b = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 3);
-  const int stop_b = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 3);
+  const int stop_b =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 3, start_b);
   const int start_h = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 2);
-  const int stop_h = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 2);
+  const int stop_h =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 2, start_h);
   const int start_w = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 1);
-  const int stop_w = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 1);
+  const int stop_w =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 1, start_w);
   const int start_d = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 0);
-  const int stop_d = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 0);
+  const int stop_d =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 0, start_d);
 
   T* out_ptr = output_data;
   for (int in_b = start_b;
@@ -4066,6 +4071,36 @@ inline void SparseToDense(const std::vector<std::vector<I>>& indices,
     const T value = values[i];
     output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
         value;
+  }
+}
+
+template <typename T>
+inline void Pow(const T* input1_data, const Dims<4>& input1_dims,
+                const T* input2_data, const Dims<4>& input2_dims,
+                T* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = std::pow(input1_data[i], input2_data[i]);
+  }
+}
+
+template <typename T>
+inline void BroadcastPow(const T* input1_data, const Dims<4>& input1_dims,
+                         const T* input2_data, const Dims<4>& input2_dims,
+                         T* output_data, const Dims<4>& output_dims) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              std::pow(input1_data[SubscriptToIndex(desc1, c, x, y, b)],
+                       input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+        }
+      }
+    }
   }
 }
 

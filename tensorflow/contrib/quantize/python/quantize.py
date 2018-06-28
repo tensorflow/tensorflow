@@ -194,6 +194,8 @@ def _FindLayersToQuantize(graph):
                 /
          conv|fc
             |
+      [batch_to_space_nd]
+            |
     [post_conv_correction]
             |
      biasadd|folded_bias
@@ -247,9 +249,21 @@ def _FindLayersToQuantize(graph):
       ],
       ordered_inputs=False)
 
+  # For atrous convolutions a BatchToSpaceND will occur after the depthwise
+  # convolution.
+  batch_to_space_pattern = graph_matcher.OpTypePattern(
+      'BatchToSpaceND',
+      inputs=[
+          layer_pattern,
+          graph_matcher.OpTypePattern('*'),
+          graph_matcher.OpTypePattern('*')
+      ])
+
+  layer_output_pattern = graph_matcher.OneofPattern(
+      [batch_to_space_pattern, layer_pattern])
   folded_bias_mul_pattern = graph_matcher.OpTypePattern(
       'Mul',
-      inputs=[graph_matcher.OpTypePattern('*'), layer_pattern],
+      inputs=[graph_matcher.OpTypePattern('*'), layer_output_pattern],
       ordered_inputs=False)
   post_layer_op_correction_pattern = graph_matcher.OpTypePattern(
       'Add',
@@ -265,7 +279,7 @@ def _FindLayersToQuantize(graph):
       ordered_inputs=False)
 
   bias_add_pattern = graph_matcher.OpTypePattern(
-      'Add|BiasAdd', inputs=[layer_pattern, '*'], ordered_inputs=False)
+      'Add|BiasAdd', inputs=[layer_output_pattern, '*'], ordered_inputs=False)
 
   # The bias can come from the bias add or the folded bias add.
   bypass_pattern = graph_matcher.OpTypePattern(
@@ -371,14 +385,6 @@ def _FindLayersToQuantize(graph):
           _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None))
 
   return layer_matches
-
-
-def _HasPostActivationBypass(activation_op):
-  for activation_tensor in activation_op.outputs:
-    for output_op in activation_tensor.consumers():
-      if output_op.type == 'Add':
-        return True
-  return False
 
 
 class _LayerMatch(object):

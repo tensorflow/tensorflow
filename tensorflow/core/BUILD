@@ -904,6 +904,15 @@ cc_library(
 )
 
 cc_library(
+    name = "status_util",
+    hdrs = ["util/status_util.h"],
+    deps = [
+        ":graph",
+        ":lib",
+    ],
+)
+
+cc_library(
     name = "reader_base",
     srcs = ["framework/reader_base.cc"],
     hdrs = ["framework/reader_base.h"],
@@ -3429,6 +3438,7 @@ tf_cc_tests(
         "util/semver_test.cc",
         "util/sparse/sparse_tensor_test.cc",
         "util/stat_summarizer_test.cc",
+        "util/status_util_test.cc",
         "util/tensor_format_test.cc",
         "util/tensor_slice_reader_test.cc",
         "util/tensor_slice_set_test.cc",
@@ -3453,6 +3463,7 @@ tf_cc_tests(
         ":ops",
         ":protos_all_cc",
         ":protos_test_cc",
+        ":status_util",
         ":test",
         ":test_main",
         ":testlib",
@@ -3911,13 +3922,13 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "common_runtime_direct_session_test",
     size = "small",
     srcs = ["common_runtime/direct_session_test.cc"],
+    args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
-        ":core",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",
@@ -3930,6 +3941,7 @@ tf_cc_test(
         ":test",
         ":test_main",
         ":testlib",
+        "//third_party/eigen3",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
@@ -3943,8 +3955,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
-        "//third_party/eigen3",
-    ],
+    ] + if_cuda([":cuda"]),
 )
 
 # This is identical to :common_runtime_direct_session_test with the addition of

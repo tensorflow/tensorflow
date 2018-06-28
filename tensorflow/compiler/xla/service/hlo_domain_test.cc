@@ -430,5 +430,26 @@ ENTRY entry {
                                               HloSharding::AssignDevice(0)}));
 }
 
+// Tests that text dumps of domain instructions can be parsed back, in the
+// specific case of null shardings.
+TEST_F(HloDomainTest, DumpParseNullSharding) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  auto sharding_md_0 = MakeUnique<ShardingMetadata>(nullptr);
+  auto sharding_md_1 = MakeUnique<ShardingMetadata>(nullptr);
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+  HloInstruction* domain = builder.AddInstruction(HloInstruction::CreateDomain(
+      shape, param, std::move(sharding_md_0), std::move(sharding_md_1)));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, domain, domain));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto hlo_string = module->ToString();
+  ASSERT_TRUE(ParseModule(hlo_string).status().ok());
+}
+
 }  // namespace
 }  // namespace xla
