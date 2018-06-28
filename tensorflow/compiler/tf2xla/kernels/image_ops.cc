@@ -101,15 +101,15 @@ class RGBToHSVOp : public XlaOpKernel {
     xla::XlaBuilder* b = context->builder();
     xla::XlaOp input = context->Input(0);
 
-    xla::XlaOp red =
-        b->SliceInDim(input, /*start_index=*/0, /*limit_index=*/1, /*stride=*/1,
-                      /*dimno=*/channel_dim);
-    xla::XlaOp green =
-        b->SliceInDim(input, /*start_index=*/1, /*limit_index=*/2, /*stride=*/1,
-                      /*dimno=*/channel_dim);
-    xla::XlaOp blue =
-        b->SliceInDim(input, /*start_index=*/2, /*limit_index=*/3, /*stride=*/1,
-                      /*dimno=*/channel_dim);
+    xla::XlaOp red = xla::SliceInDim(input, /*start_index=*/0,
+                                     /*limit_index=*/1, /*stride=*/1,
+                                     /*dimno=*/channel_dim);
+    xla::XlaOp green = xla::SliceInDim(input, /*start_index=*/1,
+                                       /*limit_index=*/2, /*stride=*/1,
+                                       /*dimno=*/channel_dim);
+    xla::XlaOp blue = xla::SliceInDim(input, /*start_index=*/2,
+                                      /*limit_index=*/3, /*stride=*/1,
+                                      /*dimno=*/channel_dim);
     TensorShape channel_shape = input_shape;
     channel_shape.set_dim(channel_dim, 1);
     auto hsv = RGBToHSV(context, b, {red, green, blue}, context->input_type(0),
@@ -138,15 +138,15 @@ class HSVToRGBOp : public XlaOpKernel {
 
     xla::XlaBuilder* b = context->builder();
     xla::XlaOp input = context->Input(0);
-    xla::XlaOp hue =
-        b->SliceInDim(input, /*start_index=*/0, /*limit_index=*/1, /*stride=*/1,
-                      /*dimno=*/channel_dim);
-    xla::XlaOp saturation =
-        b->SliceInDim(input, /*start_index=*/1, /*limit_index=*/2, /*stride=*/1,
-                      /*dimno=*/channel_dim);
-    xla::XlaOp value =
-        b->SliceInDim(input, /*start_index=*/2, /*limit_index=*/3, /*stride=*/1,
-                      /*dimno=*/channel_dim);
+    xla::XlaOp hue = xla::SliceInDim(input, /*start_index=*/0,
+                                     /*limit_index=*/1, /*stride=*/1,
+                                     /*dimno=*/channel_dim);
+    xla::XlaOp saturation = xla::SliceInDim(input, /*start_index=*/1,
+                                            /*limit_index=*/2, /*stride=*/1,
+                                            /*dimno=*/channel_dim);
+    xla::XlaOp value = xla::SliceInDim(input, /*start_index=*/2,
+                                       /*limit_index=*/3, /*stride=*/1,
+                                       /*dimno=*/channel_dim);
 
     auto rgb = HSVToRGB(context->builder(), {hue, saturation, value},
                         context->input_type(0));
@@ -232,15 +232,15 @@ class AdjustSaturationOp : public XlaOpKernel {
 
     DataType type = context->input_type(0);
 
-    xla::XlaOp red =
-        b->SliceInDim(input, /*start_index=*/0, /*limit_index=*/1, /*stride=*/1,
-                      /*dimno=*/channel_dim);
-    xla::XlaOp green =
-        b->SliceInDim(input, /*start_index=*/1, /*limit_index=*/2, /*stride=*/1,
-                      /*dimno=*/channel_dim);
-    xla::XlaOp blue =
-        b->SliceInDim(input, /*start_index=*/2, /*limit_index=*/3, /*stride=*/1,
-                      /*dimno=*/channel_dim);
+    xla::XlaOp red = xla::SliceInDim(input, /*start_index=*/0,
+                                     /*limit_index=*/1, /*stride=*/1,
+                                     /*dimno=*/channel_dim);
+    xla::XlaOp green = xla::SliceInDim(input, /*start_index=*/1,
+                                       /*limit_index=*/2, /*stride=*/1,
+                                       /*dimno=*/channel_dim);
+    xla::XlaOp blue = xla::SliceInDim(input, /*start_index=*/2,
+                                      /*limit_index=*/3, /*stride=*/1,
+                                      /*dimno=*/channel_dim);
     TensorShape channel_shape = input_shape;
     channel_shape.set_dim(channel_dim, 1);
     auto hsv = RGBToHSV(context, b, {red, green, blue}, context->input_type(0),
@@ -282,15 +282,15 @@ class AdjustHueOp : public XlaOpKernel {
 
     DataType type = context->input_type(0);
 
-    xla::XlaOp red =
-        b->SliceInDim(input, /*start_index=*/0, /*limit_index=*/1, /*stride=*/1,
-                      /*dimno=*/channel_dim);
-    xla::XlaOp green =
-        b->SliceInDim(input, /*start_index=*/1, /*limit_index=*/2, /*stride=*/1,
-                      /*dimno=*/channel_dim);
-    xla::XlaOp blue =
-        b->SliceInDim(input, /*start_index=*/2, /*limit_index=*/3, /*stride=*/1,
-                      /*dimno=*/channel_dim);
+    xla::XlaOp red = xla::SliceInDim(input, /*start_index=*/0,
+                                     /*limit_index=*/1, /*stride=*/1,
+                                     /*dimno=*/channel_dim);
+    xla::XlaOp green = xla::SliceInDim(input, /*start_index=*/1,
+                                       /*limit_index=*/2, /*stride=*/1,
+                                       /*dimno=*/channel_dim);
+    xla::XlaOp blue = xla::SliceInDim(input, /*start_index=*/2,
+                                      /*limit_index=*/3, /*stride=*/1,
+                                      /*dimno=*/channel_dim);
     TensorShape channel_shape = input_shape;
     channel_shape.set_dim(channel_dim, 1);
     auto hsv = RGBToHSV(context, b, {red, green, blue}, context->input_type(0),

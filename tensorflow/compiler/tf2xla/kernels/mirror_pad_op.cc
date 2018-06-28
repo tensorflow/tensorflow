@@ -39,9 +39,9 @@ class MirrorPadOp : public XlaOpKernel {
       TF_ASSIGN_OR_RETURN(int64 rhs_padding,
                           pad_literal.GetIntegralAsS64({dimno, 1}));
       int64 dim_size = original_shape.dimensions(dimno);
-      auto lhs_pad = b->SliceInDim(t_rev, dim_size - 1 - lhs_padding,
-                                   dim_size - 1, 1, dimno);
-      auto rhs_pad = b->SliceInDim(t_rev, 1, 1 + rhs_padding, 1, dimno);
+      auto lhs_pad = xla::SliceInDim(t_rev, dim_size - 1 - lhs_padding,
+                                     dim_size - 1, 1, dimno);
+      auto rhs_pad = xla::SliceInDim(t_rev, 1, 1 + rhs_padding, 1, dimno);
       accum = xla::ConcatInDim(b, {lhs_pad, accum, rhs_pad}, dimno);
     }
     return accum;
