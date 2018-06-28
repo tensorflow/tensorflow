@@ -698,6 +698,15 @@ py_library(
 )
 
 py_library(
+    name = "error_interpolation",
+    srcs = [
+        "framework/error_interpolation.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
     name = "function",
     srcs = ["framework/function.py"],
     srcs_version = "PY2AND3",
@@ -996,6 +1005,18 @@ py_test(
         ":client_testlib",
         ":errors",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "framework_error_interpolation_test",
+    size = "small",
+    srcs = ["framework/error_interpolation_test.py"],
+    main = "framework/error_interpolation_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":error_interpolation",
     ],
 )
 
@@ -3728,6 +3749,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":c_api_util",
+        ":error_interpolation",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
