@@ -3343,7 +3343,7 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
 
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
-                         int begin_mask, int end_mask,
+                         int begin_mask, int end_mask, int shrink_axis_mask,
                          const std::vector<int>& start_indices,
                          const std::vector<int>& stop_indices,
                          const std::vector<int>& strides, T* output_data,
@@ -3355,20 +3355,24 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
   TFLITE_DCHECK_EQ(strides.size(), 4);
   const int start_b = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 3);
-  const int stop_b = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 3);
+  const int stop_b =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 3, start_b);
   const int start_h = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 2);
-  const int stop_h = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 2);
+  const int stop_h =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 2, start_h);
   const int start_w = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 1);
-  const int stop_w = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 1);
+  const int stop_w =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 1, start_w);
   const int start_d = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 0);
-  const int stop_d = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 0);
+  const int stop_d =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 0, start_d);
 
   T* out_ptr = output_data;
   for (int in_b = start_b;

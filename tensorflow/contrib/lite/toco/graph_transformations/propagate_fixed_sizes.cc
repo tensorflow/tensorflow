@@ -1291,8 +1291,8 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
         op->begin_mask, op->start_indices, op->strides,
         input_array.shape().dims().data(), axis);
     int stop_index = tflite::strided_slice::StopForAxis(
-        op->end_mask, op->stop_indices, op->strides,
-        input_array.shape().dims().data(), axis);
+        op->end_mask, op->shrink_axis_mask, op->stop_indices, op->strides,
+        input_array.shape().dims().data(), axis, start_index);
     int dim_size =
         ceil(static_cast<float>(stop_index - start_index) / op->strides[axis]);
 
