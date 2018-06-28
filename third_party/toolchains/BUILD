@@ -3,7 +3,7 @@ licenses(["restricted"])
 package(default_visibility = ["//visibility:public"])
 
 # Platform for use with remote execution with
-# custom container based off RBE Ubuntu16_04 r328903
+# custom container based off RBE Ubuntu16_04
 # http://gcr.io/cloud-marketplace/google/rbe-ubuntu16-04
 # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cpu
 platform(
