@@ -63,6 +63,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_BOOL:
       *type = kTfLiteBool;
       break;
+    case TensorType_COMPLEX64:
+      *type = kTfLiteComplex64;
+      break;
     default:
       error_reporter->Report("Unimplemented data type %s (%d) in tensor\n",
                              EnumNameTensorType(tensor_type), tensor_type);

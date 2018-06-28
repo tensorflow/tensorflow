@@ -359,10 +359,13 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteBool:
       *bytes = sizeof(bool) * count;
       break;
+    case kTfLiteComplex64:
+      *bytes = sizeof(std::complex<float>) * count;
+      break;
     default:
       ReportError(&context_,
-                  "Only float32, int16, int32, int64, uint8, bool supported "
-                  "currently.");
+                  "Only float32, int16, int32, int64, uint8, bool, complex64 "
+                  "supported currently.");
       return kTfLiteError;
   }
   return kTfLiteOk;
