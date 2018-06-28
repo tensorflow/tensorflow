@@ -225,33 +225,52 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
   string data;
   TF_QCHECK_OK(ReadFileToString(Env::Default(), filename, &data))
       << "Could not read FFmpeg file: " << filename;
-  bool in_output = false;
-  bool in_mapping = false;
+
+  enum State {
+      STATE_OTHER = 0,
+      STATE_INPUT = 1,
+      STATE_OUTPUT = 2,
+      STATE_MAPPING = 3,
+  };
+  enum State state = STATE_OTHER;
+
+  bool format_done = false;
+  bool frames_done = false;
   uint32 frames_value = 0;
   uint32 height_value = 0;
   uint32 width_value = 0;
   for (const string& line : str_util::Split(data, '\n')) {
+    // If we are in "Input", "Output" or "Stream mapping" section and the next
+    // line does not contain space at the beginning, then the section of
+    // "Input", "Output" or "Stream mapping" ends.
+    if (state != STATE_OTHER && line[0] != ' ') {
+      state = STATE_OTHER;
+    }
+    // Input starts with the first line of `Input #..`.
+    // Further processing input region starts next line so we could continue
+    // the loop.
+    if (state != STATE_INPUT && line.find("Input #") == 0) {
+      state = STATE_INPUT;
+      continue;
+    }
     // Output starts with the first line of `Output #..`.
     // Further processing output region starts next line so we could continue
     // the loop.
-    if (!in_output && line.find("Output #") == 0) {
-      in_output = true;
-      in_mapping = false;
+    if (state != STATE_OUTPUT && line.find("Output #") == 0) {
+      state = STATE_OUTPUT;
       continue;
     }
-    // Stream mapping starts with the first line of `Stream mapping`, it also
-    // signals the end of Output section.
-    // Further processing of stream mapping region starts next line so we could
+    // Stream mapping starts with the first line of `Stream mapping: ..`.
+    // Further processing stream mapping region starts next line so we could
     // continue the loop.
-    if (!in_mapping && line.find("Stream mapping:") == 0) {
-      in_output = false;
-      in_mapping = true;
+    if (state != STATE_MAPPING && line.find("Stream mapping:") == 0) {
+      state = STATE_MAPPING;
       continue;
     }
-    if (in_output) {
+    if (state == STATE_OUTPUT) {
       // We only look for the first stream in output `Stream #0`.
       // Once processed we will not further process output section.
-      if (line.find("    Stream #") == 0) {
+      if (!format_done && line.find("    Stream #") == 0) {
         size_t p = line.find(", rgb24, ", 24);
         if (p != std::string::npos) {
           string rgb24 = line.substr(p + 9, line.find(" ", p + 9));
@@ -263,29 +282,27 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
           string rgb24_height = rgb24.substr(rgb24_width.length() + 1);
           if (strings::safe_strtou32(rgb24_width, &width_value) &&
               strings::safe_strtou32(rgb24_height, &height_value)) {
-            in_output = false;
+            format_done = true;
           }
         }
       }
       continue;
     }
-    if (in_mapping) {
-      // We only look for the first stream mapping to have the number of the
-      // frames.
-      // Once processed we will not further process stream mapping section.
+    if (state == STATE_OTHER) {
+      // We only look for the first "frame=" to have the number of the frames.
       if (line.find("frame=") == 0) {
         // The format might be `frame=  166 ` or `frame=12488 `
         string number = line.substr(6);
         number = number.substr(number.find_first_not_of(" "));
         number = number.substr(0, number.find(" "));
         if (strings::safe_strtou32(number, &frames_value)) {
-          in_mapping = false;
+          frames_done = true;
         }
       }
       continue;
     }
   }
-  if (frames_value == 0 || height_value == 0 || width_value == 0) {
+  if (!(frames_done &&format_done)) {
     return errors::Unknown("Not enough video info returned by FFmpeg [",
                            frames_value, ", ", height_value, ", ", width_value,
                            ", 3]");
