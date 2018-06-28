@@ -24,6 +24,7 @@
 ## Breaking Changes
   * If you're opening empty variable scopes; replace `variable_scope('', ...)` by
     `variable_scope(tf.get_variable_scope(), ...)`.
+  * Headers used for building custom ops have been moved from site-packages/external into site-packages/tensorflow/include/external.
 
 ## Bug Fixes and Other Changes
 
