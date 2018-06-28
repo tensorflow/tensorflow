@@ -74,6 +74,7 @@ std::vector<string> FfmpegVideoCommandLine(const string& input_filename,
                                            const string& output_filename) {
   return {"-nostats",  // No additional progress display.
           "-nostdin",  // No interactive commands accepted.
+          "-vsync", "0",  // Don't duplicate or drop frames.
           "-i", input_filename, "-f", "image2pipe", "-probesize",
           StrCat(kDefaultProbeSize), "-loglevel",
           // Info is needed to get the information about stream, etc.
@@ -220,14 +221,11 @@ string BuildWavFile(int32 samples_per_second, int32 channel_count,
   return data;
 }
 
-Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
-                    uint32* frames) {
+Status ReadInfoFile(const string& filename, uint32* width, uint32* height) {
   string data;
   TF_QCHECK_OK(ReadFileToString(Env::Default(), filename, &data))
       << "Could not read FFmpeg file: " << filename;
   bool in_output = false;
-  bool in_mapping = false;
-  uint32 frames_value = 0;
   uint32 height_value = 0;
   uint32 width_value = 0;
   for (const string& line : str_util::Split(data, '\n')) {
@@ -236,16 +234,6 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
     // the loop.
     if (!in_output && line.find("Output #") == 0) {
       in_output = true;
-      in_mapping = false;
-      continue;
-    }
-    // Stream mapping starts with the first line of `Stream mapping`, it also
-    // signals the end of Output section.
-    // Further processing of stream mapping region starts next line so we could
-    // continue the loop.
-    if (!in_mapping && line.find("Stream mapping:") == 0) {
-      in_output = false;
-      in_mapping = true;
       continue;
     }
     if (in_output) {
@@ -263,36 +251,18 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
           string rgb24_height = rgb24.substr(rgb24_width.length() + 1);
           if (strings::safe_strtou32(rgb24_width, &width_value) &&
               strings::safe_strtou32(rgb24_height, &height_value)) {
-            in_output = false;
+            break;
           }
         }
       }
-      continue;
-    }
-    if (in_mapping) {
-      // We only look for the first stream mapping to have the number of the
-      // frames.
-      // Once processed we will not further process stream mapping section.
-      if (line.find("frame=") == 0) {
-        // The format might be `frame=  166 ` or `frame=12488 `
-        string number = line.substr(6);
-        number = number.substr(number.find_first_not_of(" "));
-        number = number.substr(0, number.find(" "));
-        if (strings::safe_strtou32(number, &frames_value)) {
-          in_mapping = false;
-        }
-      }
-      continue;
     }
   }
-  if (frames_value == 0 || height_value == 0 || width_value == 0) {
-    return errors::Unknown("Not enough video info returned by FFmpeg [",
-                           frames_value, ", ", height_value, ", ", width_value,
-                           ", 3]");
+  if (height_value == 0 || width_value == 0) {
+    return errors::Unknown("Not enough video info returned by FFmpeg [?, ",
+                           height_value, ", ", width_value, ", 3]");
   }
   *width = width_value;
   *height = height_value;
-  *frames = frames_value;
   return Status::OK();
 }
 
@@ -402,7 +372,7 @@ Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
                     StrCat("FFmpeg execution failed: ", status_code));
     }
 
-    TF_QCHECK_OK(ReadInfoFile(stderr_filename, width, height, frames))
+    TF_QCHECK_OK(ReadInfoFile(stderr_filename, width, height))
         << "Could not read FFmpeg stderr file: " << stderr_filename;
 
     string raw_data;
@@ -410,6 +380,9 @@ Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
         << "Could not read FFmpeg output file: " << output_filename;
     output_data->resize(raw_data.size());
     std::copy_n(raw_data.data(), raw_data.size(), output_data->begin());
+
+    // Calculate the number of frames based on the raw data size.
+    *frames = raw_data.size() / (*height * *width * 3);
 
     TF_QCHECK_OK(Env::Default()->DeleteFile(output_filename))
         << output_filename;
