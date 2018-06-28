@@ -26,7 +26,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
     case 1: {
       // byte
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_INT8, {});
-      tensor.scalar<tensorflow::DT_INT8>()() = *ptr;
+      tensor.scalar<tensorflow::int8>()() = *ptr;
       ptr += 1;
       out_tensors->emplace_back(std::move(tensor));
       break;
@@ -34,7 +34,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
     case 2: {
       // short
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_INT16, {});
-      tensor.scalar<tensorflow::DT_INT16>()() = *((short*)ptr);
+      tensor.scalar<tensorflow::int16>()() = *((short*)ptr);
       ptr += 2;
       out_tensors->emplace_back(std::move(tensor));
       break;
@@ -42,7 +42,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
     case 3: {
       // int
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_INT32, {});
-      tensor.scalar<tensorflow::DT_INT32>()() = *((int*)ptr);
+      tensor.scalar<tensorflow::int32>()() = *((int*)ptr);
       ptr += 4;
       out_tensors->emplace_back(std::move(tensor));
       break;
@@ -50,7 +50,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
     case 4: {
       // long
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_INT64, {});
-      tensor.scalar<tensorflow::DT_INT64>()() = *((long*)ptr);
+      tensor.scalar<tensorflow::int64>()() = *((long*)ptr);
       ptr += 8;
       out_tensors->emplace_back(std::move(tensor));
       break;
@@ -58,7 +58,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
     case 5: {
       // float
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_FLOAT, {});
-      tensor.scalar<tensorflow::DT_FLOAT>()() = *((float*)ptr);
+      tensor.scalar<float>()() = *((float*)ptr);
       ptr += 4;
       out_tensors->emplace_back(std::move(tensor));
       break;
@@ -66,7 +66,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
     case 6: {
       // double
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_DOUBLE, {});
-      tensor.scalar<tensorflow::DT_DOUBLE>()() = *((double*)ptr);
+      tensor.scalar<double>()() = *((double*)ptr);
       ptr += 8;
       out_tensors->emplace_back(std::move(tensor));
       break;
@@ -74,7 +74,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
     case 7: {
       // uchar
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_UINT16, {});
-      tensor.scalar<tensorflow::DT_UINT16>()() = *((unsigned short*)ptr);
+      tensor.scalar<tensorflow::uint16>()() = *((unsigned short*)ptr);
       ptr += 2;
       out_tensors->emplace_back(std::move(tensor));
       break;
@@ -82,7 +82,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
     case 8: {
       // bool
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_BOOL, {});
-      tensor.scalar<tensorflow::DT_BOOL>()() = *((bool*)ptr);
+      tensor.scalar<bool>()() = *((bool*)ptr);
       ptr += 1;
       out_tensors->emplace_back(std::move(tensor));
 
@@ -93,13 +93,14 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       int length = *((int*)ptr);
       ptr += 4;
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_STRING, {});
-      tensor.scalar<tensorflow::DT_STRING>()() = std::string(ptr, length);
+      tensor.scalar<std::string>()() = std::string(ptr, length);
       ptr += length;
       out_tensors->emplace_back(std::move(tensor));
 
       break;
     }
     case 12: {
+      // byte arr
       int length = *((int*)ptr);
       ptr += 4;
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_INT8, tensorflow::TensorShape({length}));
@@ -107,12 +108,12 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       char* arr = ptr;
       ptr += length;
       for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::DT_INT8>()(i) = arr[i];
+        tensor.vec<tensorflow::int8>()(i) = arr[i];
 
-      // byte arr
       break;
     }
     case 13: {
+      // short arr
       int length = *((int*)ptr);
       ptr += 4;
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_INT16, tensorflow::TensorShape({length}));
@@ -120,9 +121,8 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       short* arr = (short*)ptr;
       ptr += length * 2;
       for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::DT_INT16>()(i) = arr[i];
+        tensor.vec<tensorflow::int16>()(i) = arr[i];
 
-      // short arr
       break;
     }
     case 14: {
@@ -133,9 +133,8 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       int* arr = (int*)ptr;
       ptr += length * 4;
       for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::DT_INT32>()(i) = arr[i];
+        tensor.vec<tensorflow::int32>()(i) = arr[i];
 
-      // int arr
       break;
     }
     case 15: {
@@ -143,10 +142,10 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       ptr += 4;
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(), tensorflow::DT_INT64, tensorflow::TensorShape({length}));
 
-      char* arr = (long*)ptr;
+      long* arr = (long*)ptr;
       ptr += length * 8;
       for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::DT_INT64>()(i) = arr[i];
+        tensor.vec<tensorflow::int64>()(i) = arr[i];
 
       // long arr
       break;
@@ -159,7 +158,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       float* arr = (float*)ptr;
       ptr += length * 4;
       for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::DT_FLOAT>()(i) = arr[i];
+        tensor.vec<float>()(i) = arr[i];
 
       // float arr
       break;
@@ -173,7 +172,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       double* arr = (double*)ptr;
       ptr += 8 * length;
       for (int i = 0; i < length; i++) 
-        tensor.vec<tensorflow::DT_DOUBLE>()(i) = arr[i];
+        tensor.vec<double>()(i) = arr[i];
 
       out_tensors->emplace_back(std::move(tensor));
       break;
@@ -187,7 +186,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       unsigned char* arr = (unsigned char*)ptr;
       ptr += length * 2;
       for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::DT_UINT16>()(i) = arr[i];
+        tensor.vec<tensorflow::uint16>()(i) = arr[i];
 
       break;
     }
@@ -200,7 +199,7 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
       bool* arr = (bool*)ptr;
       ptr += length;
       for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::DT_BOOL>()(i) = arr[i];
+        tensor.vec<bool>()(i) = arr[i];
 
       break;
     }
@@ -215,18 +214,20 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
         ptr += 4;
         char* str = ptr;
         ptr+= str_length;
-        tensor.vec<tensorflow::DT_STRING>()(i) = std::string(str, str_length);
+        tensor.vec<std::string>()(i) = std::string(str, str_length);
       }
 
       // TODO!
       break;
     }
     case 27: {
-      int byte_arr_size = ReadInt(ptr);
+      int byte_arr_size = *((int*)ptr);
+      ptr += 4;
       // payload
       ptr = Parse(ptr, out_tensors, types);
 
-      int offset = ReadInt(ptr);
+      int offset = *((int*)ptr);
+      ptr += 4;
 
       //std::cout << "Wrapped object " << byte_arr_size << ", offset " << offset << "\n";
 
@@ -234,13 +235,20 @@ char* BinaryObjectParser::Parse(char *ptr, std::vector<tensorflow::Tensor>* out_
     }
   	case 103: {
       //std::cout << "Complex object..." << std::endl;
-  	  char version = ReadByte(ptr);
-  	  short flags = ReadShort(ptr); // USER_TYPE = 1, HAS_SCHEMA = 2
-  	  int type_id = ReadInt(ptr);
-  	  int hash_code = ReadInt(ptr);
-  	  int length = ReadInt(ptr);
-  	  int schema_id = ReadInt(ptr);
-  	  int schema_offset = ReadInt(ptr);
+  	  char version = *ptr;
+      ptr += 1;
+  	  short flags = *((short*)ptr); // USER_TYPE = 1, HAS_SCHEMA = 2
+      ptr += 2;
+  	  int type_id = *((int*)ptr);
+      ptr += 4;
+  	  int hash_code = *((int*)ptr);
+      ptr += 4;
+  	  int length = *((int*)ptr);
+      ptr += 4;
+  	  int schema_id = *((int*)ptr);
+      ptr += 4;
+  	  int schema_offset = *((int*)ptr);
+      ptr += 4;
 	    int field_cnt = (length - schema_offset) / 8;
 	    //std::cout << "LENGTH : " << length << std::endl;
       //    std::cout << "SCHMEA ID : " << schema_id << std::endl;
