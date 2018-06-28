@@ -653,13 +653,6 @@ def run_in_graph_and_eager_modes(func=None,
       except unittest.case.SkipTest:
         pass
 
-      if reset_test:
-        # This decorator runs the wrapped test twice.
-        # Reset the test environment between runs.
-        self.tearDown()
-        self._tempdir = None
-        self.setUp()
-
       def run_eagerly(self, **kwargs):
         if not use_gpu:
           with ops.device("/cpu:0"):
@@ -673,6 +666,13 @@ def run_in_graph_and_eager_modes(func=None,
             assert_no_garbage_created(run_eagerly))
 
       with context.eager_mode():
+        if reset_test:
+          # This decorator runs the wrapped test twice.
+          # Reset the test environment between runs.
+          self.tearDown()
+          self._tempdir = None
+          self.setUp()
+
         run_eagerly(self, **kwargs)
 
     return decorated
