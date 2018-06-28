@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
 
+#include <complex>
 #include <vector>
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
@@ -54,6 +55,13 @@ inline bool* GetTensorData(TfLiteTensor* tensor) {
   return tensor != nullptr ? tensor->data.b : nullptr;
 }
 
+template <>
+inline std::complex<float>* GetTensorData(TfLiteTensor* tensor) {
+  return tensor != nullptr
+             ? reinterpret_cast<std::complex<float>*>(tensor->data.c64)
+             : nullptr;
+}
+
 template <typename T>
 inline const T* GetTensorData(const TfLiteTensor* tensor);
 
@@ -85,6 +93,13 @@ inline const int64_t* GetTensorData(const TfLiteTensor* tensor) {
 template <>
 inline const bool* GetTensorData(const TfLiteTensor* tensor) {
   return tensor != nullptr ? tensor->data.b : nullptr;
+}
+
+template <>
+inline const std::complex<float>* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr
+             ? reinterpret_cast<const std::complex<float>*>(tensor->data.c64)
+             : nullptr;
 }
 
 inline int RemapDim(int max_dimensions, int d) {
