@@ -236,8 +236,8 @@ XLA_TEST_F(ConcatTest, Concat3x2With5x2) {
 
 XLA_TEST_F(ConcatTest, Concat_R3_3x0x2_3x0x1) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR3FromArray3D(Array3D<float>(3, 0, 2));
-  auto b = builder.ConstantR3FromArray3D(Array3D<float>(3, 0, 1));
+  auto a = ConstantR3FromArray3D(&builder, Array3D<float>(3, 0, 2));
+  auto b = ConstantR3FromArray3D(&builder, Array3D<float>(3, 0, 1));
   ConcatInDim(&builder, {a, b}, 2);
   ComputeAndCompareR3<float>(&builder, Array3D<float>(3, 0, 3), {},
                              ErrorSpec(0.0001));
@@ -257,8 +257,8 @@ XLA_TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1) {
       {{7}},
       {{8}},
   });
-  auto a = builder.ConstantR3FromArray3D(a_array);
-  auto b = builder.ConstantR3FromArray3D(b_array);
+  auto a = ConstantR3FromArray3D(&builder, a_array);
+  auto b = ConstantR3FromArray3D(&builder, b_array);
   ConcatInDim(&builder, {a, b}, 2);
 
   Array3D<float> expected({
@@ -300,9 +300,9 @@ XLA_TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1_3x1x1) {
       {{7}},
       {{11}},
   });
-  auto a = builder.ConstantR3FromArray3D(a_array);
-  auto b = builder.ConstantR3FromArray3D(b_array);
-  auto c = builder.ConstantR3FromArray3D(c_array);
+  auto a = ConstantR3FromArray3D(&builder, a_array);
+  auto b = ConstantR3FromArray3D(&builder, b_array);
+  auto c = ConstantR3FromArray3D(&builder, c_array);
   ConcatInDim(&builder, {a, b, c}, 2);
 
   Array3D<float> expected({

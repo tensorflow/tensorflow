@@ -127,7 +127,7 @@ XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
   }});
   // clang-format on
 
-  Rev(b.ConstantR4FromArray4D<uint8>(input), {0, 3});
+  Rev(ConstantR4FromArray4D<uint8>(&b, input), {0, 3});
 
   // clang-format off
   Array4D<uint8> expected({{
@@ -163,7 +163,7 @@ TEST_F(ReverseTest, Reverse4DFloatArrayOnDim01) {
   });
   // clang-format on
 
-  Rev(b.ConstantR4FromArray4D<float>(input), {0, 1});
+  Rev(ConstantR4FromArray4D<float>(&b, input), {0, 1});
 
   // clang-format off
   Array4D<float> expected({

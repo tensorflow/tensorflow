@@ -98,7 +98,7 @@ XLA_TEST_F(VecOpsSimpleTest, ExpIn4D) {
 
   Array4D<float> expected(2, 2, 2, 2, expected_vector);
 
-  auto x = builder.ConstantR4FromArray4D<float>(exponents);
+  auto x = ConstantR4FromArray4D<float>(&builder, exponents);
   Exp(x);
 
   ComputeAndCompareR4<float>(&builder, expected, {},

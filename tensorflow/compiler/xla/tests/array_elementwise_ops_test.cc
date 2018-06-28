@@ -1720,7 +1720,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, SquareIn4D) {
 
   Array4D<float> expected(2, 2, 2, 2, expected_vector);
 
-  auto x = builder.ConstantR4FromArray4D<float>(values);
+  auto x = ConstantR4FromArray4D<float>(&builder, values);
   Pow(x, ConstantR0<float>(&builder, 2.0f));
 
   ComputeAndCompareR4<float>(&builder, expected, {}, error_spec_);
@@ -1731,7 +1731,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, SquareIn4DZeroElements) {
   Array4D<float> values(2, 2, 0, 2);
   Array4D<float> expected(2, 2, 0, 2);
 
-  auto x = builder.ConstantR4FromArray4D<float>(values);
+  auto x = ConstantR4FromArray4D<float>(&builder, values);
   Pow(x, ConstantR0<float>(&builder, 2.0f));
 
   ComputeAndCompareR4<float>(&builder, expected, {}, error_spec_);
@@ -1907,7 +1907,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Max3DAndScalarS32s) {
   XlaBuilder builder(TestName());
   auto scalar = ConstantR0<int32>(&builder, 2);
   Array3D<int32> a_3d({{{3, 9, -1}, {2, -10, 3}}, {{-2, 2, 8}, {12, 10, 4}}});
-  auto array = builder.ConstantR3FromArray3D<int32>(a_3d);
+  auto array = ConstantR3FromArray3D<int32>(&builder, a_3d);
   Max(array, scalar, /*broadcast_dimensions=*/{});
 
   Array3D<int32> expected({{{3, 9, 2}, {2, 2, 3}}, {{2, 2, 8}, {12, 10, 4}}});
@@ -1918,7 +1918,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Max3DAndScalarZeroElementS32s) {
   XlaBuilder builder(TestName());
   auto scalar = ConstantR0<int32>(&builder, 2);
   Array3D<int32> a_3d(2, 0, 3);
-  auto array = builder.ConstantR3FromArray3D<int32>(a_3d);
+  auto array = ConstantR3FromArray3D<int32>(&builder, a_3d);
   Max(array, scalar, /*broadcast_dimensions=*/{});
 
   Array3D<int32> expected(2, 0, 3);
@@ -1950,9 +1950,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, Min2DTo4DF32s) {
   XlaBuilder builder(TestName());
   auto array2d =
       ConstantR2<float>(&builder, {{-12.2f, 64.3f, 6.1f}, {0.0f, 32.2f, 2.5f}});
-  auto array4d = builder.ConstantR4FromArray4D<float>(
-      {{{{-12.1f, 32.3f, 6.2f}}, {{0.0f, 32.5f, 3.0f}}},
-       {{{-2.5f, 64.29f, 6.5f}}, {{-0.01f, 32.25f, 2.6f}}}});
+  auto array4d = ConstantR4FromArray4D<float>(
+      &builder, {{{{-12.1f, 32.3f, 6.2f}}, {{0.0f, 32.5f, 3.0f}}},
+                 {{{-2.5f, 64.29f, 6.5f}}, {{-0.01f, 32.25f, 2.6f}}}});
   Min(array2d, array4d, /*broadcast_dimensions=*/{1, 3});
 
   Array4D<float> expected(
@@ -1966,7 +1966,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Min2DTo4DZeroElementF32s) {
   auto array2d =
       ConstantR2<float>(&builder, {{-12.2f, 64.3f, 6.1f}, {0.0f, 32.2f, 2.5f}});
   Array4D<float> arg(2, 2, 0, 3);
-  auto array4d = builder.ConstantR4FromArray4D<float>(arg);
+  auto array4d = ConstantR4FromArray4D<float>(&builder, arg);
   Min(array2d, array4d, /*broadcast_dimensions=*/{1, 3});
 
   Array4D<float> expected(2, 2, 0, 3);
@@ -2633,11 +2633,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, 3DBinaryOpF32s) {
   XlaBuilder builder(TestName());
   Array3D<float> a_3d({{{1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}},
                        {{7.0f, 8.0f}, {9.0f, 10.0f}, {11.0f, 12.0f}}});
-  auto a = builder.ConstantR3FromArray3D<float>(a_3d);
+  auto a = ConstantR3FromArray3D<float>(&builder, a_3d);
 
   Array3D<float> b_3d({{{2.0f, 4.0f}, {6.0f, 8.0f}, {10.0f, 12.0f}},
                        {{14.0f, 16.0f}, {18.0f, 20.0f}, {22.0f, 24.0f}}});
-  auto b = builder.ConstantR3FromArray3D<float>(b_3d);
+  auto b = ConstantR3FromArray3D<float>(&builder, b_3d);
   Add(a, b);
 
   Array3D<float> expected_3d(
@@ -2660,7 +2660,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo3DTwoWaysOver2) {
      {11.0f, 12.0f}},
   });
   // clang-format on
-  auto a = builder.ConstantR3FromArray3D<float>(a_3d);
+  auto a = ConstantR3FromArray3D<float>(&builder, a_3d);
   auto v = ConstantR1<float>(&builder, {10.0f, 20.0f});
   Add(a, v, /*broadcast_dimensions=*/{2});
 
@@ -2684,7 +2684,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo3DTwoWaysOver0) {
      {11.0f, 12.0f}},
   });
   // clang-format on
-  auto a = builder.ConstantR3FromArray3D<float>(a_3d);
+  auto a = ConstantR3FromArray3D<float>(&builder, a_3d);
   auto v = ConstantR1<float>(&builder, {10.0f, 20.0f});
   Add(a, v, /*broadcast_dimensions=*/{0});
 
@@ -2714,7 +2714,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add2DTo3D) {
      {9.0f, 10.0f},
      {11.0f, 12.0f}},
   });
-  auto a = builder.ConstantR3FromArray3D<float>(a_3d);
+  auto a = ConstantR3FromArray3D<float>(&builder, a_3d);
   auto m = ConstantR2<float>(&builder, {
     {10.0f, 20.0f, 30.0f},
     {40.0f, 50.0f, 60.0f},
@@ -2739,10 +2739,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGtR3F32sWithDegenerateDim2) {
   XlaBuilder builder(TestName());
   Array3D<float> a_3d({{{1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}},
                        {{7.0f, 8.0f}, {9.0f, 10.0f}, {11.0f, 12.0f}}});
-  auto a = builder.ConstantR3FromArray3D<float>(a_3d);
+  auto a = ConstantR3FromArray3D<float>(&builder, a_3d);
 
   Array3D<float> b_3d({{{7.0f, 1.0f}, {3.0f, 10.0f}, {15.0f, 6.0f}}});
-  auto b = builder.ConstantR3FromArray3D<float>(b_3d);
+  auto b = ConstantR3FromArray3D<float>(&builder, b_3d);
 
   Gt(a, b);
 
@@ -2779,8 +2779,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, 4DBinaryOpF32s) {
     }
   }
 
-  auto a = builder.ConstantR4FromArray4D<float>(*operand_a_4d);
-  auto b = builder.ConstantR4FromArray4D<float>(*operand_b_4d);
+  auto a = ConstantR4FromArray4D<float>(&builder, *operand_a_4d);
+  auto b = ConstantR4FromArray4D<float>(&builder, *operand_b_4d);
   Add(a, b);
 
   ComputeAndCompareR4<float>(&builder, *expected_4d, {}, error_spec_);
@@ -2807,7 +2807,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, R4PlusR1InDim1) {
     }
   }
 
-  auto a = builder.ConstantR4FromArray4D<float>(*operand_a_4d);
+  auto a = ConstantR4FromArray4D<float>(&builder, *operand_a_4d);
   auto b = ConstantR1<float>(&builder, operand_b_1d);
   Add(a, b, {1});
 

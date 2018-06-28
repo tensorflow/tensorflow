@@ -231,8 +231,8 @@ XLA_TEST_P(BatchNormalizationTest, BasicTraining) {
   const int kFeatureIndex = 3;
   XlaBuilder builder(TestName());
 
-  auto operand = builder.ConstantR4FromArray4D<float>(
-      {{{{1.f, 2.f}}, {{3.f, 4.f}}}, {{{5.f, 6.f}}, {{7.f, 8.f}}}});
+  auto operand = ConstantR4FromArray4D<float>(
+      &builder, {{{{1.f, 2.f}}, {{3.f, 4.f}}}, {{{5.f, 6.f}}, {{7.f, 8.f}}}});
 
   auto scale = ConstantR1<float>(&builder, {2.0f, 3.0f});
 
@@ -255,7 +255,8 @@ XLA_TEST_P(BatchNormalizationTest, BasicTrainingOnDimension2) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
 
-  auto operand = builder.ConstantR4FromArray4D<float>(
+  auto operand = ConstantR4FromArray4D<float>(
+      &builder,
       {{{{1.f}, {2.f}}, {{3.f}, {4.f}}}, {{{5.f}, {6.f}}, {{7.f}, {8.f}}}});
 
   auto scale = ConstantR1<float>(&builder, {2.0f, 3.0f});
@@ -345,7 +346,7 @@ XLA_TEST_P(BatchNormalizationTest, BatchNormGradBasic) {
   XlaBuilder builder(TestName());
 
   auto operand =
-      builder.ConstantR4FromArray4D<float>(Array4D<float>(2, 2, 2, 1, 0.0f));
+      ConstantR4FromArray4D<float>(&builder, Array4D<float>(2, 2, 2, 1, 0.0f));
 
   auto scale = ConstantR1<float>(&builder, {1.0f, 1.0f});
 
@@ -353,7 +354,8 @@ XLA_TEST_P(BatchNormalizationTest, BatchNormGradBasic) {
 
   auto var = ConstantR1<float>(&builder, {1.0f, 1.0f});
 
-  auto grad_output = builder.ConstantR4FromArray4D<float>(
+  auto grad_output = ConstantR4FromArray4D<float>(
+      &builder,
       {{{{1.f}, {2.f}}, {{3.f}, {4.f}}}, {{{5.f}, {6.f}}, {{7.f}, {8.f}}}});
 
   BatchNormGrad(operand, scale, mean, var, grad_output,

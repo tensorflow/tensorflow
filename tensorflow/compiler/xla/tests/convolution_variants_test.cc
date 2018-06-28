@@ -55,10 +55,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Minimal) {
   XlaBuilder builder(TestName());
 
   const Array4D<float> input_array(1, 1, 1, 1, {2});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 1, {3});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -70,10 +70,10 @@ XLA_TEST_F(ConvolutionVariantsTest, MinimalWithBatch) {
   XlaBuilder builder(TestName());
 
   const Array4D<float> input_array(5, 1, 1, 1, {1, 2, 3, 4, 5});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 1, {2});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -86,10 +86,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Flat1x1) {
 
   Array4D<float> input_array(2, 1, 3, 4);
   input_array.FillWithMultiples(1);
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 1, {2.3});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -102,10 +102,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Deep1x1) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 2, 1, 1, {10, 1});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(3, 2, 1, 1, {1, 2, 3, 4, 5, 6});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -117,10 +117,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x2in1x2) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 1, 2, {1, 2});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 2, {10, 1});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -132,10 +132,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x2in1x3) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 1, 3, {1, 2, 3});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 2, {10, 1});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -147,10 +147,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x2in2x2) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 2, 2, {1, 2, 3, 4});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 2, {10, 1});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -162,10 +162,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter2x1in2x2) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 2, 2, {1, 2, 3, 4});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 2, 1, {10, 1});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -177,10 +177,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter2x2in2x2) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 2, 2, {1, 2, 3, 4});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 2, 2, {1000, 100, 10, 1});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -194,11 +194,11 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x2in2x3WithDepthAndBatch) {
   Array4D<float> input_array(
       2, 2, 2, 3, {0, 1, 2, 3, 4, 5,  6,  7,  8,  9,  0, 0,    // plane 0
                    0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 0, 0});  // plane 1
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(
       2, 2, 1, 2, {1000, 100, 10, 1, 0.1, 0.01, 0.001, 0.0001});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -213,10 +213,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1stride1x2in1x4) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 1, 4, {1, 2, 3, 4});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 1, {10});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 2}, Padding::kValid);
 
@@ -228,10 +228,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1stride1x2in1x5) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 1, 5, {1, 2, 3, 4, 5});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 1, {10});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 2}, Padding::kValid);
 
@@ -243,10 +243,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x3stride1x2in1x4) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 1, 4, {1, 2, 3, 4});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 3, {100, 10, 1});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 2}, Padding::kValid);
 
@@ -258,10 +258,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x3stride1x2in1x5) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 1, 5, {1, 2, 3, 4, 5});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 3, {100, 10, 1});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 2}, Padding::kValid);
 
@@ -273,10 +273,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1stride2x2in3x3) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 3, 3, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 1, {10});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {2, 2}, Padding::kValid);
 
@@ -288,10 +288,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter3x1in1x1Padded) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 1, 1, {1});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 3, {10, 20, 30});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kSame);
 
@@ -303,10 +303,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter5x1in3x1Padded) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 1, 3, {1, 2, 3});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 5, {10000, 1000, 100, 10, 1});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kSame);
 
@@ -318,13 +318,13 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter3x3in2x2Padded) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 2, 2, {1, 2, 3, 4});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 3, 3,
                                     {10000, 0, 1000,  // row 0
                                      0, 100, 0,       // row 1
                                      10, 0, 1});      // row 2
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kSame);
 
@@ -336,10 +336,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1in2x1WithPaddingAndDepth) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 2, 1, 2, {1, 2, 3, 4});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 2, 1, 1, {10, 1});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kSame);
 
@@ -351,10 +351,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter2x2Stride1x1Input3x3) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 3, 3, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 2, 2, {7, 13, 17, 23});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -366,10 +366,10 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x2Stride1x1Input1x3) {
   XlaBuilder builder(TestName());
 
   Array4D<float> input_array(1, 1, 1, 3, {1, 2, 3});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   const Array4D<float> filter_array(1, 1, 1, 2, {7, 13});
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -383,13 +383,13 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter2x1x8x8Input1x1x8x8) {
   std::vector<float> input_data(64);
   std::iota(input_data.begin(), input_data.end(), 0.0);
   Array4D<float> input_array(1, 1, 8, 8, input_data);
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(128);
   std::fill(filter_data.begin(), filter_data.begin() + 64, 1.0);
   std::fill(filter_data.begin() + 64, filter_data.begin() + 128, 2.0);
   const Array4D<float> filter_array(2, 1, 8, 8, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -403,12 +403,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input16x1x1x1) {
   std::vector<float> input_data(16 * 1 * 1 * 1);
   std::iota(input_data.begin(), input_data.end(), 1.0);
   Array4D<float> input_array(16, 1, 1, 1, input_data);
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(1 * 1 * 1 * 1);
   std::iota(filter_data.begin(), filter_data.end(), 1.0);
   const Array4D<float> filter_array(1, 1, 1, 1, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -432,12 +432,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x2x2Input16x1x2x2) {
       }
     }
   }
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(1 * 1 * ky * kx);
   std::iota(filter_data.begin(), filter_data.end(), 1.0);
   const Array4D<float> filter_array(1, 1, ky, kx, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -463,12 +463,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x2x2Input3x1x2x2) {
       }
     }
   }
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(1 * 1 * ky * kx);
   std::iota(filter_data.begin(), filter_data.end(), 1.0);
   const Array4D<float> filter_array(1, 1, ky, kx, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -492,12 +492,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x8x8Input16x1x8x8) {
       }
     }
   }
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(1 * 1 * 8 * 8);
   std::iota(filter_data.begin(), filter_data.end(), 1.0);
   const Array4D<float> filter_array(1, 1, 8, 8, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -515,7 +515,7 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input1x2x8x8) {
   std::vector<float> input_data(2 * 8 * 8);
   std::iota(input_data.begin(), input_data.end(), 0.0);
   Array4D<float> input_array(1, 2, 8, 8, input_data);
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(2 * 2 * 8 * 8);
   std::fill(filter_data.begin(), filter_data.begin() + filter_data.size() / 4,
@@ -527,7 +527,7 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input1x2x8x8) {
   std::fill(filter_data.begin() + 3 * filter_data.size() / 4, filter_data.end(),
             4.0);
   const Array4D<float> filter_array(2, 2, 8, 8, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -541,7 +541,7 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input2x2x8x8) {
   std::vector<float> input_data(2 * 2 * 8 * 8);
   std::iota(input_data.begin(), input_data.end(), 0.0);
   Array4D<float> input_array(2, 2, 8, 8, input_data);
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(2 * 2 * 8 * 8);
   std::fill(filter_data.begin(), filter_data.begin() + filter_data.size() / 4,
@@ -553,7 +553,7 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input2x2x8x8) {
   std::fill(filter_data.begin() + 3 * filter_data.size() / 4, filter_data.end(),
             4.0);
   const Array4D<float> filter_array(2, 2, 8, 8, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -567,7 +567,7 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input32x2x8x8) {
   std::vector<float> input_data(32 * 2 * 8 * 8);
   std::iota(input_data.begin(), input_data.end(), 0.0);
   Array4D<float> input_array(32, 2, 8, 8, input_data);
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(2 * 2 * 8 * 8);
   std::fill(filter_data.begin(), filter_data.begin() + filter_data.size() / 4,
@@ -579,7 +579,7 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter2x2x8x8Input32x2x8x8) {
   std::fill(filter_data.begin() + 3 * filter_data.size() / 4, filter_data.end(),
             4.0);
   const Array4D<float> filter_array(2, 2, 8, 8, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   Conv(input, filter, {1, 1}, Padding::kValid);
 
@@ -613,8 +613,8 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter16x16x1x1Input16x16x1x1) {
     }
   }
 
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> expected(16, 16, 1, 1);
@@ -635,8 +635,8 @@ XLA_TEST_F(ConvolutionVariantsTest, FlatRhsDilation) {
   Array4D<float> input_array(1, 1, 4, 6, input_data);
 
   Array4D<float> filter_array(1, 1, 2, 3, {1, 10, 100, 2, 20, 200});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   ConvGeneralDilated(
       /*lhs=*/input, /*rhs=*/filter, /*window_strides=*/{}, /*padding=*/{},
       /*lhs_dilation=*/{}, /*rhs_dilation=*/{2, 2},
@@ -654,8 +654,8 @@ XLA_TEST_F(ConvolutionVariantsTest, FlatLhsDilation1D) {
   Array4D<float> input_array(1, 1, 1, 5, input_data);
 
   Array4D<float> filter_array(1, 1, 1, 2, {10, 1});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   ConvGeneralDilated(
       /*lhs=*/input, /*rhs=*/filter, /*window_strides=*/{}, /*padding=*/{},
       /*lhs_dilation=*/{1, 2}, /*rhs_dilation=*/{},
@@ -677,8 +677,8 @@ XLA_TEST_F(ConvolutionVariantsTest, FlatLhsDilation) {
                                200, 20, 2,  //
                                300, 30, 3,  //
                                400, 40, 4});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   ConvGeneralDilated(
       /*lhs=*/input, /*rhs=*/filter, /*window_strides=*/{2, 1},
       /*padding=*/{{1, 0}, {0, 0}}, /*lhs_dilation=*/{3, 2},
@@ -699,8 +699,8 @@ XLA_TEST_F(ConvolutionVariantsTest, NegativePaddingOnBothEnds) {
   Array4D<float> input_array(1, 1, 1, 5, input_data);
 
   Array4D<float> filter_array(1, 1, 1, 2, {10, 1});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   ConvGeneral(
       /*lhs=*/input, /*rhs=*/filter, /*window_strides=*/{},
       /*padding=*/{{0, 0}, {-1, -1}},
@@ -718,8 +718,8 @@ XLA_TEST_F(ConvolutionVariantsTest, NegativePaddingLowAndPositivePaddingHigh) {
   Array4D<float> input_array(1, 1, 1, 5, input_data);
 
   Array4D<float> filter_array(1, 1, 1, 2, {10, 1});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   ConvGeneral(
       /*lhs=*/input, /*rhs=*/filter, /*window_strides=*/{},
       /*padding=*/{{0, 0}, {-1, 2}},
@@ -737,8 +737,8 @@ XLA_TEST_F(ConvolutionVariantsTest, PositivePaddingLowAndNegativePaddingHigh) {
   Array4D<float> input_array(1, 1, 1, 5, input_data);
 
   Array4D<float> filter_array(1, 1, 1, 2, {10, 1});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   ConvGeneral(
       /*lhs=*/input, /*rhs=*/filter, /*window_strides=*/{},
       /*padding=*/{{0, 0}, {2, -1}},
@@ -756,8 +756,8 @@ XLA_TEST_F(ConvolutionVariantsTest, PositivePaddingAndDilation) {
   Array4D<float> input_array(1, 1, 1, 5, input_data);
 
   Array4D<float> filter_array(1, 1, 1, 2, {10, 1});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   ConvGeneralDilated(
       /*lhs=*/input, /*rhs=*/filter, /*window_strides=*/{},
       /*padding=*/{{0, 0}, {3, 2}},
@@ -781,8 +781,8 @@ XLA_TEST_F(ConvolutionVariantsTest, NegativePaddingAndDilation) {
   Array4D<float> input_array(1, 1, 1, 5, input_data);
 
   Array4D<float> filter_array(1, 1, 1, 2, {10, 1});
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   ConvGeneralDilated(
       /*lhs=*/input, /*rhs=*/filter, /*window_strides=*/{},
       /*padding=*/{{0, 0}, {-3, -2}},
@@ -821,8 +821,8 @@ XLA_TEST_F(ConvolutionVariantsTest, RandomData_Input1x1x2x3_Filter2x1x1x2) {
   Array4D<float> filter_array(oz, iz, ky, kx, kernel_data);
 
   XlaBuilder builder(TestName());
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   std::unique_ptr<Array4D<float>> expected = ReferenceUtil::ConvArray4D(
@@ -854,8 +854,8 @@ XLA_TEST_F(ConvolutionVariantsTest, RandomData_Input1x16x1x1_Filter1x16x1x1) {
   Array4D<float> filter_array(oz, iz, ky, kx, kernel_data);
 
   XlaBuilder builder(TestName());
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   std::unique_ptr<Array4D<float>> expected = ReferenceUtil::ConvArray4D(
@@ -887,8 +887,8 @@ XLA_TEST_F(ConvolutionVariantsTest, RandomData_Input16x16x1x1_Filter1x16x1x1) {
   Array4D<float> filter_array(oz, iz, ky, kx, kernel_data);
 
   XlaBuilder builder(TestName());
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   std::unique_ptr<Array4D<float>> expected = ReferenceUtil::ConvArray4D(
@@ -920,8 +920,8 @@ XLA_TEST_F(ConvolutionVariantsTest, RandomData_Input16x16x1x1_Filter16x16x1x1) {
   Array4D<float> filter_array(oz, iz, ky, kx, kernel_data);
 
   XlaBuilder builder(TestName());
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   std::unique_ptr<Array4D<float>> expected = ReferenceUtil::ConvArray4D(
@@ -954,8 +954,8 @@ XLA_TEST_F(ConvolutionVariantsTest,
   Array4D<float> filter_array(oz, iz, ky, kx, kernel_data);
 
   XlaBuilder builder(TestName());
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
   Conv(input, filter, {1, 1}, Padding::kValid);
 
   std::unique_ptr<Array4D<float>> expected = ReferenceUtil::ConvArray4D(
@@ -970,12 +970,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x2x1x1Input1x2x3x1GeneralPadding) {
   std::vector<float> input_data(1 * 2 * 3 * 1);
   std::iota(input_data.begin(), input_data.end(), 1.0);
   Array4D<float> input_array(1, 2, 3, 1, input_data);
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(1 * 2 * 1 * 1);
   std::iota(filter_data.begin(), filter_data.end(), 1.0);
   Array4D<float> filter_array(1, 2, 1, 1, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   ConvolutionDimensionNumbers dnums;
   // NHWC input format.
@@ -1014,12 +1014,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input1x2x3x1GeneralPadding) {
   std::vector<float> input_data(1 * 2 * 3 * 1);
   std::iota(input_data.begin(), input_data.end(), 1.0);
   Array4D<float> input_array(1, 2, 3, 1, input_data);
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(1 * 1 * 1 * 1);
   std::iota(filter_data.begin(), filter_data.end(), 2.0);
   Array4D<float> filter_array(1, 1, 1, 1, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   ConvolutionDimensionNumbers dnums;
   // NHWC input format.
@@ -1058,12 +1058,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input1x2x3x1NoPadding) {
   std::vector<float> input_data(1 * 2 * 3 * 1);
   std::iota(input_data.begin(), input_data.end(), 1.0);
   Array4D<float> input_array(1, 2, 3, 1, input_data);
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(1 * 1 * 1 * 1);
   std::iota(filter_data.begin(), filter_data.end(), 2.0);
   Array4D<float> filter_array(1, 1, 1, 1, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   ConvolutionDimensionNumbers dnums;
   // NHWC input format.
@@ -1099,12 +1099,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x2x3Input1x2x3x2NoPadding) {
   std::vector<float> input_data(1 * 2 * 3 * 2);
   std::iota(input_data.begin(), input_data.end(), 1.0);
   Array4D<float> input_array(1, 2, 3, 2, input_data);
-  auto input = builder.ConstantR4FromArray4D<float>(input_array);
+  auto input = ConstantR4FromArray4D<float>(&builder, input_array);
 
   std::vector<float> filter_data(1 * 1 * 2 * 3);
   std::iota(filter_data.begin(), filter_data.end(), 2.0);
   Array4D<float> filter_array(1, 1, 2, 3, filter_data);
-  auto filter = builder.ConstantR4FromArray4D<float>(filter_array);
+  auto filter = ConstantR4FromArray4D<float>(&builder, filter_array);
 
   ConvolutionDimensionNumbers dnums;
   // NHWC input format.
@@ -1148,10 +1148,10 @@ XLA_TEST_F(ConvolutionVariantsTest,
            BackwardInputLowPaddingLessThanHighPadding) {
   XlaBuilder builder(TestName());
 
-  auto gradients = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 3, /*values=*/{1, 2, 3}));
-  auto weights = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 2, /*values=*/{5, 6}));
+  auto gradients = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 3, /*values=*/{1, 2, 3}));
+  auto weights = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 2, /*values=*/{5, 6}));
   auto mirrored_weights = Rev(weights, {2, 3});
   ConvWithGeneralPadding(gradients, mirrored_weights,
                          /*window_strides=*/{1, 1},
@@ -1167,10 +1167,10 @@ XLA_TEST_F(ConvolutionVariantsTest,
            BackwardInputLowPaddingGreaterThanHighPadding) {
   XlaBuilder builder(TestName());
 
-  auto gradients = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 1, /*values=*/{1}));
-  auto weights = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 3, /*values=*/{1, 10, 100}));
+  auto gradients = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 1, /*values=*/{1}));
+  auto weights = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 3, /*values=*/{1, 10, 100}));
   auto mirrored_weights = Rev(weights, {2, 3});
   ConvGeneralDilated(gradients, mirrored_weights,
                      /*window_strides=*/{1, 1},
@@ -1187,10 +1187,10 @@ XLA_TEST_F(ConvolutionVariantsTest,
 XLA_TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding) {
   XlaBuilder builder(TestName());
 
-  auto gradients = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 1, /*values=*/{1}));
-  auto weights = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 3, /*values=*/{1, 10, 100}));
+  auto gradients = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 1, /*values=*/{1}));
+  auto weights = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 3, /*values=*/{1, 10, 100}));
   auto mirrored_weights = Rev(weights, {2, 3});
   ConvWithGeneralPadding(gradients, mirrored_weights,
                          /*window_strides=*/{1, 1},
@@ -1208,10 +1208,10 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding) {
 XLA_TEST_F(ConvolutionVariantsTest, BackwardInputWithNegativePaddingHigh) {
   XlaBuilder builder(TestName());
 
-  auto gradients = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 3, /*values=*/{1, 2, 3}));
-  auto weights = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 2, /*values=*/{1, 10}));
+  auto gradients = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 3, /*values=*/{1, 2, 3}));
+  auto weights = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 2, /*values=*/{1, 10}));
   auto mirrored_weights = Rev(weights, {2, 3});
   ConvWithGeneralPadding(gradients, mirrored_weights,
                          /*window_strides=*/{1, 1},
@@ -1229,10 +1229,10 @@ XLA_TEST_F(ConvolutionVariantsTest,
   // weight gradients: 24,130,240
   //
   // This pattern will be fused to backward convolution with padding=(1,2).
-  auto activations = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 4, /*values=*/{1, 2, 3, 4}));
-  auto gradients = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 3, /*values=*/{100, 10, 1}));
+  auto activations = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 4, /*values=*/{1, 2, 3, 4}));
+  auto gradients = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 3, /*values=*/{100, 10, 1}));
   auto forward_conv =
       ConvGeneralDilated(activations, gradients,
                          /*window_strides=*/{1, 1},
@@ -1255,10 +1255,10 @@ XLA_TEST_F(ConvolutionVariantsTest,
   // This pattern will be fused to backward convolution with padding=(2,1).
   // Note: both (2,1) and (2,0) are valid padding for the backward convolution
   // because the stride is 2.
-  auto activations = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 4, /*values=*/{1, 2, 3, 4}));
-  auto gradients = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 3, /*values=*/{100, 10, 1}));
+  auto activations = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 4, /*values=*/{1, 2, 3, 4}));
+  auto gradients = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 3, /*values=*/{100, 10, 1}));
   auto forward_conv =
       ConvGeneralDilated(activations, gradients,
                          /*window_strides=*/{1, 1},
@@ -1282,10 +1282,10 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding) {
   // because the stride is 2. ConvolutionFolding prefers (2,2) because cuDNN
   // supports even padding only -- using (2,1) would need extra effort of
   // canonicalization.
-  auto activations = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 4, /*values=*/{1, 2, 3, 4}));
-  auto gradients = builder.ConstantR4FromArray4D<float>(
-      Array4D<float>(1, 1, 1, 3, /*values=*/{100, 10, 1}));
+  auto activations = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 4, /*values=*/{1, 2, 3, 4}));
+  auto gradients = ConstantR4FromArray4D<float>(
+      &builder, Array4D<float>(1, 1, 1, 3, /*values=*/{100, 10, 1}));
   auto forward_conv =
       ConvGeneralDilated(activations, gradients,
                          /*window_strides=*/{1, 1},
@@ -1300,10 +1300,10 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding) {
 XLA_TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding1D) {
   XlaBuilder builder(TestName());
 
-  auto gradients = builder.ConstantR3FromArray3D<float>(
-      Array3D<float>(1, 1, 1, /*value=*/1));
+  auto gradients = ConstantR3FromArray3D<float>(
+      &builder, Array3D<float>(1, 1, 1, /*value=*/1));
   auto weights =
-      builder.ConstantR3FromArray3D<float>(Array3D<float>({{{1, 10, 100}}}));
+      ConstantR3FromArray3D<float>(&builder, Array3D<float>({{{1, 10, 100}}}));
   auto mirrored_weights = Rev(weights, {2});
   ConvWithGeneralPadding(gradients, mirrored_weights,
                          /*window_strides=*/{1},
@@ -1315,9 +1315,9 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding1D) {
   XlaBuilder builder(TestName());
 
   auto activations =
-      builder.ConstantR3FromArray3D<float>(Array3D<float>({{{1, 2, 3, 4}}}));
+      ConstantR3FromArray3D<float>(&builder, Array3D<float>({{{1, 2, 3, 4}}}));
   auto gradients =
-      builder.ConstantR3FromArray3D<float>(Array3D<float>({{{100, 10, 1}}}));
+      ConstantR3FromArray3D<float>(&builder, Array3D<float>({{{100, 10, 1}}}));
   auto forward_conv =
       ConvGeneralDilated(activations, gradients,
                          /*window_strides=*/{1},

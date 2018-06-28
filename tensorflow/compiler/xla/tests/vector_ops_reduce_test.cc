@@ -46,7 +46,7 @@ class VecOpsReduceTest : public ClientLibraryTestBase {
           {{1.0, 2.0, 3.0},                 // } plane 2 in dim 0
            {4.0, 5.0, 6.0}}});
     // clang-format on
-    return builder_.ConstantR3FromArray3D<float>(x3d);
+    return ConstantR3FromArray3D<float>(&builder_, x3d);
   }
 
   XlaBuilder builder_;

@@ -151,7 +151,7 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
 
   {
     XlaBuilder builder(TestName());
-    builder.ConstantR4FromArray4D<float>(input_array);
+    ConstantR4FromArray4D<float>(&builder, input_array);
     ComputeAndCompareR4<float>(&builder, input_array, {}, error_spec_);
   }
 }

@@ -46,7 +46,7 @@ XLA_TEST_F(SliceTest, Slice3D) {
   XlaBuilder builder("slice_3d");
   Array3D<float> array_3d(
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}});
-  auto original = builder.ConstantR3FromArray3D<float>(array_3d);
+  auto original = ConstantR3FromArray3D<float>(&builder, array_3d);
   Slice(original, {0, 0, 1}, {2, 1, 2}, {1, 1, 1});
 
   Array3D<float> expected_3d({{{2.0f}}, {{6.0f}}});

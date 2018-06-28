@@ -255,7 +255,8 @@ TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
   XlaBuilder b1("b1");
   auto p0 = Parameter(&b1, 0, ShapeUtil::MakeShape(F32, {}), "p0");
   XlaBuilder builder("main");
-  builder.Add(p0, p0);
+  auto p = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "p");
+  Add(p, p0);
   auto statusor = builder.Build();
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(
