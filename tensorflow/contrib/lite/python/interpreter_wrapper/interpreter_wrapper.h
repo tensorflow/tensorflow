@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 // Place `<locale>` before <Python.h> to avoid build failures in macOS.
-#include <locale>
 #include <Python.h>
+#include <locale>
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {

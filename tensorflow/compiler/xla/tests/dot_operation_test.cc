@@ -853,10 +853,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-// TODO (b/69062148) Enable when Dot implements general contracting dimensions.
 XLA_TEST_F(DotOperationTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
-               DotOfGatherOptimizationWithConstRHSReverseMM)))) {
+
+           DotOfGatherOptimizationWithConstRHSReverseMM) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0, 3.0},
                           {4.0, 5.0, 6.0},
@@ -883,10 +882,7 @@ XLA_TEST_F(DotOperationTest,
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-// TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-XLA_TEST_F(DotOperationTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
-               DotOfGatherOptimizationWithConstLHSReverseMM)))) {
+XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSReverseMM) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0, 3.0},
                           {4.0, 5.0, 6.0},
@@ -913,10 +909,7 @@ XLA_TEST_F(DotOperationTest,
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-// TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-XLA_TEST_F(DotOperationTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
-               DotOfGatherOptimizationWithConstRHSRows)))) {
+XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSRows) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0},
                           {3.0, 4.0},
@@ -948,10 +941,7 @@ XLA_TEST_F(DotOperationTest,
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-// TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-XLA_TEST_F(DotOperationTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
-               DotOfGatherOptimizationWithConstLHSRows)))) {
+XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSRows) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0},
                           {3.0, 4.0},
@@ -983,10 +973,7 @@ XLA_TEST_F(DotOperationTest,
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-// TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-XLA_TEST_F(DotOperationTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
-               DotOfGatherOptimizationWithConstRHSCols)))) {
+XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSCols) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
       {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
   std::unique_ptr<Array2D<float>> constant_rhs_array(
@@ -1010,10 +997,7 @@ XLA_TEST_F(DotOperationTest,
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-// TODO (b/69062148) Enable when Dot implements general contracting dimensions.
-XLA_TEST_F(DotOperationTest,
-           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
-               DotOfGatherOptimizationWithConstLHSCols)))) {
+XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSCols) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
       {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
   std::unique_ptr<Array2D<float>> constant_rhs_array(
@@ -1034,6 +1018,29 @@ XLA_TEST_F(DotOperationTest,
   DotGeneral(lhs_constant, dynamic_slice, dot_dnums);
 
   Array2D<float> expected({{168.0}, {168.0}});
+  ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
+  XlaBuilder builder(TestName());
+
+  Array2D<float> lhs_array({{1.0f, 2.0f}, {3.0f, 4.0f}});
+  auto lhs_constant = ConstantR2FromArray2D(&builder, lhs_array);
+
+  Array2D<float> rhs_array({{5.0f, 6.0f}, {7.0f, 8.0f}});
+  auto rhs_constant = ConstantR2FromArray2D(&builder, rhs_array);
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(0);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  DotGeneral(lhs_constant, rhs_constant, dot_dnums);
+
+  Array2D<float> expected({
+      {26.f, 30.f},
+      {38.f, 44.f},
+  });
+
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 }  // namespace

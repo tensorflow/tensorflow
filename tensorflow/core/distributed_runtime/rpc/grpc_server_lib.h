@@ -100,6 +100,9 @@ class GrpcServer : public ServerInterface {
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func);
 
+  Status Init(ServiceInitFunction service_func,
+              const RendezvousMgrCreationFunction& rendezvous_mgr_func);
+
   Status Init();
 
   // A subclass can override this method to support secure credentials.

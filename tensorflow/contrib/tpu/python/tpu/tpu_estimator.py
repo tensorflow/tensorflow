@@ -81,12 +81,17 @@ _TPU_ESTIMATOR = 'tpu_estimator'
 _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
 _CTX_KEY = 'context'
+_USE_TPU_KEY = 'use_tpu'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
 _TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
 _TPU_TRAIN_OP = '_tpu_train_op'
 _REWRITE_FOR_INFERENCE_MODE = '_rewrite_for_inference'
 
+# Ideally _USE_TPU_KEY should be reserved as well. However there are already
+# models that make use of this key, thus it can not be reserved now to prevent
+# breakage. In the long run, we would like to mitigate this by migrating models
+# off of using _USE_TPU_KEY.
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY, _CTX_KEY]
 
 
@@ -1414,8 +1419,11 @@ class _ModelFnWrapper(object):
     if batch_size_for_model_fn is not None:
       _add_item_to_params(params, _BATCH_SIZE_KEY, batch_size_for_model_fn)
 
+    running_on_cpu = self._ctx.is_running_on_cpu(is_export_mode)
+    _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
+
     estimator_spec = self._model_fn(features=features, **kwargs)
-    if (self._ctx.is_running_on_cpu(is_export_mode) and
+    if (running_on_cpu and
         isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)):  # pylint: disable=protected-access
       # The estimator_spec will be passed to `Estimator` directly, which expects
       # type `EstimatorSpec`.
