@@ -225,7 +225,7 @@ def run_main(_):
   input_file_group.add_argument(
       "--graph_def_file",
       type=str,
-      help="Full filepath of file containing TensorFlow GraphDef.")
+      help="Full filepath of file containing frozen TensorFlow GraphDef.")
   input_file_group.add_argument(
       "--saved_model_dir",
       type=str,
