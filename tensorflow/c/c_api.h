@@ -1018,6 +1018,8 @@ TF_CAPI_EXPORT extern void TF_GraphImportGraphDef(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status);
 
+TF_CAPI_EXPORT extern void TF_BindToDevice(TF_Graph* graph, const char *device);
+
 // Adds a copy of function `func` and optionally its gradient function `grad`
 // to `g`. Once `func`/`grad` is added to `g`, it can be called by creating
 // an operation using the function's name.
