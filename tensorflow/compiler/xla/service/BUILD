@@ -2550,7 +2550,6 @@ cc_library(
     name = "hlo_tfgraph_builder",
     srcs = ["hlo_tfgraph_builder.cc"],
     hdrs = ["hlo_tfgraph_builder.h"],
-    visibility = ["//tensorflow/compiler/xla/tools:__pkg__"],
     deps = [
         ":hlo",
         "//tensorflow/compiler/xla:literal_util",

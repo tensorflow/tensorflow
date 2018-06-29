@@ -1515,6 +1515,7 @@ bool HloInstruction::IdenticalSlowPath(
 
     // Remaining instructions with special values.
     case HloOpcode::kCall:
+      return eq_computations(to_apply(), other.to_apply());
     case HloOpcode::kConditional:
       return eq_computations(true_computation(), other.true_computation()) &&
              eq_computations(false_computation(), other.false_computation());

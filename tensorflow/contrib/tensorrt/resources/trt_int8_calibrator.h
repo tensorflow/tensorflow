@@ -39,29 +39,48 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   TRTInt8Calibrator(
       const std::unordered_map<string, std::pair<void*, size_t>>& dev_buffers,
       int batch_size, string engine_name);
+
+  TRTInt8Calibrator(const string& calibration_data);
+
+  ~TRTInt8Calibrator();
+
   int getBatchSize() const override;
+
   bool getBatch(void* bindings[], const char* names[],
                 int num_bindings) override;
+
   bool setBatch(const std::unordered_map<string, void*>& data,
                 const cudaStream_t stream);
+
   void setDone();
+
+  // If not null, calibration is skipped.
   const void* readCalibrationCache(std::size_t& length) override;
+
   void writeCalibrationCache(const void* ptr, std::size_t length) override;
-  ~TRTInt8Calibrator();
+
+  const string& getCalibrationTableAsString() { return calibration_table_; }
 
  private:
   const int batch_size_;
-  tensorflow::mutex cond_mtx_;           // mutex for condition_variable
-  tensorflow::condition_variable cond_;  // condition variable to implement
-                                         // producer-consumer queue for
-                                         // calibration
+
+  // mutex for condition_variable
+  tensorflow::mutex cond_mtx_;
+
+  // condition variable to implement producer-consumer queue for calibration
+  tensorflow::condition_variable cond_;
+
+  // Is calibration finished?
   bool done_;
-  const std::unordered_map<string, std::pair<void*, size_t>>
-      dev_buffers_;  // map to keep tensorrt input buffers and sizes keyed with
-                     // buffer names
+
+  // Map to keep tensorrt input buffers and sizes keyed with buffer names
+  const std::unordered_map<string, std::pair<void*, size_t>> dev_buffers_;
+
   bool calib_running_;
   bool batch_is_set_;
+
   string engine_name_;
+  string calibration_table_;
 };
 
 }  // namespace tensorrt

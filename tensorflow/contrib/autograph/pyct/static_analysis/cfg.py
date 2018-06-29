@@ -286,7 +286,7 @@ class Forward(object):
 
   # TODO(alexbw): see if we can simplify by visiting breadth-first
   def visit(self, node):
-    """Depth-first walking the CFG, applying dataflow information propagtion."""
+    """Depth-first walking the CFG, applying dataflow info propagation."""
     # node.value is None only for the exit CfgNode.
     if not node.value:
       return

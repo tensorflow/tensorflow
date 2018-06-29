@@ -24,10 +24,10 @@ Example:
 classifier = BaselineClassifier(n_classes=3)
 
 # Input builders
-def input_fn_train: # returns x, y (where y represents label's class index).
+def input_fn_train(): # returns x, y (where y represents label's class index).
   pass
 
-def input_fn_eval: # returns x, y (where y represents label's class index).
+def input_fn_eval(): # returns x, y (where y represents label's class index).
   pass
 
 # Fit model.

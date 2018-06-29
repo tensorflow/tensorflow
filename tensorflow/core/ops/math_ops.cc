@@ -614,7 +614,13 @@ REGISTER_OP("ApproximateEqual")
     .SetIsCommutative()
     .Attr("T: numbertype")
     .Attr("tolerance: float = 0.00001")
-    .SetShapeFn(shape_inference::UnchangedShape);
+    .SetShapeFn([](InferenceContext* c) {
+      // The inputs 'x' and 'y' must have the same shape.
+      ShapeHandle data_x = c->input(0);
+      ShapeHandle data_y = c->input(1);
+      TF_RETURN_IF_ERROR(c->Merge(data_x, data_y, &data_x));
+      return shape_inference::UnchangedShape(c);
+    });
 
 // --------------------------------------------------------------------------
 

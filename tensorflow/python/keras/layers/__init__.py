@@ -87,9 +87,11 @@ from tensorflow.python.keras.layers.local import LocallyConnected2D
 
 # Merge layers.
 from tensorflow.python.keras.layers.merge import Add
+from tensorflow.python.keras.layers.merge import Subtract
 from tensorflow.python.keras.layers.merge import Multiply
 from tensorflow.python.keras.layers.merge import Average
 from tensorflow.python.keras.layers.merge import Maximum
+from tensorflow.python.keras.layers.merge import Minimum
 from tensorflow.python.keras.layers.merge import Concatenate
 from tensorflow.python.keras.layers.merge import Dot
 from tensorflow.python.keras.layers.merge import add

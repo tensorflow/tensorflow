@@ -201,6 +201,8 @@ def einsum(equation, *inputs, **kwargs):
         indices in its subscript, or
       - the input shapes are inconsistent along a particular axis.
   """
+  equation = equation.replace(' ', '')
+
   name = kwargs.pop('name', None)
   if kwargs:
     raise TypeError('invalid keyword arguments for this function: ' + ', '.join(

@@ -81,6 +81,9 @@ pip3.5 install --upgrade astor
 pip3.5 install --upgrade gast
 pip3.5 install --upgrade termcolor
 
+# Install last working version of setuptools.
+pip3.5 install --upgrade setuptools==39.1.0
+
 # Keras
 pip3.5 install keras_applications==1.0.2
 pip3.5 install keras_preprocessing==1.0.1

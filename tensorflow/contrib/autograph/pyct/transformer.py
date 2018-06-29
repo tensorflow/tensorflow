@@ -218,7 +218,7 @@ class Base(gast.NodeTransformer):
 
   # TODO(mdan): Once we have error tracing, we may be able to just go to SSA.
   def apply_to_single_assignments(self, targets, values, apply_fn):
-    """Applies a fuction to each individual assignment.
+    """Applies a function to each individual assignment.
 
     This function can process a possibly-unpacked (e.g. a, b = c, d) assignment.
     It tries to break down the unpacking if possible. In effect, it has the same
@@ -246,7 +246,7 @@ class Base(gast.NodeTransformer):
           targets field of an ast.Assign node.
       values: an AST node.
       apply_fn: a function of a single argument, which will be called with the
-          respective nodes of each single assignment. The signaure is
+          respective nodes of each single assignment. The signature is
           apply_fn(target, value), no return value.
     """
     if not isinstance(targets, (list, tuple)):
