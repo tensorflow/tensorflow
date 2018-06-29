@@ -590,10 +590,16 @@ py_library(
 
 cc_library(
     name = "grpc",
-    deps = ["@grpc"],
+    deps = select({
+        ":linux_s390x": ["@grpc//:grpc_unsecure"],
+        "//conditions:default": ["@grpc"],
+    }),
 )
 
 cc_library(
     name = "grpc++",
-    deps = ["@grpc//:grpc++"],
+    deps = select({
+        ":linux_s390x": ["@grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@grpc//:grpc++"],
+    }),
 )
