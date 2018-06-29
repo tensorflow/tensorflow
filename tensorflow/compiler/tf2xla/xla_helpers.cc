@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -72,10 +73,9 @@ Status ArgMinMax(xla::XlaBuilder* builder, XlaOpKernelContext* ctx,
 
   // And with the vector [0, 1, 2, ...] to convert each 0xFF...F into its
   // index.
-  xla::XlaOp iota;
 
   const int64 axis_size = input_shape.dim_size(axis);
-  TF_RETURN_IF_ERROR(XlaHelpers::Iota(builder, output_type, axis_size, &iota));
+  xla::XlaOp iota = xla::Iota(builder, xla_output_type, axis_size);
   xla::XlaOp product =
       xla::And(full_mask, iota, /*broadcast_dimensions=*/{axis});
 
@@ -228,31 +228,6 @@ Status XlaHelpers::ArgMin(xla::XlaBuilder* builder, XlaOpKernelContext* ctx,
                           DataType output_type, int axis, xla::XlaOp* argmin) {
   return ArgMinMax(builder, ctx, input, input_shape, input_type, output_type,
                    axis, /*is_min=*/true, argmin);
-}
-
-Status XlaHelpers::Iota(xla::XlaBuilder* builder, DataType dtype, int64 size,
-                        xla::XlaOp* iota) {
-  TensorShape linspace_shape({size});
-  Tensor linspace;
-  switch (dtype) {
-    case DT_UINT8:
-      linspace = MakeLinspaceTensor<uint8>(linspace_shape, size);
-      break;
-    case DT_INT32:
-      linspace = MakeLinspaceTensor<int32>(linspace_shape, size);
-      break;
-    case DT_INT64:
-      linspace = MakeLinspaceTensor<int64>(linspace_shape, size);
-      break;
-    default:
-      return errors::InvalidArgument("Invalid argument type ",
-                                     DataTypeString(dtype));
-  }
-  xla::BorrowingLiteral linspace_literal;
-  TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(linspace, &linspace_literal));
-
-  *iota = xla::ConstantLiteral(builder, linspace_literal);
-  return Status::OK();
 }
 
 Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64 depth, int axis,

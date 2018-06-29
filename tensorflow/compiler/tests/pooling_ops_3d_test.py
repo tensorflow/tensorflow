@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,7 +41,7 @@ def _AvgPoolGrad(inputs, outputs, output_gradients, ksize, strides, padding):
       padding=padding)
 
 
-class Pooling3DTest(XLATestCase):
+class Pooling3DTest(xla_test.XLATestCase):
 
   def _VerifyValues(self, pool_func, input_sizes, window, strides, padding,
                     expected):

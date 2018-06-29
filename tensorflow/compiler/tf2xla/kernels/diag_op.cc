@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -39,9 +40,7 @@ xla::StatusOr<xla::XlaOp> CreateDiagonal(
   //
   // This produces a predicate matrix of the right size, with "true" on the
   // diagonal.
-  xla::XlaOp iota;
-  TF_RETURN_IF_ERROR(
-      XlaHelpers::Iota(builder, DataType::DT_INT32, last_dim_size, &iota));
+  xla::XlaOp iota = xla::Iota(builder, xla::S32, last_dim_size);
   xla::XlaOp iota_broadcast = xla::Broadcast(iota, {last_dim_size});
   xla::XlaOp mask = xla::Eq(iota_broadcast, iota, {0});
 

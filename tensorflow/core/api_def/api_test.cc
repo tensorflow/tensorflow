@@ -171,7 +171,7 @@ TEST_F(BaseApiTest, AllOpsAreInApiDef) {
     if (excluded_ops->find(op.name()) != excluded_ops->end()) {
       continue;
     }
-    ASSERT_TRUE(api_defs_map_.find(op.name()) != api_defs_map_.end())
+    EXPECT_TRUE(api_defs_map_.find(op.name()) != api_defs_map_.end())
         << op.name() << " op does not have api_def_*.pbtxt file. "
         << "Please add api_def_" << op.name() << ".pbtxt file "
         << "under tensorflow/core/api_def/base_api/ directory.";

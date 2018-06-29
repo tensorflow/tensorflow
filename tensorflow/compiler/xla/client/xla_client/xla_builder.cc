@@ -60,36 +60,18 @@ bool CanBeRoot(HloOpcode opcode) {
 
 }  // namespace
 
-XlaOp operator-(const XlaOp& x) { return x.builder()->Neg(x); }
-XlaOp operator+(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Add(x, y);
-}
-XlaOp operator-(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Sub(x, y);
-}
-XlaOp operator*(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Mul(x, y);
-}
-XlaOp operator/(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Div(x, y);
-}
-XlaOp operator%(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Rem(x, y);
-}
+XlaOp operator-(const XlaOp& x) { return Neg(x); }
+XlaOp operator+(const XlaOp& x, const XlaOp& y) { return Add(x, y); }
+XlaOp operator-(const XlaOp& x, const XlaOp& y) { return Sub(x, y); }
+XlaOp operator*(const XlaOp& x, const XlaOp& y) { return Mul(x, y); }
+XlaOp operator/(const XlaOp& x, const XlaOp& y) { return Div(x, y); }
+XlaOp operator%(const XlaOp& x, const XlaOp& y) { return Rem(x, y); }
 
-XlaOp operator~(const XlaOp& x) { return x.builder()->Not(x); }
-XlaOp operator&(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->And(x, y);
-}
-XlaOp operator|(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Or(x, y);
-}
-XlaOp operator^(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Xor(x, y);
-}
-XlaOp operator<<(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->ShiftLeft(x, y);
-}
+XlaOp operator~(const XlaOp& x) { return Not(x); }
+XlaOp operator&(const XlaOp& x, const XlaOp& y) { return And(x, y); }
+XlaOp operator|(const XlaOp& x, const XlaOp& y) { return Or(x, y); }
+XlaOp operator^(const XlaOp& x, const XlaOp& y) { return Xor(x, y); }
+XlaOp operator<<(const XlaOp& x, const XlaOp& y) { return ShiftLeft(x, y); }
 
 XlaOp operator>>(const XlaOp& x, const XlaOp& y) {
   XlaBuilder* builder = x.builder();
@@ -101,9 +83,9 @@ XlaOp operator>>(const XlaOp& x, const XlaOp& y) {
           ShapeUtil::HumanString(shape).c_str());
     }
     if (ShapeUtil::ElementIsSigned(shape)) {
-      return builder->ShiftRightArithmetic(x, y);
+      return ShiftRightArithmetic(x, y);
     } else {
-      return builder->ShiftRightLogical(x, y);
+      return ShiftRightLogical(x, y);
     }
   });
 }
