@@ -317,6 +317,27 @@ class XlaBuilder {
   XlaOp Broadcast(const XlaOp& operand,
                   tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
 
+  // Performs in-dimension-style broadcast.
+  //
+  // Operand specifies the input to be broadcast. "shape" is expected output
+  // shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
+  // Dimension numbers in broadcast_dimensions map to individual dimensions
+  // of the operand, and specify what dimension of the output shape they
+  // should be broadcast.
+  // e.g.
+  // Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
+  // and dimension of shape is [2,2].
+  // Specifying {1} as brodcast_dimension will generate output
+  // [1 , 2]
+  // [1 , 2]
+  // On the other hand, specifying {0} as broadcast_dimension
+  // will generate output
+  // [1 , 1]
+  // [2 , 2]
+  XlaOp BroadcastInDim(
+      const XlaOp& operand, const Shape& shape,
+      const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+
   // Enqueues a pad operation onto the computation that pads the given value on
   // the edges as well as between the elements of the input. padding_config
   // specifies the padding amount for each dimension.
@@ -1033,6 +1054,10 @@ class XlaBuilder {
   friend XlaOp Broadcast(const XlaOp& operand,
                          tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
 
+  friend XlaOp BroadcastInDim(
+      const XlaOp& operand, const Shape& shape,
+      const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+
   friend XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
                    const PaddingConfig& padding_config);
 
@@ -1375,6 +1400,27 @@ XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value);
 //   output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
 XlaOp Broadcast(const XlaOp& operand,
                 tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+
+// Performs in-dimension-style broadcast.
+//
+// Operand specifies the input to be broadcast. "shape" is expected output
+// shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
+// Dimension numbers in broadcast_dimensions map to individual dimensions
+// of the operand, and specify what dimension of the output shape they
+// should be broadcast.
+// e.g.
+// Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
+// and dimension of shape is [2,2].
+// Specifying {1} as brodcast_dimension will generate output
+// [1 , 2]
+// [1 , 2]
+// On the other hand, specifying {0} as broadcast_dimension
+// will generate output
+// [1 , 1]
+// [2 , 2]
+XlaOp BroadcastInDim(
+    const XlaOp& operand, const Shape& shape,
+    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
 // Enqueues a pad operation onto the computation that pads the given value on
 // the edges as well as between the elements of the input. padding_config

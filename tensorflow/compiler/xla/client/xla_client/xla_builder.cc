@@ -532,6 +532,14 @@ XlaOp XlaBuilder::Broadcast(
   });
 }
 
+XlaOp XlaBuilder::BroadcastInDim(
+    const XlaOp& operand, const Shape& shape,
+    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    return InDimBroadcast(shape, operand, broadcast_dimensions);
+  });
+}
+
 StatusOr<XlaOp> XlaBuilder::Reshape(const Shape& shape, const XlaOp& operand) {
   TF_RETURN_IF_ERROR(first_error_);
 
@@ -2137,6 +2145,13 @@ XlaOp ConstantLiteral(XlaBuilder* builder, const LiteralSlice& literal) {
 XlaOp Broadcast(const XlaOp& operand,
                 tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
   return operand.builder()->Broadcast(operand, broadcast_sizes);
+}
+
+XlaOp BroadcastInDim(
+    const XlaOp& operand, const Shape& shape,
+    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return operand.builder()->BroadcastInDim(operand, shape,
+                                           broadcast_dimensions);
 }
 
 XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
