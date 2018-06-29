@@ -133,8 +133,7 @@ void IgniteDatasetIterator::ScanQuery() {
   double size_in_mb = 1.0 * remainder / 1024 / 1024;
   double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
   LOG(INFO) << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000
-  <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" <<
-  std::endl;
+  <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec";
 
   last_page = !client_.ReadByte();
 }
@@ -165,9 +164,8 @@ void IgniteDatasetIterator::LoadNextPage() {
   double size_in_mb = 1.0 * remainder / 1024 / 1024;
   double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
   LOG(INFO) << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000
-  <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" <<
-  std::endl;
-  
+  <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec";
+
   last_page = !client_.ReadByte();
 }
 
