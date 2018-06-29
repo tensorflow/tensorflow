@@ -192,6 +192,5 @@ tf_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
     ],
-    data = [":python/kernel_tests/_bigtable_test.so"],
     tags = ["manual"],
 )
