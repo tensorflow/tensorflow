@@ -66,10 +66,30 @@ def get_hparams_cifar_38():
   config.add_hparam("dtype", tf.float32)
   config.add_hparam("eval_batch_size", 1000)
   config.add_hparam("div255", True)
-  # TODO(lxuechen): This is imprecise, when training with validation set,
+  # This is imprecise, when training with validation set,
   # we only have 40k images in training data
   config.add_hparam("iters_per_epoch", 50000 // config.batch_size)
   config.add_hparam("epochs", config.max_train_iter // config.iters_per_epoch)
+
+  return config
+
+
+def get_hparams_cifar_110():
+  config = get_hparams_cifar_38()
+  config.filters = [32, 64, 128]
+  config.n_res = [9, 9, 9]
+
+  return config
+
+
+def get_hparams_cifar_164():
+  config = get_hparams_cifar_38()
+  config.filters = [32, 64, 128]
+  config.n_res = [9, 9, 9]
+  config.use_bottleneck = True
+  # Due to bottleneck residual blocks
+  filters = [f * 4 for f in config.filters]
+  config.filters = filters
 
   return config
 
@@ -113,9 +133,8 @@ def get_hparams_imagenet_56():
   # TODO(lxuechen): Update this according to ImageNet data
   config.add_hparam("iters_per_epoch", 50000 // config.batch_size)
   config.add_hparam("epochs", config.max_train_iter // config.iters_per_epoch)
-
-  if config.bottleneck:
-    filters = [f * 4 for f in config.filters]
-    config.filters = filters
+  # Due to bottleneck residual blocks
+  filters = [f * 4 for f in config.filters]
+  config.filters = filters
 
   return config
