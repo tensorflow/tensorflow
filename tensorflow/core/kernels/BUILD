@@ -3385,6 +3385,14 @@ cc_library(
     ],
 )
 
+# Kernels for the nodes intented to be added to the graph by the Grappler optimizers.
+cc_library(
+    name = "grappler",
+    deps = [
+        ":unary_ops_composition",
+    ],
+)
+
 NN_DEPS = [
     ":bounds_check",
     ":conv_2d",
