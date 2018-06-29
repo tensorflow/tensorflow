@@ -13,21 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "ignite_dataset.h"
-#include "ignite_client.h"
 #include "ignite_binary_object_parser.h"
+#include "ignite_client.h"
+#include "ignite_dataset.h"
 
 namespace ignite {
 
-class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> {
+class IgniteDatasetIterator
+    : public tensorflow::DatasetIterator<IgniteDataset> {
  public:
-  explicit IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, tensorflow::int32 page_size, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation);
+  explicit IgniteDatasetIterator(const Params& params, std::string host,
+                                 tensorflow::int32 port, std::string cache_name,
+                                 bool local, tensorflow::int32 part,
+                                 tensorflow::int32 page_size,
+                                 std::vector<tensorflow::int32> schema,
+                                 std::vector<tensorflow::int32> permutation);
   ~IgniteDatasetIterator();
-  tensorflow::Status GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) override;
+  tensorflow::Status GetNextInternal(
+      tensorflow::IteratorContext* ctx,
+      std::vector<tensorflow::Tensor>* out_tensors,
+      bool* end_of_sequence) override;
 
  protected:
-  tensorflow::Status SaveInternal(tensorflow::IteratorStateWriter* writer) override;
-  tensorflow::Status RestoreInternal(tensorflow::IteratorContext* ctx, tensorflow::IteratorStateReader* reader) override;
+  tensorflow::Status SaveInternal(
+      tensorflow::IteratorStateWriter* writer) override;
+  tensorflow::Status RestoreInternal(
+      tensorflow::IteratorContext* ctx,
+      tensorflow::IteratorStateReader* reader) override;
 
  private:
   void Handshake();
@@ -36,8 +48,8 @@ class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> 
   int JavaHashCode(std::string str);
 
   Client client_;
-  BinaryObjectParser parser;  
- 
+  BinaryObjectParser parser;
+
   const std::string cache_name_;
   const bool local_;
   const tensorflow::int32 part_;
@@ -52,4 +64,4 @@ class IgniteDatasetIterator : public tensorflow::DatasetIterator<IgniteDataset> 
   long cursor_id;
 };
 
-} // namespace ignite
+}  // namespace ignite

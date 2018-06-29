@@ -24,8 +24,9 @@ class KafkaDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-        std::string cache_name = "";
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "cache_name", &cache_name));
+    std::string cache_name = "";
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<std::string>(ctx, "cache_name", &cache_name));
     std::string host = "";
     OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "host", &host));
     int32 port = -1;
@@ -35,11 +36,13 @@ class KafkaDatasetOp : public DatasetOpKernel {
     int32 part = -1;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "part", &part));
     int32 page_size = -1;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "page_size", &page_size));
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument<int32>(ctx, "page_size", &page_size));
 
     const Tensor* schema_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("schema", &schema_tensor));
-    OP_REQUIRES(ctx, schema_tensor->dims() == 1, errors::InvalidArgument("`schema` must be a vector."));
+    OP_REQUIRES(ctx, schema_tensor->dims() == 1,
+                errors::InvalidArgument("`schema` must be a vector."));
 
     std::vector<int32> schema;
     schema.reserve(schema_tensor->NumElements());
@@ -49,18 +52,21 @@ class KafkaDatasetOp : public DatasetOpKernel {
 
     const Tensor* permutation_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("permutation", &permutation_tensor));
-    OP_REQUIRES(ctx, schema_tensor->dims() == 1, errors::InvalidArgument("`permutation` must be a vector."));
+    OP_REQUIRES(ctx, schema_tensor->dims() == 1,
+                errors::InvalidArgument("`permutation` must be a vector."));
 
     std::vector<int32> permutation;
     permutation.reserve(permutation_tensor->NumElements());
     for (int i = 0; i < permutation_tensor->NumElements(); i++) {
       permutation.push_back(permutation_tensor->flat<int32>()(i));
     }
-  
-    *output = new ignite::IgniteDataset(ctx, cache_name, host, port, local, part, page_size, schema, permutation);
+
+    *output = new ignite::IgniteDataset(ctx, cache_name, host, port, local,
+                                        part, page_size, schema, permutation);
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("KafkaDataset").Device(DEVICE_CPU), KafkaDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("KafkaDataset").Device(DEVICE_CPU),
+                        KafkaDatasetOp);
 
 }  // namespace tensorflow

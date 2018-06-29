@@ -22,7 +22,7 @@ namespace ignite {
 class Client {
  public:
   Client(std::string host, int port);
-  
+
   void Connect();
   void Disconnect();
 
@@ -37,6 +37,7 @@ class Client {
   void WriteInt(int data);
   void WriteLong(long data);
   void WriteData(char* buf, int length);
+
  private:
   std::string host;
   int port;
@@ -44,5 +45,4 @@ class Client {
   struct sockaddr_in server;
 };
 
-} // namespace ignite
-
+}  // namespace ignite

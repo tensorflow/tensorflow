@@ -19,14 +19,22 @@ namespace ignite {
 
 class IgniteDataset : public tensorflow::GraphDatasetBase {
  public:
-  IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache_name, std::string host, tensorflow::int32 port, bool local, tensorflow::int32 part, tensorflow::int32 page_size, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation);
-  std::unique_ptr<tensorflow::IteratorBase> MakeIteratorInternal(const tensorflow::string& prefix) const override;
+  IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache_name,
+                std::string host, tensorflow::int32 port, bool local,
+                tensorflow::int32 part, tensorflow::int32 page_size,
+                std::vector<tensorflow::int32> schema,
+                std::vector<tensorflow::int32> permutation);
+  ~IgniteDataset();
+  std::unique_ptr<tensorflow::IteratorBase> MakeIteratorInternal(
+      const tensorflow::string& prefix) const override;
   const tensorflow::DataTypeVector& output_dtypes() const override;
-  const std::vector<tensorflow::PartialTensorShape>& output_shapes() const override;
+  const std::vector<tensorflow::PartialTensorShape>& output_shapes()
+      const override;
   tensorflow::string DebugString() const override;
 
  protected:
-  tensorflow::Status AsGraphDefInternal(DatasetGraphDefBuilder* b, tensorflow::Node** output) const override;
+  tensorflow::Status AsGraphDefInternal(
+      DatasetGraphDefBuilder* b, tensorflow::Node** output) const override;
 
  private:
   const std::string cache_name_;
@@ -39,4 +47,4 @@ class IgniteDataset : public tensorflow::GraphDatasetBase {
   const std::vector<tensorflow::int32> permutation_;
 };
 
-} // namespace ignite
+}  // namespace ignite

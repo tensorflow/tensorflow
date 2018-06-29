@@ -14,46 +14,53 @@ limitations under the License.
 ==============================================================================*/
 
 #include "ignite_dataset_iterator.h"
+#include "tensorflow/core/platform/logging.h"
 
 //#include <time.h>
 
 namespace ignite {
 
-IgniteDatasetIterator::IgniteDatasetIterator(const Params& params, std::string host, tensorflow::int32 port, std::string cache_name, bool local, tensorflow::int32 part, tensorflow::int32 page_size, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation) : tensorflow::DatasetIterator<IgniteDataset>(params),
- client_(Client(host, port)),
- cache_name_(cache_name),
- local_(local),
- part_(part),
- page_size_(page_size),
- schema_(schema),
- permutation_(permutation),
- remainder(-1),
- last_page(false) {
+IgniteDatasetIterator::IgniteDatasetIterator(
+    const Params& params, std::string host, tensorflow::int32 port,
+    std::string cache_name, bool local, tensorflow::int32 part,
+    tensorflow::int32 page_size, std::vector<tensorflow::int32> schema,
+    std::vector<tensorflow::int32> permutation)
+    : tensorflow::DatasetIterator<IgniteDataset>(params),
+      client_(Client(host, port)),
+      cache_name_(cache_name),
+      local_(local),
+      part_(part),
+      page_size_(page_size),
+      schema_(schema),
+      permutation_(permutation),
+      remainder(-1),
+      last_page(false) {
+  LOG(INFO) << "Ignite Dataset Iterator created";
   client_.Connect();
   Handshake();
- }
-
-IgniteDatasetIterator::~IgniteDatasetIterator() {
-  client_.Disconnect();
 }
 
-tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorContext* ctx, std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) {
+IgniteDatasetIterator::~IgniteDatasetIterator() { 
+  client_.Disconnect(); 
+  LOG(INFO) << "Ignite Dataset Iterator destroyed";
+}
+
+tensorflow::Status IgniteDatasetIterator::GetNextInternal(
+    tensorflow::IteratorContext* ctx,
+    std::vector<tensorflow::Tensor>* out_tensors, bool* end_of_sequence) {
   if (remainder == 0 && last_page) {
     *end_of_sequence = true;
     return tensorflow::Status::OK();
-  }
-  else {
-    if (remainder == -1)
-      ScanQuery();
-    if (remainder == 0)
-      LoadNextPage();
+  } else {
+    if (remainder == -1) ScanQuery();
+    if (remainder == 0) LoadNextPage();
 
     char* initial_ptr = ptr;
     std::vector<int> types;
     std::vector<tensorflow::Tensor> tensors;
 
-    ptr = parser.Parse(ptr, &tensors, &types); // Parse key
-    ptr = parser.Parse(ptr, &tensors, &types); // Parse val
+    ptr = parser.Parse(ptr, &tensors, &types);  // Parse key
+    ptr = parser.Parse(ptr, &tensors, &types);  // Parse val
     remainder -= (ptr - initial_ptr);
 
     out_tensors->resize(tensors.size());
@@ -69,11 +76,13 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(tensorflow::IteratorCo
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status IgniteDatasetIterator::SaveInternal(tensorflow::IteratorStateWriter* writer) {
+tensorflow::Status IgniteDatasetIterator::SaveInternal(
+    tensorflow::IteratorStateWriter* writer) {
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status IgniteDatasetIterator::RestoreInternal(tensorflow::IteratorContext* ctx, tensorflow::IteratorStateReader* reader) {
+tensorflow::Status IgniteDatasetIterator::RestoreInternal(
+    tensorflow::IteratorContext* ctx, tensorflow::IteratorStateReader* reader) {
   return tensorflow::Status::OK();
 }
 
@@ -89,27 +98,27 @@ void IgniteDatasetIterator::Handshake() {
   char handshake_res = client_.ReadByte();
 
   if (handshake_res != 1) {
-    std::cout << "Handshake error\n";
+    LOG(ERROR) << "Handshake error (status " << handshake_res << ")";
   }
 }
 
 void IgniteDatasetIterator::ScanQuery() {
-  client_.WriteInt(25);                        // Message length
-  client_.WriteShort(2000);                    // Operation code
-  client_.WriteLong(0);                        // Request ID
-  client_.WriteInt(JavaHashCode(cache_name_)); // Cache name
-  client_.WriteByte(0);                        // Flags
-  client_.WriteByte(101);                      // Filter object
-  client_.WriteInt(page_size_);                // Cursor page size
-  client_.WriteInt(part_);                     // Partition to query
-  client_.WriteByte(local_);                   // Local flag
+  client_.WriteInt(25);                         // Message length
+  client_.WriteShort(2000);                     // Operation code
+  client_.WriteLong(0);                         // Request ID
+  client_.WriteInt(JavaHashCode(cache_name_));  // Cache name
+  client_.WriteByte(0);                         // Flags
+  client_.WriteByte(101);                       // Filter object
+  client_.WriteInt(page_size_);                 // Cursor page size
+  client_.WriteInt(part_);                      // Partition to query
+  client_.WriteByte(local_);                    // Local flag
 
   int res_len = client_.ReadInt();
   long req_id = client_.ReadLong();
   int status = client_.ReadInt();
 
   if (status != 0) {
-    std::cout << "Scan Query status error\n";
+    LOG(ERROR) << "Scan Query error (status " << status << ")";
   }
 
   cursor_id = client_.ReadLong();
@@ -124,22 +133,24 @@ void IgniteDatasetIterator::ScanQuery() {
 
   // double size_in_mb = 1.0 * remainder / 1024 / 1024;
   // double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
-  // std::cout << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000 <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" << std::endl;
+  // std::cout << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000
+  // <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" <<
+  // std::endl;
   last_page = !client_.ReadByte();
 }
 
 void IgniteDatasetIterator::LoadNextPage() {
-  client_.WriteInt(18);         // Message length
-  client_.WriteShort(2001);     // Operation code
-  client_.WriteLong(0);         // Request ID
-  client_.WriteLong(cursor_id); // Cursor ID
+  client_.WriteInt(18);          // Message length
+  client_.WriteShort(2001);      // Operation code
+  client_.WriteLong(0);          // Request ID
+  client_.WriteLong(cursor_id);  // Cursor ID
 
   int res_len = client_.ReadInt();
   long req_id = client_.ReadLong();
   int status = client_.ReadInt();
 
   if (status != 0) {
-    std::cout << "Query next page status error\n";
+    LOG(ERROR) << "Query Next Page error (status " << status << ")";
   }
 
   int row_cnt = client_.ReadInt();
@@ -153,16 +164,18 @@ void IgniteDatasetIterator::LoadNextPage() {
 
   // double size_in_mb = 1.0 * remainder / 1024 / 1024;
   // double time_in_s = (stop - start) / (double) CLOCKS_PER_SEC;
-  // std::cout << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000 <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" << std::endl;
+  // std::cout << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000
+  // <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec" <<
+  // std::endl;
   last_page = !client_.ReadByte();
 }
 
 int IgniteDatasetIterator::JavaHashCode(std::string str) {
   int h = 0;
-  for (char &c : str) {
+  for (char& c : str) {
     h = 31 * h + c;
   }
   return h;
 }
 
-} // namespace ignite
+}  // namespace ignite

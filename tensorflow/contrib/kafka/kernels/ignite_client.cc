@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "ignite_client.h"
 
-#include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-
 #include <sys/socket.h>
+
 #include <arpa/inet.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <map>
 
@@ -39,53 +39,52 @@ Client::Client(std::string host, int port) {
 }
 
 void Client::Connect() {
-  //create socket if it is not already created
-  if(sock == -1) {
-    //Create socket
-    sock = socket(AF_INET , SOCK_STREAM , 0);
+  // create socket if it is not already created
+  if (sock == -1) {
+    // Create socket
+    sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
       perror("Could not create socket");
-    } 
-  } else {   
-    /* OK , nothing */  
-  }     
-  
-  //setup address structure
-  if(inet_addr(host.c_str()) == -1) {
+    }
+  } else {
+    /* OK , nothing */
+  }
+
+  // setup address structure
+  if (inet_addr(host.c_str()) == -1) {
     struct hostent *he;
     struct in_addr **addr_list;
-           
-    //resolve the hostname, its not an ip address
-    if ( (he = gethostbyname( host.c_str() ) ) == NULL) {
+
+    // resolve the hostname, its not an ip address
+    if ((he = gethostbyname(host.c_str())) == NULL) {
       perror("Failed to resolve hostname");
       return;
     }
-           
-    //Cast the h_addr_list to in_addr , since h_addr_list also has the ip address in long format only
-    addr_list = (struct in_addr **) he->h_addr_list;
-   
-    for(int i = 0; addr_list[i] != NULL; i++) {
-      //strcpy(ip , inet_ntoa(*addr_list[i]) );
+
+    // Cast the h_addr_list to in_addr , since h_addr_list also has the ip
+    // address in long format only
+    addr_list = (struct in_addr **)he->h_addr_list;
+
+    for (int i = 0; addr_list[i] != NULL; i++) {
+      // strcpy(ip , inet_ntoa(*addr_list[i]) );
       server.sin_addr = *addr_list[i];
-               
+
       break;
     }
   } else {
-    server.sin_addr.s_addr = inet_addr( host.c_str() );
+    server.sin_addr.s_addr = inet_addr(host.c_str());
   }
-       
+
   server.sin_family = AF_INET;
-  server.sin_port = htons( port );
-       
-  //Connect to remote server
-  if (connect(sock , (struct sockaddr *)&server , sizeof(server)) < 0) {
+  server.sin_port = htons(port);
+
+  // Connect to remote server
+  if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
     perror("connect failed. Error");
   }
 }
 
-void Client::Disconnect() {
-  
-}
+void Client::Disconnect() {}
 
 char Client::ReadByte() {
   char res;
@@ -120,24 +119,14 @@ void Client::ReadData(char *buf, int length) {
   }
 }
 
-void Client::WriteByte(char data) {
-  send(sock, &data, 1, 0);
-}
+void Client::WriteByte(char data) { send(sock, &data, 1, 0); }
 
-void Client::WriteShort(short data) {
-  send(sock, &data, 2, 0);
-}
+void Client::WriteShort(short data) { send(sock, &data, 2, 0); }
 
-void Client::WriteInt(int data) {
-  send(sock, &data, 4, 0);
-}
+void Client::WriteInt(int data) { send(sock, &data, 4, 0); }
 
-void Client::WriteLong(long data) {
-  send(sock, &data, 8, 0);
-}
+void Client::WriteLong(long data) { send(sock, &data, 8, 0); }
 
-void Client::WriteData(char *buf, int length) {
-  send(sock, buf, length, 0);
-}
+void Client::WriteData(char *buf, int length) { send(sock, buf, length, 0); }
 
-} // namespace ignite
+}  // namespace ignite

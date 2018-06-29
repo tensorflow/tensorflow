@@ -14,57 +14,64 @@ limitations under the License.
 ==============================================================================*/
 
 #include "ignite_dataset_iterator.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace ignite {
 
-IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx, std::string cache_name, std::string host, tensorflow::int32 port, bool local, tensorflow::int32 part, tensorflow::int32 page_size, std::vector<tensorflow::int32> schema, std::vector<tensorflow::int32> permutation) 
-  : GraphDatasetBase(ctx),
-    cache_name_(cache_name),
-    host_(host),
-    port_(port),
-    local_(local),
-    part_(part),
-    page_size_(page_size),
-    schema_(schema),
-    permutation_(permutation) {}
+IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx,
+                             std::string cache_name, std::string host,
+                             tensorflow::int32 port, bool local,
+                             tensorflow::int32 part,
+                             tensorflow::int32 page_size,
+                             std::vector<tensorflow::int32> schema,
+                             std::vector<tensorflow::int32> permutation)
+    : GraphDatasetBase(ctx),
+      cache_name_(cache_name),
+      host_(host),
+      port_(port),
+      local_(local),
+      part_(part),
+      page_size_(page_size),
+      schema_(schema),
+      permutation_(permutation) {
+  LOG(INFO) << "Ignite Dataset created";
+}
 
-std::unique_ptr<tensorflow::IteratorBase> IgniteDataset::MakeIteratorInternal(const tensorflow::string& prefix) const {
-  return std::unique_ptr<tensorflow::IteratorBase>(new IgniteDatasetIterator({this, tensorflow::strings::StrCat(prefix, "::Kafka")}, 
-    this->host_, this->port_, this->cache_name_, this->local_, this->part_, this->page_size_, this->schema_, this->permutation_));
+IgniteDataset::~IgniteDataset() {
+  LOG(INFO) << "Ignite Dataset destroyed";
+}
+
+std::unique_ptr<tensorflow::IteratorBase> IgniteDataset::MakeIteratorInternal(
+    const tensorflow::string& prefix) const {
+  return std::unique_ptr<tensorflow::IteratorBase>(new IgniteDatasetIterator(
+      {this, tensorflow::strings::StrCat(prefix, "::Kafka")}, this->host_,
+      this->port_, this->cache_name_, this->local_, this->part_,
+      this->page_size_, this->schema_, this->permutation_));
 }
 
 const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
-  static tensorflow::DataTypeVector* dtypes = new tensorflow::DataTypeVector();
+  tensorflow::DataTypeVector* dtypes = new tensorflow::DataTypeVector();
 
-  for (auto e: schema_) {
+  for (auto e : schema_) {
     if (e == 1 || e == 12) {
       dtypes->push_back(tensorflow::DT_INT8);
-    }
-    else if (e == 2 || e == 13) {
+    } else if (e == 2 || e == 13) {
       dtypes->push_back(tensorflow::DT_INT16);
-    }
-    else if (e == 3 || e == 14) {
+    } else if (e == 3 || e == 14) {
       dtypes->push_back(tensorflow::DT_INT32);
-    }
-    else if (e == 4 || e == 15) {
+    } else if (e == 4 || e == 15) {
       dtypes->push_back(tensorflow::DT_INT64);
-    }
-    else if (e == 5 || e == 16) {
+    } else if (e == 5 || e == 16) {
       dtypes->push_back(tensorflow::DT_FLOAT);
-    }
-    else if (e == 6 || e == 17) {
+    } else if (e == 6 || e == 17) {
       dtypes->push_back(tensorflow::DT_DOUBLE);
-    }
-    else if (e == 7 || e == 18) {
+    } else if (e == 7 || e == 18) {
       dtypes->push_back(tensorflow::DT_UINT8);
-    }
-    else if (e == 8 || e == 19) {
+    } else if (e == 8 || e == 19) {
       dtypes->push_back(tensorflow::DT_BOOL);
-    }
-    else if (e == 9 || e == 20) {
+    } else if (e == 9 || e == 20) {
       dtypes->push_back(tensorflow::DT_STRING);
-    }
-    else {
+    } else {
       // skip.
     }
   }
@@ -72,17 +79,17 @@ const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
   return *dtypes;
 }
 
-const std::vector<tensorflow::PartialTensorShape>& IgniteDataset::output_shapes() const {
-  static std::vector<tensorflow::PartialTensorShape>* shapes =new std::vector<tensorflow::PartialTensorShape>();
+const std::vector<tensorflow::PartialTensorShape>&
+IgniteDataset::output_shapes() const {
+  std::vector<tensorflow::PartialTensorShape>* shapes =
+      new std::vector<tensorflow::PartialTensorShape>();
 
-  for (auto e: schema_) {
+  for (auto e : schema_) {
     if (e >= 1 && e < 10) {
       shapes->push_back(tensorflow::PartialTensorShape({}));
-    }
-    else if (e >= 12 && e < 21) {
+    } else if (e >= 12 && e < 21) {
       shapes->push_back(tensorflow::PartialTensorShape({-1}));
-    }
-    else {
+    } else {
       // skip.
     }
   }
@@ -90,12 +97,13 @@ const std::vector<tensorflow::PartialTensorShape>& IgniteDataset::output_shapes(
   return *shapes;
 }
 
-tensorflow::string IgniteDataset::DebugString() const { 
-  return "KafkaDatasetOp::Dataset"; 
+tensorflow::string IgniteDataset::DebugString() const {
+  return "KafkaDatasetOp::Dataset";
 }
 
-tensorflow::Status IgniteDataset::AsGraphDefInternal(DatasetGraphDefBuilder* b, tensorflow::Node** output) const {
+tensorflow::Status IgniteDataset::AsGraphDefInternal(
+    DatasetGraphDefBuilder* b, tensorflow::Node** output) const {
   return tensorflow::Status::OK();
 }
 
-} // namespace ignite
+}  // namespace ignite
