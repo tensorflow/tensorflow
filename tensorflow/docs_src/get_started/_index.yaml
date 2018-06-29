@@ -138,9 +138,9 @@ landing_page:
               </li>
               <li>
                 {% dynamic if request.tld == 'cn' %}
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/variables_models_training.ipynb" class="external">Variables, models, and training</a>
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_training.ipynb" class="external">Custom training: variables and models</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/variables_models_training.ipynb" class="external">Variables, models, and training</a>
+                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_training.ipynb" class="external">Custom training: variables and models</a>
                 {% dynamic endif %}
               </li>
               <li>

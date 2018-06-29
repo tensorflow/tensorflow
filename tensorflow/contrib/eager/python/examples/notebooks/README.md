@@ -7,5 +7,5 @@ differentiation. Start with these notebooks, then read the
 
 1. [Eager execution basics](./eager_basics.ipynb)
 2. [Automatic differentiation and gradient tapes](./automatic_differentiation.ipynb)
-3. [Variables, models, and training](./variables_models_training.ipynb)
+3. [Custom training: variables and models](./custom_training.ipynb)
 4. [Custom layers](./custom_layers.ipynb)
