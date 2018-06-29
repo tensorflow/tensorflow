@@ -29,6 +29,7 @@ from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -108,6 +109,7 @@ class Sequential(Model):
       return self._layers[1:]
     return self._layers
 
+  @checkpointable.no_automatic_dependency_tracking
   def add(self, layer):
     """Adds a layer instance on top of the layer stack.
 
@@ -191,6 +193,7 @@ class Sequential(Model):
     else:
       self._layers.append(layer)
 
+  @checkpointable.no_automatic_dependency_tracking
   def pop(self):
     """Removes the last layer in the model.
 
@@ -210,6 +213,7 @@ class Sequential(Model):
       self.outputs = [self.layers[-1].output]
       self.build()
 
+  @checkpointable.no_automatic_dependency_tracking
   def build(self, input_shape=None):
     if input_shape and not self.inputs:
       batch_shape = tuple(input_shape)

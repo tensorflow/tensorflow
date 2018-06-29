@@ -40,6 +40,7 @@ from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saveable_object as saveable_object_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.checkpointable import base
+from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
@@ -93,7 +94,7 @@ class _CheckpointRestoreCoordinator(object):
     # use them (for example because of inconsistent references when
     # loading). Used to make status assertions fail when loading checkpoints
     # that don't quite match.
-    self.all_python_objects = weakref.WeakSet()
+    self.all_python_objects = _ObjectIdentityWeakSet()
     self.save_path = save_path
     self.dtype_map = dtype_map
     # When graph building, contains a list of ops to run to restore objects from
@@ -272,11 +273,129 @@ def object_metadata(save_path):
   return object_graph_proto
 
 
+class _ObjectIdentityWrapper(object):
+  """Wraps an object, mapping __eq__ on wrapper to "is" on wrapped.
+
+  Since __eq__ is based on object identity, it's safe to also define __hash__
+  based on object ids. This lets us add unhashable types like checkpointable
+  _ListWrapper objects to object-identity collections.
+  """
+
+  def __init__(self, wrapped):
+    self._wrapped = wrapped
+
+  @property
+  def unwrapped(self):
+    return self._wrapped
+
+  def __eq__(self, other):
+    if isinstance(other, _ObjectIdentityWrapper):
+      return self._wrapped is other._wrapped  # pylint: disable=protected-access
+    return self._wrapped is other
+
+  def __hash__(self):
+    # Wrapper id() is also fine for weakrefs. In fact, we rely on
+    # id(weakref.ref(a)) == id(weakref.ref(a)) and weakref.ref(a) is
+    # weakref.ref(a) in _WeakObjectIdentityWrapper.
+    return id(self._wrapped)
+
+
+class _WeakObjectIdentityWrapper(_ObjectIdentityWrapper):
+
+  def __init__(self, wrapped):
+    super(_WeakObjectIdentityWrapper, self).__init__(weakref.ref(wrapped))
+
+  @property
+  def unwrapped(self):
+    return self._wrapped()
+
+
+class _ObjectIdentityDictionary(collections.MutableMapping):
+  """A mutable mapping data structure which compares using "is".
+
+  This is necessary because we have checkpointable objects (_ListWrapper) which
+  have behavior identical to built-in Python lists (including being unhashable
+  and comparing based on the equality of their contents by default).
+  """
+
+  def __init__(self):
+    self._storage = {}
+
+  def _wrap_key(self, key):
+    return _ObjectIdentityWrapper(key)
+
+  def __getitem__(self, key):
+    return self._storage[self._wrap_key(key)]
+
+  def __setitem__(self, key, value):
+    self._storage[self._wrap_key(key)] = value
+
+  def __delitem__(self, key):
+    del self._storage[self._wrap_key(key)]
+
+  def __len__(self):
+    return len(self._storage)
+
+  def __iter__(self):
+    for key in self._storage:
+      yield key.unwrapped
+
+
+class _ObjectIdentityWeakKeyDictionary(_ObjectIdentityDictionary):
+  """Like weakref.WeakKeyDictionary, but compares objects with "is"."""
+
+  def _wrap_key(self, key):
+    return _WeakObjectIdentityWrapper(key)
+
+  def __len__(self):
+    # Iterate, discarding old weak refs
+    return len(list(self._storage))
+
+  def __iter__(self):
+    keys = self._storage.keys()
+    for key in keys:
+      unwrapped = key.unwrapped
+      if unwrapped is None:
+        del self[key]
+      else:
+        yield unwrapped
+
+
+class _ObjectIdentityWeakSet(collections.MutableSet):
+  """Like weakref.WeakSet, but compares objects with "is"."""
+
+  def __init__(self):
+    self._storage = set()
+
+  def __contains__(self, key):
+    return _WeakObjectIdentityWrapper(key) in self._storage
+
+  def discard(self, key):
+    self._storage.discard(_WeakObjectIdentityWrapper(key))
+
+  def add(self, key):
+    self._storage.add(_WeakObjectIdentityWrapper(key))
+
+  def __len__(self):
+    # Iterate, discarding old weak refs
+    return len(list(self))
+
+  def __iter__(self):
+    keys = list(self._storage)
+    for key in keys:
+      unwrapped = key.unwrapped
+      if unwrapped is None:
+        self.discard(key)
+      else:
+        yield unwrapped
+
+
 def _breadth_first_checkpointable_traversal(root_checkpointable):
   """Find shortest paths to all variables owned by dependencies of root."""
   bfs_sorted = []
   to_visit = collections.deque([root_checkpointable])
-  path_to_root = {root_checkpointable: ()}
+  path_to_root = _ObjectIdentityDictionary()
+  path_to_root[root_checkpointable] = ()
   while to_visit:
     current_checkpointable = to_visit.popleft()
     if isinstance(current_checkpointable, tracking.NotCheckpointable):
@@ -337,7 +456,7 @@ def _slot_variable_naming_for_optimizer(optimizer_path):
 def _serialize_slot_variables(checkpointable_objects, node_ids, object_names):
   """Gather and name slot variables."""
   non_slot_objects = list(checkpointable_objects)
-  slot_variables = {}
+  slot_variables = _ObjectIdentityDictionary()
   for checkpointable in non_slot_objects:
     if isinstance(checkpointable, optimizer_lib.Optimizer):
       naming_scheme = _slot_variable_naming_for_optimizer(
@@ -500,11 +619,12 @@ def _serialize_object_graph(root_checkpointable, saveables_cache):
   """
   checkpointable_objects, path_to_root = (
       _breadth_first_checkpointable_traversal(root_checkpointable))
-  object_names = {
-      obj: _object_prefix_from_path(path)
-      for obj, path in path_to_root.items()}
-  node_ids = {node: node_id for node_id, node
-              in enumerate(checkpointable_objects)}
+  object_names = _ObjectIdentityDictionary()
+  for obj, path in path_to_root.items():
+    object_names[obj] = _object_prefix_from_path(path)
+  node_ids = _ObjectIdentityDictionary()
+  for node_id, node in enumerate(checkpointable_objects):
+    node_ids[node] = node_id
   slot_variables = _serialize_slot_variables(
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
@@ -535,11 +655,12 @@ def list_objects(root_checkpointable):
   # to run.
   checkpointable_objects, path_to_root = (
       _breadth_first_checkpointable_traversal(root_checkpointable))
-  object_names = {
-      obj: _object_prefix_from_path(path)
-      for obj, path in path_to_root.items()}
-  node_ids = {node: node_id for node_id, node
-              in enumerate(checkpointable_objects)}
+  object_names = _ObjectIdentityDictionary()
+  for obj, path in path_to_root.items():
+    object_names[obj] = _object_prefix_from_path(path)
+  node_ids = _ObjectIdentityDictionary()
+  for node_id, node in enumerate(checkpointable_objects):
+    node_ids[node] = node_id
   _serialize_slot_variables(
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
@@ -988,7 +1109,7 @@ class CheckpointableSaver(object):
     else:
       # Maps Checkpointable objects -> attribute names -> SaveableObjects, to
       # avoid re-creating SaveableObjects when graph building.
-      self._saveable_object_cache = weakref.WeakKeyDictionary()
+      self._saveable_object_cache = _ObjectIdentityWeakKeyDictionary()
 
   @property
   def _root_checkpointable(self):
@@ -1310,7 +1431,7 @@ class Checkpoint(tracking.Checkpointable):
       with ops.device("/cpu:0"):
         # add_variable creates a dependency named "save_counter"; NoDependency
         # prevents creating a second dependency named "_save_counter".
-        self._save_counter = tracking.NoDependency(
+        self._save_counter = data_structures.NoDependency(
             add_variable(self, name="save_counter", initializer=0,
                          dtype=dtypes.int64))
 

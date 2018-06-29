@@ -30,6 +30,14 @@ def is_layer(obj):
           and hasattr(obj, "variables"))
 
 
+def filter_empty_layer_containers(layer_list):
+  """Filter out empty Layer-like containers."""
+  return [layer for layer in layer_list
+          # Filter out only empty Checkpointable data structures. Empty Networks
+          # will still show up in Model.layers.
+          if is_layer(layer) or getattr(layer, "layers", True)]
+
+
 def gather_trainable_weights(trainable, sub_layers, extra_variables):
   """Lists the trainable weights for an object with sub-layers.
 
