@@ -24,7 +24,63 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
+namespace {
+// device sign function
+template <class T>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T sgn(const T x) {
+  T zero(0);
+  T one(1);
+  return (x == zero ? zero : (x < zero ? -one : one));
+}
+}  // namespace
+
 namespace functor {
+namespace {
+
+template <typename T>
+__global__ void IRpropPlusKernel(const int32 N, T* var, const T* grad,
+                                 const T* eta_minus, const T* eta_plus,
+                                 const T* delta_min, const T* delta_max,
+                                 const T* error, const T* old_error,
+                                 T* old_grad, T* delta_update) {
+  for (int i : CudaGridRangeX(N)) {
+    auto sign_t = sgn(grad[i] * old_grad[i]);
+
+    if (sign_t < T(0)) {
+      // backtracking-weight
+      if (*error > *old_error) var[i] -= -sgn(old_grad[i]) * delta_update[i];
+
+      delta_update[i] = tf_max(*delta_min, delta_update[i] * *eta_minus);
+      old_grad[i] = T(0);
+    } else {
+      if (sign_t > T(0))
+        delta_update[i] = tf_min(*delta_max, delta_update[i] * *eta_plus);
+
+      old_grad[i] = grad[i];
+      var[i] += -sgn(grad[i]) * delta_update[i];
+    }
+  }
+}
+
+template <typename T>
+__global__ void RpropMinusKernel(const int32 N, T* var, const T* grad,
+                                 const T* eta_minus, const T* eta_plus,
+                                 const T* delta_min, const T* delta_max,
+                                 T* old_grad, T* delta_update) {
+  for (int i : CudaGridRangeX(N)) {
+    auto sign_t = sgn(grad[i] * old_grad[i]);
+
+    if (sign_t > T(0)) {
+      delta_update[i] = tf_min(*delta_max, delta_update[i] * *eta_plus);
+
+    } else if (sign_t < T(0)) {
+      delta_update[i] = tf_max(*delta_min, delta_update[i] * *eta_minus);
+    }
+  }
+}
+
+}  // namespace
+
 template <typename T>
 struct ApplyGradientDescent<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
@@ -284,6 +340,61 @@ struct ApplyPowerSign<GPUDevice, T> {
   }
 };
 
+template <typename T>
+struct ApplyIRpropPlus<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat old_grad,
+                  typename TTypes<T>::Flat delta_update,
+                  typename TTypes<T>::ConstScalar eta_minus,
+                  typename TTypes<T>::ConstScalar eta_plus,
+                  typename TTypes<T>::ConstScalar delta_min,
+                  typename TTypes<T>::ConstScalar delta_max,
+                  typename TTypes<T>::ConstScalar error,
+                  typename TTypes<T>::ConstScalar old_error,
+                  typename TTypes<T>::ConstFlat grad) {
+    const int32 N = var.size();
+
+    CudaLaunchConfig config = GetCudaLaunchConfig(N, d);
+    IRpropPlusKernel<<<config.block_count, config.thread_per_block, 0,
+                       d.stream()>>>(
+        config.virtual_thread_count, var.data(), grad.data(), eta_minus.data(),
+        eta_plus.data(), delta_min.data(), delta_max.data(), error.data(),
+        old_error.data(), old_grad.data(), delta_update.data());
+
+    old_grad.device(d) = old_grad;
+    delta_update.device(d) = delta_update;
+    // update step
+    var.device(d) = var;
+  }
+};
+
+template <typename T>
+struct ApplyRpropMinus<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat old_grad,
+                  typename TTypes<T>::Flat delta_update,
+                  typename TTypes<T>::ConstScalar eta_minus,
+                  typename TTypes<T>::ConstScalar eta_plus,
+                  typename TTypes<T>::ConstScalar delta_min,
+                  typename TTypes<T>::ConstScalar delta_max,
+                  typename TTypes<T>::ConstFlat grad) {
+    const int32 N = var.size();
+
+    CudaLaunchConfig config = GetCudaLaunchConfig(N, d);
+    RpropMinusKernel<<<config.block_count, config.thread_per_block, 0,
+                       d.stream()>>>(
+        config.virtual_thread_count, var.data(), grad.data(), eta_minus.data(),
+        eta_plus.data(), delta_min.data(), delta_max.data(), old_grad.data(),
+        delta_update.data());
+
+    old_grad.device(d) = grad;
+    delta_update.device(d) = delta_update;
+
+    // update step
+    var.device(d) -= grad.sign() * delta_update;
+  }
+};
+
 }  // namespace functor
 
 template struct functor::ApplyGradientDescent<GPUDevice, Eigen::half>;
@@ -325,6 +436,14 @@ template struct functor::ApplyAddSign<GPUDevice, double>;
 template struct functor::ApplyPowerSign<GPUDevice, Eigen::half>;
 template struct functor::ApplyPowerSign<GPUDevice, float>;
 template struct functor::ApplyPowerSign<GPUDevice, double>;
+
+template struct functor::ApplyIRpropPlus<GPUDevice, Eigen::half>;
+template struct functor::ApplyIRpropPlus<GPUDevice, float>;
+template struct functor::ApplyIRpropPlus<GPUDevice, double>;
+
+template struct functor::ApplyRpropMinus<GPUDevice, Eigen::half>;
+template struct functor::ApplyRpropMinus<GPUDevice, float>;
+template struct functor::ApplyRpropMinus<GPUDevice, double>;
 
 }  // end namespace tensorflow
 

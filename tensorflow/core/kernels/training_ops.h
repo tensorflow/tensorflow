@@ -196,6 +196,32 @@ struct ApplyPowerSign {
                   typename TTypes<T>::ConstFlat grad);
 };
 
+template <typename Device, typename T>
+struct ApplyIRpropPlus {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat old_grad,
+                  typename TTypes<T>::Flat delta_update,
+                  typename TTypes<T>::ConstScalar eta_minus,
+                  typename TTypes<T>::ConstScalar eta_plus,
+                  typename TTypes<T>::ConstScalar delta_min,
+                  typename TTypes<T>::ConstScalar delta_max,
+                  typename TTypes<T>::ConstScalar error,
+                  typename TTypes<T>::ConstScalar old_error,
+                  typename TTypes<T>::ConstFlat grad);
+};
+
+template <typename Device, typename T>
+struct ApplyRpropMinus {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat old_grad,
+                  typename TTypes<T>::Flat delta_update,
+                  typename TTypes<T>::ConstScalar eta_minus,
+                  typename TTypes<T>::ConstScalar eta_plus,
+                  typename TTypes<T>::ConstScalar delta_min,
+                  typename TTypes<T>::ConstScalar delta_max,
+                  typename TTypes<T>::ConstFlat grad);
+};
+
 }  // end namespace functor
 }  // end namespace tensorflow
 

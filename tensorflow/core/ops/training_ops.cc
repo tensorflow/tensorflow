@@ -1053,4 +1053,62 @@ REGISTER_OP("ResourceApplyPowerSign")
       return ApplyPowerSignShapeFn(c, /*sparse=*/false);
     });
 
+static Status ApplyRpropShapeFn(InferenceContext* c, bool withError) {
+  ShapeHandle unused;
+  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
+  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // old_grad
+  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // delta
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // scalar
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // scalar
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));       // scalar
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));       // scalar
+  // for iRprop+ which uses the error (loss) value
+  if (withError) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));  // scalar
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));  // scalar
+    TF_RETURN_IF_ERROR(c->Merge(s, c->input(9), &s));          // grad (delta)
+  } else {
+    TF_RETURN_IF_ERROR(c->Merge(s, c->input(7), &s));  // grad (delta)
+  }
+
+  if (c->num_outputs() > 0) {
+    c->set_output(0, s);
+  }
+  return Status::OK();
+}
+
+REGISTER_OP("ApplyIRpropPlus")
+    .Input("var: Ref(T)")
+    .Input("old_grad: Ref(T)")
+    .Input("delta_update: Ref(T)")
+    .Input("eta_minus: T")
+    .Input("eta_plus: T")
+    .Input("delta_min: T")
+    .Input("delta_max: T")
+    .Input("error: T")
+    .Input("old_error: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyRpropShapeFn(c, /*error=*/true);
+    });
+
+REGISTER_OP("ApplyRpropMinus")
+    .Input("var: Ref(T)")
+    .Input("old_grad: Ref(T)")
+    .Input("delta_update: Ref(T)")
+    .Input("eta_minus: T")
+    .Input("eta_plus: T")
+    .Input("delta_min: T")
+    .Input("delta_max: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyRpropShapeFn(c, /*error=*/false);
+    });
+
 }  // namespace tensorflow

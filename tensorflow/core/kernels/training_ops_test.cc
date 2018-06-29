@@ -308,4 +308,92 @@ static void BM_PowerSign(int iters, int params) {
 }
 BENCHMARK(BM_PowerSign)->Arg(128 << 10)->Arg(256 << 10);
 
+static void IRpropPlus(int32 n, Graph** init_g, Graph** train_g) {
+  TensorShape shape({n});
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto old_grad = Var(g, n);
+    auto delta = Var(g, n);
+    auto zero = Zeros(g, n);
+    test::graph::Assign(g, var, zero);
+    test::graph::Assign(g, old_grad, zero);
+    test::graph::Assign(g, delta, zero);
+    *init_g = g;
+  }
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto old_grad = Var(g, n);
+    auto delta = Var(g, n);
+
+    auto eta_min = Scalar(g, 0.5);
+    auto eta_plus = Scalar(g, 1.2);
+    auto delta_min = Scalar(g, 1e-6);
+    auto delta_max = Scalar(g, 50);
+    auto error = Scalar(g, 1);
+    auto old_error = Scalar(g, 0.);
+
+    auto grad = Random(g, n);
+    test::graph::Multi(g, "ApplyIRpropPlus",
+                       {var, old_grad, delta, eta_min, eta_plus, delta_min,
+                        delta_max, error, old_error, grad});
+    *train_g = g;
+  }
+}
+
+static void BM_IRpropPlus(int iters, int params) {
+  const int64 tot = static_cast<int64>(iters) * params;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * sizeof(float));
+  Graph* init;
+  Graph* train;
+  IRpropPlus(params, &init, &train);
+  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+}
+BENCHMARK(BM_IRpropPlus)->Arg(128 << 10)->Arg(256 << 10);
+
+static void RpropMinus(int32 n, Graph** init_g, Graph** train_g) {
+  TensorShape shape({n});
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto old_grad = Var(g, n);
+    auto delta = Var(g, n);
+    auto zero = Zeros(g, n);
+    test::graph::Assign(g, var, zero);
+    test::graph::Assign(g, old_grad, zero);
+    test::graph::Assign(g, delta, zero);
+    *init_g = g;
+  }
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto old_grad = Var(g, n);
+    auto delta = Var(g, n);
+
+    auto eta_min = Scalar(g, 0.5);
+    auto eta_plus = Scalar(g, 1.2);
+    auto delta_min = Scalar(g, 1e-6);
+    auto delta_max = Scalar(g, 50);
+
+    auto grad = Random(g, n);
+    test::graph::Multi(
+        g, "ApplyRpropMinus",
+        {var, old_grad, delta, eta_min, eta_plus, delta_min, delta_max, grad});
+    *train_g = g;
+  }
+}
+
+static void BM_RpropMinus(int iters, int params) {
+  const int64 tot = static_cast<int64>(iters) * params;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * sizeof(float));
+  Graph* init;
+  Graph* train;
+  RpropMinus(params, &init, &train);
+  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+}
+BENCHMARK(BM_RpropMinus)->Arg(128 << 10)->Arg(256 << 10);
+
 }  // end namespace tensorflow

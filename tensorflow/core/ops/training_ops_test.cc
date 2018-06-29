@@ -366,4 +366,54 @@ TEST(TrainingOpsTest, ApplyPowerSign_ShapeFn) {
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;?;?;?;?;[?];?");
 }
 
+static void TestIRpropPlusOp(ShapeInferenceTestOp op) {
+  // Output is a merge of inputs 0, 1, 2, and 9
+  // (var, old_grad, delta, and grad).
+  INFER_OK(op, "[1,?,?,?];[?,2,?,?];[?,?,3,?];[];[];[];[];[];[];[?,?,?,4]",
+           "[d0_0,d1_1,d2_2,d9_3]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[2];[1];[];[];[];[];[];[];[1]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[1];[2];[];[];[];[];[];[];[1]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[1];[1];[];[];[];[];[];[];[2]");
+
+  // eta_minus, eta_plus, delta_min, delta_max, error, old_error - scalars.
+  const char err[] = "Shape must be rank 0 but is rank 1";
+  INFER_ERROR(err, op, "?;?;?;[?];?;?;?;?;?;?");
+  INFER_ERROR(err, op, "?;?;?;?;[?];?;?;?;?;?");
+  INFER_ERROR(err, op, "?;?;?;?;?;[?];?;?;?;?");
+  INFER_ERROR(err, op, "?;?;?;?;?;?;[?];?;?;?");
+  INFER_ERROR(err, op, "?;?;?;?;?;?;?;[?];?;?");
+  INFER_ERROR(err, op, "?;?;?;?;?;?;?;?;[?];?");
+}
+
+static void TestRpropMinusOp(ShapeInferenceTestOp op) {
+  // Output is a merge of inputs 0, 1, 2, and 7
+  // (var, old_grad, delta, and grad).
+  INFER_OK(op, "[1,?,?,?];[?,2,?,?];[?,?,3,?];[];[];[];[];[?,?,?,4]",
+           "[d0_0,d1_1,d2_2,d7_3]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[2];[1];[];[];[];[];[1]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[1];[2];[];[];[];[];[1]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1];[1];[1];[];[];[];[];[2]");
+
+  // eta_minus, eta_plus, delta_min, delta_max - scalars.
+  const char err[] = "Shape must be rank 0 but is rank 1";
+  INFER_ERROR(err, op, "?;?;?;[?];?;?;?;?");
+  INFER_ERROR(err, op, "?;?;?;?;[?];?;?;?");
+  INFER_ERROR(err, op, "?;?;?;?;?;[?];?;?");
+  INFER_ERROR(err, op, "?;?;?;?;?;?;[?];?");
+}
+
+TEST(TrainingOpsTest, ApplyRpropShapeFn) {
+  ShapeInferenceTestOp irprop_plus_op("ApplyIRpropPlus");
+  ShapeInferenceTestOp rprop_minus_op("ApplyRpropMinus");
+
+  TestIRpropPlusOp(irprop_plus_op);
+  TestRpropMinusOp(rprop_minus_op);
+}
+
 }  // end namespace tensorflow

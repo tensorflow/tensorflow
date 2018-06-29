@@ -418,6 +418,81 @@ struct ApplyPowerSign<CPUDevice, T> {
   }
 };
 
+template <typename T>
+struct ApplyIRpropPlus<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat old_grad,
+                  typename TTypes<T>::Flat delta_update,
+                  typename TTypes<T>::ConstScalar eta_minus,
+                  typename TTypes<T>::ConstScalar eta_plus,
+                  typename TTypes<T>::ConstScalar delta_min,
+                  typename TTypes<T>::ConstScalar delta_max,
+                  typename TTypes<T>::ConstScalar error,
+                  typename TTypes<T>::ConstScalar old_error,
+                  typename TTypes<T>::ConstFlat grad) {
+    auto sign_t = (old_grad * grad).sign();
+    // change to ColMaj to perform operations
+    Eigen::Tensor<T, 1> grad_sign = sign_t.swap_layout();
+
+    for (int i = 0; i < var.size(); i++) {
+      auto sign = grad_sign(i);
+
+      if (sign < T(0)) {
+        // revert deltaW(t-1) first then update delta
+        if (error() > old_error())
+          // compute deltaW and update the weight
+          var(i) -= delta_update(i) * (-sgn(old_grad(i)));
+
+        delta_update(i) = std::max(delta_min(), delta_update(i) * eta_minus());
+        // gradient backtracking trick
+        old_grad(i) = T(0);
+      } else {
+        // no sign change
+        if (sign > T(0))
+          delta_update(i) = std::min(delta_max(), delta_update(i) * eta_plus());
+
+        var(i) += -sgn(grad(i)) * delta_update(i);
+        old_grad(i) = grad(i);
+      }
+    }
+    old_grad.device(d) = old_grad;
+    delta_update.device(d) = delta_update;
+    var.device(d) = var;
+  }
+};
+
+template <typename T>
+struct ApplyRpropMinus<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat old_grad,
+                  typename TTypes<T>::Flat delta_update,
+                  typename TTypes<T>::ConstScalar eta_minus,
+                  typename TTypes<T>::ConstScalar eta_plus,
+                  typename TTypes<T>::ConstScalar delta_min,
+                  typename TTypes<T>::ConstScalar delta_max,
+                  typename TTypes<T>::ConstFlat grad) {
+    auto sign_t = (old_grad * grad).sign();
+    Eigen::Tensor<T, 1> grad_sign = sign_t.swap_layout();
+
+    for (int i = 0; i < var.size(); i++) {
+      auto sign = grad_sign(i);
+      // no sign change
+      if (sign > T(0)) {
+        // min delta
+        delta_update(i) = std::min(delta_max(), delta_update(i) * eta_plus());
+      } else if (sign < T(0)) {
+        delta_update(i) = std::max(delta_min(), delta_update(i) * eta_minus());
+      }
+    }
+    // update slots
+    old_grad.device(d) = grad;
+    delta_update.device(d) = delta_update;
+
+    // update step
+    var.device(d) -= grad.sign() * delta_update;
+  }
+};
+
 }  // namespace functor
 
 template <typename Device, typename T>
@@ -3655,6 +3730,270 @@ DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half);
+REGISTER_KERNELS(GPU, float);
+REGISTER_KERNELS(GPU, double);
+#endif
+#undef REGISTER_CPU_KERNELS
+#undef REGISTER_KERNELS
+
+template <typename Device, typename T>
+class ApplyIRpropPlusOp : public OpKernel {
+ public:
+  explicit ApplyIRpropPlusOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
+
+    Tensor var;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
+    Tensor old_grad;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &old_grad));
+    Tensor delta_update;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, false, &delta_update));
+    OP_REQUIRES(
+        ctx, var.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(0)));
+
+    OP_REQUIRES(
+        ctx, old_grad.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(1)));
+
+    OP_REQUIRES(
+        ctx, delta_update.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(2)));
+
+    const Tensor& eta_minus = ctx->input(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(eta_minus.shape()),
+                errors::InvalidArgument("eta_minus is not a scalar: ",
+                                        eta_minus.shape().DebugString()));
+    const Tensor& eta_plus = ctx->input(4);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(eta_plus.shape()),
+                errors::InvalidArgument("eta_plus is not a scalar: ",
+                                        eta_plus.shape().DebugString()));
+    const Tensor& delta_min = ctx->input(5);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(delta_min.shape()),
+                errors::InvalidArgument("delta_min is not a scalar: ",
+                                        delta_min.shape().DebugString()));
+    const Tensor& delta_max = ctx->input(6);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(delta_max.shape()),
+                errors::InvalidArgument("delta_max is not a scalar: ",
+                                        delta_max.shape().DebugString()));
+
+    const Tensor& error = ctx->input(7);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(error.shape()),
+                errors::InvalidArgument("error is not a scalar: ",
+                                        error.shape().DebugString()));
+    const Tensor& old_error = ctx->input(8);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(old_error.shape()),
+                errors::InvalidArgument("old_error is not a scalar: ",
+                                        old_error.shape().DebugString()));
+
+    const Tensor& grad = ctx->input(9);
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(grad.shape()),
+        errors::InvalidArgument("var and grad do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                grad.shape().DebugString()));
+
+    OP_REQUIRES(ctx, var.shape().IsSameSize(delta_update.shape()),
+                errors::InvalidArgument(
+                    "var and delta_update do not have the same shape",
+                    var.shape().DebugString(), " ",
+                    delta_update.shape().DebugString()));
+
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(old_grad.shape()),
+        errors::InvalidArgument("var and old_grad do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                old_grad.shape().DebugString()));
+
+    const Device& device = ctx->template eigen_device<Device>();
+
+    functor::ApplyIRpropPlus<Device, T>()(
+        device, var.flat<T>(), old_grad.flat<T>(), delta_update.flat<T>(),
+        eta_minus.scalar<T>(), eta_plus.scalar<T>(), delta_min.scalar<T>(),
+        delta_max.scalar<T>(), error.scalar<T>(), old_error.scalar<T>(),
+        grad.flat<T>());
+    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
+  }
+
+ private:
+  bool use_exclusive_lock_;
+};
+
+#define REGISTER_KERNELS(D, T)                                           \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("ApplyIRpropPlus").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyIRpropPlusOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
+
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#if GOOGLE_CUDA
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                             \
+  template <>                                           \
+  void ApplyIRpropPlus<GPUDevice, T>::operator()(       \
+      const GPUDevice& d, typename TTypes<T>::Flat var, \
+      typename TTypes<T>::Flat old_grad,                \
+      typename TTypes<T>::Flat delta_update,            \
+      typename TTypes<T>::ConstScalar eta_minus,        \
+      typename TTypes<T>::ConstScalar eta_plus,         \
+      typename TTypes<T>::ConstScalar delta_min,        \
+      typename TTypes<T>::ConstScalar delta_max,        \
+      typename TTypes<T>::ConstScalar error,            \
+      typename TTypes<T>::ConstScalar old_error,        \
+      typename TTypes<T>::ConstFlat grad);              \
+  extern template struct ApplyIRpropPlus<GPUDevice, T>;
+DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half);
+REGISTER_KERNELS(GPU, float);
+REGISTER_KERNELS(GPU, double);
+#endif
+#undef REGISTER_CPU_KERNELS
+#undef REGISTER_KERNELS
+
+template <typename Device, typename T>
+class ApplyRpropMinusOp : public OpKernel {
+ public:
+  explicit ApplyRpropMinusOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
+
+    Tensor var;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
+    Tensor old_grad;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &old_grad));
+    Tensor delta_update;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, false, &delta_update));
+    OP_REQUIRES(
+        ctx, var.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(0)));
+
+    OP_REQUIRES(
+        ctx, old_grad.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(1)));
+
+    OP_REQUIRES(
+        ctx, delta_update.IsInitialized(),
+        errors::FailedPrecondition(
+            "Attempting to use uninitialized variables: ", requested_input(2)));
+
+    const Tensor& eta_minus = ctx->input(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(eta_minus.shape()),
+                errors::InvalidArgument("eta_minus is not a scalar: ",
+                                        eta_minus.shape().DebugString()));
+    const Tensor& eta_plus = ctx->input(4);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(eta_plus.shape()),
+                errors::InvalidArgument("eta_plus is not a scalar: ",
+                                        eta_plus.shape().DebugString()));
+    const Tensor& delta_min = ctx->input(5);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(delta_min.shape()),
+                errors::InvalidArgument("delta_min is not a scalar: ",
+                                        delta_min.shape().DebugString()));
+    const Tensor& delta_max = ctx->input(6);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(delta_max.shape()),
+                errors::InvalidArgument("delta_max is not a scalar: ",
+                                        delta_max.shape().DebugString()));
+
+    const Tensor& grad = ctx->input(7);
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(grad.shape()),
+        errors::InvalidArgument("var and grad do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                grad.shape().DebugString()));
+
+    OP_REQUIRES(ctx, var.shape().IsSameSize(delta_update.shape()),
+                errors::InvalidArgument(
+                    "var and delta_update do not have the same shape",
+                    var.shape().DebugString(), " ",
+                    delta_update.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(old_grad.shape()),
+        errors::InvalidArgument("var and old_grad do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                old_grad.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, var.shape().IsSameSize(grad.shape()),
+        errors::InvalidArgument("var and delta do not have the same shape",
+                                var.shape().DebugString(), " ",
+                                grad.shape().DebugString()));
+
+    const Device& device = ctx->template eigen_device<Device>();
+
+    functor::ApplyRpropMinus<Device, T>()(
+        device, var.flat<T>(), old_grad.flat<T>(), delta_update.flat<T>(),
+        eta_minus.scalar<T>(), eta_plus.scalar<T>(), delta_min.scalar<T>(),
+        delta_max.scalar<T>(), grad.flat<T>());
+    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
+  }
+
+ private:
+  bool use_exclusive_lock_;
+};
+
+#define REGISTER_KERNELS(D, T)                                           \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("ApplyRpropMinus").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyRpropMinusOp<D##Device, T>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
+
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#if GOOGLE_CUDA
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+
+#define DECLARE_GPU_SPEC(T)                             \
+  template <>                                           \
+  void ApplyRpropMinus<GPUDevice, T>::operator()(       \
+      const GPUDevice& d, typename TTypes<T>::Flat var, \
+      typename TTypes<T>::Flat old_grad,                \
+      typename TTypes<T>::Flat delta_update,            \
+      typename TTypes<T>::ConstScalar eta_minus,        \
+      typename TTypes<T>::ConstScalar eta_plus,         \
+      typename TTypes<T>::ConstScalar delta_min,        \
+      typename TTypes<T>::ConstScalar delta_max,        \
+      typename TTypes<T>::ConstFlat grad);              \
+  extern template struct ApplyRpropMinus<GPUDevice, T>;
+DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
+#undef DECLARE_GPU_SPEC
+
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
