@@ -603,4 +603,3 @@ py_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],
 )
-
