@@ -96,9 +96,6 @@ class GrpcServer : public ServerInterface {
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func,
               const CollectiveMgrCreationFunction& collective_mgr_func);
-    
-  Status Init(ServiceInitFunction service_func,
-              const RendezvousMgrCreationFunction& rendezvous_mgr_func);
 
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func);
