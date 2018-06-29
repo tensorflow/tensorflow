@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/test_util.h"
+#include "tensorflow/contrib/lite/string.h"
 
 namespace tflite {
 namespace {
@@ -58,7 +59,7 @@ void RunSoftmaxFloatReference(const uint8* input_data,
 
 void CheckOutputData(const uint8* test_output, const uint8* reference_output,
                      const RuntimeShape& shape_common,
-                     const std::string& check_label, bool be_exacting) {
+                     const string& check_label, bool be_exacting) {
   const int buffer_size = shape_common.FlatSize();
   // While calculating some metrics in floating point, we work with quantized
   // scaling.
