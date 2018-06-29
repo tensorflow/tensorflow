@@ -491,6 +491,7 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         ":types",
+        "//tensorflow/contrib/lite:string",
     ],
 )
 
@@ -588,6 +589,7 @@ cc_test(
     deps = [
         ":optimized_base",
         ":reference_base",
+        "//tensorflow/contrib/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
