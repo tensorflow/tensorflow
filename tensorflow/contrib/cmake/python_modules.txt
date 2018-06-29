@@ -86,6 +86,8 @@ tensorflow/contrib/batching/python/ops
 tensorflow/contrib/bayesflow
 tensorflow/contrib/bayesflow/python
 tensorflow/contrib/bayesflow/python/ops
+# tensorflow/contrib/bigtable/python
+# tensorflow/contrib/bigtable/python/ops
 tensorflow/contrib/boosted_trees
 tensorflow/contrib/boosted_trees/estimator_batch
 tensorflow/contrib/boosted_trees/kernels

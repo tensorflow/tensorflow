@@ -164,6 +164,27 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   tf_http_archive(
+      name = "com_github_googlecloudplatform_google_cloud_cpp",
+      urls = [
+          "https://mirror.bazel.build/github.com/GoogleCloudPlatform/google-cloud-cpp/archive/f9ff105957965bcf87f7cb9a93e951c3d08d1734.tar.gz",
+          "https://github.com/GoogleCloudPlatform/google-cloud-cpp/archive/f9ff105957965bcf87f7cb9a93e951c3d08d1734.tar.gz",
+      ],
+      sha256 = "edb347aae9869ffdcf8df6288335bcc535fec46da946b385c16968e96a74b208",
+      strip_prefix = "google-cloud-cpp-f9ff105957965bcf87f7cb9a93e951c3d08d1734",
+  )
+
+  tf_http_archive(
+      name = "com_github_googleapis_googleapis",
+      urls = [
+          "https://mirror.bazel.build/github.com/googleapis/googleapis/archive/f81082ea1e2f85c43649bee26e0d9871d4b41cdb.zip",
+          "https://github.com/googleapis/googleapis/archive/f81082ea1e2f85c43649bee26e0d9871d4b41cdb.zip",
+      ],
+      sha256 = "824870d87a176f26bcef663e92051f532fac756d1a06b404055dc078425f4378",
+      strip_prefix="googleapis-f81082ea1e2f85c43649bee26e0d9871d4b41cdb",
+      build_file = clean_dep("//third_party:googleapis.BUILD"),
+  )
+
+  tf_http_archive(
       name = "gemmlowp",
       urls = [
           "https://mirror.bazel.build/github.com/google/gemmlowp/archive/38ebac7b059e84692f53e5938f97a9943c120d98.zip",

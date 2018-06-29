@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,33 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module for cloud ops."""
+"""Cloud Bigtable Client for TensorFlow.
+
+This contrib package allows TensorFlow to interface directly with Cloud Bigtable
+for high-speed data loading.
+
+@@BigtableClient
+@@BigTable
+
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
-# pylint: disable=line-too-long,wildcard-import,g-import-not-at-top
-from tensorflow.contrib.cloud.python.ops.bigquery_reader_ops import *
-from tensorflow.contrib.cloud.python.ops.gcs_config_ops import *
-
-if os.name != 'nt':
-  from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigTable
-  from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigtableClient
-
-del os
+from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigTable
+from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigtableClient
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    'BigQueryReader',
     'BigTable',
     'BigtableClient',
-    'BlockCacheParams',
-    'configure_colab_session',
-    'configure_gcs',
-    'ConfigureGcsHook',
 ]
+
 remove_undocumented(__name__, _allowed_symbols)

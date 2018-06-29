@@ -12,33 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module for cloud ops."""
+
+"""This module contains the Python API for the Cloud Bigtable integration."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-import os
-
-# pylint: disable=line-too-long,wildcard-import,g-import-not-at-top
-from tensorflow.contrib.cloud.python.ops.bigquery_reader_ops import *
-from tensorflow.contrib.cloud.python.ops.gcs_config_ops import *
-
-if os.name != 'nt':
-  from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigTable
-  from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigtableClient
-
-del os
-
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = [
-    'BigQueryReader',
-    'BigTable',
-    'BigtableClient',
-    'BlockCacheParams',
-    'configure_colab_session',
-    'configure_gcs',
-    'ConfigureGcsHook',
-]
-remove_undocumented(__name__, _allowed_symbols)

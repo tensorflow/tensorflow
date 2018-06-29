@@ -25,6 +25,7 @@ py_library(
         "//tensorflow/contrib/all_reduce",
         "//tensorflow/contrib/batching:batch_py",
         "//tensorflow/contrib/bayesflow:bayesflow_py",
+        "//tensorflow/contrib/bigtable",
         "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/checkpoint/python:checkpoint",
         "//tensorflow/contrib/cloud:cloud_py",
