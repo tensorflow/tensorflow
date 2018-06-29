@@ -991,7 +991,7 @@ TfLiteStatus InterpreterBuilder::operator()(
       variables.push_back(i);
     }
   }
-  (**interpreter).SetVariables(variables);
+  (**interpreter).SetVariables(std::move(variables));
 
   return kTfLiteOk;
 }

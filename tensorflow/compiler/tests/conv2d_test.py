@@ -26,7 +26,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import test_utils
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -42,7 +42,7 @@ DATA_FORMATS = (
 )
 
 
-class Conv2DTest(XLATestCase, parameterized.TestCase):
+class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _VerifyValues(self,
                     input_sizes=None,
@@ -236,7 +236,7 @@ class Conv2DTest(XLATestCase, parameterized.TestCase):
         expected=np.reshape([108, 128], [1, 1, 1, 2]))
 
 
-class Conv2DBackpropInputTest(XLATestCase, parameterized.TestCase):
+class Conv2DBackpropInputTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _VerifyValues(self,
                     input_sizes=None,
@@ -534,7 +534,7 @@ class Conv2DBackpropInputTest(XLATestCase, parameterized.TestCase):
         expected=[5, 0, 11, 0, 0, 0, 17, 0, 23])
 
 
-class Conv2DBackpropFilterTest(XLATestCase, parameterized.TestCase):
+class Conv2DBackpropFilterTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _VerifyValues(self,
                     input_sizes=None,

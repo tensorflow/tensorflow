@@ -372,6 +372,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "fifo_queue_test",
+    size = "medium",
+    srcs = ["fifo_queue_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "fft_test",
     size = "medium",
     srcs = ["fft_test.py"],

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -67,7 +68,12 @@ class XlaOpKernelContext {
   int num_inputs() const { return context_->num_inputs(); }
 
   // Returns the type of input 'index'.
-  DataType input_type(int index) { return context_->input(index).dtype(); }
+  DataType input_type(int index) const;
+
+  // Returns the type of input 'index' as an xla::PrimitiveType. If the type
+  // is not representable as an XLA type, sets an error status and returns
+  // xla::PRIMITIVE_TYPE_INVALID.
+  xla::PrimitiveType input_xla_type(int index);
 
   // Returns the shape of input 'index'.
   TensorShape InputShape(int index);

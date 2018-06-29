@@ -23,7 +23,7 @@ import unittest
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
@@ -44,7 +44,7 @@ def nhwc_to_format(x, data_format):
     raise ValueError("Unknown format {}".format(data_format))
 
 
-class UnaryOpsTest(XLATestCase):
+class UnaryOpsTest(xla_test.XLATestCase):
   """Test cases for unary operators."""
 
   def _assertOpOutputMatchesExpected(self,

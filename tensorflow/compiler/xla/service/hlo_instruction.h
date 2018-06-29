@@ -611,6 +611,11 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> dimensions);
 
+  // Creates a sort op, with a keys operand, and an optional values operand.
+  static std::unique_ptr<HloInstruction> CreateSort(
+      const Shape& shape, HloInstruction* keys,
+      HloInstruction* values = nullptr);
+
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
   // example, shape: S32, condition: i -> i < 1000, body: i -> i * 2, init: 1

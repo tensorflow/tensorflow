@@ -161,6 +161,9 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
           }));
       break;
     }
+    // Token requires no data.
+    case TOKEN:
+      break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
                            ShapeUtil::HumanString(shape).c_str());

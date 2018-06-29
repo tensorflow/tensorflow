@@ -1244,7 +1244,7 @@ StatusOr<bool> HloRematerialization::Run(
     // TODO(b/80249101): Instead of a separate copy elision pass, use the
     // ordering from the HLO schedule directly for copy insertion.
     SequentialHloOrdering ordering(module, *sequence);
-    TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(ordering, {}, module));
+    TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(ordering, module));
   }
 
   // Compute peak memory usage of all computations in the module called in a

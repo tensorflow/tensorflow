@@ -603,3 +603,13 @@ py_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],
 )
+
+cc_library(
+    name = "grpc",
+    deps = ["@grpc"],
+)
+
+cc_library(
+    name = "grpc++",
+    deps = ["@grpc//:grpc++"],
+)

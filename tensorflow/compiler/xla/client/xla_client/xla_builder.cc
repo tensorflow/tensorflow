@@ -60,36 +60,18 @@ bool CanBeRoot(HloOpcode opcode) {
 
 }  // namespace
 
-XlaOp operator-(const XlaOp& x) { return x.builder()->Neg(x); }
-XlaOp operator+(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Add(x, y);
-}
-XlaOp operator-(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Sub(x, y);
-}
-XlaOp operator*(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Mul(x, y);
-}
-XlaOp operator/(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Div(x, y);
-}
-XlaOp operator%(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Rem(x, y);
-}
+XlaOp operator-(const XlaOp& x) { return Neg(x); }
+XlaOp operator+(const XlaOp& x, const XlaOp& y) { return Add(x, y); }
+XlaOp operator-(const XlaOp& x, const XlaOp& y) { return Sub(x, y); }
+XlaOp operator*(const XlaOp& x, const XlaOp& y) { return Mul(x, y); }
+XlaOp operator/(const XlaOp& x, const XlaOp& y) { return Div(x, y); }
+XlaOp operator%(const XlaOp& x, const XlaOp& y) { return Rem(x, y); }
 
-XlaOp operator~(const XlaOp& x) { return x.builder()->Not(x); }
-XlaOp operator&(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->And(x, y);
-}
-XlaOp operator|(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Or(x, y);
-}
-XlaOp operator^(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->Xor(x, y);
-}
-XlaOp operator<<(const XlaOp& x, const XlaOp& y) {
-  return x.builder()->ShiftLeft(x, y);
-}
+XlaOp operator~(const XlaOp& x) { return Not(x); }
+XlaOp operator&(const XlaOp& x, const XlaOp& y) { return And(x, y); }
+XlaOp operator|(const XlaOp& x, const XlaOp& y) { return Or(x, y); }
+XlaOp operator^(const XlaOp& x, const XlaOp& y) { return Xor(x, y); }
+XlaOp operator<<(const XlaOp& x, const XlaOp& y) { return ShiftLeft(x, y); }
 
 XlaOp operator>>(const XlaOp& x, const XlaOp& y) {
   XlaBuilder* builder = x.builder();
@@ -101,9 +83,9 @@ XlaOp operator>>(const XlaOp& x, const XlaOp& y) {
           ShapeUtil::HumanString(shape).c_str());
     }
     if (ShapeUtil::ElementIsSigned(shape)) {
-      return builder->ShiftRightArithmetic(x, y);
+      return ShiftRightArithmetic(x, y);
     } else {
-      return builder->ShiftRightLogical(x, y);
+      return ShiftRightLogical(x, y);
     }
   });
 }
@@ -1366,8 +1348,25 @@ XlaOp XlaBuilder::Rev(const XlaOp& operand,
   });
 }
 
-XlaOp XlaBuilder::Sort(const XlaOp& operand) {
-  return UnaryOp(HloOpcode::kSort, operand);
+XlaOp XlaBuilder::Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    std::vector<const Shape*> operand_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const Shape& keys_shape, GetShape(keys));
+    operand_shape_ptrs.push_back(&keys_shape);
+    Shape values_shape;
+    if (values.has_value()) {
+      TF_ASSIGN_OR_RETURN(values_shape, GetShape(*values));
+      operand_shape_ptrs.push_back(&values_shape);
+    }
+    TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
+                        ShapeInference::InferVariadicOpShape(
+                            HloOpcode::kSort, operand_shape_ptrs));
+    return values.has_value()
+               ? AddInstruction(std::move(instr), HloOpcode::kSort,
+                                {keys, *values})
+               : AddInstruction(std::move(instr), HloOpcode::kSort, {keys});
+  });
 }
 
 XlaOp XlaBuilder::SqrtF32(const XlaOp& operand) {
@@ -2538,7 +2537,9 @@ XlaOp Rev(const XlaOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions) {
   return operand.builder()->Rev(operand, dimensions);
 }
 
-XlaOp Sort(const XlaOp& operand) { return operand.builder()->Sort(operand); }
+XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values) {
+  return keys.builder()->Sort(keys, std::move(values));
+}
 
 XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max) {
   return min.builder()->Clamp(min, operand, max);

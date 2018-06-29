@@ -60,6 +60,7 @@ bool IsEluGrad(const NodeDef& node);
 bool IsEnter(const NodeDef& node);
 bool IsEqual(const NodeDef& node);
 bool IsExit(const NodeDef& node);
+bool IsExp(const NodeDef& node);
 bool IsFill(const NodeDef& node);
 bool IsFloorDiv(const NodeDef& node);
 bool IsFloorMod(const NodeDef& node);

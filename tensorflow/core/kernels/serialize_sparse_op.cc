@@ -559,16 +559,4 @@ REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
 REGISTER_KERNEL_BUILDER(Name("DeserializeManySparse").Device(DEVICE_CPU),
                         DeserializeSparseOp<string>)
 
-template <>
-Status DeserializeSparseOp<Variant>::Deserialize(const Variant& serialized,
-                                                 Tensor* result) {
-  *result = *serialized.get<Tensor>();
-  return Status::OK();
-}
-
-REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<Variant>("Tserialized"),
-                        DeserializeSparseOp<Variant>)
-
 }  // namespace tensorflow

@@ -2010,13 +2010,35 @@ Slice(b, {2, 1}, {4, 3}) produces:
 See also
 [`XlaBuilder::Sort`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
 
-Sorts the elements in the operand.
+There are two versions of the Sort instruction: a single-operand and a
+two-operand version.
 
 <b>`Sort(operand)`</b>
 
 Arguments | Type    | Semantics
+--------- | ------- | --------------------
+`operand` | `XlaOp` | The operand to sort.
+
+Sorts the elements in the operand in ascending order. The operand must be rank-1.
+If the operand's elements have floating point type, and the operand contains
+NaN elements, the order of elements in the output is implementation-defined.
+
+<b>`Sort(key, value)`</b>
+
+Sorts both the key and the value operands. The keys are sorted as in the
+single-operand version. The values are sorted according to the order of their
+corresponding keys. For example, if the inputs are `keys = [3, 1]` and
+`values = [42, 50]`, then the output of the sort is the tuple `{[1, 3], [50, 42]}`.
+The sort is not guaranteed to be stable, that is, if the keys array contains
+duplicates, the order of their corresponding values may not be preserved.
+
+Arguments | Type    | Semantics
 --------- | ------- | -------------------
-`operand` | `XlaOp` | The operand to sort
+`keys`    | `XlaOp` | The sort keys.
+`values`  | `XlaOp` | The values to sort.
+
+The `keys` and `values` operand must both be rank-1, and must have the same
+dimensions, but may have different element types.
 
 ## Transpose
 

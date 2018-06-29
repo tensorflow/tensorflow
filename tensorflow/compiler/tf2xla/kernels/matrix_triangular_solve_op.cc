@@ -30,13 +30,9 @@ class MatrixTriangularSolveOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     auto result = TriangularSolve(
-        ctx->builder(), ctx->Input(0), ctx->Input(1), /*left_side=*/true,
+        ctx->Input(0), ctx->Input(1), /*left_side=*/true,
         /*lower=*/lower_, /*transpose_a=*/adjoint_, /*conjugate_a=*/adjoint_);
-    if (!result.ok()) {
-      ctx->SetStatus(result.status());
-      return;
-    }
-    ctx->SetOutput(0, result.ValueOrDie());
+    ctx->SetOutput(0, result);
   }
 
  private:

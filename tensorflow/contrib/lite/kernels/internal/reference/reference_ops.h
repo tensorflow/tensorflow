@@ -951,6 +951,19 @@ inline void Relu6(const float* input_data, const RuntimeShape& input_shape,
   }
 }
 
+inline void ReluX(uint8 min_value, uint8 max_value, const uint8* input_data,
+                  const RuntimeShape& input_shape, uint8* output_data,
+                  const RuntimeShape& output_shape) {
+  gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const uint8 val = input_data[i];
+    const uint8 clamped =
+        val > max_value ? max_value : val < min_value ? min_value : val;
+    output_data[i] = clamped;
+  }
+}
+
 template <FusedActivationFunctionType Ac>
 void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
                      float* output_data, const RuntimeShape& output_shape) {
