@@ -59,7 +59,8 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kGreater ||
          type == OperatorType::kGreaterEqual || type == OperatorType::kLess ||
          type == OperatorType::kLessEqual || type == OperatorType::kSelect ||
-         type == OperatorType::kArgMax;
+         type == OperatorType::kArgMax || type == OperatorType::kRelu ||
+         type == OperatorType::kRelu1 || type == OperatorType::kRelu6;
 }
 
 const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
@@ -325,12 +326,13 @@ bool ChooseQuantizationForOperatorOutput(
         output, OperatorTypeName(op.type));
     return true;
   }
-  if ((op.type == OperatorType::kDepthToSpace) ||
-      (op.type == OperatorType::kSpaceToDepth) ||
-      (op.type == OperatorType::kReshape) ||
-      (op.type == OperatorType::kSplit) ||
-      (op.type == OperatorType::kConcatenation &&
-       model->flags.change_concat_input_ranges())) {
+  if ((op.type == OperatorType::kConcatenation &&
+       model->flags.change_concat_input_ranges()) ||
+      op.type == OperatorType::kDepthToSpace ||
+      op.type == OperatorType::kSpaceToDepth ||
+      op.type == OperatorType::kReshape || op.type == OperatorType::kSplit ||
+      op.type == OperatorType::kRelu || op.type == OperatorType::kRelu1 ||
+      op.type == OperatorType::kRelu6) {
     int data_input_index = 0;
     if (op.type == OperatorType::kSplit) {
       data_input_index = 1;
