@@ -38,8 +38,6 @@ build:cuda_clang --define=using_cuda=true --define=using_cuda_clang=true --defin
 
 build:win-cuda --define=using_cuda=true --define=using_cuda_nvcc=true
 
-build:mkl --define=using_mkl=true
-
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true --define=using_trisycl=false
 
