@@ -2118,6 +2118,15 @@ void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
   TF_DeleteImportGraphDefResults(results);
 }
 
+void TF_BindToDevice(TF_Graph* graph, const char *device) {
+  if (device == NULL)
+    return;
+
+  for (Node *node: graph->graph.nodes()) {
+	  node->set_requested_device(device);
+  }
+}
+
 // While loop functions -------------------------------------------------------
 
 namespace {

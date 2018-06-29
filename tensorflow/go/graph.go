@@ -92,7 +92,7 @@ func (g *Graph) WriteTo(w io.Writer) (int64, error) {
 // another Graph into g.
 //
 // Names of imported nodes will be prefixed with prefix.
-func (g *Graph) Import(def []byte, prefix string) error {
+func (g *Graph) ImportWithDevice(def []byte, prefix string, device string) error {
 	cprefix := C.CString(prefix)
 	defer C.free(unsafe.Pointer(cprefix))
 
@@ -118,7 +118,22 @@ func (g *Graph) Import(def []byte, prefix string) error {
 	if err := status.Err(); err != nil {
 		return err
 	}
+
+	g.BindToDevice(device)
 	return nil
+}
+
+func (g *Graph) BindToDevice(device string) {
+    if len(device) != 0 {
+	cdev := C.CString(device)
+	defer C.free(unsafe.Pointer(cdev))
+
+	C.TF_BindToDevice(g.c, cdev)
+    }
+}
+
+func (g *Graph) Import(def []byte, prefix string) error {
+    return g.ImportWithDevice(def, prefix, "")
 }
 
 // Operation returns the Operation named name in the Graph, or nil if no such
