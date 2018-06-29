@@ -334,10 +334,9 @@ class IgniteClient(TcpClient):
     def __java_hash_code(self, s):
         """Computes hash code of the specified string using Java code."""
         h = 0
-        for c in s: 
-            h = 31 * h + ord(c)
-            h = h & 0xFFFFFFFF
-        return h
+        for c in s:
+            h = (31 * h + ord(c)) & 0xFFFFFFFF
+        return ((h + 0x80000000) & 0xFFFFFFFF) - 0x80000000
     
     def __collect_types(self, field_name, data):
         """Extracts type information from the specified object."""
