@@ -526,8 +526,8 @@ class Distribution(_BaseDistribution):
     # Remove "self", "__class__", or other special variables. These can appear
     # if the subclass used:
     # `parameters = dict(locals())`.
-    return dict((k, v) for k, v in self._parameters.items()
-                if not k.startswith("__") and k != "self")
+    return {k: v for k, v in self._parameters.items()
+            if not k.startswith("__") and k != "self"}
 
   @property
   def reparameterization_type(self):

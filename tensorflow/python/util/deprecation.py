@@ -337,8 +337,8 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
     Returns:
       Dictionary from arg_name to DeprecatedArgSpec.
     """
-    arg_name_to_pos = dict(
-        (name, pos) for (pos, name) in enumerate(arg_spec.args))
+    arg_name_to_pos = {
+        name: pos for pos, name in enumerate(arg_spec.args)}
     deprecated_positional_args = {}
     for arg_name, spec in iter(names_to_ok_vals.items()):
       if arg_name in arg_name_to_pos:

@@ -69,7 +69,7 @@ def text_to_word_sequence(text,
       for c in filters:
         text = text.replace(c, split)
   else:
-    translate_dict = dict((c, split) for c in filters)
+    translate_dict = {c: split for c in filters}
     translate_map = maketrans(translate_dict)
     text = text.translate(translate_map)
 
