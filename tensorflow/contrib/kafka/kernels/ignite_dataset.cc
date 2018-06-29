@@ -35,6 +35,40 @@ IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx,
       schema_(schema),
       permutation_(permutation) {
   LOG(INFO) << "Ignite Dataset created";
+
+  for (auto e : schema_) {
+    if (e == 1 || e == 12) {
+      dtypes.push_back(tensorflow::DT_INT8);
+    } else if (e == 2 || e == 13) {
+      dtypes.push_back(tensorflow::DT_INT16);
+    } else if (e == 3 || e == 14) {
+      dtypes.push_back(tensorflow::DT_INT32);
+    } else if (e == 4 || e == 15) {
+      dtypes.push_back(tensorflow::DT_INT64);
+    } else if (e == 5 || e == 16) {
+      dtypes.push_back(tensorflow::DT_FLOAT);
+    } else if (e == 6 || e == 17) {
+      dtypes.push_back(tensorflow::DT_DOUBLE);
+    } else if (e == 7 || e == 18) {
+      dtypes.push_back(tensorflow::DT_UINT8);
+    } else if (e == 8 || e == 19) {
+      dtypes.push_back(tensorflow::DT_BOOL);
+    } else if (e == 9 || e == 20) {
+      dtypes.push_back(tensorflow::DT_STRING);
+    } else {
+      // skip.
+    }
+  }
+
+  for (auto e : schema_) {
+    if (e >= 1 && e < 10) {
+      shapes.push_back(tensorflow::PartialTensorShape({}));
+    } else if (e >= 12 && e < 21) {
+      shapes.push_back(tensorflow::PartialTensorShape({-1}));
+    } else {
+      // skip.
+    }
+  }
 }
 
 IgniteDataset::~IgniteDataset() {
@@ -50,51 +84,12 @@ std::unique_ptr<tensorflow::IteratorBase> IgniteDataset::MakeIteratorInternal(
 }
 
 const tensorflow::DataTypeVector& IgniteDataset::output_dtypes() const {
-  tensorflow::DataTypeVector* dtypes = new tensorflow::DataTypeVector();
-
-  for (auto e : schema_) {
-    if (e == 1 || e == 12) {
-      dtypes->push_back(tensorflow::DT_INT8);
-    } else if (e == 2 || e == 13) {
-      dtypes->push_back(tensorflow::DT_INT16);
-    } else if (e == 3 || e == 14) {
-      dtypes->push_back(tensorflow::DT_INT32);
-    } else if (e == 4 || e == 15) {
-      dtypes->push_back(tensorflow::DT_INT64);
-    } else if (e == 5 || e == 16) {
-      dtypes->push_back(tensorflow::DT_FLOAT);
-    } else if (e == 6 || e == 17) {
-      dtypes->push_back(tensorflow::DT_DOUBLE);
-    } else if (e == 7 || e == 18) {
-      dtypes->push_back(tensorflow::DT_UINT8);
-    } else if (e == 8 || e == 19) {
-      dtypes->push_back(tensorflow::DT_BOOL);
-    } else if (e == 9 || e == 20) {
-      dtypes->push_back(tensorflow::DT_STRING);
-    } else {
-      // skip.
-    }
-  }
-
-  return *dtypes;
+  return dtypes;
 }
 
 const std::vector<tensorflow::PartialTensorShape>&
 IgniteDataset::output_shapes() const {
-  std::vector<tensorflow::PartialTensorShape>* shapes =
-      new std::vector<tensorflow::PartialTensorShape>();
-
-  for (auto e : schema_) {
-    if (e >= 1 && e < 10) {
-      shapes->push_back(tensorflow::PartialTensorShape({}));
-    } else if (e >= 12 && e < 21) {
-      shapes->push_back(tensorflow::PartialTensorShape({-1}));
-    } else {
-      // skip.
-    }
-  }
-
-  return *shapes;
+  return shapes;
 }
 
 tensorflow::string IgniteDataset::DebugString() const {

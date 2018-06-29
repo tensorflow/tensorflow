@@ -64,9 +64,8 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(
     remainder -= (ptr - initial_ptr);
 
     out_tensors->resize(tensors.size());
-    for (int i = 0; i < tensors.size(); i++) {
-      (*out_tensors)[permutation_[i]] = std::move(tensors[i]);
-    }
+    for (int i = 0; i < tensors.size(); i++)
+      (*out_tensors)[permutation_[i]] = tensors[i];
 
     *end_of_sequence = false;
     return tensorflow::Status::OK();

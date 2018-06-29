@@ -45,6 +45,9 @@ class IgniteDataset : public tensorflow::GraphDatasetBase {
   const tensorflow::int32 page_size_;
   const std::vector<tensorflow::int32> schema_;
   const std::vector<tensorflow::int32> permutation_;
+
+  tensorflow::DataTypeVector dtypes;
+  std::vector<tensorflow::PartialTensorShape> shapes;
 };
 
 }  // namespace ignite

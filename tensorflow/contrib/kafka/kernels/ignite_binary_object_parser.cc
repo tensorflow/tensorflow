@@ -123,6 +123,7 @@ char* BinaryObjectParser::Parse(char* ptr,
       for (int i = 0; i < length; i++)
         tensor.vec<tensorflow::int8>()(i) = arr[i];
 
+      out_tensors->emplace_back(std::move(tensor));
       break;
     }
     case 13: {
@@ -138,6 +139,7 @@ char* BinaryObjectParser::Parse(char* ptr,
       for (int i = 0; i < length; i++)
         tensor.vec<tensorflow::int16>()(i) = arr[i];
 
+      out_tensors->emplace_back(std::move(tensor));
       break;
     }
     case 14: {
@@ -152,6 +154,7 @@ char* BinaryObjectParser::Parse(char* ptr,
       for (int i = 0; i < length; i++)
         tensor.vec<tensorflow::int32>()(i) = arr[i];
 
+      out_tensors->emplace_back(std::move(tensor));
       break;
     }
     case 15: {
@@ -166,10 +169,11 @@ char* BinaryObjectParser::Parse(char* ptr,
       for (int i = 0; i < length; i++)
         tensor.vec<tensorflow::int64>()(i) = arr[i];
 
-      // long arr
+      out_tensors->emplace_back(std::move(tensor));
       break;
     }
     case 16: {
+      // float arr
       int length = *((int*)ptr);
       ptr += 4;
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(),
@@ -177,10 +181,10 @@ char* BinaryObjectParser::Parse(char* ptr,
                                 tensorflow::TensorShape({length}));
 
       float* arr = (float*)ptr;
-      ptr += length * 4;
+      ptr += 4 * length;
       for (int i = 0; i < length; i++) tensor.vec<float>()(i) = arr[i];
 
-      // float arr
+      out_tensors->emplace_back(std::move(tensor));
       break;
     }
     case 17: {
@@ -211,6 +215,7 @@ char* BinaryObjectParser::Parse(char* ptr,
       for (int i = 0; i < length; i++)
         tensor.vec<tensorflow::uint16>()(i) = arr[i];
 
+      out_tensors->emplace_back(std::move(tensor));
       break;
     }
     case 19: {
@@ -225,6 +230,7 @@ char* BinaryObjectParser::Parse(char* ptr,
       ptr += length;
       for (int i = 0; i < length; i++) tensor.vec<bool>()(i) = arr[i];
 
+      out_tensors->emplace_back(std::move(tensor));
       break;
     }
     case 20: {
@@ -243,7 +249,7 @@ char* BinaryObjectParser::Parse(char* ptr,
         tensor.vec<std::string>()(i) = std::string(str, str_length);
       }
 
-      // TODO!
+      out_tensors->emplace_back(std::move(tensor));
       break;
     }
     case 27: {
