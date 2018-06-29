@@ -211,7 +211,7 @@ def fold_batch_norms(input_graph_def):
   scaling into the convolution weights. This function identifies the typical
   pattern of batch normalization subgraphs, and performs the transformation to
   fold the computations down into a simpler form. It currently only spots batch
-  normalization that's performed by the BatchNormWithGlobalNormalization op, and
+  normalization that's performed by the BatchNormWithGlobalNormalization and FusedBatchNorm ops, and
   will need to be extended in the future to handle the newer style.
 
   Args:
