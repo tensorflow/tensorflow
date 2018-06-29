@@ -124,30 +124,30 @@ landing_page:
             <ol style="padding-left:20px;">
               <li>
                 {% dynamic if request.tld == 'cn' %}
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_basics.ipynb" class="external">Eager execution basics</a>
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/1_basics.ipynb" class="external">Eager execution basics</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_basics.ipynb" class="external">Eager execution basics</a>
+                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/1_basics.ipynb" class="external">Eager execution basics</a>
                 {% dynamic endif %}
               </li>
               <li>
                 {% dynamic if request.tld == 'cn' %}
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/automatic_differentiation.ipynb" class="external">Automatic differentiation and gradient tapes</a>
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/2_gradients.ipynb" class="external">Automatic differentiation and gradient tapes</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/automatic_differentiation.ipynb" class="external">Automatic differentiation and gradient tapes</a>
+                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/2_gradients.ipynb" class="external">Automatic differentiation and gradient tapes</a>
                 {% dynamic endif %}
               </li>
               <li>
                 {% dynamic if request.tld == 'cn' %}
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_training.ipynb" class="external">Custom training: variables and models</a>
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/3_training_models.ipynb" class="external">Variables, models, and training</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_training.ipynb" class="external">Custom training: variables and models</a>
+                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/3_training_models.ipynb" class="external">Variables, models, and training</a>
                 {% dynamic endif %}
               </li>
               <li>
                 {% dynamic if request.tld == 'cn' %}
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_layers.ipynb" class="external">Custom layers</a>
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/4_high_level.ipynb" class="external">Custom layers</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_layers.ipynb" class="external">Custom layers</a>
+                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/4_high_level.ipynb" class="external">Custom layers</a>
                 {% dynamic endif %}
               </li>
               <li><a href="/get_started/eager">Custom training walkthrough</a></li>
