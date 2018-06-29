@@ -30,6 +30,8 @@ py_library(
         "python/training/sign_decay.py",
         "python/training/variable_clipping_optimizer.py",
         "python/training/weight_decay_optimizers.py",
+        "python/training/irprop_plus.py",
+        "python/training/rprop_minus.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -342,5 +344,25 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "irprop_plus_test",
+    srcs = ["python/training/irprop_plus_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "rprop_minus_test",
+    srcs = ["python/training/rprop_minus_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:client_testlib",
     ],
 )
