@@ -28,8 +28,8 @@ char* BinaryObjectParser::Parse(char* ptr,
     case 1: {
       // byte
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(),
-                                tensorflow::DT_INT8, {});
-      tensor.scalar<tensorflow::int8>()() = *ptr;
+                                tensorflow::DT_UINT8, {});
+      tensor.scalar<tensorflow::uint8>()() = *((unsigned char*)ptr);
       ptr += 1;
       out_tensors->emplace_back(std::move(tensor));
       break;
@@ -115,13 +115,13 @@ char* BinaryObjectParser::Parse(char* ptr,
       int length = *((int*)ptr);
       ptr += 4;
       tensorflow::Tensor tensor(tensorflow::cpu_allocator(),
-                                tensorflow::DT_INT8,
+                                tensorflow::DT_UINT8,
                                 tensorflow::TensorShape({length}));
 
-      char* arr = ptr;
+      unsigned char* arr = (unsigned char*)ptr;
       ptr += length;
       for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::int8>()(i) = arr[i];
+        tensor.vec<tensorflow::uint8>()(i) = arr[i];
 
       out_tensors->emplace_back(std::move(tensor));
       break;

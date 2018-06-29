@@ -38,7 +38,7 @@ IgniteDataset::IgniteDataset(tensorflow::OpKernelContext* ctx,
 
   for (auto e : schema_) {
     if (e == 1 || e == 12) {
-      dtypes.push_back(tensorflow::DT_INT8);
+      dtypes.push_back(tensorflow::DT_UINT8);
     } else if (e == 2 || e == 13) {
       dtypes.push_back(tensorflow::DT_INT16);
     } else if (e == 3 || e == 14) {

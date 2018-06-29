@@ -149,7 +149,7 @@ class BinaryField():
 # Binary types defined in Apache Ignite Thin client and supported by TensorFlow on Apache Ignite,
 # see https://cwiki.apache.org/confluence/display/IGNITE/IEP-9+Thin+Client+Protocol.
 types = {
-    1 :  (dtypes.int8,    False),
+    1 :  (dtypes.uint8,   False),
     2 :  (dtypes.int16,   False),
     3 :  (dtypes.int32,   False),
     4 :  (dtypes.int64,   False),
@@ -158,7 +158,7 @@ types = {
     7 :  (dtypes.uint16,  False),
     8 :  (dtypes.bool,    False),
     9 :  (dtypes.string,  False),
-    12 : (dtypes.int8,    True),
+    12 : (dtypes.uint8,   True),
     13 : (dtypes.int16,   True),
     14 : (dtypes.int32,   True),
     15 : (dtypes.int64,   True),
