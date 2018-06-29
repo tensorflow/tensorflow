@@ -94,8 +94,8 @@ KNOWN_BUGS = {
     r"sigmoid.*input_shape=\[\]": "67645668",
     # Concat doesn't work with a single input tensor
     r"concat.*num_tensors=1": "67378344",
-    # Transposition in MatMul is not supported.
-    r"fully_connected.*transpose_.=True": "67586970",
+    # Transposition in MatMul is not fully supported.
+    "fully_connected.*transpose_a=True": "67586970",
     # Softmax graphs are too complex.
     r"softmax.*dim=0": "67749831",
     # BatchToSpaceND only supports 4D tensors.
@@ -1324,6 +1324,12 @@ def make_fully_connected_tests(zip_path):
       "shape2": [[37, 40]],
       "transpose_a": [False],
       "transpose_b": [False],
+      "constant_filter": [True, False],
+  }, {
+      "shape1": [[40, 37]],
+      "shape2": [[40, 37]],
+      "transpose_a": [False],
+      "transpose_b": [True],
       "constant_filter": [True, False],
   }]
 
