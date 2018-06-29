@@ -33,7 +33,7 @@ namespace mlir {
 class Function {
 public:
   enum class Kind {
-    ExtFunc, CFGFunc
+    ExtFunc, CFGFunc, MLFunc
   };
 
   Kind getKind() const { return kind; }

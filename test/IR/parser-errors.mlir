@@ -47,3 +47,13 @@ bb41:
 bb42:        ; expected-error {{expected terminator}}
   return
 }
+
+; -----
+
+mlfunc @foo()
+mlfunc @bar() ; expected-error {{expected '{' in ML function}}
+
+; -----
+
+mlfunc @no_return() {
+}        ; expected-error {{ML function must end with return statement}}

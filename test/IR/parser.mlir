@@ -48,3 +48,9 @@ bb2:         ; CHECK: bb2:
 bb4:         ; CHECK: bb3:
   return     ; CHECK:   return
 }            ; CHECK: }
+
+; CHECK-LABEL: mlfunc @simpleMLF() {
+mlfunc @simpleMLF() {
+  return     ; CHECK:  return  
+}            ; CHECK: }
+

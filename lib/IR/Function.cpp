@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/MLFunction.h"
 #include "llvm/ADT/StringRef.h"
 using namespace mlir;
 
@@ -37,4 +38,12 @@ ExtFunction::ExtFunction(StringRef name, FunctionType *type)
 
 CFGFunction::CFGFunction(StringRef name, FunctionType *type)
   : Function(name, type, Kind::CFGFunc) {
+}
+
+//===----------------------------------------------------------------------===//
+// MLFunction implementation.
+//===----------------------------------------------------------------------===//
+
+MLFunction::MLFunction(StringRef name, FunctionType *type)
+  : Function(name, type, Kind::MLFunc) {
 }

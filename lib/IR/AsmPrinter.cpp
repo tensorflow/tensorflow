@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
@@ -151,10 +152,18 @@ void BasicBlock::dump() const {
   print(llvm::errs());
 }
 
+void MLStatement::print(raw_ostream &os) const {
+  //TODO
+}
+
+void MLStatement::dump() const {
+  print(llvm::errs());
+}
 void Function::print(raw_ostream &os) const {
   switch (getKind()) {
   case Kind::ExtFunc: return cast<ExtFunction>(this)->print(os);
   case Kind::CFGFunc: return cast<CFGFunction>(this)->print(os);
+  case Kind::MLFunc:  return cast<MLFunction>(this)->print(os);
   }
 }
 
@@ -165,6 +174,18 @@ void Function::dump() const {
 void CFGFunction::print(raw_ostream &os) const {
   CFGFunctionState state(this, os);
   state.print();
+}
+
+void MLFunction::print(raw_ostream &os) const {
+  os << "mlfunc ";
+  // FIXME: should print argument names rather than just signature
+  printFunctionSignature(this, os);
+  os << " {\n";
+
+  for (auto *stmt : stmtList)
+    stmt->print(os);
+  os << "    return\n";
+  os << "}\n\n";
 }
 
 void Module::print(raw_ostream &os) const {

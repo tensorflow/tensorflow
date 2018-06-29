@@ -24,6 +24,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Types.h"
 #include "llvm/Support/SourceMgr.h"
 using namespace mlir;
@@ -134,9 +135,11 @@ private:
   ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type);
   ParseResult parseExtFunc();
   ParseResult parseCFGFunc();
+  ParseResult parseMLFunc();
   ParseResult parseBasicBlock(CFGFunctionParserState &functionState);
   TerminatorInst *parseTerminator(BasicBlock *currentBB,
                                   CFGFunctionParserState &functionState);
+  MLStatement *parseMLStatement(MLFunction *currentFunction);
 
 };
 } // end anonymous namespace
@@ -532,7 +535,6 @@ ParseResult Parser::parseFunctionSignature(StringRef &name,
   return ParseSuccess;
 }
 
-
 /// External function declarations.
 ///
 ///   ext-func ::= `extfunc` function-signature
@@ -707,6 +709,59 @@ TerminatorInst *Parser::parseTerminator(BasicBlock *currentBB,
   }
 }
 
+/// ML function declarations.
+///
+///   ml-func ::= `mlfunc` ml-func-signature `{` ml-stmt* ml-return-stmt `}`
+///
+ParseResult Parser::parseMLFunc() {
+  consumeToken(Token::kw_mlfunc);
+
+  StringRef name;
+  FunctionType *type = nullptr;
+
+  // FIXME: Parse ML function signature (args + types)
+  // by passing pointer to SmallVector<identifier> into parseFunctionSignature
+  if (parseFunctionSignature(name, type))
+    return ParseFailure;
+
+  if (!consumeIf(Token::l_brace))
+    return emitError("expected '{' in ML function");
+
+  // Okay, the ML function signature was parsed correctly, create the function.
+  auto function = new MLFunction(name, type);
+
+  // Make sure we have at least one statement.
+  if (curToken.is(Token::r_brace))
+    return emitError("ML function must end with return statement");
+
+  // Parse the list of instructions.
+  while (!consumeIf(Token::kw_return)) {
+    auto *stmt = parseMLStatement(function);
+    if (!stmt)
+      return ParseFailure;
+    function->stmtList.push_back(stmt);
+  }
+
+  // TODO: parse return statement operands
+  if (!consumeIf(Token::r_brace))
+    emitError("expected '}' in ML function");
+
+  module->functionList.push_back(function);
+
+  return ParseSuccess;
+}
+
+/// Parse an MLStatement
+/// TODO
+///
+MLStatement *Parser::parseMLStatement(MLFunction *currentFunction) {
+  switch (curToken.getKind()) {
+  default:
+    return (emitError("expected ML statement"), nullptr);
+
+  // TODO: add parsing of ML statements
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // Top-level entity parsing.
@@ -741,7 +796,11 @@ Module *Parser::parseModule() {
       if (parseAffineMapDef()) return nullptr;
       break;
 
-    // TODO: mlfunc, affine entity declarations, etc.
+    case Token::kw_mlfunc:
+      if (parseMLFunc()) return nullptr;
+      break;
+
+     // TODO: affine entity declarations, etc.
     }
   }
 }
