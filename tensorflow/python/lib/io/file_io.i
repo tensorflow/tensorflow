@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 %}
 
+
+
 %{
 inline void FileExists(const string& filename, TF_Status* out_status) {
   tensorflow::Status status = tensorflow::Env::Default()->FileExists(filename);
@@ -232,6 +234,22 @@ string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
   return result;
 }
 
+
+struct ParseUriResult{
+  string scheme;
+  string host;
+  string path;
+};
+
+void ParseUri(const string& uri, ParseUriResult * result){
+  tensorflow::StringPiece tmp_scheme, tmp_host, tmp_path;
+  tensorflow::io::ParseURI(uri, &tmp_scheme, &tmp_host, &tmp_path);
+
+  result->scheme = tmp_scheme.ToString();
+  result->host = tmp_host.ToString();
+  result->path = tmp_path.ToString();
+}
+
 %}
 
 // Ensure that the returned object is destroyed when its wrapper is
@@ -268,6 +286,15 @@ void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
 string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       size_t bytes,
                       TF_Status* out_status);
+
+struct ParseUriResult{
+  string scheme;
+  string host;
+  string path;
+};
+
+void ParseUri(const string& uri, ParseUriResult * result);
+
 
 %ignore tensorflow::Status::operator=;
 %include "tensorflow/core/lib/core/status.h"

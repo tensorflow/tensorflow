@@ -903,12 +903,12 @@ def generate_checkpoint_state_proto(save_dir,
 
   # Relative paths need to be rewritten to be relative to the "save_dir"
   # if model_checkpoint_path already contains "save_dir".
-  if not os.path.isabs(save_dir):
-    if not os.path.isabs(model_checkpoint_path):
+  if not file_io.isabs(save_dir):
+    if not file_io.isabs(model_checkpoint_path):
       model_checkpoint_path = os.path.relpath(model_checkpoint_path, save_dir)
     for i in range(len(all_model_checkpoint_paths)):
       p = all_model_checkpoint_paths[i]
-      if not os.path.isabs(p):
+      if not file_io.isabs(p):
         all_model_checkpoint_paths[i] = os.path.relpath(p, save_dir)
 
   coord_checkpoint_proto = CheckpointState(
@@ -979,14 +979,14 @@ def _update_checkpoint_state(save_dir,
   # Writes the "checkpoint" file for the coordinator for later restoration.
   coord_checkpoint_filename = _GetCheckpointFilename(save_dir, latest_filename)
   if save_relative_paths:
-    if os.path.isabs(model_checkpoint_path):
+    if file_io.isabs(model_checkpoint_path):
       rel_model_checkpoint_path = os.path.relpath(
           model_checkpoint_path, save_dir)
     else:
       rel_model_checkpoint_path = model_checkpoint_path
     rel_all_model_checkpoint_paths = []
     for p in all_model_checkpoint_paths:
-      if os.path.isabs(p):
+      if file_io.isabs(p):
         rel_all_model_checkpoint_paths.append(os.path.relpath(p, save_dir))
       else:
         rel_all_model_checkpoint_paths.append(p)
@@ -1047,12 +1047,12 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
                          checkpoint_dir)
       # For relative model_checkpoint_path and all_model_checkpoint_paths,
       # prepend checkpoint_dir.
-      if not os.path.isabs(ckpt.model_checkpoint_path):
+      if not file_io.isabs(ckpt.model_checkpoint_path):
         ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
                                                   ckpt.model_checkpoint_path)
       for i in range(len(ckpt.all_model_checkpoint_paths)):
         p = ckpt.all_model_checkpoint_paths[i]
-        if not os.path.isabs(p):
+        if not file_io.isabs(p):
           ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
   except errors.OpError as e:
     # It's ok if the file cannot be read

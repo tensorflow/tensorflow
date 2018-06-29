@@ -439,6 +439,25 @@ def atomic_write_string_to_file(filename, contents, overwrite=True):
     raise
 
 
+def parse_uri(uri):
+  result = pywrap_tensorflow.ParseUriResult()
+  pywrap_tensorflow.ParseUri(uri, result)
+  scheme = result.scheme
+  host = result.host
+  path = result.path
+  return scheme, host, path
+
+
+def islocal(path):
+  scheme, _, _ = parse_uri(path)
+  return scheme == "" or scheme == "file" or scheme == "local.file"
+
+def isabs(uri):
+  _, _, path = parse_uri(uri)
+  return os.path.isabs(path)
+
+
+
 @tf_export("gfile.DeleteRecursively")
 def delete_recursively(dirname):
   """Deletes everything under dirname recursively.

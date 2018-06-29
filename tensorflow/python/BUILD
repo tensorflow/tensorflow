@@ -4147,6 +4147,22 @@ py_library(
     ],
 )
 
+
+#
+# By Default this test is to test saver on local file system.
+# In order to test saver on hdfs file system, you should call
+# it with some environment variables exported. Concretely
+# speaking you should do exactly like what you do to run test
+# //tensorflow/core/platform/hadoop:hadoop_file_system_test(take
+# a look at comments of this test),then call it like this:
+#
+# $ bazel test \
+#       --test_env=LD_LIBRARY_PATH=$JAVA_HOME/jre/lib/amd64/server \
+#       --test_env=HADOOP_HDFS_HOME=$HADOOP_HDFS_HOME \
+#       --test_env=CLASSPATH=$($HADOOP_HDFS_HOME/bin/hadoop classpath --glob) \
+#       --test_env=HADOOP_TEST_TMPDIR=hdfs://xxx:xxx/tmp/dir \
+#       //tensorflow/python:saver_test
+#
 cuda_py_test(
     name = "saver_test",
     size = "medium",

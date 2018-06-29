@@ -582,5 +582,61 @@ class FileIoTest(test.TestCase):
     self.assertTrue(crc1 != crc2)
     self.assertEqual(crc2, crc3)
 
+
+  def _testParseUri(self, uri, scheme, host, path):
+    s, h, p = file_io.parse_uri(uri)
+    self.assertEqual(scheme, s)
+    self.assertEqual(host, h)
+    self.assertEqual(path, p)
+
+  def testParseUri(self):
+    self._testParseUri("hdfs://www.123.com/a/b", "hdfs", "www.123.com", "/a/b");
+    self._testParseUri("http://foo", "http", "foo", "");
+    self._testParseUri("/encrypted/://foo", "", "", "/encrypted/://foo");
+    self._testParseUri("/usr/local/foo", "", "", "/usr/local/foo");
+    self._testParseUri("file:///usr/local/foo", "file", "", "/usr/local/foo");
+    self._testParseUri("local.file:///usr/local/foo", "local.file", "","/usr/local/foo");
+    self._testParseUri("a-b:///foo", "", "", "a-b:///foo");
+    self._testParseUri(":///foo", "", "", ":///foo");
+    self._testParseUri("9dfd:///foo", "", "", "9dfd:///foo");
+    self._testParseUri("file:", "", "", "file:");
+    self._testParseUri("file:/", "", "", "file:/");
+    self._testParseUri("hdfs://localhost:8020/path/to/file", "hdfs","localhost:8020", "/path/to/file");
+    self._testParseUri("hdfs://localhost:8020", "hdfs", "localhost:8020", "");
+    self._testParseUri("hdfs://localhost:8020/", "hdfs", "localhost:8020", "/");
+    self._testParseUri("A/b", "", "", "A/b");
+    self._testParseUri("C:/a/b", "", "", "C:/a/b");
+
+  def testIsLocal(self):
+    self.assertTrue(file_io.islocal("a/b"))
+    self.assertTrue(file_io.islocal("/a/b"))
+    self.assertTrue(file_io.islocal("file:///a/b"))
+    self.assertTrue(file_io.islocal("local.file:///a/b"))
+
+    self.assertFalse(file_io.islocal("hdfs://www.123.com/a/b"))
+    self.assertFalse(file_io.islocal("http://foo"))
+
+  def testIsAbs(self):
+    self.assertTrue(file_io.isabs("/a/b"))
+    self.assertTrue(file_io.isabs("file:///a/b"))
+    self.assertTrue(file_io.isabs("local.file:///a/b"))
+    self.assertTrue(file_io.isabs("hdfs://www.123.com/a/b"))
+    self.assertTrue(file_io.isabs("hdfs://localhost:8020/path/to/file"))
+    self.assertTrue(file_io.isabs("hdfs://localhost:8020/"))
+    self.assertTrue(file_io.isabs("http://foo/"))
+    self.assertTrue(file_io.isabs("/encrypted/://foo"))
+
+    self.assertFalse(file_io.isabs("a"))
+    self.assertFalse(file_io.isabs("a/b"))
+    self.assertFalse(file_io.isabs("../a"))
+    self.assertFalse(file_io.isabs("hdfs://www.123.com"))
+    self.assertFalse(file_io.isabs("hdfs://localhost:8020"))
+    self.assertFalse(file_io.isabs("http://foo"))
+    self.assertFalse(file_io.isabs("a-b:///foo"))
+    self.assertFalse(file_io.isabs(":///foo"))
+    self.assertFalse(file_io.isabs("9dfd:///foo"))
+
+
+
 if __name__ == "__main__":
   test.main()

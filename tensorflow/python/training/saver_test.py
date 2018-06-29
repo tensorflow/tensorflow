@@ -774,10 +774,19 @@ class SaveRestoreShardedTest(test.TestCase):
 
   _WRITE_VERSION = saver_pb2.SaverDef.V1
 
-  def _get_test_dir(self, dirname):
+  def _get_local_test_dir(self, dirname):
     test_dir = os.path.join(self.get_temp_dir(), dirname)
     gfile.MakeDirs(test_dir)
     return test_dir
+
+  def _get_test_dir(self, dirname):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+      test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
+      gfile.MakeDirs(test_dir)
+      return test_dir
+    else:
+      return self._get_local_test_dir(dirname)
+
 
   def testBasics(self):
     save_path = os.path.join(self.get_temp_dir(), "sharded_basics")
@@ -1050,10 +1059,19 @@ class SaveRestoreShardedTestV2(SaveRestoreShardedTest):
 
 class MaxToKeepTest(test.TestCase):
 
-  def _get_test_dir(self, dirname):
+
+  def _get_local_test_dir(self, dirname):
     test_dir = os.path.join(self.get_temp_dir(), dirname)
     gfile.MakeDirs(test_dir)
     return test_dir
+
+  def _get_test_dir(self, dirname):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+      test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
+      gfile.MakeDirs(test_dir)
+      return test_dir
+    else:
+      return self._get_local_test_dir(dirname)
 
   def assertCheckpointState(self, model_checkpoint_path,
                             all_model_checkpoint_paths, save_dir):
@@ -1390,10 +1408,18 @@ class MaxToKeepTest(test.TestCase):
 
 class KeepCheckpointEveryNHoursTest(test.TestCase):
 
-  def _get_test_dir(self, dirname):
+  def _get_local_test_dir(self, dirname):
     test_dir = os.path.join(self.get_temp_dir(), dirname)
     gfile.MakeDirs(test_dir)
     return test_dir
+
+  def _get_test_dir(self, dirname):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+      test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
+      gfile.MakeDirs(test_dir)
+      return test_dir
+    else:
+      return self._get_local_test_dir(dirname)
 
   @test_util.run_in_graph_and_eager_modes()
   @test.mock.patch.object(saver_module, "time")
@@ -1626,17 +1652,26 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
 
 class CheckpointStateTest(test.TestCase):
 
-  def _get_test_dir(self, dirname):
+  def _get_local_test_dir(self, dirname):
     test_dir = os.path.join(self.get_temp_dir(), dirname)
     gfile.MakeDirs(test_dir)
     return test_dir
+
+  def _get_test_dir(self, dirname):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+      test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
+      gfile.MakeDirs(test_dir)
+      return test_dir
+    else:
+      return self._get_local_test_dir(dirname)
+
 
   def testAbsPath(self):
     save_dir = self._get_test_dir("abs_paths")
     abs_path = os.path.join(save_dir, "model-0")
     ckpt = saver_module.generate_checkpoint_state_proto(save_dir, abs_path)
     self.assertEqual(ckpt.model_checkpoint_path, abs_path)
-    self.assertTrue(os.path.isabs(ckpt.model_checkpoint_path))
+    self.assertTrue(file_io.isabs(ckpt.model_checkpoint_path))
     self.assertEqual(len(ckpt.all_model_checkpoint_paths), 1)
     self.assertEqual(ckpt.all_model_checkpoint_paths[-1], abs_path)
 
@@ -1657,13 +1692,13 @@ class CheckpointStateTest(test.TestCase):
       ckpt = saver_module.generate_checkpoint_state_proto(
           save_dir, abs_path, all_model_checkpoint_paths=paths)
       self.assertEqual(ckpt.model_checkpoint_path, abs_path)
-      self.assertTrue(os.path.isabs(ckpt.model_checkpoint_path))
+      self.assertTrue(file_io.isabs(ckpt.model_checkpoint_path))
       self.assertEqual(
           len(ckpt.all_model_checkpoint_paths), len(paths) if paths else 1)
       self.assertEqual(ckpt.all_model_checkpoint_paths[-1], abs_path)
 
   def testUpdateCheckpointState(self):
-    save_dir = self._get_test_dir("update_checkpoint_state")
+    save_dir = self._get_local_test_dir("update_checkpoint_state")
     os.chdir(save_dir)
     # Make a temporary train directory.
     train_dir = "train"
@@ -1678,8 +1713,35 @@ class CheckpointStateTest(test.TestCase):
     self.assertEqual(ckpt.all_model_checkpoint_paths[-1], rel_path)
     self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
 
+  def testUpdateCheckpointStateNonLocal(self):
+    save_dir = self._get_test_dir("update_checkpoint_state_non_local")
+
+    if file_io.islocal(save_dir):
+      return
+
+    train_dir = os.path.join(save_dir, "train")
+    abs_path = os.path.join(save_dir, "model-0")
+    rel_path = os.path.join("train", "model-2")
+    saver_module.update_checkpoint_state(
+      train_dir, rel_path, all_model_checkpoint_paths=[abs_path, rel_path])
+
+    file_content = file_io.read_file_to_string(os.path.join(train_dir, "checkpoint"))
+    ckpt = CheckpointState()
+    text_format.Merge(file_content, ckpt)
+    self.assertEqual(ckpt.model_checkpoint_path, rel_path)
+    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], rel_path)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
+
+    ckpt = saver_module.get_checkpoint_state(train_dir)
+    self.assertEqual(ckpt.model_checkpoint_path, os.path.join(train_dir,rel_path))
+    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], os.path.join(train_dir,rel_path))
+    self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
+
+
   def testUpdateCheckpointStateSaveRelativePaths(self):
-    save_dir = self._get_test_dir("update_checkpoint_state")
+    save_dir = self._get_local_test_dir("update_checkpoint_state")
     os.chdir(save_dir)
     abs_path2 = os.path.join(save_dir, "model-2")
     rel_path2 = "model-2"
@@ -1708,8 +1770,41 @@ class CheckpointStateTest(test.TestCase):
     self.assertEqual(ckpt.all_model_checkpoint_paths[-1], abs_path2)
     self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path0)
 
+  def testUpdateCheckpointStateSaveRelativePathsNonLocal(self):
+    save_dir = self._get_test_dir("update_checkpoint_state_non_local")
+
+    if file_io.islocal(save_dir):
+      return
+
+    abs_path2 = os.path.join(save_dir, "model-2")
+    rel_path2 = "model-2"
+    abs_path0 = os.path.join(save_dir, "model-0")
+    rel_path0 = "model-0"
+    saver_module._update_checkpoint_state(  # pylint: disable=protected-access
+      save_dir=save_dir,
+      model_checkpoint_path=abs_path2,
+      all_model_checkpoint_paths=[rel_path0, abs_path2],
+      save_relative_paths=True)
+
+    # File should contain relative paths.
+    file_content = file_io.read_file_to_string(
+      os.path.join(save_dir, "checkpoint"))
+    ckpt = CheckpointState()
+    text_format.Merge(file_content, ckpt)
+    self.assertEqual(ckpt.model_checkpoint_path, rel_path2)
+    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], rel_path2)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[0], rel_path0)
+
+    # get_checkpoint_state should return absolute paths.
+    ckpt = saver_module.get_checkpoint_state(save_dir)
+    self.assertEqual(ckpt.model_checkpoint_path, abs_path2)
+    self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], abs_path2)
+    self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path0)
+
   def testCheckPointStateFailsWhenIncomplete(self):
-    save_dir = self._get_test_dir("checkpoint_state_fails_when_incomplete")
+    save_dir = self._get_local_test_dir("checkpoint_state_fails_when_incomplete")
     os.chdir(save_dir)
     ckpt_path = os.path.join(save_dir, "checkpoint")
     ckpt_file = open(ckpt_path, "w")
@@ -1719,7 +1814,7 @@ class CheckpointStateTest(test.TestCase):
       saver_module.get_checkpoint_state(save_dir)
 
   def testCheckPointCompletesRelativePaths(self):
-    save_dir = self._get_test_dir("checkpoint_completes_relative_paths")
+    save_dir = self._get_local_test_dir("checkpoint_completes_relative_paths")
     os.chdir(save_dir)
     ckpt_path = os.path.join(save_dir, "checkpoint")
     ckpt_file = open(ckpt_path, "w")
@@ -1740,10 +1835,19 @@ class CheckpointStateTest(test.TestCase):
 
 class MetaGraphTest(test.TestCase):
 
-  def _get_test_dir(self, dirname):
+
+  def _get_local_test_dir(self, dirname):
     test_dir = os.path.join(self.get_temp_dir(), dirname)
     gfile.MakeDirs(test_dir)
     return test_dir
+
+  def _get_test_dir(self, dirname):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+      test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
+      gfile.MakeDirs(test_dir)
+      return test_dir
+    else:
+      return self._get_local_test_dir(dirname)
 
   def testAddCollectionDef(self):
     test_dir = self._get_test_dir("good_collection")
@@ -2555,10 +2659,18 @@ class CheckpointReaderForV2Test(CheckpointReaderTest):
 
 class WriteGraphTest(test.TestCase):
 
-  def _get_test_dir(self, dirname):
+  def _get_local_test_dir(self, dirname):
     test_dir = os.path.join(self.get_temp_dir(), dirname)
     gfile.MakeDirs(test_dir)
     return test_dir
+
+  def _get_test_dir(self, dirname):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+      test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
+      gfile.MakeDirs(test_dir)
+      return test_dir
+    else:
+      return self._get_local_test_dir(dirname)
 
   def testWriteGraph(self):
     test_dir = self._get_test_dir("write_graph_dir")
@@ -2567,7 +2679,7 @@ class WriteGraphTest(test.TestCase):
                                 os.path.join(test_dir, "l1"), "graph.pbtxt")
     truth = os.path.join(test_dir, "l1", "graph.pbtxt")
     self.assertEqual(path, truth)
-    self.assertTrue(os.path.exists(path))
+    self.assertTrue(gfile.Exists(path))
 
   def testRecursiveCreate(self):
     test_dir = self._get_test_dir("deep_dir")
@@ -2577,7 +2689,7 @@ class WriteGraphTest(test.TestCase):
                                 "graph.pbtxt")
     truth = os.path.join(test_dir, "l1", "l2", "l3", "graph.pbtxt")
     self.assertEqual(path, truth)
-    self.assertTrue(os.path.exists(path))
+    self.assertTrue(gfile.Exists(path))
 
 
 class SaverUtilsTest(test.TestCase):
@@ -2638,10 +2750,18 @@ class SaverUtilsTest(test.TestCase):
 
 class ScopedGraphTest(test.TestCase):
 
-  def _get_test_dir(self, dirname):
+  def _get_local_test_dir(self, dirname):
     test_dir = os.path.join(self.get_temp_dir(), dirname)
     gfile.MakeDirs(test_dir)
     return test_dir
+
+  def _get_test_dir(self, dirname):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+      test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
+      gfile.MakeDirs(test_dir)
+      return test_dir
+    else:
+      return self._get_local_test_dir(dirname)
 
   def _testScopedSave(self, test_dir, exported_filename, ckpt_filename):
     graph = ops_lib.Graph()
