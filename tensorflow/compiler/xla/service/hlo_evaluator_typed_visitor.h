@@ -1366,24 +1366,68 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 !is_complex_t<NativeT>::value &&
                 !std::is_same<NativeT, bool>::value>::type* = nullptr>
   Status HandleSort(HloInstruction* sort) {
-    TF_RET_CHECK(ShapeUtil::Rank(sort->shape()) == 1)
+    auto keys = sort->operand(0);
+    TF_RET_CHECK(ShapeUtil::Rank(keys->shape()) == 1)
         << "Sort is only supported for R1 shapes";
 
-    auto arg = sort->operand(0);
-    const Literal& arg_literal = parent_->GetEvaluatedLiteralFor(arg);
-    VLOG(3) << "HandleSort arg_literal: " << arg_literal.ToString();
-    const auto& arg_data = arg_literal.data<ReturnT>();
+    const Literal& keys_literal = parent_->GetEvaluatedLiteralFor(keys);
+    VLOG(3) << "HandleSort keys_literal: " << keys_literal.ToString();
+    const auto& keys_data = keys_literal.data<ReturnT>();
 
-    std::vector<ReturnT> return_data(arg_data.begin(), arg_data.end());
-    std::sort(return_data.begin(), return_data.end(),
-              [](const ReturnT& a, const ReturnT& b) {
-                return SafeLess<ReturnT>(a, b);
-              });
-    auto result_literal = MakeUnique<Literal>(sort->shape());
-    result_literal->PopulateR1(
-        tensorflow::gtl::ArraySlice<ReturnT>(return_data));
-    VLOG(3) << "HandleSort result_literal: " << result_literal->ToString();
-    parent_->evaluated_[sort] = std::move(result_literal);
+    if (sort->operand_count() == 1) {
+      std::vector<ReturnT> result_data(keys_data.begin(), keys_data.end());
+      std::sort(result_data.begin(), result_data.end(),
+                [](const ReturnT& a, const ReturnT& b) {
+                  return SafeLess<ReturnT>(a, b);
+                });
+      auto result_literal = MakeUnique<Literal>(sort->shape());
+      result_literal->PopulateR1(
+          tensorflow::gtl::ArraySlice<ReturnT>(result_data));
+      VLOG(3) << "HandleSort result_literal: " << result_literal->ToString();
+      parent_->evaluated_[sort] = std::move(result_literal);
+    } else {
+      CHECK_EQ(sort->operand_count(), 2);
+      auto values = sort->operand(1);
+      if (values->shape().element_type() !=
+          primitive_util::NativeToPrimitiveType<ReturnT>()) {
+        return InvalidArgument(
+            "Evaluator requires value and key types for Sort to match");
+      }
+
+      // We need to sort and array of keys and an array of values, where the
+      // sorted order of the values is determined by the keys. The simplest(?)
+      // way to do this is to go to an array-of-pairs representation, sort the
+      // array using the keys, and then go back to pair-of-arrays.
+      const Literal& values_literal = parent_->GetEvaluatedLiteralFor(values);
+      VLOG(3) << "HandleSort values_literal: " << values_literal.ToString();
+      const auto& values_data = values_literal.data<ReturnT>();
+      using kv_pair = std::pair<ReturnT, ReturnT>;
+      std::vector<kv_pair> key_value_vector;
+      CHECK_EQ(keys_data.size(), values_data.size());
+      for (int i = 0; i < keys_data.size(); ++i) {
+        key_value_vector.push_back(
+            std::make_pair(keys_data[i], values_data[i]));
+      }
+      std::sort(key_value_vector.begin(), key_value_vector.end(),
+                [](const kv_pair& a, const kv_pair& b) {
+                  return SafeLess<ReturnT>(a.first, b.first);
+                });
+      std::vector<ReturnT> result_keys, result_values;
+      for (const auto& key_value : key_value_vector) {
+        result_keys.push_back(key_value.first);
+        result_values.push_back(key_value.second);
+      }
+      auto result_keys_literal = MakeUnique<Literal>(keys->shape());
+      result_keys_literal->PopulateR1(
+          tensorflow::gtl::ArraySlice<ReturnT>(result_keys));
+      auto result_values_literal = MakeUnique<Literal>(values->shape());
+      result_values_literal->PopulateR1(
+          tensorflow::gtl::ArraySlice<ReturnT>(result_values));
+      auto result_tuple = Literal::MakeTuple(
+          {result_keys_literal.get(), result_values_literal.get()});
+      VLOG(3) << "HandleSort result_tuple: " << result_tuple->ToString();
+      parent_->evaluated_[sort] = std::move(result_tuple);
+    }
     return Status::OK();
   }
 
