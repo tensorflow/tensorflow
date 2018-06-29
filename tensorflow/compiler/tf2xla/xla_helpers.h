@@ -89,10 +89,6 @@ class XlaHelpers {
                        DataType input_type, DataType output_type, int axis,
                        xla::XlaOp* argmin);
 
-  // Sets *iota to a rank 1 tensor with values [0, 1, 2, ...] of `dtype`.
-  static Status Iota(xla::XlaBuilder* builder, DataType dtype, int64 size,
-                     xla::XlaOp* iota);
-
   // Converts `indices` into a one-hot representation. `depth` is the size
   // of the new axis to add. `axis` is the position at which to add the new
   // axis. `indices_shape` is the shape of `indices`. `on_value` and

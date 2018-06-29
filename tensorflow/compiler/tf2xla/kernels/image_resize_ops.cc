@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/array4d.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -128,10 +129,7 @@ const int64 kMax2DKernelSize = 16;
 xla::XlaOp MakeBilinearResizeKernel(xla::XlaBuilder* builder,
                                     gtl::ArraySlice<int64> kernel_size,
                                     int64 channels) {
-  xla::XlaOp channels_iota;
-  // DT_INT32 Iota will always return status::OK().
-  TF_CHECK_OK(
-      XlaHelpers::Iota(builder, DataType::DT_INT32, channels, &channels_iota));
+  xla::XlaOp channels_iota = xla::Iota(builder, xla::S32, channels);
 
   auto diag = xla::ConvertElementType(
       xla::Eq(xla::Broadcast(channels_iota, {2 * kernel_size[0] - 1,
@@ -149,10 +147,7 @@ xla::XlaOp MakeBilinearResizeKernel(xla::XlaBuilder* builder,
 xla::XlaOp MakeBilinearResizeKernelInDim(xla::XlaBuilder* builder,
                                          gtl::ArraySlice<int64> kernel_size,
                                          int64 channels, int64 dim) {
-  xla::XlaOp channels_iota;
-  // DT_INT32 Iota will always return status::OK().
-  TF_CHECK_OK(
-      XlaHelpers::Iota(builder, DataType::DT_INT32, channels, &channels_iota));
+  xla::XlaOp channels_iota = xla::Iota(builder, xla::S32, channels);
 
   auto diag = xla::ConvertElementType(
       xla::Eq(

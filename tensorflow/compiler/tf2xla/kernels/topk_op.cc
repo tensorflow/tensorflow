@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -62,8 +63,7 @@ class TopKOp : public XlaOpKernel {
       k = input_shape.dim_size(0);
     }
     const xla::XlaOp input_bf16 = context->Input(0);
-    xla::XlaOp iota_s32;
-    OP_REQUIRES_OK(context, XlaHelpers::Iota(b, DT_INT32, n, &iota_s32));
+    xla::XlaOp iota_s32 = xla::Iota(b, xla::S32, n);
 
     // TODO(b/73891930): add a key-value sort to HLO, rather than using
     // bit-packing tricks here.

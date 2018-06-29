@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -127,7 +128,7 @@ xla::XlaOp RandomUniform(xla::XlaBuilder* builder, const xla::XlaOp& seed,
 
   // Fill the generator inputs with unique counter values.
   ThreeFry2x32State inputs;
-  TF_CHECK_OK(XlaHelpers::Iota(builder, DT_INT32, half_size, &inputs[0]));
+  inputs[0] = xla::Iota(builder, xla::S32, half_size);
   inputs[1] = xla::Add(inputs[0], xla::ConstantR0<int32>(builder, half_size));
   ThreeFry2x32State outputs = ThreeFry2x32(builder, inputs, key);
 
