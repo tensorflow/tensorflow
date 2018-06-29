@@ -36,7 +36,10 @@ public:
     return function;
   }
 
-  // TODO: bb arguments, instruction list.
+  // TODO: bb arguments
+
+  // TODO: Wrong representation.
+  std::vector<OperationInst*> instList;
 
   void setTerminator(TerminatorInst *inst) {
     terminator = inst;

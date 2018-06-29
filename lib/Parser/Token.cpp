@@ -39,11 +39,20 @@ SMRange Token::getLocRange() const {
 
 /// For an integer token, return its value as an unsigned.  If it doesn't fit,
 /// return None.
-Optional<unsigned> Token::getUnsignedIntegerValue() {
+Optional<unsigned> Token::getUnsignedIntegerValue() const {
   bool isHex = spelling.size() > 1 && spelling[1] == 'x';
 
   unsigned result = 0;
   if (spelling.getAsInteger(isHex ? 0 : 10, result))
     return None;
   return result;
+}
+
+/// Given a 'string' token, return its value, including removing the quote
+/// characters and unescaping the contents of the string.
+std::string Token::getStringValue() const {
+  // TODO: Handle escaping.
+
+  // Just drop the quotes off for now.
+  return getSpelling().drop_front().drop_back().str();
 }

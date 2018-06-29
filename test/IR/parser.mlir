@@ -34,6 +34,8 @@ extfunc @functions((memref<1x?x4x?x?xint>, memref<i8>) -> (), ()->())
 ; CHECK-LABEL: cfgfunc @simpleCFG() {
 cfgfunc @simpleCFG() {
 bb42:       ; CHECK: bb0:
+  "foo"()   ; CHECK: "foo"()
+  "bar"()   ; CHECK: "bar"()
   return    ; CHECK: return
 }           ; CHECK: }
 

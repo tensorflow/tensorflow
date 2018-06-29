@@ -99,6 +99,7 @@ Token Lexer::lexToken() {
   case ';': return lexComment();
   case '@': return lexAtIdentifier(tokStart);
   case '#': return lexAffineMapId(tokStart);
+  case '"': return lexString(tokStart);
 
   case '0': case '1': case '2': case '3': case '4':
   case '5': case '6': case '7': case '8': case '9':
@@ -230,4 +231,33 @@ Token Lexer::lexNumber(const char *tokStart) {
     ++curPtr;
 
   return formToken(Token::integer, tokStart);
+}
+
+/// Lex a string literal.
+///
+///   string-literal ::= '"' [^"\n\f\v\r]* '"'
+///
+/// TODO: define escaping rules.
+Token Lexer::lexString(const char *tokStart) {
+  assert(curPtr[-1] == '"');
+
+  while (1) {
+    switch (*curPtr++) {
+    case '"':
+      return formToken(Token::string, tokStart);
+    case '0':
+      // If this is a random nul character in the middle of a string, just
+      // include it.  If it is the end of file, then it is an error.
+      if (curPtr-1 != curBuffer.end())
+        continue;
+      LLVM_FALLTHROUGH;
+    case '\n':
+    case '\v':
+    case '\f':
+      return emitError(curPtr-1, "expected '\"' in string literal");
+
+    default:
+      continue;
+    }
+  }
 }

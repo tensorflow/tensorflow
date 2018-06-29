@@ -77,7 +77,11 @@ public:
 
   void print();
   void print(const BasicBlock *block);
-  void print(const TerminatorInst *inst);
+
+  void print(const Instruction *inst);
+  void print(const OperationInst *inst);
+  void print(const ReturnInst *inst);
+  void print(const BranchInst *inst);
 
   unsigned getBBID(const BasicBlock *block) {
     auto it = basicBlockIDs.find(block);
@@ -114,32 +118,47 @@ void CFGFunctionState::print() {
 void CFGFunctionState::print(const BasicBlock *block) {
   os << "bb" << getBBID(block) << ":\n";
 
-  // TODO Print arguments and instructions.
+  // TODO Print arguments.
+  for (auto inst : block->instList)
+    print(inst);
 
   print(block->getTerminator());
 }
 
-void CFGFunctionState::print(const TerminatorInst *inst) {
+void CFGFunctionState::print(const Instruction *inst) {
   switch (inst->getKind()) {
+  case Instruction::Kind::Operation:
+    return print(cast<OperationInst>(inst));
   case TerminatorInst::Kind::Branch:
-    os << "  br bb" << getBBID(cast<BranchInst>(inst)->getDest()) << "\n";
-    break;
+    return print(cast<BranchInst>(inst));
   case TerminatorInst::Kind::Return:
-    os << "  return\n";
-    break;
+    return print(cast<ReturnInst>(inst));
   }
+}
+
+void CFGFunctionState::print(const OperationInst *inst) {
+  // TODO: escape name if necessary.
+  os << "  \"" << inst->getName().str() << "\"()\n";
+}
+
+void CFGFunctionState::print(const BranchInst *inst) {
+  os << "  br bb" << getBBID(inst->getDest()) << "\n";
+}
+void CFGFunctionState::print(const ReturnInst *inst) {
+  os << "  return\n";
 }
 
 //===----------------------------------------------------------------------===//
 // print and dump methods
 //===----------------------------------------------------------------------===//
 
-void TerminatorInst::print(raw_ostream &os) const {
+
+void Instruction::print(raw_ostream &os) const {
   CFGFunctionState state(getFunction(), os);
   state.print(this);
 }
 
-void TerminatorInst::dump() const {
+void Instruction::dump() const {
   print(llvm::errs());
 }
 

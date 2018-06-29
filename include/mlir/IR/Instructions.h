@@ -23,38 +23,71 @@
 #define MLIR_IR_INSTRUCTIONS_H
 
 #include "mlir/Support/LLVM.h"
+#include "mlir/IR/Identifier.h"
 
 namespace mlir {
   class BasicBlock;
   class CFGFunction;
 
-
-/// Terminator instructions are the last part of a basic block, used to
-/// represent control flow and returns.
-class TerminatorInst {
+class Instruction {
 public:
   enum class Kind {
+    Operation,
     Branch,
     Return
   };
 
   Kind getKind() const { return kind; }
 
-  /// Return the BasicBlock that contains this terminator instruction.
+  /// Return the BasicBlock containing this instruction.
   BasicBlock *getBlock() const {
     return block;
   }
+
+  /// Return the CFGFunction containing this instruction.
   CFGFunction *getFunction() const;
 
   void print(raw_ostream &os) const;
   void dump() const;
 
 protected:
-  TerminatorInst(Kind kind, BasicBlock *block) : kind(kind), block(block) {}
-
+  Instruction(Kind kind, BasicBlock *block) : kind(kind), block(block) {}
 private:
   Kind kind;
   BasicBlock *block;
+};
+
+/// Operations are the main instruction kind in MLIR, which represent all of the
+/// arithmetic and other basic computation that occurs in a CFG function.
+class OperationInst : public Instruction {
+public:
+  explicit OperationInst(Identifier name, BasicBlock *block);
+
+  Identifier getName() const { return name; }
+
+  // TODO: Need to have results and operands.
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Instruction *inst) {
+    return inst->getKind() == Kind::Operation;
+  }
+private:
+  Identifier name;
+};
+
+
+/// Terminator instructions are the last part of a basic block, used to
+/// represent control flow and returns.
+class TerminatorInst : public Instruction {
+public:
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Instruction *inst) {
+    return inst->getKind() != Kind::Operation;
+  }
+
+protected:
+  TerminatorInst(Kind kind, BasicBlock *block) : Instruction(kind, block) {}
 };
 
 /// The 'br' instruction is an unconditional from one basic block to another,
@@ -71,9 +104,10 @@ public:
   // TODO: need to take BB arguments.
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const TerminatorInst *inst) {
+  static bool classof(const Instruction *inst) {
     return inst->getKind() == Kind::Branch;
   }
+
 private:
   BasicBlock *dest;
 };
@@ -89,7 +123,7 @@ public:
   // TODO: Needs to take an operand list.
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const TerminatorInst *inst) {
+  static bool classof(const Instruction *inst) {
     return inst->getKind() == Kind::Return;
   }
 };

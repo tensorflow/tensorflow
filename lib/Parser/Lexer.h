@@ -62,6 +62,7 @@ private:
   Token lexAtIdentifier(const char *tokStart);
   Token lexAffineMapId(const char *tokStart);
   Token lexNumber(const char *tokStart);
+  Token lexString(const char *tokStart);
 };
 
 } // end namespace mlir

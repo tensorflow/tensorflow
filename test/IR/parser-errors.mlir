@@ -44,7 +44,7 @@ cfgfunc @no_terminator() {
 bb40:
   return
 bb41:
-bb42:        ; expected-error {{expected terminator}}
+bb42:        ; expected-error {{expected operation name}}
   return
 }
 
@@ -57,3 +57,21 @@ mlfunc @bar() ; expected-error {{expected '{' in ML function}}
 
 mlfunc @no_return() {
 }        ; expected-error {{ML function must end with return statement}}
+
+; -----
+
+"       ; expected-error {{expected}}
+"
+
+; -----
+
+"       ; expected-error {{expected}}
+
+; -----
+
+cfgfunc @no_terminator() {
+bb40:
+  "foo"()
+  ""()   ; expected-error {{empty operation name is invalid}}
+  return
+}

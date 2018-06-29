@@ -43,7 +43,7 @@ enum ParseResult {
 
 /// Main parser implementation.
 class Parser {
- public:
+public:
   Parser(llvm::SourceMgr &sourceMgr, MLIRContext *context,
          const SMDiagnosticHandlerTy &errorReporter)
       : context(context),
@@ -137,9 +137,12 @@ private:
   ParseResult parseCFGFunc();
   ParseResult parseMLFunc();
   ParseResult parseBasicBlock(CFGFunctionParserState &functionState);
-  TerminatorInst *parseTerminator(BasicBlock *currentBB,
-                                  CFGFunctionParserState &functionState);
   MLStatement *parseMLStatement(MLFunction *currentFunction);
+
+  ParseResult parseCFGOperation(BasicBlock *currentBB,
+                                CFGFunctionParserState &functionState);
+  ParseResult parseTerminator(BasicBlock *currentBB,
+                              CFGFunctionParserState &functionState);
 
 };
 } // end anonymous namespace
@@ -490,7 +493,7 @@ ParseResult Parser::parseAffineMapDef() {
   // Check that 'affineMapId' is unique.
   // TODO(andydavis) Add a unit test for this case.
   if (affineMaps.count(affineMapId) > 0)
-    return emitError("encountered non-unique affine map id");
+    return emitError("redefinition of affine map id '" + affineMapId + "'");
 
   consumeToken(Token::affine_map_id);
 
@@ -660,22 +663,54 @@ ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
   if (!consumeIf(Token::colon))
     return emitError("expected ':' after basic block name");
 
+  // Parse the list of operations that make up the body of the block.
+  while (curToken.isNot(Token::kw_return, Token::kw_br)) {
+    if (parseCFGOperation(block, functionState))
+      return ParseFailure;
+  }
 
-  // TODO(clattner): Verify block hasn't already been parsed (this would be a
-  // redefinition of the same name) once we have a body implementation.
-
-  // TODO(clattner): Move block to the end of the list, once we have a proper
-  // block list representation in CFGFunction.
-
-  // TODO: parse instruction list.
-
-  // TODO: Generalize this once instruction list parsing is built out.
-
-  auto *termInst = parseTerminator(block, functionState);
-  if (!termInst)
+  if (parseTerminator(block, functionState))
     return ParseFailure;
-  block->setTerminator(termInst);
 
+  return ParseSuccess;
+}
+
+
+/// Parse the CFG operation.
+///
+/// TODO(clattner): This is a change from the MLIR spec as written, it is an
+/// experiment that will eliminate "builtin" instructions as a thing.
+///
+///  cfg-operation ::=
+///    (ssa-id `=`)? string '(' ssa-use-list? ')' attribute-dict?
+///    `:` function-type
+///
+ParseResult Parser::
+parseCFGOperation(BasicBlock *currentBB,
+                  CFGFunctionParserState &functionState) {
+
+  // TODO: parse ssa-id.
+
+  if (curToken.isNot(Token::string))
+    return emitError("expected operation name in quotes");
+
+  auto name = curToken.getStringValue();
+  if (name.empty())
+    return emitError("empty operation name is invalid");
+
+  consumeToken(Token::string);
+
+  if (!consumeIf(Token::l_paren))
+    return emitError("expected '(' in operation");
+
+  // TODO: Parse operands.
+  if (!consumeIf(Token::r_paren))
+    return emitError("expected '(' in operation");
+
+  auto nameId = Identifier::get(name, context);
+  new OperationInst(nameId, currentBB);
+
+  // TODO: add instruction the per-function symbol table.
   return ParseSuccess;
 }
 
@@ -688,23 +723,25 @@ ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
 ///     `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id branch-use-list?
 ///   terminator-stmt ::= `return` ssa-use-and-type-list?
 ///
-TerminatorInst *Parser::parseTerminator(BasicBlock *currentBB,
-                                        CFGFunctionParserState &functionState) {
+ParseResult Parser::parseTerminator(BasicBlock *currentBB,
+                                    CFGFunctionParserState &functionState) {
   switch (curToken.getKind()) {
   default:
-    return (emitError("expected terminator at end of basic block"), nullptr);
+    return emitError("expected terminator at end of basic block");
 
   case Token::kw_return:
     consumeToken(Token::kw_return);
-    return new ReturnInst(currentBB);
+    new ReturnInst(currentBB);
+    return ParseSuccess;
 
   case Token::kw_br: {
     consumeToken(Token::kw_br);
     auto destBB = functionState.getBlockNamed(curToken.getSpelling(),
                                               curToken.getLoc());
     if (!consumeIf(Token::bare_identifier))
-      return (emitError("expected basic block name"), nullptr);
-    return new BranchInst(destBB, currentBB);
+      return emitError("expected basic block name");
+    new BranchInst(destBB, currentBB);
+    return ParseSuccess;
   }
   }
 }

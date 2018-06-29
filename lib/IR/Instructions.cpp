@@ -19,14 +19,33 @@
 #include "mlir/IR/BasicBlock.h"
 using namespace mlir;
 
-CFGFunction *TerminatorInst::getFunction() const {
+//===----------------------------------------------------------------------===//
+// Instruction
+//===----------------------------------------------------------------------===//
+
+CFGFunction *Instruction::getFunction() const {
   return getBlock()->getFunction();
 }
 
+//===----------------------------------------------------------------------===//
+// OperationInst
+//===----------------------------------------------------------------------===//
+
+OperationInst::OperationInst(Identifier name, BasicBlock *block) :
+  Instruction(Kind::Operation, block), name(name) {
+  getBlock()->instList.push_back(this);
+}
+
+//===----------------------------------------------------------------------===//
+// Terminators
+//===----------------------------------------------------------------------===//
+
 ReturnInst::ReturnInst(BasicBlock *parent)
   : TerminatorInst(Kind::Return, parent) {
+  getBlock()->setTerminator(this);
 }
 
 BranchInst::BranchInst(BasicBlock *dest, BasicBlock *parent)
   : TerminatorInst(Kind::Branch, parent), dest(dest) {
+  getBlock()->setTerminator(this);
 }

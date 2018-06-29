@@ -38,6 +38,7 @@ public:
     // TODO: @@foo, etc.
 
     integer,            // 42
+    string,             // "foo"
 
     // Punctuation.
     arrow,              // ->
@@ -105,7 +106,11 @@ public:
 
   /// For an integer token, return its value as an unsigned.  If it doesn't fit,
   /// return None.
-  Optional<unsigned> getUnsignedIntegerValue();
+  Optional<unsigned> getUnsignedIntegerValue() const;
+
+  /// Given a 'string' token, return its value, including removing the quote
+  /// characters and unescaping the contents of the string.
+  std::string getStringValue() const;
 
   // Location processing.
   llvm::SMLoc getLoc() const;

@@ -16,9 +16,11 @@
 // =============================================================================
 
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Identifier.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
 using namespace mlir;
 using namespace llvm;
@@ -89,6 +91,9 @@ public:
   /// We put immortal objects into this allocator.
   llvm::BumpPtrAllocator allocator;
 
+  /// These are identifiers uniqued into this MLIRContext.
+  llvm::StringMap<char, llvm::BumpPtrAllocator&> identifiers;
+
   // Primitive type uniquing.
   PrimitiveType *primitives[int(TypeKind::LAST_PRIMITIVE_TYPE)+1] = { nullptr };
 
@@ -110,6 +115,8 @@ public:
 
 
 public:
+  MLIRContextImpl() : identifiers(allocator) {}
+
   /// Copy the specified array of elements into memory managed by our bump
   /// pointer allocator.  This assumes the elements are all PODs.
   template<typename T>
@@ -128,9 +135,28 @@ MLIRContext::~MLIRContext() {
 }
 
 
+//===----------------------------------------------------------------------===//
+// Identifier
+//===----------------------------------------------------------------------===//
+
+/// Return an identifier for the specified string.
+Identifier Identifier::get(StringRef str, const MLIRContext *context) {
+  assert(!str.empty() && "Cannot create an empty identifier");
+  assert(str.find('\0') == StringRef::npos &&
+         "Cannot create an identifier with a nul character");
+
+  auto &impl = context->getImpl();
+  auto it = impl.identifiers.insert({str, char()}).first;
+  return Identifier(it->getKeyData());
+}
+
+
+//===----------------------------------------------------------------------===//
+// Types
+//===----------------------------------------------------------------------===//
+
 PrimitiveType::PrimitiveType(TypeKind kind, MLIRContext *context)
   : Type(kind, context) {
-
 }
 
 PrimitiveType *PrimitiveType::get(TypeKind kind, MLIRContext *context) {
