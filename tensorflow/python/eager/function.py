@@ -782,6 +782,9 @@ class _PolymorphicFunction(object):
     kwd_values = _deterministic_dict_values(kwds)
     inputs = args + kwd_values
     signature = tuple(_cache_key(x) for x in inputs)
+    # The graph, or whether we're executing eagerly, should be a part of the
+    # signature so we don't improperly capture tensors such as variables.
+    signature += tuple([context.executing_eagerly() or ops.get_default_graph()])
 
     if signature not in self._arguments_to_functions:
       graph_function = _trace_and_define_function(
