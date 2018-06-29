@@ -801,6 +801,10 @@ class _PolymorphicFunction(object):
     graph_function, inputs = self._maybe_define_function(*args, **kwds)
     return graph_function(*inputs)
 
+  def call_python_function(self, *args, **kwargs):
+    """Directly calls the wrapped python function."""
+    return self._python_function(*args, **kwargs)
+
   @property
   def variables(self):
     """Returns a list of variables used in any of the defined functions."""
