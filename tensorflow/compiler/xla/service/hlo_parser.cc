@@ -509,7 +509,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kReal:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
-    case HloOpcode::kSort:
     case HloOpcode::kTanh: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -623,6 +622,27 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
+      break;
+    }
+    case HloOpcode::kSort: {
+      auto loc = lexer_.GetLoc();
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      switch (operands.size()) {
+        case 1:
+          instruction = builder->AddInstruction(
+              HloInstruction::CreateSort(shape, /*keys=*/operands[0]));
+          break;
+        case 2:
+          instruction = builder->AddInstruction(HloInstruction::CreateSort(
+              shape,
+              /*keys=*/operands[0], /*values=*/operands[1]));
+          break;
+        default:
+          return Error(loc, StrCat("expects either 1 or 2 operands, but has ",
+                                   operands.size(), " operands"));
+      }
       break;
     }
     case HloOpcode::kTuple: {

@@ -130,6 +130,8 @@ filegroup(
         "@astor_archive//:LICENSE",
         "@aws//:LICENSE",
         "@boringssl//:LICENSE",
+        "@com_github_googleapis_googleapis//:LICENSE",
+        "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         "@com_google_absl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@cub_archive//:LICENSE.TXT",

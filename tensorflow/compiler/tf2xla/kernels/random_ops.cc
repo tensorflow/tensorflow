@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -84,8 +85,7 @@ class RandomShuffleOp : public XlaOpKernel {
                           xla::ConstantR0<int32>(builder, n), swaps_shape);
 
       // Generate range(n) as the initial value for the indices to be swapped.
-      xla::XlaOp indices;
-      TF_CHECK_OK(XlaHelpers::Iota(builder, DataType::DT_INT32, n, &indices));
+      xla::XlaOp indices = xla::Iota(builder, xla::S32, n);
 
       // Swap the indices at i and swaps[i].
       auto swap_body_fn = [&](xla::XlaOp i,

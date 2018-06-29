@@ -239,7 +239,6 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case HloOpcode::kNegate:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSign:
-    case HloOpcode::kSort:
       return shape;
 
     case HloOpcode::kNot:
@@ -961,6 +960,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::AppendShapeToTuple(*shape, &result);
       }
       return result;
+    }
+    case HloOpcode::kSort: {
+      if (operand_shapes.size() == 1) {
+        return *operand_shapes[0];
+      } else if (operand_shapes.size() == 2) {
+        return ShapeUtil::MakeTupleShape(
+            {*operand_shapes[0], *operand_shapes[1]});
+      }
+      return InvalidArgument("Unexpected number of operands for sort");
     }
     default:
       return InvalidArgument("Unknown operation %s.",

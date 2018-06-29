@@ -221,26 +221,22 @@ std::pair<string, string> calib_convert(
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 }
 
-version_struct get_linked_tensorrt_version() {
+version_struct get_linked_tensorrt_version(){
   // Return the version at the link time.
-  version_struct s;
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
   const auto &lv = tensorflow::tensorrt::convert::GetLinkedTensorRTVersion();
+  version_struct s;
   s.vmajor = lv[0];
   s.vminor = lv[1];
   s.vpatch = lv[2];
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
   return s;
 }
 version_struct get_loaded_tensorrt_version(){
   // Return the version from the loaded library.
-  version_struct s;
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
   const auto &lv = tensorflow::tensorrt::convert::GetLoadedTensorRTVersion();
+  version_struct s;
   s.vmajor = lv[0];
   s.vminor = lv[1];
   s.vpatch = lv[2];
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
   return s;
 }
 

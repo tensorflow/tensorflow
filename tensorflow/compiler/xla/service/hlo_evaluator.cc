@@ -1068,6 +1068,19 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleSort(HloInstruction* sort) {
+  if (!ShapeUtil::IsTuple(sort->shape())) {
+    return DefaultAction(sort);
+  }
+  // The key-value version of Sort is a special snowflake, since the output
+  // shape is a tuple, so its element type is not meaningful.
+  //
+  // TODO(mkuper): Do something sane here, so that we can support different key
+  // and value types.
+  return sort->Visit(
+      typed_visitors_.at(sort->operand(0)->shape().element_type()).get());
+}
+
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
   VLOG(2) << "About to visit HLO: " << hlo->ToString();
   return Status::OK();
