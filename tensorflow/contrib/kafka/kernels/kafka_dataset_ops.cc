@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/dataset.h"
-
+#include <stdlib.h>
 #include "ignite_dataset.h"
 
 namespace tensorflow {
@@ -35,6 +35,8 @@ class KafkaDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "local", &local));
     int32 part = -1;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "part", &part));
+    bool partitioned = false;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "partitioned", &partitioned));
     int32 page_size = -1;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument<int32>(ctx, "page_size", &page_size));
@@ -59,6 +61,16 @@ class KafkaDatasetOp : public DatasetOpKernel {
     permutation.reserve(permutation_tensor->NumElements());
     for (int i = 0; i < permutation_tensor->NumElements(); i++) {
       permutation.push_back(permutation_tensor->flat<int32>()(i));
+    }
+
+    if (partitioned) {
+        const char* env_p = std::getenv("IGNITE_DATASET_PARTITION");
+        if (env_p) {
+            part = atoi(env_p);
+        }
+        else {
+            LOG(ERROR) << "Dataset specified as partitioned, but IGNITE_DATASET_PARTITION variable is not defined";
+        }
     }
 
     *output = new ignite::IgniteDataset(ctx, cache_name, host, port, local,

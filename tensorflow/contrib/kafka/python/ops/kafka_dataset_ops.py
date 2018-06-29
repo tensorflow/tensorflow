@@ -544,7 +544,7 @@ class KafkaDataset(Dataset):
   """A Kafka Dataset that consumes the message.
   """
 
-  def __init__(self, cache_name, host="localhost", port=10800, local=False, part=-1, page_size=100):
+  def __init__(self, cache_name, host="localhost", port=10800, local=False, part=-1, partitioned=False, page_size=100):
     """Create a KafkaReader.
 
     Args:
@@ -566,12 +566,13 @@ class KafkaDataset(Dataset):
     self._port = ops.convert_to_tensor(port, dtype=dtypes.int32, name="port")
     self._local = ops.convert_to_tensor(local, dtype=dtypes.bool, name="local")
     self._part = ops.convert_to_tensor(part, dtype=dtypes.int32, name="part")
+    self._partitioned = ops.convert_to_tensor(partitioned, dtype=dtypes.bool, name="partitioned")
     self._page_size = ops.convert_to_tensor(page_size, dtype=dtypes.int32, name="page_size")
     self._schema = ops.convert_to_tensor(self._cache_type.to_flat(), dtype=dtypes.int32, name="schema")
     self._permutation = ops.convert_to_tensor(self._cache_type.to_permutation(), dtype=dtypes.int32, name="permutation")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.kafka_dataset(self._cache_name, self._host, self._port, self._local, self._part, self._page_size, self._schema, self._permutation)
+    return gen_dataset_ops.kafka_dataset(self._cache_name, self._host, self._port, self._local, self._part, self._partitioned, self._page_size, self._schema, self._permutation)
 
   @property
   def output_classes(self):

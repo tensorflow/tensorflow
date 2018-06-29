@@ -25,6 +25,7 @@ REGISTER_OP("KafkaDataset")
   .Input("port: int32")
   .Input("local: bool")
   .Input("part: int32")
+  .Input("partitioned: bool")
   .Input("page_size: int32")
   .Input("schema: int32")
   .Input("permutation: int32")
@@ -39,6 +40,7 @@ host: Host.
 port: Port.
 local: Local.
 part: Part.
+partitioned: Partitioned.
 page_size: Page size.
 schema: Schema.
 permutation: Permutation.
