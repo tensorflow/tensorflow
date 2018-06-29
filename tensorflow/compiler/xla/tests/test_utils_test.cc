@@ -31,16 +31,16 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
   XlaBuilder builder(TestName());
   // Make the reduction lambda.
   Shape single_float = ShapeUtil::MakeShape(F32, {});
-  builder.Parameter(0, single_float, "unused");
-  builder.Parameter(1, single_float, "used");
+  Parameter(&builder, 0, single_float, "unused");
+  Parameter(&builder, 1, single_float, "used");
   auto computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
   // Make the reduction.
   Shape pair_float = ShapeUtil::MakeShape(F32, {2});
-  builder.Reduce(builder.Parameter(0, pair_float, "operand"),
-                 builder.Parameter(1, single_float, "init"),
-                 computation_status.ValueOrDie(), {0});
+  Reduce(Parameter(&builder, 0, pair_float, "operand"),
+         Parameter(&builder, 1, single_float, "init"),
+         computation_status.ValueOrDie(), {0});
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 

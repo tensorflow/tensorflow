@@ -70,9 +70,9 @@ XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
       *Literal::MakeTuple({Literal::CreateR2<float>({{1, 2}, {3, 4}}).get(),
                            Literal::CreateR2<float>({{5, 6}, {7, 8}}).get()}),
       "arg0", &builder, &param);
-  auto lhs = builder.GetTupleElement(param, 0);
-  auto rhs = builder.GetTupleElement(param, 1);
-  builder.Dot(lhs, rhs);
+  auto lhs = GetTupleElement(param, 0);
+  auto rhs = GetTupleElement(param, 1);
+  Dot(lhs, rhs);
 
   ComputeAndCompareLiteral(&builder,
                            *Literal::CreateR2<float>({{19, 22}, {43, 50}}),
@@ -87,9 +87,9 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, ZeroElementVectorDot) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
 
-  auto lhs = builder.ConstantR1<T>({});
-  auto rhs = builder.ConstantR1<T>({});
-  auto result = builder.Dot(lhs, rhs);
+  auto lhs = ConstantR1<T>(&builder, {});
+  auto rhs = ConstantR1<T>(&builder, {});
+  Dot(lhs, rhs);
 
   this->template ComputeAndCompareR0<T>(&builder, static_cast<T>(0.0), {},
                                         this->error_spec_);
@@ -102,9 +102,9 @@ TYPED_TEST_CASE(DotOperationTest_F16F32F64, TypesF16F32F64);
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, TrivialMatrixVectorDot) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
-  auto lhs = builder.ConstantR2FromArray2D<T>({{3.0f, 4.0f}});
-  auto rhs = builder.ConstantFromArray<T>({3.0f, 4.0f});
-  auto result = builder.Dot(lhs, rhs);
+  auto lhs = ConstantR2FromArray2D<T>(&builder, {{3.0f, 4.0f}});
+  auto rhs = ConstantFromArray<T>(&builder, {3.0f, 4.0f});
+  Dot(lhs, rhs);
 
   this->template ComputeAndCompareR1<T>(&builder, {static_cast<T>(25.0f)}, {},
                                         this->error_spec_);
@@ -113,9 +113,9 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, TrivialMatrixVectorDot) {
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, OneElementVectorDot) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
-  auto lhs = builder.ConstantR1<T>({static_cast<T>(2.0f)});
-  auto rhs = builder.ConstantR1<T>({static_cast<T>(3.0f)});
-  auto result = builder.Dot(lhs, rhs);
+  auto lhs = ConstantR1<T>(&builder, {static_cast<T>(2.0f)});
+  auto rhs = ConstantR1<T>(&builder, {static_cast<T>(3.0f)});
+  Dot(lhs, rhs);
 
   this->template ComputeAndCompareR0<T>(&builder, static_cast<T>(6.0f), {},
                                         this->error_spec_);
@@ -124,9 +124,9 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, OneElementVectorDot) {
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, VectorDot) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
-  auto lhs = builder.ConstantFromArray<T>({1.0f, 2.5f, 42.0f});
-  auto rhs = builder.ConstantFromArray<T>({11.0f, -1.0f, 0.5f});
-  auto result = builder.Dot(lhs, rhs);
+  auto lhs = ConstantFromArray<T>(&builder, {1.0f, 2.5f, 42.0f});
+  auto rhs = ConstantFromArray<T>(&builder, {11.0f, -1.0f, 0.5f});
+  Dot(lhs, rhs);
 
   this->template ComputeAndCompareR0<T>(&builder, static_cast<T>(29.5f), {},
                                         this->error_spec_);
@@ -139,9 +139,9 @@ std::vector<int64> MinorToMajorForIsRowMajor(bool row_major) {
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x0) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
-  auto lhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(0, 2));
-  auto rhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(2, 0));
-  auto result = builder.Dot(lhs, rhs);
+  auto lhs = ConstantR2FromArray2D<T>(&builder, Array2D<T>(0, 2));
+  auto rhs = ConstantR2FromArray2D<T>(&builder, Array2D<T>(2, 0));
+  Dot(lhs, rhs);
 
   this->template ComputeAndCompareR2<T>(&builder, Array2D<T>(0, 0), {},
                                         this->error_spec_);
@@ -150,10 +150,10 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x0) {
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x3) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
-  auto lhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(0, 2));
-  auto rhs = builder.ConstantR2FromArray2D<T>(
-      {{7.0f, 8.0f, 9.0f}, {42.0f, 77.0f, 101.0f}});
-  auto result = builder.Dot(lhs, rhs);
+  auto lhs = ConstantR2FromArray2D<T>(&builder, Array2D<T>(0, 2));
+  auto rhs = ConstantR2FromArray2D<T>(
+      &builder, {{7.0f, 8.0f, 9.0f}, {42.0f, 77.0f, 101.0f}});
+  Dot(lhs, rhs);
 
   this->template ComputeAndCompareR2<T>(&builder, Array2D<T>(0, 3), {},
                                         this->error_spec_);
@@ -162,10 +162,10 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_0x2_2x3) {
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_3x2_2x0) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
-  auto lhs = builder.ConstantR2FromArray2D<T>(
-      {{7.0f, 8.0f}, {9.0f, 42.0f}, {77.0f, 101.0f}});
-  auto rhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(2, 0));
-  auto result = builder.Dot(lhs, rhs);
+  auto lhs = ConstantR2FromArray2D<T>(
+      &builder, {{7.0f, 8.0f}, {9.0f, 42.0f}, {77.0f, 101.0f}});
+  auto rhs = ConstantR2FromArray2D<T>(&builder, Array2D<T>(2, 0));
+  Dot(lhs, rhs);
 
   this->template ComputeAndCompareR2<T>(&builder, Array2D<T>(3, 0), {},
                                         this->error_spec_);
@@ -174,9 +174,9 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_3x2_2x0) {
 XLA_TYPED_TEST(DotOperationTest_F16F32F64, Dot_2x0_0x2) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
-  auto lhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(2, 0));
-  auto rhs = builder.ConstantR2FromArray2D<T>(Array2D<T>(0, 2));
-  auto result = builder.Dot(lhs, rhs);
+  auto lhs = ConstantR2FromArray2D<T>(&builder, Array2D<T>(2, 0));
+  auto rhs = ConstantR2FromArray2D<T>(&builder, Array2D<T>(0, 2));
+  Dot(lhs, rhs);
 
   this->template ComputeAndCompareR2<T>(
       &builder, Array2D<T>(2, 2, static_cast<T>(0.0f)), {}, this->error_spec_);
@@ -186,11 +186,11 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, FusedDot) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
   auto param0 =
-      builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({2, 4}), "arg0");
+      Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 4}), "arg0");
   auto param1 =
-      builder.Parameter(1, ShapeUtil::MakeShapeWithType<T>({4, 1}), "arg1");
-  auto exp0 = builder.Exp(param0);
-  auto result = builder.Dot(exp0, param1);
+      Parameter(&builder, 1, ShapeUtil::MakeShapeWithType<T>({4, 1}), "arg1");
+  auto exp0 = Exp(param0);
+  Dot(exp0, param1);
 
   auto lhs_handle =
       this->client_
@@ -231,9 +231,8 @@ class SquareMatrixDot : public DotOperationTest {
             .ConsumeValueOrDie();
     XlaBuilder builder(TestName());
     auto prim_type = primitive_util::NativeToPrimitiveType<T>();
-    auto result = builder.Dot(
-        builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {2, 2}), "lhs"),
-        builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {2, 2}), "rhs"));
+    Dot(Parameter(&builder, 0, ShapeUtil::MakeShape(prim_type, {2, 2}), "lhs"),
+        Parameter(&builder, 1, ShapeUtil::MakeShape(prim_type, {2, 2}), "rhs"));
 
     Array2D<T> expected({{15.0f, -2.0f}, {-25.0f, 34.0f}});
     ComputeAndCompareR2<T>(&builder, expected,
@@ -316,26 +315,26 @@ void ParametricDotTest::TestImpl() {
 
   XlaBuilder builder(TestName());
   auto prim_type = primitive_util::NativeToPrimitiveType<NativeT>();
-  auto result = builder.Dot(
-      builder.Parameter(0,
-                        ShapeUtil::MakeShapeWithLayout(
-                            prim_type, {param.m, param.k},
-                            MinorToMajorForIsRowMajor(param.dot_lhs_row_major)),
-                        "dot_lhs"),
-      builder.Parameter(1,
-                        ShapeUtil::MakeShapeWithLayout(
-                            prim_type, {param.k, param.n},
-                            MinorToMajorForIsRowMajor(param.dot_rhs_row_major)),
-                        "dot_rhs"));
+  auto result =
+      Dot(Parameter(&builder, 0,
+                    ShapeUtil::MakeShapeWithLayout(
+                        prim_type, {param.m, param.k},
+                        MinorToMajorForIsRowMajor(param.dot_lhs_row_major)),
+                    "dot_lhs"),
+          Parameter(&builder, 1,
+                    ShapeUtil::MakeShapeWithLayout(
+                        prim_type, {param.k, param.n},
+                        MinorToMajorForIsRowMajor(param.dot_rhs_row_major)),
+                    "dot_rhs"));
 
   if (param.has_addend) {
-    result = builder.Add(
-        result, builder.Parameter(
-                    2,
-                    ShapeUtil::MakeShapeWithLayout(
-                        prim_type, {param.m, param.n},
-                        MinorToMajorForIsRowMajor(param.addend_row_major)),
-                    "addend"));
+    result =
+        Add(result,
+            Parameter(&builder, 2,
+                      ShapeUtil::MakeShapeWithLayout(
+                          prim_type, {param.m, param.n},
+                          MinorToMajorForIsRowMajor(param.addend_row_major)),
+                      "addend"));
   }
 
   std::unique_ptr<Array2D<NativeT>> expected;
@@ -492,9 +491,8 @@ class NonsquareMatrixDot : public DotOperationTest {
 
     XlaBuilder builder(TestName());
     auto prim_type = primitive_util::NativeToPrimitiveType<T>();
-    auto result = builder.Dot(
-        builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {2, 3}), "lhs"),
-        builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {3, 2}), "rhs"));
+    Dot(Parameter(&builder, 0, ShapeUtil::MakeShape(prim_type, {2, 3}), "lhs"),
+        Parameter(&builder, 1, ShapeUtil::MakeShape(prim_type, {3, 2}), "rhs"));
 
     Array2D<T> expected({{26.0f, 0.0f}, {-12.0f, 10.0f}});
 
@@ -524,9 +522,8 @@ XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
 
   XlaBuilder builder(TestName());
   auto prim_type = primitive_util::NativeToPrimitiveType<complex64>();
-  auto result = builder.Dot(
-      builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {1, 4}), "lhs"),
-      builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {4, 2}), "rhs"));
+  Dot(Parameter(&builder, 0, ShapeUtil::MakeShape(prim_type, {1, 4}), "lhs"),
+      Parameter(&builder, 1, ShapeUtil::MakeShape(prim_type, {4, 2}), "rhs"));
 
   Array2D<complex64> expected({{30.0, -2.0}});
 
@@ -538,11 +535,13 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, ConcurrentMatMult) {
   using T = TypeParam;
 
   XlaBuilder builder(this->TestName());
-  auto matrix1 = builder.ConstantR2FromArray2D<T>({{1.0f, 2.0f}, {3.0f, 4.0f}});
-  auto matrix2 = builder.ConstantR2FromArray2D<T>({{5.0f, 6.0f}, {7.0f, 8.0f}});
-  auto matrix12 = builder.Dot(matrix1, matrix2);
-  auto matrix21 = builder.Dot(matrix2, matrix1);
-  builder.Add(matrix12, matrix21);
+  auto matrix1 =
+      ConstantR2FromArray2D<T>(&builder, {{1.0f, 2.0f}, {3.0f, 4.0f}});
+  auto matrix2 =
+      ConstantR2FromArray2D<T>(&builder, {{5.0f, 6.0f}, {7.0f, 8.0f}});
+  auto matrix12 = Dot(matrix1, matrix2);
+  auto matrix21 = Dot(matrix2, matrix1);
+  Add(matrix12, matrix21);
 
   Array2D<T> expected({{42.0f, 56.0f}, {74.0f, 96.0f}});
   this->template ComputeAndCompareR2<T>(&builder, expected, {},
@@ -559,29 +558,29 @@ TYPED_TEST_CASE(DotOperationTestForBatchMatMul, TypesF16F32F64);
 XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
-  auto x =
-      builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}), "x");
-  auto y =
-      builder.Parameter(1, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}), "y");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}),
+                     "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}),
+                     "y");
 
-  auto x_flat = builder.Reshape(x, {0, 1, 2, 3}, {4, 2, 2});
-  auto y_flat = builder.Reshape(y, {0, 1, 2, 3}, {4, 2, 2});
+  auto x_flat = Reshape(x, {0, 1, 2, 3}, {4, 2, 2});
+  auto y_flat = Reshape(y, {0, 1, 2, 3}, {4, 2, 2});
 
   // Slice batches into individual matrices and multiply them.
   std::vector<XlaOp> out_slices;
   for (int i = 0; i < 4; ++i) {
     // Slice off individual matrices and reshape to 2D tensors.
-    auto x_slice = builder.Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
-    x_slice = builder.Reshape(x_slice, {0, 1, 2}, {2, 2});
-    auto y_slice = builder.Slice(y_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
-    y_slice = builder.Reshape(y_slice, {0, 1, 2}, {2, 2});
+    auto x_slice = Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
+    x_slice = Reshape(x_slice, {0, 1, 2}, {2, 2});
+    auto y_slice = Slice(y_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
+    y_slice = Reshape(y_slice, {0, 1, 2}, {2, 2});
 
-    auto out = builder.Dot(x_slice, y_slice);
-    out = builder.Reshape(out, {0, 1}, {1, 2, 2});
+    auto out = Dot(x_slice, y_slice);
+    out = Reshape(out, {0, 1}, {1, 2, 2});
     out_slices.push_back(out);
   }
-  auto out_flat = builder.ConcatInDim(out_slices, 0);
-  builder.Reshape(out_flat, {0, 1, 2}, {2, 2, 2, 2});
+  auto out_flat = ConcatInDim(&builder, out_slices, 0);
+  Reshape(out_flat, {0, 1, 2}, {2, 2, 2, 2});
 
   auto x_data = this->client_
                     ->TransferToServer(*Literal::CreateR4FromArray4D<T>(
@@ -616,9 +615,9 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, GeneralMatMul) {
 
   XlaBuilder builder(this->TestName());
   auto x =
-      builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "x");
+      Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "x");
   auto y =
-      builder.Parameter(1, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "y");
+      Parameter(&builder, 1, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "y");
 
   DotDimensionNumbers dnums;
   dnums.add_lhs_contracting_dimensions(2);
@@ -626,7 +625,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, GeneralMatMul) {
   dnums.add_lhs_batch_dimensions(0);
   dnums.add_rhs_batch_dimensions(0);
 
-  auto out = builder.DotGeneral(x, y, dnums);
+  DotGeneral(x, y, dnums);
 
   auto x_data =
       this->client_
@@ -678,19 +677,21 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, TransposeFolding) {
 
         XlaBuilder builder(this->TestName());
         auto prim_type = primitive_util::NativeToPrimitiveType<T>();
-        auto lhs_arg = builder.Parameter(
-            0, ShapeUtil::MakeShape(prim_type, {lhs->height(), lhs->width()}),
+        auto lhs_arg = Parameter(
+            &builder, 0,
+            ShapeUtil::MakeShape(prim_type, {lhs->height(), lhs->width()}),
             "lhs");
-        auto rhs_arg = builder.Parameter(
-            1, ShapeUtil::MakeShape(prim_type, {rhs->height(), rhs->width()}),
+        auto rhs_arg = Parameter(
+            &builder, 1,
+            ShapeUtil::MakeShape(prim_type, {rhs->height(), rhs->width()}),
             "rhs");
         if (transpose_lhs) {
-          lhs_arg = builder.Transpose(lhs_arg, {1, 0});
+          lhs_arg = Transpose(lhs_arg, {1, 0});
         }
         if (transpose_rhs) {
-          rhs_arg = builder.Transpose(rhs_arg, {1, 0});
+          rhs_arg = Transpose(rhs_arg, {1, 0});
         }
-        auto result = builder.Dot(lhs_arg, rhs_arg);
+        Dot(lhs_arg, rhs_arg);
 
         Array2D<T> expected({{26.0f, 0.0f}, {-12.0f, 10.0f}});
         VLOG(1) << "TestTransposeFolding " << transpose_lhs << " "
@@ -713,15 +714,15 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64,
                       {6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f}}));
 
   XlaBuilder builder(this->TestName());
-  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
-  auto rhs_arg_0 = builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {2, 2}),
-                                     "rhs_arg_0");
-  auto rhs_arg_1 = builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {3, 2}),
-                                     "rhs_arg_1");
-  auto rhs_arg_2 = builder.Parameter(2, ShapeUtil::MakeShape(prim_type, {1, 2}),
-                                     "rhs_arg_2");
-  auto result = builder.Dot(
-      lhs_constant, builder.ConcatInDim({rhs_arg_0, rhs_arg_1, rhs_arg_2}, 0));
+  auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
+  auto rhs_arg_0 = Parameter(
+      &builder, 0, ShapeUtil::MakeShape(prim_type, {2, 2}), "rhs_arg_0");
+  auto rhs_arg_1 = Parameter(
+      &builder, 1, ShapeUtil::MakeShape(prim_type, {3, 2}), "rhs_arg_1");
+  auto rhs_arg_2 = Parameter(
+      &builder, 2, ShapeUtil::MakeShape(prim_type, {1, 2}), "rhs_arg_2");
+  Dot(lhs_constant,
+      ConcatInDim(&builder, {rhs_arg_0, rhs_arg_1, rhs_arg_2}, 0));
 
   std::unique_ptr<Array2D<T>> arg_0_value_array(
       new Array2D<T>({{1.0f, 2.0f}, {3.0f, 4.0f}}));
@@ -761,15 +762,15 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64,
                       {2.0f, 1.0f}}));
 
   XlaBuilder builder(this->TestName());
-  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
-  auto lhs_arg_0 = builder.Parameter(0, ShapeUtil::MakeShapeWithType<T>({2, 2}),
-                                     "lhs_arg_0");
-  auto lhs_arg_1 = builder.Parameter(1, ShapeUtil::MakeShapeWithType<T>({2, 3}),
-                                     "lhs_arg_1");
-  auto lhs_arg_2 = builder.Parameter(2, ShapeUtil::MakeShapeWithType<T>({2, 1}),
-                                     "lhs_arg_2");
-  auto result = builder.Dot(
-      builder.ConcatInDim({lhs_arg_0, lhs_arg_1, lhs_arg_2}, 1), rhs_constant);
+  auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
+  auto lhs_arg_0 = Parameter(
+      &builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2}), "lhs_arg_0");
+  auto lhs_arg_1 = Parameter(
+      &builder, 1, ShapeUtil::MakeShapeWithType<T>({2, 3}), "lhs_arg_1");
+  auto lhs_arg_2 = Parameter(
+      &builder, 2, ShapeUtil::MakeShapeWithType<T>({2, 1}), "lhs_arg_2");
+  Dot(ConcatInDim(&builder, {lhs_arg_0, lhs_arg_1, lhs_arg_2}, 1),
+      rhs_constant);
 
   std::unique_ptr<Array2D<T>> arg_0_value_array(
       new Array2D<T>({{1.0f, 2.0f}, {3.0f, 4.0f}}));
@@ -811,16 +812,15 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSClassicMM) {
   // Dot result to slice from: {{114, 105, 96}, {96, 105, 114}}
 
   XlaBuilder builder(TestName());
-  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
-  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
-  auto start_constant = builder.ConstantR1<int32>({1, 0});
-  auto dynamic_slice =
-      builder.DynamicSlice(lhs_constant, start_constant, {1, 6});
+  auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
+  auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
+  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
+  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto result = builder.DotGeneral(dynamic_slice, rhs_constant, dot_dnums);
+  DotGeneral(dynamic_slice, rhs_constant, dot_dnums);
 
   Array2D<float> expected({{96.0, 105.0, 114.0}});
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
@@ -839,16 +839,15 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
   // Dot result to slice from: {{114, 105, 96}, {96, 105, 114}}
 
   XlaBuilder builder(TestName());
-  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
-  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
-  auto start_constant = builder.ConstantR1<int32>({0, 1});
-  auto dynamic_slice =
-      builder.DynamicSlice(rhs_constant, start_constant, {6, 1});
+  auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
+  auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
+  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
+  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto result = builder.DotGeneral(lhs_constant, dynamic_slice, dot_dnums);
+  DotGeneral(lhs_constant, dynamic_slice, dot_dnums);
 
   Array2D<float> expected({{105.0}, {105.0}});
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
@@ -856,8 +855,8 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
 XLA_TEST_F(DotOperationTest,
-       DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
-           DotOfGatherOptimizationWithConstRHSReverseMM)))) {
+           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
+               DotOfGatherOptimizationWithConstRHSReverseMM)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0, 3.0},
                           {4.0, 5.0, 6.0},
@@ -870,16 +869,15 @@ XLA_TEST_F(DotOperationTest,
   // Dot result to slice from: {{114, 96}, {105, 105}, {96, 114}}
 
   XlaBuilder builder(TestName());
-  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
-  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
-  auto start_constant = builder.ConstantR1<int32>({0, 1});
-  auto dynamic_slice =
-      builder.DynamicSlice(lhs_constant, start_constant, {6, 1});
+  auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
+  auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
+  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
+  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(1);
-  auto result = builder.DotGeneral(dynamic_slice, rhs_constant, dot_dnums);
+  DotGeneral(dynamic_slice, rhs_constant, dot_dnums);
 
   Array2D<float> expected({{105.0, 105.0}});
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
@@ -887,8 +885,8 @@ XLA_TEST_F(DotOperationTest,
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
 XLA_TEST_F(DotOperationTest,
-       DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
-           DotOfGatherOptimizationWithConstLHSReverseMM)))) {
+           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
+               DotOfGatherOptimizationWithConstLHSReverseMM)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0, 3.0},
                           {4.0, 5.0, 6.0},
@@ -901,16 +899,15 @@ XLA_TEST_F(DotOperationTest,
   // Dot result to slice from: {{114, 96}, {105, 105}, {96, 114}}
 
   XlaBuilder builder(TestName());
-  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
-  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
-  auto start_constant = builder.ConstantR1<int32>({1, 0});
-  auto dynamic_slice =
-      builder.DynamicSlice(rhs_constant, start_constant, {1, 6});
+  auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
+  auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
+  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
+  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(1);
-  auto result = builder.DotGeneral(lhs_constant, dynamic_slice, dot_dnums);
+  DotGeneral(lhs_constant, dynamic_slice, dot_dnums);
 
   Array2D<float> expected({{96.0}, {105.0}, {114.0}});
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
@@ -918,8 +915,8 @@ XLA_TEST_F(DotOperationTest,
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
 XLA_TEST_F(DotOperationTest,
-       DISABLED_ON_CPU(DISABLED_ON_GPU(
-           DISABLED_ON_INTERPRETER(DotOfGatherOptimizationWithConstRHSRows)))) {
+           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
+               DotOfGatherOptimizationWithConstRHSRows)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0},
                           {3.0, 4.0},
@@ -937,16 +934,15 @@ XLA_TEST_F(DotOperationTest,
   // Dot result to slice from: {{132, 129, 126}, {126, 129, 132}}
 
   XlaBuilder builder(TestName());
-  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
-  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
-  auto start_constant = builder.ConstantR1<int32>({0, 1});
-  auto dynamic_slice =
-      builder.DynamicSlice(lhs_constant, start_constant, {6, 1});
+  auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
+  auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
+  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
+  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto result = builder.DotGeneral(dynamic_slice, rhs_constant, dot_dnums);
+  DotGeneral(dynamic_slice, rhs_constant, dot_dnums);
 
   Array2D<float> expected({{126.0, 129.0, 132.0}});
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
@@ -954,8 +950,8 @@ XLA_TEST_F(DotOperationTest,
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
 XLA_TEST_F(DotOperationTest,
-       DISABLED_ON_CPU(DISABLED_ON_GPU(
-           DISABLED_ON_INTERPRETER(DotOfGatherOptimizationWithConstLHSRows)))) {
+           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
+               DotOfGatherOptimizationWithConstLHSRows)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0},
                           {3.0, 4.0},
@@ -973,16 +969,15 @@ XLA_TEST_F(DotOperationTest,
   // Dot result to slice from: {{132, 129, 126}, {126, 129, 132}}
 
   XlaBuilder builder(TestName());
-  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
-  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
-  auto start_constant = builder.ConstantR1<int32>({0, 1});
-  auto dynamic_slice =
-      builder.DynamicSlice(rhs_constant, start_constant, {6, 1});
+  auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
+  auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
+  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
+  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto result = builder.DotGeneral(lhs_constant, dynamic_slice, dot_dnums);
+  DotGeneral(lhs_constant, dynamic_slice, dot_dnums);
 
   Array2D<float> expected({{129.0}, {129.0}});
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
@@ -990,8 +985,8 @@ XLA_TEST_F(DotOperationTest,
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
 XLA_TEST_F(DotOperationTest,
-       DISABLED_ON_CPU(DISABLED_ON_GPU(
-           DISABLED_ON_INTERPRETER(DotOfGatherOptimizationWithConstRHSCols)))) {
+           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
+               DotOfGatherOptimizationWithConstRHSCols)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
       {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
   std::unique_ptr<Array2D<float>> constant_rhs_array(
@@ -1001,16 +996,15 @@ XLA_TEST_F(DotOperationTest,
   // Dot result to slice from: {{91, 168, 56}, {56, 168, 91}}
 
   XlaBuilder builder(TestName());
-  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
-  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
-  auto start_constant = builder.ConstantR1<int32>({1, 0});
-  auto dynamic_slice =
-      builder.DynamicSlice(lhs_constant, start_constant, {1, 6});
+  auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
+  auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
+  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
+  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(1);
-  auto result = builder.DotGeneral(dynamic_slice, rhs_constant, dot_dnums);
+  DotGeneral(dynamic_slice, rhs_constant, dot_dnums);
 
   Array2D<float> expected({{56.0, 168.0, 91.0}});
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
@@ -1018,8 +1012,8 @@ XLA_TEST_F(DotOperationTest,
 
 // TODO (b/69062148) Enable when Dot implements general contracting dimensions.
 XLA_TEST_F(DotOperationTest,
-       DISABLED_ON_CPU(DISABLED_ON_GPU(
-           DISABLED_ON_INTERPRETER(DotOfGatherOptimizationWithConstLHSCols)))) {
+           DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
+               DotOfGatherOptimizationWithConstLHSCols)))) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
       {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
   std::unique_ptr<Array2D<float>> constant_rhs_array(
@@ -1029,16 +1023,15 @@ XLA_TEST_F(DotOperationTest,
   // Dot result to slice from: {{91, 168, 56}, {56, 168, 91}}
 
   XlaBuilder builder(TestName());
-  auto lhs_constant = builder.ConstantR2FromArray2D(*constant_lhs_array);
-  auto rhs_constant = builder.ConstantR2FromArray2D(*constant_rhs_array);
-  auto start_constant = builder.ConstantR1<int32>({1, 0});
-  auto dynamic_slice =
-      builder.DynamicSlice(rhs_constant, start_constant, {1, 6});
+  auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
+  auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
+  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
+  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(1);
-  auto result = builder.DotGeneral(lhs_constant, dynamic_slice, dot_dnums);
+  DotGeneral(lhs_constant, dynamic_slice, dot_dnums);
 
   Array2D<float> expected({{168.0}, {168.0}});
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);

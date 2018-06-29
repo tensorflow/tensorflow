@@ -1722,19 +1722,15 @@ class RemoveIdempotentStage : public ArithmeticOptimizerStage {
   ~RemoveIdempotentStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsIdempotent(*node) && !IsInPreserveSet(*node);
+    return node->input_size() == 1 && IsIdempotent(*node) &&
+           !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     NodeDef* input;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
-    auto root_scope_and_name = ParseNodeScopeAndName(node->name());
-    const string new_name = OptimizedNodeName(root_scope_and_name);
-    if (input->op() == node->op() && input->device() == node->device() &&
-        IsIdempotent(*input) && !ctx().node_map->NodeExists(new_name)) {
-      NodeDef* new_input_node = AddCopyNode(new_name, input);
-      ForwardControlDependencies(new_input_node, {node});
-      *simplified_node_name = new_input_node->name();
+    if (input->op() == node->op() && input->device() == node->device()) {
+      *simplified_node_name = node->input(0);
     }
     return Status::OK();
   }
@@ -2523,33 +2519,32 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
                              bool* modified) {
     const auto& t =
         ctx().graph_properties->GetInputProperties(input->name())[i];
-    for (int k = 0; k < t.shape().dim_size(); ++k) {
-      // Skip if t shape is not fully determined.
-      if (t.shape().dim(k).size() < 0) {
+    const auto& c =
+        ctx().graph_properties->GetInputProperties(input->name())[j];
+    for (int k = 0; k < c.shape().dim_size(); ++k) {
+      // Skip if c shape is not fully determined.
+      if (c.shape().dim(k).size() < 0) {
         return Status::OK();
       }
     }
-    const auto& c =
-        ctx().graph_properties->GetInputProperties(input->name())[j];
     TensorShapeProto broadcast_shape;
     if (!ShapeAfterBroadcast(t.shape(), c.shape(), &broadcast_shape)) {
-      return errors::InvalidArgument("Cannot get broadcast shape for: ",
-                                     t.DebugString(), " and ", c.DebugString());
+      return Status::OK();
     }
     if (!ShapesSymbolicallyEqual(t.shape(), broadcast_shape)) {
       // skip if the non-constant tensor doesn't have the same shape after
       // broadcast.
       return Status::OK();
     }
-    if (TensorShape::IsValid(t.shape()) && t.has_value()) {
-      Tensor tensor(t.dtype(), t.shape());
-      if (!tensor.FromProto(t.value())) {
+    if (TensorShape::IsValid(c.shape()) && c.has_value()) {
+      Tensor constant(c.dtype(), c.shape());
+      if (!constant.FromProto(c.value())) {
         return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                       t.value().DebugString());
+                                       c.value().DebugString());
       }
       complex128 element;
-      for (int k = 0; k < tensor.NumElements(); ++k) {
-        if (!GetElement(tensor, k, &element)) {
+      for (int k = 0; k < constant.NumElements(); ++k) {
+        if (!GetElement(constant, k, &element)) {
           // input data type is not supported by log1p. Skip.
           return Status::OK();
         }
@@ -2562,11 +2557,12 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
       TF_RETURN_IF_ERROR(GetInputNode(input->input(i), &x));
       TF_RETURN_IF_ERROR(GetInputNode(input->input(j), &y));
       node->set_op("Log1p");
-      node->set_input(0, y->name());
-      node->add_input(AsControlDependency(x->name()));
+      node->set_input(0, input->input(i));
+      node->add_input(AsControlDependency(y->name()));
       ForwardControlDependencies(node, {input});
 
       AddToOptimizationQueue(node);
+      AddToOptimizationQueue(input);
       AddToOptimizationQueue(x);
       AddToOptimizationQueue(y);
       *modified = true;
@@ -2596,6 +2592,58 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
         return true;
       default:
         return false;
+    }
+  }
+};
+
+// Performs conversions like:
+// Max(Sqrt(x)) => Sqrt(Max(x))
+// Checks for a max/min reduction over element-wise monotonic functions, such
+// as Sqrt, Sigmoid, Tanh, etc.
+class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
+ public:
+  explicit OptimizeMaxOrMinOfMonotonicStage(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("OptimizeMaxOrMinOfMonotonicStage", ctx,
+                                 ctx_ext) {}
+  ~OptimizeMaxOrMinOfMonotonicStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsMax(*node) || IsMin(*node);
+  }
+
+  Status TrySimplify(NodeDef* reduction_node,
+                     string* simplified_node_name) override {
+    NodeDef* inner_function;
+    TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &inner_function));
+    // Optimize only if:
+    // 1. inner_function's Op is element-wise monotonic
+    // 2. inner_function's output is not being consumed elsewhere.
+    if (IsElementWiseMonotonic(*inner_function) &&
+        (NumNonControlOutputs(*inner_function, *ctx().node_map) == 1)) {
+      // Swap the first inputs of the inner function Op & the reduction Op.
+      NodeDef* inner_input;
+      TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
+      inner_function->set_input(0, reduction_node->name());
+      UpdateConsumersAvoidingLoop(inner_function, reduction_node->name());
+      reduction_node->set_input(0, inner_input->name());
+      UpdateConsumersAvoidingLoop(reduction_node, inner_function->name());
+    }
+    return Status::OK();
+  }
+
+  void UpdateConsumersAvoidingLoop(NodeDef* node, const string& new_input) {
+    const string& node_name = node->name();
+    const std::set<NodeDef*> consumers = ctx().node_map->GetOutputs(node_name);
+    for (NodeDef* consumer : consumers) {
+      for (int i = 0; i < consumer->input_size(); ++i) {
+        if (consumer->input(i) == node_name && consumer->name() != new_input) {
+          consumer->set_input(i, new_input);
+          ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
+        }
+      }
+      AddToOptimizationQueue(consumer);
     }
   }
 };
@@ -2878,6 +2926,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.convert_pow) pipeline.AddStage<ConvertPowStage>(ctx, ctx_ext);
   if (options_.convert_log1p)
     pipeline.AddStage<ConvertLog1pStage>(ctx, ctx_ext);
+  if (options_.optimize_max_or_min_of_monotonic)
+    pipeline.AddStage<OptimizeMaxOrMinOfMonotonicStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");

@@ -23,10 +23,8 @@ from __future__ import print_function
 
 import collections
 import weakref
-
 import six
 
-from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.distribute.python import input_ops
 from tensorflow.contrib.distribute.python import prefetching_ops_v2
 from tensorflow.python.eager import context
@@ -35,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver
@@ -43,7 +42,7 @@ from tensorflow.python.util import nest
 
 
 # pylint: disable=line-too-long
-# TODO(josh11b): Should device values be strings or DeviceSpec objects
+# TODO(josh11b): Should device values be strings or DeviceSpec objects?
 # Not sure DeviceSpec objects are usable as a dict key.
 class DistributedValues(object):
   """Holds a map from device to values. Either PerDevice or Mirrored."""
@@ -163,9 +162,16 @@ class PerDevice(DistributedValues):
   pass
 
 
-class Mirrored(DistributedValues):
+# Note that unlike PerDevice, Mirrored values inherit from
+# DistributedDelegate and so can be used directly in cross-tower mode.
+class Mirrored(DistributedDelegate):
   """Holds a map from device to values which are kept in sync."""
-  pass
+
+  def _get_cross_tower(self):
+    device = device_util.canonicalize(device_util.current())
+    if device in self._index:
+      return self._index[device]
+    return list(self._index.values())[0]
 
 
 def _assign_on_device(device, variable, tensor):
@@ -186,6 +192,10 @@ class DistributedVariable(DistributedDelegate):
     # Child class must set self._primary_var before calling
     # super(...).__init__(index).
     self._common_name = self._primary_var.name.split(":")[0]
+    # Use a weakref to make it easy to map from the contained values
+    # to the container without introducing a reference cycle.
+    for v in six.itervalues(index):
+      v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
     super(DistributedVariable, self).__init__(index)
 
   @property
@@ -241,21 +251,6 @@ class DistributedVariable(DistributedDelegate):
 ops.register_dense_tensor_like_type(DistributedVariable)
 
 
-class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
-  """Class for defining how to restore a MirroredVariable."""
-
-  def __init__(self, mirrored_variable, primary_variable, name):
-    self._mirrored_variable = mirrored_variable
-    super(_MirroredSaveable, self).__init__(primary_variable, "", name)
-
-  def restore(self, restored_tensors, restored_shapes):
-    """Restore the same value into all variables."""
-    tensor, = restored_tensors
-    return control_flow_ops.group([
-        _assign_on_device(d, v, tensor)
-        for d, v in six.iteritems(self._mirrored_variable._index)])  # pylint: disable=protected-access
-
-
 def _get_update_device():
   """Validate we are in update/update_non_slot() and return current device.
 
@@ -276,34 +271,82 @@ def _get_update_device():
   return device
 
 
+class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
+  """Class for defining how to restore a MirroredVariable."""
+
+  def __init__(self, mirrored_variable, primary_variable, name):
+    self._mirrored_variable = mirrored_variable
+    super(_MirroredSaveable, self).__init__(primary_variable, "", name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    """Restore the same value into all variables."""
+    tensor, = restored_tensors
+    return control_flow_ops.group([
+        _assign_on_device(d, v, tensor)
+        for d, v in six.iteritems(self._mirrored_variable._index)])  # pylint: disable=protected-access
+
+
 class MirroredVariable(DistributedVariable, Mirrored,
                        checkpointable.CheckpointableBase):
   """Holds a map from device to variables whose values are kept in sync."""
 
-  def __init__(self, index, primary_var):
+  def __init__(self, index, primary_var, aggregation_method=None):
     # Use a weakref to make it easy to map from the contained values
     # to the container without introducing a reference cycle.
     for v in six.itervalues(index):
       v._mirrored_container = weakref.ref(self)  # pylint: disable=protected-access
     self._primary_var = primary_var
+    self._aggregation_method = aggregation_method
     super(MirroredVariable, self).__init__(index)
 
-  # We use _get_update_device() for the assign* methods to enforce
-  # that we are in an update() function. The arguments to update() are
-  # automatically unwrapped so the update() function would normally
-  # see regular variables, not MirroredVariables. However, the update
-  # function can still operate on wrapped MirroredVariables through
-  # object members, captured arguments, etc. This is more likely in an
+  # The arguments to update() are automatically unwrapped so the update()
+  # function would normally see regular variables, not MirroredVariables.
+  # However, the update function can still operate on wrapped MirroredVariables
+  # through object members, captured arguments, etc. This is more likely in an
   # update_non_slot() function (like OptimizerV2._finish), which can
   # update several non-slot variables in one call.
+  def _assign_func(self, *args, **kwargs):
+    f = kwargs.pop("f")
+    if distribute_lib.get_cross_tower_context():
+      update_device = distribute_lib.get_update_device()
+      # We are calling update on the mirrored variable in cross tower context.
+      if update_device is not None:
+        # We are calling an assign function on the mirrored variable in cross
+        # tower context.
+        v = self.get(device=update_device)
+        return f(v, *args, **kwargs)
+
+      return distribute_lib.get_distribution_strategy().update(
+          self, f, *args, **kwargs)
+    else:
+      # We are calling an assign function on the mirrored variable in tower
+      # context.
+      # We reduce the value we want to assign/add/sub. More details about how we
+      # handle the different use cases can be found in the _reduce method.
+      # We call the function on each of the mirrored variables with the reduced
+      # value.
+      if not self._aggregation_method:
+        raise ValueError("You must specify an aggregation method to update a "
+                         "MirroredVariable in Tower Context.")
+
+      def merge_fn(strategy, value):
+        return strategy.update(self,
+                               f,
+                               strategy.reduce(
+                                   method_string=self._aggregation_method,
+                                   value=value,
+                                   destinations=self))
+      return distribute_lib.get_tower_context().merge_call(merge_fn, *args,
+                                                           **kwargs)
+
   def assign_sub(self, *args, **kwargs):
-    return self.get(device=_get_update_device()).assign_sub(*args, **kwargs)
+    return self._assign_func(f=state_ops.assign_sub, *args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
-    return self.get(device=_get_update_device()).assign_add(*args, **kwargs)
+    return self._assign_func(f=state_ops.assign_add, *args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    return self.get(device=_get_update_device()).assign(*args, **kwargs)
+    return self._assign_func(f=state_ops.assign, *args, **kwargs)
 
   def _get_cross_tower(self):
     device = device_util.canonicalize(device_util.current())
@@ -353,7 +396,7 @@ class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():
-      return distribute_lib.get_distribution_strategy().fetch(
+      return distribute_lib.get_distribution_strategy().read_var(
           tower_local_variable)
     spec = saver.BaseSaverBuilder.SaveSpec(
         tensor=tensor,
@@ -492,40 +535,40 @@ def regroup(per_device, wrap_class=PerDevice):
       same_id = False
       break
   # Consider three cases where same_id is true:
-  # * If v0 is a MirroredVariable (and same_id means it is the same
-  #   across all devices), we want to return it. We check
-  #   MirroredVariable specifically since it can look like it
-  #   has a _mirrored_container member since its members do.
-  # * If v0 is a member of a mirrored variable, in which case
-  #   hasattr(v0, "_mirrored_container") is true, we want to
-  #   return the MirroredVariable that contains it using the
-  #   _mirrored_container logic below. This case can trigger
+  # * If v0 is a DistributedVariable (a MirroredVariable or
+  #   TowerLocalVariable, and same_id means it is the same across all
+  #   devices), we want to return it. We check DistributedVariable
+  #   specifically since it can look like it has a
+  #   _distributed_container member since its members do.
+  # * If v0 is a member of a distributed variable, in which case
+  #   hasattr(v0, "_distributed_container") is true, we want to
+  #   return the DistributedVariable that contains it using the
+  #   _distributed_container logic below. This case can trigger
   #   same_id when there is only one device.
   # * In any other situation, same_id means we return v0.
-  if same_id and (isinstance(v0, MirroredVariable) or
-                  not hasattr(v0, "_mirrored_container")):
+  if same_id and (isinstance(v0, DistributedVariable) or
+                  not hasattr(v0, "_distributed_container")):
     return v0
 
   # Detect the case where each device has a parallel component of the
-  # same MirroredVariable. In this case we want to return the
-  # containing MirroredVariable, after a bunch of sanity checking.
-  # In particular, each component should have the same container,
-  # and the devices of the variables should match the keys of the
-  # per-device dictionary.
-  # TODO(josh11b): Do we need similar logic for TowerLocalVariables?
-  if hasattr(v0, "_mirrored_container"):
+  # same MirroredVariable (or TowerLocalVariable). In this case we
+  # want to return the containing MirroredVariable, after a bunch of
+  # sanity checking. In particular, each component should have the
+  # same container, and the devices of the variables should match the
+  # keys of the per-device dictionary.
+  if hasattr(v0, "_distributed_container"):
     # pylint: disable=protected-access
     assert not isinstance(v0, MirroredVariable), (
         "ids = %s, items = %s" % ([id(v[1]) for v in items], items))
     assert _devices_match(v0.device, items[0][0]), (
         "v0.device = %s, items = %s" % (v0.device, items))
-    mirrored_container = v0._mirrored_container()
-    assert mirrored_container is not None
+    distributed_container = v0._distributed_container()
+    assert distributed_container is not None
     for d, v in items[1:]:
       assert _devices_match(v.device, d), (
           "v.device = %s, d = %s, items = %s" % (v.device, d, items))
-      assert mirrored_container is v._mirrored_container()
-    return mirrored_container
+      assert distributed_container is v._distributed_container()
+    return distributed_container
   # pylint: enable=protected-access
 
   return wrap_class(per_device)
@@ -607,8 +650,7 @@ class PerDeviceDataset(object):
       # TODO(priyag): If dropping remainder is not appropriate, find another
       # approach to distributing the dataset when not possible to divide evenly.
       # Possibly not an issue when we start using PartitionedDataset.
-      self._dataset = dataset.apply(
-          batching.batch_and_drop_remainder(len(devices)))
+      self._dataset = dataset.batch(len(devices), drop_remainder=True)
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for the distributed PerDeviceDataset."""
@@ -819,3 +861,72 @@ class MapOutput(object):
 
   def get(self):
     return self._l
+
+
+class MultiStepContext(object):
+  """A context object that can be used to capture things when running steps.
+
+  This context object is useful when running multiple steps at a time using the
+  `run_steps_on_dataset` API. For e.g. it allows the user's step function to
+  specify which outputs to emit at what frequency. Currently it only supports
+  capturing output from the last step, but will soon be augmented to support
+  other use cases such as output each N steps.
+  """
+
+  def __init__(self, initial_loop_values=None):
+    """Initializes an output context.
+
+    Args:
+      initial_loop_values: Initial values passed to the run steps
+        while loop. The only purpose is to verify the shapes and types
+        when the actual output is set. This will be removed once we
+        automatically infer the output shapes and types (and do not need to
+        check for user error in specifying them manually).
+    Returns:
+      A context object.
+    """
+    self._last_step_outputs = None
+    self._non_tensor_outputs = None
+    self._initial_loop_values = initial_loop_values
+
+  @property
+  def last_step_outputs(self):
+    """Return the last step's outputs."""
+    return self._last_step_outputs
+
+  @last_step_outputs.setter
+  def last_step_outputs(self, outputs):
+    """Set the last step's outputs."""
+    self._verify_structure_shapes_types(outputs, self._initial_loop_values)
+    self._last_step_outputs = outputs
+
+  @property
+  def non_tensor_outputs(self):
+    """Return the non tensor outputs."""
+    return self._non_tensor_outputs
+
+  @non_tensor_outputs.setter
+  def non_tensor_outputs(self, outputs):
+    """Set any non tensor outputs."""
+    self._non_tensor_outputs = outputs
+
+  def _verify_structure_shapes_types(self, left, right):
+    """Verify that the structure, shapes and types of left are same as right."""
+    nest.assert_same_structure(left, right)
+    flat_left = nest.flatten(left)
+    flat_right = nest.flatten(right)
+    assert len(flat_left) == len(flat_right), (
+        "Length of left {} and right {} should be same.".
+        format(len(flat_left), len(flat_right)))
+
+    for o, i in zip(flat_left, flat_right):
+      # TODO(priyag): Add checks for other types like IndexedSlices.
+      if isinstance(o, ops.Tensor):
+        assert isinstance(i, ops.Tensor)
+        assert o.shape == i.shape, (
+            "Shape {} of left {} doesn't match shape {} of right {}.".
+            format(o.shape, o, i.shape, i))
+        assert o.dtype == i.dtype, (
+            "Dtype {} of left {} doesn't match dtype {} of right {}.".
+            format(o.dtype, o, i.dtype, i))
+

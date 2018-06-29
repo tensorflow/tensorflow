@@ -76,11 +76,11 @@ if (tensorflow_ENABLE_GPU)
     list(APPEND tf_stream_executor_srcs ${tf_stream_executor_gpu_srcs})
 endif()
 
-#file(GLOB_RECURSE tf_stream_executor_test_srcs
-#    "${tensorflow_source_dir}/tensorflow/stream_executor/*_test.cc"
-#    "${tensorflow_source_dir}/tensorflow/stream_executor/*_test.h"
-#)
-#list(REMOVE_ITEM tf_stream_executor_srcs ${tf_stream_executor_test_srcs})
+file(GLOB_RECURSE tf_stream_executor_test_srcs
+    "${tensorflow_source_dir}/tensorflow/stream_executor/*test.cc"
+    "${tensorflow_source_dir}/tensorflow/stream_executor/lib/*test.h"
+)
+list(REMOVE_ITEM tf_stream_executor_srcs ${tf_stream_executor_test_srcs})
 
 if (NOT WIN32)
   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lgomp")

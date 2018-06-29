@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -28,8 +29,8 @@ limitations under the License.
 namespace tensorflow {
 
 xla::XlaOp Zeros(xla::XlaBuilder* builder, const xla::Shape& shape) {
-  return builder->Broadcast(
-      builder->ConstantLiteral(xla::Literal::Zero(shape.element_type())),
+  return xla::Broadcast(
+      xla::ConstantLiteral(builder, xla::Literal::Zero(shape.element_type())),
       xla::AsInt64Slice(shape.dimensions()));
 }
 
@@ -37,19 +38,19 @@ xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
                         double value) {
   switch (type) {
     case xla::F16:
-      return builder->ConstantR0<xla::half>(static_cast<xla::half>(value));
+      return xla::ConstantR0<xla::half>(builder, static_cast<xla::half>(value));
       break;
     case xla::BF16:
-      return builder->ConstantR0<bfloat16>(static_cast<bfloat16>(value));
+      return xla::ConstantR0<bfloat16>(builder, static_cast<bfloat16>(value));
       break;
     case xla::F32:
-      return builder->ConstantR0<float>(static_cast<float>(value));
+      return xla::ConstantR0<float>(builder, static_cast<float>(value));
       break;
     case xla::F64:
-      return builder->ConstantR0<double>(value);
+      return xla::ConstantR0<double>(builder, value);
       break;
     case xla::C64:
-      return builder->ConstantR0<xla::complex64>(value);
+      return xla::ConstantR0<xla::complex64>(builder, value);
       break;
     default:
       LOG(FATAL) << "unhandled element type " << type;
@@ -107,7 +108,7 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
     default:
       LOG(FATAL) << "unhandled element type " << type;
   }
-  return builder->ConstantLiteral(literal);
+  return xla::ConstantLiteral(builder, literal);
 }
 
 xla::StatusOr<xla::XlaOp> SliceInMinorDims(xla::XlaBuilder* builder,
@@ -136,7 +137,7 @@ xla::StatusOr<xla::XlaOp> SliceInMinorDims(xla::XlaBuilder* builder,
   std::copy(end.begin(), end.end(), padded_end.begin() + major_dims.size());
 
   std::vector<int64> strides(n_dims, 1);
-  return builder->Slice(x, padded_start, padded_end, strides);
+  return xla::Slice(x, padded_start, padded_end, strides);
 }
 
 std::vector<int64> PrependMajorDims(xla::XlaBuilder* builder,
@@ -163,7 +164,7 @@ xla::StatusOr<xla::XlaOp> DynamicSliceInMinorDims(
   TF_ASSIGN_OR_RETURN(auto padded_starts,
                       PrependZerosInMajorDims(builder, x, starts));
   auto padded_sizes = PrependMajorDims(builder, major_dims, sizes);
-  return builder->DynamicSlice(x, padded_starts, padded_sizes);
+  return xla::DynamicSlice(x, padded_starts, padded_sizes);
 }
 
 xla::StatusOr<xla::XlaOp> UpdateSlice(xla::XlaBuilder* builder,
@@ -172,7 +173,7 @@ xla::StatusOr<xla::XlaOp> UpdateSlice(xla::XlaBuilder* builder,
                                       gtl::ArraySlice<int64> start) {
   // TODO(phawkins): make int64 work on all backends, remove the int32 cast.
   std::vector<int32> start_as_int32(start.begin(), start.end());
-  auto start_constant = builder->ConstantR1<int32>(start_as_int32);
+  auto start_constant = xla::ConstantR1<int32>(builder, start_as_int32);
   TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
   const int64 n_dims = xla::ShapeUtil::Rank(shape);
   TF_ASSIGN_OR_RETURN(xla::Shape start_constant_shape,
@@ -180,7 +181,7 @@ xla::StatusOr<xla::XlaOp> UpdateSlice(xla::XlaBuilder* builder,
   const int64 start_length =
       xla::ShapeUtil::GetDimension(start_constant_shape, -1);
   TF_RET_CHECK(start_length == n_dims);
-  return builder->DynamicUpdateSlice(x, update, start_constant);
+  return xla::DynamicUpdateSlice(x, update, start_constant);
 }
 
 xla::StatusOr<xla::XlaOp> UpdateSliceInMinorDims(xla::XlaBuilder* builder,
@@ -202,7 +203,7 @@ xla::StatusOr<xla::XlaOp> DynamicUpdateSliceInMinorDims(
     const std::vector<xla::XlaOp>& starts) {
   TF_ASSIGN_OR_RETURN(auto padded_starts,
                       PrependZerosInMajorDims(builder, x, starts));
-  return builder->DynamicUpdateSlice(x, update, padded_starts);
+  return xla::DynamicUpdateSlice(x, update, padded_starts);
 }
 
 xla::StatusOr<xla::XlaOp> PrependZerosInMajorDims(
@@ -210,13 +211,12 @@ xla::StatusOr<xla::XlaOp> PrependZerosInMajorDims(
     const std::vector<xla::XlaOp>& starts) {
   TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
   const int64 n_dims = xla::ShapeUtil::Rank(shape);
-  auto zero = builder->Reshape(builder->ConstantR0<int32>(0), {1});
+  auto zero = xla::Reshape(xla::ConstantR0<int32>(builder, 0), {1});
   std::vector<xla::XlaOp> padded_starts(n_dims, zero);
   for (int i = 0; i < starts.size(); ++i) {
-    padded_starts[n_dims - starts.size() + i] =
-        builder->Reshape(starts[i], {1});
+    padded_starts[n_dims - starts.size() + i] = xla::Reshape(starts[i], {1});
   }
-  return builder->ConcatInDim(padded_starts, 0);
+  return xla::ConcatInDim(builder, padded_starts, 0);
 }
 
 xla::StatusOr<xla::XlaOp> TransposeInMinorDims(xla::XlaBuilder* builder,
@@ -227,14 +227,14 @@ xla::StatusOr<xla::XlaOp> TransposeInMinorDims(xla::XlaBuilder* builder,
   std::vector<int64> permutation(n_dims);
   std::iota(permutation.begin(), permutation.end(), 0);
   std::swap(permutation[n_dims - 1], permutation[n_dims - 2]);
-  return builder->Transpose(x, permutation);
+  return xla::Transpose(x, permutation);
 }
 
 xla::StatusOr<xla::XlaOp> MaybeConjugate(xla::XlaBuilder* builder,
                                          const xla::XlaOp& x, bool conjugate) {
   TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
   auto perform_conj = shape.element_type() == xla::C64 && conjugate;
-  return perform_conj ? builder->Conj(x) : x;
+  return perform_conj ? xla::Conj(x) : x;
 }
 
 }  // namespace tensorflow

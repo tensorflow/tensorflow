@@ -72,6 +72,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "num_dev_to_dev_copy_streams"
+        number: 3
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
       nested_type {
         name: "VirtualDevices"
         field {

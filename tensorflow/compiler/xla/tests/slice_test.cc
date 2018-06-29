@@ -42,8 +42,8 @@ TEST_F(SliceTest, Slice3x3x3_To_3x3x1_F32) {
   values.FillIota(0);
 
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR3FromArray3D<float>(values);
-  builder.Slice(original, {0, 0, 0}, {3, 3, 1}, {1, 1, 1});
+  auto original = ConstantR3FromArray3D<float>(&builder, values);
+  Slice(original, {0, 0, 0}, {3, 3, 1}, {1, 1, 1});
 
   Array3D<float> expected{
       {{0.0}, {3.0}, {6.0}}, {{9.0}, {12.0}, {15.0}}, {{18.0}, {21.0}, {24.0}}};
@@ -55,8 +55,8 @@ TEST_F(SliceTest, Slice3x3x3_To_3x1x3_F32) {
   values.FillIota(0);
 
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR3FromArray3D<float>(values);
-  builder.Slice(original, {0, 0, 0}, {3, 1, 3}, {1, 1, 1});
+  auto original = ConstantR3FromArray3D<float>(&builder, values);
+  Slice(original, {0, 0, 0}, {3, 1, 3}, {1, 1, 1});
 
   Array3D<float> expected{
       {{0.0, 1.0, 2.0}}, {{9.0, 10.0, 11.0}}, {{18.0, 19.0, 20.0}}};
@@ -68,8 +68,8 @@ TEST_F(SliceTest, Slice3x3x3_To_1x3x3_F32) {
   values.FillIota(0);
 
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR3FromArray3D<float>(values);
-  builder.Slice(original, {0, 0, 0}, {1, 3, 3}, {1, 1, 1});
+  auto original = ConstantR3FromArray3D<float>(&builder, values);
+  Slice(original, {0, 0, 0}, {1, 3, 3}, {1, 1, 1});
 
   Array3D<float> expected{
       {{{0.0, 1.0, 2.0}, {3.0, 4.0, 5.0}, {6.0, 7.0, 8.0}}}};
@@ -78,24 +78,24 @@ TEST_F(SliceTest, Slice3x3x3_To_1x3x3_F32) {
 
 XLA_TEST_F(SliceTest, Slice0x0to0x0F32) {
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 0));
-  builder.Slice(original, {0, 0}, {0, 0}, {1, 1});
+  auto original = ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 0));
+  Slice(original, {0, 0}, {0, 0}, {1, 1});
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 0), {});
 }
 
 XLA_TEST_F(SliceTest, Slice0x20to0x5F32) {
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 20));
-  builder.Slice(original, {0, 15}, {0, 20}, {1, 1});
+  auto original = ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 20));
+  Slice(original, {0, 15}, {0, 20}, {1, 1});
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 5), {});
 }
 
 XLA_TEST_F(SliceTest, Slice3x0to2x0F32) {
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR2FromArray2D<float>(Array2D<float>(3, 0));
-  builder.Slice(original, {1, 0}, {3, 0}, {1, 1});
+  auto original = ConstantR2FromArray2D<float>(&builder, Array2D<float>(3, 0));
+  Slice(original, {1, 0}, {3, 0}, {1, 1});
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(2, 0), {});
 }
@@ -109,8 +109,8 @@ XLA_TEST_F(SliceTest, SliceQuadrantOf256x256) {
   }
 
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR2FromArray2D<float>(values);
-  builder.Slice(original, {128, 128}, {256, 256}, {1, 1});
+  auto original = ConstantR2FromArray2D<float>(&builder, values);
+  Slice(original, {128, 128}, {256, 256}, {1, 1});
 
   Array2D<float> expected(128, 128);
   for (int row = 0; row < 128; ++row) {
@@ -127,8 +127,8 @@ TEST_F(SliceTest, Slice_1x4096_To_1x1024) {
   std::iota(values.data(), values.data() + 4096, 0.0);
 
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR2FromArray2D<float>(values);
-  builder.Slice(original, {0, 3072}, {1, 4096}, {1, 1});
+  auto original = ConstantR2FromArray2D<float>(&builder, values);
+  Slice(original, {0, 3072}, {1, 4096}, {1, 1});
 
   Array2D<float> expected(1, 1024);
   std::iota(expected.data(), expected.data() + 1024, 3072.0);
@@ -148,8 +148,8 @@ TEST_F(SliceTest, Slice_16x4_To_16x2) {
     }
   }
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR2FromArray2D<float>(values);
-  builder.Slice(original, {0, 0}, {16, 2}, {1, 1});
+  auto original = ConstantR2FromArray2D<float>(&builder, values);
+  Slice(original, {0, 0}, {16, 2}, {1, 1});
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.000001));
 }
 
@@ -160,8 +160,8 @@ TEST_F(SliceTest, SliceR4ThreeDimsMiddleMinor) {
   auto expected = ReferenceUtil::Slice4D(
       values, {{1, 0, 8, 0}}, {{2, 2, 16, 128}}, /*strides=*/{{1, 1, 1, 1}});
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR4FromArray4D(values);
-  builder.Slice(original, {1, 0, 8, 0}, {2, 2, 16, 128}, {1, 1, 1, 1});
+  auto original = ConstantR4FromArray4D(&builder, values);
+  Slice(original, {1, 0, 8, 0}, {2, 2, 16, 128}, {1, 1, 1, 1});
   ComputeAndCompareR4(&builder, *expected, {}, ErrorSpec(0.000001));
 }
 
@@ -173,8 +173,8 @@ XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
   auto expected_literal = Literal::CreateR4FromArray4DWithLayout(
       *expected, LayoutUtil::MakeLayout({0, 1, 2, 3}));
   XlaBuilder builder(TestName());
-  auto original = builder.ConstantR4FromArray4D(values);
-  builder.Slice(original, {0, 0, 0, 0}, {2, 4, 6, 8}, {1, 1, 2, 1});
+  auto original = ConstantR4FromArray4D(&builder, values);
+  Slice(original, {0, 0, 0, 0}, {2, 4, 6, 8}, {1, 1, 2, 1});
   ComputeAndCompareLiteral(&builder, *expected_literal, {}, ErrorSpec(0.000001),
                            &expected_literal->shape());
 }
@@ -200,9 +200,9 @@ class SliceR1Test : public ClientLibraryTestBase,
     auto literal = Literal::CreateR1<NativeT>(input);
 
     XlaBuilder builder(TestName());
-    auto original = builder.Parameter(0, literal->shape(), "p0");
-    builder.Slice(original, {spec.slice_start}, {spec.slice_limit},
-                  {spec.slice_stride});
+    auto original = Parameter(&builder, 0, literal->shape(), "p0");
+    Slice(original, {spec.slice_start}, {spec.slice_limit},
+          {spec.slice_stride});
 
     // Ditto.
     tensorflow::gtl::InlinedVector<NativeT, 1> expected;
@@ -372,8 +372,8 @@ XLA_TEST_P(SliceR2Test, DoIt) {
       input, LayoutUtil::MakeLayout(spec.layout));
 
   XlaBuilder builder(TestName());
-  auto a = builder.Parameter(0, literal->shape(), "p0");
-  builder.Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
+  auto a = Parameter(&builder, 0, literal->shape(), "p0");
+  Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
                           client_->TransferToServer(*literal));
@@ -465,11 +465,10 @@ class SliceR4Test : public ClientLibraryTestBase,
     XlaBuilder builder(TestName());
     auto literal = Literal::CreateR4FromArray4DWithLayout(
         values, LayoutUtil::MakeLayout(spec.input_layout));
-    auto parameter = builder.Parameter(0, literal->shape(), "p0");
+    auto parameter = Parameter(&builder, 0, literal->shape(), "p0");
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
                             client_->TransferToServer(*literal));
-    builder.Slice(parameter, spec.slice_starts, spec.slice_limits,
-                  spec.slice_strides);
+    Slice(parameter, spec.slice_starts, spec.slice_limits, spec.slice_strides);
     ComputeAndCompareR4(&builder, *expected, {arg.get()}, ErrorSpec(0.000001));
   }
 };

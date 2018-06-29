@@ -137,7 +137,7 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
 }
 
 llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
-                                              const ShapeIndex& shape_index,
+                                              ShapeIndexView shape_index,
                                               llvm::Value* ir_value) {
   llvm::Type* pointee_type = llvm_ir::ShapeToIrType(
       ShapeUtil::GetSubshape(hlo.shape(), shape_index), module_);
@@ -158,7 +158,7 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
 
 void HloToIrBindings::BindHloToIrValue(const HloInstruction& hlo,
                                        llvm::Value* ir_value,
-                                       const ShapeIndex& shape_index) {
+                                       ShapeIndexView shape_index) {
   VLOG(2) << "Binding " << hlo.ToString();
 
   const Shape& hlo_shape = hlo.shape();

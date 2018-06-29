@@ -35,6 +35,7 @@ enum TensorType : byte {
   STRING = 5,
   BOOL = 6,
   INT16 = 7,
+  COMPLEX64 = 8,
 }
 
 // Parameters for converting a quantized tensor back to float. Given a
@@ -154,6 +155,11 @@ enum BuiltinOperator : byte {
   EQUAL = 71,
   NOT_EQUAL = 72,
   LOG = 73,
+  SUM=74,
+  SQRT = 75,
+  RSQRT = 76,
+  SHAPE = 77,
+  POW = 78,
 }
 
 // Options for the builtin operators.
@@ -184,7 +190,7 @@ union BuiltinOptions {
   BatchToSpaceNDOptions,
   SpaceToBatchNDOptions,
   TransposeOptions,
-  MeanOptions,
+  ReducerOptions,
   SubOptions,
   DivOptions,
   SqueezeOptions,
@@ -212,6 +218,8 @@ union BuiltinOptions {
   ExpandDimsOptions,
   EqualOptions,
   NotEqualOptions,
+  ShapeOptions,
+  PowOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -289,9 +297,18 @@ table BidirectionalSequenceRNNOptions {
   fused_activation_function:ActivationFunctionType;
 }
 
+enum FullyConnectedOptionsWeightsFormat: byte {
+  DEFAULT = 0,
+  SHUFFLED4x16INT8 = 1,
+}
+
 // An implementation of TensorFlow fully_connected (a.k.a Dense) layer.
 table FullyConnectedOptions {
+  // Parameters for FullyConnected version 1 or above.
   fused_activation_function:ActivationFunctionType;
+
+  // Parameters for FullyConnected version 2 or above.
+  weights_format:FullyConnectedOptionsWeightsFormat = DEFAULT;
 }
 
 table SoftmaxOptions {
@@ -411,7 +428,7 @@ table TransposeOptions {
 table ExpOptions {
 }
 
-table MeanOptions {
+table ReducerOptions {
   keep_dims: bool;
 }
 
@@ -490,6 +507,14 @@ table EqualOptions {
 }
 
 table NotEqualOptions {
+}
+
+table ShapeOptions {
+  // Optional output type of the operation (int32 or int64). Defaults to int32.
+  out_type : TensorType;
+}
+
+table PowOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

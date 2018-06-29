@@ -52,9 +52,6 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
-    // Add only supports float32. (and "constant" tests use Add)
-    {R"(^\/add_a.*int32)", "68808744"},
-    {R"(^\/constant.*int32)", "68808744"},
     {R"(^\/mul.*int32)", "68808744"},
     {R"(^\/div.*int32)", "68808744"},
     {R"(^\/sub.*int32)", "68808744"},

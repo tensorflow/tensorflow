@@ -1696,7 +1696,7 @@ class TestTrainingWithDataTensors(test.TestCase):
       model.train_on_batch([input_a_np, input_b_np],
                            [output_a_np, output_b_np])
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_metric_names_are_identical_in_graph_and_eager(self):
     a = keras.layers.Input(shape=(3,), name='input_a')
     b = keras.layers.Input(shape=(3,), name='input_b')
@@ -1723,7 +1723,7 @@ class TestTrainingWithDataTensors(test.TestCase):
 
 class TestTrainingWithDatasetIterators(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_training_and_eval_methods_on_iterators_single_io(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -1813,7 +1813,7 @@ class TestTrainingWithDatasetIterators(test.TestCase):
       ops.get_default_graph().finalize()
       model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=1)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_iterators_running_out_of_data(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')
@@ -1867,7 +1867,7 @@ class TestTrainingWithDataset(test.TestCase):
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 validation_data=dataset, validation_steps=2)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_training_and_eval_methods_on_dataset(self):
     with self.test_session():
       x = keras.layers.Input(shape=(3,), name='input')

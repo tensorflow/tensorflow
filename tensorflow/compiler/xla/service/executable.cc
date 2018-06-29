@@ -82,7 +82,18 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
 
   StatusOr<ScopedShapedBuffer> return_value =
       ExecuteOnStream(run_options, arguments, profile_ptr.get());
-  TF_RETURN_IF_ERROR(return_value.status());
+  if (!return_value.status().ok()) {
+    if (profile != nullptr) {
+      // Ensure the ThenStartTimer call has completed before we destroy timer.
+      // We already have a failure status to return, so just log this if it
+      // fails.
+      Status status = stream->BlockHostUntilDone();
+      if (!status.ok()) {
+        LOG(ERROR) << "Failed to BlockHostUntilDone: " << status;
+      }
+    }
+    return return_value.status();
+  }
 
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
@@ -116,6 +127,11 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     if (profile->compute_time_ns() == 0) {
       profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
+
+    const int64 executable_size_in_bytes = SizeInBytes();
+    if (executable_size_in_bytes != 0) {
+      profile->set_executable_size_in_bytes(executable_size_in_bytes);
+    }
   }
 
   if (profile_ptr != nullptr) {
@@ -128,6 +144,8 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
 
   return return_value;
 }
+
+int64 Executable::SizeInBytes() { return -1; }
 
 Status Executable::DumpHloSnapshot() {
   TF_RET_CHECK(dumping_snapshot());

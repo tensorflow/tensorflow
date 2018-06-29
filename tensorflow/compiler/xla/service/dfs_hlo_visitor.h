@@ -183,6 +183,9 @@ class DfsHloVisitorBase {
   virtual Status HandleOr(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
+  virtual Status HandleXor(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
+  }
   virtual Status HandleShiftLeft(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -243,7 +246,7 @@ class DfsHloVisitorBase {
 
   virtual Status HandleBatchNormGrad(HloInstructionPtr hlo) = 0;
 
-  virtual Status HandleGenerateToken(HloInstructionPtr token) = 0;
+  virtual Status HandleAfterAll(HloInstructionPtr token) = 0;
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".

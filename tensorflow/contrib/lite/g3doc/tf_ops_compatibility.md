@@ -584,6 +584,31 @@ Options {
 }
 ```
 
+**RSQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise reciprocal square root of the input tensor
+}
+```
+
+**SHAPE**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 1D tensor representing the shape of the input tensor
+}
+Options {
+  out_type: the output type of the op (int32 or int64). Defaults to int32.
+}
+```
+
 **SLICE**
 
 ```
@@ -670,6 +695,17 @@ Options {
 }
 ```
 
+**SQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise square root of the input tensor
+}
+```
+
 **SQUEEZE**
 
 ```
@@ -739,6 +775,18 @@ Inputs {
 Outputs {
   0: tensor that contains the elementwise values of 'tensor 1' if the
   corresponding value of 'tensor 0' is true or the value of 'tensor 2' if false.
+}
+```
+
+**POW**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: elementwise pow of the input tensors
 }
 ```
 

@@ -24,6 +24,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
 import tensorflow as tf
 from tensorflow.contrib.eager.python.examples.revnet import ops
 
@@ -93,9 +94,18 @@ class RevBlock(tf.keras.Model):
 
     for i in reversed(range(len(self.blocks))):
       block = self.blocks[i]
-      y_inv = x if i == 0 else block.backward(y, training=training)
+      if i == 0:
+        y_inv = x
+      else:
+        # Don't update running stats when reconstructing activations
+        vars_and_vals = block.get_moving_stats()
+        y_inv = block.backward(y, training=training)
+        block.restore_moving_stats(vars_and_vals)
+
+      # Update running stats when computing gradients during training
       dy, grads, vars_ = block.backward_grads_and_vars(
           y_inv, dy, training=training)
+
       grads_all += grads
       vars_all += vars_
 
@@ -159,17 +169,18 @@ class _Residual(tf.keras.Model):
     """Apply residual block to inputs."""
 
     x1, x2 = tf.split(x, num_or_size_splits=2, axis=self.axis)
-    f_x2 = self.f.call(x2, training=training)
+    f_x2 = self.f(x2, training=training)
     # TODO(lxuechen): Replace with simpler downsampling
     x1_down = ops.downsample(
         x1, self.filters // 2, self.strides, axis=self.axis)
     x2_down = ops.downsample(
         x2, self.filters // 2, self.strides, axis=self.axis)
     y1 = f_x2 + x1_down
-    g_y1 = self.g.call(y1, training=training)  # self.g(y1) gives pylint error
+    g_y1 = self.g(y1, training=training)
     y2 = g_y1 + x2_down
-    if not concat:  # Concat option needed for correct backward grads
+    if not concat:  # For correct backward grads
       return y1, y2
+
     return tf.concat([y1, y2], axis=self.axis)
 
   def backward(self, y, training=True):
@@ -178,9 +189,9 @@ class _Residual(tf.keras.Model):
     assert self.strides == (1, 1)
 
     y1, y2 = tf.split(y, num_or_size_splits=2, axis=self.axis)
-    g_y1 = self.g.call(y1, training=training)
+    g_y1 = self.g(y1, training=training)
     x2 = y2 - g_y1
-    f_x2 = self.f.call(x2, training=training)
+    f_x2 = self.f(x2, training=training)
     x1 = y1 - f_x2
 
     return tf.concat([x1, x2], axis=self.axis)
@@ -189,8 +200,8 @@ class _Residual(tf.keras.Model):
     """Manually compute backward gradients given input and output grads."""
 
     with tf.GradientTape(persistent=True) as tape:
-      x_stop = tf.stop_gradient(x)
-      x1, x2 = tf.split(x_stop, num_or_size_splits=2, axis=self.axis)
+      x = tf.identity(x)  # TODO(lxuechen): Remove after b/110264016 is fixed
+      x1, x2 = tf.split(x, num_or_size_splits=2, axis=self.axis)
       tape.watch([x1, x2])
       # Stitch back x for `call` so tape records correct grads
       x = tf.concat([x1, x2], axis=self.axis)
@@ -200,21 +211,37 @@ class _Residual(tf.keras.Model):
           x2, self.filters // 2, self.strides, axis=self.axis)
 
     grads_combined = tape.gradient(
-        y2, [y1] + self.g.variables, output_gradients=[dy2])
+        y2, [y1] + self.g.trainable_variables, output_gradients=[dy2])
     dy2_y1, dg = grads_combined[0], grads_combined[1:]
     dy1_plus = dy2_y1 + dy1
 
     grads_combined = tape.gradient(
-        y1, [x1, x2] + self.f.variables, output_gradients=[dy1_plus])
+        y1, [x1, x2] + self.f.trainable_variables, output_gradients=[dy1_plus])
     dx1, dx2, df = grads_combined[0], grads_combined[1], grads_combined[2:]
     dx2 += tape.gradient(x2_down, [x2], output_gradients=[dy2])[0]
 
     del tape
 
     grads = df + dg
-    vars_ = self.f.variables + self.g.variables
+    vars_ = self.f.trainable_variables + self.g.trainable_variables
 
     return tf.concat([dx1, dx2], axis=self.axis), grads, vars_
+
+  def get_moving_stats(self):
+    vars_and_vals = {}
+
+    def _is_moving_var(v):  # pylint: disable=invalid-name
+      n = v.name
+      return n.endswith("moving_mean:0") or n.endswith("moving_variance:0")
+
+    for v in filter(_is_moving_var, self.f.variables + self.g.variables):
+      vars_and_vals[v] = v.read_value()
+
+    return vars_and_vals
+
+  def restore_moving_stats(self, vars_and_vals):
+    for var_, val in six.iteritems(vars_and_vals):
+      var_.assign(val)
 
 
 def _BottleneckResidualInner(filters,
@@ -246,7 +273,7 @@ def _BottleneckResidualInner(filters,
     model.add(
         tf.keras.layers.BatchNormalization(
             axis=axis, input_shape=input_shape, fused=fused))
-    model.add(tf.keras.layers.LeakyReLU(alpha=0.))
+    model.add(tf.keras.layers.Activation("relu"))
   model.add(
       tf.keras.layers.Conv2D(
           filters=filters // 4,
@@ -258,7 +285,7 @@ def _BottleneckResidualInner(filters,
           padding="SAME"))
 
   model.add(tf.keras.layers.BatchNormalization(axis=axis, fused=fused))
-  model.add(tf.keras.layers.LeakyReLU(alpha=0.))
+  model.add(tf.keras.layers.Activation("relu"))
   model.add(
       tf.keras.layers.Conv2D(
           filters=filters // 4,
@@ -269,7 +296,7 @@ def _BottleneckResidualInner(filters,
           padding="SAME"))
 
   model.add(tf.keras.layers.BatchNormalization(axis=axis, fused=fused))
-  model.add(tf.keras.layers.LeakyReLU(alpha=0.))
+  model.add(tf.keras.layers.Activation("relu"))
   model.add(
       tf.keras.layers.Conv2D(
           filters=filters,
@@ -310,7 +337,7 @@ def _ResidualInner(filters,
     model.add(
         tf.keras.layers.BatchNormalization(
             axis=axis, input_shape=input_shape, fused=fused))
-    model.add(tf.keras.layers.LeakyReLU(alpha=0.))
+    model.add(tf.keras.layers.Activation("relu"))
   model.add(
       tf.keras.layers.Conv2D(
           filters=filters,
@@ -322,7 +349,7 @@ def _ResidualInner(filters,
           padding="SAME"))
 
   model.add(tf.keras.layers.BatchNormalization(axis=axis, fused=fused))
-  model.add(tf.keras.layers.LeakyReLU(alpha=0.))
+  model.add(tf.keras.layers.Activation("relu"))
   model.add(
       tf.keras.layers.Conv2D(
           filters=filters,

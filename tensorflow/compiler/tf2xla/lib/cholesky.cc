@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/lib/triangular_solve.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -80,21 +81,20 @@ xla::StatusOr<xla::XlaOp> CholeskyUnblocked(xla::XlaBuilder* builder,
 
     std::vector<int32> mask_vector(n);
     std::iota(mask_vector.begin(), mask_vector.end(), 0);
-    auto mask_range = body_builder->ConstantR1<int32>(mask_vector);
-    auto mask_range_row = body_builder->Broadcast(
-        body_builder->Reshape(mask_range, {0}, {1, n}), major_dims);
-    auto mask_range_col = body_builder->Broadcast(
-        body_builder->Reshape(mask_range, {0}, {n, 1}), major_dims);
+    auto mask_range = xla::ConstantR1<int32>(body_builder, mask_vector);
+    auto mask_range_row =
+        xla::Broadcast(xla::Reshape(mask_range, {0}, {1, n}), major_dims);
+    auto mask_range_col =
+        xla::Broadcast(xla::Reshape(mask_range, {0}, {n, 1}), major_dims);
     auto body_a = loop_vars[0];
     auto body_l = loop_vars[1];
 
     // row = l[..., i, :i]
     // select the whole i-th row, then mask out all columns past i-1
-    auto zero = body_builder->ConstantR0<int32>(0);
+    auto zero = xla::ConstantR0<int32>(body_builder, 0);
     TF_ASSIGN_OR_RETURN(auto l_i, DynamicSliceInMinorDims(body_builder, body_l,
                                                           {i, zero}, {1, n}));
-    auto row = body_builder->Select(body_builder->Ge(mask_range_row, i),
-                                    mask_zeros_row, l_i);
+    auto row = xla::Select(xla::Ge(mask_range_row, i), mask_zeros_row, l_i);
     // a[..., i, i]
     TF_ASSIGN_OR_RETURN(auto a_ii, DynamicSliceInMinorDims(body_builder, body_a,
                                                            {i, i}, {1, 1}));
@@ -105,16 +105,15 @@ xla::StatusOr<xla::XlaOp> CholeskyUnblocked(xla::XlaBuilder* builder,
                                            /*transpose_y=*/true));
     // l[..., i, i] = np.sqrt(a[..., i, i] - np.dot(row,
     //                                              np.swapaxes(row, -1, -2)))
-    auto l_ii = body_builder->Pow(
-        body_builder->Sub(a_ii, diag_dot),
-        FloatLiteral(body_builder, a_shape.element_type(), 0.5));
+    auto l_ii =
+        xla::Pow(xla::Sub(a_ii, diag_dot),
+                 FloatLiteral(body_builder, a_shape.element_type(), 0.5));
 
     // a[..., i+1:, i]
     // select the whole i-th column, then mask out all rows above i+1
     TF_ASSIGN_OR_RETURN(
         auto a_0i, DynamicSliceInMinorDims(body_builder, body_a, {i}, {1}));
-    auto a_ip1i = body_builder->Select(body_builder->Le(mask_range_col, i),
-                                       mask_zeros_col, a_0i);
+    auto a_ip1i = xla::Select(xla::Le(mask_range_col, i), mask_zeros_col, a_0i);
 
     // l[..., i+1:, i] = (a[..., i+1:, i] - np.dot(l[..., i+1:, :i], r.T)) /
     //                   l[..., i, i]
@@ -125,11 +124,9 @@ xla::StatusOr<xla::XlaOp> CholeskyUnblocked(xla::XlaBuilder* builder,
                                            /*transpose_x=*/false,
                                            /*transpose_y=*/true));
     // np.dot(l[..., i+1:, :i], r.T)
-    auto dot_ip1 = body_builder->Select(body_builder->Le(mask_range_col, i),
-                                        mask_zeros_col, dot);
+    auto dot_ip1 = xla::Select(xla::Le(mask_range_col, i), mask_zeros_col, dot);
 
-    auto col_update =
-        body_builder->Div(body_builder->Sub(a_ip1i, dot_ip1), l_ii);
+    auto col_update = xla::Div(xla::Sub(a_ip1i, dot_ip1), l_ii);
     TF_ASSIGN_OR_RETURN(body_l, DynamicUpdateSliceInMinorDims(
                                     body_builder, body_l, col_update, {i}));
     // Assign the diagonal after the rest of the column because otherwise the
@@ -191,9 +188,8 @@ xla::StatusOr<xla::XlaOp> Cholesky(xla::XlaBuilder* builder, xla::XlaOp a,
                                    /*conjugate_y=*/false));
       TF_ASSIGN_OR_RETURN(auto before,
                           SliceInMinorDims(builder, a, {i, i}, {n, i + k}));
-      TF_ASSIGN_OR_RETURN(
-          a, UpdateSliceInMinorDims(builder, a, builder->Sub(before, delta),
-                                    {i, i}));
+      TF_ASSIGN_OR_RETURN(a, UpdateSliceInMinorDims(
+                                 builder, a, xla::Sub(before, delta), {i, i}));
     }
 
     // l[i:i+k, i:i+k] = cholesky_unblocked(a[i:i+k, i:i+k])

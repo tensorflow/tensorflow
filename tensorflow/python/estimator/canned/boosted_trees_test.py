@@ -500,6 +500,50 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, ensemble.trees[0].nodes[0].bucketized_split.feature_id)
     self.assertEqual(0, ensemble.trees[0].nodes[0].bucketized_split.threshold)
 
+  def testTrainEvaluateAndPredictWithOnlyIndicatorColumn(self):
+    categorical = feature_column.categorical_column_with_vocabulary_list(
+        key='categorical', vocabulary_list=('bad', 'good', 'ok'))
+    feature_indicator = feature_column.indicator_column(categorical)
+
+    labels = np.array([[0.], [5.7], [5.7], [0.], [0.]], dtype=np.float32)
+    # Our categorical feature defines the labels perfectly
+    input_fn = numpy_io.numpy_input_fn(
+        x={
+            'categorical': np.array(['bad', 'good', 'good', 'ok', 'bad']),
+        },
+        y=labels,
+        batch_size=5,
+        shuffle=False)
+
+    # Train depth 1 tree.
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=[feature_indicator],
+        n_batches_per_layer=1,
+        n_trees=1,
+        learning_rate=1.0,
+        max_depth=1)
+
+    num_steps = 1
+    est.train(input_fn, steps=num_steps)
+    ensemble = self._assert_checkpoint_and_return_model(
+        est.model_dir, global_step=1, finalized_trees=1, attempted_layers=1)
+
+    # We learnt perfectly.
+    eval_res = est.evaluate(input_fn=input_fn, steps=1)
+    self.assertAllClose(eval_res['loss'], 0)
+
+    predictions = list(est.predict(input_fn))
+    self.assertAllClose(
+        labels,
+        [pred['predictions'] for pred in predictions])
+
+    self.assertEqual(3, len(ensemble.trees[0].nodes))
+
+    # Check that the split happened on 'good' value, which will be encoded as
+    # feature with index 1 (0 - 'bad', 2 - 'ok')
+    self.assertEqual(1, ensemble.trees[0].nodes[0].bucketized_split.feature_id)
+    self.assertEqual(0, ensemble.trees[0].nodes[0].bucketized_split.threshold)
+
 
 class ModelFnTests(test_util.TensorFlowTestCase):
   """Tests bt_model_fn including unexposed internal functionalities."""

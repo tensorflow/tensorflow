@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "LogicalAnd"
+  endpoint {
+    name: "math.logical_and"
+  }
+  endpoint {
+    name: "logical_and"
+    deprecation_message: "tf.logical_and is deprecated, please use tf.math.logical_and instead."
+  }
+}

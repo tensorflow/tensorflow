@@ -36,7 +36,7 @@ from tensorflow.python.training import device_util
 
 
 def _make_per_device(values, devices):
-  devices = cross_tower_ops_lib._get_devices_from(devices)
+  devices = cross_tower_ops_lib.get_devices_from(devices)
   assert len(values) == len(devices)
   index = {}
   for d, v in zip(devices, values):
@@ -53,7 +53,7 @@ def _fake_mirrored(value, devices):
   All components of the returned Mirrored have the same objects, which is not
   true in reality.
   """
-  devices = cross_tower_ops_lib._get_devices_from(devices)
+  devices = cross_tower_ops_lib.get_devices_from(devices)
   return value_lib.Mirrored(
       {d: v for d, v in zip(devices, [value] * len(devices))})
 
@@ -93,7 +93,7 @@ class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
         self._assert_values_equal(l, r)
     else:
       self.assertEqual(type(left), type(right))
-      self.assertEqual(left.devices, right.devices)
+      self.assertEqual(set(left.devices), set(right.devices))
       if isinstance(list(left._index.values())[0], ops.IndexedSlices):
         for (d, v) in left._index.items():
           self._assert_indexed_slices_equal(v, right._index[d])

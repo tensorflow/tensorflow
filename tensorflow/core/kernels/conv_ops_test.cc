@@ -221,7 +221,7 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     std::vector<Tensor> fused_tensors;
     TF_ASSERT_OK(session->Run({}, {"fused_conv"}, {}, &fused_tensors));
 
-    test::ExpectTensorNear<float>(unfused_tensors[0], fused_tensors[0], 1e-5);
+    test::ExpectClose(unfused_tensors[0], fused_tensors[0]);
   }
 
   void CompareFusedPadOnlyAndSeparate(int input_width, int input_height,
@@ -269,7 +269,7 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     std::vector<Tensor> fused_tensors;
     TF_ASSERT_OK(session->Run({}, {"fused_conv"}, {}, &fused_tensors));
 
-    test::ExpectTensorNear<float>(unfused_tensors[0], fused_tensors[0], 1e-5);
+    test::ExpectClose(unfused_tensors[0], fused_tensors[0]);
   }
 };
 

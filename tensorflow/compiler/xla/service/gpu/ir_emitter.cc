@@ -94,10 +94,7 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
           << std::endl
           << "  its type: "
           << llvm_ir::DumpToString(*global_for_const->getType());
-  llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
-      global_for_const,
-      llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
-  bindings_.BindHloToIrValue(*constant, shape_constant);
+  bindings_.BindHloToIrValue(*constant, global_for_const);
   return Status::OK();
 }
 
@@ -194,6 +191,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
   HloOpcode root_opcode = computation.root_instruction()->opcode();
   PrimitiveType element_type =
       computation.root_instruction()->shape().element_type();
+  bool is_atomic_integral = element_type == S32 || element_type == U32 ||
+                            element_type == S64 || element_type == U64;
   llvm::Value* source = ir_builder_.CreateLoad(source_address, "source");
   if (root_opcode == HloOpcode::kAdd) {
     // NVPTX supports atomicAdd on F32 and integer types.
@@ -204,7 +203,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
                                    {output_address->getType()}, &ir_builder_);
       return true;
     }
-    if (primitive_util::IsIntegralType(element_type)) {
+    if (is_atomic_integral) {
       // integral + integral
       ir_builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Add, output_address,
                                   source,
@@ -213,9 +212,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     }
   }
 
-  // NVPTX supports atomicMax and atomicMin on only integer types.
-  if (root_opcode == HloOpcode::kMaximum &&
-      primitive_util::IsIntegralType(element_type)) {
+  // NVPTX supports atomicMax and atomicMin only on integer types.
+  if (root_opcode == HloOpcode::kMaximum && is_atomic_integral) {
     // max(integral, integral)
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Max
@@ -225,8 +223,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     return true;
   }
 
-  if (root_opcode == HloOpcode::kMinimum &&
-      primitive_util::IsIntegralType(element_type)) {
+  if (root_opcode == HloOpcode::kMinimum && is_atomic_integral) {
     // min(integral, integral)
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Min
@@ -478,12 +475,15 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   const Shape& lhs_shape = lhs_instruction->shape();
   const Shape& rhs_shape = rhs_instruction->shape();
 
+  // TODO(b/110211620): Convert to use i32 index_type when it is possible.
+  llvm::Type* index_type = ir_builder_.getInt64Ty();
+  llvm_ir::IrArray::Index element_index(index_type);
   if (ShapeUtil::IsScalar(lhs_shape) && ShapeUtil::IsScalar(rhs_shape)) {
     // If the operands are scalar, don't emit any loops.
     llvm::Value* lhs_value =
-        lhs_array.EmitReadArrayElement(/*index=*/{}, &ir_builder_);
+        lhs_array.EmitReadArrayElement(/*index=*/element_index, &ir_builder_);
     llvm::Value* rhs_value =
-        rhs_array.EmitReadArrayElement(/*index=*/{}, &ir_builder_);
+        rhs_array.EmitReadArrayElement(/*index=*/element_index, &ir_builder_);
     llvm::Value* result;
     if (ShapeUtil::ElementIsComplex(lhs_shape)) {
       auto value = MultiplyComplex(lhs_value, rhs_value, &ir_builder_);
@@ -493,7 +493,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
     } else {
       result = ir_builder_.CreateFMul(lhs_value, rhs_value);
     }
-    target_array.EmitWriteArrayElement(/*index=*/{}, result, &ir_builder_);
+    target_array.EmitWriteArrayElement(/*index=*/element_index, result,
+                                       &ir_builder_);
     return Status::OK();
   }
 
@@ -584,7 +585,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // address. The index into the target address is the concatenation of the rhs
   // and lhs indexes with the reduction dimensions removed. The terms from the
   // rhs index are the lower dimensions in the index so we add them first.
-  llvm_ir::IrArray::Index target_index;
+  llvm_ir::IrArray::Index target_index(index_type);
   for (size_t dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
       target_index.push_back(lhs_index[dimension]);

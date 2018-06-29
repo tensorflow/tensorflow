@@ -63,6 +63,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_BOOL:
       *type = kTfLiteBool;
       break;
+    case TensorType_COMPLEX64:
+      *type = kTfLiteComplex64;
+      break;
     default:
       error_reporter->Report("Unimplemented data type %s (%d) in tensor\n",
                              EnumNameTensorType(tensor_type), tensor_type);
@@ -444,6 +447,18 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_FullyConnectedOptions()) {
         params->activation = parse_activation(
             fully_connected_params->fused_activation_function());
+        switch (fully_connected_params->weights_format()) {
+          case FullyConnectedOptionsWeightsFormat_DEFAULT:
+            params->weights_format = kTfLiteFullyConnectedWeightsFormatDefault;
+            break;
+          case FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8:
+            params->weights_format =
+                kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8;
+            break;
+          default:
+            error_reporter->Report("Unhandled fully-connected weights format.");
+            return kTfLiteError;
+        }
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -597,9 +612,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_MEAN: {
-      auto* params = MallocPOD<TfLiteMeanParams>();
-      if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
+    case BuiltinOperator_MEAN:
+    case BuiltinOperator_SUM: {
+      auto* params = MallocPOD<TfLiteReducerParams>();
+      if (auto* schema_params = op->builtin_options_as_ReducerOptions()) {
         params->keep_dims = schema_params->keep_dims();
       }
       *builtin_data = reinterpret_cast<void*>(params);
@@ -667,6 +683,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_SHAPE: {
+      auto* params = MallocPOD<TfLiteShapeParams>();
+      if (auto* schema_params = op->builtin_options_as_ShapeOptions()) {
+        ConvertTensorType(schema_params->out_type(), &params->out_type,
+                          error_reporter);
+      }
+      *builtin_data = static_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
@@ -703,14 +728,17 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_RELU:
     case BuiltinOperator_RELU6:
     case BuiltinOperator_RELU_N1_TO_1:
+    case BuiltinOperator_RSQRT:
     case BuiltinOperator_SELECT:
     case BuiltinOperator_SIN:
     case BuiltinOperator_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_SQRT:
     case BuiltinOperator_TANH:
     case BuiltinOperator_TILE:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_TRANSPOSE:
+    case BuiltinOperator_POW:
       break;
   }
   return kTfLiteOk;
@@ -733,7 +761,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
     }
 
     const TfLiteRegistration* registration =
-        flatbuffer_op_index_to_registration_[op->opcode_index()];
+        flatbuffer_op_index_to_registration_[index];
     if (registration == nullptr) {
       error_reporter_->Report("Skipping op for opcode_index %d\n", index);
       status = kTfLiteError;

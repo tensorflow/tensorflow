@@ -369,7 +369,7 @@ class ScatterNdTest(test.TestCase):
     del input_  # input_ is not used in scatter_nd
     return array_ops.scatter_nd(indices, updates, shape)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInvalidShape(self):
     # TODO(apassos) figure out how to unify these errors
     with self.assertRaises(errors.InvalidArgumentError
