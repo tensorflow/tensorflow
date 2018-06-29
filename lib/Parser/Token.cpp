@@ -56,3 +56,16 @@ std::string Token::getStringValue() const {
   // Just drop the quotes off for now.
   return getSpelling().drop_front().drop_back().str();
 }
+
+
+/// Given a punctuation or keyword token kind, return the spelling of the
+/// token as a string.  Warning: This will abort on markers, identifiers and
+/// literal tokens since they have no fixed spelling.
+StringRef Token::getTokenSpelling(Kind kind) {
+   switch (kind) {
+   default: assert(0 && "This token kind has no fixed spelling");
+#define TOK_PUNCTUATION(NAME, SPELLING) case NAME: return SPELLING;
+#define TOK_KEYWORD(SPELLING) case kw_##SPELLING: return #SPELLING;
+#include "TokenKinds.def"
+   }
+}

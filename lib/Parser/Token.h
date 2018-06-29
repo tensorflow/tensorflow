@@ -27,78 +27,42 @@ namespace mlir {
 /// This represents a token in the MLIR syntax.
 class Token {
 public:
-  enum TokenKind {
-    // Markers
-    eof, error,
-
-    // Identifiers.
-    bare_identifier,    // foo
-    at_identifier,      // @foo
-    affine_map_id,      // #foo
-    // TODO: @@foo, etc.
-
-    integer,            // 42
-    string,             // "foo"
-
-    // Punctuation.
-    arrow,              // ->
-    colon,              // :
-    comma,              // ,
-    question,           // ?
-    questionquestion,   // ??
-    l_paren, r_paren,   // ( )
-    l_brace, r_brace,   // { }
-    less, greater,      // < >
-    // TODO: More punctuation.
-
-    // Keywords.
-    kw_bf16,
-    kw_br,
-    kw_cfgfunc,
-    kw_extfunc,
-    kw_f16,
-    kw_f32,
-    kw_f64,
-    kw_i1,
-    kw_i16,
-    kw_i32,
-    kw_i64,
-    kw_i8,
-    kw_int,
-    kw_memref,
-    kw_mlfunc,
-    kw_return,
-    kw_tensor,
-    kw_vector,
+  enum Kind {
+#define TOK_MARKER(NAME) NAME,
+#define TOK_IDENTIFIER(NAME) NAME,
+#define TOK_LITERAL(NAME) NAME,
+#define TOK_PUNCTUATION(NAME, SPELLING) NAME,
+#define TOK_KEYWORD(SPELLING) kw_##SPELLING,
+#include "TokenKinds.def"
   };
 
-  Token(TokenKind kind, StringRef spelling)
+  Token(Kind kind, StringRef spelling)
     : kind(kind), spelling(spelling) {}
 
   // Return the bytes that make up this token.
   StringRef getSpelling() const { return spelling; }
 
   // Token classification.
-  TokenKind getKind() const { return kind; }
-  bool is(TokenKind K) const { return kind == K; }
+  Kind getKind() const { return kind; }
+  bool is(Kind K) const { return kind == K; }
 
-  bool isAny(TokenKind k1, TokenKind k2) const {
+  bool isAny(Kind k1, Kind k2) const {
     return is(k1) || is(k2);
   }
 
   /// Return true if this token is one of the specified kinds.
   template <typename ...T>
-  bool isAny(TokenKind k1, TokenKind k2, TokenKind k3, T... others) const {
+  bool isAny(Kind k1, Kind k2, Kind k3, T... others) const {
     if (is(k1))
       return true;
     return isAny(k2, k3, others...);
   }
 
-  bool isNot(TokenKind k) const { return kind != k; }
+  bool isNot(Kind k) const { return kind != k; }
 
   /// Return true if this token isn't one of the specified kinds.
   template <typename ...T>
-  bool isNot(TokenKind k1, TokenKind k2, T... others) const {
+  bool isNot(Kind k1, Kind k2, T... others) const {
     return !isAny(k1, k2, others...);
   }
 
@@ -117,9 +81,15 @@ public:
   llvm::SMLoc getEndLoc() const;
   llvm::SMRange getLocRange() const;
 
+
+  /// Given a punctuation or keyword token kind, return the spelling of the
+  /// token as a string.  Warning: This will abort on markers, identifiers and
+  /// literal tokens since they have no fixed spelling.
+  static StringRef getTokenSpelling(Kind kind);
+
 private:
   /// Discriminator that indicates the sort of token this is.
-  TokenKind kind;
+  Kind kind;
 
   /// A reference to the entire token contents; this is always a pointer into
   /// a memory buffer owned by the source manager.

@@ -94,21 +94,21 @@ private:
   /// Advance the current lexer onto the next token, asserting what the expected
   /// current token is.  This is preferred to the above method because it leads
   /// to more self-documenting code with better checking.
-  void consumeToken(Token::TokenKind kind) {
+  void consumeToken(Token::Kind kind) {
     assert(curToken.is(kind) && "consumed an unexpected token");
     consumeToken();
   }
 
   /// If the current token has the specified kind, consume it and return true.
   /// If not, return false.
-  bool consumeIf(Token::TokenKind kind) {
+  bool consumeIf(Token::Kind kind) {
     if (curToken.isNot(kind))
       return false;
     consumeToken(kind);
     return true;
   }
 
-  ParseResult parseCommaSeparatedList(Token::TokenKind rightToken,
+  ParseResult parseCommaSeparatedList(Token::Kind rightToken,
                                const std::function<ParseResult()> &parseElement,
                                       bool allowEmptyList = true);
 
@@ -169,7 +169,7 @@ ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
 ///   abstract-list ::= element (',' element)* rightToken
 ///
 ParseResult Parser::
-parseCommaSeparatedList(Token::TokenKind rightToken,
+parseCommaSeparatedList(Token::Kind rightToken,
                         const std::function<ParseResult()> &parseElement,
                         bool allowEmptyList) {
   // Handle the empty case.
@@ -192,7 +192,8 @@ parseCommaSeparatedList(Token::TokenKind rightToken,
 
   // Consume the end character.
   if (!consumeIf(rightToken))
-    return emitError("expected ',' or ')'");
+    return emitError("expected ',' or '" + Token::getTokenSpelling(rightToken) +
+                     "'");
 
   return ParseSuccess;
 }
@@ -487,7 +488,7 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type*> &elements) {
 ///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
 ///
 ParseResult Parser::parseAffineMapDef() {
-  assert(curToken.is(Token::affine_map_id));
+  assert(curToken.is(Token::affine_map_identifier));
 
   StringRef affineMapId = curToken.getSpelling().drop_front();
   // Check that 'affineMapId' is unique.
@@ -495,7 +496,7 @@ ParseResult Parser::parseAffineMapDef() {
   if (affineMaps.count(affineMapId) > 0)
     return emitError("redefinition of affine map id '" + affineMapId + "'");
 
-  consumeToken(Token::affine_map_id);
+  consumeToken(Token::affine_map_identifier);
 
   // TODO(andydavis,bondhugula) Parse affine map definition.
   affineMaps[affineMapId].reset(new AffineMap(1, 0));
@@ -829,7 +830,7 @@ Module *Parser::parseModule() {
     case Token::kw_cfgfunc:
       if (parseCFGFunc()) return nullptr;
       break;
-    case Token::affine_map_id:
+    case Token::affine_map_identifier:
       if (parseAffineMapDef()) return nullptr;
       break;
 

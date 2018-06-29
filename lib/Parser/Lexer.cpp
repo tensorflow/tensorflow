@@ -144,25 +144,10 @@ Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
   // Check to see if this identifier is a keyword.
   StringRef spelling(tokStart, curPtr-tokStart);
 
-  Token::TokenKind kind = llvm::StringSwitch<Token::TokenKind>(spelling)
-    .Case("bf16", Token::kw_bf16)
-    .Case("br", Token::kw_br)
-    .Case("cfgfunc", Token::kw_cfgfunc)
-    .Case("extfunc", Token::kw_extfunc)
-    .Case("f16", Token::kw_f16)
-    .Case("f32", Token::kw_f32)
-    .Case("f64", Token::kw_f64)
-    .Case("i1", Token::kw_i1)
-    .Case("i16", Token::kw_i16)
-    .Case("i32", Token::kw_i32)
-    .Case("i64", Token::kw_i64)
-    .Case("i8", Token::kw_i8)
-    .Case("int", Token::kw_int)
-    .Case("memref", Token::kw_memref)
-    .Case("mlfunc", Token::kw_mlfunc)
-    .Case("return", Token::kw_return)
-    .Case("tensor", Token::kw_tensor)
-    .Case("vector", Token::kw_vector)
+  Token::Kind kind = llvm::StringSwitch<Token::Kind>(spelling)
+#define TOK_KEYWORD(SPELLING) \
+    .Case(#SPELLING, Token::kw_##SPELLING)
+#include "TokenKinds.def"
     .Default(Token::bare_identifier);
 
   return Token(kind, spelling);
@@ -203,7 +188,7 @@ Token Lexer::lexAffineMapId(const char *tokStart) {
   } else {
     return emitError(curPtr-1, "invalid affine map id");
   }
-  return formToken(Token::affine_map_id, tokStart);
+  return formToken(Token::affine_map_identifier, tokStart);
 }
 
 /// Lex an integer literal.

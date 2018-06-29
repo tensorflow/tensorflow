@@ -50,7 +50,7 @@ public:
   void resetPointer(const char *newPointer) { curPtr = newPointer; }
 private:
   // Helpers.
-  Token formToken(Token::TokenKind kind, const char *tokStart) {
+  Token formToken(Token::Kind kind, const char *tokStart) {
     return Token(kind, StringRef(tokStart, curPtr-tokStart));
   }
 
