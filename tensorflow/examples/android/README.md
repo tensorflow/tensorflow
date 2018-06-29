@@ -45,11 +45,7 @@ on API >= 14 devices.
 
 ## Prebuilt Components:
 
-If you just want the fastest path to trying the demo, you may download the
-nightly build
-[here](https://ci.tensorflow.org/view/Nightly/job/nightly-android/). Expand the
-"View" and then the "out" folders under "Last Successful Artifacts" to find
-tensorflow_demo.apk.
+The fastest path to trying the demo is to download the [prebuilt demo APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
 
 Also available are precompiled native libraries, and a jcenter package that you
 may simply drop into your own applications. See
@@ -113,8 +109,7 @@ protobuf compilation.
 
 NOTE: Bazel does not currently support building for Android on Windows. Full
 support for gradle/cmake builds is coming soon, but in the meantime we suggest
-that Windows users download the [prebuilt
-binaries](https://ci.tensorflow.org/view/Nightly/job/nightly-android/) instead.
+that Windows users download the [prebuilt demo APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk) instead.
 
 ##### Install Bazel and Android Prerequisites
 
