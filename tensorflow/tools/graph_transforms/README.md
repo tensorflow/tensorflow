@@ -152,10 +152,10 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 
 The batch norm folding is included twice because there are two different flavors
 of batch normalization used in TensorFlow. The older version was implemented
-with a single BatchNormWithGlobalNormalization op, but it was deprecated in
-favor of a more recent approach using individual ops to implement the same
-computation. The two transforms are in there so that both styles are recognized
-and optimized.
+with a single op like BatchNormWithGlobalNormalization or FusedBatchNorm, and 
+BatchNormWithGlobalNormalization was deprecated in favor of a more recent 
+approach using individual ops to implement the same computation. The two transforms 
+are in there so that both styles are recognized and optimized.
 
 ### Fixing Missing Kernel Errors on Mobile
 
@@ -405,12 +405,12 @@ to continue on past transient errors, since this is just an optimization phase.
 Args: None \
 Prerequisites: None
 
-In the early days of TensorFlow, batch normalization was implemented using a
-single monolithic `BatchNormWithGlobalNormalization` op. In modern versions,
-adding batch normalization from Python will give you a series of smaller math
-ops instead, to achieve the same effect without special-purpose code. If you
-have a graph that uses the older-style, this transform will recognize and
-optimize those ops for inference, in the same way that the
+In the early days of TensorFlow, batch normalization was implemented using
+single monolithic ops like `BatchNormWithGlobalNormalization` or `FusedBatchNorm`. 
+In modern versions, adding batch normalization from Python will give you a series 
+of smaller math ops instead, to achieve the same effect without special-purpose 
+code. If you have a graph that uses the older-style, this transform will recognize 
+and optimize those ops for inference, in the same way that the
 [fold_batch_norms](#fold_batch_norms) transform does for the new approach.
 
 ### freeze_requantization_ranges
