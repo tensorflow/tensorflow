@@ -231,10 +231,13 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
     case XlaCompiler::Argument::kConstant:
       LOG(FATAL) << "Unreachable case";
     case XlaCompiler::Argument::kParameter: {
-      TensorShape shape =
-          is_entry_computation
-              ? options_.shape_representation_fn(arg.shape, arg.type)
-              : arg.shape;
+      TensorShape shape;
+      if (is_entry_computation) {
+        TF_ASSIGN_OR_RETURN(
+            shape, options_.shape_representation_fn(arg.shape, arg.type));
+      } else {
+        shape = arg.shape;
+      }
       return TensorShapeToXLAShape(arg.type, shape, xla_shape);
     }
     case XlaCompiler::Argument::kResource: {
@@ -242,8 +245,9 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
 
       switch (arg.resource_kind) {
         case XlaResource::kVariable: {
-          TensorShape representation_shape =
-              options_.shape_representation_fn(arg.shape, arg.type);
+          TF_ASSIGN_OR_RETURN(
+              TensorShape representation_shape,
+              options_.shape_representation_fn(arg.shape, arg.type));
           return TensorShapeToXLAShape(arg.type, representation_shape,
                                        xla_shape);
         }

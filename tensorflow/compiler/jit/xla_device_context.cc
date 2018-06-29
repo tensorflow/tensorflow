@@ -56,9 +56,9 @@ XlaTransferManager::XlaTransferManager(
       transfer_as_literal_(transfer_as_literal),
       shape_representation_fn_(std::move(shape_representation_fn)) {
   if (!shape_representation_fn_) {
-    shape_representation_fn_ = [](const TensorShape& shape, DataType dtype) {
-      return shape;
-    };
+    shape_representation_fn_ =
+        [](const TensorShape& shape,
+           DataType dtype) -> xla::StatusOr<TensorShape> { return shape; };
   }
 }
 
@@ -119,8 +119,13 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
     CHECK(xla_tensor);
 
-    TensorShape shape = shape_representation_fn_(device_tensor->shape(),
-                                                 device_tensor->dtype());
+    xla::StatusOr<TensorShape> shape_or_status = shape_representation_fn_(
+        device_tensor->shape(), device_tensor->dtype());
+    if (!shape_or_status.ok()) {
+      done(shape_or_status.status());
+      return;
+    }
+    TensorShape shape = shape_or_status.ValueOrDie();
     if (!xla_tensor->has_shaped_buffer()) {
       Status s = xla_tensor->AllocateShapedBuffer(
           device_tensor->dtype(), shape, client_,
@@ -217,8 +222,9 @@ void XlaTransferManager::CopyDeviceTensorToDevice(const Tensor& src_tensor,
     CHECK(xla_src && xla_dst)
         << "Missing destination tensor for device-to-device copy";
     if (!xla_dst->has_shaped_buffer()) {
-      TensorShape shape =
-          shape_representation_fn_(src_tensor.shape(), src_tensor.dtype());
+      TF_ASSIGN_OR_RETURN(
+          TensorShape shape,
+          shape_representation_fn_(src_tensor.shape(), src_tensor.dtype()));
       TF_RETURN_IF_ERROR(
           xla_dst->AllocateShapedBuffer(src_tensor.dtype(), shape, client_,
                                         stream_->parent()->device_ordinal()));

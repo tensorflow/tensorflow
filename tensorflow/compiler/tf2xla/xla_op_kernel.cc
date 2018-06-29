@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {
@@ -353,8 +354,9 @@ Status XlaOpKernelContext::ReadVariableInput(int index, DataType type,
   }
 
   XlaContext& xla_context = XlaContext::Get(context_);
-  TensorShape representation_shape =
-      xla_context.RepresentationShape(variable->shape(), variable->type());
+  TF_ASSIGN_OR_RETURN(
+      TensorShape representation_shape,
+      xla_context.RepresentationShape(variable->shape(), variable->type()));
   if (representation_shape == variable->shape()) {
     *value = variable->value();
   } else {
@@ -474,8 +476,8 @@ Status XlaOpKernelContext::AssignVariable(int input_index, DataType type,
   TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
 
   XlaContext& xla_context = XlaContext::Get(context_);
-  TensorShape representation_shape =
-      xla_context.RepresentationShape(shape, type);
+  TF_ASSIGN_OR_RETURN(TensorShape representation_shape,
+                      xla_context.RepresentationShape(shape, type));
   if (shape != representation_shape) {
     handle = xla::Reshape(handle, representation_shape.dim_sizes());
   }
