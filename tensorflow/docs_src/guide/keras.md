@@ -548,9 +548,11 @@ model.compile(optimizer=tf.train.RMSPropOptimizer(0.001),
 estimator = keras.estimator.model_to_estimator(model)
 ```
 
-Note: Enable [eager execution](./eager.md) for debugging
+Note: 
+* Enable [eager execution](./eager.md) for debugging
 [Estimator input functions](./premade_estimators.md#create_input_functions)
 and inspecting data.
+* Don't use batch normalization or try to finetune batch normalization models with estimators created from `tf.keras.estimator.model_to_estimator`. More details at [#17950](https://github.com/tensorflow/tensorflow/issues/17950)
 
 ### Multiple GPUs
 
