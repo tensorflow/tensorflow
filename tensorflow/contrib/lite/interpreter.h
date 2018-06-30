@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_INTERPRETER_H_
 #define TENSORFLOW_CONTRIB_LITE_INTERPRETER_H_
 
+#include <complex>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -57,6 +58,10 @@ constexpr TfLiteType typeToTfLiteType<unsigned char>() {
 template <>
 constexpr TfLiteType typeToTfLiteType<bool>() {
   return kTfLiteBool;
+}
+template <>
+constexpr TfLiteType typeToTfLiteType<std::complex<float>>() {
+  return kTfLiteComplex64;
 }
 
 // Forward declare since NNAPIDelegate uses Interpreter.

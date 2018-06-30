@@ -131,6 +131,30 @@ class DNNBoostedTreeCombinedTest(test_util.TensorFlowTestCase):
     classifier.fit(input_fn=_train_input_fn, steps=15)
     classifier.evaluate(input_fn=_eval_input_fn, steps=1)
 
+  def testFitAndEvaluateWithDistillation(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 1
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.DNNBoostedTreeCombinedClassifier(
+        dnn_hidden_units=[1],
+        dnn_feature_columns=[feature_column.real_valued_column("x")],
+        tree_learner_config=learner_config,
+        num_trees=1,
+        tree_examples_per_layer=3,
+        n_classes=2,
+        model_dir=model_dir,
+        config=config,
+        dnn_steps_to_train=10,
+        dnn_input_layer_to_tree=False,
+        tree_feature_columns=[feature_column.real_valued_column("x")],
+        dnn_to_tree_distillation_param=(1, None))
+
+    classifier.fit(input_fn=_train_input_fn, steps=15)
+    classifier.evaluate(input_fn=_eval_input_fn, steps=1)
+
 
 if __name__ == "__main__":
   googletest.main()

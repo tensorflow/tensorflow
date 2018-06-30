@@ -169,6 +169,11 @@ class XlaCompiler {
     // computation.
     bool resolve_compile_time_constants = true;
 
+    // If 'always_return_tuple' is true, then the output of a computation will
+    // always be a tuple. Otherwise, a single-element output will not be wrapped
+    // in a tuple.
+    bool always_return_tuple = true;
+
     // True when compiling the entry computation, false for subcomputations
     // (while, call, etc.)
     bool is_entry_computation = true;

@@ -96,8 +96,11 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
       HloInstruction::CreateUnary(vshape, HloOpcode::kExp, ceil));
   auto floor = builder.AddInstruction(
       HloInstruction::CreateUnary(vshape, HloOpcode::kFloor, exp));
-  auto two = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+  auto two = builder.AddInstruction(HloInstruction::CreateBroadcast(
+      vshape,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0))),
+      {}));
   builder.AddInstruction(
       HloInstruction::CreateBinary(vshape, HloOpcode::kMultiply, two, floor));
 
@@ -114,9 +117,9 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
   EXPECT_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
   EXPECT_EQ(HloOpcode::kMultiply,
             fusion_instruction->fused_expression_root()->opcode());
-  // There should be 7 fused instructions: 2 parameters and the fused
+  // There should be 8 fused instructions: 2 parameters and the fused
   // operations.
-  EXPECT_EQ(7, fusion_instruction->fused_instruction_count());
+  EXPECT_EQ(8, fusion_instruction->fused_instruction_count());
 
   // Compile and execute the computation.
   auto result = ExecuteAndTransfer(std::move(module), {});
@@ -170,8 +173,11 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusableInstruction) {
       HloInstruction::CreateUnary(cshape, HloOpcode::kExp, reduce));
   auto floor = builder.AddInstruction(
       HloInstruction::CreateUnary(cshape, HloOpcode::kFloor, exp));
-  auto two = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+  auto two = builder.AddInstruction(HloInstruction::CreateBroadcast(
+      cshape,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0))),
+      {}));
   builder.AddInstruction(
       HloInstruction::CreateBinary(cshape, HloOpcode::kMultiply, two, floor));
 
@@ -188,9 +194,9 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusableInstruction) {
   EXPECT_EQ(HloOpcode::kFusion, fusion_instruction1->opcode());
   EXPECT_EQ(HloOpcode::kMultiply,
             fusion_instruction1->fused_expression_root()->opcode());
-  // There should be 5 fused instructions in the root fusion instruction: 2
+  // There should be 6 fused instructions in the root fusion instruction: 2
   // parameters, multiply, floor, and exp.
-  EXPECT_EQ(5, fusion_instruction1->fused_instruction_count())
+  EXPECT_EQ(6, fusion_instruction1->fused_instruction_count())
       << fusion_instruction1->fused_instructions_computation()->ToString();
 
   auto fusion_instruction2 = reduce->operand(0);

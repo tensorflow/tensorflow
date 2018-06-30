@@ -131,32 +131,6 @@ def _MarkReachedOps(from_ops, reached_ops):
           queue.extend(output.consumers())
 
 
-def _GatherInputs(to_ops, reached_ops):
-  """List all inputs of to_ops that are in reached_ops.
-
-  Args:
-    to_ops: list of Operations.
-    reached_ops: set of Operations.
-
-  Returns:
-    The list of all inputs of to_ops that are in reached_ops.
-    That list includes all elements of to_ops.
-  """
-  inputs = []
-  queue = collections.deque()
-  queue.extend(to_ops)
-  while queue:
-    op = queue.popleft()
-    # We are interested in this op.
-    if op in reached_ops:
-      inputs.append(op)
-      # Clear the boolean so we won't add the inputs again.
-      reached_ops.remove(op)
-      for inp in op.inputs:
-        queue.append(inp.op)
-  return inputs
-
-
 def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops):
   """Initialize the pending count for ops between two lists of Operations.
 
@@ -534,10 +508,10 @@ def gradients(ys,
     RuntimeError: if called in Eager mode.
 
   """
-  # Creating the gradient graph for control flow mutates Operations. _lock
-  # ensures a Session.run call cannot occur between creating and mutating new
-  # ops.
-  with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+  # Creating the gradient graph for control flow mutates Operations.
+  # _mutation_lock ensures a Session.run call cannot occur between creating and
+  # mutating new ops.
+  with ops.get_default_graph()._mutation_lock():  # pylint: disable=protected-access
     return _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
                             gate_gradients, aggregation_method, stop_gradients)
 

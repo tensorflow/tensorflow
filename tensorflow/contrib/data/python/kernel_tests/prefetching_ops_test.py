@@ -68,6 +68,7 @@ class PrefetchingKernelsOpsTest(test.TestCase):
     with ops.device(device1):
       buffer_resource_handle = prefetching_ops.function_buffering_resource(
           f=_remote_fn,
+          output_types=[dtypes.float32],
           target_device=target,
           string_arg=ds_iterator_handle,
           buffer_size=3,
@@ -201,6 +202,49 @@ class PrefetchingKernelsOpsTest(test.TestCase):
 
       sess.run(destroy_op)
 
+  def testStringsGPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    device0 = "/job:localhost/replica:0/task:0/cpu:0"
+    device1 = "/job:localhost/replica:0/task:0/gpu:0"
+
+    ds = dataset_ops.Dataset.from_tensor_slices(["a", "b", "c"])
+    ds_iterator = ds.make_one_shot_iterator()
+    ds_iterator_handle = ds_iterator.string_handle()
+
+    @function.Defun(dtypes.string)
+    def _remote_fn(h):
+      remote_iterator = iterator_ops.Iterator.from_string_handle(
+          h, ds.output_types, ds.output_shapes)
+      return remote_iterator.get_next()
+
+    target = constant_op.constant(device0)
+    with ops.device(device1):
+      buffer_resource_handle = prefetching_ops.function_buffering_resource(
+          f=_remote_fn,
+          output_types=[dtypes.string],
+          target_device=target,
+          string_arg=ds_iterator_handle,
+          buffer_size=3,
+          shared_name="strings")
+
+    with ops.device(device1):
+      prefetch_op = prefetching_ops.function_buffering_resource_get_next(
+          function_buffer_resource=buffer_resource_handle,
+          output_types=[dtypes.string])
+      destroy_op = resource_variable_ops.destroy_resource_op(
+          buffer_resource_handle, ignore_lookup_error=True)
+
+    with self.test_session() as sess:
+      self.assertEqual(["a"], sess.run(prefetch_op))
+      self.assertEqual(["b"], sess.run(prefetch_op))
+      self.assertEqual(["c"], sess.run(prefetch_op))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(prefetch_op)
+
+      sess.run(destroy_op)
+
 
 class PrefetchToDeviceTest(test.TestCase):
 
@@ -230,6 +274,36 @@ class PrefetchToDeviceTest(test.TestCase):
     worker_config = config_pb2.ConfigProto()
     worker_config.device_count["CPU"] = 2
     with self.test_session(config=worker_config) as sess:
+      for i in range(10):
+        self.assertEqual(i, sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+  def testPrefetchToSameDevice(self):
+    host_dataset = dataset_ops.Dataset.range(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops.prefetch_to_device(
+            "/job:localhost/replica:0/task:0/device:CPU:0"))
+
+    # NOTE(mrry): This device block creates the "host" dataset and iterator on
+    # /cpu:0, and ensures that the prefetching is across devices. In typical use
+    # this would not be necessary, because the GPU device would not support any
+    # of the dataset-related ops.
+    with ops.device("/cpu:0"):
+      iterator = device_dataset.make_one_shot_iterator()
+
+    self.assertEqual(host_dataset.output_types, device_dataset.output_types)
+    self.assertEqual(host_dataset.output_types, iterator.output_types)
+    self.assertEqual(host_dataset.output_shapes, device_dataset.output_shapes)
+    self.assertEqual(host_dataset.output_shapes, iterator.output_shapes)
+    self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
+    self.assertEqual(host_dataset.output_classes, iterator.output_classes)
+
+    next_element = iterator.get_next()
+    self.assertEqual(dtypes.int64, next_element.dtype)
+    self.assertEqual([], next_element.shape)
+
+    with self.test_session() as sess:
       for i in range(10):
         self.assertEqual(i, sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):

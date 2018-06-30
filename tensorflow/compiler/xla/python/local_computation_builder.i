@@ -988,6 +988,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Min;
 %unignore xla::swig::LocalComputationBuilder::And;
 %unignore xla::swig::LocalComputationBuilder::Or;
+%unignore xla::swig::LocalComputationBuilder::Xor;
 %unignore xla::swig::LocalComputationBuilder::Not;
 %unignore xla::swig::LocalComputationBuilder::Abs;
 %unignore xla::swig::LocalComputationBuilder::Exp;

@@ -22,7 +22,7 @@ import math
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -31,7 +31,7 @@ from tensorflow.python.ops.distributions import special_math
 from tensorflow.python.platform import googletest
 
 
-class RandomOpsTest(XLATestCase):
+class RandomOpsTest(xla_test.XLATestCase):
   """Test cases for random-number generating operators."""
 
   def _random_types(self):

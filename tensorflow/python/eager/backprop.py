@@ -605,7 +605,9 @@ def _zeros(shape, dtype):
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
-  cache_key = shape, dtype, device
+  # pylint: disable=protected-access
+  cache_key = shape, dtype, device, context.context()._eager_context.mode
+  # pylint: enable=protected-access
   cached = _zeros_cache.get(cache_key)
   if cached is None:
     cached = _fast_fill(0, shape, dtype)

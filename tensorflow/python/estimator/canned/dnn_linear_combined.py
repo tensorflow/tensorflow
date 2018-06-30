@@ -257,12 +257,19 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       # warm-start settings
       warm_start_from="/path/to/checkpoint/dir")
 
-  # To apply L1 and L2 regularization, you can set optimizers as follows:
+  # To apply L1 and L2 regularization, you can set dnn_optimizer to:
   tf.train.ProximalAdagradOptimizer(
       learning_rate=0.1,
       l1_regularization_strength=0.001,
       l2_regularization_strength=0.001)
-  # It is same for FtrlOptimizer.
+  # To apply learning rate decay, you can set dnn_optimizer to a callable:
+  lambda: tf.AdamOptimizer(
+      learning_rate=tf.exponential_decay(
+          learning_rate=0.1,
+          global_step=tf.get_global_step(),
+          decay_steps=10000,
+          decay_rate=0.96)
+  # It is the same for linear_optimizer.
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -325,12 +332,16 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         used by linear part of the model. All items in the set must be
         instances of classes derived from `FeatureColumn`.
       linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the linear part of the model. Defaults to FTRL optimizer.
+        the linear part of the model. Can also be a string (one of 'Adagrad',
+        'Adam', 'Ftrl', 'RMSProp', 'SGD'), or callable. Defaults to FTRL
+        optimizer.
       dnn_feature_columns: An iterable containing all the feature columns used
         by deep part of the model. All items in the set must be instances of
         classes derived from `FeatureColumn`.
       dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the deep part of the model. Defaults to Adagrad optimizer.
+        the deep part of the model. Can also be a string (one of 'Adagrad',
+        'Adam', 'Ftrl', 'RMSProp', 'SGD'), or callable. Defaults to Adagrad
+        optimizer.
       dnn_hidden_units: List of hidden units per layer. All layers are fully
         connected.
       dnn_activation_fn: Activation function applied to each layer. If None,
@@ -441,12 +452,19 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       # warm-start settings
       warm_start_from="/path/to/checkpoint/dir")
 
-  # To apply L1 and L2 regularization, you can set optimizers as follows:
+  # To apply L1 and L2 regularization, you can set dnn_optimizer to:
   tf.train.ProximalAdagradOptimizer(
       learning_rate=0.1,
       l1_regularization_strength=0.001,
       l2_regularization_strength=0.001)
-  # It is same for FtrlOptimizer.
+  # To apply learning rate decay, you can set dnn_optimizer to a callable:
+  lambda: tf.AdamOptimizer(
+      learning_rate=tf.exponential_decay(
+          learning_rate=0.1,
+          global_step=tf.get_global_step(),
+          decay_steps=10000,
+          decay_rate=0.96)
+  # It is the same for linear_optimizer.
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -508,12 +526,16 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         used by linear part of the model. All items in the set must be
         instances of classes derived from `FeatureColumn`.
       linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the linear part of the model. Defaults to FTRL optimizer.
+        the linear part of the model. Can also be a string (one of 'Adagrad',
+        'Adam', 'Ftrl', 'RMSProp', 'SGD'), or callable. Defaults to FTRL
+        optimizer.
       dnn_feature_columns: An iterable containing all the feature columns used
         by deep part of the model. All items in the set must be instances of
         classes derived from `FeatureColumn`.
       dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the deep part of the model. Defaults to Adagrad optimizer.
+        the deep part of the model. Can also be a string (one of 'Adagrad',
+        'Adam', 'Ftrl', 'RMSProp', 'SGD'), or callable. Defaults to Adagrad
+        optimizer.
       dnn_hidden_units: List of hidden units per layer. All layers are fully
         connected.
       dnn_activation_fn: Activation function applied to each layer. If None,

@@ -25,8 +25,7 @@ class XlaSortOp : public XlaOpKernel {
   explicit XlaSortOp(OpKernelConstruction* context) : XlaOpKernel(context) {}
 
   void Compile(XlaOpKernelContext* context) override {
-    xla::XlaBuilder* const b = context->builder();
-    context->SetOutput(0, b->Sort(context->Input(0)));
+    context->SetOutput(0, xla::Sort(context->Input(0)));
   }
 };
 

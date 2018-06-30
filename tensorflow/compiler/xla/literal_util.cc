@@ -2142,6 +2142,7 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       }
       break;
     case TUPLE:
+    case TOKEN:
       // Nothing to do but assign the shape which is done above.
       return;
     default:
@@ -2292,6 +2293,9 @@ StatusOr<std::unique_ptr<Literal>> Literal::CreateFromProto(
                 ShapeUtil::TupleElementCount(piece->subshape()),
                 proto_element->tuple_literals_size());
           }
+          return Status::OK();
+        }
+        if (piece->subshape().element_type() == TOKEN) {
           return Status::OK();
         }
 

@@ -47,8 +47,11 @@ def capture_value(tensor_map, value, dtype, name):
   """Capture a value from outside the function, to pass in as an extra arg."""
   captured_value = tensor_map.get(ops.tensor_id(value), None)
   if captured_value is None:
-    captured_value = graph_placeholder(
-        dtype=dtype or value.dtype, shape=value.shape, name=name)
+    # Note: setting ops.control_dependencies(None) ensures we always put
+    # capturing placeholders outside of any control flow context.
+    with ops.control_dependencies(None):
+      captured_value = graph_placeholder(
+          dtype=dtype or value.dtype, shape=value.shape, name=name)
     if captured_value.dtype == dtypes_module.resource:
       if ops._USE_C_SHAPES:  # pylint: disable=protected-access
         if isinstance(value, ops.EagerTensor):
@@ -779,6 +782,9 @@ class _PolymorphicFunction(object):
     kwd_values = _deterministic_dict_values(kwds)
     inputs = args + kwd_values
     signature = tuple(_cache_key(x) for x in inputs)
+    # The graph, or whether we're executing eagerly, should be a part of the
+    # signature so we don't improperly capture tensors such as variables.
+    signature += tuple([context.executing_eagerly() or ops.get_default_graph()])
 
     if signature not in self._arguments_to_functions:
       graph_function = _trace_and_define_function(

@@ -822,8 +822,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     } else {
       // Graph is not modified.
       LOG(WARNING) << "Engine creation for segment " << i << ", composed of "
-                   << converted_segments.at(i).first.size() << " nodes failed: "
-                   << status << ". Skipping...";
+                   << converted_segments.at(i).first.size()
+                   << " nodes failed: " << status << ". Skipping...";
     }
   }
   cudaSetDevice(old_cuda_device);

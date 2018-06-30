@@ -25,7 +25,7 @@ import numpy as np
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,7 +41,7 @@ def GenerateNumpyRandomRGB(shape):
   return np.random.randint(0, 256, shape) / 256.
 
 
-class RGBToHSVTest(XLATestCase):
+class RGBToHSVTest(xla_test.XLATestCase):
 
   def testBatch(self):
     # Build an arbitrary RGB image
@@ -104,7 +104,7 @@ class RGBToHSVTest(XLATestCase):
       self.assertAllCloseAccordingToType(hsv_tf, hsv_np)
 
 
-class AdjustContrastTest(XLATestCase):
+class AdjustContrastTest(xla_test.XLATestCase):
 
   def _testContrast(self, x_np, y_np, contrast_factor):
     with self.test_session():
@@ -168,7 +168,7 @@ class AdjustContrastTest(XLATestCase):
       self.assertAllClose(y_tf, y_np, rtol=1e-5, atol=1e-5)
 
 
-class AdjustHueTest(XLATestCase):
+class AdjustHueTest(xla_test.XLATestCase):
 
   def testAdjustNegativeHue(self):
     x_shape = [2, 2, 3]
@@ -303,7 +303,7 @@ class AdjustHueTest(XLATestCase):
       self._adjustHueTf(x_np, delta_h)
 
 
-class AdjustSaturationTest(XLATestCase):
+class AdjustSaturationTest(xla_test.XLATestCase):
 
   def _adjust_saturation(self, image, saturation_factor):
     image = ops.convert_to_tensor(image, name="image")
@@ -403,7 +403,7 @@ class AdjustSaturationTest(XLATestCase):
           self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
 
-class ResizeBilinearTest(XLATestCase):
+class ResizeBilinearTest(xla_test.XLATestCase):
 
   def _assertForwardOpMatchesExpected(self,
                                       image_np,

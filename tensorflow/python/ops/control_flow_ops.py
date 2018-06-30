@@ -2943,9 +2943,10 @@ class WhileContext(ControlFlowContext):
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     try:
       self.Enter()
-      # _BuildLoop calls _update_input in several places. _lock ensures a
-      # Session.run call cannot occur between creating and mutating new ops.
-      with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+      # _BuildLoop calls _update_input in several places. _mutation_lock()
+      # ensures a Session.run call cannot occur between creating and mutating
+      # new ops.
+      with ops.get_default_graph()._mutation_lock():  # pylint: disable=protected-access
         original_body_result, exit_vars = self._BuildLoop(
             pred, body, original_loop_vars, loop_vars, shape_invariants)
     finally:
@@ -3134,6 +3135,7 @@ def while_loop(cond,
   happen is that the thread updating `x` can never get ahead of the
   counter thread because the thread incrementing `x` depends on the value
   of the counter.
+  
   ```python
   import tensorflow as tf
 

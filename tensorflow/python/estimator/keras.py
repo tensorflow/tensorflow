@@ -122,8 +122,8 @@ def _create_ordered_io(keras_model, estimator_io, is_input=True):
             'It needs to match one '
             'of the following: %s' % ('input' if is_input else 'output', key,
                                       ', '.join(keras_io_names)))
-      tensors = [_convert_tensor(estimator_io[io_name])
-                 for io_name in keras_io_names]
+    tensors = [_convert_tensor(estimator_io[io_name])
+               for io_name in keras_io_names]
     return tensors
   else:
     # Plain array.

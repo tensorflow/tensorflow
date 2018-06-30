@@ -35,21 +35,6 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
   return it;
 }
 
-bool GetStateArrayForBackEdge(const Model& model,
-                              const string& back_edge_source_array,
-                              string* state_array = nullptr) {
-  for (const auto& rnn_state : model.flags.rnn_states()) {
-    if (back_edge_source_array == rnn_state.back_edge_source_array()) {
-      // Found LSTM cell output
-      if (state_array) {
-        *state_array = rnn_state.state_array();
-      }
-      return true;
-    }
-  }
-  return false;
-}
-
 // Returns true if the given operator has exactly 1 input, and is connected to
 // the given op_type.
 // We use kNone to indicate an input unattached to an operator output. Usually
@@ -231,11 +216,6 @@ bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
                            &state_combine_add)) {
     return false;
   }
-  string prev_state;
-  if (!GetStateArrayForBackEdge(*model, state_output_tanh->inputs[0],
-                                &prev_state)) {
-    return false;
-  }
 
   // State forget & remember addition
   Operator *state_forget_mul, *state_remember_mul;
@@ -244,9 +224,7 @@ bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
                            &state_remember_mul)) {
     return false;
   }
-  if (state_forget_mul->inputs[0] != prev_state) {
-    return false;
-  }
+  const string prev_state = state_forget_mul->inputs[0];
 
   // State forget gate
   Operator* state_forget_sig;

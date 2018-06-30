@@ -61,7 +61,10 @@ int32_t GetAndroidSdkVersion() {
   return 0;
 }
 
+constexpr int32_t kMinSdkVersionForNNAPI = 27;
+constexpr int32_t kMinSdkVersionForNNAPI11 = 28;
 static const int32_t kAndroidSdkVersion = GetAndroidSdkVersion();
+
 }  // namespace
 
 // RAII NN API Model Destructor for use with std::unique_ptr
@@ -131,6 +134,12 @@ class NNAPIOpBuilder {
 
   TfLiteStatus AddScalarFloat32Operand(float value) {
     return AddScalarOperand<float>(value, ANEURALNETWORKS_FLOAT32);
+  }
+
+  TfLiteStatus AddVectorInt32Operand(const int32_t* values,
+                                     uint32_t num_values) {
+    return AddVectorOperand<int32_t>(values, num_values,
+                                     ANEURALNETWORKS_TENSOR_INT32);
   }
 
   TfLiteStatus AddPoolingParams(void* data) {
@@ -240,6 +249,21 @@ class NNAPIOpBuilder {
     int ann_operand = operand_mapping_->add_new_non_tensor_operand();
     CHECK_NN(context_, ANeuralNetworksModel_setOperandValue(
                            nn_model_, ann_operand, &value, sizeof(T)));
+    augmented_inputs_.push_back(ann_operand);
+    return kTfLiteOk;
+  }
+
+  template <typename T>
+  TfLiteStatus AddVectorOperand(const T* values, uint32_t num_values,
+                                int32_t nn_type) {
+    ANeuralNetworksOperandType operand_type{
+        .type = nn_type, .dimensionCount = 1, .dimensions = &num_values};
+    CHECK_NN(context_,
+             ANeuralNetworksModel_addOperand(nn_model_, &operand_type));
+    int ann_operand = operand_mapping_->add_new_non_tensor_operand();
+    CHECK_NN(context_,
+             ANeuralNetworksModel_setOperandValue(
+                 nn_model_, ann_operand, values, sizeof(T) * num_values));
     augmented_inputs_.push_back(ann_operand);
     return kTfLiteOk;
   }
@@ -411,6 +435,24 @@ class NNAPIDelegateKernel {
           return nullptr;
         }
         break;
+      case kTfLiteBuiltinSqueeze:
+        // Squeeze requires NNAPI1.1.
+        if (version == 1 && kAndroidSdkVersion >= kMinSdkVersionForNNAPI11) {
+          return [](TfLiteContext* context, NNAPIOpBuilder* builder,
+                    TfLiteNode* node) -> ANeuralNetworksOperationType {
+            auto builtin =
+                reinterpret_cast<TfLiteSqueezeParams*>(node->builtin_data);
+            // Note that we add the squeeze dimensions even if the dimensions
+            // were unspecified (empty), as NNAPI requires the operand.
+            builder->AddVectorInt32Operand(
+                builtin->squeeze_dims,
+                static_cast<uint32_t>(builtin->num_squeeze_dims));
+            return ANEURALNETWORKS_SQUEEZE;
+          };
+        } else {
+          return nullptr;
+        }
+        break;
       default:
         return nullptr;
     }
@@ -560,8 +602,9 @@ TfLiteDelegate* NnApiDelegate() {
       .Prepare = [](TfLiteContext* context,
                     TfLiteDelegate* delegate) -> TfLiteStatus {
         // Do not check nodes_ if NN API is unavailable.
-        // NN API is only available since Android O-MR1 (API 27).
-        if (kAndroidSdkVersion < 27 || !NNAPIExists()) return kTfLiteOk;
+        if (kAndroidSdkVersion < kMinSdkVersionForNNAPI || !NNAPIExists()) {
+          return kTfLiteOk;
+        }
 
         std::vector<int> supported_nodes(1);
         // We don't care about all nodes_, we only care about ones in the

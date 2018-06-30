@@ -23,3 +23,4 @@ that you can use to transform Tensors of real and complex signals.
 ## Discrete Cosine Transforms
 
 *   @{tf.spectral.dct}
+*   @{tf.spectral.idct}

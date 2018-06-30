@@ -368,6 +368,7 @@ cc_library(
 
 cc_library(
     name = "queue_op",
+    srcs = ["queue_op.cc"],
     hdrs = ["queue_op.h"],
     deps = [
         ":queue_base",
@@ -1885,9 +1886,10 @@ cc_library(
     name = "fifo_queue",
     srcs = ["fifo_queue.cc"],
     hdrs = ["fifo_queue.h"],
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],
     deps = [
         ":queue_base",
+        ":queue_op",
         ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2934,6 +2936,15 @@ tf_kernel_library(
     deps = MATH_DEPS,
 )
 
+tf_kernel_library(
+    name = "unary_ops_composition",
+    prefix = "unary_ops_composition",
+    deps = MATH_DEPS + [
+        ":cwise_op",
+        ":relu_op",
+    ],
+)
+
 tf_cc_test(
     name = "sequence_ops_test",
     size = "small",
@@ -3026,6 +3037,28 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "unary_ops_composition_test",
+    size = "small",
+    srcs = ["unary_ops_composition_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":unary_ops_composition",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -3888,6 +3921,7 @@ tf_cc_test(
 cc_library(
     name = "sparse",
     deps = [
+        ":deserialize_sparse_variant_op",
         ":serialize_sparse_op",
         ":sparse_add_grad_op",
         ":sparse_add_op",
@@ -4035,6 +4069,15 @@ tf_kernel_library(
 tf_kernel_library(
     name = "serialize_sparse_op",
     prefix = "serialize_sparse_op",
+    deps = SPARSE_DEPS + [
+        ":reshape_util",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
+    name = "deserialize_sparse_variant_op",
+    prefix = "deserialize_sparse_variant_op",
     deps = SPARSE_DEPS + [
         ":reshape_util",
         "//tensorflow/core:protos_all_cc",
@@ -5052,6 +5095,7 @@ filegroup(
         "padding_fifo_queue.cc",
         "padding_fifo_queue_op.cc",
         "queue_base.cc",
+        "queue_op.cc",
         "queue_ops.cc",
         "random_op.cc",
         "reduction_ops_all.cc",

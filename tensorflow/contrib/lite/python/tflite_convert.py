@@ -74,6 +74,9 @@ def _get_toco_converter(flags):
     converter_kwargs["saved_model_dir"] = flags.saved_model_dir
     converter_kwargs["tag_set"] = _parse_set(flags.saved_model_tag_set)
     converter_kwargs["signature_key"] = flags.saved_model_signature_key
+  elif flags.keras_model_file:
+    converter_fn = lite.TocoConverter.from_keras_model_file
+    converter_kwargs["model_file"] = flags.keras_model_file
 
   return converter_fn(**converter_kwargs)
 
@@ -102,7 +105,7 @@ def _convert_model(flags):
     input_arrays = converter.get_input_arrays()
     std_dev_values = _parse_array(flags.std_dev_values, type_fn=int)
     mean_values = _parse_array(flags.mean_values, type_fn=int)
-    quant_stats = zip(mean_values, std_dev_values)
+    quant_stats = list(zip(mean_values, std_dev_values))
     if ((not flags.input_arrays and len(input_arrays) > 1) or
         (len(input_arrays) != len(quant_stats))):
       raise ValueError("Mismatching --input_arrays, --std_dev_values, and "
@@ -222,11 +225,15 @@ def run_main(_):
   input_file_group.add_argument(
       "--graph_def_file",
       type=str,
-      help="Full filepath of file containing TensorFlow GraphDef.")
+      help="Full filepath of file containing frozen TensorFlow GraphDef.")
   input_file_group.add_argument(
       "--saved_model_dir",
       type=str,
       help="Full filepath of directory containing the SavedModel.")
+  input_file_group.add_argument(
+      "--keras_model_file",
+      type=str,
+      help="Full filepath of HDF5 file containing tf.Keras model.")
 
   # Model format flags.
   parser.add_argument(

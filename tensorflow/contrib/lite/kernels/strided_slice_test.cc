@@ -383,6 +383,45 @@ TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
 }
 
+TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1_NegativeSlice) {
+  // This is equivalent to tf.range(4)[-1].
+  StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 1);
+  m.SetInput({0, 1, 2, 3});
+  m.SetBegin({-1});
+  m.SetEnd({0});
+  m.SetStrides({1});
+
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
+}
+
+TEST(StridedSliceOpTest, In2D_ShrinkAxis3_NegativeSlice) {
+  // This is equivalent to tf.range(4)[:, tf.newaxis][-2, -1].
+  StridedSliceOpModel<> m({4, 1}, {2}, {2}, {2}, 0, 0, 0, 0, 3);
+  m.SetInput({0, 1, 2, 3});
+  m.SetBegin({-2, -1});
+  m.SetEnd({-1, 0});
+  m.SetStrides({1, 1});
+
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
+}
+
+TEST(StridedSliceOpTest, In2D_ShrinkAxis2_BeginEndAxis1_NegativeSlice) {
+  // This is equivalent to tf.range(4)[:, tf.newaxis][:, -1].
+  StridedSliceOpModel<> m({4, 1}, {2}, {2}, {2}, 1, 1, 0, 0, 2);
+  m.SetInput({0, 1, 2, 3});
+  m.SetBegin({0, -1});
+  m.SetEnd({0, 0});
+  m.SetStrides({1, 1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2, 3}));
+}
+
 TEST(StridedSliceOpTest, In1D_BeginMaskShrinkAxisMask1) {
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 1, 0, 0, 0, 1);
   m.SetInput({1, 2, 3, 4});
@@ -392,17 +431,6 @@ TEST(StridedSliceOpTest, In1D_BeginMaskShrinkAxisMask1) {
   m.Invoke();
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
-}
-
-TEST(StridedSliceOpTest, In1D_NegativeBeginNegativeStrideShrinkAxisMask1) {
-  StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 1);
-  m.SetInput({1, 2, 3, 4});
-  m.SetBegin({-2});
-  m.SetEnd({-3});
-  m.SetStrides({-1});
-  m.Invoke();
-  EXPECT_TRUE(m.GetOutputShape().empty());
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
 }
 
 TEST(StridedSliceOpTest, In2D_ShrinkAxisMask1) {
