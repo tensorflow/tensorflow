@@ -82,7 +82,7 @@ class PandasIoTest(test.TestCase):
     x, y = self.makeTestDataFrame()
 
     with self.assertRaisesRegexp(TypeError,
-                                 'target_column must be a string or None'):
+                                 'target_column must be a string type'):
       pandas_io.pandas_input_fn(x, y, batch_size=2,
         shuffle=False,
         num_epochs=1,
