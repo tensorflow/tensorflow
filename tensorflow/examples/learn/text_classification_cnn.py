@@ -22,7 +22,6 @@ import sys
 
 import numpy as np
 import pandas
-from sklearn import metrics
 import tensorflow as tf
 
 FLAGS = None
@@ -74,7 +73,7 @@ def cnn_model(features, labels, mode):
         kernel_size=FILTER_SHAPE2,
         padding='VALID')
     # Max across each filter to get useful features for classification.
-    pool2 = tf.squeeze(tf.reduce_max(conv2, 1), squeeze_dims=[1])
+    pool2 = tf.squeeze(tf.reduce_max(conv2, 1), axis=[1])
 
   # Apply regular WX + B and classification.
   logits = tf.layers.dense(pool2, MAX_LABEL, activation=None)
@@ -88,9 +87,7 @@ def cnn_model(features, labels, mode):
             'prob': tf.nn.softmax(logits)
         })
 
-  onehot_labels = tf.one_hot(labels, MAX_LABEL, 1, 0)
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
   if mode == tf.estimator.ModeKeys.TRAIN:
     optimizer = tf.train.AdamOptimizer(learning_rate=0.01)
     train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
@@ -134,23 +131,15 @@ def main(unused_argv):
       shuffle=True)
   classifier.train(input_fn=train_input_fn, steps=100)
 
-  # Predict.
+  # Evaluate.
   test_input_fn = tf.estimator.inputs.numpy_input_fn(
       x={WORDS_FEATURE: x_test},
       y=y_test,
       num_epochs=1,
       shuffle=False)
-  predictions = classifier.predict(input_fn=test_input_fn)
-  y_predicted = np.array(list(p['class'] for p in predictions))
-  y_predicted = y_predicted.reshape(np.array(y_test).shape)
 
-  # Score with sklearn.
-  score = metrics.accuracy_score(y_test, y_predicted)
-  print('Accuracy (sklearn): {0:f}'.format(score))
-
-  # Score with tensorflow.
   scores = classifier.evaluate(input_fn=test_input_fn)
-  print('Accuracy (tensorflow): {0:f}'.format(scores['accuracy']))
+  print('Accuracy: {0:f}'.format(scores['accuracy']))
 
 
 if __name__ == '__main__':

@@ -212,7 +212,7 @@ class ForestHParams(object):
     self.regression = getattr(self, 'regression', False)
 
     # Num_outputs is the actual number of outputs (a single prediction for
-    # classification, a N-dimenensional point for regression).
+    # classification, a N-dimensional point for regression).
     self.num_outputs = self.num_classes if self.regression else 1
 
     # Add an extra column to classes for storing counts, which is needed for
@@ -295,7 +295,7 @@ def get_epoch_variable():
 
 
 # A simple container to hold the training variables for a single tree.
-class TreeTrainingVariables(object):
+class TreeVariables(object):
   """Stores tf.Variables for training a single random tree.
 
   Uses tf.get_variable to get tree-specific names so that this can be used
@@ -303,7 +303,7 @@ class TreeTrainingVariables(object):
   then relies on restoring that model to evaluate).
   """
 
-  def __init__(self, params, tree_num, training):
+  def __init__(self, params, tree_num, training, tree_config='', tree_stat=''):
     if (not hasattr(params, 'params_proto') or
         not isinstance(params.params_proto,
                        _params_proto.TensorForestParams)):
@@ -315,27 +315,28 @@ class TreeTrainingVariables(object):
       # TODO(gilberth): Manually shard this to be able to fit it on
       # multiple machines.
       self.stats = stats_ops.fertile_stats_variable(
-          params, '', self.get_tree_name('stats', tree_num))
+          params, tree_stat, self.get_tree_name('stats', tree_num))
     self.tree = model_ops.tree_variable(
-        params, '', self.stats, self.get_tree_name('tree', tree_num))
+        params, tree_config, self.stats, self.get_tree_name('tree', tree_num))
 
   def get_tree_name(self, name, num):
     return '{0}-{1}'.format(name, num)
 
 
-class ForestTrainingVariables(object):
+class ForestVariables(object):
   """A container for a forests training data, consisting of multiple trees.
 
-  Instantiates a TreeTrainingVariables object for each tree. We override the
+  Instantiates a TreeVariables object for each tree. We override the
   __getitem__ and __setitem__ function so that usage looks like this:
 
-    forest_variables = ForestTrainingVariables(params)
+    forest_variables = ForestVariables(params)
 
     ... forest_variables.tree ...
   """
 
   def __init__(self, params, device_assigner, training=True,
-               tree_variables_class=TreeTrainingVariables):
+               tree_variables_class=TreeVariables,
+               tree_configs=None, tree_stats=None):
     self.variables = []
     # Set up some scalar variables to run through the device assigner, then
     # we can use those to colocate everything related to a tree.
@@ -347,7 +348,13 @@ class ForestTrainingVariables(object):
 
     for i in range(params.num_trees):
       with ops.device(self.device_dummies[i].device):
-        self.variables.append(tree_variables_class(params, i, training))
+        kwargs = {}
+        if tree_configs is not None:
+          kwargs.update(dict(tree_config=tree_configs[i]))
+        if tree_stats is not None:
+          kwargs.update(dict(tree_stat=tree_stats[i]))
+        self.variables.append(tree_variables_class(
+            params, i, training, **kwargs))
 
   def __setitem__(self, t, val):
     self.variables[t] = val
@@ -361,9 +368,11 @@ class RandomForestGraphs(object):
 
   def __init__(self,
                params,
+               tree_configs=None,
+               tree_stats=None,
                device_assigner=None,
                variables=None,
-               tree_variables_class=TreeTrainingVariables,
+               tree_variables_class=TreeVariables,
                tree_graphs=None,
                training=True):
     self.params = params
@@ -371,9 +380,10 @@ class RandomForestGraphs(object):
         device_assigner or framework_variables.VariableDeviceChooser())
     logging.info('Constructing forest with params = ')
     logging.info(self.params.__dict__)
-    self.variables = variables or ForestTrainingVariables(
+    self.variables = variables or ForestVariables(
         self.params, device_assigner=self.device_assigner, training=training,
-        tree_variables_class=tree_variables_class)
+        tree_variables_class=tree_variables_class,
+        tree_configs=tree_configs, tree_stats=tree_stats)
     tree_graph_class = tree_graphs or RandomTreeGraphs
     self.trees = [
         tree_graph_class(self.variables[i], self.params, i)
@@ -437,7 +447,7 @@ class RandomForestGraphs(object):
           if processed_sparse_features is not None:
             raise NotImplementedError(
                 'Bagging not supported with sparse features.')
-          # TODO(thomaswc): This does sampling without replacment.  Consider
+          # TODO(thomaswc): This does sampling without replacement.  Consider
           # also allowing sampling with replacement as an option.
           batch_size = array_ops.strided_slice(
               array_ops.shape(processed_dense_features), [0], [1])
@@ -445,7 +455,7 @@ class RandomForestGraphs(object):
           mask = math_ops.less(
               r, array_ops.ones_like(r) * self.params.bagging_fraction)
           gather_indices = array_ops.squeeze(
-              array_ops.where(mask), squeeze_dims=[1])
+              array_ops.where(mask), axis=[1])
           # TODO(thomaswc): Calculate out-of-bag data and labels, and store
           # them for use in calculating statistics later.
           tree_data = array_ops.gather(processed_dense_features, gather_indices)
@@ -470,12 +480,15 @@ class RandomForestGraphs(object):
     """Constructs a TF graph for evaluating a random forest.
 
     Args:
-      input_data: A tensor or dict of string->Tensor for input data.
+      input_data: A tensor or dict of string->Tensor for the input data.
+                  This input_data must generate the same spec as the
+                  input_data used in training_graph:  the dict must have
+                  the same keys, for example, and all tensors must have
+                  the same size in their first dimension.
       **inference_args: Keyword arguments to pass through to each tree.
 
     Returns:
-      A tuple of (probabilities, tree_paths, variance), where variance
-      is the variance over all the trees for regression problems only.
+      A tuple of (probabilities, tree_paths, variance).
 
     Raises:
       NotImplementedError: If trying to use feature bagging with sparse
@@ -509,12 +522,12 @@ class RandomForestGraphs(object):
           self.params.num_trees,
           name='probabilities')
       tree_paths = array_ops.stack(paths, axis=1)
-      regression_variance = None
-      if self.params.regression:
-        expected_squares = math_ops.div(
-            math_ops.reduce_sum(all_predict * all_predict, 1),
-            self.params.num_trees)
-        regression_variance = expected_squares - average_values * average_values
+
+      expected_squares = math_ops.div(
+          math_ops.reduce_sum(all_predict * all_predict, 1),
+          self.params.num_trees)
+      regression_variance = math_ops.maximum(
+          0., expected_squares - average_values * average_values)
       return average_values, tree_paths, regression_variance
 
   def average_size(self):

@@ -18,9 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("Dimension")
 class Dimension(object):
   """Represents the value of one dimension in a TensorShape."""
 
@@ -28,6 +31,8 @@ class Dimension(object):
     """Creates a new Dimension with the given value."""
     if value is None:
       self._value = None
+    elif isinstance(value, dtypes.DType):
+      raise TypeError("Cannot convert %s to Dimension" % value)
     else:
       self._value = int(value)
       if (not isinstance(value, compat.bytes_or_text_types) and
@@ -116,11 +121,11 @@ class Dimension(object):
     Dimensions are combined as follows:
 
     ```python
-        Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
-        Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
-        Dimension(None).merge_with(Dimension(n))    == Dimension(n)
-        Dimension(None).merge_with(Dimension(None)) == Dimension(None)
-        Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
+    tf.Dimension(n)   .merge_with(tf.Dimension(n))    == tf.Dimension(n)
+    tf.Dimension(n)   .merge_with(tf.Dimension(None)) == tf.Dimension(n)
+    tf.Dimension(None).merge_with(tf.Dimension(n))    == tf.Dimension(n)
+    tf.Dimension(None).merge_with(tf.Dimension(None)) == tf.Dimension(None)
+    tf.Dimension(n)   .merge_with(tf.Dimension(m))  # raises ValueError for n != m
     ```
 
     Args:
@@ -146,13 +151,15 @@ class Dimension(object):
 
     Dimensions are summed as follows:
 
-      Dimension(m)    + Dimension(n)    == Dimension(m + n)
-      Dimension(m)    + Dimension(None) == Dimension(None)
-      Dimension(None) + Dimension(n)    == Dimension(None)
-      Dimension(None) + Dimension(None) == Dimension(None)
+    ```python
+    tf.Dimension(m)    + tf.Dimension(n)    == tf.Dimension(m + n)
+    tf.Dimension(m)    + tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(None) + tf.Dimension(n)    == tf.Dimension(None)
+    tf.Dimension(None) + tf.Dimension(None) == tf.Dimension(None)
+    ```
 
     Args:
-      other: Another Dimension.
+      other: Another Dimension, or a value accepted by `as_dimension`.
 
     Returns:
       A Dimension whose value is the sum of `self` and `other`.
@@ -163,21 +170,34 @@ class Dimension(object):
     else:
       return Dimension(self._value + other.value)
 
+  def __radd__(self, other):
+    """Returns the sum of `other` and `self`.
+
+    Args:
+      other: Another Dimension, or a value accepted by `as_dimension`.
+
+    Returns:
+      A Dimension whose value is the sum of `self` and `other`.
+    """
+    return self + other
+
   def __sub__(self, other):
     """Returns the subtraction of `other` from `self`.
 
     Dimensions are subtracted as follows:
 
-      Dimension(m)    - Dimension(n)    == Dimension(m - n)
-      Dimension(m)    - Dimension(None) == Dimension(None)
-      Dimension(None) - Dimension(n)    == Dimension(None)
-      Dimension(None) - Dimension(None) == Dimension(None)
+    ```python
+    tf.Dimension(m)    - tf.Dimension(n)    == tf.Dimension(m - n)
+    tf.Dimension(m)    - tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(None) - tf.Dimension(n)    == tf.Dimension(None)
+    tf.Dimension(None) - tf.Dimension(None) == tf.Dimension(None)
+    ```
 
     Args:
-      other: Another Dimension.
+      other: Another Dimension, or a value accepted by `as_dimension`.
 
     Returns:
-      A Dimension whose value is the subtraction of sum of `other` from `self`.
+      A Dimension whose value is the subtraction of `other` from `self`.
     """
     other = as_dimension(other)
     if self._value is None or other.value is None:
@@ -185,42 +205,92 @@ class Dimension(object):
     else:
       return Dimension(self._value - other.value)
 
-  def __mul__(self, other):
-    """Returns the product of `self` and `other`.
-
-    Dimensions are summed as follows:
-
-    ```
-      Dimension(m)    * Dimension(n)    == Dimension(m * n)
-      Dimension(m)    * Dimension(None) == Dimension(None)
-      Dimension(None) * Dimension(n)    == Dimension(None)
-      Dimension(None) * Dimension(None) == Dimension(None)
-    ```
+  def __rsub__(self, other):
+    """Returns the subtraction of `self` from `other`.
 
     Args:
-      other: Another Dimension.
+      other: Another Dimension, or a value accepted by `as_dimension`.
 
     Returns:
-      A Dimension whose value is the product of `self` and `other`.
+      A Dimension whose value is the subtraction of `self` from `other`.
     """
     other = as_dimension(other)
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
+      return Dimension(other.value - self._value)
+
+  def __mul__(self, other):
+    """Returns the product of `self` and `other`.
+
+    Dimensions are summed as follows:
+
+    ```python
+    tf.Dimension(m)    * tf.Dimension(n)    == tf.Dimension(m * n)
+    tf.Dimension(m)    * tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(None) * tf.Dimension(n)    == tf.Dimension(None)
+    tf.Dimension(None) * tf.Dimension(None) == tf.Dimension(None)
+    ```
+
+    Args:
+      other: Another Dimension, or a value accepted by `as_dimension`.
+
+    Returns:
+      A Dimension whose value is the product of `self` and `other`.
+    """
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
+
+    if self._value is None or other.value is None:
+      return Dimension(None)
+    else:
       return Dimension(self._value * other.value)
+
+  def __rmul__(self, other):
+    """Returns the product of `self` and `other`.
+
+    Args:
+      other: Another Dimension, or a value accepted by `as_dimension`.
+
+    Returns:
+      A Dimension whose value is the product of `self` and `other`.
+    """
+    return self * other
 
   def __floordiv__(self, other):
     """Returns the quotient of `self` and `other` rounded down.
 
     Dimensions are divided as follows:
 
-      Dimension(m)    // Dimension(n)    == Dimension(m // n)
-      Dimension(m)    // Dimension(None) == Dimension(None)
-      Dimension(None) // Dimension(n)    == Dimension(None)
-      Dimension(None) // Dimension(None) == Dimension(None)
+    ```python
+    tf.Dimension(m)    // tf.Dimension(n)    == tf.Dimension(m // n)
+    tf.Dimension(m)    // tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(None) // tf.Dimension(n)    == tf.Dimension(None)
+    tf.Dimension(None) // tf.Dimension(None) == tf.Dimension(None)
+    ```
 
     Args:
-      other: Another `Dimension`.
+      other: Another Dimension, or a value accepted by `as_dimension`.
+
+    Returns:
+      A `Dimension` whose value is the integer quotient of `self` and `other`.
+    """
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
+    if self._value is None or other.value is None:
+      return Dimension(None)
+    else:
+      return Dimension(self._value // other.value)
+
+  def __rfloordiv__(self, other):
+    """Returns the quotient of `other` and `self` rounded down.
+
+    Args:
+      other: Another Dimension, or a value accepted by `as_dimension`.
 
     Returns:
       A `Dimension` whose value is the integer quotient of `self` and `other`.
@@ -229,7 +299,7 @@ class Dimension(object):
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
-      return Dimension(self._value // other.value)
+      return Dimension(other.value // self._value)
 
   def __div__(self, other):
     """DEPRECATED: Use `__floordiv__` via `x // y` instead.
@@ -248,36 +318,58 @@ class Dimension(object):
     return self // other
 
   def __mod__(self, other):
-    """Returns `self` modulo `other.
+    """Returns `self` modulo `other`.
 
-    Dimension moduli are computed  as follows:
+    Dimension moduli are computed as follows:
 
-      Dimension(m)    % Dimension(n)     == Dimension(m % n)
-      Dimension(m)    % Dimension(None)  == Dimension(None)
-      Dimension(None) % Dimension(n)     == Dimension(None)
-      Dimension(None) %  Dimension(None) == Dimension(None)
+    ```python
+    tf.Dimension(m)    % tf.Dimension(n)    == tf.Dimension(m % n)
+    tf.Dimension(m)    % tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(None) % tf.Dimension(n)    == tf.Dimension(None)
+    tf.Dimension(None) % tf.Dimension(None) == tf.Dimension(None)
+    ```
 
     Args:
-      other: Another Dimension.
+      other: Another Dimension, or a value accepted by `as_dimension`.
 
     Returns:
       A Dimension whose value is `self` modulo `other`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
       return Dimension(self._value % other.value)
+
+  def __rmod__(self, other):
+    """Returns `other` modulo `self`.
+
+    Args:
+      other: Another Dimension, or a value accepted by `as_dimension`.
+
+    Returns:
+      A Dimension whose value is `other` modulo `self`.
+    """
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
+    return other % self
 
   def __lt__(self, other):
     """Returns True if `self` is known to be less than `other`.
 
     Dimensions are compared as follows:
 
-      Dimension(m)    < Dimension(n)    == m < n
-      Dimension(m)    < Dimension(None) == None
-      Dimension(None) < Dimension(n)    == None
-      Dimension(None) < Dimension(None) == None
+    ```python
+    (tf.Dimension(m)    < tf.Dimension(n))    == (m < n)
+    (tf.Dimension(m)    < tf.Dimension(None)) == None
+    (tf.Dimension(None) < tf.Dimension(n))    == None
+    (tf.Dimension(None) < tf.Dimension(None)) == None
+    ```
 
     Args:
       other: Another Dimension.
@@ -297,10 +389,12 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-      Dimension(m)    <= Dimension(n)    == m <= n
-      Dimension(m)    <= Dimension(None) == None
-      Dimension(None) <= Dimension(n)    == None
-      Dimension(None) <= Dimension(None) == None
+    ```python
+    (tf.Dimension(m)    <= tf.Dimension(n))    == (m <= n)
+    (tf.Dimension(m)    <= tf.Dimension(None)) == None
+    (tf.Dimension(None) <= tf.Dimension(n))    == None
+    (tf.Dimension(None) <= tf.Dimension(None)) == None
+    ```
 
     Args:
       other: Another Dimension.
@@ -320,10 +414,12 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-      Dimension(m)    > Dimension(n)    == m > n
-      Dimension(m)    > Dimension(None) == None
-      Dimension(None) > Dimension(n)    == None
-      Dimension(None) > Dimension(None) == None
+    ```python
+    (tf.Dimension(m)    > tf.Dimension(n))    == (m > n)
+    (tf.Dimension(m)    > tf.Dimension(None)) == None
+    (tf.Dimension(None) > tf.Dimension(n))    == None
+    (tf.Dimension(None) > tf.Dimension(None)) == None
+    ```
 
     Args:
       other: Another Dimension.
@@ -343,10 +439,12 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-      Dimension(m)    >= Dimension(n)    == m >= n
-      Dimension(m)    >= Dimension(None) == None
-      Dimension(None) >= Dimension(n)    == None
-      Dimension(None) >= Dimension(None) == None
+    ```python
+    (tf.Dimension(m)    >= tf.Dimension(n))    == (m >= n)
+    (tf.Dimension(m)    >= tf.Dimension(None)) == None
+    (tf.Dimension(None) >= tf.Dimension(n))    == None
+    (tf.Dimension(None) >= tf.Dimension(None)) == None
+    ```
 
     Args:
       other: Another Dimension.
@@ -360,6 +458,9 @@ class Dimension(object):
       return None
     else:
       return self._value >= other.value
+
+  def __reduce__(self):
+    return Dimension, (self._value,)
 
 
 def as_dimension(value):
@@ -381,6 +482,7 @@ def as_dimension(value):
     return Dimension(value)
 
 
+@tf_export("TensorShape")
 class TensorShape(object):
   """Represents the shape of a `Tensor`.
 
@@ -437,6 +539,7 @@ class TensorShape(object):
       else:
         # Got a list of dimensions
         self._dims = [as_dimension(d) for d in dims_iter]
+    self._ndims = None
 
   def __repr__(self):
     return "TensorShape(%r)" % self._dims
@@ -454,19 +557,26 @@ class TensorShape(object):
     """Returns a list of Dimensions, or None if the shape is unspecified."""
     return self._dims
 
+  @dims.setter
+  def dims(self, dims):
+    self._dims = dims
+    self._ndims = None
+
   @property
   def ndims(self):
     """Returns the rank of this shape, or None if it is unspecified."""
     if self._dims is None:
       return None
     else:
-      return len(self._dims)
+      if self._ndims is None:
+        self._ndims = len(self._dims)
+      return self._ndims
 
   def __len__(self):
     """Returns the rank of this shape, or raises ValueError if unspecified."""
     if self._dims is None:
       raise ValueError("Cannot take the length of Shape with unknown rank.")
-    return len(self._dims)
+    return self.ndims
 
   def __bool__(self):
     """Returns True if this shape contains non-zero information."""
@@ -824,6 +934,9 @@ class TensorShape(object):
       return True
     return self._dims != other.dims
 
+  def __reduce__(self):
+    return TensorShape, (self._dims,)
+
 
 def as_shape(shape):
   """Converts the given object to a TensorShape."""
@@ -848,9 +961,12 @@ def unknown_shape(ndims=None):
     return TensorShape([Dimension(None)] * ndims)
 
 
+_SCALAR_SHAPE = TensorShape([])
+
+
 def scalar():
   """Returns a shape representing a scalar."""
-  return TensorShape([])
+  return _SCALAR_SHAPE
 
 
 def vector(length):

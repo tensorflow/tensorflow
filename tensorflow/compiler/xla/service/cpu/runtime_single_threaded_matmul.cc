@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/compiler/xla/service/cpu/runtime_matvec.h"
 #include "tensorflow/core/platform/types.h"
 
 using tensorflow::int32;
@@ -56,18 +57,38 @@ void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m,
   C = A.contract(B, dims);
 }
 
+template <typename T>
+void SingleThreadedMatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs,
+                          int64 m, int64 n, int64 k, int32 transpose_lhs,
+                          int32 transpose_rhs) {
+  if (m == 1 || n == 1) {
+    xla::EigenMatVec<T>(out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
+  } else {
+    MatMul<T>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
+              transpose_rhs);
+  }
+}
+
 }  // namespace
+
+void __xla_cpu_runtime_EigenSingleThreadedMatMulF16(
+    const void* run_options_ptr, Eigen::half* out, Eigen::half* lhs,
+    Eigen::half* rhs, int64 m, int64 n, int64 k, int32 transpose_lhs,
+    int32 transpose_rhs) {
+  SingleThreadedMatMul<Eigen::half>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                    transpose_lhs, transpose_rhs);
+}
 
 void __xla_cpu_runtime_EigenSingleThreadedMatMulF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs, int64 m,
     int64 n, int64 k, int32 transpose_lhs, int32 transpose_rhs) {
-  MatMul<float>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
-                transpose_rhs);
+  SingleThreadedMatMul<float>(run_options_ptr, out, lhs, rhs, m, n, k,
+                              transpose_lhs, transpose_rhs);
 }
 
 void __xla_cpu_runtime_EigenSingleThreadedMatMulF64(
     const void* run_options_ptr, double* out, double* lhs, double* rhs, int64 m,
     int64 n, int64 k, int32 transpose_lhs, int32 transpose_rhs) {
-  MatMul<double>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
-                 transpose_rhs);
+  SingleThreadedMatMul<double>(run_options_ptr, out, lhs, rhs, m, n, k,
+                               transpose_lhs, transpose_rhs);
 }

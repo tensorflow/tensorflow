@@ -31,16 +31,36 @@ XfeedManager* GetXfeedManager() {
   return manager;
 }
 
+extern const char* const kEigenMatMulF16SymbolName =
+    "__xla_cpu_runtime_EigenMatMulF16";
 extern const char* const kEigenMatMulF32SymbolName =
     "__xla_cpu_runtime_EigenMatMulF32";
 extern const char* const kEigenMatMulF64SymbolName =
     "__xla_cpu_runtime_EigenMatMulF64";
+extern const char* const kMKLConvF32SymbolName = "__xla_cpu_runtime_MKLConvF32";
+extern const char* const kMKLMatMulF32SymbolName =
+    "__xla_cpu_runtime_MKLMatMulF32";
+extern const char* const kMKLMatMulF64SymbolName =
+    "__xla_cpu_runtime_MKLMatMulF64";
+extern const char* const kMKLSingleThreadedMatMulF32SymbolName =
+    "__xla_cpu_runtime_MKLSingleThreadedMatMulF32";
+extern const char* const kMKLSingleThreadedMatMulF64SymbolName =
+    "__xla_cpu_runtime_MKLSingleThreadedMatMulF64";
+extern const char* const kEigenConvF16SymbolName =
+    "__xla_cpu_runtime_EigenConvF16";
 extern const char* const kEigenConvF32SymbolName =
     "__xla_cpu_runtime_EigenConvF32";
+extern const char* const kEigenFftSymbolName = "__xla_cpu_runtime_EigenFft";
+extern const char* const kEigenSingleThreadedFftSymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedFft";
+extern const char* const kEigenSingleThreadedMatMulF16SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulF16";
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF32";
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF64";
+extern const char* const kEigenSingleThreadedConvF16SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConvF16";
 extern const char* const kEigenSingleThreadedConvF32SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedConvF32";
 extern const char* const kAcquireInfeedBufferForDequeueSymbolName =
@@ -51,6 +71,9 @@ extern const char* const kAcquireOutfeedBufferForPopulationSymbolName =
     "__xla_cpu_runtime_AcquireOutfeedBufferForPopulation";
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName =
     "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
+extern const char* const kParallelForkJoinSymbolName =
+    "__xla_cpu_runtime_ParallelForkJoin";
+
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
 }  // namespace runtime
 }  // namespace cpu

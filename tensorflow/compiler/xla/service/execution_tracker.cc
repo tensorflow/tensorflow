@@ -37,13 +37,11 @@ AsyncExecution::AsyncExecution(Backend* backend,
   }
 }
 
-tensorflow::Status AsyncExecution::BlockUntilDone() const {
+Status AsyncExecution::BlockUntilDone() const {
   for (auto& stream : streams_) {
-    if (!stream->BlockHostUntilDone()) {
-      return InternalError("failed to block until done");
-    }
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 ExecutionTracker::ExecutionTracker() : next_handle_(1) {}
@@ -63,7 +61,7 @@ ExecutionHandle ExecutionTracker::Register(
   return execution_handle;
 }
 
-tensorflow::Status ExecutionTracker::Unregister(const ExecutionHandle& handle) {
+Status ExecutionTracker::Unregister(const ExecutionHandle& handle) {
   tensorflow::mutex_lock lock(execution_mutex_);
   auto it = handle_to_execution_.find(handle.handle());
   if (it == handle_to_execution_.end()) {
@@ -71,7 +69,7 @@ tensorflow::Status ExecutionTracker::Unregister(const ExecutionHandle& handle) {
                     handle.handle());
   }
   handle_to_execution_.erase(handle.handle());
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 StatusOr<const AsyncExecution*> ExecutionTracker::Resolve(

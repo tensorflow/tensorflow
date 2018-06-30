@@ -78,11 +78,19 @@ class GroupIterable {
   typedef gtl::ArraySlice<int64> VarDimArray;
 
   GroupIterable(Tensor ix, Tensor vals, int dims, const VarDimArray& group_dims)
-      : ix_(ix), vals_(vals), dims_(dims), group_dims_(group_dims) {}
+      : ix_(ix),
+        vals_(vals),
+        dims_(dims),
+        group_dims_(group_dims.begin(), group_dims.end()) {}
 
   class IteratorStep;
 
   IteratorStep begin() { return IteratorStep(this, 0); }
+  IteratorStep at(int64 loc) {
+    CHECK(loc >= 0 && loc <= ix_.dim_size(0))
+        << "loc provided must lie between 0 and " << ix_.dim_size(0);
+    return IteratorStep(this, loc);
+  }
   IteratorStep end() { return IteratorStep(this, ix_.dim_size(0)); }
 
   template <typename TIX>
@@ -109,6 +117,7 @@ class GroupIterable {
     IteratorStep& operator++();    // prefix ++
     IteratorStep operator++(int);  // postfix ++
     Group operator*() const { return Group(iter_, loc_, next_loc_); }
+    int64 loc() const { return loc_; }
 
    private:
     GroupIterable* iter_;
@@ -121,7 +130,7 @@ class GroupIterable {
   Tensor ix_;
   Tensor vals_;
   const int dims_;
-  const VarDimArray group_dims_;
+  const gtl::InlinedVector<int64, 8> group_dims_;
 };
 
 // Implementation of Group::values<T>()

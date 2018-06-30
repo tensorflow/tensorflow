@@ -23,9 +23,9 @@ limitations under the License.
 //
 // Full build instructions are at tensorflow/contrib/pi_examples/README.md.
 
-#include <stdio.h>
 #include <jpeglib.h>
 #include <setjmp.h>
+#include <stdio.h>
 #include <fstream>
 #include <vector>
 
@@ -46,10 +46,10 @@ limitations under the License.
 
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Flag;
-using tensorflow::Tensor;
+using tensorflow::int32;
 using tensorflow::Status;
 using tensorflow::string;
-using tensorflow::int32;
+using tensorflow::Tensor;
 
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
@@ -77,23 +77,22 @@ Status ReadLabelsFile(string file_name, std::vector<string>* result,
 // Error handling for JPEG decoding.
 void CatchError(j_common_ptr cinfo) {
   (*cinfo->err->output_message)(cinfo);
-  jmp_buf *jpeg_jmpbuf = reinterpret_cast<jmp_buf *>(cinfo->client_data);
+  jmp_buf* jpeg_jmpbuf = reinterpret_cast<jmp_buf*>(cinfo->client_data);
   jpeg_destroy(cinfo);
   longjmp(*jpeg_jmpbuf, 1);
 }
 
 // Decompresses a JPEG file from disk.
 Status LoadJpegFile(string file_name, std::vector<tensorflow::uint8>* data,
-		    int* width, int* height, int* channels) {
+                    int* width, int* height, int* channels) {
   struct jpeg_decompress_struct cinfo;
-  FILE * infile;
+  FILE* infile;
   JSAMPARRAY buffer;
   int row_stride;
-  
+
   if ((infile = fopen(file_name.c_str(), "rb")) == NULL) {
     LOG(ERROR) << "Can't open " << file_name;
-    return tensorflow::errors::NotFound("JPEG file ", file_name,
-					" not found");
+    return tensorflow::errors::NotFound("JPEG file ", file_name, " not found");
   }
 
   struct jpeg_error_mgr jerr;
@@ -105,7 +104,7 @@ Status LoadJpegFile(string file_name, std::vector<tensorflow::uint8>* data,
     fclose(infile);
     return tensorflow::errors::Unknown("JPEG decoding failed");
   }
-  
+
   jpeg_create_decompress(&cinfo);
   jpeg_stdio_src(&cinfo, infile);
   jpeg_read_header(&cinfo, TRUE);
@@ -116,17 +115,18 @@ Status LoadJpegFile(string file_name, std::vector<tensorflow::uint8>* data,
   data->resize((*height) * (*width) * (*channels));
 
   row_stride = cinfo.output_width * cinfo.output_components;
-  buffer = (*cinfo.mem->alloc_sarray)
-    ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
+  buffer = (*cinfo.mem->alloc_sarray)((j_common_ptr)&cinfo, JPOOL_IMAGE,
+                                      row_stride, 1);
   while (cinfo.output_scanline < cinfo.output_height) {
-    tensorflow::uint8* row_address = &((*data)[cinfo.output_scanline * row_stride]); 
+    tensorflow::uint8* row_address =
+        &((*data)[cinfo.output_scanline * row_stride]);
     jpeg_read_scanlines(&cinfo, buffer, 1);
     memcpy(row_address, buffer[0], row_stride);
   }
 
   jpeg_finish_decompress(&cinfo);
   jpeg_destroy_decompress(&cinfo);
-  fclose(infile);  
+  fclose(infile);
   return Status::OK();
 }
 
@@ -141,24 +141,25 @@ Status ReadTensorFromImageFile(string file_name, const int wanted_height,
   int image_height;
   int image_channels;
   TF_RETURN_IF_ERROR(LoadJpegFile(file_name, &image_data, &image_width,
-				  &image_height, &image_channels));
-  LOG(INFO) << "Loaded JPEG: " << image_width << "x" << image_height
-	    << "x" << image_channels;
+                                  &image_height, &image_channels));
+  LOG(INFO) << "Loaded JPEG: " << image_width << "x" << image_height << "x"
+            << image_channels;
   const int wanted_channels = 3;
   if (image_channels < wanted_channels) {
-    return tensorflow::errors::FailedPrecondition("Image needs to have at least ",
-						  wanted_channels, " but only has ",
-						  image_channels);
+    return tensorflow::errors::FailedPrecondition(
+        "Image needs to have at least ", wanted_channels, " but only has ",
+        image_channels);
   }
-  // In these loops, we convert the eight-bit data in the image into float, resize
-  // it using bilinear filtering, and scale it numerically to the float range that
-  // the model expects (given by input_mean and input_std).
+  // In these loops, we convert the eight-bit data in the image into float,
+  // resize it using bilinear filtering, and scale it numerically to the float
+  // range that the model expects (given by input_mean and input_std).
   tensorflow::Tensor image_tensor(
-      tensorflow::DT_FLOAT, tensorflow::TensorShape(
-      {1, wanted_height, wanted_width, wanted_channels}));
+      tensorflow::DT_FLOAT,
+      tensorflow::TensorShape(
+          {1, wanted_height, wanted_width, wanted_channels}));
   auto image_tensor_mapped = image_tensor.tensor<float, 4>();
   tensorflow::uint8* in = image_data.data();
-  float *out = image_tensor_mapped.data();
+  float* out = image_tensor_mapped.data();
   const size_t image_rowlen = image_width * image_channels;
   const float width_scale = static_cast<float>(image_width) / wanted_width;
   const float height_scale = static_cast<float>(image_height) / wanted_height;
@@ -166,39 +167,41 @@ Status ReadTensorFromImageFile(string file_name, const int wanted_height,
     const float in_y = y * height_scale;
     const int top_y_index = static_cast<int>(floorf(in_y));
     const int bottom_y_index =
-      std::min(static_cast<int>(ceilf(in_y)), (image_height - 1));
-    const float y_lerp = in_y - top_y_index; 
+        std::min(static_cast<int>(ceilf(in_y)), (image_height - 1));
+    const float y_lerp = in_y - top_y_index;
     tensorflow::uint8* in_top_row = in + (top_y_index * image_rowlen);
     tensorflow::uint8* in_bottom_row = in + (bottom_y_index * image_rowlen);
-    float *out_row = out + (y * wanted_width * wanted_channels);
+    float* out_row = out + (y * wanted_width * wanted_channels);
     for (int x = 0; x < wanted_width; ++x) {
       const float in_x = x * width_scale;
       const int left_x_index = static_cast<int>(floorf(in_x));
       const int right_x_index =
-	std::min(static_cast<int>(ceilf(in_x)), (image_width - 1));
+          std::min(static_cast<int>(ceilf(in_x)), (image_width - 1));
       tensorflow::uint8* in_top_left_pixel =
-	in_top_row + (left_x_index * wanted_channels);
+          in_top_row + (left_x_index * wanted_channels);
       tensorflow::uint8* in_top_right_pixel =
-	in_top_row + (right_x_index * wanted_channels);
+          in_top_row + (right_x_index * wanted_channels);
       tensorflow::uint8* in_bottom_left_pixel =
-	in_bottom_row + (left_x_index * wanted_channels);
+          in_bottom_row + (left_x_index * wanted_channels);
       tensorflow::uint8* in_bottom_right_pixel =
-	in_bottom_row + (right_x_index * wanted_channels);
+          in_bottom_row + (right_x_index * wanted_channels);
       const float x_lerp = in_x - left_x_index;
-      float *out_pixel = out_row + (x * wanted_channels);
-      for (int c = 0; c < wanted_channels; ++c) {	
-	const float top_left((in_top_left_pixel[c] - input_mean) / input_std);
-	const float top_right((in_top_right_pixel[c] - input_mean) / input_std);
-	const float bottom_left((in_bottom_left_pixel[c] - input_mean) / input_std);
-	const float bottom_right((in_bottom_right_pixel[c] - input_mean) / input_std);
-	const float top = top_left + (top_right - top_left) * x_lerp;
-	const float bottom =
-	  bottom_left + (bottom_right - bottom_left) * x_lerp;
-	out_pixel[c] = top + (bottom - top) * y_lerp;
+      float* out_pixel = out_row + (x * wanted_channels);
+      for (int c = 0; c < wanted_channels; ++c) {
+        const float top_left((in_top_left_pixel[c] - input_mean) / input_std);
+        const float top_right((in_top_right_pixel[c] - input_mean) / input_std);
+        const float bottom_left((in_bottom_left_pixel[c] - input_mean) /
+                                input_std);
+        const float bottom_right((in_bottom_right_pixel[c] - input_mean) /
+                                 input_std);
+        const float top = top_left + (top_right - top_left) * x_lerp;
+        const float bottom =
+            bottom_left + (bottom_right - bottom_left) * x_lerp;
+        out_pixel[c] = top + (bottom - top) * y_lerp;
       }
     }
   }
-  
+
   out_tensors->push_back(image_tensor);
   return Status::OK();
 }
@@ -233,10 +236,10 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
     scores.push_back(std::pair<int, float>({i, unsorted_scores_flat(i)}));
   }
   std::sort(scores.begin(), scores.end(),
-	    [](const std::pair<int, float> &left,
-	       const std::pair<int, float> &right) {
-	      return left.second > right.second;
-	    });
+            [](const std::pair<int, float>& left,
+               const std::pair<int, float>& right) {
+              return left.second > right.second;
+            });
   scores.resize(how_many_labels);
   Tensor sorted_indices(tensorflow::DT_INT32, {scores.size()});
   Tensor sorted_scores(tensorflow::DT_FLOAT, {scores.size()});

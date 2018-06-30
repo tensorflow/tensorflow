@@ -21,7 +21,12 @@
 # See libtensorflow_cpu.sh and libtensorflow_gpu.sh
 
 set -ex
+
+# Current script directory
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source "${SCRIPT_DIR}/../builds/builds_common.sh"
 DOCKER_CONTEXT_PATH="$(realpath ${SCRIPT_DIR}/..)"
 ROOT_DIR="$(realpath ${SCRIPT_DIR}/../../../../)"
 
@@ -45,9 +50,8 @@ ${DOCKER_BINARY} run \
   -v ${ROOT_DIR}:/workspace \
   -w /workspace \
   -e "PYTHON_BIN_PATH=/usr/bin/python" \
-  -e "TF_NEED_GCP=0" \
   -e "TF_NEED_HDFS=0" \
   -e "TF_NEED_CUDA=${TF_NEED_CUDA}" \
-  -e "TF_NEED_OPENCL=0" \
+  -e "TF_NEED_OPENCL_SYCL=0" \
   "${DOCKER_IMAGE}" \
   "/workspace/tensorflow/tools/ci_build/linux/libtensorflow.sh"

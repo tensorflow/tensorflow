@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/attr_value.pb.h"  // TODO(62899350): Remove
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -89,8 +88,28 @@ void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out);
 void SetAttrValue(const AttrValue& value, AttrValue* out);
 
 // Returns true if a and b have the same value.
-// NOTE: May return false negatives for tensor values.
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
+
+// Returns a hash of `a` that is consistent with AreAttrValuesEqual. In other
+// words, if two AttrValues compare equal according to AreAttrValuesEqual,
+// they will have the same hash value.
+// Similarly to protobuf deterministic serialization, hash value is
+// guaranteed to be stable only for a given binary. In particular, one should
+// probably not persist the returned value.
+uint64 AttrValueHash(const AttrValue& a);
+
+// WARNING: Equality check might return false-negative for large (> 32mb)
+// tensors defined with different TensorProto representations.
+//
+// A pair of consistent hash and equals functions that are guaranteed to be fast
+// with AttrValues that potentially can have very large Tensors (larger than
+// 32mb) defined by TensorProto. If large identical Tensors are defined using
+// different representations (e.g. one with tensor content, and second with
+// bool_val), they will have different hash code and equals will return false.
+// Small (less than 32mb) tensors with different TensorProto representations
+// hashed/compared by their tensor content.
+uint64 FastAttrValueHash(const AttrValue& a);
+bool FastAreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
 
 // Returns true if "val" has a placeholder.
 bool HasPlaceHolder(const AttrValue& val);

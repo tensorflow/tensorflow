@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_DEBUG_GRPC_TESTLIB_H_
 
 #include <atomic>
+#include <unordered_set>
 
-#include "grpc++/grpc++.h"
+#include "grpcpp/grpcpp.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -44,7 +45,8 @@ class TestEventListenerImpl final : public EventListener::Service {
   void ClearReceivedDebugData();
 
   void RequestDebugOpStateChangeAtNextStream(
-      bool to_enable, const DebugNodeKey& debug_node_key);
+      const EventReply::DebugOpStateChange::State new_state,
+      const DebugNodeKey& debug_node_key);
 
   std::vector<string> debug_metadata_strings;
   std::vector<string> encoded_graph_defs;
@@ -58,12 +60,13 @@ class TestEventListenerImpl final : public EventListener::Service {
   std::atomic_bool stop_requested_;
   std::atomic_bool stopped_;
 
-  std::vector<bool> changes_to_enable_ GUARDED_BY(changes_mu_);
-  std::vector<string> changes_node_names_ GUARDED_BY(changes_mu_);
-  std::vector<int32> changes_output_slots_ GUARDED_BY(changes_mu_);
-  std::vector<string> changes_debug_ops_ GUARDED_BY(changes_mu_);
+  std::vector<DebugNodeKey> debug_node_keys_ GUARDED_BY(states_mu_);
+  std::vector<EventReply::DebugOpStateChange::State> new_states_
+      GUARDED_BY(states_mu_);
 
-  mutex changes_mu_;
+  std::unordered_set<DebugNodeKey> write_enabled_debug_node_keys_;
+
+  mutex states_mu_;
 };
 
 // Poll a gRPC debug server by sending a small tensor repeatedly till success.

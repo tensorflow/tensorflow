@@ -30,6 +30,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -52,7 +53,7 @@ class BatchSequencesWithStatesTest(test.TestCase):
     sp_tensor1 = sparse_tensor.SparseTensor(
         array_ops.constant(ind1, dtypes.int64),
         array_ops.constant(val1, dtypes.int64),
-        array_ops.constant(shape1, dtypes.int64))
+        array_ops.placeholder_with_default(shape1, shape=[2]))
     ind2 = np.array([
         [0, 0, 1],
         [0, 1, 0],
@@ -67,7 +68,7 @@ class BatchSequencesWithStatesTest(test.TestCase):
     sp_tensor2 = sparse_tensor.SparseTensor(
         array_ops.constant(ind2, dtypes.int64),
         array_ops.constant(val2, dtypes.int64),
-        array_ops.constant(shape2, dtypes.int64))
+        array_ops.placeholder_with_default(shape2, shape=[3]))
     sp_tensor3 = sparse_tensor.SparseTensor(
         array_ops.constant([[1, 9], [2, 2], [2, 10]], dtypes.int64),
         array_ops.constant([7, 15, 2], dtypes.int64),
@@ -319,6 +320,18 @@ class BatchSequencesWithStatesTest(test.TestCase):
   def testNotAMultiple(self):
     num_unroll = 3  # Not a divisor of value_length -
     # so padding would have been necessary.
+
+    # Use placeholder_with_default in sequences to make sure we get runtime
+    # error instead of shape inference error
+    sequences = {
+        "seq1": array_ops.placeholder_with_default(self.sequences["seq1"],
+                                                   shape=(None, 5)),
+        "seq2": array_ops.placeholder_with_default(self.sequences["seq2"],
+                                                   shape=(None, 4, 2)),
+        "seq3": self.sequences["seq3"],
+        "seq4": self.sequences["seq4"],
+    }
+
     with self.test_session() as sess:
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    ".*should be a multiple of: 3, but saw "
@@ -329,7 +342,7 @@ class BatchSequencesWithStatesTest(test.TestCase):
           with coord.stop_on_exception():
             next_batch = sqss.batch_sequences_with_states(
                 input_key=self.key,
-                input_sequences=self.sequences,
+                input_sequences=sequences,
                 input_context=self.context,
                 input_length=3,
                 initial_states=self.initial_states,
@@ -526,6 +539,50 @@ class PaddingTest(test.TestCase):
       for key, val in expected_padded_seq.items():
         self.assertTrue(
             math_ops.reduce_all(math_ops.equal(val, padded_seq[key])).eval())
+
+  def testPaddingOnlySparse(self):
+    ind1 = np.array([[0], [2]])
+    val1 = np.array([3, 4])
+    shape1 = np.array([4])
+
+    ind2 = np.array([[1], [2]])
+    val2 = np.array([9, 12])
+    shape2 = np.array([5])
+
+    with ops.Graph().as_default() as g, self.test_session(graph=g):
+      sp_tensor1 = sparse_tensor.SparseTensor(
+          indices=array_ops.constant(ind1, dtypes.int64),
+          values=array_ops.constant(val1, dtypes.int64),
+          dense_shape=array_ops.constant(shape1, dtypes.int64))
+      sp_tensor2 = sparse_tensor.SparseTensor(
+          indices=array_ops.constant(ind2, dtypes.int64),
+          values=array_ops.constant(val2, dtypes.int64),
+          dense_shape=array_ops.constant(shape2, dtypes.int64))
+
+      sp_tensor1_expected = sparse_tensor.SparseTensor(
+          indices=sp_tensor1.indices,
+          values=sp_tensor1.values,
+          dense_shape=[8])
+      sp_tensor2_expected = sparse_tensor.SparseTensor(
+          indices=sp_tensor2.indices,
+          values=sp_tensor2.values,
+          dense_shape=[8])
+
+      sequences = {
+          "key_1": sp_tensor1,
+          "key_2": sp_tensor2,
+      }
+      _, padded_seq = sqss._padding(sequences, 4)
+
+      expected_padded_seq = {
+          "key_1": sp_tensor1_expected,
+          "key_2": sp_tensor2_expected,
+      }
+
+      for key, val in expected_padded_seq.items():
+        self.assertAllEqual(
+            sparse_ops.sparse_tensor_to_dense(val).eval(),
+            sparse_ops.sparse_tensor_to_dense(padded_seq[key]).eval())
 
 
 class SparseTensorReConstructionTest(test.TestCase):

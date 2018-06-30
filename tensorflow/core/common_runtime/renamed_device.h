@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -29,12 +29,21 @@ namespace tensorflow {
 class RenamedDevice : public Device {
  public:
   static Device* NewRenamedDevice(const string& new_base, Device* underlying,
-                                  bool owns_underlying);
+                                  bool owns_underlying,
+                                  bool isolate_session_state);
+
   ~RenamedDevice() override;
 
   // Below are virtual methods defined on DeviceBase
   bool RequiresRecordingAccessedTensors() const override {
     return underlying_->RequiresRecordingAccessedTensors();
+  }
+
+  const DeviceBase* UnderlyingDevice() const override {
+    return underlying_->UnderlyingDevice();
+  }
+  DeviceBase* UnderlyingDevice() override {
+    return underlying_->UnderlyingDevice();
   }
 
   const CpuWorkerThreads* tensorflow_cpu_worker_threads() const override {
@@ -47,11 +56,6 @@ class RenamedDevice : public Device {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     return underlying_->GetAllocator(attr);
-  }
-
-  Allocator* GetStepAllocator(AllocatorAttributes attr,
-                              ResourceMgr* step_resource_manager) override {
-    return underlying_->GetStepAllocator(attr, step_resource_manager);
   }
 
   const Eigen::ThreadPoolDevice* eigen_cpu_device() override {
@@ -97,9 +101,8 @@ class RenamedDevice : public Device {
 
   Status Sync() override { return underlying_->Sync(); }
 
-  Status MaybeRewriteGraph(const FunctionDefLibrary& library,
-                           std::unique_ptr<Graph>* graph) override {
-    return underlying_->MaybeRewriteGraph(library, graph);
+  Status MaybeRewriteGraph(std::unique_ptr<Graph>* graph) override {
+    return underlying_->MaybeRewriteGraph(graph);
   }
 
   Status FillContextMap(const Graph* graph,
@@ -107,13 +110,23 @@ class RenamedDevice : public Device {
     return underlying_->FillContextMap(graph, device_context_map);
   }
 
+  // Returns the resource manager associated w/ this device.
+  ResourceMgr* resource_manager() override {
+    if (isolate_session_state_) {
+      return Device::resource_manager();
+    } else {
+      return underlying_->resource_manager();
+    }
+  }
+
  private:
   RenamedDevice(Device* underlying, const DeviceAttributes& attributes,
-                bool owns_underlying);
+                bool owns_underlying, bool isolate_session_state);
   Device* const underlying_;
   const bool owns_underlying_;
+  const bool isolate_session_state_;
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_

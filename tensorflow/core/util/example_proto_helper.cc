@@ -143,7 +143,7 @@ Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
       return out;
     }
     default:
-      CHECK(false) << "not supposed to be here.  dtype requested: " << dtype;
+      LOG(FATAL) << "not supposed to be here.  dtype requested: " << dtype;
   }
 }
 
@@ -180,7 +180,7 @@ int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
       break;
     }
     default:
-      CHECK(false) << "Not supposed to be here.  Saw dtype: " << dtype;
+      LOG(FATAL) << "Not supposed to be here.  Saw dtype: " << dtype;
   }
 
   return num_elements;
@@ -208,7 +208,7 @@ void RowDenseCopy(const std::size_t& out_index, const DataType& dtype,
       break;
     }
     default:
-      CHECK(false) << "Not supposed to be here.  Saw dtype: " << dtype;
+      LOG(FATAL) << "Not supposed to be here.  Saw dtype: " << dtype;
   }
 }
 
@@ -247,8 +247,9 @@ Status SingleExampleProtoToTensors(
       bool types_match;
       TF_RETURN_IF_ERROR(CheckTypesMatch(f, dtype, &types_match));
       if (!types_match) {
-        return errors::InvalidArgument("Name: ", example_name, ", Feature: ",
-                                       key, ".  Data types don't match. ",
+        return errors::InvalidArgument("Name: ", example_name,
+                                       ", Feature: ", key,
+                                       ".  Data types don't match. ",
                                        "Expected type: ", DataTypeString(dtype),
                                        "  Feature is: ", ProtoDebugString(f));
       }
@@ -278,8 +279,9 @@ Status SingleExampleProtoToTensors(
       bool types_match;
       TF_RETURN_IF_ERROR(CheckTypesMatch(f, dtype, &types_match));
       if (!types_match) {
-        return errors::InvalidArgument("Name: ", example_name, ", Feature: ",
-                                       key, ".  Data types don't match. ",
+        return errors::InvalidArgument("Name: ", example_name,
+                                       ", Feature: ", key,
+                                       ".  Data types don't match. ",
                                        "Expected type: ", DataTypeString(dtype),
                                        "  Feature is: ", ProtoDebugString(f));
       }
@@ -400,7 +402,7 @@ Status BatchExampleProtoToTensors(
   return Status::OK();
 }
 
-Status ParseSingleExampleAttrs::FinishInit() {
+Status ParseExampleAttrs::FinishInit() {
   if (static_cast<size_t>(num_sparse) != sparse_types.size()) {
     return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
   }
@@ -412,6 +414,25 @@ Status ParseSingleExampleAttrs::FinishInit() {
   }
   if (num_dense > std::numeric_limits<int32>::max()) {
     return errors::InvalidArgument("num_dense_ too large");
+  }
+  for (const DataType& type : dense_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : sparse_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  return Status::OK();
+}
+
+Status ParseSingleExampleAttrs::FinishInit() {
+  if (sparse_keys.size() != sparse_types.size()) {
+    return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
+  }
+  if (dense_keys.size() != dense_types.size()) {
+    return errors::InvalidArgument("len(dense_keys) != len(dense_types)");
+  }
+  if (dense_keys.size() != dense_shapes.size()) {
+    return errors::InvalidArgument("len(dense_keys) != len(dense_shapes)");
   }
   for (const DataType& type : dense_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));

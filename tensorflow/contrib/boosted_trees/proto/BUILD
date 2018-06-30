@@ -4,17 +4,6 @@ exports_files(["LICENSE"])
 
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_proto_library(
     name = "learner_proto",
     srcs = [

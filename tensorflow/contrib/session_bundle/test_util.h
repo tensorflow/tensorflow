@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_TEST_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_TEST_UTIL_H_
+#ifndef TENSORFLOW_CONTRIB_SESSION_BUNDLE_TEST_UTIL_H_
+#define TENSORFLOW_CONTRIB_SESSION_BUNDLE_TEST_UTIL_H_
 
 #include <string>
 
@@ -35,4 +35,4 @@ string TestSrcDirPath(const string& relative_path);
 }  // namespace serving
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_TEST_UTIL_H_
+#endif  // TENSORFLOW_CONTRIB_SESSION_BUNDLE_TEST_UTIL_H_

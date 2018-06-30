@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class RandomSeedTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def testRandomSeed(self):
     test_cases = [
         # Each test case is a tuple with input to get_seed:
@@ -32,12 +35,18 @@ class RandomSeedTest(test.TestCase):
         # (output_graph_seed, output_op_seed)
         ((None, None), (None, None)),
         ((None, 1), (random_seed.DEFAULT_GRAPH_SEED, 1)),
-        ((1, None), (1, 0)),  # 0 will be the default_graph._lastid.
         ((1, 1), (1, 1)),
         ((0, 0), (0, 2**31 - 1)),  # Avoid nondeterministic (0, 0) output
         ((2**31 - 1, 0), (0, 2**31 - 1)),  # Don't wrap to (0, 0) either
         ((0, 2**31 - 1), (0, 2**31 - 1)),  # Wrapping for the other argument
     ]
+    if context.executing_eagerly():
+      # operation seed is random number generated based on global seed.
+      # it's not tested due to possibility of platform or version difference.
+      pass
+    else:
+      # 0 will be the default_graph._lastid.
+      test_cases.append(((1, None), (1, 0)))
     for tc in test_cases:
       tinput, toutput = tc[0], tc[1]
       random_seed.set_random_seed(tinput[0])

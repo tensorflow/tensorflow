@@ -1,15 +1,24 @@
 index.md
-using_gpu.md
-image_recognition.md
-image_retraining.md
-layers.md
+
+### Images
+layers.md: MNIST
+image_recognition.md: Image Recognition
+/hub/tutorials/image_retraining.md: Image Retraining
 deep_cnn.md
-word2vec.md
+
+### Sequences
+/hub/tutorials/text_classification_with_tf_hub: Text Classification
 recurrent.md
-seq2seq.md
-linear.md
-wide.md
-wide_and_deep.md
-kernel_methods.md
+seq2seq.md: Neural Machine Translation
+recurrent_quickdraw.md: Drawing Classification
+audio_recognition.md
+
+### Data Representation
+wide.md: Linear Models
+wide_and_deep.md: Wide & Deep Learning
+word2vec.md
+kernel_methods.md: Kernel Methods
+
+### Non-ML
 mandelbrot.md
 pdes.md

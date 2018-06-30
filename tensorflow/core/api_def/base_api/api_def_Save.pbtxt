@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "Save"
+  in_arg {
+    name: "filename"
+    description: <<END
+Must have a single element. The name of the file to which we write
+the tensor.
+END
+  }
+  in_arg {
+    name: "tensor_names"
+    description: <<END
+Shape `[N]`. The names of the tensors to be saved.
+END
+  }
+  in_arg {
+    name: "data"
+    description: <<END
+`N` tensors to save.
+END
+  }
+  summary: "Saves the input tensors to disk."
+  description: <<END
+The size of `tensor_names` must match the number of tensors in `data`. `data[i]`
+is written to `filename` with name `tensor_names[i]`.
+
+See also `SaveSlices`.
+END
+}

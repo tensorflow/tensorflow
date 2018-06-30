@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Utilities supporting export to SavedModel (deprecated).
 
-"""Utilities supporting export to SavedModel.
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 Some contents of this file are moved to tensorflow/python/estimator/export.py:
 
@@ -39,18 +42,23 @@ import time
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn.estimators import constants
+from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import gc
 from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
 from tensorflow.python.estimator import estimator as core_estimator
+from tensorflow.python.estimator.export import export as core_export
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
-
+from tensorflow.python.summary import summary_iterator
+from tensorflow.python.training import saver
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
+
 
 # A key for use in the input_alternatives dict indicating the default input.
 # This is the input that will be expected when a serving request does not
@@ -74,8 +82,9 @@ FEATURES_INPUT_ALTERNATIVE_KEY = 'features_input_alternative'
 _FALLBACK_DEFAULT_OUTPUT_ALTERNATIVE_KEY = 'default_output_alternative'
 
 
-def build_standardized_signature_def(
-    input_tensors, output_tensors, problem_type):
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
+def build_standardized_signature_def(input_tensors, output_tensors,
+                                     problem_type):
   """Build a SignatureDef using problem type and input and output Tensors.
 
   Note that this delegates the actual creation of the signatures to methods in
@@ -107,7 +116,11 @@ def build_standardized_signature_def(
     classes = _get_classification_classes(output_tensors)
     scores = _get_classification_scores(output_tensors)
     if classes is None and scores is None:
-      (_, classes), = output_tensors.items()
+      items = list(output_tensors.items())
+      if items[0][1].dtype == dtypes.string:
+        (_, classes), = items
+      else:
+        (_, scores), = items
     return signature_def_utils.classification_signature_def(
         examples, classes, scores)
   elif _is_regression_problem(problem_type, input_tensors, output_tensors):
@@ -115,8 +128,8 @@ def build_standardized_signature_def(
     (_, predictions), = output_tensors.items()
     return signature_def_utils.regression_signature_def(examples, predictions)
   else:
-    return signature_def_utils.predict_signature_def(
-        input_tensors, output_tensors)
+    return signature_def_utils.predict_signature_def(input_tensors,
+                                                     output_tensors)
 
 
 def _get_classification_scores(output_tensors):
@@ -138,19 +151,18 @@ def _is_classification_problem(problem_type, input_tensors, output_tensors):
   classes = _get_classification_classes(output_tensors)
   scores = _get_classification_scores(output_tensors)
   return ((problem_type == constants.ProblemType.CLASSIFICATION or
-           problem_type == constants.ProblemType.LOGISTIC_REGRESSION)
-          and len(input_tensors) == 1
-          and (classes is not None or
-               scores is not None or
-               len(output_tensors) == 1))
+           problem_type == constants.ProblemType.LOGISTIC_REGRESSION) and
+          len(input_tensors) == 1 and
+          (classes is not None or scores is not None or
+           len(output_tensors) == 1))
 
 
 def _is_regression_problem(problem_type, input_tensors, output_tensors):
-  return (problem_type == constants.ProblemType.LINEAR_REGRESSION
-          and len(input_tensors) == 1
-          and len(output_tensors) == 1)
+  return (problem_type == constants.ProblemType.LINEAR_REGRESSION and
+          len(input_tensors) == 1 and len(output_tensors) == 1)
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_input_alternatives(input_ops):
   """Obtain all input alternatives using the input_fn output and heuristics."""
   input_alternatives = {}
@@ -176,9 +188,8 @@ def get_input_alternatives(input_ops):
   return input_alternatives, features
 
 
-def get_output_alternatives(
-    model_fn_ops,
-    default_output_alternative_key=None):
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
+def get_output_alternatives(model_fn_ops, default_output_alternative_key=None):
   """Obtain all output alternatives using the model_fn output and heuristics.
 
   Args:
@@ -217,8 +228,10 @@ def get_output_alternatives(
       default_outputs = {prediction_key.PredictionKey.GENERIC: default_outputs}
     actual_default_output_alternative_key = (
         _FALLBACK_DEFAULT_OUTPUT_ALTERNATIVE_KEY)
-    output_alternatives = {actual_default_output_alternative_key:
-                           (default_problem_type, default_outputs)}
+    output_alternatives = {
+        actual_default_output_alternative_key: (default_problem_type,
+                                                default_outputs)
+    }
     return output_alternatives, actual_default_output_alternative_key
 
   if default_output_alternative_key:
@@ -241,17 +254,17 @@ def get_output_alternatives(
                        sorted(output_alternatives.keys())))
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def build_all_signature_defs(input_alternatives, output_alternatives,
                              actual_default_output_alternative_key):
   """Build `SignatureDef`s from all pairs of input and output alternatives."""
 
-  signature_def_map = {
-      ('%s:%s' % (input_key, output_key or 'None')):
-      build_standardized_signature_def(
-          inputs, outputs, problem_type)
-      for input_key, inputs in input_alternatives.items()
-      for output_key, (problem_type, outputs)
-      in output_alternatives.items()}
+  signature_def_map = {('%s:%s' % (input_key, output_key or 'None')):
+                       build_standardized_signature_def(inputs, outputs,
+                                                        problem_type)
+                       for input_key, inputs in input_alternatives.items()
+                       for output_key, (problem_type,
+                                        outputs) in output_alternatives.items()}
 
   # Add the default SignatureDef
   default_inputs = input_alternatives.get(DEFAULT_INPUT_ALTERNATIVE_KEY)
@@ -262,12 +275,20 @@ def build_all_signature_defs(input_alternatives, output_alternatives,
   (default_problem_type, default_outputs) = (
       output_alternatives[actual_default_output_alternative_key])
   signature_def_map[signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY] = (
-      build_standardized_signature_def(
-          default_inputs, default_outputs, default_problem_type))
+      build_standardized_signature_def(default_inputs, default_outputs,
+                                       default_problem_type))
 
   return signature_def_map
 
 
+# When we create a timestamped directory, there is a small chance that the
+# directory already exists because another worker is also writing exports.
+# In this case we just wait one second to get a new timestamp and try again.
+# If this fails several times in a row, then something is seriously wrong.
+MAX_DIRECTORY_CREATION_ATTEMPTS = 10
+
+
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_timestamped_export_dir(export_dir_base):
   """Builds a path to a new subdirectory within the base directory.
 
@@ -281,13 +302,50 @@ def get_timestamped_export_dir(export_dir_base):
         graph and checkpoints.
   Returns:
     The full path of the new subdirectory (which is not actually created yet).
-  """
-  export_timestamp = int(time.time())
 
-  export_dir = os.path.join(
-      compat.as_bytes(export_dir_base),
-      compat.as_bytes(str(export_timestamp)))
-  return export_dir
+  Raises:
+    RuntimeError: if repeated attempts fail to obtain a unique timestamped
+      directory name.
+  """
+  attempts = 0
+  while attempts < MAX_DIRECTORY_CREATION_ATTEMPTS:
+    export_timestamp = int(time.time())
+
+    export_dir = os.path.join(
+        compat.as_bytes(export_dir_base),
+        compat.as_bytes(str(export_timestamp)))
+    if not gfile.Exists(export_dir):
+      # Collisions are still possible (though extremely unlikely): this
+      # directory is not actually created yet, but it will be almost
+      # instantly on return from this function.
+      return export_dir
+    time.sleep(1)
+    attempts += 1
+    logging.warn('Export directory {} already exists; retrying (attempt {}/{})'.
+                 format(export_dir, attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
+  raise RuntimeError('Failed to obtain a unique export directory name after '
+                     '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
+
+
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
+def get_temp_export_dir(timestamped_export_dir):
+  """Builds a directory name based on the argument but starting with 'temp-'.
+
+  This relies on the fact that TensorFlow Serving ignores subdirectories of
+  the base directory that can't be parsed as integers.
+
+  Args:
+    timestamped_export_dir: the name of the eventual export directory, e.g.
+      /foo/bar/<timestamp>
+
+  Returns:
+    A sister directory prefixed with 'temp-', e.g. /foo/bar/temp-<timestamp>.
+  """
+  (dirname, basename) = os.path.split(timestamped_export_dir)
+  temp_export_dir = os.path.join(
+      compat.as_bytes(dirname),
+      compat.as_bytes('temp-{}'.format(compat.as_text(basename))))
+  return temp_export_dir
 
 
 # create a simple parser that pulls the export_version from the directory.
@@ -298,6 +356,7 @@ def _export_version_parser(path):
   return path._replace(export_version=int(filename))
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def get_most_recent_export(export_dir_base):
   """Locate the most recent SavedModel export in a directory of many exports.
 
@@ -312,11 +371,12 @@ def get_most_recent_export(export_dir_base):
     A gc.Path, with is just a namedtuple of (path, export_version).
   """
   select_filter = gc.largest_export_versions(1)
-  results = select_filter(gc.get_paths(export_dir_base,
-                                       parser=_export_version_parser))
+  results = select_filter(
+      gc.get_paths(export_dir_base, parser=_export_version_parser))
   return next(iter(results or []), None)
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def garbage_collect_exports(export_dir_base, exports_to_keep):
   """Deletes older exports, retaining only a given number of the most recent.
 
@@ -333,19 +393,21 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
 
   keep_filter = gc.largest_export_versions(exports_to_keep)
   delete_filter = gc.negation(keep_filter)
-  for p in delete_filter(gc.get_paths(export_dir_base,
-                                      parser=_export_version_parser)):
+  for p in delete_filter(
+      gc.get_paths(export_dir_base, parser=_export_version_parser)):
     try:
       gfile.DeleteRecursively(p.path)
     except errors_impl.NotFoundError as e:
       logging.warn('Can not delete %s recursively: %s', p.path, e)
 
 
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
 def make_export_strategy(serving_input_fn,
                          default_output_alternative_key=None,
                          assets_extra=None,
                          as_text=False,
-                         exports_to_keep=5):
+                         exports_to_keep=5,
+                         strip_default_attrs=None):
   """Create an ExportStrategy for use with Experiment.
 
   Args:
@@ -353,7 +415,7 @@ def make_export_strategy(serving_input_fn,
       `InputFnOps`.
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
-      Must be `None` if the estimator inherits from ${tf.estimator.Estimator}
+      Must be `None` if the estimator inherits from @{tf.estimator.Estimator}
       or for single-headed models.
     assets_extra: A dict specifying how to populate the assets.extra directory
       within the exported SavedModel.  Each key should give the destination
@@ -366,15 +428,16 @@ def make_export_strategy(serving_input_fn,
     exports_to_keep: Number of exports to keep.  Older exports will be
       garbage-collected.  Defaults to 5.  Set to None to disable garbage
       collection.
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
 
-  def export_fn(estimator,
-                export_dir_base,
-                checkpoint_path=None
-               ):
+  def export_fn(estimator, export_dir_base, checkpoint_path=None,
+                strip_default_attrs=False):
     """Exports the given Estimator as a SavedModel.
 
     Args:
@@ -383,12 +446,14 @@ def make_export_strategy(serving_input_fn,
         graph and checkpoints.
       checkpoint_path: The checkpoint path to export.  If None (the default),
         the most recent checkpoint found within the model directory is chosen.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will
+        be removed from the NodeDefs.
 
     Returns:
       The string path to the exported directory.
 
     Raises:
-      ValueError: If `estimator` is a ${tf.estimator.Estimator} instance
+      ValueError: If `estimator` is a @{tf.estimator.Estimator} instance
         and `default_output_alternative_key` was specified.
     """
     if isinstance(estimator, core_estimator.Estimator):
@@ -401,7 +466,8 @@ def make_export_strategy(serving_input_fn,
           serving_input_fn,
           assets_extra=assets_extra,
           as_text=as_text,
-          checkpoint_path=checkpoint_path)
+          checkpoint_path=checkpoint_path,
+          strip_default_attrs=strip_default_attrs)
     else:
       export_result = estimator.export_savedmodel(
           export_dir_base,
@@ -409,19 +475,24 @@ def make_export_strategy(serving_input_fn,
           default_output_alternative_key=default_output_alternative_key,
           assets_extra=assets_extra,
           as_text=as_text,
-          checkpoint_path=checkpoint_path)
+          checkpoint_path=checkpoint_path,
+          strip_default_attrs=strip_default_attrs)
 
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result
 
-  return export_strategy.ExportStrategy('Servo', export_fn)
+  return export_strategy.ExportStrategy('Servo', export_fn, strip_default_attrs)
 
 
+@deprecated(None,
+            'Use tf.estimator.export.build_parsing_serving_input_receiver_fn')
 def make_parsing_export_strategy(feature_columns,
                                  default_output_alternative_key=None,
                                  assets_extra=None,
                                  as_text=False,
-                                 exports_to_keep=5):
+                                 exports_to_keep=5,
+                                 target_core=False,
+                                 strip_default_attrs=None):
   """Create an ExportStrategy for use with Experiment, using `FeatureColumn`s.
 
   Creates a SavedModel export that expects to be fed with a single string
@@ -433,7 +504,7 @@ def make_parsing_export_strategy(feature_columns,
       that must be provided at serving time (excluding labels!).
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
-      Must be `None` if the estimator inherits from ${tf.estimator.Estimator}
+      Must be `None` if the estimator inherits from @{tf.estimator.Estimator}
       or for single-headed models.
     assets_extra: A dict specifying how to populate the assets.extra directory
       within the exported SavedModel.  Each key should give the destination
@@ -446,15 +517,288 @@ def make_parsing_export_strategy(feature_columns,
     exports_to_keep: Number of exports to keep.  Older exports will be
       garbage-collected.  Defaults to 5.  Set to None to disable garbage
       collection.
+    target_core: If True, prepare an ExportStrategy for use with
+      tensorflow.python.estimator.*.  If False (default), prepare an
+      ExportStrategy for use with tensorflow.contrib.learn.python.learn.*.
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
   feature_spec = feature_column.create_feature_spec_for_parsing(feature_columns)
-  serving_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+  if target_core:
+    serving_input_fn = (
+        core_export.build_parsing_serving_input_receiver_fn(feature_spec))
+  else:
+    serving_input_fn = (
+        input_fn_utils.build_parsing_serving_input_fn(feature_spec))
   return make_export_strategy(
       serving_input_fn,
       default_output_alternative_key=default_output_alternative_key,
       assets_extra=assets_extra,
       as_text=as_text,
-      exports_to_keep=exports_to_keep)
+      exports_to_keep=exports_to_keep,
+      strip_default_attrs=strip_default_attrs)
+
+
+def _default_compare_fn(curr_best_eval_result, cand_eval_result):
+  """Compares two evaluation results and returns true if the 2nd one is better.
+
+  Both evaluation results should have the values for MetricKey.LOSS, which are
+  used for comparison.
+
+  Args:
+    curr_best_eval_result: current best eval metrics.
+    cand_eval_result: candidate eval metrics.
+
+  Returns:
+    True if cand_eval_result is better.
+
+  Raises:
+    ValueError: If input eval result is None or no loss is available.
+  """
+  default_key = metric_key.MetricKey.LOSS
+  if not curr_best_eval_result or default_key not in curr_best_eval_result:
+    raise ValueError(
+        'curr_best_eval_result cannot be empty or no loss is found in it.')
+
+  if not cand_eval_result or default_key not in cand_eval_result:
+    raise ValueError(
+        'cand_eval_result cannot be empty or no loss is found in it.')
+
+  return curr_best_eval_result[default_key] > cand_eval_result[default_key]
+
+
+class BestModelSelector(object):
+  """A helper that keeps track of export selection candidates.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
+
+  @deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
+  def __init__(self, event_file_pattern=None, compare_fn=None):
+    """Constructor of this class.
+
+    Args:
+      event_file_pattern: absolute event file name pattern.
+      compare_fn: a function that returns true if the candidate is better than
+        the current best model.
+    """
+    self._compare_fn = compare_fn or _default_compare_fn
+    self._best_eval_result = self._get_best_eval_result(event_file_pattern)
+
+  def update(self, checkpoint_path, eval_result):
+    """Records a given checkpoint and exports if this is the best model.
+
+    Args:
+      checkpoint_path: the checkpoint path to export.
+      eval_result: a dictionary which is usually generated in evaluation runs.
+        By default, eval_results contains 'loss' field.
+
+    Returns:
+      A string representing the path to the checkpoint to be exported.
+      A dictionary of the same type of eval_result.
+
+    Raises:
+      ValueError: if checkpoint path is empty.
+      ValueError: if eval_results is None object.
+    """
+    if not checkpoint_path:
+      raise ValueError('Checkpoint path is empty.')
+    if eval_result is None:
+      raise ValueError('%s has empty evaluation results.', checkpoint_path)
+
+    if (self._best_eval_result is None or
+        self._compare_fn(self._best_eval_result, eval_result)):
+      self._best_eval_result = eval_result
+      return checkpoint_path, eval_result
+    else:
+      return '', None
+
+  def _get_best_eval_result(self, event_files):
+    """Get the best eval result from event files.
+
+    Args:
+      event_files: Absolute pattern of event files.
+
+    Returns:
+      The best eval result.
+    """
+    if not event_files:
+      return None
+
+    best_eval_result = None
+    for event_file in gfile.Glob(os.path.join(event_files)):
+      for event in summary_iterator.summary_iterator(event_file):
+        if event.HasField('summary'):
+          event_eval_result = {}
+          for value in event.summary.value:
+            if value.HasField('simple_value'):
+              event_eval_result[value.tag] = value.simple_value
+          if best_eval_result is None or self._compare_fn(
+              best_eval_result, event_eval_result):
+            best_eval_result = event_eval_result
+    return best_eval_result
+
+
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
+def make_best_model_export_strategy(
+    serving_input_fn,
+    exports_to_keep=1,
+    model_dir=None,
+    event_file_pattern=None,
+    compare_fn=None,
+    default_output_alternative_key=None,
+    strip_default_attrs=None):
+  """Creates an custom ExportStrategy for use with tf.contrib.learn.Experiment.
+
+  Args:
+    serving_input_fn: a function that takes no arguments and returns an
+      `InputFnOps`.
+    exports_to_keep: an integer indicating how many historical best models need
+      to be preserved.
+    model_dir: Directory where model parameters, graph etc. are saved. This will
+        be used to load eval metrics from the directory when the export strategy
+        is created. So the best metrics would not be lost even if the export
+        strategy got preempted, which guarantees that only the best model would
+        be exported regardless of preemption. If None, however, the export
+        strategy would not be preemption-safe. To be preemption-safe, both
+        model_dir and event_file_pattern would be needed.
+    event_file_pattern: event file name pattern relative to model_dir, e.g.
+        "eval_continuous/*.tfevents.*". If None, however, the export strategy
+        would not be preemption-safe. To be preemption-safe, both
+        model_dir and event_file_pattern would be needed.
+    compare_fn: a function that select the 'best' candidate from a dictionary
+        of evaluation result keyed by corresponding checkpoint path.
+    default_output_alternative_key: the key for default serving signature for
+        multi-headed inference graphs.
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
+
+  Returns:
+    An ExportStrategy that can be passed to the Experiment constructor.
+  """
+  best_model_export_strategy = make_export_strategy(
+      serving_input_fn,
+      exports_to_keep=exports_to_keep,
+      default_output_alternative_key=default_output_alternative_key,
+      strip_default_attrs=strip_default_attrs)
+
+  full_event_file_pattern = os.path.join(
+      model_dir,
+      event_file_pattern) if model_dir and event_file_pattern else None
+  best_model_selector = BestModelSelector(full_event_file_pattern, compare_fn)
+
+  def export_fn(estimator, export_dir_base, checkpoint_path, eval_result=None):
+    """Exports the given Estimator as a SavedModel.
+
+    Args:
+      estimator: the Estimator to export.
+      export_dir_base: A string containing a directory to write the exported
+        graph and checkpoints.
+      checkpoint_path: The checkpoint path to export.  If None (the default),
+        the most recent checkpoint found within the model directory is chosen.
+      eval_result: placehold args matching the call signature of ExportStrategy.
+
+    Returns:
+      The string path to the exported directory.
+    """
+    if not checkpoint_path:
+      # TODO(b/67425018): switch to
+      #    checkpoint_path = estimator.latest_checkpoint()
+      #  as soon as contrib is cleaned up and we can thus be sure that
+      #  estimator is a tf.estimator.Estimator and not a
+      #  tf.contrib.learn.Estimator
+      checkpoint_path = saver.latest_checkpoint(estimator.model_dir)
+    export_checkpoint_path, export_eval_result = best_model_selector.update(
+        checkpoint_path, eval_result)
+
+    if export_checkpoint_path and export_eval_result is not None:
+      checkpoint_base = os.path.basename(export_checkpoint_path)
+      export_dir = os.path.join(export_dir_base, checkpoint_base)
+      return best_model_export_strategy.export(
+          estimator, export_dir, export_checkpoint_path, export_eval_result)
+    else:
+      return ''
+
+  return export_strategy.ExportStrategy('best_model', export_fn)
+
+
+# TODO(b/67013778): Revisit this approach when corresponding changes to
+# TF Core are finalized.
+@deprecated(None, 'Switch to tf.estimator.Exporter and associated utilities.')
+def extend_export_strategy(base_export_strategy,
+                           post_export_fn,
+                           post_export_name=None):
+  """Extend ExportStrategy, calling post_export_fn after export.
+
+  Args:
+    base_export_strategy: An ExportStrategy that can be passed to the Experiment
+      constructor.
+    post_export_fn: A user-specified function to call after exporting the
+      SavedModel. Takes two arguments - the path to the SavedModel exported by
+      base_export_strategy and the directory where to export the SavedModel
+      modified by the post_export_fn. Returns the path to the exported
+      SavedModel.
+    post_export_name: The directory name under the export base directory where
+      SavedModels generated by the post_export_fn will be written. If None, the
+      directory name of base_export_strategy is used.
+
+  Returns:
+    An ExportStrategy that can be passed to the Experiment constructor.
+  """
+  def export_fn(estimator, export_dir_base, checkpoint_path=None):
+    """Exports the given Estimator as a SavedModel and invokes post_export_fn.
+
+    Args:
+      estimator: the Estimator to export.
+      export_dir_base: A string containing a directory to write the exported
+        graphs and checkpoint.
+      checkpoint_path: The checkpoint path to export. If None (the default),
+        the most recent checkpoint found within the model directory is chosen.
+
+    Returns:
+      The string path to the SavedModel indicated by post_export_fn.
+
+    Raises:
+      ValueError: If `estimator` is a @{tf.estimator.Estimator} instance
+        and `default_output_alternative_key` was specified or if post_export_fn
+        does not return a valid directory.
+      RuntimeError: If unable to create temporary or final export directory.
+    """
+    tmp_base_export_folder = 'temp-base-export-' + str(int(time.time()))
+    tmp_base_export_dir = os.path.join(export_dir_base, tmp_base_export_folder)
+    if gfile.Exists(tmp_base_export_dir):
+      raise RuntimeError('Failed to obtain base export directory')
+    gfile.MakeDirs(tmp_base_export_dir)
+    tmp_base_export = base_export_strategy.export(
+        estimator, tmp_base_export_dir, checkpoint_path)
+
+    tmp_post_export_folder = 'temp-post-export-' + str(int(time.time()))
+    tmp_post_export_dir = os.path.join(export_dir_base, tmp_post_export_folder)
+    if gfile.Exists(tmp_post_export_dir):
+      raise RuntimeError('Failed to obtain temp export directory')
+
+    gfile.MakeDirs(tmp_post_export_dir)
+    tmp_post_export = post_export_fn(tmp_base_export, tmp_post_export_dir)
+
+    if not tmp_post_export.startswith(tmp_post_export_dir):
+      raise ValueError('post_export_fn must return a sub-directory of {}'
+                       .format(tmp_post_export_dir))
+    post_export_relpath = os.path.relpath(tmp_post_export, tmp_post_export_dir)
+    post_export = os.path.join(export_dir_base, post_export_relpath)
+    if gfile.Exists(post_export):
+      raise RuntimeError('Failed to obtain final export directory')
+    gfile.Rename(tmp_post_export, post_export)
+
+    gfile.DeleteRecursively(tmp_base_export_dir)
+    gfile.DeleteRecursively(tmp_post_export_dir)
+    return post_export
+
+  name = post_export_name if post_export_name else base_export_strategy.name
+  return export_strategy.ExportStrategy(name, export_fn)

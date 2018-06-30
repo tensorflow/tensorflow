@@ -284,6 +284,125 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
   EXPECT_EQ(1, tuple_copy->operand(1)->operand(0)->tuple_index());
 }
 
+TEST_F(HloComputationTest, DeepCopyArrayAtIndices) {
+  // Test that DeepCopyInstruction properly handles an array when the indices to
+  // copy are specified.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
+  auto computation = builder.Build();
+
+  {
+    // If the index is true, then a copy should be made.
+    ShapeTree<bool> indices_to_copy(constant->shape(), /*init_value=*/true);
+    EXPECT_THAT(computation->DeepCopyInstruction(constant, &indices_to_copy)
+                    .ValueOrDie(),
+                op::Copy(constant));
+  }
+
+  {
+    // If the index is false, then no copy should be made.
+    ShapeTree<bool> indices_to_copy(constant->shape(), /*init_value=*/false);
+    EXPECT_EQ(computation->DeepCopyInstruction(constant, &indices_to_copy)
+                  .ValueOrDie(),
+              constant);
+  }
+}
+
+TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
+  // Test that DeepCopyInstruction properly copies elements of a tuple as
+  // specified by the given indices.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+  auto tuple = builder.AddInstruction(
+      HloInstruction::CreateTuple({constant1, constant2}));
+  auto computation = builder.Build();
+
+  {
+    // All true values should copy all array elements.
+    ShapeTree<bool> indices_to_copy(tuple->shape(), /*init_value=*/true);
+    ShapeTree<HloInstruction*> copies_added(tuple->shape(),
+                                            /*init_value=*/nullptr);
+    HloInstruction* deep_copy =
+        computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
+            .ValueOrDie();
+
+    EXPECT_THAT(deep_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
+                                     op::Copy(op::GetTupleElement(tuple))));
+    EXPECT_THAT(deep_copy, op::Tuple(copies_added.element({0}),
+                                     copies_added.element({1})));
+  }
+
+  {
+    // All false elements should copy no array elements, but the GTE and tuple
+    // instruction scaffolding should be built.
+    ShapeTree<bool> indices_to_copy(tuple->shape(), /*init_value=*/false);
+    ShapeTree<HloInstruction*> copies_added(tuple->shape(),
+                                            /*init_value=*/nullptr);
+    HloInstruction* deep_copy =
+        computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
+            .ValueOrDie();
+
+    EXPECT_THAT(deep_copy, op::Tuple(op::GetTupleElement(tuple),
+                                     op::GetTupleElement(tuple)));
+    EXPECT_TRUE(copies_added.element({}) == nullptr);
+    EXPECT_TRUE(copies_added.element({0}) == nullptr);
+    EXPECT_TRUE(copies_added.element({1}) == nullptr);
+  }
+
+  {
+    // Verify one element copied, the other not.
+    ShapeTree<bool> indices_to_copy(tuple->shape(), /*init_value=*/false);
+    *indices_to_copy.mutable_element({0}) = true;
+    ShapeTree<HloInstruction*> copies_added(tuple->shape(),
+                                            /*init_value=*/nullptr);
+    HloInstruction* deep_copy =
+        computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
+            .ValueOrDie();
+
+    EXPECT_THAT(deep_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
+                                     op::GetTupleElement(tuple)));
+    EXPECT_TRUE(copies_added.element({}) == nullptr);
+    EXPECT_TRUE(copies_added.element({0}) != nullptr);
+    EXPECT_TRUE(copies_added.element({1}) == nullptr);
+  }
+}
+
+TEST_F(HloComputationTest, DeepCopyToken) {
+  // Test that DeepCopyInstruction properly handles tokens which should not be
+  // copied.
+  auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  auto copy = computation->DeepCopyInstruction(token).ValueOrDie();
+
+  // No copy should be added.
+  EXPECT_THAT(copy, op::AfterAll());
+}
+
+TEST_F(HloComputationTest, DeepCopyTokenTuple) {
+  // Test that DeepCopyInstruction properly handles tokens which should not be
+  // copied.
+  auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+  auto tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({token, constant}));
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  auto copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
+
+  // Only the array (second tuple element) should be copied. The token is passed
+  // through transparently.
+  EXPECT_THAT(copy, op::Tuple(op::GetTupleElement(tuple),
+                              op::Copy(op::GetTupleElement(tuple))));
+}
+
 TEST_F(HloComputationTest, CycleDetection) {
   // Test whether the visitor can detect cycles in the graph.
   auto builder = HloComputation::Builder(TestName());
@@ -297,6 +416,9 @@ TEST_F(HloComputationTest, CycleDetection) {
   auto computation = module->AddEntryComputation(builder.Build());
   // Add a control dependency to create a cycle.
   ASSERT_IS_OK(add->AddControlDependencyTo(negate));
+
+  auto instructions = computation->MakeInstructionPostOrder();
+  EXPECT_EQ(3, instructions.size());
 
   const auto visitor = [](HloInstruction* instruction) { return Status::OK(); };
   auto visit_status = computation->Accept(visitor);
@@ -463,10 +585,108 @@ TEST_F(HloComputationTest, Reachability) {
   EXPECT_FALSE(reachability->IsReachable(constant2, copy));
 }
 
+TEST_F(HloComputationTest, Stringification) {
+  const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
+  const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
+  const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
+  const Shape sout = ShapeUtil::MakeShape(F32, {5, 20});
+
+  HloComputation::Builder builder("TransposeDot");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s1, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, s2, "y"));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateTranspose(s2t, y, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(
+      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  auto module = CreateNewModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+
+  auto options = HloPrintOptions().set_print_metadata(false);
+  EXPECT_EQ(computation->ToString(options),
+            R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
+  %x = f32[5,10]{1,0} parameter(0)
+  %y = f32[20,10]{1,0} parameter(1)
+  %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
+  ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})");
+}
+
+TEST_F(HloComputationTest, StringificationIndent) {
+  const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
+  const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
+  const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
+  const Shape sout = ShapeUtil::MakeShape(F32, {5, 20});
+
+  HloComputation::Builder builder("TransposeDot");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s1, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, s2, "y"));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateTranspose(s2t, y, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(
+      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  auto module = CreateNewModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+
+  auto options =
+      HloPrintOptions().set_print_metadata(false).set_indent_amount(2);
+  EXPECT_EQ(computation->ToString(options),
+            R"(    %TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
+      %x = f32[5,10]{1,0} parameter(0)
+      %y = f32[20,10]{1,0} parameter(1)
+      %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
+      ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })");
+}
+
+TEST_F(HloComputationTest, StringificationCanonical) {
+  const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
+  const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
+  const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
+  const Shape sout = ShapeUtil::MakeShape(F32, {5, 20});
+
+  HloComputation::Builder builder("TransposeDot");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s1, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, s2, "y"));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateTranspose(s2t, y, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(
+      HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
+  auto module = CreateNewModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+
+  auto options = HloPrintOptions().set_print_metadata(false);
+  EXPECT_EQ(computation->ToString(options),
+            R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
+  %x = f32[5,10]{1,0} parameter(0)
+  %y = f32[20,10]{1,0} parameter(1)
+  %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
+  ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})");
+
+  options = HloPrintOptions().Canonical();
+  EXPECT_EQ(computation->ToString(options), R"(TransposeDot {
+  tmp_0 = f32[5,10]{1,0} parameter(0)
+  tmp_1 = f32[20,10]{1,0} parameter(1)
+  tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
+  ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})");
+}
+
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

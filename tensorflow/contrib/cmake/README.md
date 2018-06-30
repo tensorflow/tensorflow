@@ -19,23 +19,6 @@ for instructions on how to install a pre-built TensorFlow package on Windows.
 ### Current known limitations
 * It is not possible to load a custom Op library.
 * GCS file system is not supported.
-* The following Ops are not currently implemented:
- - Dequantize
- - QuantizeAndDequantize
- - QuantizedAvgPool
- - QuantizedBatchNomWithGlobalNormalization
- - QuantizedBiasAdd
- - QuantizedConcat
- - QuantizedConv2D
- - QuantizedMatmul
- - QuantizedMaxPoo
- - QuantizeDownAndShrinkRange
- - QuantizedRelu
- - QuantizedRelu6
- - QuantizedReshape
- - QuantizeV2
- - RequantizationRange
- - Requantize
 
 ## Building with CMake
 
@@ -43,29 +26,31 @@ The CMake files in this directory can build the core TensorFlow runtime, an
 example C++ binary, and a PIP package containing the runtime and Python
 bindings.
 
-### Pre-requisites
+### Prerequisites
 
 * CMake version 3.5 or later.
 
-* [Git](http://git-scm.com)
+* [Git](https://git-scm.com)
 
 * [SWIG](http://www.swig.org/download.html)
 
-* Additional pre-requisites for Microsoft Windows:
+* Additional prerequisites for Microsoft Windows:
   - Visual Studio 2015
   - Python 3.5
-  - NumPy 1.11.0 or later
 
-* Additional pre-requisites for Linux:
+* Additional prerequisites for Linux:
   - Python 2.7 or later
   - [Docker](https://www.docker.com/) (for automated testing)
+
+* Python dependencies:
+  - wheel
   - NumPy 1.11.0 or later
 
 ### Known-good configurations
 
 * Microsoft Windows 10
   - Microsoft Visual Studio Enterprise 2015 with Visual C++ 2015
-  - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.continuum.io/downloads)
+  - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.anaconda.com/download/)
   - [Git for Windows version 2.9.2.windows.1](https://git-scm.com/download/win)
   - [swigwin-3.0.10](http://www.swig.org/download.html)
   - [NVidia CUDA Toolkit 8.0](https://developer.nvidia.com/cuda-downloads)
@@ -119,7 +104,7 @@ ops or APIs.
 Step-by-step Windows build
 ==========================
 
-1. Install the pre-requisites detailed above, and set up your environment.
+1. Install the prerequisites detailed above, and set up your environment.
 
    * The following commands assume that you are using the Windows Command
      Prompt (`cmd.exe`). You will need to set up your environment to use the
@@ -142,6 +127,18 @@ Step-by-step Windows build
      D:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v8.0\bin
      D:\local\cuda\bin
      ```
+
+   * When building with MKL support after installing [MKL](https://software.intel.com/en-us/mkl) from INTEL, append its bin directories to your PATH environment variable.
+
+     In case TensorFlow fails to find the MKL dll's during initialization, check your PATH environment variable.
+     It should contain the directory of the MKL dlls. For example:
+
+     ```
+     D:\Tools\IntelSWTools\compilers_and_libraries\windows\redist\intel64\mkl
+     D:\Tools\IntelSWTools\compilers_and_libraries\windows\redist\intel64\compiler
+     D:\Tools\IntelSWTools\compilers_and_libraries\windows\redist\intel64\tbb\vc_mt
+     ```
+
 
    * We assume that `cmake` and `git` are installed and in your `%PATH%`. If
      for example `cmake` is not in your path and it is installed in
@@ -181,7 +178,15 @@ Step-by-step Windows build
    More? -Dtensorflow_ENABLE_GPU=ON ^
    More? -DCUDNN_HOME="D:\...\cudnn"
    ```
+   To build with MKL support add "^" at the end of the last line above following with:
+
+   ```
+   More? -Dtensorflow_ENABLE_MKL_SUPPORT=ON ^
+   More? -DMKL_HOME="D:\...\compilers_and_libraries"
+   ```
+
    To enable SIMD instructions with MSVC, as AVX and SSE, define it as follows:
+
    ```
    More? -Dtensorflow_WIN_CPU_SIMD_OPTIONS=/arch:AVX
    ```
@@ -242,6 +247,20 @@ Step-by-step Windows build
      ctest -C RelWithDebInfo
      ```
 
+   * `-Dtensorflow_BUILD_MORE_PYTHON_TESTS=(ON|OFF)`. Defaults to `OFF`. This enables python tests on
+     serveral major packages. This option is only valid if this and tensorflow_BUILD_PYTHON_TESTS are both set as `ON`.
+     After building the python wheel, you need to install the new wheel before running the tests.
+     To execute the tests, use
+     ```
+     ctest -C RelWithDebInfo
+     ```
+
+   * `-Dtensorflow_ENABLE_MKL_SUPPORT=(ON|OFF)`. Defaults to `OFF`. Include MKL support. If MKL is enabled you need to install the [Intel Math Kernal Library](https://software.intel.com/en-us/mkl).
+     CMake will expect the location of MKL in -MKL_HOME=path_you_install_mkl.
+
+   * `-Dtensorflow_ENABLE_MKLDNN_SUPPORT=(ON|OFF)`. Defaults to `OFF`. Include MKL DNN support. MKL DNN is [Intel(R) Math Kernel Library for Deep Neural Networks (Intel(R) MKL-DNN)](https://github.com/intel/mkl-dnn). You have to add `-Dtensorflow_ENABLE_MKL_SUPPORT=ON` before including MKL DNN support.
+
+
 4. Invoke MSBuild to build TensorFlow.
 
    To build the C++ example program, which will be created as a `.exe`
@@ -258,6 +277,7 @@ Step-by-step Windows build
    ```
    D:\...\build> MSBuild /p:Configuration=Release tf_python_build_pip_package.vcxproj
    ```
+
 
 Linux Continuous Integration build
 ==================================

@@ -53,7 +53,7 @@ enum class CallContext {
 string CallContextToString(CallContext context);
 std::ostream& operator<<(std::ostream& out, const CallContext& context);
 
-CallContext GetInstructionCallContext(const HloInstruction* instruction);
+CallContext GetInstructionCallContext(HloOpcode opcode);
 
 // Represents an HLO instruction which calls one or more computations.
 class CallSite {
@@ -202,6 +202,39 @@ class CallGraph {
                              const HloComputation* computation) const {
     return Dominates(computation, instruction->parent());
   }
+
+  // Returns the nearest call graph ancestors of instructions 'a' and 'b' for
+  // which the ancestors are in the same computation. An instruction is an call
+  // graph ancestor of 'a' if the instruction calls the computation containing
+  // 'a' either directly or transitively. Degeneratively an instruction is an
+  // ancestor of itself. nullptr is returned if there is no common ancestor or
+  // if the caller chain of 'a' or 'b' diverges (has multiple callers) before
+  // the nearest common ancestor.
+  //
+  // Example:
+  //
+  // Entry computation:
+  //   %x = Call(A, {Constant(42.0)})
+  //   %y = Call(B, {%x})
+  //
+  // Computation A:
+  //   %a = Negate(Param())
+  //
+  // Computation B:
+  //   %b = Exp(Param());
+  //
+  // If called with %a and %b, this function would return (%x, %y). %x is an
+  // ancestor of %a, and %y is an ancestor of %b, and %x and %y are in the same
+  // computation.
+  std::pair<HloInstruction*, HloInstruction*> NearestAncestorsInSameComputation(
+      HloInstruction* a, HloInstruction* b) const;
+
+  // Returns whether the call graph is flattened. A call graph is flattened if
+  // every computation called in a sequential context (eg, kWhile or kCall) has
+  // zero or one callsite, and no computation is called from both a parallel and
+  // sequential context. The call graph of a module can be flattened with
+  // FlattenCallGraph.
+  bool IsFlattened() const;
 
   string ToString() const;
 

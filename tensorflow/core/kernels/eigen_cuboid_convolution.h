@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_
+#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_
+#define TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/eigen_volume_patch.h"
@@ -224,4 +224,4 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
 
 }  // end namespace Eigen
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_
+#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_CUBOID_CONVOLUTION_H_

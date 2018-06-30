@@ -3,7 +3,6 @@
 
 package(
     default_visibility = ["//visibility:public"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -12,18 +11,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_kernel_library",
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tf_cc_test(
@@ -46,6 +33,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:remote_fused_graph_execute_utils",

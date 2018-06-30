@@ -98,16 +98,26 @@ public final class Operation {
    * @param length number of tensors in the list
    * @return array of {@code Output}
    */
-  public Output[] outputList(int idx, int length) {
-    Output[] outputs = new Output[length];
+  public Output<?>[] outputList(int idx, int length) {
+    Output<?>[] outputs = new Output<?>[length];
     for (int i = 0; i < length; ++i) {
       outputs[i] = output(idx + i);
     }
     return outputs;
   }
 
-  /** Returns a symbolic handle to one of the tensors produced by this operation. */
-  public Output output(int idx) {
+  /**
+   * Returns a symbolic handle to one of the tensors produced by this operation.
+   *
+   * <p>Warning: Does not check that the type of the tensor matches T. It is recommended to call
+   * this method with an explicit type parameter rather than letting it be inferred, e.g. {@code
+   * operation.<Integer>output(0)}
+   *
+   * @param <T> The expected element type of the tensors produced by this output.
+   * @param idx The index of the output among the outputs produced by this operation.
+   */
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  public <T> Output<T> output(int idx) {
     return new Output(this, idx);
   }
 

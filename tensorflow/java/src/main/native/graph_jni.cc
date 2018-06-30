@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/java/src/main/native/graph_jni.h"
 
 #include <limits>
+#include <memory>
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/java/src/main/native/utils_jni.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 
 namespace {
@@ -52,6 +54,26 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Graph_operation(JNIEnv* env,
   TF_Operation* op = TF_GraphOperationByName(g, cname);
   env->ReleaseStringUTFChars(name, cname);
   return reinterpret_cast<jlong>(op);
+}
+
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_nextOperation(JNIEnv* env,
+                                                                     jclass clazz,
+                                                                     jlong handle,
+                                                                     jint position) {
+  TF_Graph* g = requireHandle(env, handle);
+  if (g == nullptr) return nullptr;
+
+  size_t pos = static_cast<size_t>(position);
+  TF_Operation* operation = TF_GraphNextOperation(g, &pos);
+  if (operation == nullptr) return nullptr;
+
+  jlong handle_and_position[2];
+  handle_and_position[0] = reinterpret_cast<jlong>(operation);
+  handle_and_position[1] = static_cast<jlong>(pos);
+
+  jlongArray rhett = env->NewLongArray(2);
+  env->SetLongArrayRegion(rhett, 0, 2, handle_and_position);
+  return rhett;
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_Graph_importGraphDef(
@@ -109,4 +131,56 @@ Java_org_tensorflow_Graph_toGraphDef(JNIEnv* env, jclass clazz, jlong handle) {
   TF_DeleteStatus(status);
   TF_DeleteBuffer(buf);
   return ret;
+}
+
+JNIEXPORT jlongArray JNICALL
+Java_org_tensorflow_Graph_addGradients(JNIEnv* env, jclass clazz, jlong handle,
+    jlongArray y_handles, jintArray y_indices,
+    jlongArray x_handles, jintArray x_indices,
+    jlongArray dx_handles, jintArray dx_indices) {
+
+  TF_Graph* g = requireHandle(env, handle);
+  if (g == nullptr) return nullptr;
+
+  const jint ny = env->GetArrayLength(y_handles);
+  const jint nx = env->GetArrayLength(x_handles);
+
+  std::unique_ptr<TF_Output[]> y(new TF_Output[ny]);
+  std::unique_ptr<TF_Output[]> x(new TF_Output[nx]);
+  std::unique_ptr<TF_Output[]> dx(nullptr);
+  std::unique_ptr<TF_Output[]> dy(new TF_Output[nx]);
+
+  resolveOutputs(env, "y", y_handles, y_indices, y.get(), ny);
+  resolveOutputs(env, "x", x_handles, x_indices, x.get(), nx);
+  if (dx_handles != nullptr) {
+    if (env->GetArrayLength(dx_handles) != ny) {
+      throwException(env, kIllegalArgumentException,
+                     "expected %d, got %d dx handles", ny,
+                     env->GetArrayLength(dx_handles));
+    }
+    dx.reset(new TF_Output[ny]);
+    resolveOutputs(env, "dx", dx_handles, dx_indices, dx.get(), ny);
+  }
+  if (env->ExceptionCheck()) return nullptr;
+
+  TF_Status* status = TF_NewStatus();
+  TF_AddGradients(g, y.get(), ny, x.get(), nx, dx.get(), status, dy.get());
+
+  if (!throwExceptionIfNotOK(env, status)) {
+    TF_DeleteStatus(status);
+    return nullptr;
+  }
+  TF_DeleteStatus(status);
+
+  // returned array contains both op handles and output indices, in pair
+  jlongArray dy_handles_and_indices = env->NewLongArray(nx << 1);
+  jlong* dy_elems = env->GetLongArrayElements(dy_handles_and_indices, nullptr);
+  for (int i = 0, j = nx; i < nx; ++i, ++j) {
+    TF_Output dy_output = dy.get()[i];
+    dy_elems[i] = reinterpret_cast<jlong>(dy_output.oper);
+    dy_elems[j] = static_cast<jlong>(dy_output.index);
+  }
+  env->ReleaseLongArrayElements(dy_handles_and_indices, dy_elems, 0);
+
+  return dy_handles_and_indices;
 }

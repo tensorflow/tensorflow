@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
@@ -32,9 +32,9 @@ class ReluOp : public XlaOpKernel {
   explicit ReluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Computes the max of the scalar input x and 0.
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
     auto zero = XlaHelpers::Zero(builder, input_type(0));
-    ctx->SetOutput(0, builder->Max(zero, ctx->Input(0)));
+    ctx->SetOutput(0, xla::Max(zero, ctx->Input(0)));
   }
 };
 
@@ -43,10 +43,10 @@ class Relu6Op : public XlaOpKernel {
   explicit Relu6Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Clamp the scalar input between 0 and 6.
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
     auto zero = XlaHelpers::Zero(builder, input_type(0));
     auto six = XlaHelpers::IntegerLiteral(builder, input_type(0), 6);
-    ctx->SetOutput(0, builder->Clamp(zero, ctx->Input(0), six));
+    ctx->SetOutput(0, xla::Clamp(zero, ctx->Input(0), six));
   }
 };
 
@@ -56,12 +56,12 @@ class ReluGradOp : public XlaOpKernel {
   // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
   // otherwise return 0.
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
     const TensorShape shape = ctx->InputShape(0);
     const auto zero =
-        b->Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
-    const auto pred = b->Gt(ctx->Input(1), zero);
-    ctx->SetOutput(0, b->Select(pred, ctx->Input(0), zero));
+        xla::Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
+    const auto pred = xla::Gt(ctx->Input(1), zero);
+    ctx->SetOutput(0, xla::Select(pred, ctx->Input(0), zero));
   }
 };
 
@@ -71,14 +71,14 @@ class Relu6GradOp : public XlaOpKernel {
   // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
   // otherwise return 0.
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationBuilder* b = ctx->builder();
+    xla::XlaBuilder* b = ctx->builder();
     const TensorShape shape = ctx->InputShape(0);
     const auto zero =
-        b->Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
-    const auto six = b->Broadcast(
+        xla::Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
+    const auto six = xla::Broadcast(
         XlaHelpers::IntegerLiteral(b, input_type(0), 6), shape.dim_sizes());
-    auto out = b->Select(
-        b->LogicalAnd(b->Lt(ctx->Input(1), six), b->Gt(ctx->Input(1), zero)),
+    auto out = xla::Select(
+        xla::And(xla::Lt(ctx->Input(1), six), xla::Gt(ctx->Input(1), zero)),
         ctx->Input(0), zero);
     ctx->SetOutput(0, out);
   }

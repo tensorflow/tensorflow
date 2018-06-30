@@ -19,11 +19,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/computation_tracker.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/service.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -40,16 +38,16 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool compile) {
   LocalService* local_service =
       ClientLibrary::GetXlaService(client->platform());
   for (char* arg : args) {
-    SessionModule session_module;
+    HloSnapshot snapshot;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg,
-                                            &session_module));
-    auto computation_status = client->LoadSnapshot(session_module);
+                                            &snapshot));
+    auto computation_status = client->LoadSnapshot(snapshot);
     if (!computation_status.ok()) {
       fprintf(stderr, "could not load snapshot for %s: %s\n", arg,
               computation_status.status().ToString().c_str());
       continue;
     }
-    Computation computation = computation_status.ConsumeValueOrDie();
+    XlaComputation computation = computation_status.ConsumeValueOrDie();
 
     if (compile) {
       std::unique_ptr<ProgramShape> program_shape =
@@ -60,27 +58,28 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool compile) {
       for (int i = 0; i < program_shape->parameters_size(); ++i) {
         layouts.push_back(&program_shape->parameters(i));
       }
+
+      ExecutableBuildOptions build_options;
+      build_options.set_device_ordinal(0);
+      build_options.set_result_layout(program_shape->result());
       StatusOr<std::unique_ptr<Executable>> executable =
-          local_service->CompileExecutable(
-              computation.handle(), layouts, &program_shape->result(),
-              /*device_ordinal=*/0, /*has_hybrid_result=*/true);
+          local_service->CompileExecutable(computation, layouts, build_options);
 
       const HloModule& module = executable.ValueOrDie()->module();
 
       fprintf(stdout, "HLO compiled for %s backend:\n%s\n",
               local_service->backend().platform()->Name().c_str(),
-              module.ToString().c_str());
+              module.ToString(HloPrintOptions::ShortParsable()).c_str());
     } else {
-      const ComputationTracker& tracker = local_service->computation_tracker();
-      UserComputation* user_computation =
-          tracker.Resolve(computation.handle()).ConsumeValueOrDie();
-      VersionedComputationHandle versioned_handle =
-          user_computation->GetVersionedHandle();
+      auto config = HloModule::CreateModuleConfigFromProto(computation.proto(),
+                                                           DebugOptions())
+                        .ConsumeValueOrDie();
       std::unique_ptr<HloModule> module =
-          tracker.BuildHloModule(versioned_handle, HloModuleConfig())
+          HloModule::CreateFromProto(computation.proto(), config)
               .ConsumeValueOrDie();
 
-      fprintf(stdout, "%s\n", module->ToString().c_str());
+      fprintf(stdout, "%s\n",
+              module->ToString(HloPrintOptions::ShortParsable()).c_str());
     }
   }
 }

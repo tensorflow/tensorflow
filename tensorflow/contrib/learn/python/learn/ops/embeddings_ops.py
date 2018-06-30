@@ -13,7 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-"""TensorFlow Ops to work with embeddings.
+"""TensorFlow Ops to work with embeddings (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 Note: categorical variables are handled via embeddings in many cases.
 For example, in case of words.
@@ -57,7 +61,7 @@ def embedding_lookup(params, ids, name='embedding_lookup'):
     ids = ops.convert_to_tensor(ids)
     shape = array_ops_.shape(ids)
     ids_flat = array_ops_.reshape(
-        ids, math_ops.reduce_prod(shape, keep_dims=True))
+        ids, math_ops.reduce_prod(shape, keepdims=True))
     embeds_flat = nn.embedding_lookup(params, ids_flat, name)
     embed_shape = array_ops_.concat([shape, [-1]], 0)
     embeds = array_ops_.reshape(embeds_flat, embed_shape)

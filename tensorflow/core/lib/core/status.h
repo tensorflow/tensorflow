@@ -120,17 +120,19 @@ typedef std::function<void(const Status&)> StatusCallback;
 
 extern tensorflow::string* TfCheckOpHelperOutOfLine(
     const ::tensorflow::Status& v, const char* msg);
+
 inline tensorflow::string* TfCheckOpHelper(::tensorflow::Status v,
                                            const char* msg) {
   if (v.ok()) return nullptr;
   return TfCheckOpHelperOutOfLine(v, msg);
 }
-#define TF_CHECK_OK(val)                                             \
-  while (::tensorflow::string* _result = TfCheckOpHelper(val, #val)) \
-  LOG(FATAL) << *(_result)
-#define TF_QCHECK_OK(val)                                            \
-  while (::tensorflow::string* _result = TfCheckOpHelper(val, #val)) \
-  LOG(QFATAL) << *(_result)
+
+#define TF_DO_CHECK_OK(val, level)                                \
+  while (auto _result = ::tensorflow::TfCheckOpHelper(val, #val)) \
+  LOG(level) << *(_result)
+
+#define TF_CHECK_OK(val) TF_DO_CHECK_OK(val, FATAL)
+#define TF_QCHECK_OK(val) TF_DO_CHECK_OK(val, QFATAL)
 
 // DEBUG only version of TF_CHECK_OK.  Compiler still parses 'val' even in opt
 // mode.

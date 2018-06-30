@@ -9,6 +9,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
     "tf_cc_test",
+    "tf_cc_binary",
 )
 
 exports_files(["LICENSE"])
@@ -60,11 +61,12 @@ tf_cc_test(
 
 # This binary may be built for either desktop or Android.
 # A typical Android build command will look like the following:
-# bazel build -c opt tensorflow/core:android_tensorflow_lib \
+# bazel build tensorflow/core:android_tensorflow_lib \
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-cc_binary(
+# --config monolithic
+tf_cc_binary(
     name = "benchmark_model",
     testonly = 1,
     srcs = ["benchmark_model_main.cc"],
@@ -74,6 +76,7 @@ cc_binary(
             "-pie",
             "-s",
             "-landroid",
+            "-latomic",
             "-ljnigraphics",
             "-llog",
             "-lm",

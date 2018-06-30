@@ -19,7 +19,7 @@ limitations under the License.
 #include <map>
 #include <unordered_map>
 
-#include "grpc++/create_channel.h"
+#include "grpcpp/create_channel.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -157,7 +157,7 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
     }
   }
 
-  void ListWorkers(std::vector<string>* workers) const override {
+  void ListWorkers(std::vector<string>* workers) override {
     for (GrpcChannelCache* cache : caches_) {
       cache->ListWorkers(workers);
     }
@@ -216,7 +216,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
   }
   ~SparseGrpcChannelCache() override {}
 
-  void ListWorkers(std::vector<string>* workers) const override {
+  void ListWorkers(std::vector<string>* workers) override {
     workers->reserve(workers->size() + host_ports_.size());
     for (const auto& id_host_port : host_ports_) {
       workers->emplace_back(MakeAddress(job_id_, id_host_port.first));

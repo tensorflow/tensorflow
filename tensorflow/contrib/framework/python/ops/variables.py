@@ -25,18 +25,20 @@ import re
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
 from tensorflow.contrib.framework.python.ops import gen_variable_ops
 from tensorflow.contrib.util import loader
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import gen_state_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
+from tensorflow.python.util.deprecation import deprecated
 
 
 __all__ = ['add_model_variable',
@@ -59,6 +61,7 @@ __all__ = ['add_model_variable',
            'get_variable_full_name',
            'get_variables_to_restore',
            'get_variables',
+           'global_variable',
            'local_variable',
            'model_variable',
            'variable',
@@ -80,9 +83,14 @@ def zero_initializer(ref, use_locking=True, name="zero_initializer"):
   """
   loader.load_op_library(
       resource_loader.get_path_to_datafile("_variable_ops.so"))
-  return gen_variable_ops.zero_initializer(ref, name=name)
+  if resource_variable_ops.is_resource_variable(ref):
+    return gen_variable_ops.zero_var_initializer(
+        ref.handle, shape=ref.shape, dtype=ref.dtype, name=name)
+  else:
+    return gen_variable_ops.zero_initializer(ref, name=name)
 
 
+@deprecated(None, "Please switch to tf.train.assert_global_step")
 def assert_global_step(global_step_tensor):
   training_util.assert_global_step(global_step_tensor)
 
@@ -110,11 +118,11 @@ def assert_or_get_global_step(graph=None, global_step_tensor=None):
     assert_global_step(global_step_tensor)
   return global_step_tensor
 
-
+@deprecated(None, "Please switch to tf.train.get_global_step")
 def get_global_step(graph=None):
   return training_util.get_global_step(graph)
 
-
+@deprecated(None, "Please switch to tf.train.create_global_step")
 def create_global_step(graph=None):
   """Create global step tensor in graph.
 
@@ -132,7 +140,7 @@ def create_global_step(graph=None):
   """
   return training_util.create_global_step(graph)
 
-
+@deprecated(None, "Please switch to tf.train.get_or_create_global_step")
 def get_or_create_global_step(graph=None):
   """Returns and create (if necessary) the global step tensor.
 
@@ -146,20 +154,48 @@ def get_or_create_global_step(graph=None):
   return training_util.get_or_create_global_step(graph)
 
 
-def local_variable(initial_value, validate_shape=True, name=None):
-  """Create variable and add it to `GraphKeys.LOCAL_VARIABLES` collection.
+def local_variable(initial_value,
+                   validate_shape=True,
+                   name=None,
+                   use_resource=None):
+  """Create a variable with a value and add it to `GraphKeys.LOCAL_VARIABLES`.
 
   Args:
     initial_value: See variables.Variable.__init__.
     validate_shape: See variables.Variable.__init__.
     name: See variables.Variable.__init__.
+    use_resource: If `True` use a ResourceVariable instead of a Variable.
   Returns:
     New variable.
   """
   return variable_scope.variable(
       initial_value, trainable=False,
       collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      validate_shape=validate_shape, name=name)
+      validate_shape=validate_shape,
+      use_resource=use_resource,
+      name=name)
+
+
+def global_variable(initial_value,
+                    validate_shape=True,
+                    name=None,
+                    use_resource=None):
+  """Create a variable with a value and add it to `GraphKeys.GLOBAL_VARIABLES`.
+
+  Args:
+    initial_value: See variables.Variable.__init__.
+    validate_shape: See variables.Variable.__init__.
+    name: See variables.Variable.__init__.
+    use_resource: If `True` use a ResourceVariable instead of a Variable.
+  Returns:
+    New variable.
+  """
+  return variable_scope.variable(
+      initial_value, trainable=False,
+      collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+      validate_shape=validate_shape,
+      use_resource=use_resource,
+      name=name)
 
 
 @contrib_add_arg_scope
@@ -200,7 +236,7 @@ def variable(name, shape=None, dtype=None, initializer=None,
                      else [ops.GraphKeys.GLOBAL_VARIABLES])
 
   # Remove duplicates
-  collections = set(collections)
+  collections = list(set(collections))
   getter = variable_scope.get_variable
   if custom_getter is not None:
     getter = functools.partial(custom_getter,
@@ -411,7 +447,7 @@ def get_unique_variable(var_op_name):
   """
   candidates = get_variables(scope=var_op_name)
   if not candidates:
-    raise ValueError('Couldnt find variable %s' % var_op_name)
+    raise ValueError('Couldn\'t find variable %s' % var_op_name)
 
   for candidate in candidates:
     if candidate.op.name == var_op_name:
@@ -561,7 +597,7 @@ def assign_from_checkpoint(model_path, var_list, ignore_missing_vars=False):
       grouped_vars[ckpt_name].append(var)
 
   else:
-    for ckpt_name, value in var_list.iteritems():
+    for ckpt_name, value in var_list.items():
       if isinstance(value, (tuple, list)):
         grouped_vars[ckpt_name] = value
       else:
@@ -655,7 +691,8 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
             'Variable %s missing in checkpoint %s', var, model_path)
     var_list = available_vars
   if var_list:
-    saver = tf_saver.Saver(var_list, reshape=reshape_variables)
+    saver = tf_saver.Saver(var_list, reshape=reshape_variables,
+                           write_version=saver_pb2.SaverDef.V1)
     def callback(session):
       saver.restore(session, model_path)
     return callback
@@ -675,7 +712,8 @@ class VariableDeviceChooser(object):
                num_tasks=0,
                job_name='ps',
                device_type='CPU',
-               device_index=0):
+               device_index=0,
+               replica=None):
     """Initialize VariableDeviceChooser.
 
     Usage:
@@ -696,12 +734,15 @@ class VariableDeviceChooser(object):
     self._job_name = job_name
     self._device_type = device_type
     self._device_index = device_index
+    self._replica = replica
     self._num_tasks = num_tasks
     self._next_task_id = 0
 
   def __call__(self, op):
-    device_spec = tf_device.DeviceSpec(device_type=self._device_type,
-                                       device_index=self._device_index)
+    device_spec = tf_device.DeviceSpec(
+        replica=self._replica,
+        device_type=self._device_type,
+        device_index=self._device_index)
     if self._num_tasks > 0:
       task_id = self._next_task_id
       self._next_task_id = (self._next_task_id + 1) % self._num_tasks

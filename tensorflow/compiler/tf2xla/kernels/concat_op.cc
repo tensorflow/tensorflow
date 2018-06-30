@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -54,7 +55,7 @@ class ConcatBaseOp : public XlaOpKernel {
     // TODO(annarev): add a helper to support int64 input.
     const int32 concat_dim = literal.Get<int>({});
 
-    std::vector<xla::ComputationDataHandle> values;
+    std::vector<xla::XlaOp> values;
     std::vector<TensorShape> shapes;
     OP_REQUIRES_OK(ctx, ctx->InputList("values", &values, &shapes));
     const int N = values.size();
@@ -70,13 +71,13 @@ class ConcatBaseOp : public XlaOpKernel {
                     "[",
                     -input_dims, ", ", input_dims, "), but got ", concat_dim));
 
-    // Make a vector holding the ComputationDataHandles for each of
-    // the inputs that has non-zero elements.
-    std::vector<xla::ComputationDataHandle> input_data;
+    // Make a vector holding the XlaOp for each of the inputs that has non-zero
+    // elements.
+    std::vector<xla::XlaOp> input_data;
     int output_concat_dim = 0;
     const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
-      xla::ComputationDataHandle handle = values[i];
+      xla::XlaOp handle = values[i];
       const TensorShape& in_shape = shapes[i];
       const bool in_is_scalar = IsLegacyScalar(in_shape);
       OP_REQUIRES(
@@ -84,11 +85,11 @@ class ConcatBaseOp : public XlaOpKernel {
           in_shape.dims() == input_dims || (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
-              input_shape.DebugString(), " vs. shape[", i, "] = ",
-              in_shape.DebugString()));
+              input_shape.DebugString(), " vs. shape[", i,
+              "] = ", in_shape.DebugString()));
       if (in_shape.dims() == 0) {
         // Inputs that come in as scalars must be reshaped to 1-vectors.
-        input_data.push_back(ctx->builder()->Reshape(handle, {1}));
+        input_data.push_back(xla::Reshape(handle, {1}));
       } else {
         input_data.push_back(handle);
       }
@@ -96,7 +97,7 @@ class ConcatBaseOp : public XlaOpKernel {
     }
 
     VLOG(1) << "Concat dim " << concat_dim << " equivalent to " << axis;
-    ctx->SetOutput(0, ctx->builder()->ConcatInDim(input_data, axis));
+    ctx->SetOutput(0, xla::ConcatInDim(ctx->builder(), input_data, axis));
   }
 
  private:
@@ -117,8 +118,11 @@ class ConcatV2Op : public ConcatBaseOp {
       : ConcatBaseOp(c, /* axis_index */ c->num_inputs() - 1) {}
 };
 
-REGISTER_XLA_OP(Name("Concat"), ConcatOp);
-REGISTER_XLA_OP(Name("ConcatV2").TypeConstraint("Tidx", DT_INT32), ConcatV2Op);
+REGISTER_XLA_OP(Name("Concat").CompileTimeConstInput("concat_dim"), ConcatOp);
+REGISTER_XLA_OP(Name("ConcatV2")
+                    .TypeConstraint("Tidx", DT_INT32)
+                    .CompileTimeConstInput("axis"),
+                ConcatV2Op);
 
 class ConcatOffsetOp : public XlaOpKernel {
  public:
@@ -189,10 +193,10 @@ class ConcatOffsetOp : public XlaOpKernel {
         } else {
           const int32 inp0_element = inp0_literal.Get<int>({j});
           const int32 inp_element = inp_literal.Get<int>({j});
-          OP_REQUIRES(
-              ctx, (inp0_element == inp_element),
-              errors::InvalidArgument("input[", i, ",", j, "] mismatch: ",
-                                      inp0_element, " vs. ", inp_element));
+          OP_REQUIRES(ctx, (inp0_element == inp_element),
+                      errors::InvalidArgument("input[", i, ",", j,
+                                              "] mismatch: ", inp0_element,
+                                              " vs. ", inp_element));
           out_vec(j) = 0;
         }
       }
@@ -202,7 +206,10 @@ class ConcatOffsetOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("ConcatOffset"), ConcatOffsetOp);
+REGISTER_XLA_OP(Name("ConcatOffset")
+                    .CompileTimeConstInput("concat_dim")
+                    .CompileTimeConstInput("shape"),
+                ConcatOffsetOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_op_test_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

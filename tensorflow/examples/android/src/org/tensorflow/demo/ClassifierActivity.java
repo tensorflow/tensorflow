@@ -22,25 +22,32 @@ import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Typeface;
-
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.SystemClock;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
-
+import android.view.Surface;
 import java.util.List;
 import java.util.Vector;
 import org.tensorflow.demo.OverlayView.DrawCallback;
 import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
-
-// Explicit import needed for internal Google builds.
-import org.tensorflow.demo.R;
+import org.tensorflow.demo.R; // Explicit import needed for internal Google builds.
 
 public class ClassifierActivity extends CameraActivity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
+
+  protected static final boolean SAVE_PREVIEW_BITMAP = false;
+
+  private ResultsView resultsView;
+
+  private Bitmap rgbFrameBitmap = null;
+  private Bitmap croppedBitmap = null;
+  private Bitmap cropCopyBitmap = null;
+
+  private long lastProcessingTimeMs;
 
   // These are the settings for the original v1 Inception model. If you want to
   // use a model that's been produced from the TensorFlow for Poets codelab,
@@ -117,12 +124,8 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     previewWidth = size.getWidth();
     previewHeight = size.getHeight();
 
-    final Display display = getWindowManager().getDefaultDisplay();
-    final int screenOrientation = display.getRotation();
-
-    LOGGER.i("Sensor orientation: %d, Screen orientation: %d", rotation, screenOrientation);
-
-    sensorOrientation = rotation + screenOrientation;
+    sensorOrientation = rotation - getScreenOrientation();
+    LOGGER.i("Camera orientation relative to screen canvas: %d", sensorOrientation);
 
     LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
     rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
@@ -136,8 +139,6 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     cropToFrameTransform = new Matrix();
     frameToCropTransform.invert(cropToFrameTransform);
 
-    yuvBytes = new byte[3][];
-
     addCallback(
         new DrawCallback() {
           @Override
@@ -147,8 +148,9 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
         });
   }
 
-  protected void processImageRGBbytes(int[] rgbBytes ) {
-    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+  @Override
+  protected void processImage() {
+    rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
     final Canvas canvas = new Canvas(croppedBitmap);
     canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
 
@@ -165,15 +167,12 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
             lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
             LOGGER.i("Detect: %s", results);
             cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-            if (resultsView==null) {
+            if (resultsView == null) {
               resultsView = (ResultsView) findViewById(R.id.results);
             }
             resultsView.setResults(results);
             requestRender();
-            computing = false;
-            if (postInferenceCallback != null) {
-              postInferenceCallback.run();
-            }
+            readyForNextImage();
           }
         });
   }

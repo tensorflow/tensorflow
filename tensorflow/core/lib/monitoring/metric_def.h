@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
 
 #include <array>
 #include <vector>
@@ -28,37 +28,20 @@ namespace monitoring {
 // The different metric kinds available.
 //
 // Gauge indicates that the metric's values are instantaneous measurements of a
-// (typically) continuously varying quantity. Examples: a process's current heap
-// size, a queue's current length.
+// (typically) continuously varying value. Examples: a process's current heap
+// size, a queue's current length, the name of the binary used by a process,
+// whether a task is complete.
 //
 // Cumulative indicates that the metric's values represent non-negative changes
 // over specified time periods. Example: the number of rpc calls to a service.
 enum class MetricKind : int { kGauge = 0, kCumulative };
 
 // The type of the metric values.
-enum class ValueType : int { kInt64 = 0, kHistogram };
+enum class ValueType : int { kInt64 = 0, kHistogram, kString, kBool };
 
 // Everything in the internal namespace is implementation details. Do not depend
 // on this.
 namespace internal {
-
-// Ensures that the string is a compile-time string literal.
-class StringLiteral {
- public:
-  // We allow implicit conversions here on purpose.
-  template <int N>
-  StringLiteral(const char (&data)[N]) : literal_(data, N - 1) {}
-
-  // This ctor will be called for non-literals, causing compile-time failure.
-  template <typename NotStringLiteral>
-  StringLiteral(const NotStringLiteral& not_string_literal) = delete;
-
-  // Implicit conversion to StringPiece.
-  operator StringPiece() const { return literal_; }
-
- private:
-  const StringPiece literal_;
-};
 
 template <typename Value>
 ValueType GetValueType();
@@ -71,6 +54,16 @@ inline ValueType GetValueType<int64>() {
 template <>
 inline ValueType GetValueType<HistogramProto>() {
   return ValueType::kHistogram;
+}
+
+template <>
+inline ValueType GetValueType<string>() {
+  return ValueType::kString;
+}
+
+template <>
+inline ValueType GetValueType<bool>() {
+  return ValueType::kBool;
 }
 
 }  // namespace internal
@@ -92,7 +85,7 @@ class AbstractMetricDef {
 
   StringPiece description() const { return description_; }
 
-  const std::vector<StringPiece> label_descriptions() const {
+  const std::vector<string>& label_descriptions() const {
     return label_descriptions_;
   }
 
@@ -100,23 +93,21 @@ class AbstractMetricDef {
   template <MetricKind kind, typename Value, int NumLabels>
   friend class MetricDef;
 
-  AbstractMetricDef(
-      const MetricKind kind, const ValueType value_type,
-      const internal::StringLiteral name,
-      const internal::StringLiteral description,
-      const std::vector<internal::StringLiteral>& label_descriptions)
+  AbstractMetricDef(const MetricKind kind, const ValueType value_type,
+                    const StringPiece name, const StringPiece description,
+                    const std::vector<string>& label_descriptions)
       : kind_(kind),
         value_type_(value_type),
-        name_(name),
-        description_(description),
-        label_descriptions_(std::vector<StringPiece>(
-            label_descriptions.begin(), label_descriptions.end())) {}
+        name_(std::string(name)),
+        description_(std::string(description)),
+        label_descriptions_(std::vector<string>(label_descriptions.begin(),
+                                                label_descriptions.end())) {}
 
   const MetricKind kind_;
   const ValueType value_type_;
-  const StringPiece name_;
-  const StringPiece description_;
-  const std::vector<StringPiece> label_descriptions_;
+  const string name_;
+  const string description_;
+  const std::vector<string> label_descriptions_;
 };
 
 // Metric definition.
@@ -124,15 +115,18 @@ class AbstractMetricDef {
 // A metric is defined by its kind, value-type, name, description and the
 // description of its labels.
 //
-// NOTE: We allow only string literals for the name, description and label
-// descriptions because these should be fixed at compile-time and shouldn't be
-// dynamic.
+// NOTE: Name, description, and label descriptions should be logically static,
+// but do not have to live for the lifetime of the MetricDef.
+//
+// By "logically static", we mean that they should never contain dynamic
+// information, but is static for the lifetime of the MetricDef, and
+// in-turn the metric; they do not need to be compile-time constants.
+// This allows for e.g. prefixed metrics in a CLIF wrapped environment.
 template <MetricKind metric_kind, typename Value, int NumLabels>
 class MetricDef : public AbstractMetricDef {
  public:
   template <typename... LabelDesc>
-  MetricDef(const internal::StringLiteral name,
-            const internal::StringLiteral description,
+  MetricDef(const StringPiece name, const StringPiece description,
             const LabelDesc&... label_descriptions)
       : AbstractMetricDef(metric_kind, internal::GetValueType<Value>(), name,
                           description, {label_descriptions...}) {
@@ -145,4 +139,4 @@ class MetricDef : public AbstractMetricDef {
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_

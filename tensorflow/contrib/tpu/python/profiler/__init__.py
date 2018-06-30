@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import,unused-import
+from tensorflow.contrib.tpu.profiler.tpu_profiler_analysis_pb2 import *
 from tensorflow.contrib.tpu.profiler.trace_events_pb2 import *
 # pylint: enable=wildcard-import,unused-import
 

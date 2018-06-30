@@ -29,9 +29,11 @@ class HloCSE : public HloPassInterface {
  public:
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored.
-  explicit HloCSE(bool is_layout_sensitive)
-      : is_layout_sensitive_(is_layout_sensitive) {}
-  ~HloCSE() override {}
+  explicit HloCSE(bool is_layout_sensitive,
+                  bool only_fusion_computations = false)
+      : is_layout_sensitive_(is_layout_sensitive),
+        only_fusion_computations_(only_fusion_computations) {}
+  ~HloCSE() override = default;
   tensorflow::StringPiece name() const override { return "cse"; }
 
   // Run CSE on the given module. Returns whether the module was changed (common
@@ -39,7 +41,8 @@ class HloCSE : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  bool is_layout_sensitive_;
+  const bool is_layout_sensitive_;
+  const bool only_fusion_computations_;
 };
 
 }  // namespace xla

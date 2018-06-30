@@ -1,19 +1,31 @@
 # Performance
 
-Performance is often a significant issue when training a machine learning
-model.  This section explains various ways to optimize performance.  Start
-your investigation with the @{$performance_guide$Performance Guide} and then go
-deeper with techniques detailed in @{$performance_models$High-Performance Models}:
+Performance is an important consideration when training machine learning
+models. Performance speeds up and scales research while
+also providing end users with near instant predictions. This section provides
+details on the high level APIs to use along with best practices to build
+and train high performance models, and quantize models for the least latency
+and highest throughput for inference.
 
-  * @{$performance_guide$Performance Guide}, which contains a collection of best
+  * @{$performance_guide$Performance Guide} contains a collection of best
     practices for optimizing your TensorFlow code.
 
-  * @{$performance_models$High-Performance Models}, which contains a collection
-    of advanced techniques to build highly scalable models targeting different
-    system types and network topologies.
+  * @{$datasets_performance$Data input pipeline guide} describes the tf.data
+    API for building efficient data input pipelines for TensorFlow.
 
-  * @{$benchmarks$Benchmarks}, which contains a collection of benchmark
-    results.
+  * @{$performance/benchmarks$Benchmarks} contains a collection of
+    benchmark results for a variety of hardware configurations.
+
+  * For improving inference efficiency on mobile and
+    embedded hardware, see
+    @{$quantization$How to Quantize Neural Networks with TensorFlow}, which
+    explains how to use quantization to reduce model size, both in storage
+    and at runtime.
+
+  * For optimizing inference on GPUs, refer to [NVIDIA TensorRT™
+  integration with TensorFlow.](
+    https://medium.com/tensorflow/speed-up-tensorflow-inference-on-gpus-with-tensorrt-13b49f3db3fa)
+
 
 XLA (Accelerated Linear Algebra) is an experimental compiler for linear
 algebra that optimizes TensorFlow computations. The following guides explore
@@ -36,10 +48,5 @@ XLA:
     standalone tool that compiles TensorFlow graphs into executable code in
     order to optimize performance.
 
-And finally, we offer the following guide:
 
-  * @{$quantization$How to Quantize Neural Networks with TensorFlow}, which
-    can explains how to use quantization to reduce model size, both in storage
-    and at runtime. Quantization can improve performance, especially on
-    mobile hardware.
 

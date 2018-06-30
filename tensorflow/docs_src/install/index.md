@@ -1,11 +1,23 @@
 # Installing TensorFlow
 
+We've built and tested TensorFlow on the following 64-bit laptop/desktop
+operating systems:
+
+  * macOS 10.12.6 (Sierra) or later.
+  * Ubuntu 16.04 or later
+  * Windows 7 or later.
+  * Raspbian 9.0 or later.
+
+Although you might be able to install TensorFlow on other laptop or desktop
+systems, we only support (and only fix issues in) the preceding configurations.
+
 The following guides explain how to install a version of TensorFlow
 that enables you to write applications in Python:
 
   * @{$install_linux$Installing TensorFlow on Ubuntu}
-  * @{$install_mac$Installing TensorFlow on Mac OS X}
+  * @{$install_mac$Installing TensorFlow on macOS}
   * @{$install_windows$Installing TensorFlow on Windows}
+  * @{$install_raspbian$Installing TensorFlow on a Raspberry Pi}
   * @{$install_sources$Installing TensorFlow from Sources}
 
 Many aspects of the Python TensorFlow API changed from version 0.n to 1.0.

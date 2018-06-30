@@ -126,7 +126,7 @@ class TensorSlice {
   // Interaction with other TensorSlices.
 
   // Compute the intersection with another slice and if "result" is not
-  // nullptr, store the results in *result; returns true is there is any real
+  // nullptr, store the results in *result; returns true if there is any real
   // intersection.
   bool Intersect(const TensorSlice& other, TensorSlice* result) const;
   // A short hand.

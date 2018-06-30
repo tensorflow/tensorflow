@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_
 #define TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_
 
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -36,15 +37,12 @@ struct Fprint128Hasher {
   }
 };
 
-// TODO(sibyl-Mooth6ku): Change these to accept StringPiece (or make them templated
-// on any kind of byte array?).
-
 // This is a portable fingerprint interface for strings that will never change.
 // However, it is not suitable for cryptography.
-uint64 Fingerprint64(const string& s);
+uint64 Fingerprint64(StringPiece s);
 
 // 128-bit variant of Fingerprint64 above (same properties and caveats apply).
-Fprint128 Fingerprint128(const string& s);
+Fprint128 Fingerprint128(StringPiece s);
 
 namespace internal {
 // Mixes some of the bits that got propagated to the high bits back into the
@@ -76,7 +74,7 @@ inline uint64 FingerprintCat64(const uint64 fp1, const uint64 fp2) {
 
 }  // namespace tensorflow
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
 #include "tensorflow/core/platform/google/fingerprint.h"
 #else
 #include "tensorflow/core/platform/default/fingerprint.h"

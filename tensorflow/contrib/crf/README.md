@@ -46,31 +46,25 @@ with tf.Graph().as_default():
     log_likelihood, transition_params = tf.contrib.crf.crf_log_likelihood(
         unary_scores, y_t, sequence_lengths_t)
 
+    # Compute the viterbi sequence and score.
+    viterbi_sequence, viterbi_score = tf.contrib.crf.crf_decode(
+        unary_scores, transition_params, sequence_lengths_t)
+
     # Add a training op to tune the parameters.
     loss = tf.reduce_mean(-log_likelihood)
     train_op = tf.train.GradientDescentOptimizer(0.01).minimize(loss)
 
-    # Train for a fixed number of iterations.
     session.run(tf.global_variables_initializer())
+
+    mask = (np.expand_dims(np.arange(num_words), axis=0) <
+            np.expand_dims(sequence_lengths, axis=1))
+    total_labels = np.sum(sequence_lengths)
+
+    # Train for a fixed number of iterations.
     for i in range(1000):
-      tf_unary_scores, tf_transition_params, _ = session.run(
-          [unary_scores, transition_params, train_op])
+      tf_viterbi_sequence, _ = session.run([viterbi_sequence, train_op])
       if i % 100 == 0:
-        correct_labels = 0
-        total_labels = 0
-        for tf_unary_scores_, y_, sequence_length_ in zip(tf_unary_scores, y,
-                                                          sequence_lengths):
-          # Remove padding from the scores and tag sequence.
-          tf_unary_scores_ = tf_unary_scores_[:sequence_length_]
-          y_ = y_[:sequence_length_]
-
-          # Compute the highest scoring sequence.
-          viterbi_sequence, _ = tf.contrib.crf.viterbi_decode(
-              tf_unary_scores_, tf_transition_params)
-
-          # Evaluate word-level accuracy.
-          correct_labels += np.sum(np.equal(viterbi_sequence, y_))
-          total_labels += sequence_length_
+        correct_labels = np.sum((y == tf_viterbi_sequence) * mask)
         accuracy = 100.0 * correct_labels / float(total_labels)
         print("Accuracy: %.2f%%" % accuracy)
 ```

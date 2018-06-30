@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "MatrixTriangularSolve"
+  endpoint {
+    name: "linalg.triangular_solve"
+  }
+  endpoint {
+    name: "matrix_triangular_solve"
+    deprecation_message: "tf.matrix_triangular_solve is deprecated, please use tf.linalg.triangular_solve instead."
+  }
+}

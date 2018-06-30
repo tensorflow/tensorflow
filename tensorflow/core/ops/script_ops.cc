@@ -25,20 +25,7 @@ REGISTER_OP("PyFunc")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type) >=0")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(R"doc(
-Invokes a python function to compute func(input)->output.
-
-This operation is considered stateful. For a stateless version, see
-PyFuncStateless.
-
-token: A token representing a registered python function in this address space.
-input: List of Tensors that will provide input to the Op.
-output: The outputs from the Op.
-Tin: Data types of the inputs to the op.
-Tout: Data types of the outputs from the op.
-      The length of the list specifies the number of outputs.
-)doc");
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("PyFuncStateless")
     .Input("input: Tin")
@@ -46,9 +33,15 @@ REGISTER_OP("PyFuncStateless")
     .Attr("token: string")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type) >= 0")
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(R"doc(
-A stateless version of PyFunc.
-)doc");
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("EagerPyFunc")
+    .Input("input: Tin")
+    .Output("output: Tout")
+    .Attr("token: string")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("Tout: list(type) >=0")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
 
 }  // namespace tensorflow

@@ -40,21 +40,6 @@ typedef tensorflow::gtl::InlinedVector<PyObject*, 8> PyObjectVector;
 // A TF_TensorVector is a vector of borrowed pointers to TF_Tensors.
 typedef gtl::InlinedVector<TF_Tensor*, 8> TF_TensorVector;
 
-// Safe container for an owned PyObject. On destruction, the reference count of
-// the contained object will be decremented.
-inline void Py_DECREF_wrapper(PyObject* o) { Py_DECREF(o); }
-// Note: can't use decltype(&Py_DECREF_wrapper) due to SWIG
-typedef void (*Py_DECREF_wrapper_type)(PyObject*);
-typedef std::unique_ptr<PyObject, Py_DECREF_wrapper_type> Safe_PyObjectPtr;
-Safe_PyObjectPtr make_safe(PyObject* o);
-
-// Safe containers for an owned TF_Tensor. On destruction, the tensor will be
-// deleted by TF_DeleteTensor.
-// Note: can't use decltype(&TF_DeleteTensor) due to SWIG
-typedef void (*TF_DeleteTensor_type)(TF_Tensor*);
-typedef std::unique_ptr<TF_Tensor, TF_DeleteTensor_type> Safe_TF_TensorPtr;
-Safe_TF_TensorPtr make_safe(TF_Tensor* tensor);
-
 // Run the graph associated with the session starting with the
 // supplied inputs[].  Regardless of success or failure, inputs[] are
 // stolen by the implementation (i.e. the implementation will
@@ -73,6 +58,31 @@ void TF_Run_wrapper(TF_DeprecatedSession* session, const TF_Buffer* run_options,
                     PyObject* feed_dict, const NameVector& output_names,
                     const NameVector& target_nodes, TF_Status* out_status,
                     PyObjectVector* out_values, TF_Buffer* run_outputs);
+
+// Python wrappers for the `Session::MakeCallable()` API.
+void TF_DeprecatedSessionMakeCallable(TF_DeprecatedSession* session,
+                                      const TF_Buffer* callable_options,
+                                      int64_t* out_handle,
+                                      TF_Status* out_status);
+void TF_SessionMakeCallable(TF_Session* session,
+                            const TF_Buffer* callable_options,
+                            int64_t* out_handle, TF_Status* out_status);
+
+// Python wrappers for the `Session::RunCallable()` API.
+void TF_DeprecatedSessionRunCallable(TF_DeprecatedSession* session,
+                                     int64_t handle, PyObject* feed_values,
+                                     TF_Status* out_status,
+                                     PyObjectVector* out_values,
+                                     TF_Buffer* run_metadata);
+void TF_SessionRunCallable(TF_Session* session, int64_t handle,
+                           PyObject* feed_values, TF_Status* out_status,
+                           PyObjectVector* out_values, TF_Buffer* run_metadata);
+
+// Python wrappers for the `Session::ReleaseCallable()` API.
+void TF_DeprecatedSessionReleaseCallable(TF_DeprecatedSession* session,
+                                         int64_t handle, TF_Status* out_status);
+void TF_SessionReleaseCallable(TF_Session* session, int64_t handle,
+                               TF_Status* out_status);
 
 // Set up the graph with the intended feeds and fetches for partial run.
 // *out_handle is owned by the caller.
@@ -112,6 +122,22 @@ void TF_Reset_wrapper(const TF_SessionOptions* opt,
 // for no difference.
 string EqualGraphDefWrapper(const string& actual, const string& expected);
 
+// Convenience wrapper around AreAttrValuesEqual to make it easier to wrap.
+// The actual and expected strings must correspond to a serialized binary
+// representation of two AttrValue proto instances.
+// Returns an explanation if a difference is found, or the empty string
+// for no difference.
+string EqualAttrValueWrapper(const string& actual, const string& expected);
+
+// Gets shape from C API Graph object.
+//
+// If shape is known, returns shape vector where -1 means "unknown
+// dimension".  Sets unknown_shape to false.
+//
+// If shape is unknown, sets unknown_shape to true.
+tensorflow::gtl::InlinedVector<int64_t, 6> TF_GraphGetTensorShapeHelper(
+    TF_Graph* graph, TF_Output output, TF_Status* status, bool* unknown_shape);
+
 // Runs the graph associated with the session starting with the supplied inputs.
 // On success, `py_outputs` is populated with a numpy ndarray for each output
 // (the caller must decref these ndarrays, although this will likely be handled
@@ -122,7 +148,7 @@ void TF_SessionRun_wrapper(TF_Session* session, const TF_Buffer* run_options,
                            const std::vector<PyObject*>& input_ndarrays,
                            const std::vector<TF_Output>& outputs,
                            const std::vector<TF_Operation*>& targets,
-                           TF_Buffer* run_metadata, TF_Status* out_status,
+                           TF_Buffer* run_metadata, TF_Status* status,
                            std::vector<PyObject*>* py_outputs);
 
 // Set up the graph with the intended feeds (inputs) and fetches (output) for
@@ -138,8 +164,7 @@ void TF_SessionPRunSetup_wrapper(TF_Session* session,
                                  const std::vector<TF_Output>& inputs,
                                  const std::vector<TF_Output>& outputs,
                                  const std::vector<TF_Operation*>& targets,
-                                 const char** out_handle,
-                                 TF_Status* out_status);
+                                 const char** out_handle, TF_Status* status);
 
 // Continue to run the graph with additional feeds and fetches. The
 // execution state is uniquely identified by the handle.
@@ -155,13 +180,63 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
                             const std::vector<TF_Output>& inputs,
                             const std::vector<PyObject*>& input_ndarrays,
                             const std::vector<TF_Output>& outputs,
-                            TF_Status* out_status,
+                            TF_Status* status,
                             std::vector<PyObject*>* py_outputs);
 
-// Retrieves control inputs of this operation.
-// control_inputs should be empty.
+// Retrieves the inputs of this operation.
+std::vector<TF_Output> GetOperationInputs(TF_Operation* oper);
+
+// Retrieves the control inputs of this operation.
 std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
     TF_Operation* oper);
+
+// Retrieves the control outputs of this operation.
+std::vector<TF_Operation*> TF_OperationGetControlOutputs_wrapper(
+    TF_Operation* oper);
+
+// Retrieves the op names of the consumers of `oper_out`. The returned strings
+// have the lifetime of the underlying TF_Graph.
+std::vector<const char*> TF_OperationOutputConsumers_wrapper(
+    TF_Output oper_out);
+
+// `opers` equaling NULL are converted to `nopers = -1`.
+// `output_names` must be empty or have the same length as `outputs`.
+TF_Function* TF_GraphToFunction_wrapper(
+    const TF_Graph* fn_body, const char* fn_name, bool append_hash_to_fn_name,
+    const std::vector<TF_Operation*>* opers,
+    const std::vector<TF_Output>& inputs, const std::vector<TF_Output>& outputs,
+    const NameVector& output_names, const TF_FunctionOptions* opts,
+    const char* description, TF_Status* status);
+
+// Set the shapes and types for the output's handle.
+//
+// The sizes of 'shapes', 'ranks', and 'types' must be equal; `shapes[i]`
+// contains the shape of the handle's i-th value, `ranks[i]` contains the i-th
+// shape's rank, and `types[i]` contains the i-th value's dtype. If the i-th
+// shape is unknown, then `ranks[i]` must be equal to -1.
+//
+// The space between the double angle brackets below looks extraneous, but
+// our version of SWIG cannot parse ">>".
+void TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+    TF_Graph* graph, TF_Output output,
+    const std::vector<std::vector<int64_t> >& shapes,
+    const std::vector<int>& ranks, const std::vector<TF_DataType>& types,
+    TF_Status* status);
+
+// Set the shape of output. If unknown is true, `num_dims` must be set to
+// -1 and `dims` is set to nullptr.
+void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
+                                    const std::vector<int64_t>& dims,
+                                    bool unknown_shape, TF_Status* status);
+
+// Returns the string representations of the missing unused input mappings.
+std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
+    TF_ImportGraphDefResults* results);
+
+// If evaluation was possible, returns the numpy ndarray of the evaluated
+// result. Otherwise returns None.
+PyObject* TF_TryEvaluateConstant_wrapper(TF_Graph* graph, TF_Output output,
+                                         TF_Status* status);
 
 }  // namespace tensorflow
 

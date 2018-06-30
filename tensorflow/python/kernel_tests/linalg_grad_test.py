@@ -59,7 +59,7 @@ class MatrixUnaryFunctorGradientTest(test_lib.TestCase):
 def _GetMatrixUnaryFunctorGradientTest(functor_, dtype_, shape_, **kwargs_):
 
   def Test(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       np.random.seed(1)
       a_np = np.random.uniform(
           low=-1.0, high=1.0,
@@ -97,7 +97,11 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
                                         **kwargs_):
 
   def Test(self):
-    with self.test_session():
+    # TODO(rmlarsen): Debug illegal address bug on CUDA and re-enable
+    # GPU test for matrix_solve.
+    use_gpu = False if functor_ == linalg_ops.matrix_solve else True
+
+    with self.test_session(use_gpu=use_gpu):
       np.random.seed(1)
       a_np = np.random.uniform(
           low=-1.0, high=1.0,
@@ -142,26 +146,21 @@ if __name__ == '__main__':
           shape = extra + (size, size)
           name = '%s_%s_adj_%s' % (dtype.__name__, '_'.join(map(str, shape)),
                                    str(adjoint))
-          _AddTest(
-              MatrixBinaryFunctorGradientTest,
-              'MatrixSolveGradient',
-              name,
-              _GetMatrixBinaryFunctorGradientTest(
-                  linalg_ops.matrix_solve, dtype, shape, adjoint=adjoint))
+          _AddTest(MatrixBinaryFunctorGradientTest, 'MatrixSolveGradient', name,
+                   _GetMatrixBinaryFunctorGradientTest(
+                       linalg_ops.matrix_solve, dtype, shape, adjoint=adjoint))
 
           for lower in True, False:
             name = '%s_low_%s' % (name, lower)
-            _AddTest(
-                MatrixBinaryFunctorGradientTest,
-                'MatrixTriangularSolveGradient',
-                name,
-                _GetMatrixBinaryFunctorGradientTest(
-                    linalg_ops.matrix_triangular_solve,
-                    dtype,
-                    shape,
-                    float32_tol_fudge=4.0,
-                    adjoint=adjoint,
-                    lower=lower))
+            _AddTest(MatrixBinaryFunctorGradientTest,
+                     'MatrixTriangularSolveGradient', name,
+                     _GetMatrixBinaryFunctorGradientTest(
+                         linalg_ops.matrix_triangular_solve,
+                         dtype,
+                         shape,
+                         float32_tol_fudge=4.0,
+                         adjoint=adjoint,
+                         lower=lower))
 
   # Tests for gradients of unary matrix operations.
   for dtype in np.float32, np.float64:
@@ -178,6 +177,12 @@ if __name__ == '__main__':
             MatrixUnaryFunctorGradientTest, 'MatrixDeterminantGradient', name,
             _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_determinant,
                                                dtype, shape))
+        _AddTest(
+            MatrixUnaryFunctorGradientTest, 'LogMatrixDeterminantGradient',
+            name,
+            _GetMatrixUnaryFunctorGradientTest(
+                lambda x: linalg_ops.log_matrix_determinant(x)[1],
+                dtype, shape))
 
   # Tests for gradients of matrix_solve_ls
   for dtype in np.float32, np.float64:
@@ -191,8 +196,10 @@ if __name__ == '__main__':
               MatrixBinaryFunctorGradientTest,
               'MatrixSolveLsGradient',
               name,
+              # pylint: disable=long-lambda,g-long-lambda
               _GetMatrixBinaryFunctorGradientTest(
-                  lambda a, b, l=l2_regularization: linalg_ops.matrix_solve_ls(a, b, l),
+                  (lambda a, b, l=l2_regularization:
+                   linalg_ops.matrix_solve_ls(a, b, l)),
                   dtype,
                   shape,
                   float32_tol_fudge=4.0))

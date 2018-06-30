@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
@@ -35,9 +36,11 @@ Tensor DeepCopy(const Tensor& other) {
       memcpy(const_cast<char*>(tmp_data.data()), other_data.data(),
              other_data.size());
     }
-  } else {
-    CHECK_EQ(DT_STRING, other.dtype());
+  } else if (other.dtype() == DT_STRING) {
     tmp.flat<string>() = other.flat<string>();
+  } else {
+    CHECK_EQ(DT_VARIANT, other.dtype());
+    tmp.flat<Variant>() = other.flat<Variant>();
   }
   return tmp;
 }
@@ -164,6 +167,15 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
 
   return Status::OK();
 }
+
+namespace internal {
+void SetTensorProtoShape(std::vector<size_t> shape,
+                         TensorShapeProto* shape_proto) {
+  for (auto dim : shape) {
+    shape_proto->mutable_dim()->Add()->set_size(dim);
+  }
+}
+}  // namespace internal
 
 }  // namespace tensor
 }  // namespace tensorflow

@@ -22,15 +22,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("distributions.Bernoulli")
 class Bernoulli(distribution.Distribution):
   """Bernoulli distribution.
 
@@ -70,8 +71,8 @@ class Bernoulli(distribution.Distribution):
     Raises:
       ValueError: If p and logits are passed, or if neither are passed.
     """
-    parameters = locals()
-    with ops.name_scope(name):
+    parameters = dict(locals())
+    with ops.name_scope(name) as name:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,
           probs=probs,
@@ -135,20 +136,11 @@ class Bernoulli(distribution.Distribution):
       return (array_ops.ones_like(event) * logits,
               array_ops.ones_like(logits) * event)
 
-    # First check static shape.
-    if (event.get_shape().is_fully_defined() and
-        logits.get_shape().is_fully_defined()):
-      if event.get_shape() != logits.get_shape():
-        logits, event = _broadcast(logits, event)
-    else:
-      logits, event = control_flow_ops.cond(
-          distribution_util.same_dynamic_shape(logits, event),
-          lambda: (logits, event),
-          lambda: _broadcast(logits, event))
+    if not (event.get_shape().is_fully_defined() and
+            logits.get_shape().is_fully_defined() and
+            event.get_shape() == logits.get_shape()):
+      logits, event = _broadcast(logits, event)
     return -nn.sigmoid_cross_entropy_with_logits(labels=event, logits=logits)
-
-  def _prob(self, event):
-    return math_ops.exp(self._log_prob(event))
 
   def _entropy(self):
     return (-self.logits * (math_ops.sigmoid(self.logits) - 1) +
@@ -163,26 +155,6 @@ class Bernoulli(distribution.Distribution):
   def _mode(self):
     """Returns `1` if `prob > 0.5` and `0` otherwise."""
     return math_ops.cast(self.probs > 0.5, self.dtype)
-
-
-class BernoulliWithSigmoidProbs(Bernoulli):
-  """Bernoulli with `probs = nn.sigmoid(logits)`."""
-
-  def __init__(self,
-               logits=None,
-               dtype=dtypes.int32,
-               validate_args=False,
-               allow_nan_stats=True,
-               name="BernoulliWithSigmoidProbs"):
-    parameters = locals()
-    with ops.name_scope(name):
-      super(BernoulliWithSigmoidProbs, self).__init__(
-          probs=nn.sigmoid(logits, name="sigmoid_probs"),
-          dtype=dtype,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=name)
-    self._parameters = parameters
 
 
 @kullback_leibler.RegisterKL(Bernoulli, Bernoulli)

@@ -18,9 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -43,16 +45,14 @@ ClientType client_types[] = {ClientType::kLocal, ClientType::kCompileOnly};
 
 class ComputeConstantTest : public ::testing::Test {
  public:
-  explicit ComputeConstantTest(
-      perftools::gputools::Platform* platform = nullptr)
+  explicit ComputeConstantTest(se::Platform* platform = nullptr)
       : platform_(platform) {}
 
   string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  Client* ClientOrDie(::perftools::gputools::Platform* platform,
-                      ClientType client_type) {
+  Client* ClientOrDie(se::Platform* platform, ClientType client_type) {
     if (client_type == ClientType::kLocal) {
       StatusOr<Client*> result =
           ClientLibrary::GetOrCreateLocalClient(platform);
@@ -70,38 +70,36 @@ class ComputeConstantTest : public ::testing::Test {
   }
 
   StatusOr<std::unique_ptr<Literal>> ComputeConstantLiteral(
-      Client* client, const ComputationDataHandle& operand,
-      ComputationBuilder* builder, Layout* output_layout = nullptr) {
-    TF_ASSIGN_OR_RETURN(auto remote_computed,
-                        builder->ComputeConstant(operand, output_layout));
-    TF_ASSIGN_OR_RETURN(auto computed, client->Transfer(*remote_computed));
+      Client* client, const XlaOp& operand, XlaBuilder* builder,
+      Layout* output_layout = nullptr) {
+    TF_ASSIGN_OR_RETURN(auto subgraph, builder->BuildConstantSubGraph(operand));
+    TF_ASSIGN_OR_RETURN(auto computed,
+                        client->ComputeConstant(subgraph, output_layout));
     return std::move(computed);
   }
 
   template <class Scalar>
-  StatusOr<Scalar> ComputeConstantScalar(Client* client,
-                                         const ComputationDataHandle& operand,
-                                         ComputationBuilder* builder) {
-    TF_ASSIGN_OR_RETURN(auto literal,
-                        ComputeConstantLiteral(client, operand, builder));
+  StatusOr<Scalar> ComputeConstantScalar(Client* client, const XlaOp& operand,
+                                         XlaBuilder* builder) {
+    TF_ASSIGN_OR_RETURN(auto literal, ComputeConstantLiteral(client, operand,
+                                                             builder, nullptr));
     return literal->Get<Scalar>({});
   }
 
-  bool IsConstant(const ComputationDataHandle& operand,
-                  ComputationBuilder* builder) {
+  bool IsConstant(const XlaOp& operand, XlaBuilder* builder) {
     StatusOr<bool> result = builder->IsConstant(operand);
     EXPECT_TRUE(result.ok()) << result.status();
     return result.ok() ? result.ValueOrDie() : false;
   }
 
-  perftools::gputools::Platform* platform_;
+  se::Platform* platform_;
 };
 
 TEST_F(ComputeConstantTest, ScalarInt32Literal) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
-    auto computation = b.ConstantR0<int32>(42);
+    XlaBuilder b(TestName());
+    auto computation = ConstantR0<int32>(&b, 42);
     EXPECT_TRUE(IsConstant(computation, &b));
 
     auto value = ComputeConstantScalar<int32>(client, computation, &b);
@@ -113,9 +111,9 @@ TEST_F(ComputeConstantTest, ScalarInt32Literal) {
 TEST_F(ComputeConstantTest, ScalarFloatAdd) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
+    XlaBuilder b(TestName());
     auto computation =
-        b.Add(b.ConstantR0<float>(42.5f), b.ConstantR0<float>(1.5f));
+        Add(ConstantR0<float>(&b, 42.5f), ConstantR0<float>(&b, 1.5f));
     EXPECT_TRUE(IsConstant(computation, &b));
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
@@ -127,10 +125,10 @@ TEST_F(ComputeConstantTest, ScalarFloatAdd) {
 TEST_F(ComputeConstantTest, ScalarRng) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
+    XlaBuilder b(TestName());
     auto computation =
-        b.RngUniform(b.ConstantR0<float>(1.1f), b.ConstantR0<float>(2.1f),
-                     ShapeUtil::MakeShape(F32, {}));
+        RngUniform(ConstantR0<float>(&b, 1.1f), ConstantR0<float>(&b, 2.1f),
+                   ShapeUtil::MakeShape(F32, {}));
     EXPECT_FALSE(IsConstant(computation, &b));
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
@@ -139,32 +137,32 @@ TEST_F(ComputeConstantTest, ScalarRng) {
   }
 }
 
-TEST_F(ComputeConstantTest, DirectParam) {
+TEST_F(ComputeConstantTest, DirectParamMissing) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
-    auto computation = b.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param");
+    XlaBuilder b(TestName());
+    auto computation = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "param");
     EXPECT_FALSE(IsConstant(computation, &b));
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
-    EXPECT_TRUE(tensorflow::StringPiece(value.status().ToString())
-                    .contains("depends on parameter"))
+    EXPECT_TRUE(tensorflow::str_util::StrContains(value.status().ToString(),
+                                                  "depends on a parameter"))
         << value.status();
   }
 }
 
-TEST_F(ComputeConstantTest, IndirectParam) {
+TEST_F(ComputeConstantTest, IndirectParamMissing) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
+    XlaBuilder b(TestName());
     auto computation =
-        b.Add(b.ConstantR0<float>(1.0f),
-              b.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param"));
+        Add(ConstantR0<float>(&b, 1.0f),
+            Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "param"));
     EXPECT_FALSE(IsConstant(computation, &b));
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
-    EXPECT_TRUE(tensorflow::StringPiece(value.status().ToString())
-                    .contains("depends on parameter"))
+    EXPECT_TRUE(tensorflow::str_util::StrContains(value.status().ToString(),
+                                                  "depends on a parameter"))
         << value.status();
   }
 }
@@ -174,113 +172,83 @@ TEST_F(ComputeConstantTest, IndirectParam) {
 TEST_F(ComputeConstantTest, UnrelatedParam) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
+    XlaBuilder b(TestName());
 
-    auto param_a = b.Parameter(10, ShapeUtil::MakeShape(F32, {}), "param0");
+    auto param_a = Parameter(&b, 10, ShapeUtil::MakeShape(F32, {}), "param0");
     auto constant_4 =
-        b.Add(b.ConstantR0<float>(2.5f), b.ConstantR0<float>(1.5f));
-    auto not_constant_a = b.Add(constant_4, param_a);
+        Add(ConstantR0<float>(&b, 2.5f), ConstantR0<float>(&b, 1.5f));
+    auto not_constant_a = Add(constant_4, param_a);
 
-    auto param_b = b.Parameter(1, ShapeUtil::MakeShape(F32, {}), "param1");
+    auto param_b = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {}), "param1");
     auto constant_9 =
-        b.Mul(b.ConstantR0<float>(2.0f), b.ConstantR0<float>(4.5f));
-    auto not_constant_b = b.Add(param_b, constant_9);
+        Mul(ConstantR0<float>(&b, 2.0f), ConstantR0<float>(&b, 4.5f));
+    auto not_constant_b = Add(param_b, constant_9);
 
-    auto constant_13 = b.Add(constant_4, constant_9);
-    b.Add(not_constant_b, b.Add(constant_13, not_constant_a));
+    auto constant_13 = Add(constant_4, constant_9);
+    Add(not_constant_b, Add(constant_13, not_constant_a));
 
     EXPECT_TRUE(IsConstant(constant_13, &b));
 
-    auto value = ComputeConstantScalar<float>(client, constant_13, &b);
-    ASSERT_TRUE(value.ok()) << value.status();
-    EXPECT_EQ(value.ValueOrDie(), 13.0f);
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto value, ComputeConstantScalar<float>(client, constant_13, &b));
+    EXPECT_EQ(value, 13.0f);
   }
 }
 
 TEST_F(ComputeConstantTest, NonScalarAdd) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
+    XlaBuilder b(TestName());
 
     auto computation =
-        b.Add(b.ConstantR1<int32>({1, 2}), b.ConstantR1<int32>({3, 4}));
+        Add(ConstantR1<int32>(&b, {1, 2}), ConstantR1<int32>(&b, {3, 4}));
     EXPECT_TRUE(IsConstant(computation, &b));
 
-    auto computed = ComputeConstantLiteral(client, computation, &b);
-    ASSERT_TRUE(computed.ok()) << computed.status();
+    TF_ASSERT_OK_AND_ASSIGN(auto computed,
+                            ComputeConstantLiteral(client, computation, &b));
     std::unique_ptr<Literal> expected_literal =
         Literal::CreateR1<int32>({4, 6});
-    LiteralTestUtil::ExpectEqual(*expected_literal, *computed.ValueOrDie());
+    EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
   }
 }
 
 TEST_F(ComputeConstantTest, IntegerDivide) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
-    auto computation = b.Div(b.ConstantR0<int32>(15), b.ConstantR0<int32>(3));
+    XlaBuilder b(TestName());
+    auto computation = Div(ConstantR0<int32>(&b, 15), ConstantR0<int32>(&b, 3));
     EXPECT_TRUE(IsConstant(computation, &b));
 
-    auto computed = ComputeConstantLiteral(client, computation, &b);
-    ASSERT_TRUE(computed.ok()) << computed.status();
+    TF_ASSERT_OK_AND_ASSIGN(auto computed,
+                            ComputeConstantLiteral(client, computation, &b));
     std::unique_ptr<Literal> expected_literal = Literal::CreateR0<int32>(5);
-    LiteralTestUtil::ExpectEqual(*expected_literal, *computed.ValueOrDie());
+    EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
   }
 }
 
 XLA_TEST_F(ComputeConstantTest, Layout) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
-    ComputationBuilder b(client, TestName());
+    XlaBuilder b(TestName());
 
     std::vector<std::vector<int64>> layouts = {{0, 1}, {1, 0}};
     for (const std::vector<int64>& layout : layouts) {
       auto layout_proto = LayoutUtil::MakeLayout(layout);
-      auto computed = ComputeConstantLiteral(
-          client,
-          b.Add(b.ConstantR2<int32>({{1, 2}, {3, 4}}),
-                b.ConstantR2<int32>({{10, 20}, {30, 40}})),
-          &b, &layout_proto);
-      ASSERT_TRUE(computed.ok()) << computed.status();
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto computed, ComputeConstantLiteral(
+                             client,
+                             Add(ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
+                                 ConstantR2<int32>(&b, {{10, 20}, {30, 40}})),
+                             &b, &layout_proto));
 
       std::unique_ptr<Literal> expected_literal =
-          test_utils::CreateR2LiteralWithLayout<int32>({{11, 22}, {33, 44}},
-                                                       layout);
-      LiteralTestUtil::AssertEqualShapesAndLayouts(
-          expected_literal->shape(), computed.ValueOrDie()->shape());
-      LiteralTestUtil::ExpectEqual(*expected_literal, *computed.ValueOrDie());
+          Literal::CreateR2WithLayout<int32>({{11, 22}, {33, 44}},
+                                             LayoutUtil::MakeLayout(layout));
+      ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
+          expected_literal->shape(), computed->shape()));
+      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
     }
   }
-}
-
-// This test is permanently disabled on CPU because it requires that the
-// backend used for execution is different than the backend used for
-// ComputeConstant which is always cpu.
-TEST_F(ComputeConstantTest, DISABLED_ON_CPU(ReuseComputedConstant)) {
-  // Compute a trivial constant, then try to use the value in an Execute
-  // call. This should fail because the constant resides on the CPU and the
-  // Execute call is executed on a different backend.  This test only makes
-  // sense with LocalClient, since CompileOnlyClient does not support
-  // execution.
-  Client* client = ClientOrDie(platform_, ClientType::kLocal);
-  ComputationBuilder constant_b(client, TestName());
-  auto constant = constant_b.ConstantR0<int32>(42);
-  auto handle = constant_b.ComputeConstant(constant).ConsumeValueOrDie();
-  auto literal = client->Transfer(*handle).ConsumeValueOrDie();
-  LiteralTestUtil::ExpectR0Equal(42, *literal);
-
-  // Build trivial computation which takes one parameter.
-  ComputationBuilder b(client, TestName());
-  b.Neg(b.Parameter(0, ShapeUtil::MakeShape(S32, {}), "param0"));
-  auto computation = b.Build().ConsumeValueOrDie();
-
-  // Try to use value from ComputeConstant in Execute.
-  auto execute_status = client->Execute(computation, {handle.get()});
-  EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(
-      execute_status.status().error_message(),
-      ::testing::ContainsRegex("argument 0 is on device Host:0 but computation "
-                               "will be executed on device"));
 }
 
 }  // namespace

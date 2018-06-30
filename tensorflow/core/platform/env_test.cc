@@ -20,9 +20,11 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -226,14 +228,28 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirSubdirsExist) {
 
 TEST_F(DefaultEnvTest, LocalFileSystem) {
   // Test filename with file:// syntax.
+  int expected_num_files = 0;
+  std::vector<string> matching_paths;
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
-    string filename = io::JoinPath(BaseDir(), strings::StrCat("file", length));
+    string filename = io::JoinPath(BaseDir(), strings::StrCat("len", length));
 
     filename = strings::StrCat("file://", filename);
 
     // Write a file with the given length
     const string input = CreateTestFile(env_, filename, length);
+    ++expected_num_files;
+
+    // Ensure that GetMatchingPaths works as intended.
+    TF_EXPECT_OK(env_->GetMatchingPaths(
+        // Try it with the "file://" URI scheme.
+        strings::StrCat("file://", io::JoinPath(BaseDir(), "l*")),
+        &matching_paths));
+    EXPECT_EQ(expected_num_files, matching_paths.size());
+    TF_EXPECT_OK(env_->GetMatchingPaths(
+        // Try it without any URI scheme.
+        io::JoinPath(BaseDir(), "l*"), &matching_paths));
+    EXPECT_EQ(expected_num_files, matching_paths.size());
 
     // Read the file back and check equality
     string output;
@@ -266,6 +282,15 @@ class TmpDirFileSystem : public NullFileSystem {
     StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (path.empty()) return errors::NotFound(dir, " not found");
+    // The special "flushed" file exists only if the filesystem's caches have
+    // been flushed.
+    if (path == "/flushed") {
+      if (flushed_) {
+        return Status::OK();
+      } else {
+        return errors::NotFound("FlushCaches() not called yet");
+      }
+    }
     return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
   }
 
@@ -280,9 +305,22 @@ class TmpDirFileSystem : public NullFileSystem {
     }
     return Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
   }
+
+  void FlushCaches() override { flushed_ = true; }
+
+ private:
+  bool flushed_ = false;
 };
 
 REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);
+
+TEST_F(DefaultEnvTest, FlushFileSystemCaches) {
+  Env* env = Env::Default();
+  const string flushed = "tmpdirfs://testhost/flushed";
+  EXPECT_EQ(error::Code::NOT_FOUND, env->FileExists(flushed).code());
+  TF_EXPECT_OK(env->FlushFileSystemCaches());
+  TF_EXPECT_OK(env->FileExists(flushed));
+}
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
   Env* env = Env::Default();
@@ -319,11 +357,24 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   CHECK_EQ(error::OUT_OF_RANGE,
            file_to_read->Read(0 /* offset */, 1024 /* n */, &content, scratch)
                .code());
-  EXPECT_EQ("Null", content.ToString());
+  EXPECT_EQ("Null", content);
 
   // Delete the temporary file.
   TF_CHECK_OK(env->DeleteFile(filename));
   EXPECT_FALSE(env->FileExists(filename).ok());
+}
+
+TEST_F(DefaultEnvTest, CreateUniqueFileName) {
+  Env* env = Env::Default();
+
+  string prefix = "tempfile-prefix-";
+  string suffix = ".tmp";
+  string filename = prefix;
+
+  EXPECT_TRUE(env->CreateUniqueFileName(&filename, suffix));
+
+  EXPECT_TRUE(str_util::StartsWith(filename, prefix));
+  EXPECT_TRUE(str_util::EndsWith(filename, suffix));
 }
 
 }  // namespace tensorflow

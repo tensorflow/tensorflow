@@ -15,8 +15,10 @@ JAVA_VERSION_OPTS = [
 XLINT_OPTS = [
     "-Werror",
     "-Xlint:all",
+    "-Xlint:-processing",
     "-Xlint:-serial",
     "-Xlint:-try",
+    "-Xlint:-classfile", # see b/32750402, go/javac-warnings#classfile
 ]
 
 # The bazel errorprone plugin currently only enables default errorChecks

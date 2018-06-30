@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -33,12 +33,13 @@ namespace {
 // Builds XlaCompiler argument descriptions `args` from `ctx`.
 Status MakeXlaCompilerArgumentsFromInputs(
     XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args,
-    bool* has_uninitialized_vars) {
+    bool* has_uninitialized_vars, bool* has_tensor_arrays) {
   VLOG(2) << "Num inputs " << ctx->num_inputs();
   args->resize(ctx->num_inputs());
   *has_uninitialized_vars = false;
+  *has_tensor_arrays = false;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
-    VLOG(2) << "  Input " << i
+    VLOG(2) << " Input " << i
             << " type: " << DataTypeString(ctx->input_type(i))
             << " shape: " << ctx->InputShape(i).DebugString();
     XlaCompiler::Argument& arg = (*args)[i];
@@ -49,32 +50,24 @@ Status MakeXlaCompilerArgumentsFromInputs(
       XlaResource* resource;
       TF_RETURN_IF_ERROR(ctx->GetResourceInput(i, &resource));
 
-      arg.initialized = resource->value.handle() > 0;
-      switch (resource->kind) {
-        case XlaResource::kVariable:
-          arg.kind = XlaCompiler::Argument::kVariable;
-          break;
-        case XlaResource::kTensorArray:
-          arg.kind = XlaCompiler::Argument::kTensorArray;
-          break;
-        case XlaResource::kStack:
-          arg.kind = XlaCompiler::Argument::kStack;
-          break;
-        case XlaResource::kInvalid:
-          CHECK(false);
+      arg.initialized = resource->initialized();
+      arg.kind = XlaCompiler::Argument::kResource;
+      arg.resource_kind = resource->kind();
+      if (arg.resource_kind == XlaResource::kTensorArray) {
+        *has_tensor_arrays = true;
       }
-      arg.type = resource->type;
-      if (arg.initialized) {
-        auto shape = ctx->builder()->GetShape(resource->value);
-        TF_RETURN_IF_ERROR(shape.status());
-        arg.shape = *shape.ValueOrDie();
-      } else {
+
+      arg.type = resource->type();
+      arg.shape = resource->shape();
+      if (!arg.initialized) {
         *has_uninitialized_vars = true;
       }
-      arg.tensor_array_size = resource->tensor_array_size;
-      arg.name = resource->name;
-      // TODO(phawkins): propagate TensorArray gradients into loops.
-      VLOG(2) << "    resource " << resource->name
+      arg.tensor_array_size = resource->tensor_array_size();
+      for (const auto& gradient : resource->tensor_array_gradients()) {
+        arg.tensor_array_gradients.insert(gradient.first);
+      }
+      arg.name = resource->name();
+      VLOG(2) << "    resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
               << " shape: " << arg.shape.DebugString()
               << " initialized: " << arg.initialized;
@@ -82,8 +75,7 @@ Status MakeXlaCompilerArgumentsFromInputs(
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = ctx->input_type(i);
-      TF_RETURN_IF_ERROR(
-          TensorShapeToXLAShape(arg.type, ctx->InputShape(i), &arg.shape));
+      arg.shape = ctx->InputShape(i);
     }
   }
   return Status::OK();
@@ -104,12 +96,12 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
   std::vector<XlaCompiler::Argument> arguments;
   bool has_uninitialized_vars;
-  OP_REQUIRES_OK(ctx, MakeXlaCompilerArgumentsFromInputs(
-                          ctx, &arguments, &has_uninitialized_vars));
+  bool has_tensor_arrays;
+  OP_REQUIRES_OK(
+      ctx, MakeXlaCompilerArgumentsFromInputs(
+               ctx, &arguments, &has_uninitialized_vars, &has_tensor_arrays));
 
-  const bool use_tuple_arg = (arguments.size() != 1);
-
-  xla::ComputationBuilder* builder = ctx->builder();
+  xla::XlaBuilder* builder = ctx->builder();
   XlaCompiler* compiler = ctx->compiler();
 
   VLOG(1) << "Compiling body";
@@ -123,46 +115,71 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   // TODO(phawkins): consider adding loop-invariant inputs to XLA's While()
   // operator.
   XlaCompiler::CompileOptions body_options;
-  body_options.use_tuple_arg = use_tuple_arg;
+  body_options.use_tuple_arg = true;
   body_options.return_updated_values_for_all_resources = true;
   body_options.resolve_compile_time_constants = false;
+  body_options.is_entry_computation = false;
   XlaCompiler::CompilationResult body;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(body_options, body_name_attr_,
                                                 arguments, &body));
 
   // We must use a static shape for parameters to an XLA compilation. However,
-  // we may not know the shape of a TensorArray if it is first written inside
-  // the loop. Ideally we would require the user to provide a static shape,
-  // but this is not always easy.
-  // So if uninitialized resource are used by the loop body, we compile the
-  // body function twice:
-  // 1) once with uninitialized resource inputs. We discard the computation
-  //    but we assume resource shapes reach a fixpoint after one iteration.
-  //    So we can use the output shapes of the resource as the "true" shapes.
-  // 2) again with the "correct" input shapes determined by (1).
-  if (has_uninitialized_vars) {
+  // we may not know the shape of a resource if it is first
+  // written inside the loop. Furthermore, we do not know ahead of time which
+  // gradient TensorArrays will be created by the TensorArrayGradV3 operator.
+  //
+  // Ideally we would change TensorFlow to provide static shape always, but
+  // but this is not easy to do. So if uninitialized resources or TensorArrays
+  // are used by the loop body, we compile the body function twice:
+  // 1) once with uninitialized resource inputs and no TensorArray gradient
+  //    inputs. We then discard the computation but we assume resource shapes
+  //    and the set of gradients read or written will reach a fixpoint after one
+  //    iteration.
+  //    Hence we can use the output shapes and TensorArray gradients of each
+  //    resource as the "true" shapes.
+  // 2) again with the "correct" resource information determined by (1).
+  if (has_uninitialized_vars || has_tensor_arrays) {
+    VLOG(2) << "Recompiling loop body: has_uninitialized_vars: "
+            << has_uninitialized_vars
+            << " has_tensor_arrays: " << has_tensor_arrays;
     // Initializes any uninitialized resource with zero values of the
     // shape determined by the first compilation.
     for (int i = 0; i < body.resource_updates.size(); ++i) {
       const XlaCompiler::ResourceUpdate& update = body.resource_updates[i];
+      XlaResource* resource;
+      OP_REQUIRES_OK(ctx, ctx->GetResourceInput(update.input_index, &resource));
+
       XlaCompiler::Argument& arg = arguments[update.input_index];
       if (!arg.initialized) {
         VLOG(2) << "Update shape for argument " << update.input_index << " "
-                << xla::ShapeUtil::HumanString(update.shape);
+                << update.shape.DebugString();
         arg.initialized = true;
+
         arg.shape = update.shape;
-
-        XlaResource* resource;
         OP_REQUIRES_OK(ctx,
-                       ctx->GetResourceInput(update.input_index, &resource));
+                       resource->SetTypeAndShape(update.type, update.shape));
 
-        std::unique_ptr<xla::Literal> zero =
-            xla::Literal::CreateFromShape(update.shape);
-        resource->value = builder->ConstantLiteral(*zero);
+        OP_REQUIRES_OK(ctx, resource->SetZeroValue(builder));
+      }
+
+      // Add any TensorArray gradients touched by the body to the enclosing
+      // graph.
+      for (const string& grad_source : update.tensor_array_gradients_accessed) {
+        VLOG(4) << "TensorArray " << resource->name() << " accessed gradient "
+                << grad_source;
+        XlaResource* gradient;
+        OP_REQUIRES_OK(ctx, resource->GetOrCreateTensorArrayGradient(
+                                grad_source, builder, &gradient));
+      }
+
+      // Add all of the TensorArray gradients to the argument. For simplicity,
+      // we always pass all known gradients.
+      for (const auto& gradient : resource->tensor_array_gradients()) {
+        arg.tensor_array_gradients.insert(gradient.first);
       }
     }
-    // Recompile the body with the "correct" shapes.
-    VLOG(1) << "Recompiling body with non-placeholder shapes";
+    // Recompile the body with the "correct" resource shapes.
+    VLOG(1) << "Recompiling body with corrected resource shapes";
     body = {};
     OP_REQUIRES_OK(ctx, compiler->CompileFunction(body_options, body_name_attr_,
                                                   arguments, &body));
@@ -171,22 +188,23 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Compiling condition";
 
   XlaCompiler::CompileOptions cond_options;
-  cond_options.use_tuple_arg = use_tuple_arg;
+  cond_options.use_tuple_arg = true;
   cond_options.resolve_compile_time_constants = false;
+  cond_options.is_entry_computation = false;
   XlaCompiler::CompilationResult cond;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(cond_options, cond_name_attr_,
                                                 arguments, &cond));
 
-  xla::Shape body_input_shape, cond_input_shape;
-  if (use_tuple_arg) {
-    body_input_shape = xla::ShapeUtil::MakeTupleShape(body.xla_input_shapes);
-    cond_input_shape = xla::ShapeUtil::MakeTupleShape(cond.xla_input_shapes);
-  } else {
-    CHECK(!body.xla_input_shapes.empty());
-    body_input_shape = body.xla_input_shapes[0];
-    CHECK(!cond.xla_input_shapes.empty());
-    cond_input_shape = cond.xla_input_shapes[0];
-  }
+  OP_REQUIRES(ctx, body.xla_input_shapes.size() == 1,
+              errors::FailedPrecondition("Expected one input shape"));
+  xla::Shape body_input_shape = body.xla_input_shapes[0];
+  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(body_input_shape),
+              errors::FailedPrecondition("Expected tuple shape"));
+  OP_REQUIRES(ctx, cond.xla_input_shapes.size() == 1,
+              errors::FailedPrecondition("Expected one input shape"));
+  xla::Shape cond_input_shape = cond.xla_input_shapes[0];
+  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(cond_input_shape),
+              errors::FailedPrecondition("Expected tuple shape"));
 
   VLOG(2) << "Body shape: " << xla::ShapeUtil::HumanString(body_input_shape)
           << " -> " << xla::ShapeUtil::HumanString(body.xla_output_shape);
@@ -206,46 +224,52 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
           xla::ShapeUtil::HumanString(body_input_shape), " vs. ",
           xla::ShapeUtil::HumanString(body.xla_output_shape)));
 
-  xla::ComputationDataHandle data;
+  xla::Shape expected_cond_output_shape = xla::ShapeUtil::MakeTupleShape(
+      {xla::ShapeUtil::MakeShape(xla::PRED, {})});
+  OP_REQUIRES(ctx,
+              xla::ShapeUtil::Compatible(cond.xla_output_shape,
+                                         expected_cond_output_shape),
+              errors::InvalidArgument(
+                  "Output shape of loop condition should be (pred[]), got: ",
+                  xla::ShapeUtil::HumanString(cond.xla_output_shape)));
 
   int num_inputs = body.input_mapping.size();
-
-  std::vector<xla::ComputationDataHandle> inputs(num_inputs);
+  std::vector<xla::XlaOp> inputs(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     int input_num = body.input_mapping[i];
     if (ctx->input_type(input_num) == DT_RESOURCE) {
       XlaResource* resource;
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
-      inputs[i] = resource->value;
+      OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], builder));
     } else {
       inputs[i] = ctx->Input(i);
     }
   }
 
-  xla::ComputationDataHandle init;
-  if (use_tuple_arg) {
-    init = builder->Tuple(inputs);
-  } else {
-    init = inputs[0];
-  }
+  xla::XlaOp init = xla::Tuple(builder, inputs);
 
   VLOG(1) << "Building while loop";
 
-  xla::ComputationDataHandle while_result =
-      builder->While(*cond.computation, *body.computation, init);
+  // Wraps the condition in a computation that unpacks the output tuple.
+  xla::XlaComputation cond_wrapper;
+  {
+    std::unique_ptr<xla::XlaBuilder> cb =
+        builder->CreateSubBuilder("cond_wrapper");
+    auto inputs = xla::Parameter(cb.get(), 0, cond_input_shape, "inputs");
+    auto outputs = xla::Call(cb.get(), *cond.computation, {inputs});
+    xla::GetTupleElement(outputs, 0);
+    xla::StatusOr<xla::XlaComputation> result = cb->Build();
+    OP_REQUIRES_OK(ctx, result.status());
+    cond_wrapper = std::move(result.ValueOrDie());
+  }
 
-  auto get_loop_output = [&](int i) {
-    if (use_tuple_arg) {
-      return builder->GetTupleElement(while_result, i);
-    } else {
-      return while_result;
-    }
-  };
+  xla::XlaOp while_result = xla::While(cond_wrapper, *body.computation, init);
 
   // Sets non-variable outputs.
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     if (ctx->input_type(i) != DT_RESOURCE) {
-      ctx->SetOutput(body.input_mapping[i], get_loop_output(i));
+      ctx->SetOutput(body.input_mapping[i],
+                     xla::GetTupleElement(while_result, i));
     }
   }
 
@@ -256,10 +280,13 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(update.input_index, &resource));
     if (update.modified) {
       int pos = body.outputs.size() + i;
-      resource->value = get_loop_output(pos);
+      OP_REQUIRES_OK(ctx,
+                     resource->SetFromPack(
+                         arguments[update.input_index].tensor_array_gradients,
+                         xla::GetTupleElement(while_result, pos), builder));
     }
     VLOG(2) << "Loop-carried variable: pos: " << update.input_index
-            << " name: " << resource->name << " modified: " << update.modified
+            << " name: " << resource->name() << " modified: " << update.modified
             << " type: " << DataTypeString(update.type)
             << " shape: " << update.shape.DebugString();
     // Copies the identity of the resource variable from input to output

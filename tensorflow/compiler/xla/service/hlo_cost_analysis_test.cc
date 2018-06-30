@@ -20,16 +20,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/service/computation_tracker.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/service.h"
-#include "tensorflow/compiler/xla/service/user_computation.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/platform/logging.h"
@@ -58,14 +55,13 @@ class HloCostAnalysisTest : public ::testing::Test {
         // whitebox accesses to the user computation built from the client,
         // as shown in the BuildHloGraph functions below.
         service_(static_cast<Service*>(ClientLibrary::GetXlaService(
-            static_cast<LocalClient*>(client_)->platform()))),
-        computation_tracker_(service_->computation_tracker()) {
+            static_cast<LocalClient*>(client_)->platform()))) {
     // Create a computation for a unary user function: x => exp(x + 0.5)
     {
-      ComputationBuilder builder(client_, "add_and_exp");
-      auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
-      auto half = builder.ConstantR0<float>(0.5);
-      builder.Exp(builder.Add(x, half));
+      XlaBuilder builder("add_and_exp");
+      auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+      auto half = ConstantR0<float>(&builder, 0.5);
+      Exp(Add(x, half));
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
       add_and_exp_ = computation_status.ConsumeValueOrDie();
@@ -73,10 +69,10 @@ class HloCostAnalysisTest : public ::testing::Test {
 
     // Create a computation for a binary user function: (x, y) => x + y
     {
-      ComputationBuilder builder(client_, "add");
-      auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
-      auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
-      builder.Add(x, y);
+      XlaBuilder builder("add");
+      auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+      auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
+      Add(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
       add_ = computation_status.ConsumeValueOrDie();
@@ -84,10 +80,10 @@ class HloCostAnalysisTest : public ::testing::Test {
 
     // Create a computation for a sigmoid function: x => 1 / (1 + exp(-x))
     {
-      ComputationBuilder builder(client_, "sigmoid");
-      auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
-      auto one = builder.ConstantR0<float>(1.0);
-      builder.Div(one, builder.Add(one, builder.Exp(builder.Neg(x))));
+      XlaBuilder builder("sigmoid");
+      auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+      auto one = ConstantR0<float>(&builder, 1.0);
+      Div(one, Add(one, Exp(Neg(x))));
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
       sigmoid_ = computation_status.ConsumeValueOrDie();
@@ -95,10 +91,10 @@ class HloCostAnalysisTest : public ::testing::Test {
 
     // Create a computation for a binary max function: (x, y) => max (x, y)
     {
-      ComputationBuilder builder(client_, "max");
-      auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
-      auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
-      builder.Max(x, y);
+      XlaBuilder builder("max");
+      auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+      auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
+      Max(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
       max_ = computation_status.ConsumeValueOrDie();
@@ -106,10 +102,10 @@ class HloCostAnalysisTest : public ::testing::Test {
 
     // Create a computation for a binary GT function: (x, y) => x > y
     {
-      ComputationBuilder builder(client_, "gt");
-      auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
-      auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
-      builder.Gt(x, y);
+      XlaBuilder builder("gt");
+      auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+      auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
+      Gt(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
       gt_ = computation_status.ConsumeValueOrDie();
@@ -117,38 +113,33 @@ class HloCostAnalysisTest : public ::testing::Test {
   }
 
   // Build HLO graph from the given builder and return the HLO module.
-  std::unique_ptr<HloModule> BuildHloGraph(ComputationBuilder* builder) {
+  std::unique_ptr<HloModule> BuildHloGraph(XlaBuilder* builder) {
     auto computation_status = builder->Build();
     TF_CHECK_OK(computation_status.status());
     auto computation = computation_status.ConsumeValueOrDie();
-    auto user_computation_status =
-        computation_tracker_.Resolve(computation.handle());
-    TF_CHECK_OK(user_computation_status.status());
-    auto user_computation = user_computation_status.ConsumeValueOrDie();
-    VersionedComputationHandle versioned_handle =
-        user_computation->GetVersionedHandle();
-    return std::move(
-        computation_tracker_.BuildHloModule(versioned_handle, HloModuleConfig())
-            .ValueOrDie());
+    auto config = HloModule::CreateModuleConfigFromProto(computation.proto(),
+                                                         DebugOptions())
+                      .ConsumeValueOrDie();
+    return HloModule::CreateFromProto(computation.proto(), config)
+        .ConsumeValueOrDie();
   }
 
   Client* client_;
   Service* service_;
-  const ComputationTracker& computation_tracker_;
 
   // User computations used for higher order operations (e.g., Map, Reduce).
-  Computation add_;
-  Computation add_and_exp_;
-  Computation sigmoid_;
-  Computation max_;
-  Computation gt_;
+  XlaComputation add_;
+  XlaComputation add_and_exp_;
+  XlaComputation sigmoid_;
+  XlaComputation max_;
+  XlaComputation gt_;
 };
 
 TEST_F(HloCostAnalysisTest, MatrixMultiply) {
-  ComputationBuilder builder(client_, "matrix_multiply");
-  auto lhs = builder.Parameter(0, ShapeUtil::MakeShape(F32, {10, 5}), "lhs");
-  auto rhs = builder.Parameter(1, ShapeUtil::MakeShape(F32, {5, 30}), "rhs");
-  auto result = builder.Dot(lhs, rhs);
+  XlaBuilder builder("matrix_multiply");
+  auto lhs = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5}), "lhs");
+  auto rhs = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 30}), "rhs");
+  Dot(lhs, rhs);
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -167,9 +158,9 @@ TEST_F(HloCostAnalysisTest, MatrixMultiply) {
 }
 
 TEST_F(HloCostAnalysisTest, Map) {
-  ComputationBuilder builder(client_, "map");
-  auto input = builder.Parameter(0, ShapeUtil::MakeShape(F32, {10}), "in");
-  auto result = builder.Map({input}, add_and_exp_);
+  XlaBuilder builder("map");
+  auto input = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10}), "in");
+  Map(&builder, {input}, add_and_exp_, {0});
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -184,16 +175,18 @@ TEST_F(HloCostAnalysisTest, Map) {
 }
 
 TEST_F(HloCostAnalysisTest, Convolution) {
-  ComputationBuilder builder(client_, "convolution");
-  auto input = builder.Parameter(
-      0, ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/10,
-                                    /*x_dim=*/20}),
+  XlaBuilder builder("convolution");
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/10,
+                                 /*x_dim=*/20}),
       "input");
-  auto kernel = builder.Parameter(
-      1, ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
-                                    /*x_dim=*/3}),
+  auto kernel = Parameter(
+      &builder, 1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
+                                 /*x_dim=*/3}),
       "kernel");
-  auto result = builder.Conv(input, kernel, {1, 1}, Padding::kValid);
+  Conv(input, kernel, {1, 1}, Padding::kValid);
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -211,11 +204,10 @@ TEST_F(HloCostAnalysisTest, Convolution) {
 }
 
 TEST_F(HloCostAnalysisTest, Reduce) {
-  ComputationBuilder builder(client_, "reduce");
+  XlaBuilder builder("reduce");
   auto input =
-      builder.Parameter(0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
-  auto result =
-      builder.Reduce(input, builder.ConstantR0<float>(0.0f), add_, {1});
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
+  Reduce(input, ConstantR0<float>(&builder, 0.0f), add_, {1});
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -229,11 +221,11 @@ TEST_F(HloCostAnalysisTest, Reduce) {
 }
 
 TEST_F(HloCostAnalysisTest, ReduceWindow) {
-  ComputationBuilder builder(client_, "reduce_window");
+  XlaBuilder builder("reduce_window");
   auto input =
-      builder.Parameter(0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
-  auto result = builder.ReduceWindow(input, builder.ConstantR0<float>(0), add_,
-                                     {4, 5}, {4, 5}, Padding::kValid);
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
+  ReduceWindow(input, ConstantR0<float>(&builder, 0), add_, {4, 5}, {4, 5},
+               Padding::kValid);
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -246,14 +238,13 @@ TEST_F(HloCostAnalysisTest, ReduceWindow) {
 }
 
 TEST_F(HloCostAnalysisTest, SelectAndScatter) {
-  ComputationBuilder builder(client_, "select_and_scatter");
+  XlaBuilder builder("select_and_scatter");
   auto operand =
-      builder.Parameter(0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
   auto source =
-      builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 4}), "source");
-  auto result =
-      builder.SelectAndScatter(operand, gt_, {4, 5}, {4, 5}, Padding::kValid,
-                               source, builder.ConstantR0<float>(0), add_);
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 4}), "source");
+  SelectAndScatter(operand, gt_, {4, 5}, {4, 5}, Padding::kValid, source,
+                   ConstantR0<float>(&builder, 0), add_);
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -267,8 +258,8 @@ TEST_F(HloCostAnalysisTest, SelectAndScatter) {
 }
 
 TEST_F(HloCostAnalysisTest, Broadcast) {
-  ComputationBuilder b(client_, "broadcast");
-  b.Broadcast(b.ConstantR0<float>(42), {10, 7});
+  XlaBuilder b("broadcast");
+  Broadcast(ConstantR0<float>(&b, 42), {10, 7});
   auto hlo_module = BuildHloGraph(&b);
   HloCostAnalysis analysis(ShapeSize);
   ASSERT_IS_OK(
@@ -278,15 +269,14 @@ TEST_F(HloCostAnalysisTest, Broadcast) {
 
 // Calculates the computation cost of a graph with more than one HLO node.
 TEST_F(HloCostAnalysisTest, FullyConnectedForward) {
-  ComputationBuilder builder(client_, "fully_connected_forward");
+  XlaBuilder builder("fully_connected_forward");
   auto input =
-      builder.Parameter(0, ShapeUtil::MakeShape(F32, {10, 5}), "input");
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5}), "input");
   auto weight =
-      builder.Parameter(1, ShapeUtil::MakeShape(F32, {5, 20}), "weight");
-  auto bias = builder.Parameter(2, ShapeUtil::MakeShape(F32, {20}), "bias");
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 20}), "weight");
+  auto bias = Parameter(&builder, 2, ShapeUtil::MakeShape(F32, {20}), "bias");
   // sigmoid(input * weight + bias)
-  auto result = builder.Map(
-      {builder.Add(builder.Dot(input, weight), bias, {1})}, sigmoid_);
+  Map(&builder, {Add(Dot(input, weight), bias, {1})}, sigmoid_, {0, 1});
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -303,12 +293,12 @@ TEST_F(HloCostAnalysisTest, FullyConnectedForward) {
 TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
   HloCostAnalysis conv_analysis(ShapeSize);
   {
-    ComputationBuilder builder(client_, "conv_looking_matmul");
-    auto lhs = builder.Parameter(0, ShapeUtil::MakeShape(F32, {64, 64, 1, 1}),
-                                 "input");
-    auto rhs = builder.Parameter(1, ShapeUtil::MakeShape(F32, {64, 64, 1, 1}),
-                                 "weights");
-    builder.Conv(lhs, rhs, {1, 1}, Padding::kSame);
+    XlaBuilder builder("conv_looking_matmul");
+    auto lhs = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {64, 64, 1, 1}),
+                         "input");
+    auto rhs = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {64, 64, 1, 1}),
+                         "weights");
+    Conv(lhs, rhs, {1, 1}, Padding::kSame);
     auto hlo_module = BuildHloGraph(&builder);
     ASSERT_IS_OK(hlo_module->entry_computation()->root_instruction()->Accept(
         &conv_analysis));
@@ -316,12 +306,12 @@ TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
 
   HloCostAnalysis matmul_analysis(ShapeSize);
   {
-    ComputationBuilder builder(client_, "matmul");
+    XlaBuilder builder("matmul");
     auto lhs =
-        builder.Parameter(0, ShapeUtil::MakeShape(F32, {64, 64}), "input");
+        Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {64, 64}), "input");
     auto rhs =
-        builder.Parameter(1, ShapeUtil::MakeShape(F32, {64, 64}), "weights");
-    builder.Dot(lhs, rhs);
+        Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {64, 64}), "weights");
+    Dot(lhs, rhs);
     auto hlo_module = BuildHloGraph(&builder);
     ASSERT_IS_OK(hlo_module->entry_computation()->root_instruction()->Accept(
         &matmul_analysis));
@@ -368,8 +358,8 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
         HloInstruction::CreateBinary(r2f32, HloOpcode::kSubtract, mul, clamp));
     auto tuple = HloInstruction::CreateTuple({sub, sub, mul, c1});
 
-    HloModule module(TestName());
-    auto* computation = module.AddEntryComputation(builder.Build());
+    auto module = CreateNewModule();
+    auto* computation = module->AddEntryComputation(builder.Build());
     auto* fusion = computation->CreateFusionInstruction(
         {sub, mul, exp, clamp, add}, HloInstruction::FusionKind::kLoop);
 
@@ -389,7 +379,7 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
     static_assert(bytes_accessed == 64, "");
     EXPECT_EQ(fusion_analysis.bytes_accessed(), bytes_accessed);
 
-    EXPECT_EQ(fusion_analysis.seconds(), 1 << i);
+    EXPECT_EQ(fusion_analysis.optimal_seconds(), 1 << i);
   }
 }
 
@@ -410,8 +400,8 @@ TEST_F(FusionCostAnalysis, NoLayout) {
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       shape_with_layout, HloOpcode::kAdd, c1, broadcast));
 
-  HloModule module(TestName());
-  auto* computation = module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
   auto* fusion = computation->CreateFusionInstruction(
       {add, broadcast}, HloInstruction::FusionKind::kLoop);
 
@@ -425,10 +415,10 @@ TEST_F(FusionCostAnalysis, NoLayout) {
 TEST_F(HloCostAnalysisTest, TupleCost) {
   HloCostAnalysis analysis(ShapeSize);
   {
-    ComputationBuilder builder(client_, "matmul");
-    auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {123}), "x");
-    auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {42}), "y");
-    auto tuple = builder.Tuple({x, y});
+    XlaBuilder builder("matmul");
+    auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {123}), "x");
+    auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {42}), "y");
+    Tuple(&builder, {x, y});
     auto hlo_module = BuildHloGraph(&builder);
 
     ASSERT_IS_OK(
@@ -438,6 +428,79 @@ TEST_F(HloCostAnalysisTest, TupleCost) {
   EXPECT_EQ(analysis.flop_count(), 0);
   EXPECT_EQ(analysis.transcendental_count(), 0);
   EXPECT_EQ(analysis.bytes_accessed(), kPointerSize * 2);
+}
+
+TEST_F(HloCostAnalysisTest, BaseDilatedConvolution) {
+  XlaBuilder builder("BaseDilatedConvolution");
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/10,
+                                 /*x_dim=*/20}),
+      "input");
+  auto kernel = Parameter(
+      &builder, 1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
+                                 /*x_dim=*/3}),
+      "kernel");
+
+  ConvGeneralDilated(input, kernel, /*window_strides=*/{1, 1},
+                     /*padding=*/{{1, 1}, {1, 1}},
+                     /*lhs_dilation=*/{3, 5}, /*rhs_dilation=*/{7, 11},
+                     XlaBuilder::CreateDefaultConvDimensionNumbers(2));
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.flop_count(), 1472);
+}
+
+TEST_F(HloCostAnalysisTest, Slice) {
+  // Test the analysis on a slice.
+  XlaBuilder builder("slice");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "x");
+  Slice(x, {0}, {1}, {1});
+  auto hlo_module = BuildHloGraph(&builder);
+
+  // Run HLO cost analysis.
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(), 8);
+}
+
+TEST_F(HloCostAnalysisTest, DynamicSlice) {
+  // Test the analysis on a slice.
+  XlaBuilder builder("dynamic-slice");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "x");
+  DynamicSlice(x, ConstantR1<int32>(&builder, {1}), {1});
+  auto hlo_module = BuildHloGraph(&builder);
+
+  // Run HLO cost analysis.
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(), 8);
+}
+
+TEST_F(HloCostAnalysisTest, DynamicUpdateSlice) {
+  // Test the analysis on a slice.
+  XlaBuilder builder("dynamic-update-slice");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "x");
+  DynamicUpdateSlice(x, ConstantR1<float>(&builder, {1.0}),
+                     ConstantR1<int32>(&builder, {1}));
+  auto hlo_module = BuildHloGraph(&builder);
+
+  // Run HLO cost analysis.
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(), 8);
 }
 
 }  // namespace

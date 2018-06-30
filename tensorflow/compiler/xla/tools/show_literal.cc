@@ -40,7 +40,8 @@ int main(int argc, char **argv) {
   xla::LiteralProto literal_proto;
   TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), argv[1],
                                           &literal_proto));
-  xla::Literal literal(literal_proto);
+  std::unique_ptr<xla::Literal> literal =
+      xla::Literal::CreateFromProto(literal_proto).ConsumeValueOrDie();
   LOG(INFO) << "literal: " << literal_proto.ShortDebugString();
-  fprintf(stderr, "%s\n", literal.ToString().c_str());
+  fprintf(stderr, "%s\n", literal->ToString().c_str());
 }

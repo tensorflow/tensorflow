@@ -15,20 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 
-GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
-    : GPUBFCAllocator(device_id, total_memory, GPUOptions()) {}
+GPUBFCAllocator::GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
+                                 const string& name)
+    : GPUBFCAllocator(cuda_gpu_id, total_memory, GPUOptions(), name) {}
 
-GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory,
-                                 const GPUOptions& gpu_options)
+GPUBFCAllocator::GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
+                                 const GPUOptions& gpu_options,
+                                 const string& name)
     : BFCAllocator(
           new GPUMemAllocator(
-              GPUMachineManager()->ExecutorForDevice(device_id).ValueOrDie()),
-          total_memory, gpu_options.allow_growth(),
-          strings::StrCat("GPU_", device_id, "_bfc")) {}
+              GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(),
+              gpu_options.per_process_gpu_memory_fraction() > 1.0 ||
+                  gpu_options.experimental().use_unified_memory()),
+          total_memory, gpu_options.allow_growth(), name) {}
 
 }  // namespace tensorflow

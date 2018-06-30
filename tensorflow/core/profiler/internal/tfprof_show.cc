@@ -25,19 +25,19 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-const GraphNodeProto& TFShow::Show(const Options& opts) {
+const GraphNodeProto& TFShow::Show(const string& prefix, const Options& opts) {
   if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
   } else {
     const ShowNode* ret = ShowInternal(opts, nullptr);
     if (opts.output_type == kOutput[1]) {
-      printf("%s", ret->formatted_str.c_str());
+      printf("%s", (prefix + ret->formatted_str).c_str());
       fflush(stdout);
     } else if (opts.output_type == kOutput[2]) {
       Status s = WriteStringToFile(Env::Default(),
                                    opts.output_options.at(kFileOpts[0]),
-                                   ret->formatted_str);
+                                   prefix + ret->formatted_str);
       if (!s.ok()) {
         fprintf(stderr, "%s\n", s.ToString().c_str());
       }
@@ -73,8 +73,14 @@ bool TFShow::ShouldShow(const ShowNode* node, const Options& opts,
   // Always show kTFProfRoot.
   if (node->name() == kTFProfRoot) return true;
 
-  if (node->proto().requested_bytes() < opts.min_bytes ||
-      node->proto().exec_micros() < opts.min_micros ||
+  if (node->proto().total_requested_bytes() < opts.min_bytes ||
+      node->proto().total_peak_bytes() < opts.min_peak_bytes ||
+      node->proto().total_residual_bytes() < opts.min_residual_bytes ||
+      node->proto().total_output_bytes() < opts.min_output_bytes ||
+      node->proto().total_exec_micros() < opts.min_micros ||
+      node->proto().total_accelerator_exec_micros() <
+          opts.min_accelerator_micros ||
+      node->proto().total_cpu_exec_micros() < opts.min_cpu_micros ||
       node->proto().parameters() < opts.min_params ||
       node->proto().float_ops() < opts.min_float_ops ||
       node->proto().run_count() < opts.min_occurrence ||
@@ -128,6 +134,17 @@ bool TFShow::ReAccount(ShowNode* node, const Options& opts) {
   return false;
 }
 
+string TFShow::FormatNodeMemory(ShowNode* node, int64 bytes,
+                                int64 total_bytes) const {
+  string memory = FormatMemory(total_bytes);
+  if (node->account) {
+    memory = FormatMemory(bytes) + "/" + memory;
+  } else {
+    memory = "--/" + memory;
+  }
+  return memory;
+}
+
 string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
   std::vector<string> info;
   if (opts.select.find(kShown[2]) != opts.select.end()) {
@@ -152,15 +169,22 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
     }
     info.push_back(fops);
   }
+  std::vector<string> attrs;
   if (opts.select.find(kShown[0]) != opts.select.end()) {
-    string memory = FormatMemory(node->proto().total_requested_bytes());
-    if (node->account) {
-      memory = FormatMemory(node->proto().requested_bytes()) + "/" + memory;
-
-    } else {
-      memory = "--/" + memory;
-    }
-    info.push_back(memory);
+    info.push_back(FormatNodeMemory(node, node->proto().requested_bytes(),
+                                    node->proto().total_requested_bytes()));
+  }
+  if (opts.select.find(kShown[11]) != opts.select.end()) {
+    info.push_back(FormatNodeMemory(node, node->proto().peak_bytes(),
+                                    node->proto().total_peak_bytes()));
+  }
+  if (opts.select.find(kShown[12]) != opts.select.end()) {
+    info.push_back(FormatNodeMemory(node, node->proto().residual_bytes(),
+                                    node->proto().total_residual_bytes()));
+  }
+  if (opts.select.find(kShown[13]) != opts.select.end()) {
+    info.push_back(FormatNodeMemory(node, node->proto().output_bytes(),
+                                    node->proto().total_output_bytes()));
   }
   if (opts.select.find(kShown[1]) != opts.select.end()) {
     info.push_back(FormatTotalExecTime(node, opts));
@@ -225,6 +249,15 @@ string TFShow::FormatLegend(const Options& opts) const {
     legends.push_back("# float_ops");
   }
   if (opts.select.find(kShown[0]) != opts.select.end()) {
+    legends.push_back("requested bytes");
+  }
+  if (opts.select.find(kShown[11]) != opts.select.end()) {
+    legends.push_back("peak bytes");
+  }
+  if (opts.select.find(kShown[12]) != opts.select.end()) {
+    legends.push_back("residual bytes");
+  }
+  if (opts.select.find(kShown[13]) != opts.select.end()) {
     legends.push_back("output bytes");
   }
   if (opts.select.find(kShown[1]) != opts.select.end()) {

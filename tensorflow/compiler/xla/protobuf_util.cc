@@ -37,34 +37,27 @@ bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
   return (serialized1 == serialized2);
 }
 
-StatusOr<string> ToJson(const tensorflow::protobuf::Message& message) {
-  string json_output;
-  tensorflow::protobuf::util::JsonPrintOptions json_options;
-  json_options.add_whitespace = true;
-  json_options.always_print_primitive_fields = true;
-  auto status = tensorflow::protobuf::util::MessageToJsonString(
-      message, &json_output, json_options);
-  if (!status.ok()) {
-    return InternalError("MessageToJsonString failed: %s",
-                         status.error_message().data());
-  }
-  return json_output;
-}
+namespace {
 
-Status DumpJsonToDirectory(const tensorflow::protobuf::Message& message,
-                           const string& directory, const string& file_name) {
-  TF_ASSIGN_OR_RETURN(const string json_output, ToJson(message));
-
-  tensorflow::Env* env = tensorflow::Env::Default();
-  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
-  string safe_file_name = file_name + ".json";
+string SanitizeFilename(const string& file_name) {
+  string safe_file_name = file_name;
   for (char& c : safe_file_name) {
     if (c == '/' || c == '\\') {
       c = '_';
     }
   }
+  return safe_file_name;
+}
+
+}  // namespace
+
+Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
+                            const string& directory, const string& file_name) {
+  tensorflow::Env* env = tensorflow::Env::Default();
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
+  string safe_file_name = SanitizeFileName(file_name) + ".pb";
   const string path = tensorflow::io::JoinPath(directory, safe_file_name);
-  return tensorflow::WriteStringToFile(env, path, json_output);
+  return tensorflow::WriteBinaryProto(env, path, message);
 }
 
 }  // namespace protobuf_util

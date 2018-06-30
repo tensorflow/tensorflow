@@ -17,148 +17,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import counter
+from tensorflow.contrib.data.python.ops import enumerate_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class RangeDatasetTest(test.TestCase):
 
-  def testStop(self):
-    stop = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.Dataset.range(stop).make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      sess.run(init_op, feed_dict={stop: 5})
-      for i in range(5):
-        self.assertEqual(i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testStartStop(self):
-    start = array_ops.placeholder(dtypes.int64, shape=[])
-    stop = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.Dataset.range(start,
-                                         stop).make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      sess.run(init_op, feed_dict={start: 2, stop: 5})
-      for i in range(2, 5):
-        self.assertEqual(i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testStartStopStep(self):
-    start = array_ops.placeholder(dtypes.int64, shape=[])
-    stop = array_ops.placeholder(dtypes.int64, shape=[])
-    step = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.Dataset.range(start, stop,
-                                         step).make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      sess.run(init_op, feed_dict={start: 2, stop: 10, step: 2})
-      for i in range(2, 10, 2):
-        self.assertEqual(i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testZeroStep(self):
-    start = array_ops.placeholder(dtypes.int64, shape=[])
-    stop = array_ops.placeholder(dtypes.int64, shape=[])
-    step = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.Dataset.range(start, stop,
-                                         step).make_initializable_iterator()
-    init_op = iterator.initializer
-
-    with self.test_session() as sess:
-      with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(init_op, feed_dict={start: 2, stop: 10, step: 0})
-
-  def testNegativeStep(self):
-    start = array_ops.placeholder(dtypes.int64, shape=[])
-    stop = array_ops.placeholder(dtypes.int64, shape=[])
-    step = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.Dataset.range(start, stop,
-                                         step).make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      sess.run(init_op, feed_dict={start: 2, stop: 10, step: -1})
-      # This for loop is a no-op but will ensure that the implementation is
-      # consistent with range if it ever changes.
-      for i in range(2, 10, -1):
-        self.assertEqual(i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testStopLessThanStart(self):
-    start = array_ops.placeholder(dtypes.int64, shape=[])
-    stop = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.Dataset.range(start,
-                                         stop).make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      sess.run(init_op, feed_dict={start: 10, stop: 2})
-      # This for loop is a no-op but will ensure that the implementation is
-      # consistent with range if it ever changes.
-      for i in range(10, 2):
-        self.assertEqual(i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testStopLessThanStartWithPositiveStep(self):
-    start = array_ops.placeholder(dtypes.int64, shape=[])
-    stop = array_ops.placeholder(dtypes.int64, shape=[])
-    step = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.Dataset.range(start, stop,
-                                         step).make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      sess.run(init_op, feed_dict={start: 10, stop: 2, step: 2})
-      # This for loop is a no-op but will ensure that the implementation is
-      # consistent with range if it ever changes.
-      for i in range(10, 2, 2):
-        self.assertEqual(i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testStopLessThanStartWithNegativeStep(self):
-    start = array_ops.placeholder(dtypes.int64, shape=[])
-    stop = array_ops.placeholder(dtypes.int64, shape=[])
-    step = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.Dataset.range(start, stop,
-                                         step).make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      sess.run(init_op, feed_dict={start: 10, stop: 2, step: -1})
-      for i in range(10, 2, -1):
-        self.assertEqual(i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
   def testEnumerateDataset(self):
     components = (["a", "b"], [1, 2], [37.0, 38])
     start = constant_op.constant(20, dtype=dtypes.int64)
 
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components).enumerate(
-        start=start).make_initializable_iterator())
+    iterator = (dataset_ops.Dataset.from_tensor_slices(components).apply(
+        enumerate_ops.enumerate_dataset(start)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -174,6 +50,27 @@ class RangeDatasetTest(test.TestCase):
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testCounter(self):
+    """Test dataset construction using `count`."""
+    iterator = (counter.Counter(start=3, step=4)
+                .make_one_shot_iterator())
+    get_next = iterator.get_next()
+    self.assertEqual([], get_next.shape.as_list())
+    self.assertEqual(dtypes.int64, get_next.dtype)
+
+    negative_iterator = (counter.Counter(start=0, step=-1)
+                         .make_one_shot_iterator())
+    negative_get_next = negative_iterator.get_next()
+
+    with self.test_session() as sess:
+      self.assertEqual(3, sess.run(get_next))
+      self.assertEqual(3 + 4, sess.run(get_next))
+      self.assertEqual(3 + 2 * 4, sess.run(get_next))
+
+      self.assertEqual(0, sess.run(negative_get_next))
+      self.assertEqual(-1, sess.run(negative_get_next))
+      self.assertEqual(-2, sess.run(negative_get_next))
 
 
 if __name__ == "__main__":

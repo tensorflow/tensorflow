@@ -23,8 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.layers.python.layers import layers
-from tensorflow.contrib.ndlstm.python import lstm1d
-from tensorflow.contrib.ndlstm.python import lstm2d
 from tensorflow.contrib.specs.python import specs_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import logging_ops
@@ -122,17 +120,6 @@ Sig = Fun(math_ops.sigmoid)
 Tanh = Fun(math_ops.tanh)
 Smax = Fun(nn_ops.softmax)
 
-# 2D LSTM
-
-Lstm2 = Fun(lstm2d.separable_lstm)
-Lstm2to1 = Fun(lstm2d.reduce_to_sequence)  # 2D to 1D
-Lstm2to0 = Fun(lstm2d.reduce_to_final)  # 2D to depth-only
-
-
-def Clstm2(n, *args, **kw):
-  """2D LSTM with 3x3 pre-convolution."""
-  return Cl(n, [3, 3]) | Lstm2(*args, **kw)
-
 
 def Dws(n):
   """Depth-wise convolution + sigmoid (used after LSTM)."""
@@ -142,13 +129,6 @@ def Dws(n):
 def Dwm(n):
   """Depth-wise convolution + softmax (used after LSTM)."""
   return Cm(n, [1, 1])
-
-
-# 1D LSTM
-
-Lstm1 = Fun(lstm1d.ndlstm_base)
-Lstm1to0 = Fun(lstm1d.sequence_to_final)  # 1D to depth-only
-Ssm = Fun(lstm1d.sequence_softmax)
 
 # Sharing of Variables
 

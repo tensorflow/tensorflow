@@ -43,10 +43,10 @@ def sparse_multiclass_hinge_loss(
 
   This is a generalization of standard (binary) hinge loss. For a given instance
   with correct label c*, the loss is given by:
-    loss = max_{c != c*} logits_c - logits_{c*} + 1.
+    $$loss = max_{c != c*} logits_c - logits_{c*} + 1.$$
   or equivalently
-    loss = max_c { logits_c - logits_{c*} + I_{c != c*} }
-  where I_{c != c*} = 1 if c != c* and 0 otherwise.
+    $$loss = max_c { logits_c - logits_{c*} + I_{c != c*} }$$
+  where \\(I_{c != c*} = 1\ \text{if}\ c != c*\\) and 0 otherwise.
 
   Args:
     labels: `Tensor` of shape [batch_size] or [batch_size, 1]. Corresponds to
@@ -73,13 +73,13 @@ def sparse_multiclass_hinge_loss(
                                                               labels)) as scope:
 
     # Check logits Tensor has valid rank.
-    logits_shape = logits.get_shape()
-    logits_rank = logits_shape.ndims
+    logits_rank = logits.get_shape().ndims
     if logits_rank != 2:
       raise ValueError(
           'logits should have rank 2 ([batch_size, num_classes]). Given rank is'
           ' {}'.format(logits_rank))
-    batch_size, num_classes = logits_shape[0].value, logits_shape[1].value
+    logits_shape = array_ops.shape(logits)
+    batch_size, num_classes = logits_shape[0], logits_shape[1]
     logits = math_ops.to_float(logits)
 
     # Check labels have valid type.

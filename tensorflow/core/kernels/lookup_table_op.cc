@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -62,8 +63,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
     mutex_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
-          table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)),
-          default_val);
+          table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
 
     return Status::OK();
@@ -78,9 +78,8 @@ class MutableHashTableOfScalars final : public LookupInterface {
       table_.clear();
     }
     for (int64 i = 0; i < key_values.size(); ++i) {
-      gtl::InsertOrUpdate(&table_,
-                          SubtleMustCopyUnlessStringOrFloat(key_values(i)),
-                          SubtleMustCopyUnlessStringOrFloat(value_values(i)));
+      gtl::InsertOrUpdate(&table_, SubtleMustCopyIfIntegral(key_values(i)),
+                          SubtleMustCopyIfIntegral(value_values(i)));
     }
     return Status::OK();
   }
@@ -172,8 +171,8 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
     mutex_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
-      ValueArray* value_vec = gtl::FindOrNull(
-          table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)));
+      ValueArray* value_vec =
+          gtl::FindOrNull(table_, SubtleMustCopyIfIntegral(key_values(i)));
       if (value_vec != nullptr) {
         for (int64 j = 0; j < value_dim; j++) {
           value_values(i, j) = value_vec->at(j);
@@ -203,8 +202,8 @@ class MutableHashTableOfTensors final : public LookupInterface {
         V value = value_values(i, j);
         value_vec.push_back(value);
       }
-      gtl::InsertOrUpdate(
-          &table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)), value_vec);
+      gtl::InsertOrUpdate(&table_, SubtleMustCopyIfIntegral(key_values(i)),
+                          value_vec);
     }
     return Status::OK();
   }
@@ -379,15 +378,14 @@ class MutableDenseHashTable final : public LookupInterface {
           for (int64 j = 0; j < value_size; ++j) {
             // TODO(andreasst): check if we can get rid of SubtleMustCopy
             // here and elsewhere in this file.
-            value_matrix(i, j) = SubtleMustCopyUnlessStringOrFloat(
-                value_buckets_matrix(bucket_index, j));
+            value_matrix(i, j) =
+                SubtleMustCopyIfIntegral(value_buckets_matrix(bucket_index, j));
           }
           break;
         }
         if (IsEqualKey(key_buckets_matrix, bucket_index, empty_key_matrix, 0)) {
           for (int64 j = 0; j < value_size; ++j) {
-            value_matrix(i, j) =
-                SubtleMustCopyUnlessStringOrFloat(default_flat(j));
+            value_matrix(i, j) = SubtleMustCopyIfIntegral(default_flat(j));
           }
           break;
         }
@@ -475,9 +473,7 @@ class MutableDenseHashTable final : public LookupInterface {
     // of all keys, removing the dimensions particular to each key and then
     // appending the shape of a single value.
     TensorShape expected_value_shape = keys.shape();
-    for (int i = 0; i < key_shape.dims(); ++i) {
-      expected_value_shape.RemoveDim(expected_value_shape.dims() - 1);
-    }
+    expected_value_shape.RemoveLastDims(key_shape.dims());
     expected_value_shape.AppendShape(value_shape);
     if (values.shape() != expected_value_shape) {
       return errors::InvalidArgument(
@@ -533,7 +529,7 @@ class MutableDenseHashTable final : public LookupInterface {
         if (IsEqualKey(key_buckets_matrix, bucket_index, key_matrix, i)) {
           for (int64 j = 0; j < value_size; ++j) {
             value_buckets_matrix(bucket_index, j) =
-                SubtleMustCopyUnlessStringOrFloat(value_matrix(i, j));
+                SubtleMustCopyIfIntegral(value_matrix(i, j));
           }
           break;
         }
@@ -541,11 +537,11 @@ class MutableDenseHashTable final : public LookupInterface {
           ++num_entries_;
           for (int64 j = 0; j < key_size; ++j) {
             key_buckets_matrix(bucket_index, j) =
-                SubtleMustCopyUnlessStringOrFloat(key_matrix(i, j));
+                SubtleMustCopyIfIntegral(key_matrix(i, j));
           }
           for (int64 j = 0; j < value_size; ++j) {
             value_buckets_matrix(bucket_index, j) =
-                SubtleMustCopyUnlessStringOrFloat(value_matrix(i, j));
+                SubtleMustCopyIfIntegral(value_matrix(i, j));
           }
           break;
         }
@@ -671,9 +667,7 @@ class LookupTableFindOp : public OpKernel {
     OP_REQUIRES_OK(ctx, table->CheckFindArguments(key, default_value));
 
     TensorShape output_shape = key.shape();
-    for (int i = table->key_shape().dims(); i > 0; --i) {
-      output_shape.RemoveDim(output_shape.dims() - 1);
-    }
+    output_shape.RemoveLastDims(table->key_shape().dims());
     output_shape.AppendShape(table->value_shape());
     Tensor* out;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("values", output_shape, &out));
@@ -713,8 +707,8 @@ class LookupTableInsertOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, table->Insert(ctx, keys, values));
     if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
-                                                    memory_used_before);
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
     }
   }
 };
@@ -790,8 +784,8 @@ class LookupTableImportOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, table->ImportValues(ctx, keys, values));
     if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
-                                                    memory_used_before);
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
     }
   }
 };
@@ -827,6 +821,7 @@ REGISTER_KERNEL(int64, int64);
 REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(string, string);
 REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int32, int32);
 
 #undef REGISTER_KERNEL
 
@@ -852,6 +847,7 @@ REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
 REGISTER_KERNEL(string, bool);
 REGISTER_KERNEL(int64, float);
+REGISTER_KERNEL(int64, Variant);
 
 #undef REGISTER_KERNEL
 
@@ -902,6 +898,7 @@ REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, bool);
 REGISTER_KERNEL(int64, bool);
+REGISTER_KERNEL(int64, Variant);
 
 #undef REGISTER_KERNEL
 

@@ -18,10 +18,63 @@ limitations under the License.
 %{
 
 #include "tensorflow/c/python_api.h"
-#include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/python/client/tf_session_helper.h"
+
+// Helper function to convert a Python list of Tensors to a C++ vector of
+// TF_Outputs.
+//
+// Returns true if successful. Otherwise, returns false and sets error_msg.
+bool PyTensorListToVector(PyObject* py_tensor_list,
+                          std::vector<TF_Output>* vec,
+                          string* error_msg) {
+  if (!PyList_Check(py_tensor_list)) {
+    *error_msg = "expected Python list.";
+    return false;
+  }
+  size_t size = PyList_Size(py_tensor_list);
+  for (int i = 0; i < size; ++i) {
+    PyObject* item = PyList_GetItem(py_tensor_list, i);
+    TF_Output* input_ptr;
+    if (!SWIG_IsOK(SWIG_ConvertPtr(item, reinterpret_cast<void**>(&input_ptr),
+                                   SWIGTYPE_p_TF_Output, 0))) {
+      *error_msg = "expected Python list of wrapped TF_Output objects. "
+          "Found python list of something else.";
+      return false;
+    }
+    vec->push_back(*input_ptr);
+  }
+  return true;
+}
+
+// Helper function to convert a TF_Output to a wrapped TF_Output Python object.
+PyObject* CreateWrappedTFOutput(TF_Output tf_output) {
+  // We used heap-allocated pointers in the Python runtime (this is what SWIG
+  // generates by default for functions returning TF_Output).
+  TF_Output* tf_output_ptr = new TF_Output(tf_output);
+  // Use SWIG_POINTER_OWN so the TF_Output* is deleted by Python.
+  return SWIG_NewPointerObj(tf_output_ptr, SWIGTYPE_p_TF_Output,
+                            SWIG_POINTER_OWN);
+}
+
+// Helper function to convert a TF_Operation to a wrapped TF_Operation Python
+// object.
+PyObject* CreateWrappedTFOperation(TF_Operation* tf_operation) {
+  // No flags since operation is owned by TF_Graph.
+  return SWIG_NewPointerObj(tf_operation, SWIGTYPE_p_TF_Operation, 0);
+}
+
+// Helper function to convert a Python list of ints to a C++ vector of int64s
+void PyInt64ListToVector(PyObject* py_int_seq, std::vector<int64_t>* vec) {
+  int size = PySequence_Fast_GET_SIZE(py_int_seq);
+  for (int i = 0; i < size; ++i) {
+    PyObject* item = PySequence_Fast_GET_ITEM(py_int_seq, i);
+    vec->push_back(PyLong_AsLongLong(item));
+  }
+}
 
 %}
 
@@ -44,6 +97,12 @@ tensorflow::ImportNumpy();
 // Compiler
 %constant const char* __compiler_version__ = tf_compiler_version();
 
+// _GLIBCXX_USE_CXX11_ABI flag value
+%constant const int __cxx11_abi_flag__ = tf_cxx11_abi_flag();
+
+// Flag indicating whether the build is monolithic
+%constant const int __monolithic_build__ = tf_monolithic_build();
+
 // Release the Python GIL for the duration of most methods.
 %exception {
   Py_BEGIN_ALLOW_THREADS;
@@ -55,7 +114,7 @@ tensorflow::ImportNumpy();
 // const char*.
 %typemap(in) (const char* target) {
   $1 = PyBytes_AsString($input);
-  if (!$1) {
+   if (!$1) {
     // Python has raised an error.
     SWIG_fail;
   }
@@ -74,6 +133,11 @@ tensorflow::ImportNumpy();
   $result = PyUnicode_FromString($1);
 }
 
+// Convert TF_DeviceListMemoryBytes and TF_Dim int64_t output to Python integers
+%typemap(out) int64_t {
+  $result = PyLong_FromLongLong($1);
+}
+
 // We use TF_OperationGetControlInputs_wrapper instead of
 // TF_OperationGetControlInputs
 %ignore TF_OperationGetControlInputs;
@@ -89,31 +153,112 @@ tensorflow::ImportNumpy();
   }
 
   for (size_t i = 0; i < $1.size(); ++i) {
-    PyList_SET_ITEM($result, i, SWIG_NewPointerObj(
-                            $1[i], SWIGTYPE_p_TF_Operation, 0));
+    PyList_SET_ITEM($result, i, CreateWrappedTFOperation($1[i]));
   }
 }
 
+// We use TF_OperationGetControlOutputs_wrapper instead of
+// TF_OperationGetControlOutputs
+%ignore TF_OperationGetControlOutputs;
+%unignore TF_OperationGetControlOutputs_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_OperationGetControlOutputs_wrapper;
+
+// Build a Python list of TF_Operation* and return it.
+%typemap(out) std::vector<TF_Operation*> tensorflow::TF_OperationGetControlOutputs_wrapper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOperation($1[i]));
+  }
+}
+
+%ignore TF_OperationOutputConsumers;
+%unignore TF_OperationOutputConsumers_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_OperationGetOutputConsumers_wrapper;
+
+// Build a Python list of unicode strings and return it. (Operation names are
+// always represented as unicode.)
+%typemap(out) std::vector<const char*>
+tensorflow::TF_OperationOutputConsumers_wrapper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, PyUnicode_FromString($1[i]));
+  }
+}
+
+%unignore GetOperationInputs;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception GetOperationInputs;
+
+// Build a Python list of TF_Outputs and return it.
+// TODO(skyewm): is there some way to generalize this pattern? Maybe a macro?
+%typemap(out) std::vector<TF_Output> tensorflow::GetOperationInputs {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>>
+  const std::vector<TF_Output>& tf_outputs = $1;
+  for (size_t i = 0; i < tf_outputs.size(); ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOutput(tf_outputs[i]));
+  }
+}
+
+%ignore TF_ImportGraphDefResultsMissingUnusedInputMappings;
+%unignore TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper;
+
+%typemap(out) std::vector<string>
+TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+  for (size_t i = 0; i < $1.size(); ++i) {
+    const string& input_str = $1[i];
+    PyList_SET_ITEM($result, i, PyBytes_FromStringAndSize(input_str.data(),
+                                                          input_str.size()));
+  }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
 
-// The wrapper also takes a list of fetch and target names.  In Python this is
-// represented as a list of strings.
+// Converts a python list of strings to NameVector.
+// Has multiple users including feeds/fetches names and function output names
 %typemap(in) const tensorflow::NameVector& (
     tensorflow::NameVector temp,
     tensorflow::Safe_PyObjectPtr temp_string_list(
         tensorflow::make_safe(static_cast<PyObject*>(nullptr)))) {
   if (!PyList_Check($input)) {
-    SWIG_fail;
+    SWIG_exception_fail(
+        SWIG_TypeError,
+        tensorflow::strings::Printf(
+            "Expected a python list for conversion "
+            "to tensorflow::NameVector but got %s",
+            Py_TYPE($input)->tp_name).c_str());
   }
 
   Py_ssize_t len = PyList_Size($input);
 
   temp_string_list = tensorflow::make_safe(PyList_New(len));
   if (!temp_string_list) {
-    SWIG_fail;
+    SWIG_exception_fail(
+        SWIG_MemoryError,
+        tensorflow::strings::Printf("Failed to create a list of size %zd",
+                                    len).c_str());
   }
 
   for (Py_ssize_t i = 0; i < len; ++i) {
@@ -126,15 +271,17 @@ tensorflow::ImportNumpy();
     PyList_SET_ITEM(temp_string_list.get(), i, elem);
     Py_INCREF(elem);
 
-    char* fetch_name = PyBytes_AsString(elem);
-    if (!fetch_name) {
-      PyErr_SetString(PyExc_TypeError,
-                      "a fetch or target name was not a string");
-      SWIG_fail;
+    char* string_elem = PyBytes_AsString(elem);
+    if (!string_elem) {
+      SWIG_exception_fail(
+          SWIG_TypeError,
+          tensorflow::strings::Printf(
+              "Element %zd was of type %s instead of a string",
+              i, Py_TYPE(elem)->tp_name).c_str());
     }
 
     // TODO(mrry): Avoid copying the fetch name in, if this impacts performance.
-    temp.push_back(fetch_name);
+    temp.push_back(string_elem);
   }
   $1 = &temp;
 }
@@ -160,7 +307,10 @@ tensorflow::ImportNumpy();
 
   $result = PyList_New($1->size());
   if (!$result) {
-    SWIG_fail;
+    SWIG_exception_fail(
+        SWIG_MemoryError,
+        tensorflow::strings::Printf("Failed to create a list of size %zd",
+                                    $1->size()).c_str());
   }
 
   for (size_t i = 0; i < $1->size(); ++i) {
@@ -221,34 +371,6 @@ tensorflow::ImportNumpy();
       reinterpret_cast<const char*>($1.data), $1.length);
 }
 
-%inline %{
-// Helper function to convert a Python list of Tensors to a C++ vector of
-// TF_Outputs.
-//
-// Returns true if successful. Otherwise, returns false and sets error_msg.
-bool PyTensorListToVector(PyObject* py_tensor_list,
-                          std::vector<TF_Output>* vec,
-                          string* error_msg) {
-  if (!PyList_Check(py_tensor_list)) {
-    *error_msg = "expected Python list.";
-    return false;
-  }
-  size_t size = PyList_Size(py_tensor_list);
-  for (int i = 0; i < size; ++i) {
-    PyObject* item = PyList_GetItem(py_tensor_list, i);
-    TF_Output* input_ptr;
-    if (!SWIG_IsOK(SWIG_ConvertPtr(item, reinterpret_cast<void**>(&input_ptr),
-                                   SWIGTYPE_p_TF_Output, 0))) {
-      *error_msg = "expected Python list of wrapped TF_Output objects. "
-          "Found python list of something else.";
-      return false;
-    }
-    vec->push_back(*input_ptr);
-  }
-  return true;
-}
-%}
-
 // Converts input Python list of wrapped TF_Outputs into a single array
 %typemap(in) (const TF_Output* inputs, int num_inputs)
     (std::vector<TF_Output> inputs) {
@@ -258,6 +380,86 @@ bool PyTensorListToVector(PyObject* py_tensor_list,
   }
   $1 = inputs.data();
   $2 = inputs.size();
+}
+
+// Typemaps for TF_ImportGraphDefResultsReturnOutputs
+%typemap(in, numinputs=0) (int* num_outputs, TF_Output** outputs)
+     (int num_outputs, TF_Output* outputs) {
+  $1 = &num_outputs;
+  $2 = &outputs;
+}
+
+%typemap(argout) (int* num_outputs, TF_Output** outputs) {
+  $result = PyList_New(*$1);
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+  int num_outputs = *$1;
+  TF_Output* outputs = *$2;
+  for (int i = 0; i < num_outputs; ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOutput(outputs[i]));
+  }
+}
+
+// Typemaps for TF_ImportGraphDefResultsReturnOperations
+%typemap(in, numinputs=0) (int* num_opers, TF_Operation*** opers)
+     (int num_opers, TF_Operation** opers) {
+  $1 = &num_opers;
+  $2 = &opers;
+}
+
+%typemap(argout) (int* num_opers, TF_Operation*** opers) {
+  $result = PyList_New(*$1);
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+  int num_opers = *$1;
+  TF_Operation** opers = *$2;
+  for (int i = 0; i < num_opers; ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOperation(opers[i]));
+  }
+}
+
+// Typemaps for TF_GraphNextOperation().
+%typemap(in) size_t* pos (size_t pos) {
+  pos = PyLong_AsUnsignedLong($input);
+  $1 = &pos;
+}
+
+// Returns a (TF_Operation*, int pos) tuple.
+%typemap(argout) size_t* pos {
+  PyObject* new_result = PyTuple_New(2);
+  if (!new_result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create tuple");
+  }
+  // Steals $result reference
+  PyTuple_SET_ITEM(new_result, 0, $result);
+  PyTuple_SET_ITEM(new_result, 1, PyLong_FromSize_t(*$1));
+  $result = new_result;
+}
+
+%typemap(in, numinputs=0) int64_t* out_handle (int64_t out_handle) {
+  $1 = &out_handle;
+}
+
+%typemap(argout) int64_t* out_handle {
+  $result = PyLong_FromLongLong(*$1);
+}
+
+%typemap(in) int64_t handle {
+  if (!PyLong_Check($input)) {
+    SWIG_exception_fail(
+        SWIG_TypeError,
+        tensorflow::strings::Printf(
+            "Expected a python long for conversion to callable handle but got %s",
+            Py_TYPE($input)->tp_name).c_str());
+  }
+  $1 = PyLong_AsLongLong($input);
+}
+
+// Override default py3 behavior of attempting to encode into Unicode.
+%typemap(out) std::string tensorflow::GetResourceHandleShapeAndType {
+  $result = PyBytes_FromStringAndSize($1.data(), $1.size());
 }
 
 // TODO(skyewm): SWIG emits a warning for the const char* in TF_WhileParams,
@@ -293,6 +495,17 @@ bool PyTensorListToVector(PyObject* py_tensor_list,
 // See comment for "%noexception TF_SessionRun_wrapper;"
 %noexception TF_SessionPRun_wrapper;
 
+%unignore TF_DeprecatedSessionMakeCallable;
+%unignore TF_SessionMakeCallable;
+%unignore TF_DeprecatedSessionRunCallable;
+%unignore TF_SessionRunCallable;
+%unignore TF_DeprecatedSessionReleaseCallable;
+%unignore TF_SessionReleaseCallable;
+
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_DeprecatedSessionRunCallable;
+%noexception TF_SessionRunCallable;
+
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
@@ -310,9 +523,8 @@ bool PyTensorListToVector(PyObject* py_tensor_list,
       _TF_SetTarget(opts, target)
     if config is not None:
       from tensorflow.python.framework import errors
-      with errors.raise_exception_on_not_ok_status() as status:
-        config_str = config.SerializeToString()
-        _TF_SetConfig(opts, config_str, status)
+      config_str = config.SerializeToString()
+      _TF_SetConfig(opts, config_str)
     return opts
 %}
 
@@ -326,6 +538,7 @@ bool PyTensorListToVector(PyObject* py_tensor_list,
 %unignore tensorflow;
 %unignore TF_Run;
 %unignore EqualGraphDefWrapper;
+%unignore EqualAttrValueWrapper;
 
 // Include the wrapper for TF_PRunSetup from tf_session_helper.h.
 
@@ -358,6 +571,212 @@ def TF_Reset(target, containers=None, config=None):
   finally:
     TF_DeleteSessionOptions(opts)
 %}
+
+// We use TF_GraphToFunction_wrapper instead of TF_GraphToFunction
+%ignore TF_GraphToFunction;
+// TF_GraphToFunction_wrapper does not use any Python methods and
+// does not require GIL to be held.
+%unignore TF_GraphToFunction_wrapper;
+
+// $input is a Python list of wrapped TF_Operations
+%typemap(in) (const std::vector<TF_Operation*>* opers)
+    (std::vector<TF_Operation*> opers) {
+  if ($input != Py_None) {
+    if (!PyList_Check($input)) {
+      SWIG_exception_fail(SWIG_TypeError, "$symname: expected list");
+    }
+    size_t size = PyList_Size($input);
+    for (int i = 0; i < size; ++i) {
+      PyObject* item = PyList_GetItem($input, i);
+      TF_Operation* oper_ptr;
+      SWIG_ConvertPtr(item, reinterpret_cast<void**>(&oper_ptr),
+                      $descriptor(TF_Operation*), 0);
+      opers.push_back(oper_ptr);
+    }
+    $1 = &opers;
+  } else {
+    $1 = nullptr;
+  }
+}
+
+// Typemaps for TF_GraphGetTensorShapeHelper.
+
+// Convert from C++ integer vector to Python list of ints.
+%typemap(out) tensorflow::gtl::InlinedVector<int64_t, 6>
+     tensorflow::TF_GraphGetTensorShapeHelper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, PyLong_FromLongLong($1[i]));
+  }
+}
+
+%typemap(in, numinputs=0) bool* unknown_shape (bool temp) {
+  $1=&temp;
+}
+
+// Returns a (list(int), bool) tuple.
+%typemap(argout) bool* unknown_shape {
+  PyObject* new_result = PyTuple_New(2);
+  if (!new_result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create tuple");
+  }
+  // Steals $result reference
+  PyTuple_SET_ITEM(new_result, 0, $result);
+  PyTuple_SET_ITEM(new_result, 1, PyBool_FromLong(*$1));
+  $result = new_result;
+}
+
+%unignore tensorflow;
+%unignore TF_GraphGetTensorShapeHelper;
+%ignore TF_GraphGetTensorShape;
+
+// We use TF_GraphSetTensorShape_wrapper instead of
+// TF_GraphSetTensorShape
+%ignore TF_GraphSetTensorShape;
+%unignore tensorflow;
+%unignore TF_GraphSetTensorShape_wrapper;
+
+// $input is a Python list of ints to a vector<int> for TF_GraphSetTensorShape_wrapper
+%typemap(in) (const std::vector<int64_t>& dims)
+    (std::vector<int64_t> dims_local){
+  if ($input != Py_None) {
+    PyObject* py_int_seq = PySequence_Fast($input, tensorflow::strings::Printf(
+          "$symname: expected list but got %s ",
+          Py_TYPE($input)->tp_name).c_str());
+    if (py_int_seq == nullptr) {
+      SWIG_exception_fail(SWIG_RuntimeError, tensorflow::strings::Printf(
+          "$symname: PySequence_Fast returned NULL.").c_str());
+    }
+    PyInt64ListToVector(py_int_seq, &dims_local);
+    Py_DECREF(py_int_seq);
+    $1 = &dims_local;
+  } else {
+    $1 = nullptr;
+  }
+}
+
+// We use TF_GraphGetTensorShape_wrapper instead of
+// TF_GraphGetTensorShape
+%ignore TF_GraphGetTensorShape;
+%unignore tensorflow;
+%unignore TF_GraphGetTensorShape_wrapper;
+
+// Build a Python list of ints and return it.
+%typemap(out) std::vector<int64_t> tensorflow::TF_GraphGetTensorShape_wrapper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, PyLong_FromLongLong($1[i]));
+  }
+}
+
+// We use TF_GraphSetOutputHandleShapesAndTypes_wrapper instead of
+// TF_GraphSetOutputHandleShapesAndTypes
+%ignore TF_GraphSetOutputHandleShapesAndTypes;
+%unignore tensorflow;
+%unignore TF_GraphSetOutputHandleShapesAndTypes_wrapper;
+
+// The space between the double angle brackets below looks extraneous, but
+// our version of SWIG cannot parse ">>".
+%typemap(in) (const std::vector<std::vector<int64_t> >& shapes)
+    (std::vector<std::vector<int64_t> > shapes_local){
+  PyObject* seq = PySequence_Fast($input, tensorflow::strings::Printf(
+        "$symname: expected list but got %s ",
+        Py_TYPE($input)->tp_name).c_str());
+  if (seq == nullptr) {
+    SWIG_exception_fail(SWIG_RuntimeError, tensorflow::strings::Printf(
+        "$symname: PySequence_Fast returned NULL.").c_str());
+  }
+
+  int size = PySequence_Fast_GET_SIZE(seq);
+  if (size == 0) {
+    SWIG_exception_fail(SWIG_ValueError, tensorflow::strings::Printf(
+        "$symname: shapes list must be non-empty").c_str());
+  }
+
+  for (int i = 0; i < size; ++i) {
+    PyObject* item = PySequence_Fast_GET_ITEM(seq, i);
+    std::vector<int64_t> dims;
+    if (item != Py_None) {
+      PyObject* py_int_seq = PySequence_Fast(item, tensorflow::strings::Printf(
+            "$symname: expected list but got %s ",
+            Py_TYPE($input)->tp_name).c_str());
+      if (py_int_seq == nullptr) {
+        SWIG_exception_fail(SWIG_RuntimeError, tensorflow::strings::Printf(
+            "$symname: PySequence_Fast returned NULL.").c_str());
+      }
+      PyInt64ListToVector(py_int_seq, &dims);
+      Py_DECREF(py_int_seq);
+    }
+    shapes_local.push_back(dims);
+  }
+
+  Py_DECREF(seq);
+  $1 = &shapes_local;
+}
+
+%typemap(in) (const std::vector<int>& ranks)
+    (std::vector<int> ranks_local){
+  PyObject* seq = PySequence_Fast($input, tensorflow::strings::Printf(
+        "$symname: expected list but got %s ",
+        Py_TYPE($input)->tp_name).c_str());
+  if (seq == nullptr) {
+    SWIG_exception_fail(SWIG_RuntimeError, tensorflow::strings::Printf(
+        "$symname: PySequence_Fast returned NULL.").c_str());
+  }
+
+  int size = PySequence_Fast_GET_SIZE(seq);
+  if (size == 0) {
+    SWIG_exception_fail(SWIG_ValueError, tensorflow::strings::Printf(
+        "$symname: shapes list must be non-empty").c_str());
+  }
+
+  for (int i = 0; i < size; ++i) {
+    PyObject* item = PySequence_Fast_GET_ITEM(seq, i);
+    ranks_local.push_back((int) PyInt_AsLong(item));
+  }
+
+  Py_DECREF(seq);
+  $1 = &ranks_local;
+}
+
+%typemap(in) (const std::vector<TF_DataType>& types)
+    (std::vector<TF_DataType> types_local){
+  PyObject* seq = PySequence_Fast($input, tensorflow::strings::Printf(
+        "$symname: expected list but got %s ",
+        Py_TYPE($input)->tp_name).c_str());
+  if (seq == nullptr) {
+    SWIG_exception_fail(SWIG_RuntimeError, tensorflow::strings::Printf(
+        "$symname: PySequence_Fast returned NULL.").c_str());
+  }
+
+  int size = PySequence_Fast_GET_SIZE(seq);
+  if (size == 0) {
+    SWIG_exception_fail(SWIG_ValueError, tensorflow::strings::Printf(
+        "$symname: shapes list must be non-empty").c_str());
+  }
+
+  for (int i = 0; i < size; ++i) {
+    PyObject* item = PySequence_Fast_GET_ITEM(seq, i);
+    types_local.push_back((TF_DataType) PyInt_AsLong(item));
+  }
+
+  Py_DECREF(seq);
+  $1 = &types_local;
+}
+
+%unignore SetRequireShapeInferenceFns;
+%unignore TF_TryEvaluateConstant_wrapper;
+%noexception TF_TryEvaluateConstant_wrapper;
+%unignore ExtendSession;
+%unignore ResourceHandleShapeAndType;
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

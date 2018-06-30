@@ -17,7 +17,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -26,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.deprecation import deprecated
 
 
 __all__ = [
@@ -74,7 +77,10 @@ def reduce_sum_n(tensors, name=None):
       return tensors[0]
     return math_ops.add_n(tensors, name=name_scope)
 
-
+@deprecated(
+    None, "Please switch to remove_squeezable_dimensions from "
+    "tf.confusion_matrix. Note that the order of the inputs and outputs of "
+    "labels and predictions have also been switched.")
 def remove_squeezable_dimensions(predictions, labels, name=None):
   """Squeeze last dim if ranks of `predictions` and `labels` differ by 1.
 
@@ -192,7 +198,7 @@ def with_same_shape(expected_tensor, tensor):
     expected_tensor: Tensor with expected shape.
     tensor: Tensor of actual values.
   Returns:
-    Tuple of (actual_tensor, label_tensor), possibly with assert ops added.
+    The original tensor argument, possibly with assert ops added.
   """
   with ops.name_scope('%s/' % tensor.op.name, values=[expected_tensor, tensor]):
     tensor_shape = expected_tensor.get_shape()

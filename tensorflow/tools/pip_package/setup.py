@@ -12,6 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""TensorFlow is an open source machine learning framework for everyone.
+
+TensorFlow is an open source software library for high performance numerical
+computation. Its flexible architecture allows easy deployment of computation
+across a variety of platforms (CPUs, GPUs, TPUs), and from desktops to clusters
+of servers to mobile and edge devices.
+
+Originally developed by researchers and engineers from the Google Brain team
+within Google's AI organization, it comes with strong support for machine
+learning and deep learning and the flexible numerical computation core is used
+across many other scientific domains.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,21 +34,36 @@ import os
 import re
 import sys
 
-from setuptools import find_packages, setup, Command
+from setuptools import Command
+from setuptools import find_packages
+from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
+
+DOCLINES = __doc__.split('\n')
 
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.3.0-rc1'
+_VERSION = '1.9.0-rc0'
 
 REQUIRED_PACKAGES = [
-    'numpy >= 1.11.0',
+    'absl-py >= 0.1.6',
+    'astor >= 0.6.0',
+    'gast >= 0.2.0',
+    'numpy >= 1.13.3',
     'six >= 1.10.0',
-    'protobuf >= 3.3.0',
-    'tensorflow-tensorboard >= 0.1.0, < 0.2.0',
+    'protobuf >= 3.6.0',
+    'setuptools <= 39.1.0',
+    'tensorboard >= 1.8.0, < 1.9.0',
+    'termcolor >= 1.1.0',
 ]
+
+if sys.byteorder == 'little':
+  # grpcio does not build correctly on big-endian machines due to lack of
+  # BoringSSL support.
+  # See https://github.com/tensorflow/tensorflow/issues/17882.
+  REQUIRED_PACKAGES.append('grpcio >= 1.8.6')
 
 project_name = 'tensorflow'
 if '--project_name' in sys.argv:
@@ -53,26 +80,44 @@ else:
   # mock comes with unittest.mock for python3, need to install for python2
   REQUIRED_PACKAGES.append('mock >= 2.0.0')
 
-# weakref.finalize was introduced in Python 3.4
+# tf-nightly should depend on tb-nightly
+if 'tf_nightly' in project_name:
+  for i, pkg in enumerate(REQUIRED_PACKAGES):
+    if 'tensorboard' in pkg:
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.10.0a0, < 1.11.0a0'
+      break
+
+# weakref.finalize and enum were introduced in Python 3.4
 if sys.version_info < (3, 4):
   REQUIRED_PACKAGES.append('backports.weakref >= 1.0rc1')
+  REQUIRED_PACKAGES.append('enum34 >= 1.1.6')
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
+    'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
+    'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
+    'tflite_convert = tensorflow.contrib.lite.python.tflite_convert:main',
+    'toco = tensorflow.contrib.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the
     # TensorBoard command, pip will inappropriately remove it during install,
     # even though the command is not removed, just moved to a different wheel.
-    'tensorboard = tensorboard.main:main',
+    'tensorboard = tensorboard.main:run_main',
 ]
 # pylint: enable=line-too-long
+
+# remove the tensorboard console script if building tf_nightly
+if 'tf_nightly' in project_name:
+  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:run_main')
 
 TEST_PACKAGES = [
     'scipy >= 0.15.1',
 ]
 
+
 class BinaryDistribution(Distribution):
+
   def has_ext_modules(self):
     return True
 
@@ -125,8 +170,9 @@ class InstallHeaders(Command):
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
-    if 'external/eigen_archive/' in install_dir:
-      extra_dir = install_dir.replace('external/eigen_archive', '')
+    if 'tensorflow/include/external/eigen_archive/' in install_dir:
+      extra_dir = install_dir.replace(
+          'tensorflow/include/external/eigen_archive', '')
       if not os.path.exists(extra_dir):
         self.mkpath(extra_dir)
       self.copy_file(header, extra_dir)
@@ -154,13 +200,21 @@ class InstallHeaders(Command):
 
 def find_files(pattern, root):
   """Return all the files matching pattern below root dir."""
-  for path, _, files in os.walk(root):
+  for dirpath, _, files in os.walk(root):
     for filename in fnmatch.filter(files, pattern):
-      yield os.path.join(path, filename)
+      yield os.path.join(dirpath, filename)
 
 
-matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
-matches += ['../' + x for x in find_files('*', '_solib_k8') if '.py' not in x]
+so_lib_paths = [
+    i for i in os.listdir('.')
+    if os.path.isdir(i) and fnmatch.fnmatch(i, '_solib_*')
+]
+
+matches = []
+for path in so_lib_paths:
+  matches.extend(
+      ['../' + x for x in find_files('*', path) if '.py' not in x]
+  )
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
@@ -171,15 +225,15 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'tensorflow/stream_executor')) +
            list(find_files('*.h', 'google/protobuf_archive/src')) +
            list(find_files('*', 'third_party/eigen3')) +
-           list(find_files('*', 'external/eigen_archive')))
-
+           list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,
     version=_VERSION.replace('-', ''),
-    description='TensorFlow helps the tensors flow',
-    long_description='',
-    url='http://tensorflow.org/',
+    description=DOCLINES[0],
+    long_description='\n'.join(DOCLINES[2:]),
+    url='https://www.tensorflow.org/',
+    download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
     author_email='opensource@google.com',
     # Contained modules and scripts.
@@ -205,15 +259,24 @@ setup(
     },
     # PyPI package information.
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
+        'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
-        'Topic :: Software Development :: Libraries :: Python Modules',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Software Development',
         'Topic :: Software Development :: Libraries',
+        'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     license='Apache 2.0',
-    keywords='tensorflow tensor machine learning',)
+    keywords='tensorflow tensor machine learning',
+)

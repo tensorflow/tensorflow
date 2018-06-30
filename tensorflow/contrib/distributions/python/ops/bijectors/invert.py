@@ -18,12 +18,95 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.contrib.distributions.python.ops.bijectors.invert_impl import *
-# pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
-_allowed_symbols = ["Invert"]
+__all__ = [
+    "Invert",
+]
 
-remove_undocumented(__name__, _allowed_symbols)
+
+class Invert(bijector.Bijector):
+  """Bijector which inverts another Bijector.
+
+  Example Use: [ExpGammaDistribution (see Background & Context)](
+  https://reference.wolfram.com/language/ref/ExpGammaDistribution.html)
+  models `Y=log(X)` where `X ~ Gamma`.
+
+  ```python
+  exp_gamma_distribution = TransformedDistribution(
+    distribution=Gamma(concentration=1., rate=2.),
+    bijector=bijector.Invert(bijector.Exp())
+  ```
+
+  """
+
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
+  def __init__(self, bijector, validate_args=False, name=None):
+    """Creates a `Bijector` which swaps the meaning of `inverse` and `forward`.
+
+    Note: An inverted bijector's `inverse_log_det_jacobian` is often more
+    efficient if the base bijector implements `_forward_log_det_jacobian`. If
+    `_forward_log_det_jacobian` is not implemented then the following code is
+    used:
+
+    ```python
+    y = self.inverse(x, **kwargs)
+    return -self.inverse_log_det_jacobian(y, **kwargs)
+    ```
+
+    Args:
+      bijector: Bijector instance.
+      validate_args: Python `bool` indicating whether arguments should be
+        checked for correctness.
+      name: Python `str`, name given to ops managed by this object.
+    """
+
+    if not bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError(
+          "Invert is not implemented for non-injective bijectors.")
+
+    self._bijector = bijector
+    super(Invert, self).__init__(
+        graph_parents=bijector.graph_parents,
+        forward_min_event_ndims=bijector.inverse_min_event_ndims,
+        inverse_min_event_ndims=bijector.forward_min_event_ndims,
+        is_constant_jacobian=bijector.is_constant_jacobian,
+        validate_args=validate_args,
+        dtype=bijector.dtype,
+        name=name or "_".join(["invert", bijector.name]))
+
+  def _forward_event_shape(self, input_shape):
+    return self.bijector._inverse_event_shape(input_shape)  # pylint: disable=protected-access
+
+  def _forward_event_shape_tensor(self, input_shape):
+    return self.bijector._inverse_event_shape_tensor(input_shape)  # pylint: disable=protected-access
+
+  def _inverse_event_shape(self, output_shape):
+    return self.bijector._forward_event_shape(output_shape)  # pylint: disable=protected-access
+
+  def _inverse_event_shape_tensor(self, output_shape):
+    return self.bijector._forward_event_shape_tensor(output_shape)  # pylint: disable=protected-access
+
+  @property
+  def bijector(self):
+    return self._bijector
+
+  def _forward(self, x, **kwargs):
+    return self.bijector._inverse(x, **kwargs)  # pylint: disable=protected-access
+
+  def _inverse(self, y, **kwargs):
+    return self.bijector._forward(y, **kwargs)  # pylint: disable=protected-access
+
+  def _inverse_log_det_jacobian(self, y, **kwargs):
+    return self.bijector._forward_log_det_jacobian(y, **kwargs)  # pylint: disable=protected-access
+
+  def _forward_log_det_jacobian(self, x, **kwargs):
+    return self.bijector._inverse_log_det_jacobian(x, **kwargs)  # pylint: disable=protected-access

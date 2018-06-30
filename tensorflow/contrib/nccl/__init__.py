@@ -18,6 +18,7 @@
 @@all_min
 @@all_prod
 @@all_sum
+@@reduce_sum
 @@broadcast
 
 """
@@ -31,6 +32,7 @@ from tensorflow.contrib.nccl.python.ops.nccl_ops import all_min
 from tensorflow.contrib.nccl.python.ops.nccl_ops import all_prod
 from tensorflow.contrib.nccl.python.ops.nccl_ops import all_sum
 from tensorflow.contrib.nccl.python.ops.nccl_ops import broadcast
+from tensorflow.contrib.nccl.python.ops.nccl_ops import reduce_sum
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__)

@@ -1,0 +1,32 @@
+op {
+  graph_op_name: "UnravelIndex"
+  in_arg {
+    name: "indices"
+    description: <<END
+An 0-D or 1-D `int` Tensor whose elements are indices into the
+flattened version of an array of dimensions dims.
+END
+  }
+  in_arg {
+    name: "dims"
+    description: <<END
+An 1-D `int` Tensor. The shape of the array to use for unraveling
+indices.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+An 2-D (or 1-D if indices is 0-D) tensor where each row has the
+same shape as the indices array.
+END
+  }
+  summary: "Converts a flat index or array of flat indices into a tuple of"
+  description: <<END
+coordinate arrays.
+
+@compatibility(numpy)
+Equivalent to np.unravel_index
+@end_compatibility
+END
+}

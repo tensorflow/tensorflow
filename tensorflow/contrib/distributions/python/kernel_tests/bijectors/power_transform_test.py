@@ -32,8 +32,7 @@ class PowerTransformBijectorTest(test.TestCase):
   def testBijector(self):
     with self.test_session():
       c = 0.2
-      bijector = PowerTransform(
-          power=c, event_ndims=1, validate_args=True)
+      bijector = PowerTransform(power=c, validate_args=True)
       self.assertEqual("power_transform", bijector.name)
       x = np.array([[[-1.], [2.], [-5. + 1e-4]]])
       y = (1. + x * c)**(1. / c)
@@ -41,27 +40,25 @@ class PowerTransformBijectorTest(test.TestCase):
       self.assertAllClose(x, bijector.inverse(y).eval())
       self.assertAllClose(
           (c - 1.) * np.sum(np.log(y), axis=-1),
-          bijector.inverse_log_det_jacobian(y).eval())
+          bijector.inverse_log_det_jacobian(y, event_ndims=1).eval())
       self.assertAllClose(
-          -bijector.inverse_log_det_jacobian(y).eval(),
-          bijector.forward_log_det_jacobian(x).eval(),
+          -bijector.inverse_log_det_jacobian(y, event_ndims=1).eval(),
+          bijector.forward_log_det_jacobian(x, event_ndims=1).eval(),
           rtol=1e-4,
           atol=0.)
 
   def testScalarCongruency(self):
     with self.test_session():
-      bijector = PowerTransform(
-          power=0.2, validate_args=True)
+      bijector = PowerTransform(power=0.2, validate_args=True)
       assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=1.5, rtol=0.05)
 
   def testBijectiveAndFinite(self):
     with self.test_session():
-      bijector = PowerTransform(
-          power=0.2, event_ndims=0, validate_args=True)
+      bijector = PowerTransform(power=0.2, validate_args=True)
       x = np.linspace(-4.999, 10, num=10).astype(np.float32)
       y = np.logspace(0.001, 10, num=10).astype(np.float32)
-      assert_bijective_and_finite(bijector, x, y, rtol=1e-3)
+      assert_bijective_and_finite(bijector, x, y, event_ndims=0, rtol=1e-3)
 
 
 if __name__ == "__main__":

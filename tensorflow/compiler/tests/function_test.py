@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -28,7 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
-class FunctionTest(XLATestCase):
+class FunctionTest(xla_test.XLATestCase):
 
   def testFunction(self):
     """Executes a simple TensorFlow function."""
@@ -102,6 +102,28 @@ class FunctionTest(XLATestCase):
         call_f = Foo(a, b)
       result = sess.run(call_f)
     self.assertAllClose(result, expected, rtol=1e-3)
+
+  def testCompileTimeConstantsInDefun(self):
+    """Tests that XLA handles compile-time constants in defuns."""
+    with self.test_session() as sess:
+
+      @function.Defun(dtypes.float32, dtypes.int32, dtypes.int32)
+      def Foo(a, c, d):
+        # c and d must be known at compile time
+        x = array_ops.slice(a, c, d)
+        return x
+
+      a = array_ops.placeholder(dtypes.float32)
+      c = array_ops.placeholder(dtypes.int32, shape=[4])
+      d = array_ops.placeholder(dtypes.int32, shape=[4])
+      with self.test_scope():
+        call_f = Foo(a, c, d)
+      result = sess.run(call_f, feed_dict={
+          a: np.ones([1, 4, 4, 1]),
+          c: [0, 0, 0, 0],
+          d: [1, 2, 2, 1]})
+
+    self.assertAllEqual(np.ones([1, 2, 2, 1]), result)
 
   # TODO(b/36139787): Re-enable this test when noinline works again.
   def DISABLED_testFunctionsNoInline(self):

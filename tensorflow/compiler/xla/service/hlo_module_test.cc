@@ -101,7 +101,49 @@ TEST_F(HloModuleTest, CloneTest) {
   for (auto origin = post_order.begin(), copied = post_order_copied.begin();
        origin != post_order.end() && copied != post_order_copied.end();
        ++origin, ++copied) {
-    EXPECT_EQ((*origin)->name() + "copy", (*copied)->name());
+    EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
+  }
+}
+
+TEST_F(HloModuleTest, CloneHasFusion) {
+  auto module = CreateNewModule();
+
+  // Create the fused computation.
+  HloComputation* fused_computation;
+  {
+    auto b = HloComputation::Builder("Fused");
+    auto x = b.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
+    b.AddInstruction(
+        HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, x, x));
+    fused_computation = module->AddEmbeddedComputation(b.Build());
+  }
+
+  // Create the entry computation.
+  {
+    auto b = HloComputation::Builder("Entry");
+    auto input = b.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+    b.AddInstruction(
+        HloInstruction::CreateFusion(r0f32_, HloInstruction::FusionKind::kInput,
+                                     /*operands=*/{input}, fused_computation));
+    module->AddEntryComputation(b.Build());
+  }
+
+  auto post_order = module->MakeComputationPostOrder();
+  auto cloned_module = module->Clone("copy");
+  auto post_order_copied = cloned_module->MakeComputationPostOrder();
+
+  EXPECT_EQ(post_order.size(), post_order_copied.size());
+  for (auto origin = post_order.begin(), copied = post_order_copied.begin();
+       origin != post_order.end() && copied != post_order_copied.end();
+       ++origin, ++copied) {
+    if ((*origin)->name() == "Fused") {
+      // Clone of the fused computation is handled when its fusion instruction
+      // is cloned, which always use suffix ".clone".
+      EXPECT_EQ((*origin)->name() + ".clone", (*copied)->name());
+    } else {
+      EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
+    }
   }
 }
 
@@ -125,10 +167,33 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   EXPECT_EQ(post_order.front(), computation1);
 }
 
+TEST_F(HloModuleTest, LargeConstantToString) {
+  // Create a module with a single computation.
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder("Constant");
+  std::vector<float> values(16, 42.0);
+  builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>(values)));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      "HloModule LargeConstantToString\n\nENTRY %Constant () -> f32[16] {\n  "
+      "ROOT %constant = f32[16]{0} constant({...})\n}\n\n",
+      module->ToString(HloPrintOptions().set_print_large_constants(false)));
+
+  EXPECT_EQ(
+      "HloModule LargeConstantToString\n\nENTRY %Constant () -> f32[16] {\n  "
+      "ROOT %constant = f32[16]{0} constant({42, 42, 42, 42, 42, 42, 42, 42, "
+      "42, 42, 42, 42, 42, 42, 42, 42})\n}\n\n",
+      module->ToString(HloPrintOptions().set_print_large_constants(true)));
+}
+
+TEST_F(HloModuleTest, UniqueModuleId) {
+  auto module_a = CreateNewModule();
+  auto module_b = CreateNewModule();
+  EXPECT_NE(module_a->unique_id(), module_b->unique_id());
+}
+
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

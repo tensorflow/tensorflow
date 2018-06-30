@@ -32,8 +32,9 @@ def _get_signature_def(
   if output_key is None:
     output_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
   # pylint: disable=protected-access
-  estimator_spec = estimator._call_model_fn(
-      serving_input_receiver.features, None, model_fn.ModeKeys.PREDICT)
+  estimator_spec = estimator.model_fn(
+      serving_input_receiver.features, None, model_fn.ModeKeys.PREDICT,
+      estimator.config)
   # pylint: enable=protected-access
   export_outputs = estimator_spec.export_outputs
   export_output = export_outputs.get(output_key)
@@ -50,7 +51,8 @@ class CoreEstimatorPredictor(predictor.Predictor):
                estimator,
                serving_input_receiver_fn,
                output_key=None,
-               graph=None):
+               graph=None,
+               config=None):
     """Initialize a `CoreEstimatorPredictor`.
 
     Args:
@@ -61,16 +63,18 @@ class CoreEstimatorPredictor(predictor.Predictor):
         `None`, then `DEFAULT_SERVING_SIGNATURE_DEF_KEY` is used.
       graph: Optional. The Tensorflow `graph` in which prediction should be
         done.
+      config: `ConfigProto` proto used to configure the session.
     """
     self._graph = graph or ops.Graph()
     with self._graph.as_default():
       serving_input_receiver = serving_input_receiver_fn()
       signature_def = _get_signature_def(
           serving_input_receiver, estimator, output_key)
-      checkpoint_path = estimator.model_dir
+      checkpoint_dir = estimator.model_dir
       self._session = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
-              checkpoint_filename_with_path=checkpoint_path))
+              config=config,
+              checkpoint_dir=checkpoint_dir))
 
     feed_tensor_info = signature_def.inputs
     self._feed_tensors = {k: self._graph.get_tensor_by_name(v.name)

@@ -1,0 +1,38 @@
+op {
+  graph_op_name: "SparseFillEmptyRowsGrad"
+  in_arg {
+    name: "reverse_index_map"
+    description: <<END
+1-D.  The reverse index map from SparseFillEmptyRows.
+END
+  }
+  in_arg {
+    name: "grad_values"
+    description: <<END
+1-D.  The gradients from backprop.
+END
+  }
+  out_arg {
+    name: "d_values"
+    description: <<END
+1-D.  The backprop into values.
+END
+  }
+  out_arg {
+    name: "d_default_value"
+    description: <<END
+0-D.  The backprop into default_value.
+END
+  }
+  summary: "The gradient of SparseFillEmptyRows."
+  description: <<END
+Takes vectors reverse_index_map, shaped `[N]`, and grad_values,
+shaped `[N_full]`, where `N_full >= N` and copies data into either
+`d_values` or `d_default_value`.  Here `d_values` is shaped `[N]` and
+`d_default_value` is a scalar.
+
+  d_values[j] = grad_values[reverse_index_map[j]]
+  d_default_value = sum_{k : 0 .. N_full - 1} (
+     grad_values[k] * 1{k not in reverse_index_map})
+END
+}

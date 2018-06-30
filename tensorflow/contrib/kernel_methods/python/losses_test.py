@@ -18,10 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.kernel_methods.python import losses
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -113,6 +116,27 @@ class SparseMulticlassHingeLossTest(test.TestCase):
       labels = constant_op.constant([0, 2, 1], dtype=dtypes.int64)
       loss = losses.sparse_multiclass_hinge_loss(labels, logits)
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
+
+  def testUnknownShape(self):
+    """Result keeps same with `testZeroLossInt32Labels`"""
+    logits_np = np.array([[1.2, -1.4, -1.0], [1.4, 1.8, 4.0], [0.5, 1.8, -1.0]])
+    labels_np = np.array([0, 2, 1], dtype=np.int32)
+
+    logits_shapes = [
+        [3, 3],  # batch_size, num_classes
+        [None, 3],
+        [3, None],
+        [None, None]
+    ]
+
+    for batch_size, num_classes in logits_shapes:
+      with self.test_session():
+        logits = array_ops.placeholder(
+            dtypes.float32, shape=(batch_size, num_classes))
+        labels = array_ops.placeholder(dtypes.int32, shape=(batch_size,))
+        loss = losses.sparse_multiclass_hinge_loss(labels, logits)
+        result = loss.eval(feed_dict={logits: logits_np, labels: labels_np})
+        self.assertAlmostEqual(result, 0.0, 3)
 
   def testCorrectPredictionsSomeClassesInsideMargin(self):
     """Loss is > 0 even if true class logits are higher than other classes."""

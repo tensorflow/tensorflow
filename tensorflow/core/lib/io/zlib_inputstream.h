@@ -37,10 +37,18 @@ namespace io {
 // by multiple threads
 class ZlibInputStream : public InputStreamInterface {
  public:
-  // Create a ZlibInputBuffer for `input_stream` with a buffer of size
+  // Create a ZlibInputStream for `input_stream` with a buffer of size
   // `input_buffer_bytes` bytes for reading contents from `input_stream` and
   // another buffer with size `output_buffer_bytes` for caching decompressed
-  // contents. Does *not* take ownership of "input_stream".
+  // contents.
+  //
+  // Takes ownership of `input_stream` iff `owns_input_stream` is true.
+  ZlibInputStream(InputStreamInterface* input_stream, size_t input_buffer_bytes,
+                  size_t output_buffer_bytes,
+                  const ZlibCompressionOptions& zlib_options,
+                  bool owns_input_stream);
+
+  // Equivalent to the previous constructor with owns_input_stream=false.
   ZlibInputStream(InputStreamInterface* input_stream, size_t input_buffer_bytes,
                   size_t output_buffer_bytes,
                   const ZlibCompressionOptions& zlib_options);
@@ -65,10 +73,11 @@ class ZlibInputStream : public InputStreamInterface {
  private:
   void InitZlibBuffer();
 
-  InputStreamInterface* input_stream_;  // Not owned
-  size_t input_buffer_capacity_;        // Size of z_stream_input_
-  size_t output_buffer_capacity_;       // Size of z_stream_output_
-  char* next_unread_byte_;              // Next unread byte in z_stream_output_
+  const bool owns_input_stream_;
+  InputStreamInterface* input_stream_;
+  size_t input_buffer_capacity_;   // Size of z_stream_input_
+  size_t output_buffer_capacity_;  // Size of z_stream_output_
+  char* next_unread_byte_;         // Next unread byte in z_stream_output_
 
   // Buffer for storing contents read from compressed stream.
   // TODO(srbs): Consider using circular buffers. That would greatly simplify
@@ -131,6 +140,9 @@ class ZlibInputStream : public InputStreamInterface {
   //
   // Returns the size of [next_unread_byte_, z_stream_->next_out)
   size_t NumUnreadBytes() const;
+
+  // Number of *uncompressed* bytes that have been read from this stream.
+  int64 bytes_read_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ZlibInputStream);
 };

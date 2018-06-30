@@ -20,23 +20,9 @@ load(
     "tf_proto_library",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_kernel_library(
     name = "bigquery_reader_ops",
-    srcs = [
-        "bigquery_reader_ops.cc",
-    ],
+    srcs = ["bigquery_reader_ops.cc"],
     visibility = ["//visibility:public"],
     deps = [
         ":bigquery_table_accessor",
@@ -50,20 +36,16 @@ tf_kernel_library(
 
 cc_library(
     name = "bigquery_table_accessor",
-    srcs = [
-        "bigquery_table_accessor.cc",
-    ],
-    hdrs = [
-        "bigquery_table_accessor.h",
-    ],
+    srcs = ["bigquery_table_accessor.cc"],
+    hdrs = ["bigquery_table_accessor.h"],
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
         ":bigquery_table_partition_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform/cloud:curl_http_request",
         "//tensorflow/core/platform/cloud:google_auth_provider",
-        "//tensorflow/core/platform/cloud:http_request",
     ],
     alwayslink = 1,
 )
@@ -77,6 +59,7 @@ tf_cc_test(
     ],
     deps = [
         ":bigquery_table_accessor",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -87,8 +70,21 @@ tf_cc_test(
 
 tf_proto_library(
     name = "bigquery_table_partition_proto",
-    srcs = [
-        "bigquery_table_partition.proto",
-    ],
+    srcs = ["bigquery_table_partition.proto"],
     cc_api_version = 2,
+)
+
+tf_kernel_library(
+    name = "gcs_config_ops",
+    srcs = ["gcs_config_ops.cc"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform/cloud:curl_http_request",
+        "//tensorflow/core/platform/cloud:gcs_file_system",
+        "//tensorflow/core/platform/cloud:oauth_client",
+        "@jsoncpp_git//:jsoncpp",
+    ],
 )

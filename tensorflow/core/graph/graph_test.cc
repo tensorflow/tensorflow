@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <set>
 #include <vector>
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -101,6 +103,37 @@ class GraphTest : public ::testing::Test {
     Node* node = graph_.AddNode(node_def, &s);
     TF_CHECK_OK(s);
     return node;
+  }
+
+  void FromGraphDef(const string& gdef_ascii) {
+    GraphDef gdef;
+    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
+    GraphConstructorOptions opts;
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, gdef, &graph_));
+  }
+
+  Node* FindNode(const string& name) {
+    for (Node* node : graph_.nodes()) {
+      if (node->name() == name) return node;
+    }
+    LOG(FATAL) << name;
+  }
+
+  bool ControlEdgeExistsInGraphOrNodeDef(const Node* src, const Node* dst) {
+    for (const Edge* e : dst->in_edges()) {
+      if (e->IsControlEdge() && e->src() == src &&
+          e->src_output() == Graph::kControlSlot &&
+          e->dst_input() == Graph::kControlSlot) {
+        return true;
+      }
+    }
+    std::string control_edge_name = strings::StrCat("^", src->name());
+    for (int i = 0; i < dst->def().input_size(); ++i) {
+      if (dst->def().input(i) == control_edge_name) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Graph graph_;
@@ -376,7 +409,174 @@ TEST_F(GraphTest, NewName) {
   EXPECT_NE(a1, a2);
   EXPECT_NE(a1, b1);
   EXPECT_NE(a2, b1);
-  EXPECT_TRUE(StringPiece(a1).starts_with("A")) << a1;
+  EXPECT_TRUE(str_util::StartsWith(a1, "A")) << a1;
+}
+
+TEST_F(GraphTest, IsValidNode) {
+  // Add 1 node to graph_
+  Node* g1_node1;
+  TF_CHECK_OK(NodeBuilder("g1_node1", "NoOp").Finalize(&graph_, &g1_node1));
+
+  // Add 2 nodes to graph2
+  Graph graph2(OpRegistry::Global());
+  Node* g2_node1;
+  Node* g2_node2;
+  TF_CHECK_OK(NodeBuilder("g2_node1", "NoOp").Finalize(&graph2, &g2_node1));
+  TF_CHECK_OK(NodeBuilder("g2_node2", "NoOp").Finalize(&graph2, &g2_node2));
+
+  // nullptr
+  Status s = graph_.IsValidNode(nullptr);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(string("Node is null"), s.error_message());
+
+  // node id_ is too high
+  s = graph_.IsValidNode(g2_node2);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(string("node id 3 is >= than number of nodes in graph 3"),
+            s.error_message());
+
+  // valid id_ but different ptr
+  s = graph_.IsValidNode(g2_node1);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_EQ(string("Node with id 2 is different from the passed in node. "
+                   "Does it belong to a different graph?"),
+            s.error_message());
+}
+
+TEST_F(GraphTest, AddControlEdge) {
+  FromGraphDef(
+      "node { name: 'A' op: 'OneOutput' }"
+      "node { name: 'B' op: 'OneInputTwoOutputs' input: [ 'A:0' ] }"
+      "node { name: 'C' op: 'NoOp' } ");
+  Node* a = FindNode("A");
+  Node* b = FindNode("B");
+  Node* c = FindNode("C");
+
+  // Add a control edge.
+  const Edge* edge = graph_.AddControlEdge(c, a);
+  ASSERT_TRUE(edge != nullptr);
+  // Check newly-created edge.
+  EXPECT_EQ(edge->src(), c);
+  EXPECT_EQ(edge->src_output(), Graph::kControlSlot);
+  EXPECT_EQ(edge->dst(), a);
+  EXPECT_EQ(edge->dst_input(), Graph::kControlSlot);
+  // Check A's NodeDef.
+  ASSERT_EQ(a->def().input_size(), 1);
+  EXPECT_EQ(a->def().input(0), "^C");
+
+  // Can add control edge redundant with data edge.
+  edge = graph_.AddControlEdge(a, b);
+  EXPECT_TRUE(edge != nullptr);
+  ASSERT_EQ(b->def().input_size(), 2);
+  EXPECT_EQ(b->def().input(0), "A:0");
+  EXPECT_EQ(b->def().input(1), "^A");
+
+  // Doesn't add edge redundant with control edge.
+  edge = graph_.AddControlEdge(a, b);
+  EXPECT_TRUE(edge == nullptr);
+  EXPECT_EQ(b->def().input_size(), 2);
+
+  // Can add redundant control edge with allow_duplicates.
+  edge = graph_.AddControlEdge(a, b, /*allow_duplicates=*/true);
+  EXPECT_TRUE(edge != nullptr);
+  // create_duplicate causes the NodeDef not to be updated.
+  ASSERT_EQ(b->def().input_size(), 2);
+  EXPECT_EQ(b->def().input(0), "A:0");
+  EXPECT_EQ(b->def().input(1), "^A");
+
+  // Add control edge from source.
+  edge = graph_.AddControlEdge(graph_.source_node(), b);
+  EXPECT_TRUE(edge != nullptr);
+  // Check that we don't include source input in the NodeDef.
+  EXPECT_EQ(b->def().input_size(), 2);
+  // Doesn't add redundant edge.
+  edge = graph_.AddControlEdge(graph_.source_node(), b);
+  EXPECT_TRUE(edge == nullptr);
+  EXPECT_EQ(b->def().input_size(), 2);
+}
+
+TEST_F(GraphTest, RemoveControlEdge) {
+  FromGraphDef(
+      "node { name: 'A' op: 'OneOutput' }"
+      "node { name: 'B' op: 'OneInputTwoOutputs' input: [ 'A:0' ] }"
+      "node { name: 'C' op: 'NoOp' } ");
+  Node* a = FindNode("A");
+  Node* b = FindNode("B");
+  Node* c = FindNode("C");
+
+  // Add a control edge.
+  const Edge* edge_1 = graph_.AddControlEdge(c, a);
+  const Edge* edge_2 = graph_.AddControlEdge(a, b);
+  ASSERT_TRUE(edge_1 != nullptr);
+  ASSERT_TRUE(edge_2 != nullptr);
+
+  ASSERT_TRUE(ControlEdgeExistsInGraphOrNodeDef(c, a));
+  ASSERT_TRUE(ControlEdgeExistsInGraphOrNodeDef(a, b));
+
+  graph_.RemoveControlEdge(edge_1);
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(c, a));
+  ASSERT_TRUE(ControlEdgeExistsInGraphOrNodeDef(a, b));
+
+  graph_.RemoveControlEdge(edge_2);
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(c, a));
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(a, b));
+
+  // Test removing a duplicate control edge.
+  // Note that unless allow_duplicates is true, the duplicate edge
+  // will not be added. That's why we expect edge_4 to be a null
+  // pointer. We are not testing with allow_duplicates set to true,
+  // as that is a highly unlikely use case that does not make much
+  // sense.
+  const Edge* edge_3 = graph_.AddControlEdge(c, a);
+  const Edge* edge_4 = graph_.AddControlEdge(c, a);
+  ASSERT_TRUE(edge_3 != nullptr);
+  ASSERT_TRUE(edge_4 == nullptr);
+
+  graph_.RemoveControlEdge(edge_3);
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(c, a));
+}
+
+TEST_F(GraphTest, UpdateEdge) {
+  // Build a little graph
+  Node* a = FromNodeDef("A", "OneOutput", 0);
+  Node* b = FromNodeDef("B", "OneInputTwoOutputs", 1);
+  Node* c = FromNodeDef("C", "OneInputTwoOutputs", 1);
+  Node* d = FromNodeDef("D", "OneInput", 1);
+
+  graph_.AddControlEdge(graph_.source_node(), a);
+  graph_.AddControlEdge(a, graph_.sink_node());
+  graph_.AddEdge(a, 0, c, 0);
+
+  graph_.AddControlEdge(c, graph_.sink_node());
+  graph_.AddEdge(c, 0, b, 0);
+  graph_.AddEdge(c, 1, d, 0);
+
+  // Initial edge connections
+  EXPECT_EQ("0->1;0->2;2->1;2->4;4->1;4->3;4->5;", EdgeIter(graph_));
+
+  // Update the inputs, expect that Edge a to b (2->3) is now in the graph
+  // and c to b (4->3) no longer appears.
+  TF_EXPECT_OK(graph_.UpdateEdge(a, 0, b, 0));
+  // Check that the edge is connecting the correct nodes.
+  EXPECT_EQ("0->1;0->2;2->1;2->3;2->4;4->1;4->5;", EdgeIter(graph_));
+
+  // Update a's 0th output again.
+  TF_EXPECT_OK(graph_.UpdateEdge(a, 0, d, 0));
+  EXPECT_EQ("0->1;0->2;2->1;2->3;2->4;2->5;4->1;", EdgeIter(graph_));
+
+  // Update a's 1st output which is out of range.
+  Status s = graph_.UpdateEdge(a, 1, d, 0);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(
+      s.error_message(),
+      "Node 'A' (type: 'OneOutput', num of outputs: 1) does not have output 1");
+
+  // Update a's 1st input which is out of range.
+  s = graph_.UpdateEdge(c, 0, a, 0);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(
+      s.error_message(),
+      "Node 'A' (type: 'OneOutput', num of inputs: 0) does not have input 0");
 }
 
 TEST_F(GraphTest, InputEdges) {

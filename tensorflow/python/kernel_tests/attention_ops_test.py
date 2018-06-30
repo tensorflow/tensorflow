@@ -196,6 +196,5 @@ class ExtractGlimpseTest(test.TestCase):
         expected_rows=[None, None, None, 1, 2, 3, 4],
         expected_cols=[56, 57, 58, 59, 60])
 
-
 if __name__ == '__main__':
   test.main()

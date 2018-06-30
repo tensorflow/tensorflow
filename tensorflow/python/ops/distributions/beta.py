@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -45,6 +46,7 @@ _beta_sample_note = """Note: `x` must have dtype `self.dtype` and be in
 `[0, 1].` It must have a shape compatible with `self.batch_shape()`."""
 
 
+@tf_export("distributions.Beta")
 class Beta(distribution.Distribution):
   """Beta distribution.
 
@@ -82,13 +84,24 @@ class Beta(distribution.Distribution):
   Distribution parameters are automatically broadcast in all functions; see
   examples for details.
 
+  Warning: The samples can be zero due to finite precision.
+  This happens more often when some of the concentrations are very small.
+  Make sure to round the samples to `np.finfo(dtype).tiny` before computing the
+  density.
+
+  Samples of this distribution are reparameterized (pathwise differentiable).
+  The derivatives are computed using the approach described in the paper
+
+  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
+  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
+
   #### Examples
 
   ```python
   # Create a batch of three Beta distributions.
   alpha = [1, 2, 3]
   beta = [1, 2, 3]
-  dist = Beta(alpha, beta)
+  dist = tf.distributions.Beta(alpha, beta)
 
   dist.sample([4, 5])  # Shape [4, 5, 3]
 
@@ -104,7 +117,7 @@ class Beta(distribution.Distribution):
   # Create batch_shape=[2, 3] via parameter broadcast:
   alpha = [[1.], [2]]      # Shape [2, 1]
   beta = [3., 4, 5]        # Shape [3]
-  dist = Beta(alpha, beta)
+  dist = tf.distributions.Beta(alpha, beta)
 
   # alpha broadcast as: [[1., 1, 1,],
   #                      [2, 2, 2]]
@@ -118,6 +131,18 @@ class Beta(distribution.Distribution):
   #                         [.2, .3, .5]],
   # thus matching batch_shape [2, 3].
   dist.prob(x)         # Shape [2, 3]
+  ```
+
+  Compute the gradients of samples w.r.t. the parameters:
+
+  ```python
+  alpha = tf.constant(1.0)
+  beta = tf.constant(2.0)
+  dist = tf.distributions.Beta(alpha, beta)
+  samples = dist.sample(5)  # Shape [5]
+  loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
+  # Unbiased stochastic gradients of the loss function
+  grads = tf.gradients(loss, [alpha, beta])
   ```
 
   """
@@ -148,8 +173,8 @@ class Beta(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration1, concentration0]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration1, concentration0]) as name:
       self._concentration1 = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration1, name="concentration1"),
           validate_args)
@@ -163,7 +188,7 @@ class Beta(distribution.Distribution):
         dtype=self._total_concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._concentration1,
                        self._concentration0,
@@ -302,12 +327,11 @@ class Beta(distribution.Distribution):
     if not self.validate_args:
       return x
     return control_flow_ops.with_dependencies([
-        check_ops.assert_positive(
-            x,
-            message="sample must be positive"),
+        check_ops.assert_positive(x, message="sample must be positive"),
         check_ops.assert_less(
-            x, array_ops.ones([], self.dtype),
-            message="sample must be no larger than `1`."),
+            x,
+            array_ops.ones([], self.dtype),
+            message="sample must be less than `1`."),
     ], x)
 
 
@@ -320,9 +344,9 @@ class BetaWithSoftplusConcentration(Beta):
                validate_args=False,
                allow_nan_stats=True,
                name="BetaWithSoftplusConcentration"):
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[concentration1,
-                                      concentration0]) as ns:
+                                      concentration0]) as name:
       super(BetaWithSoftplusConcentration, self).__init__(
           concentration1=nn.softplus(concentration1,
                                      name="softplus_concentration1"),
@@ -330,7 +354,7 @@ class BetaWithSoftplusConcentration(Beta):
                                      name="softplus_concentration0"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
 

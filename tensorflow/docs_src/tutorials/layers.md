@@ -79,7 +79,7 @@ relative measurements of how likely it is that the image falls into each target
 class.
 
 > Note: For a more comprehensive walkthrough of CNN architecture, see Stanford
-> University's <a href="http://cs231n.github.io/convolutional-networks/">
+> University's <a href="https://cs231n.github.io/convolutional-networks/">
 > Convolutional Neural Networks for Visual Recognition course materials</a>.</p>
 
 ## Building the CNN MNIST Classifier {#building_the_cnn_mnist_classifier}
@@ -169,9 +169,7 @@ def cnn_model_fn(features, labels, mode):
     return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
   # Calculate Loss (for both TRAIN and EVAL modes)
-  onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
   # Configure the Training Op (for TRAIN mode)
   if mode == tf.estimator.ModeKeys.TRAIN:
@@ -192,25 +190,29 @@ def cnn_model_fn(features, labels, mode):
 The following sections (with headings corresponding to each code block above)
 dive deeper into the `tf.layers` code used to create each layer, as well as how
 to calculate loss, configure the training op, and generate predictions. If
-you're already experienced with CNNs and @{$estimators$TensorFlow `Estimator`s},
+you're already experienced with CNNs and @{$custom_estimators$TensorFlow `Estimator`s},
 and find the above code intuitive, you may want to skim these sections or just
-skip ahead to ["Training and Evaluating the CNN MNIST
-Classifier"](#training-and-evaluating-the-cnn-mnist-classifier).
+skip ahead to ["Training and Evaluating the CNN MNIST Classifier"](#train_eval_mnist).
 
 ### Input Layer
 
 The methods in the `layers` module for creating convolutional and pooling layers
 for two-dimensional image data expect input tensors to have a shape of
-<code>[<em>batch_size</em>, <em>image_width</em>, <em>image_height</em>,
-<em>channels</em>]</code>, defined as follows:
+<code>[<em>batch_size</em>, <em>image_height</em>, <em>image_width</em>,
+<em>channels</em>]</code> by default. This behavior can be changed using the <code><em>data_format</em></code> parameter; defined as follows:
+
 
 *   _`batch_size`_. Size of the subset of examples to use when performing
     gradient descent during training.
-*   _`image_width`_. Width of the example images.
 *   _`image_height`_. Height of the example images.
+*   _`image_width`_. Width of the example images.
 *   _`channels`_. Number of color channels in the example images. For color
     images, the number of channels is 3 (red, green, blue). For monochrome
     images, there is just 1 channel (black).
+*   _`data_format`_. A string, one of `channels_last` (default) or `channels_first`.
+      `channels_last` corresponds to inputs with shape
+      `(batch, ..., channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, ...)`.
 
 Here, our MNIST dataset is composed of monochrome 28x28 pixel images, so the
 desired shape for our input layer is <code>[<em>batch_size</em>, 28, 28,
@@ -249,28 +251,27 @@ conv1 = tf.layers.conv2d(
 ```
 
 The `inputs` argument specifies our input tensor, which must have the shape
-<code>[<em>batch_size</em>, <em>image_width</em>, <em>image_height</em>,
+<code>[<em>batch_size</em>, <em>image_height</em>, <em>image_width</em>,
 <em>channels</em>]</code>. Here, we're connecting our first convolutional layer
 to `input_layer`, which has the shape <code>[<em>batch_size</em>, 28, 28,
 1]</code>.
 
 > Note: <code>conv2d()</code> will instead accept a shape of
-> <code>[<em>channels</em>, <em>batch_size</em>, <em>image_width</em>,
-> <em>image_height</em>]</code> when passed the argument
+> <code>[<em>batch_size</em>, <em>channels</em>, <em>image_height</em>, <em>image_width</em>]</code> when passed the argument
 > <code>data_format=channels_first</code>.
 
 The `filters` argument specifies the number of filters to apply (here, 32), and
-`kernel_size` specifies the dimensions of the filters as <code>[<em>width</em>,
-<em>height</em>]</code> (here, <code>[5, 5]</code>).
+`kernel_size` specifies the dimensions of the filters as <code>[<em>height</em>,
+<em>width</em>]</code> (here, <code>[5, 5]</code>).
 
-<p class="tip"><b>TIP:</b> If filter width and height have the same value, you can instead specify a
+<p class="tip"><b>TIP:</b> If filter height and width have the same value, you can instead specify a
 single integer for <code>kernel_size</code>—e.g., <code>kernel_size=5</code>.</p>
 
 The `padding` argument specifies one of two enumerated values
 (case-insensitive): `valid` (default value) or `same`. To specify that the
-output tensor should have the same width and height values as the input tensor,
+output tensor should have the same height and width values as the input tensor,
 we set `padding=same` here, which instructs TensorFlow to add 0 values to the
-edges of the output tensor to preserve width and height of 28. (Without padding,
+edges of the input tensor to preserve height and width of 28. (Without padding,
 a 5x5 convolution over a 28x28 tensor will produce a 24x24 tensor, as there are
 24x24 locations to extract a 5x5 tile from a 28x28 grid.)
 
@@ -279,7 +280,7 @@ output of the convolution. Here, we specify ReLU activation with
 @{tf.nn.relu}.
 
 Our output tensor produced by `conv2d()` has a shape of
-<code>[<em>batch_size</em>, 28, 28, 32]</code>: the same width and height
+<code>[<em>batch_size</em>, 28, 28, 32]</code>: the same height and width
 dimensions as the input, but now with 32 channels holding the output from each
 of the filters.
 
@@ -294,31 +295,30 @@ pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
 ```
 
 Again, `inputs` specifies the input tensor, with a shape of
-<code>[<em>batch_size</em>, <em>image_width</em>, <em>image_height</em>,
+<code>[<em>batch_size</em>, <em>image_height</em>, <em>image_width</em>,
 <em>channels</em>]</code>. Here, our input tensor is `conv1`, the output from
 the first convolutional layer, which has a shape of <code>[<em>batch_size</em>,
 28, 28, 32]</code>.
 
 > Note: As with <code>conv2d()</code>, <code>max_pooling2d()</code> will instead
-> accept a shape of <code>[<em>channels</em>, <em>batch_size</em>,
-> <em>image_width</em>, <em>image_height</em>]</code> when passed the argument
+> accept a shape of <code>[<em>batch_size</em>, <em>channels</em>, 
+> <em>image_height</em>, <em>image_width</em>]</code> when passed the argument
 > <code>data_format=channels_first</code>.
 
 The `pool_size` argument specifies the size of the max pooling filter as
-<code>[<em>width</em>, <em>height</em>]</code> (here, `[2, 2]`). If both
+<code>[<em>height</em>, <em>width</em>]</code> (here, `[2, 2]`). If both
 dimensions have the same value, you can instead specify a single integer (e.g.,
 `pool_size=2`).
 
 The `strides` argument specifies the size of the stride. Here, we set a stride
 of 2, which indicates that the subregions extracted by the filter should be
-separated by 2 pixels in both the width and height dimensions (for a 2x2 filter,
+separated by 2 pixels in both the height and width dimensions (for a 2x2 filter,
 this means that none of the regions extracted will overlap). If you want to set
-different stride values for width and height, you can instead specify a tuple or
+different stride values for height and width, you can instead specify a tuple or
 list (e.g., `stride=[3, 6]`).
 
 Our output tensor produced by `max_pooling2d()` (`pool1`) has a shape of
-<code>[<em>batch_size</em>, 14, 14, 32]</code>: the 2x2 filter reduces width and
-height by 50% each.
+<code>[<em>batch_size</em>, 14, 14, 32]</code>: the 2x2 filter reduces height and width by 50% each.
 
 ### Convolutional Layer #2 and Pooling Layer #2
 
@@ -340,13 +340,11 @@ pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
 
 Note that convolutional layer #2 takes the output tensor of our first pooling
 layer (`pool1`) as input, and produces the tensor `conv2` as output. `conv2`
-has a shape of <code>[<em>batch_size</em>, 14, 14, 64]</code>, the same width
-and height as `pool1` (due to `padding="same"`), and 64 channels for the 64
+has a shape of <code>[<em>batch_size</em>, 14, 14, 64]</code>, the same height and width as `pool1` (due to `padding="same"`), and 64 channels for the 64
 filters applied.
 
 Pooling layer #2 takes `conv2` as input, producing `pool2` as output. `pool2`
-has shape <code>[<em>batch_size</em>, 7, 7, 64]</code> (50% reduction of width
-and height from `conv2`).
+has shape <code>[<em>batch_size</em>, 7, 7, 64]</code> (50% reduction of height and width from `conv2`).
 
 ### Dense Layer
 
@@ -362,7 +360,7 @@ pool2_flat = tf.reshape(pool2, [-1, 7 * 7 * 64])
 
 In the `reshape()` operation above, the `-1` signifies that the *`batch_size`*
 dimension will be dynamically calculated based on the number of examples in our
-input data. Each example has 7 (`pool2` width) * 7 (`pool2` height) * 64
+input data. Each example has 7 (`pool2` height) * 7 (`pool2` width) * 64
 (`pool2` channels) features, so we want the `features` dimension to have a value
 of 7 * 7 * 64 (3136 in total). The output tensor, `pool2_flat`, has shape
 <code>[<em>batch_size</em>, 3136]</code>.
@@ -448,7 +446,7 @@ tf.nn.softmax(logits, name="softmax_tensor")
 
 > Note: We use the `name` argument to explicitly name this operation
 > `softmax_tensor`, so we can reference it later. (We'll set up logging for the
-> softmax values in ["Set Up a Logging Hook"](#set-up-a-logging-hook).
+> softmax values in ["Set Up a Logging Hook"](#set-up-a-logging-hook)).
 
 We compile our predictions in a dict, and return an `EstimatorSpec` object:
 
@@ -472,51 +470,18 @@ as the loss metric. The following code calculates cross entropy when the model
 runs in either `TRAIN` or `EVAL` mode:
 
 ```python
-onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
-loss = tf.losses.softmax_cross_entropy(
-    onehot_labels=onehot_labels, logits=logits)
+loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 ```
 
 Let's take a closer look at what's happening above.
 
-Our `labels` tensor contains a list of predictions for our examples, e.g. `[1,
-9, ...]`. In order to calculate cross-entropy, first we need to convert `labels`
-to the corresponding
-[one-hot encoding](https://www.quora.com/What-is-one-hot-encoding-and-when-is-it-used-in-data-science):
+Our `labels` tensor contains a list of prediction indices for our examples, e.g. `[1,
+9, ...]`. `logits` contains the linear outputs of our last layer. 
 
-```none
-[[0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
- [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
- ...]
-```
+`tf.losses.sparse_softmax_cross_entropy`, calculates the softmax crossentropy
+(aka: categorical crossentropy, negative log-likelihood) from these two inputs
+in an efficient, numerically stable way.
 
-We use the @{tf.one_hot} function
-to perform this conversion. `tf.one_hot()` has two required arguments:
-
-*   `indices`. The locations in the one-hot tensor that will have "on
-    values"—i.e., the locations of `1` values in the tensor shown above.
-*   `depth`. The depth of the one-hot tensor—i.e., the number of target classes.
-    Here, the depth is `10`.
-
-The following code creates the one-hot tensor for our labels, `onehot_labels`:
-
-```python
-onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
-```
-
-Because `labels` contains a series of values from 0–9, `indices` is just our
-`labels` tensor, with values cast to integers. The `depth` is `10` because we
-have 10 possible target classes, one for each digit.
-
-Next, we compute cross-entropy of `onehot_labels` and the softmax of the
-predictions from our logits layer. `tf.losses.softmax_cross_entropy()` takes
-`onehot_labels` and `logits` as arguments, performs softmax activation on
-`logits`, calculates cross-entropy, and returns our `loss` as a scalar `Tensor`:
-
-```python
-loss = tf.losses.softmax_cross_entropy(
-    onehot_labels=onehot_labels, logits=logits)
-```
 
 ### Configure the Training Op
 
@@ -536,9 +501,9 @@ if mode == tf.estimator.ModeKeys.TRAIN:
 ```
 
 > Note: For a more in-depth look at configuring training ops for Estimator model
-> functions, see @{$estimators#defining-the-training-op-for-the-model$"Defining
-> the training op for the model"} in the @{$estimators$"Creating Estimations in
-> tf.estimator"} tutorial.
+> functions, see @{$custom_estimators#defining-the-training-op-for-the-model$"Defining the training op for the model"}
+> in the @{$custom_estimators$"Creating Estimations in tf.estimator"} tutorial.
+
 
 ### Add evaluation metrics
 
@@ -553,7 +518,8 @@ return tf.estimator.EstimatorSpec(
     mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 ```
 
-## Training and Evaluating the CNN MNIST Classifier {#training_and_evaluating_the_cnn_mnist_classifier}
+<a id="train_eval_mnist"></a>
+## Training and Evaluating the CNN MNIST Classifier
 
 We've coded our MNIST CNN model function; now we're ready to train and evaluate
 it.
@@ -601,7 +567,7 @@ be saved (here, we specify the temp directory `/tmp/mnist_convnet_model`, but
 feel free to change to another directory of your choice).
 
 > Note: For an in-depth walkthrough of the TensorFlow `Estimator` API, see the
-> tutorial @{$estimators$"Creating Estimators in tf.estimator."}
+> tutorial @{$custom_estimators$"Creating Estimators in tf.estimator."}
 
 ### Set Up a Logging Hook {#set_up_a_logging_hook}
 
@@ -613,9 +579,9 @@ following to `main()`:
 
 ```python
 # Set up logging for predictions
-  tensors_to_log = {"probabilities": "softmax_tensor"}
-  logging_hook = tf.train.LoggingTensorHook(
-      tensors=tensors_to_log, every_n_iter=50)
+tensors_to_log = {"probabilities": "softmax_tensor"}
+logging_hook = tf.train.LoggingTensorHook(
+    tensors=tensors_to_log, every_n_iter=50)
 ```
 
 We store a dict of the tensors we want to log in `tensors_to_log`. Each key is a
@@ -627,8 +593,8 @@ operation earlier when we generated the probabilities in `cnn_model_fn`.
 > Note: If you don't explicitly assign a name to an operation via the `name`
 > argument, TensorFlow will assign a default name. A couple easy ways to
 > discover the names applied to operations are to visualize your graph on
-> @{$graph_viz$TensorBoard}) or to enable the @{$debugger$TensorFlow Debugger
-> (tfdbg)}.
+> @{$graph_viz$TensorBoard}) or to enable the
+> @{$guide/debugger$TensorFlow Debugger (tfdbg)}.
 
 Next, we create the `LoggingTensorHook`, passing `tensors_to_log` to the
 `tensors` argument. We set `every_n_iter=50`, which specifies that probabilities
@@ -637,7 +603,7 @@ should be logged after every 50 steps of training.
 ### Train the Model
 
 Now we're ready to train our model, which we can do by creating `train_input_fn`
-ans calling `train()` on `mnist_classifier`. Add the following to `main()`:
+and calling `train()` on `mnist_classifier`. Add the following to `main()`:
 
 ```python
 # Train the model
@@ -720,10 +686,9 @@ Here, we've achieved an accuracy of 97.3% on our test data set.
 To learn more about TensorFlow Estimators and CNNs in TensorFlow, see the
 following resources:
 
-*   @{$estimators$Creating Estimators in tf.estimator}. An
-    introduction to the TensorFlow Estimator API, which walks through
+*   @{$custom_estimators$Creating Estimators in tf.estimator}
+    provides an introduction to the TensorFlow Estimator API. It walks through
     configuring an Estimator, writing a model function, calculating loss, and
     defining a training op.
-*   @{$pros#build-a-multilayer-convolutional-network$Deep MNIST for Experts: Building a Multilayer CNN}. Walks
-    through how to build a MNIST CNN classification model *without layers* using
-    lower-level TensorFlow operations.
+*   @{$deep_cnn} walks through how to build a MNIST CNN classification model
+    *without estimators* using lower-level TensorFlow operations.

@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/macros.h"
@@ -47,3 +48,5 @@ EIGEN_STRONG_INLINE void argmax_float_1d_xla_impl(void* out, void** data) {
 extern "C" void TF_EXPORT argmax_float_1d_xla_impl(void* out, void** data) {
   tensorflow::argmax_float_1d_xla_impl(out, data);
 }
+
+REGISTER_CUSTOM_CALL_TARGET(argmax_float_1d_xla_impl);

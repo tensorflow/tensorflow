@@ -63,6 +63,8 @@ tf_custom_op_py_library(
     deps = [
         ":memory_stats_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -76,16 +78,4 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
+#include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -39,9 +40,10 @@ class AnalyticalCostEstimator : public CostEstimator {
   // Does not take ownership of cluster.
   AnalyticalCostEstimator(Cluster* cluster, bool use_static_shapes);
   // Does not take ownership of the cluster, but takes ownership of the
-  // node_estimator
+  // node_estimator and the node_manager
   AnalyticalCostEstimator(Cluster* cluster,
                           OpLevelCostEstimator* node_estimator,
+                          ReadyNodeManager* node_manager,
                           bool use_static_shapes);
   ~AnalyticalCostEstimator() override {}
 
@@ -59,6 +61,7 @@ class AnalyticalCostEstimator : public CostEstimator {
   Cluster* cluster_;  // Not owned.
   GrapplerItem item_;
   std::unique_ptr<OpLevelCostEstimator> node_estimator_;
+  std::unique_ptr<ReadyNodeManager> node_manager_;
   bool use_static_shapes_;
 };
 

@@ -18,8 +18,8 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:client",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
@@ -27,30 +27,17 @@ py_library(
 
 py_test(
     name = "copy_test",
-    size = "small",
     srcs = glob(["python/util/copy_test.py"]),
     srcs_version = "PY2AND3",
     deps = [
         ":copy_graph_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

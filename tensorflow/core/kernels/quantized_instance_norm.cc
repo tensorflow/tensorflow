@@ -278,10 +278,10 @@ class QuantizedInstanceNorm : public OpKernel {
     float input_max = context->input(2).flat<float>()(0);
     float input_scale = (input_max - input_min) / 255.0f;
 
-    OP_REQUIRES(
-        context, input_min < input_max,
-        errors::InvalidArgument("input_min must be less than input_max : ",
-                                input_min, " >= ", input_max));
+    OP_REQUIRES(context, input_min < input_max,
+                errors::InvalidArgument(
+                    "input_min must be less than input_max : ", input_min,
+                    " >= ", input_max));
 
     auto input_tensor = input.tensor<quint8, 4>();
     auto N = input_tensor.dimension(0);

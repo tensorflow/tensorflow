@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+
 #include <math.h>
 #include <algorithm>
 #include <numeric>
@@ -25,7 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/platform/cuda.h"
 #endif  // GOOGLE_CUDA
 namespace tensorflow {
 
@@ -46,6 +49,8 @@ template <typename Device, typename T>
 class CheckNumericsOp;
 
 // Partial specialization for CPU
+// TODO(jeff,rmlarsen): We should make this variant be an AsyncOpKernel, as
+// was done for the GPU case below.
 template <typename T>
 class CheckNumericsOp<CPUDevice, T> : public OpKernel {
  public:
@@ -66,27 +71,31 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     int fp_props =
         std::accumulate(data, data + size, 0, [](const int& x, const T& y) {
           int result = x;
-          if (Eigen::numext::isinf(y)) {
+          if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+            // Do nothing: common case
+          } else if (Eigen::numext::isinf(y)) {
             result |= kInfBit;
           } else if (Eigen::numext::isnan(y)) {
             result |= kNaNBit;
           }
           return result;
         });
-    string status;
-    if ((fp_props & kInfBit) && (fp_props & kNaNBit)) {
-      status = "Inf and NaN";
-    } else {
-      if (fp_props & kInfBit) {
-        status = "Inf";
+    if (fp_props != 0) {
+      string status;
+      if ((fp_props & kInfBit) && (fp_props & kNaNBit)) {
+        status = "Inf and NaN";
+      } else {
+        if (fp_props & kInfBit) {
+          status = "Inf";
+        }
+        if (fp_props & kNaNBit) {
+          status = "NaN";
+        }
       }
-      if (fp_props & kNaNBit) {
-        status = "NaN";
+      if (!status.empty()) {
+        context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
+                                                   status, " values"));
       }
-    }
-    if (!status.empty()) {
-      context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
-                                                 status, " values"));
     }
   }
 
@@ -99,19 +108,24 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
 #if GOOGLE_CUDA
 // Partial specialization for GPU
 template <typename T>
-class CheckNumericsOp<GPUDevice, T> : public OpKernel {
+class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
  public:
   typedef GPUDevice Device;
 
-  explicit CheckNumericsOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit CheckNumericsOp(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {
     // message_ is used as the prefix for the assertion error message. For
     // instance, this can be the name of the input op that produced the tensor.
     OP_REQUIRES_OK(context, context->GetAttr("message", &message_));
   }
 
-  void Compute(OpKernelContext* context) override {
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     // pass along the input to the output
     context->set_output(0, context->input(0));
+    if (context->input(0).NumElements() == 0) {
+      done();
+      return;
+    }
     auto input = context->input(0).flat<T>();
 
     // Allocate and initialize the elements to hold the check results
@@ -122,9 +136,10 @@ class CheckNumericsOp<GPUDevice, T> : public OpKernel {
                                 &abnormal_detected));
 
     auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+    OP_REQUIRES_ASYNC(context, stream != nullptr,
+                      errors::Internal("No GPU stream available."), done);
 
-    perftools::gputools::DeviceMemoryBase abnormal_detected_ptr(
+    se::DeviceMemoryBase abnormal_detected_ptr(
         abnormal_detected.flat<int>().data(),
         abnormal_detected.flat<int>().size());
     stream->ThenMemset32(&abnormal_detected_ptr, 0,
@@ -139,41 +154,59 @@ class CheckNumericsOp<GPUDevice, T> : public OpKernel {
     AllocatorAttributes attr;
     attr.set_on_host(true);
     attr.set_gpu_compatible(true);
-    Tensor abnormal_detected_out;
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DT_INT32, TensorShape({abnormal_detected_size}),
-                                &abnormal_detected_out, attr));
-    int* abnormal_detected_host = abnormal_detected_out.flat<int>().data();
-    stream->ThenMemcpy(abnormal_detected_host, abnormal_detected_ptr,
-                       abnormal_detected_size * sizeof(int));
-    stream->BlockHostUntilDone();
-    OP_REQUIRES(context, stream->ok(),
-                errors::Internal("cudaMemcpy from device to host failed"));
+    Tensor abnormal_detected_host;
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        context->allocate_temp(DT_INT32, TensorShape({abnormal_detected_size}),
+                               &abnormal_detected_host, attr),
+        done);
+    OP_REQUIRES_ASYNC(
+        context,
+        stream
+            ->ThenMemcpy(abnormal_detected_host.flat<int>().data(),
+                         abnormal_detected_ptr,
+                         abnormal_detected_size * sizeof(int))
+            .ok(),
+        errors::Internal("cudaMemcpy from device to host failed"), done);
 
-    int is_nan = abnormal_detected_host[0];
-    int is_inf = abnormal_detected_host[1];
-    if (is_nan || is_inf) {
-      string status;
-      LOG(ERROR) << "abnormal_detected_host @" << abnormal_detected_host
-                 << " = {" << is_nan << ", " << is_inf << "} " << message_;
+    // We have observed crashes on some network stacks when not holding
+    // this tensor reference.
+    TensorReference abnormal_detected_ref(abnormal_detected);
+    auto check_cb = [this, stream, abnormal_detected_ref,
+                     abnormal_detected_host, context, done]() {
+      se::cuda::ScopedActivateExecutorContext scoped_activation{
+          stream->parent()};
+      auto abnormal_detected_host_flat = abnormal_detected_host.flat<int>();
+      int is_nan = abnormal_detected_host_flat(0);
+      int is_inf = abnormal_detected_host_flat(1);
+      abnormal_detected_ref.Unref();
+      if (is_nan || is_inf) {
+        string status;
+        LOG(ERROR) << "abnormal_detected_host @"
+                   << abnormal_detected_host_flat.data() << " = {" << is_nan
+                   << ", " << is_inf << "} " << message_;
 
-      // Results should always be 1 or 0.  If we see anything else then
-      // there has been some GPU memory corruption.
-      CHECK_GE(is_nan, 0);
-      CHECK_GE(is_inf, 0);
-      CHECK_LE(is_nan, 1);
-      CHECK_LE(is_inf, 1);
+        // Results should always be 1 or 0.  If we see anything else then
+        // there has been some GPU memory corruption.
+        CHECK_GE(is_nan, 0);
+        CHECK_GE(is_inf, 0);
+        CHECK_LE(is_nan, 1);
+        CHECK_LE(is_inf, 1);
 
-      if (is_nan && is_inf) {
-        status = "Inf and NaN";
-      } else if (is_nan) {
-        status = "NaN";
-      } else if (is_inf) {
-        status = "Inf";
+        if (is_nan && is_inf) {
+          status = "Inf and NaN";
+        } else if (is_nan) {
+          status = "NaN";
+        } else if (is_inf) {
+          status = "Inf";
+        }
+        context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
+                                                   status, " values"));
       }
-      context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
-                                                 status, " values"));
-    }
+      done();
+    };
+    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+        stream, std::move(check_cb));
   }
 
  private:
@@ -188,22 +221,20 @@ class CheckNumericsOp<GPUDevice, T> : public OpKernel {
       Name("CheckNumerics").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       CheckNumericsOp<CPUDevice, T>);
 TF_CALL_half(REGISTER_CPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Eigen::half>("T"),
-                        CheckNumericsOp<GPUDevice, Eigen::half>);
-REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T"),
-                        CheckNumericsOp<GPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<double>("T"),
-                        CheckNumericsOp<GPUDevice, double>);
+REGISTER_KERNEL_BUILDER(
+    Name("CheckNumerics").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    CheckNumericsOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("CheckNumerics").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    CheckNumericsOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("CheckNumerics").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    CheckNumericsOp<GPUDevice, double>);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

@@ -17,31 +17,48 @@ include (ExternalProject)
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG 781fd6f6ea03645a520cd5c675da67ab61f87e4b)
+set(GRPC_TAG d184fa229d75d336aedea0041bd59cb93e7e267f)
 
 if(WIN32)
-  set(grpc_STATIC_LIBRARIES
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc++_unsecure.lib
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc_unsecure.lib
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/gpr.lib)
+  # We use unsecure gRPC because boringssl does not build on windows
+  set(grpc_TARGET grpc++_unsecure)
+  set(grpc_DEPENDS protobuf zlib)
+  set(grpc_SSL_PROVIDER NONE)
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set(grpc_STATIC_LIBRARIES
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc++_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/gpr.lib)
+  else()
+    set(grpc_STATIC_LIBRARIES
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/grpc++_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/grpc_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/gpr.lib)
+  endif()
 else()
+  set(grpc_TARGET grpc++)
+  set(grpc_DEPENDS boringssl protobuf zlib)
+  set(grpc_SSL_PROVIDER module)
   set(grpc_STATIC_LIBRARIES
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++_unsecure.a
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++.a
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc.a
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libaddress_sorting.a
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/third_party/cares/cares/lib/libcares.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
 endif()
 
+add_definitions(-DGRPC_ARES=0)
+
 ExternalProject_Add(grpc
     PREFIX grpc
-    DEPENDS protobuf zlib
+    DEPENDS ${grpc_DEPENDS}
     GIT_REPOSITORY ${GRPC_URL}
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
-    # TODO(jhseu): Remove this PATCH_COMMAND once grpc removes the dependency
-    # on "grpc" from the "grpc++_unsecure" rule.
-    PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/grpc/CMakeLists.txt ${GRPC_BUILD}
-    BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc++_unsecure
+    BUILD_BYPRODUCTS ${grpc_STATIC_LIBRARIES}
+    BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target ${grpc_TARGET}
+    COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc_cpp_plugin
     INSTALL_COMMAND ""
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
@@ -49,7 +66,7 @@ ExternalProject_Add(grpc
         -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
         -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
-	-DgRPC_SSL_PROVIDER:STRING=NONE
+	-DgRPC_SSL_PROVIDER:STRING=${grpc_SSL_PROVIDER}
 )
 
 # grpc/src/core/ext/census/tracing.c depends on the existence of openssl/rand.h.

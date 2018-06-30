@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import sys
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -90,8 +89,25 @@ class DecodeRawOpTest(test.TestCase):
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
       decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.float16)
 
-      result = decode.eval(feed_dict={in_bytes: [""]})
-      self.assertEqual(len(result), 1)
+      for num_inputs in range(3):
+        result = decode.eval(feed_dict={in_bytes: [""] * num_inputs})
+        self.assertEqual((num_inputs, 0), result.shape)
+
+  def testToUInt16(self):
+    with self.test_session():
+      in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
+      decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.uint16)
+      self.assertEqual([None, None], decode.get_shape().as_list())
+
+      # Use FF/EE/DD/CC so that decoded value is higher than 32768 for uint16
+      result = decode.eval(feed_dict={in_bytes: [b"\xFF\xEE\xDD\xCC"]})
+      self.assertAllEqual(
+          [[0xFF + 0xEE * 256, 0xDD + 0xCC * 256]], result)
+
+      with self.assertRaisesOpError(
+          "Input to DecodeRaw has length 3 that is not a multiple of 2, the "
+          "size of uint16"):
+        decode.eval(feed_dict={in_bytes: ["123", "456"]})
 
 
 if __name__ == "__main__":

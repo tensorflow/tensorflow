@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
+#ifndef TENSORFLOW_C_C_TEST_UTIL_H_
+#define TENSORFLOW_C_C_TEST_UTIL_H_
 
 #include "tensorflow/c/c_api.h"
 
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -33,10 +34,23 @@ typedef std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)>
 // Create a tensor with values of type TF_INT8 provided by `values`.
 TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values);
 
+// Create a tensor with values of type TF_INT32 provided by `values`.
+TF_Tensor* Int32Tensor(const int64_t* dims, int num_dims,
+                       const int32_t* values);
+
+// Create 1 dimensional tensor with values from `values`
+TF_Tensor* Int32Tensor(const std::vector<int32_t>& values);
+
 TF_Tensor* Int32Tensor(int32_t v);
 
+TF_Tensor* DoubleTensor(double v);
+
+TF_Tensor* FloatTensor(float v);
+
 TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
-                          const char* name = "feed");
+                          const char* name = "feed",
+                          TF_DataType dtype = TF_INT32,
+                          const std::vector<int64_t>& dims = {});
 
 TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
                     const char* name = "const");
@@ -44,15 +58,47 @@ TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
 TF_Operation* ScalarConst(int32_t v, TF_Graph* graph, TF_Status* s,
                           const char* name = "scalar");
 
+TF_Operation* ScalarConst(double v, TF_Graph* graph, TF_Status* s,
+                          const char* name = "scalar");
+
+TF_Operation* ScalarConst(float v, TF_Graph* graph, TF_Status* s,
+                          const char* name = "scalar");
+
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s, const char* name = "add");
+
+TF_Operation* AddNoCheck(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                         TF_Status* s, const char* name = "add");
+
+TF_Operation* AddWithCtrlDependency(TF_Operation* l, TF_Operation* r,
+                                    TF_Graph* graph, TF_Operation* ctrl_op,
+                                    TF_Status* s, const char* name = "add");
 
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
                   const char* name = "add");
 
-TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s);
+TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                  TF_Status* s, const char* name = "min");
+
+TF_Operation* Mul(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                  TF_Status* s, const char* name = "mul");
+
+// If `op_device` is non-empty, set the created op on that device.
+TF_Operation* MinWithDevice(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                            const string& op_device, TF_Status* s,
+                            const char* name = "min");
+
+TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
+                  const char* name = "neg");
 
 TF_Operation* LessThan(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s);
+
+TF_Operation* RandomUniform(TF_Operation* shape, TF_DataType dtype,
+                            TF_Graph* graph, TF_Status* s);
+
+// Split `input` along the first dimension into 3 tensors
+TF_Operation* Split3(TF_Operation* input, TF_Graph* graph, TF_Status* s,
+                     const char* name = "split3");
 
 bool IsPlaceholder(const tensorflow::NodeDef& node_def);
 
@@ -66,12 +112,22 @@ bool GetGraphDef(TF_Graph* graph, tensorflow::GraphDef* graph_def);
 
 bool GetNodeDef(TF_Operation* oper, tensorflow::NodeDef* node_def);
 
+bool GetFunctionDef(TF_Function* func, tensorflow::FunctionDef* func_def);
+
 bool GetAttrValue(TF_Operation* oper, const char* attr_name,
                   tensorflow::AttrValue* attr_value, TF_Status* s);
 
+// Returns a sorted vector of std::pair<function_name, gradient_func> from
+// graph_def.library().gradient()
+std::vector<std::pair<string, string>> GetGradDefs(
+    const tensorflow::GraphDef& graph_def);
+
+// Returns a sorted vector of names contained in `grad_def`
+std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def);
+
 class CSession {
  public:
-  CSession(TF_Graph* graph, TF_Status* s);
+  CSession(TF_Graph* graph, TF_Status* s, bool use_XLA = false);
   explicit CSession(TF_Session* session);
 
   ~CSession();
@@ -87,6 +143,8 @@ class CSession {
 
   TF_Tensor* output_tensor(int i) { return output_values_[i]; }
 
+  TF_Session* mutable_session() { return session_; }
+
  private:
   void DeleteInputValues();
   void ResetOutputValues();
@@ -99,4 +157,4 @@ class CSession {
   std::vector<TF_Operation*> targets_;
 };
 
-#endif  // THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
+#endif  // TENSORFLOW_C_C_TEST_UTIL_H_

@@ -18,6 +18,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -75,6 +77,13 @@ class MultinomialTest(test.TestCase):
       self.assertEqual((1, 3), multinom.logits.get_shape())
       self.assertAllClose(p, multinom.probs.eval())
       self.assertAllClose(logits, multinom.logits.eval())
+
+  def testPmfUnderflow(self):
+    logits = np.array([[-200, 0]], dtype=np.float32)
+    with self.test_session():
+      dist = multinomial.Multinomial(total_count=1., logits=logits)
+      lp = dist.log_prob([1., 0.]).eval()[0]
+      self.assertAllClose(-200, lp, atol=0, rtol=1e-6)
 
   def testPmfandCountsAgree(self):
     p = [[0.1, 0.2, 0.7]]
@@ -243,13 +252,11 @@ class MultinomialTest(test.TestCase):
     theta = np.array([[1., 2, 3],
                       [2.5, 4, 0.01]], dtype=np.float32)
     theta /= np.sum(theta, 1)[..., array_ops.newaxis]
-    # Ideally we'd be able to test broadcasting but, the multinomial sampler
-    # doesn't support different total counts.
-    n = np.float32(5)
+    n = np.array([[10., 9.], [8., 7.], [6., 5.]], dtype=np.float32)
     with self.test_session() as sess:
-      # batch_shape=[2], event_shape=[3]
+      # batch_shape=[3, 2], event_shape=[3]
       dist = multinomial.Multinomial(n, theta)
-      x = dist.sample(int(250e3), seed=1)
+      x = dist.sample(int(1000e3), seed=1)
       sample_mean = math_ops.reduce_mean(x, 0)
       x_centered = x - sample_mean[array_ops.newaxis, ...]
       sample_cov = math_ops.reduce_mean(math_ops.matmul(
@@ -276,17 +283,17 @@ class MultinomialTest(test.TestCase):
           dist.variance(),
           dist.stddev(),
       ])
-      self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.01)
-      self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.01)
-      self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.01)
-      self.assertAllClose(sample_stddev_, analytic_stddev, atol=0., rtol=0.01)
+      self.assertAllClose(sample_mean_, analytic_mean, atol=0.01, rtol=0.01)
+      self.assertAllClose(sample_cov_, analytic_cov, atol=0.01, rtol=0.01)
+      self.assertAllClose(sample_var_, analytic_var, atol=0.01, rtol=0.01)
+      self.assertAllClose(sample_stddev_, analytic_stddev, atol=0.01, rtol=0.01)
 
   def testSampleUnbiasedNonScalarBatch(self):
     with self.test_session() as sess:
       dist = multinomial.Multinomial(
-          total_count=5.,
+          total_count=[7., 6., 5.],
           logits=math_ops.log(2. * self._rng.rand(4, 3, 2).astype(np.float32)))
-      n = int(3e3)
+      n = int(3e4)
       x = dist.sample(n, seed=0)
       sample_mean = math_ops.reduce_mean(x, 0)
       # Cyclically rotate event dims left.
@@ -305,10 +312,10 @@ class MultinomialTest(test.TestCase):
           dist.covariance(),
       ])
       self.assertAllEqual([4, 3, 2], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.07)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.10)
       self.assertAllEqual([4, 3, 2, 2], sample_covariance.get_shape())
       self.assertAllClose(
-          actual_covariance_, sample_covariance_, atol=0., rtol=0.10)
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
 
   def testSampleUnbiasedScalarBatch(self):
     with self.test_session() as sess:
@@ -333,10 +340,24 @@ class MultinomialTest(test.TestCase):
           dist.covariance(),
       ])
       self.assertAllEqual([4], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.07)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.10)
       self.assertAllEqual([4, 4], sample_covariance.get_shape())
       self.assertAllClose(
-          actual_covariance_, sample_covariance_, atol=0., rtol=0.10)
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
+
+  def testNotReparameterized(self):
+    total_count = constant_op.constant(5.0)
+    p = constant_op.constant([0.2, 0.6])
+    with backprop.GradientTape() as tape:
+      tape.watch(total_count)
+      tape.watch(p)
+      dist = multinomial.Multinomial(
+          total_count=total_count,
+          probs=p)
+      samples = dist.sample(100)
+    grad_total_count, grad_p = tape.gradient(samples, [total_count, p])
+    self.assertIsNone(grad_total_count)
+    self.assertIsNone(grad_p)
 
 
 if __name__ == "__main__":

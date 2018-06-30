@@ -169,8 +169,14 @@ class RestoreV2 : public OpKernel {
         paths.empty()) {
       // Cannot find V2's metadata file, so "prefix_string" does not point to a
       // V2 checkpoint.  Invokes the V1 read path instead.
-      RestoreTensor(context, &checkpoint::OpenTableTensorSliceReader,
-                    /* preferred_shard */ -1, /* restore_slice */ true);
+      for (size_t i = 0; i < tensor_names.NumElements(); ++i) {
+        RestoreTensor(context, &checkpoint::OpenTableTensorSliceReader,
+                      /* preferred_shard */ -1, /* restore_slice */ true,
+                      /* restore_index */ i);
+        if (!context->status().ok()) {
+          return;
+        }
+      }
       return;
     }
     // If found, invokes the V2 reader.
@@ -214,9 +220,9 @@ class MergeV2Checkpoints : public OpKernel {
         context, tensorflow::MergeBundles(env, input_prefixes, merged_prefix));
 
     if (delete_old_dirs_) {
-      const string& merged_dir = io::Dirname(merged_prefix).ToString();
+      const string& merged_dir = std::string(io::Dirname(merged_prefix));
       for (const string& input_prefix : input_prefixes) {
-        const string& dirname = io::Dirname(input_prefix).ToString();
+        const string& dirname = std::string(io::Dirname(input_prefix));
         if (dirname == merged_dir) continue;
         Status status = env->DeleteDir(dirname);
         // For sharded save, only the first delete will go through and all

@@ -20,9 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import convolutional as conv_layers
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -97,16 +98,14 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
   def testUnknownInputChannels(self):
-    images = random_ops.random_uniform((5, 7, 9, 4))
-    images._shape = tensor_shape.as_shape((5, 7, 9, None))
+    images = array_ops.placeholder(dtypes.float32, (5, 7, 9, None))
     layer = conv_layers.Conv2D(32, [3, 3], activation=nn_ops.relu)
     with self.assertRaisesRegexp(ValueError,
                                  'The channel dimension of the inputs '
                                  'should be defined. Found `None`.'):
       _ = layer.apply(images)
 
-    images = random_ops.random_uniform((5, 4, 7, 9))
-    images._shape = tensor_shape.as_shape((5, None, 7, 9))
+    images = array_ops.placeholder(dtypes.float32, (5, None, 7, 9))
     layer = conv_layers.Conv2D(32, [3, 3], data_format='channels_first')
     with self.assertRaisesRegexp(ValueError,
                                  'The channel dimension of the inputs '
@@ -167,16 +166,14 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
   def testUnknownInputChannelsConv1D(self):
-    data = random_ops.random_uniform((5, 4, 7))
-    data._shape = tensor_shape.as_shape((5, 4, None))
+    data = array_ops.placeholder(dtypes.float32, (5, 4, None))
     layer = conv_layers.Conv1D(32, 3, activation=nn_ops.relu)
     with self.assertRaisesRegexp(ValueError,
                                  'The channel dimension of the inputs '
                                  'should be defined. Found `None`.'):
       _ = layer.apply(data)
 
-    data = random_ops.random_uniform((5, 7, 4))
-    data._shape = tensor_shape.as_shape((5, None, 4))
+    data = array_ops.placeholder(dtypes.float32, (5, None, 4))
     layer = conv_layers.Conv1D(32, 3, data_format='channels_first')
     with self.assertRaisesRegexp(ValueError,
                                  'The channel dimension of the inputs '
@@ -195,8 +192,7 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
   def testUnknownInputChannelsConv3D(self):
-    volumes = random_ops.random_uniform((5, 6, 7, 9, 9))
-    volumes._shape = tensor_shape.as_shape((5, 6, 7, 9, None))
+    volumes = array_ops.placeholder(dtypes.float32, (5, 6, 7, 9, None))
     layer = conv_layers.Conv3D(32, [3, 3, 3], activation=nn_ops.relu)
     with self.assertRaisesRegexp(ValueError,
                                  'The channel dimension of the inputs '
@@ -292,6 +288,207 @@ class ConvTest(test.TestCase):
     self.assertEqual(len(variables.trainable_variables()), 2)
     conv_layers.conv2d(images, 32, [3, 3])
     self.assertEqual(len(variables.trainable_variables()), 4)
+
+  def testConstraints(self):
+    # Conv1D
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    conv1d = conv_layers.Conv1D(2, 3,
+                                kernel_constraint=k_constraint,
+                                bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 5), seed=1)
+    conv1d(inputs)
+    self.assertEqual(conv1d.kernel_constraint, k_constraint)
+    self.assertEqual(conv1d.bias_constraint, b_constraint)
+
+    # Conv2D
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    conv2d = conv_layers.Conv2D(2, 3,
+                                kernel_constraint=k_constraint,
+                                bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 3, 5), seed=1)
+    conv2d(inputs)
+    self.assertEqual(conv2d.kernel_constraint, k_constraint)
+    self.assertEqual(conv2d.bias_constraint, b_constraint)
+
+    # Conv3D
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    conv3d = conv_layers.Conv3D(2, 3,
+                                kernel_constraint=k_constraint,
+                                bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 3, 3, 5), seed=1)
+    conv3d(inputs)
+    self.assertEqual(conv3d.kernel_constraint, k_constraint)
+    self.assertEqual(conv3d.bias_constraint, b_constraint)
+
+  def testConv3DChannelsFirst(self):
+    # Test case for GitHub issue 15655
+    images = array_ops.placeholder(
+        dtype=dtypes.float32, shape=[None, 1, 32, 32, 32])
+    conv_layers.conv3d(images, 32, 9, data_format='channels_first')
+
+
+class SeparableConv1DTest(test.TestCase):
+
+  def testInvalidDataFormat(self):
+    length = 9
+    data = random_ops.random_uniform((5, length, 3), seed=1)
+    with self.assertRaisesRegexp(ValueError, 'data_format'):
+      conv_layers.separable_conv1d(data, 32, 3, data_format='invalid')
+
+  def testInvalidStrides(self):
+    length = 9
+    data = random_ops.random_uniform((5, length, 3), seed=1)
+    with self.assertRaisesRegexp(ValueError, 'strides'):
+      conv_layers.separable_conv1d(data, 32, 3, strides=(1, 2))
+
+    with self.assertRaisesRegexp(ValueError, 'strides'):
+      conv_layers.separable_conv1d(data, 32, 3, strides=None)
+
+  def testInvalidKernelSize(self):
+    length = 9
+    data = random_ops.random_uniform((5, length, 3), seed=1)
+    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+      conv_layers.separable_conv1d(data, 32, (1, 2))
+
+    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+      conv_layers.separable_conv1d(data, 32, None)
+
+  def testCreateSeparableConv1D(self):
+    length = 9
+    data = random_ops.random_uniform((5, length, 4))
+    layer = conv_layers.SeparableConv1D(32, 3, activation=nn_ops.relu)
+    output = layer.apply(data)
+    self.assertEqual(output.op.name, 'separable_conv1d/Relu')
+    self.assertEqual(output.get_shape().as_list(), [5, length - 2, 32])
+    self.assertEqual(layer.depthwise_kernel.get_shape().as_list(), [3, 4, 1])
+    self.assertEqual(layer.pointwise_kernel.get_shape().as_list(), [1, 4, 32])
+    self.assertEqual(layer.bias.get_shape().as_list(), [32])
+
+  def testCreateSeparableConv1DDepthMultiplier(self):
+    length = 9
+    data = random_ops.random_uniform((5, length, 4))
+    layer = conv_layers.SeparableConv1D(32, 3, depth_multiplier=2)
+    output = layer.apply(data)
+    self.assertEqual(output.get_shape().as_list(), [5, length - 2, 32])
+    self.assertEqual(layer.depthwise_kernel.get_shape().as_list(), [3, 4, 2])
+    self.assertEqual(layer.pointwise_kernel.get_shape().as_list(), [1, 8, 32])
+    self.assertEqual(layer.bias.get_shape().as_list(), [32])
+
+  def testCreateSeparableConv1DChannelsFirst(self):
+    length = 9
+    data = random_ops.random_uniform((5, 4, length))
+    layer = conv_layers.SeparableConv1D(32, 3, data_format='channels_first')
+    output = layer.apply(data)
+    self.assertEqual(output.get_shape().as_list(), [5, 32, length - 2])
+    self.assertEqual(layer.depthwise_kernel.get_shape().as_list(), [3, 4, 1])
+    self.assertEqual(layer.pointwise_kernel.get_shape().as_list(), [1, 4, 32])
+    self.assertEqual(layer.bias.get_shape().as_list(), [32])
+
+  def testSeparableConv1DPaddingSame(self):
+    length = 9
+    data = random_ops.random_uniform((5, length, 32), seed=1)
+    layer = conv_layers.SeparableConv1D(
+        64, length, padding='same')
+    output = layer.apply(data)
+    self.assertEqual(output.get_shape().as_list(), [5, length, 64])
+
+  def testCreateSeparableConv1DWithStrides(self):
+    length = 10
+    data = random_ops.random_uniform((5, length, 3), seed=1)
+    layer = conv_layers.SeparableConv1D(32, 3, strides=2, padding='same')
+    output = layer.apply(data)
+    self.assertEqual(output.get_shape().as_list(), [5, length // 2, 32])
+
+  def testCreateSeparableConv1DWithStridesChannelsFirst(self):
+    data_format = 'channels_first'
+    length = 10
+    data = random_ops.random_uniform((5, 3, length), seed=1)
+    layer = conv_layers.SeparableConv1D(
+        32, 3, strides=2, padding='same', data_format=data_format)
+    output = layer.apply(data)
+    self.assertEqual(output.get_shape().as_list(), [5, 32, length // 2])
+
+  def testFunctionalConv1DReuse(self):
+    length = 10
+    data = random_ops.random_uniform((5, length, 3), seed=1)
+    conv_layers.separable_conv1d(data, 32, 3, name='sepconv1')
+    self.assertEqual(len(variables.trainable_variables()), 3)
+    conv_layers.separable_conv1d(data, 32, 3, name='sepconv1', reuse=True)
+    self.assertEqual(len(variables.trainable_variables()), 3)
+
+  def testFunctionalConv1DReuseFromScope(self):
+    with variable_scope.variable_scope('scope'):
+      length = 10
+      data = random_ops.random_uniform((5, length, 3), seed=1)
+      conv_layers.separable_conv1d(data, 32, 3, name='sepconv1')
+      self.assertEqual(len(variables.trainable_variables()), 3)
+    with variable_scope.variable_scope('scope', reuse=True):
+      conv_layers.separable_conv1d(data, 32, 3, name='sepconv1')
+      self.assertEqual(len(variables.trainable_variables()), 3)
+
+  def testFunctionalConv1DNoReuse(self):
+    length = 10
+    data = random_ops.random_uniform((5, length, 3), seed=1)
+    conv_layers.separable_conv1d(data, 32, 3)
+    self.assertEqual(len(variables.trainable_variables()), 3)
+    conv_layers.separable_conv1d(data, 32, 3)
+    self.assertEqual(len(variables.trainable_variables()), 6)
+
+  def testSeparableConv1DDepthwiseRegularizer(self):
+    length = 9
+    data = random_ops.random_uniform((5, length, 4))
+    reg = lambda x: 0.1 * math_ops.reduce_sum(x)
+    layer = conv_layers.SeparableConv1D(32, 3, depthwise_regularizer=reg)
+    layer.apply(data)
+    loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+    self.assertEqual(len(loss_keys), 1)
+    self.assertEqual(layer.losses, loss_keys)
+
+  def testSeparableConv1DPointwiseRegularizer(self):
+    length = 9
+    data = random_ops.random_uniform((5, length, 4))
+    reg = lambda x: 0.1 * math_ops.reduce_sum(x)
+    layer = conv_layers.SeparableConv1D(32, 3, pointwise_regularizer=reg)
+    layer.apply(data)
+    loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+    self.assertEqual(len(loss_keys), 1)
+    self.assertEqual(layer.losses, loss_keys)
+
+  def testSeparableConv1DBiasRegularizer(self):
+    length = 9
+    data = random_ops.random_uniform((5, length, 4))
+    reg = lambda x: 0.1 * math_ops.reduce_sum(x)
+    layer = conv_layers.SeparableConv1D(32, 3, bias_regularizer=reg)
+    layer.apply(data)
+    loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+    self.assertEqual(len(loss_keys), 1)
+    self.assertEqual(layer.losses, loss_keys)
+
+  def testSeparableConv1DNoBias(self):
+    length = 9
+    data = random_ops.random_uniform((5, length, 4))
+    layer = conv_layers.SeparableConv1D(
+        32, 3, activation=nn_ops.relu, use_bias=False)
+    output = layer.apply(data)
+    self.assertEqual(output.op.name, 'separable_conv1d/Relu')
+    self.assertEqual(layer.bias, None)
+
+  def testConstraints(self):
+    d_constraint = lambda x: x / math_ops.reduce_sum(x)
+    p_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    layer = conv_layers.SeparableConv1D(2, 3,
+                                        depthwise_constraint=d_constraint,
+                                        pointwise_constraint=p_constraint,
+                                        bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 5), seed=1)
+    layer(inputs)
+    self.assertEqual(layer.depthwise_constraint, d_constraint)
+    self.assertEqual(layer.pointwise_constraint, p_constraint)
+    self.assertEqual(layer.bias_constraint, b_constraint)
 
 
 class SeparableConv2DTest(test.TestCase):
@@ -405,6 +602,31 @@ class SeparableConv2DTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(),
                          [5, height / 2, width, 32])
 
+  def testCreateSeparableConvWithStridesChannelsFirst(self):
+    data_format = 'channels_first'
+    height, width = 6, 8
+    # Test strides tuple
+    images = random_ops.random_uniform((5, 3, height, width), seed=1)
+    layer = conv_layers.SeparableConv2D(
+        32, [3, 3], strides=(2, 2), padding='same', data_format=data_format)
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, 32, height / 2, width / 2])
+
+    # Test strides integer
+    layer = conv_layers.SeparableConv2D(32, [3, 3], strides=2, padding='same',
+                                        data_format=data_format)
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, 32, height / 2, width / 2])
+
+    # Test unequal strides
+    layer = conv_layers.SeparableConv2D(
+        32, [3, 3], strides=(2, 1), padding='same', data_format=data_format)
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, 32, height / 2, width])
+
   def testFunctionalConv2DReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
@@ -496,6 +718,20 @@ class SeparableConv2DTest(test.TestCase):
     self.assertListEqual(layer.pointwise_kernel.get_shape().as_list(),
                          [1, 1, 4, 32])
     self.assertEqual(layer.bias, None)
+
+  def testConstraints(self):
+    d_constraint = lambda x: x / math_ops.reduce_sum(x)
+    p_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    layer = conv_layers.SeparableConv2D(2, 3,
+                                        depthwise_constraint=d_constraint,
+                                        pointwise_constraint=p_constraint,
+                                        bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 3, 5), seed=1)
+    layer(inputs)
+    self.assertEqual(layer.depthwise_constraint, d_constraint)
+    self.assertEqual(layer.pointwise_constraint, p_constraint)
+    self.assertEqual(layer.bias_constraint, b_constraint)
 
 
 class Conv2DTransposeTest(test.TestCase):
@@ -671,6 +907,17 @@ class Conv2DTransposeTest(test.TestCase):
     conv_layers.conv2d_transpose(images, 32, [3, 3])
     self.assertEqual(len(variables.trainable_variables()), 4)
 
+  def testConstraints(self):
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    layer = conv_layers.Conv2DTranspose(2, 3,
+                                        kernel_constraint=k_constraint,
+                                        bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 3, 5), seed=1)
+    layer(inputs)
+    self.assertEqual(layer.kernel_constraint, k_constraint)
+    self.assertEqual(layer.bias_constraint, b_constraint)
+
 
 class Conv3DTransposeTest(test.TestCase):
 
@@ -839,6 +1086,17 @@ class Conv3DTransposeTest(test.TestCase):
     self.assertEqual(len(variables.trainable_variables()), 2)
     conv_layers.conv3d_transpose(volumes, 4, [3, 3, 3])
     self.assertEqual(len(variables.trainable_variables()), 4)
+
+  def testConstraints(self):
+    k_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    layer = conv_layers.Conv3DTranspose(2, 3,
+                                        kernel_constraint=k_constraint,
+                                        bias_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 3, 3, 3, 5), seed=1)
+    layer(inputs)
+    self.assertEqual(layer.kernel_constraint, k_constraint)
+    self.assertEqual(layer.bias_constraint, b_constraint)
 
 
 if __name__ == '__main__':

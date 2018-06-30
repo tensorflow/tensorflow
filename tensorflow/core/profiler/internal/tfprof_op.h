@@ -15,8 +15,8 @@ limitations under the License.
 
 // Build a flat structure of ops.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
 
 #include <deque>
 #include <map>
@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_show_multi.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
@@ -41,8 +41,7 @@ namespace tfprof {
 // to input ops.
 class TFOp : public TFMultiShow {
  public:
-  explicit TFOp()
-      : TFMultiShow() {}
+  explicit TFOp() : TFMultiShow() {}
   ~TFOp() override {}
 
   void AddNode(TFGraphNode* node) override;
@@ -51,7 +50,7 @@ class TFOp : public TFMultiShow {
 
  private:
   const ShowMultiNode* ShowInternal(const Options& opts,
-                                   Timeline* timeline) override;
+                                    Timeline* timeline) override;
 
   int64 SearchRoot(const std::vector<OpNode*> nodes,
                    const std::vector<string>& regexes);
@@ -65,6 +64,8 @@ class TFOp : public TFMultiShow {
   }
 
   string FormatNode(OpNode* node, OpNode* root, const Options& opts) const;
+  string FormatMemoryNode(int64 node_total_bytes, int64 root_total_bytes,
+                          int64 node_bytes) const;
 
   std::unique_ptr<OpNode> root_;
   std::map<string, std::unique_ptr<OpNode>> cnodes_map_;
@@ -74,4 +75,4 @@ class TFOp : public TFMultiShow {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_

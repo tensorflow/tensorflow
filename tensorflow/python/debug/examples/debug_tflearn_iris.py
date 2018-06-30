@@ -22,11 +22,9 @@ import os
 import sys
 import tempfile
 
-import numpy as np
 from six.moves import urllib
 import tensorflow as tf
 
-from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python import debug as tf_debug
 
@@ -82,65 +80,67 @@ def iris_input_fn():
 def main(_):
   # Load datasets.
   if FLAGS.fake_data:
-    training_set = tf.contrib.learn.datasets.base.Dataset(
-        np.random.random([120, 4]),
-        np.random.random_integers(3, size=[120]) - 1)
-    test_set = tf.contrib.learn.datasets.base.Dataset(
-        np.random.random([30, 4]),
-        np.random.random_integers(3, size=[30]) - 1)
+    def training_input_fn():
+      return ({"features": tf.random_normal([128, 4])},
+              tf.random_uniform([128], minval=0, maxval=3, dtype=tf.int32))
+    def test_input_fn():
+      return ({"features": tf.random_normal([32, 4])},
+              tf.random_uniform([32], minval=0, maxval=3, dtype=tf.int32))
+    feature_columns = [
+        tf.feature_column.numeric_column("features", shape=(4,))]
   else:
     training_data_path, test_data_path = maybe_download_data(FLAGS.data_dir)
-    training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-        filename=training_data_path,
-        target_dtype=np.int,
-        features_dtype=np.float32)
-    test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-        filename=test_data_path, target_dtype=np.int, features_dtype=np.float32)
-
-  # Specify that all features have real-value data
-  feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
+    column_names = [
+        "sepal_length", "sepal_width", "petal_length", "petal_width", "label"]
+    batch_size = 32
+    def training_input_fn():
+      return tf.contrib.data.make_csv_dataset(
+          [training_data_path], batch_size,
+          column_names=column_names, label_name="label")
+    def test_input_fn():
+      return tf.contrib.data.make_csv_dataset(
+          [test_data_path], batch_size,
+          column_names=column_names, label_name="label")
+    feature_columns = [tf.feature_column.numeric_column(feature)
+                       for feature in column_names[:-1]]
 
   # Build 3 layer DNN with 10, 20, 10 units respectively.
   model_dir = FLAGS.model_dir or tempfile.mkdtemp(prefix="debug_tflearn_iris_")
 
-  classifier = tf.contrib.learn.DNNClassifier(
+  classifier = tf.estimator.DNNClassifier(
       feature_columns=feature_columns,
       hidden_units=[10, 20, 10],
       n_classes=3,
       model_dir=model_dir)
 
   hooks = None
+  if FLAGS.debug and FLAGS.tensorboard_debug_address:
+    raise ValueError(
+        "The --debug and --tensorboard_debug_address flags are mutually "
+        "exclusive.")
   if FLAGS.debug:
     debug_hook = tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type,
                                             dump_root=FLAGS.dump_root)
-    debug_hook.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
-    hooks = [debug_hook]
+  elif FLAGS.tensorboard_debug_address:
+    debug_hook = tf_debug.TensorBoardDebugHook(FLAGS.tensorboard_debug_address)
+  hooks = [debug_hook]
 
-  if not FLAGS.use_experiment:
-    # Fit model.
-    classifier.fit(x=training_set.data,
-                   y=training_set.target,
+  # Train model, using tfdbg hook.
+  classifier.train(training_input_fn,
                    steps=FLAGS.train_steps,
-                   monitors=hooks)
+                   hooks=hooks)
 
-    # Evaluate accuracy.
-    accuracy_score = classifier.evaluate(x=test_set.data,
-                                         y=test_set.target,
-                                         hooks=hooks)["accuracy"]
-  else:
-    ex = experiment.Experiment(classifier,
-                               train_input_fn=iris_input_fn,
-                               eval_input_fn=iris_input_fn,
-                               train_steps=FLAGS.train_steps,
-                               eval_delay_secs=0,
-                               eval_steps=1,
-                               train_monitors=hooks,
-                               eval_hooks=hooks)
-    ex.train()
-    accuracy_score = ex.evaluate()["accuracy"]
+  # Evaluate accuracy, using tfdbg hook.
+  accuracy_score = classifier.evaluate(test_input_fn,
+                                       steps=FLAGS.eval_steps,
+                                       hooks=hooks)["accuracy"]
 
   print("After training %d steps, Accuracy = %f" %
         (FLAGS.train_steps, accuracy_score))
+
+  # Make predictions, using tfdbg hook.
+  predict_results = classifier.predict(test_input_fn, hooks=hooks)
+  print("A prediction result: %s" % next(predict_results))
 
 
 if __name__ == "__main__":
@@ -160,14 +160,12 @@ if __name__ == "__main__":
       "--train_steps",
       type=int,
       default=10,
-      help="Number of steps to run trainer.")
+      help="Number of steps to run training for.")
   parser.add_argument(
-      "--use_experiment",
-      type="bool",
-      nargs="?",
-      const=True,
-      default=False,
-      help="Use tf.contrib.learn Experiment to run training and evaluation")
+      "--eval_steps",
+      type=int,
+      default=1,
+      help="Number of steps to run evaluation foir.")
   parser.add_argument(
       "--ui_type",
       type=str,
@@ -186,11 +184,19 @@ if __name__ == "__main__":
       nargs="?",
       const=True,
       default=False,
-      help="Use debugger to track down bad values during training")
+      help="Use debugger to track down bad values during training. "
+      "Mutually exclusive with the --tensorboard_debug_address flag.")
   parser.add_argument(
       "--dump_root",
       type=str,
       default="",
       help="Optional custom root directory for temporary debug dump data")
+  parser.add_argument(
+      "--tensorboard_debug_address",
+      type=str,
+      default=None,
+      help="Connect to the TensorBoard Debugger Plugin backend specified by "
+      "the gRPC address (e.g., localhost:1234). Mutually exclusive with the "
+      "--debug flag.")
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

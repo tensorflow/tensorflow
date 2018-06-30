@@ -5,16 +5,19 @@ well-suited to loading models created in Python and executing them within
 a Go application. This guide explains how to install and set up the
 [TensorFlow Go package](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go).
 
-**WARNING:** The TensorFlow Go API is *not* covered by the TensorFlow
-[API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).
+Warning: The TensorFlow Go API is *not* covered by the TensorFlow
+[API stability guarantees](../guide/version_semantics.md).
 
 
 ## Supported Platforms
 
-You may install TensorFlow for Go on the following operating systems:
+This guide explains how to install TensorFlow for Go.  Although these
+instructions might also work on other variants, we have only tested
+(and we only support) these instructions on machines meeting the
+following requirements:
 
-  * Linux
-  * Mac OS X
+  * Linux, 64-bit, x86
+  * macOS X, 10.12.6 (Sierra) or higher
 
 
 ## Installation
@@ -27,7 +30,7 @@ steps to install this library and enable TensorFlow for Go:
      "Determine which TensorFlow to install" in one of the following guides:
 
      * @{$install_linux#determine_which_tensorflow_to_install$Installing TensorFlow on Linux}
-     * @{$install_mac#determine_which_tensorflow_to_install$Installing TensorFlow on Mac OS}
+     * @{$install_mac#determine_which_tensorflow_to_install$Installing TensorFlow on macOS}
 
   2. Download and extract the TensorFlow C library into `/usr/local/lib` by
      invoking the following shell commands:
@@ -35,7 +38,7 @@ steps to install this library and enable TensorFlow for Go:
          TF_TYPE="cpu" # Change to "gpu" for GPU support
          TARGET_DIRECTORY='/usr/local'
          curl -L \
-           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-$(go env GOOS)-x86_64-1.3.0-rc1.tar.gz" |
+           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-$(go env GOOS)-x86_64-1.9.0-rc0.tar.gz" |
          sudo tar -C $TARGET_DIRECTORY -xz
 
      The `tar` command extracts the TensorFlow C library into the `lib`
@@ -57,9 +60,9 @@ steps to install this library and enable TensorFlow for Go:
      directory (for example, `~/mydir/lib`) to two environment variables
      as follows:
 
-     <pre> <b>export LIBRARY_PATH=$LIBRARY_PATH:~/mydir/lib</b> # For both Linux and Mac OS X
+     <pre> <b>export LIBRARY_PATH=$LIBRARY_PATH:~/mydir/lib</b> # For both Linux and macOS X
      <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/mydir/lib</b> # For Linux only
-     <b>export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:~/mydir/lib</b> # For Mac OS X only</pre>
+     <b>export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:~/mydir/lib</b> # For macOS X only</pre>
 
   4. Now that the TensorFlow C library is installed, invoke `go get` as follows
      to download the appropriate packages and their dependencies:

@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "MetaGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "google/protobuf/any.proto";
 
 import "tensorflow/core/framework/graph.proto";
@@ -61,6 +61,10 @@ message MetaGraphDef {
     // graph. This will be populated by the framework, which will overwrite any
     // user supplied value.
     string tensorflow_git_version = 6;
+
+    // A flag to denote whether default-valued attrs have been stripped from
+    // the nodes in this graph_def.
+    bool stripped_default_attrs = 7;
   }
   MetaInfoDef meta_info_def = 1;
 

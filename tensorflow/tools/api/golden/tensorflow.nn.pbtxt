@@ -4,6 +4,10 @@ tf_module {
     name: "rnn_cell"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "swish"
+    mtype: "<class \'tensorflow.python.framework.function._OverloadedFunction\'>"
+  }
   member_method {
     name: "all_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
@@ -22,7 +26,7 @@ tf_module {
   }
   member_method {
     name: "avg_pool3d"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'None\'], "
   }
   member_method {
     name: "batch_norm_with_global_normalization"
@@ -50,15 +54,15 @@ tf_module {
   }
   member_method {
     name: "conv2d"
-    argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "conv2d_backprop_filter"
-    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "conv2d_backprop_input"
-    argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "conv2d_transpose"
@@ -66,11 +70,11 @@ tf_module {
   }
   member_method {
     name: "conv3d"
-    argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'[1, 1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "conv3d_backprop_filter_v2"
-    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'[1, 1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "conv3d_transpose"
@@ -82,7 +86,7 @@ tf_module {
   }
   member_method {
     name: "crelu"
-    argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'features\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'-1\'], "
   }
   member_method {
     name: "ctc_beam_search_decoder"
@@ -102,15 +106,15 @@ tf_module {
   }
   member_method {
     name: "depthwise_conv2d_native"
-    argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "depthwise_conv2d_native_backprop_filter"
-    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "depthwise_conv2d_native_backprop_input"
-    argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "dilation2d"
@@ -146,11 +150,11 @@ tf_module {
   }
   member_method {
     name: "fractional_avg_pool"
-    argspec: "args=[\'value\', \'pooling_ratio\', \'pseudo_random\', \'overlapping\', \'deterministic\', \'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'value\', \'pooling_ratio\', \'pseudo_random\', \'overlapping\', \'deterministic\', \'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'0\', \'0\', \'None\'], "
   }
   member_method {
     name: "fractional_max_pool"
-    argspec: "args=[\'value\', \'pooling_ratio\', \'pseudo_random\', \'overlapping\', \'deterministic\', \'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'value\', \'pooling_ratio\', \'pseudo_random\', \'overlapping\', \'deterministic\', \'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'0\', \'0\', \'None\'], "
   }
   member_method {
     name: "fused_batch_norm"
@@ -166,7 +170,11 @@ tf_module {
   }
   member_method {
     name: "l2_normalize"
-    argspec: "args=[\'x\', \'dim\', \'epsilon\', \'name\'], varargs=None, keywords=None, defaults=[\'1e-12\', \'None\'], "
+    argspec: "args=[\'x\', \'axis\', \'epsilon\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'1e-12\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "leaky_relu"
+    argspec: "args=[\'features\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'0.2\', \'None\'], "
   }
   member_method {
     name: "learned_unigram_candidate_sampler"
@@ -174,7 +182,7 @@ tf_module {
   }
   member_method {
     name: "local_response_normalization"
-    argspec: "args=[\'input\', \'depth_radius\', \'bias\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'depth_radius\', \'bias\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'5\', \'1\', \'1\', \'0.5\', \'None\'], "
   }
   member_method {
     name: "log_poisson_loss"
@@ -182,7 +190,7 @@ tf_module {
   }
   member_method {
     name: "log_softmax"
-    argspec: "args=[\'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+    argspec: "args=[\'logits\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "log_uniform_candidate_sampler"
@@ -190,7 +198,7 @@ tf_module {
   }
   member_method {
     name: "lrn"
-    argspec: "args=[\'input\', \'depth_radius\', \'bias\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'depth_radius\', \'bias\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'5\', \'1\', \'1\', \'0.5\', \'None\'], "
   }
   member_method {
     name: "max_pool"
@@ -198,11 +206,11 @@ tf_module {
   }
   member_method {
     name: "max_pool3d"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'None\'], "
   }
   member_method {
     name: "max_pool_with_argmax"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'Targmax\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'Targmax\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
     name: "moments"
@@ -226,7 +234,7 @@ tf_module {
   }
   member_method {
     name: "quantized_conv2d"
-    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "quantized_max_pool"
@@ -234,7 +242,7 @@ tf_module {
   }
   member_method {
     name: "quantized_relu_x"
-    argspec: "args=[\'features\', \'max_value\', \'min_features\', \'max_features\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'features\', \'max_value\', \'min_features\', \'max_features\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'None\'], "
   }
   member_method {
     name: "raw_rnn"
@@ -254,7 +262,7 @@ tf_module {
   }
   member_method {
     name: "sampled_softmax_loss"
-    argspec: "args=[\'weights\', \'biases\', \'labels\', \'inputs\', \'num_sampled\', \'num_classes\', \'num_true\', \'sampled_values\', \'remove_accidental_hits\', \'partition_strategy\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'True\', \'mod\', \'sampled_softmax_loss\'], "
+    argspec: "args=[\'weights\', \'biases\', \'labels\', \'inputs\', \'num_sampled\', \'num_classes\', \'num_true\', \'sampled_values\', \'remove_accidental_hits\', \'partition_strategy\', \'name\', \'seed\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'True\', \'mod\', \'sampled_softmax_loss\', \'None\'], "
   }
   member_method {
     name: "selu"
@@ -274,10 +282,14 @@ tf_module {
   }
   member_method {
     name: "softmax"
-    argspec: "args=[\'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+    argspec: "args=[\'logits\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "softmax_cross_entropy_with_logits"
+    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "softmax_cross_entropy_with_logits_v2"
     argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'-1\', \'None\'], "
   }
   member_method {

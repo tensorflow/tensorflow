@@ -36,6 +36,7 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
                session_root,
                watch_fn=None,
                thread_name_filter=None,
+               pass_through_operrors=None,
                log_usage=True):
     """Constructor of DumpingDebugWrapperSession.
 
@@ -56,6 +57,8 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       thread_name_filter: Regular-expression white list for threads on which the
         wrapper session will be active. See doc of `BaseDebugWrapperSession` for
         more details.
+      pass_through_operrors: If true, all captured OpErrors will be
+        propagated. By default this captures all OpErrors.
       log_usage: (`bool`) whether the usage of this class is to be logged.
 
     Raises:
@@ -67,8 +70,10 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       pass  # No logging for open-source.
 
     framework.NonInteractiveDebugWrapperSession.__init__(
-        self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter)
+        self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter,
+        pass_through_operrors=pass_through_operrors)
 
+    session_root = os.path.expanduser(session_root)
     if gfile.Exists(session_root):
       if not gfile.IsDirectory(session_root):
         raise ValueError(

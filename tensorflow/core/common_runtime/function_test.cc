@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 
 #include <atomic>
+#include <utility>
 
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
@@ -24,6 +25,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/executor_factory.h"
+#include "tensorflow/core/common_runtime/function_testlib.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
@@ -35,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -49,32 +55,10 @@ Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
-void FunctionTestSchedClosure(std::function<void()> fn) {
-  static thread::ThreadPool* w =
-      new thread::ThreadPool(Env::Default(), "Test", 8);
-  w->Schedule(std::move(fn));
-}
-
-void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(StringPiece(s.ToString()).contains(substr))
+void HasError(const Status& s, StringPiece substr) {
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
-
-// A helper class to make AttrSlice from initializer lists
-class Attrs {
- public:
-  Attrs(const std::initializer_list<  // NOLINT(runtime/explicit)
-        std::pair<string, FunctionDefHelper::AttrValueWrapper>>& attrs) {
-    for (const auto& aval : attrs) {
-      map_.insert({aval.first, aval.second.proto});
-    }
-  }
-
-  operator AttrSlice() { return AttrSlice(&map_); }  // NOLINT(runtime/explicit)
-
- private:
-  AttrValueMap map_;
-};
 
 class FunctionTest : public ::testing::Test {
  protected:
@@ -82,7 +66,7 @@ class FunctionTest : public ::testing::Test {
       : device_(DeviceFactory::NewDevice("CPU", {},
                                          "/job:localhost/replica:0/task:0")) {}
 
-  void Create(const FunctionDef& fdef, Attrs attrs) {
+  void Create(const FunctionDef& fdef, test::function::Attrs attrs) {
     exec_ = nullptr;
     InstantiationResult result;
     TF_CHECK_OK(InstantiateFunction(fdef, attrs, GetOpSig, &result));
@@ -90,11 +74,11 @@ class FunctionTest : public ::testing::Test {
     arg_types_ = result.arg_types;
     ret_types_ = result.ret_types;
 
-    Graph* g = new Graph(OpRegistry::Global());
+    std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = false;
-    TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g));
+    TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g.get()));
 
     const int version = g->versions().producer();
     LocalExecutorParams params;
@@ -108,7 +92,7 @@ class FunctionTest : public ::testing::Test {
       DeleteNonCachedKernel(kernel);
     };
     Executor* exec;
-    TF_CHECK_OK(NewLocalExecutor(params, g, &exec));
+    TF_CHECK_OK(NewLocalExecutor(params, std::move(g), &exec));
     exec_.reset(exec);
   }
 
@@ -117,7 +101,7 @@ class FunctionTest : public ::testing::Test {
     TF_CHECK_OK(frame.SetArgs(args));
     Executor::Args exec_args;
     exec_args.call_frame = &frame;
-    exec_args.runner = FunctionTestSchedClosure;
+    exec_args.runner = test::function::FunctionTestSchedClosure;
     TF_CHECK_OK(exec_->Run(exec_args));
     std::vector<Tensor> computed;
     TF_CHECK_OK(frame.GetRetvals(&computed));
@@ -154,41 +138,47 @@ TEST_F(FunctionTest, WXPlusB) {
 
 class FunctionLibraryRuntimeTest : public ::testing::Test {
  protected:
-  FunctionLibraryRuntimeTest()
-      : device_(DeviceFactory::NewDevice("CPU", {},
-                                         "/job:localhost/replica:0/task:0")) {}
+  void Init(const std::vector<FunctionDef>& flib,
+            thread::ThreadPool* default_thread_pool = nullptr) {
+    SessionOptions options;
+    auto* device_count = options.config.mutable_device_count();
+    device_count->insert({"CPU", 3});
+    TF_CHECK_OK(DeviceFactory::AddDevices(
+        options, "/job:localhost/replica:0/task:0", &devices_));
 
-  void Init(const std::vector<FunctionDef>& flib) {
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    lib_ =
-        NewFunctionLibraryRuntime(nullptr, Env::Default(), device_.get(),
-                                  TF_GRAPH_DEF_VERSION, lib_def_.get(), opts);
+    device_mgr_.reset(new DeviceMgr(devices_));
+    pflr_.reset(new ProcessFunctionLibraryRuntime(
+        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
+        opts, default_thread_pool, nullptr /* cluster_flr */));
+    flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
+    flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
+    flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
     fdef_lib_ = lib_def_->ToProto();
   }
 
-  Status Run(const string& name, Attrs attrs, const std::vector<Tensor>& args,
-             std::vector<Tensor*> rets) {
-    FunctionLibraryRuntime::Handle handle;
-    Status status = lib_->Instantiate(name, attrs, &handle);
-    if (!status.ok()) {
-      return status;
-    }
-
+  Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
+             FunctionLibraryRuntime::Options opts,
+             const std::vector<Tensor>& args, std::vector<Tensor*> rets,
+             bool add_runner = true) {
     std::atomic<int32> call_count(0);
     std::function<void(std::function<void()>)> runner =
         [&call_count](std::function<void()> fn) {
           ++call_count;
-          FunctionTestSchedClosure(fn);
+          test::function::FunctionTestSchedClosure(fn);
         };
-
+    if (add_runner) {
+      opts.runner = &runner;
+    } else {
+      opts.runner = nullptr;
+    }
     Notification done;
-    FunctionLibraryRuntime::Options opts;
-    opts.runner = &runner;
     std::vector<Tensor> out;
-    lib_->Run(opts, handle, args, &out, [&status, &done](const Status& s) {
+    Status status;
+    flr->Run(opts, handle, args, &out, [&status, &done](const Status& s) {
       status = s;
       done.Notify();
     });
@@ -201,33 +191,158 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       *rets[i] = out[i];
     }
 
-    EXPECT_GE(call_count, 1);  // Test runner is used.
+    if (add_runner) {
+      EXPECT_GE(call_count, 1);  // Test runner is used.
+    }
 
     return Status::OK();
   }
 
-  std::unique_ptr<Graph> GetFuncBody(const string& name, Attrs attrs) {
+  Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
+                     test::function::Attrs attrs,
+                     FunctionLibraryRuntime::Handle* handle) {
+    return flr->Instantiate(name, attrs, handle);
+  }
+
+  Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
+                     test::function::Attrs attrs,
+                     const FunctionLibraryRuntime::InstantiateOptions& options,
+                     FunctionLibraryRuntime::Handle* handle) {
+    return flr->Instantiate(name, attrs, options, handle);
+  }
+
+  Status InstantiateAndRun(FunctionLibraryRuntime* flr, const string& name,
+                           test::function::Attrs attrs,
+                           const std::vector<Tensor>& args,
+                           std::vector<Tensor*> rets, bool add_runner = true) {
+    return InstantiateAndRun(flr, name, attrs,
+                             FunctionLibraryRuntime::InstantiateOptions(), args,
+                             std::move(rets), add_runner);
+  }
+
+  Status InstantiateAndRun(
+      FunctionLibraryRuntime* flr, const string& name,
+      test::function::Attrs attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      const std::vector<Tensor>& args, std::vector<Tensor*> rets,
+      bool add_runner = true) {
     FunctionLibraryRuntime::Handle handle;
-    Status status = lib_->Instantiate(name, attrs, &handle);
+    Status status = flr->Instantiate(name, attrs, options, &handle);
+    if (!status.ok()) {
+      return status;
+    }
+    FunctionLibraryRuntime::Options opts;
+    status = Run(flr, handle, opts, args, rets, add_runner);
+    if (!status.ok()) return status;
+
+    // Release the handle and try running again. It should not succeed.
+    status = flr->ReleaseHandle(handle);
+    if (!status.ok()) return status;
+
+    Status status2 = Run(flr, handle, opts, args, std::move(rets));
+    EXPECT_TRUE(errors::IsInvalidArgument(status2));
+    EXPECT_TRUE(
+        str_util::StrContains(status2.error_message(), "remote execution."));
+
+    return status;
+  }
+
+  Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
+             FunctionLibraryRuntime::Options opts, CallFrameInterface* frame,
+             bool add_runner = true) {
+    std::atomic<int32> call_count(0);
+    std::function<void(std::function<void()>)> runner =
+        [&call_count](std::function<void()> fn) {
+          ++call_count;
+          test::function::FunctionTestSchedClosure(fn);
+        };
+    if (add_runner) {
+      opts.runner = &runner;
+    } else {
+      opts.runner = nullptr;
+    }
+    Notification done;
+    std::vector<Tensor> out;
+    Status status;
+    flr->Run(opts, handle, frame, [&status, &done](const Status& s) {
+      status = s;
+      done.Notify();
+    });
+    done.WaitForNotification();
+    if (!status.ok()) {
+      return status;
+    }
+
+    if (add_runner) {
+      EXPECT_GE(call_count, 1);  // Test runner is used.
+    }
+
+    return Status::OK();
+  }
+
+  Status InstantiateAndRunViaCallFrameInterface(FunctionLibraryRuntime* flr,
+                                                const string& name,
+                                                test::function::Attrs attrs,
+                                                const std::vector<Tensor>& args,
+                                                std::vector<Tensor*> rets) {
+    FunctionLibraryRuntime::Handle handle;
+    Status status = flr->Instantiate(name, attrs, &handle);
+    if (!status.ok()) {
+      return status;
+    }
+    const FunctionBody* fbody = flr->GetFunctionBody(handle);
+    FunctionCallFrame frame(fbody->arg_types, fbody->ret_types);
+    TF_RETURN_IF_ERROR(frame.SetArgs(args));
+
+    FunctionLibraryRuntime::Options opts;
+    status = Run(flr, handle, opts, &frame);
+    if (!status.ok()) return status;
+
+    std::vector<Tensor> retvals;
+    TF_RETURN_IF_ERROR(frame.GetRetvals(&retvals));
+    CHECK_EQ(rets.size(), retvals.size());
+    for (size_t i = 0; i < rets.size(); ++i) {
+      *rets[i] = retvals[i];
+    }
+
+    // Release the handle and try running again. It should not succeed.
+    status = flr->ReleaseHandle(handle);
+    if (!status.ok()) return status;
+
+    Status status2 = Run(flr, handle, opts, args, std::move(rets));
+    EXPECT_TRUE(errors::IsInvalidArgument(status2));
+    EXPECT_TRUE(
+        str_util::StrContains(status2.error_message(), "remote execution."));
+
+    return status;
+  }
+
+  std::unique_ptr<Graph> GetFuncBody(FunctionLibraryRuntime* flr,
+                                     const string& name,
+                                     test::function::Attrs attrs) {
+    FunctionLibraryRuntime::Handle handle;
+    Status status = flr->Instantiate(name, attrs, &handle);
     if (!status.ok()) {
       LOG(ERROR) << status;
       return nullptr;
     }
-    const FunctionBody* fbody = lib_->GetFunctionBody(handle);
+    const FunctionBody* fbody = flr->GetFunctionBody(handle);
     CHECK_NOTNULL(fbody);
     std::unique_ptr<Graph> ret(new Graph(lib_def_.get()));
     CopyGraph(*fbody->graph, ret.get());
     return ret;
   }
 
-  std::unique_ptr<Graph> GetGradBody(const string& func, Attrs attrs) {
+  std::unique_ptr<Graph> GetGradBody(FunctionLibraryRuntime* flr,
+                                     const string& func,
+                                     test::function::Attrs attrs) {
     FunctionLibraryRuntime::Handle handle;
-    Status status = lib_->Instantiate(func, attrs, &handle);
+    Status status = flr->Instantiate(func, attrs, &handle);
     if (!status.ok()) {
       LOG(ERROR) << status;
       return nullptr;
     }
-    const FunctionBody* fbody = lib_->GetFunctionBody(handle);
+    const FunctionBody* fbody = flr->GetFunctionBody(handle);
     CHECK_NOTNULL(fbody);
     std::unique_ptr<FunctionBody> gbody(SymbolicGradient(*fbody));
     CHECK_NOTNULL(gbody);
@@ -236,24 +351,32 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     return ret;
   }
 
-  std::unique_ptr<Device> device_;
+  FunctionLibraryRuntime* flr0_;
+  FunctionLibraryRuntime* flr1_;
+  FunctionLibraryRuntime* flr2_;
+  std::vector<Device*> devices_;
+  std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
-  std::unique_ptr<FunctionLibraryRuntime> lib_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionDefLibrary fdef_lib_;
 };
 
 TEST_F(FunctionLibraryRuntimeTest, IsStateful) {
   Init({});
-  EXPECT_TRUE(lib_->IsStateful("Variable"));
-  EXPECT_TRUE(lib_->IsStateful("VariableV2"));
-  EXPECT_FALSE(lib_->IsStateful("Matmul"));
+  EXPECT_TRUE(flr0_->IsStateful("Variable"));
+  EXPECT_TRUE(flr0_->IsStateful("VariableV2"));
+  EXPECT_FALSE(flr0_->IsStateful("Matmul"));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, XTimesTwo) {
   Init({test::function::XTimesTwo()});
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
-  TF_CHECK_OK(Run("XTimesTwo", {{"T", DT_FLOAT}}, {x}, {&y}));
+  TF_CHECK_OK(
+      InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+  TF_CHECK_OK(InstantiateAndRunViaCallFrameInterface(
+      flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
 }
 
@@ -262,46 +385,228 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesN) {
         test::function::XTimes16()});
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
-  TF_CHECK_OK(Run("XTimesTwo", {{"T", DT_FLOAT}}, {x}, {&y}));
+  TF_CHECK_OK(
+      InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
-  TF_CHECK_OK(Run("XTimesFour", {{"T", DT_FLOAT}}, {x}, {&y}));
+  TF_CHECK_OK(
+      InstantiateAndRun(flr0_, "XTimesFour", {{"T", DT_FLOAT}}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({4, 8, 12, 16}));
-  TF_CHECK_OK(Run("XTimes16", {{"T", DT_FLOAT}}, {x}, {&y}));
+  TF_CHECK_OK(
+      InstantiateAndRun(flr0_, "XTimes16", {{"T", DT_FLOAT}}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({16, 32, 48, 64}));
 }
 
-// Adds a function call to 'scope.
-// TODO(phawkins): replace with C++ API for calling functions, when that exists.
-Output Call(Scope* scope, const string& op_name, const string& fn_name,
-            gtl::ArraySlice<Input> inputs) {
-  NodeDef def;
-  NodeDefBuilder builder(op_name, fn_name, scope->graph()->op_registry());
-  for (const Input& input : inputs) {
-    builder.Input(input.node()->name(), input.index(),
-                  input.node()->output_type(input.index()));
+TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLib) {
+  Init({});
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  *proto.add_function() = test::function::XTimesFour();
+  *proto.add_function() = test::function::XTimes16();
+  std::unique_ptr<FunctionLibraryDefinition> overlay_lib(
+      new FunctionLibraryDefinition(OpRegistry::Global(), proto));
+
+  FunctionLibraryRuntime::InstantiateOptions options;
+  options.overlay_lib = overlay_lib.get();
+
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+
+  // Ensure that the function is not installed in the base library.
+  HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
+                             {} /* options */, {x}, {&y}),
+           "Not found: Function XTimesTwo is not defined.");
+
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
+                                {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesFour", {{"T", DT_FLOAT}}, options,
+                                {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({4, 8, 12, 16}));
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimes16", {{"T", DT_FLOAT}}, options,
+                                {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({16, 32, 48, 64}));
+
+  // Ensure that the use of the overlay has not leaked into the base library.
+  HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
+                             {} /* options */, {x}, {&y}),
+           "Not found: Function XTimesTwo is not defined.");
+}
+
+TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
+  auto T = DT_INT32;
+
+  // The expected sequence of outputs from this function is [6, 4, 0, 1, ...].
+  FunctionDef stateful_func = FDH::Define(
+      // Name
+      "RandomUniformWrapper",
+      // Args
+      {},
+      // Return values
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {FDH::Const<int32>("shape", gtl::ArraySlice<int32>({1})),
+       FDH::Const<int32>("minval", 0),
+       FDH::Const<int32>("maxval", 10),
+       // A stateful node.
+       {{"y"},
+        "RandomUniformInt",
+        {"shape", "minval", "maxval"},
+        {{"seed", 37}, {"seed2", 48}, {"Tout", T}, {"T", T}}}});
+  Init({stateful_func});
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, &handle));
+
+  FunctionLibraryRuntime::Options opts;
+  Tensor y;
+  {
+    // Simple case: instantiating with no state_handle.
+    for (int32 expected : {6, 4}) {
+      TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&y}, true));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
   }
-  TF_CHECK_OK(builder.Finalize(&def));
-  Status status;
-  Node* n = scope->graph()->AddNode(def, &status);
-  TF_CHECK_OK(status);
-  for (int i = 0; i < inputs.size(); ++i) {
-    scope->graph()->AddEdge(inputs[i].node(), inputs[i].index(), n, i);
+
+  {
+    // Instantiating again with no state_handle should yield the same handle and
+    // the continuation of the same sequence.
+    FunctionLibraryRuntime::Handle handle_non_isolated;
+    TF_CHECK_OK(
+        Instantiate(flr0_, "RandomUniformWrapper", {}, &handle_non_isolated));
+    EXPECT_EQ(handle, handle_non_isolated);
+    for (int32 expected : {0, 1}) {
+      TF_CHECK_OK(Run(flr0_, handle_non_isolated, opts, {}, {&y}, true));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
   }
-  return Output(n);
+
+  {
+    // Instantiating with a given state handle will create new state and yield
+    // the original sequence.
+    FunctionLibraryRuntime::InstantiateOptions options;
+    FunctionLibraryRuntime::Handle handle_isolated;
+    options.state_handle = "handle_1";
+    TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
+                            &handle_isolated));
+    EXPECT_NE(handle, handle_isolated);
+    for (int32 expected : {6, 4, 0, 1}) {
+      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}, true));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
+  }
+
+  {
+    // Instantiating with a different given state handle will create new state
+    // and yield the original sequence.
+    FunctionLibraryRuntime::InstantiateOptions options;
+    FunctionLibraryRuntime::Handle handle_isolated;
+    options.state_handle = "handle_2";
+    TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
+                            &handle_isolated));
+    EXPECT_NE(handle, handle_isolated);
+    for (int32 expected : {6, 4, 0, 1}) {
+      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}, true));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
+  }
+
+  {
+    // Reinstantiating after releasing a handle will yield the original sequence
+    // multiple times.
+    FunctionLibraryRuntime::InstantiateOptions options;
+    FunctionLibraryRuntime::Handle handle_isolated;
+    options.state_handle = "handle_3";
+
+    for (int i = 0; i < 2; ++i) {
+      TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
+                              &handle_isolated));
+      EXPECT_NE(handle, handle_isolated);
+      for (int32 expected : {6, 4, 0, 1}) {
+        TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}, true));
+        test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+      }
+      TF_CHECK_OK(flr0_->ReleaseHandle(handle_isolated));
+    }
+  }
+}
+
+namespace {
+class DummyExecutorRegistrar {
+ public:
+  DummyExecutorRegistrar() {
+    ExecutorFactory::Register("DUMMY", new Factory());
+  }
+
+ private:
+  class Factory : public ExecutorFactory {
+    Status NewExecutor(const LocalExecutorParams& params,
+                       std::unique_ptr<const Graph> graph,
+                       std::unique_ptr<Executor>* out_executor) override {
+      return errors::Internal("This is a dummy.");
+    }
+  };
+};
+static DummyExecutorRegistrar registrar;
+}  // namespace
+
+TEST_F(FunctionLibraryRuntimeTest, ExecutorFactory) {
+  Init({test::function::XTimesTwo()});
+
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+
+  // Test that the default executor works.
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    options.executor_type = "";
+    TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
+                                  options, {x}, {&y}));
+    test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+  }
+
+  // Test the explicit registration for the default executor.
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    options.executor_type = "DEFAULT";
+    TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
+                                  options, {x}, {&y}));
+    test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+  }
+
+  // Test that a non-default executor factory can be invoked.
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    options.executor_type = "DUMMY";
+    HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
+                               {x}, {&y}),
+             "Internal: This is a dummy.");
+  }
+
+  // Test that non-existent exector types trigger an error.
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    options.executor_type = "UNKNOWN_EXECUTOR";
+    HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
+                               {x}, {&y}),
+             "Not found: No executor factory registered for the given executor "
+             "type: UNKNOWN_EXECUTOR");
+  }
 }
 
 TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
-  std::unique_ptr<Graph> g = GetFuncBody("XTimes16", {{"T", DT_FLOAT}});
+  std::unique_ptr<Graph> g = GetFuncBody(flr0_, "XTimes16", {{"T", DT_FLOAT}});
   ASSERT_TRUE(g != nullptr);
 
   {
     Scope s = Scope::NewRootScope();
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto arg = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
-    auto a = Call(&s, "x4", "XTimesFour", {arg});
-    auto b = Call(&s, "y", "XTimesFour", {a});
+    auto a = test::function::Call(&s, "x4", "XTimesFour", {arg});
+    auto b = test::function::Call(&s, "y", "XTimesFour", {a});
     auto ret = ops::_Retval(s.WithOpName("y_RetVal"), b, 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
@@ -311,18 +616,18 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
 
-  ExpandInlineFunctions(lib_.get(), g.get());
+  ExpandInlineFunctions(flr0_, g.get());
   {
     Scope s = Scope::NewRootScope();
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::Identity(s.WithOpName("Func/_0"), x);
-    auto x4_x2 = Call(&s, "x4/x2", "XTimesTwo", {func0});
-    auto x4_y = Call(&s, "x4/y", "XTimesTwo", {x4_x2});
+    auto x4_x2 = test::function::Call(&s, "x4/x2", "XTimesTwo", {func0});
+    auto x4_y = test::function::Call(&s, "x4/y", "XTimesTwo", {x4_x2});
     auto func1 = ops::Identity(s.WithOpName("Func/_1"), x4_y);
     auto func2 = ops::Identity(s.WithOpName("Func/_2"), func1);
-    auto y_x2 = Call(&s, "y/x2", "XTimesTwo", {func2});
-    auto y_y = Call(&s, "y/y", "XTimesTwo", {y_x2});
+    auto y_x2 = test::function::Call(&s, "y/x2", "XTimesTwo", {func2});
+    auto y_y = test::function::Call(&s, "y/y", "XTimesTwo", {y_x2});
     auto func3 = ops::Identity(s.WithOpName("Func/_3"), y_y);
     auto ret = ops::_Retval(s.WithOpName("y_RetVal"), func3, 0);
     GraphDef expected;
@@ -333,7 +638,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
 
-  ExpandInlineFunctions(lib_.get(), g.get());
+  ExpandInlineFunctions(flr0_, g.get());
   GraphDef e2;
   {
     Scope s = Scope::NewRootScope();
@@ -372,7 +677,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   }
 
   // No further inlining.
-  ExpandInlineFunctions(lib_.get(), g.get());
+  ExpandInlineFunctions(flr0_, g.get());
   {
     GraphDef actual;
     g->ToGraphDef(&actual);
@@ -418,13 +723,13 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
     auto c = ops::NoOp(s.WithOpName("c"));
-    auto b = Call(&s, "b", "XTimesFour", {a});
+    auto b = test::function::Call(&s, "b", "XTimesFour", {a});
     s.graph()->AddControlEdge(c.operation.node(), b.node());
     auto ret = ops::_Retval(s.WithOpName("b_RetVal"), b, 0);
     TF_ASSERT_OK(s.ToGraph(g.get()));
   }
 
-  ExpandInlineFunctions(lib_.get(), g.get());
+  ExpandInlineFunctions(flr0_, g.get());
   {
     Scope s = Scope::NewRootScope();
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
@@ -434,9 +739,9 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
         ops::NoOp(s.WithOpName("Func/_0").WithControlDependencies({c}));
     auto func1 = ops::Identity(
         s.WithOpName("Func/_1").WithControlDependencies({func0}), a);
-    auto b_x2 = Call(&s, "b/x2", "XTimesTwo", {func1});
+    auto b_x2 = test::function::Call(&s, "b/x2", "XTimesTwo", {func1});
     s.graph()->AddControlEdge(func0.operation.node(), b_x2.node());
-    auto b_y = Call(&s, "b/y", "XTimesTwo", {b_x2});
+    auto b_y = test::function::Call(&s, "b/y", "XTimesTwo", {b_x2});
     s.graph()->AddControlEdge(func0.operation.node(), b_y.node());
     auto func2 = ops::Identity(s.WithOpName("Func/_2"), b_y);
     auto ret = ops::_Retval(s.WithOpName("b_RetVal"), func2, 0);
@@ -448,7 +753,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
 
-  ExpandInlineFunctions(lib_.get(), g.get());
+  ExpandInlineFunctions(flr0_, g.get());
   {
     Scope s = Scope::NewRootScope();
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
@@ -491,19 +796,79 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
   }
 }
 
+TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
+  auto T = DT_INT32;
+  FunctionDef stateful_func = FDH::Define(
+      // Name
+      "SquareAndAddOneWithStatefulNodes",
+      // Args
+      {"x: int32"},
+      // Return values
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = Square<T>(x)
+       {{"a"}, "Square", {"x"}, {{"T", T}}},
+       // 1
+       FDH::Const("o", 1),
+       // A bunch of extra arithmetic that y doesn't depend on
+       {{"x1"}, "Add", {"o", "o"}, {{"T", T}}},
+       {{"x2"}, "Mul", {"a", "x1"}, {{"T", T}}},
+       {{"x3"}, "Mul", {"x1", "x2"}, {{"T", T}}},
+       FDH::Const<int32>("shape", {1, 2}),
+       // A stateful node.
+       {{"keep_me"},
+        "RandomUniform",
+        {"shape"},
+        {{"T", T}, {"dtype", DT_FLOAT}}},
+       // y = Add<T>(a, o)
+       {{"y"}, "Add", {"a", "o"}, {{"T", T}}}});
+  Init({stateful_func});
+
+  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  Tensor y;
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(
+      Instantiate(flr0_, "SquareAndAddOneWithStatefulNodes", {}, &handle));
+
+  StepStats stats;
+  StepStatsCollector stats_collector(&stats);
+  FunctionLibraryRuntime::Options opts;
+  opts.stats_collector = &stats_collector;
+  TF_CHECK_OK(Run(flr0_, handle, opts, {x}, {&y}));
+  TF_CHECK_OK(flr0_->ReleaseHandle(handle));
+
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "SquareAndAddOneWithStatefulNodes", {},
+                                {x}, {&y}));
+  test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({2, 5, 10, 17}));
+
+  stats_collector.FinalizeAndSwap(&stats);
+
+  // Note that we do not expect the nodes named "x1", "x2", or "x3" to execute.
+  std::set<string> expected_node_names(
+      {"_SOURCE", "shape", "x", "o", "a", "keep_me", "y", "y_RetVal"});
+  std::set<string> executed_node_names;
+  for (const auto& node_stats : stats.dev_stats()[0].node_stats()) {
+    executed_node_names.insert(node_stats.node_name());
+  }
+  EXPECT_EQ(expected_node_names, executed_node_names);
+}
+
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
-  std::unique_ptr<Graph> g = GetFuncBody("XTimes16", {{"T", DT_FLOAT}});
+  std::unique_ptr<Graph> g = GetFuncBody(flr0_, "XTimes16", {{"T", DT_FLOAT}});
   ASSERT_TRUE(g != nullptr);
-  ExpandInlineFunctions(lib_.get(), g.get());
-  OptimizeGraph(lib_.get(), &g);
+  ExpandInlineFunctions(flr0_, g.get());
+  OptimizeGraph(flr0_, &g);
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
-        s.WithOpName("x4/x2/scale/_12__cf__2")
-            .WithDevice("/job:localhost/replica:0/task:0/cpu:0"),
+        s.WithOpName("x4/x2/scale/_12__cf__10")
+            .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
     auto x4_y_y = ops::Mul(s.WithOpName("x4/y/y"), x4_x2_y, x4_x2_scale);
@@ -540,11 +905,11 @@ TEST_F(FunctionLibraryRuntimeTest, ManySwapsNodeDef) {
       // Return
       {{"o", "g:output"}});
   Init({test::function::Swap(), func});
-  std::unique_ptr<Graph> g = GetFuncBody("ManySwapsNodeDef", {});
+  std::unique_ptr<Graph> g = GetFuncBody(flr0_, "ManySwapsNodeDef", {});
   ASSERT_TRUE(g != nullptr);
-  OptimizeGraph(lib_.get(), &g);
+  OptimizeGraph(flr0_, &g);
   const char* e0 = R"P(
-(n3:float, n2:float) -> (n3:float) {
+(n2:float, n3:float) -> (n2:float) {
 }
 )P";
   EXPECT_EQ(e0, DebugString(g.get()));
@@ -573,9 +938,9 @@ TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
        {{"o"}, "Add", {"x2:z:0", "y2:z:0"}, {{"T", DT_FLOAT}}}},
       {{"o", "o:z:0"}});
   Init({test::function::Swap(), func});
-  std::unique_ptr<Graph> g = GetFuncBody("ManySwapsFirst", {});
+  std::unique_ptr<Graph> g = GetFuncBody(flr0_, "ManySwapsFirst", {});
   ASSERT_TRUE(g != nullptr);
-  OptimizeGraph(lib_.get(), &g);
+  OptimizeGraph(flr0_, &g);
 
   // NOTE: We can remove func0, func1, func2, func9 with a control edge n8->n5.
   // But we don't have a pass doing that.
@@ -608,11 +973,11 @@ TEST_F(FunctionLibraryRuntimeTest, Error_NotFound) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour()});
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
-  HasError(Run("Foo", {{"T", DT_FLOAT}}, {x}, {&y}),
+  HasError(InstantiateAndRun(flr0_, "Foo", {{"T", DT_FLOAT}}, {x}, {&y}),
            "Not found: Function Foo is not defined.");
 }
 
-TEST_F(FunctionLibraryRuntimeTest, Error_InstantiaionError) {
+TEST_F(FunctionLibraryRuntimeTest, Error_InstantiationError) {
   auto bad_x_times_two = FDH::Define(
       // Name
       "XTimesTwo",
@@ -631,25 +996,37 @@ TEST_F(FunctionLibraryRuntimeTest, Error_InstantiaionError) {
 
   // Instantiating "XTimesTwo" should fail.
   FunctionLibraryRuntime::Handle handle;
-  HasError(lib_->Instantiate("XTimesTwo", Attrs({{"T", DT_FLOAT}}), &handle),
+  HasError(flr0_->Instantiate(
+               "XTimesTwo", test::function::Attrs({{"T", DT_FLOAT}}), &handle),
            "Not found: type attr not found");
 
   // But XTimesFour and XTimes16 instantiation should succeed. Only
   // when they run, they fail because XTimesTwo is bad.
-  TF_CHECK_OK(
-      lib_->Instantiate("XTimesFour", Attrs({{"T", DT_FLOAT}}), &handle));
-  TF_CHECK_OK(lib_->Instantiate("XTimes16", Attrs({{"T", DT_FLOAT}}), &handle));
+  TF_CHECK_OK(flr0_->Instantiate(
+      "XTimesFour", test::function::Attrs({{"T", DT_FLOAT}}), &handle));
+  TF_CHECK_OK(flr0_->Instantiate(
+      "XTimes16", test::function::Attrs({{"T", DT_FLOAT}}), &handle));
 
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
-  HasError(Run("XTimes16", {{"T", DT_FLOAT}}, {x}, {&y}),
+  HasError(InstantiateAndRun(flr0_, "XTimes16", {{"T", DT_FLOAT}}, {x}, {&y}),
            "type attr not found");
+}
+
+TEST_F(FunctionLibraryRuntimeTest, Error_BadControlFlow) {
+  Init({test::function::InvalidControlFlow()});
+  auto x = test::AsTensor<int32>({0});
+  DCHECK_EQ(x.dtype(), DT_INT32);
+  Tensor y;
+  HasError(InstantiateAndRun(flr0_, "InvalidControlFlow", {}, {x}, {&y}),
+           "The node 'add' has inputs from different frames. The input 'enter' "
+           "is in frame 'while'. The input 'i' is in frame ''.");
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
-  std::unique_ptr<Graph> f = GetFuncBody("XTimesTwo", {{"T", DT_FLOAT}});
+  std::unique_ptr<Graph> f = GetFuncBody(flr0_, "XTimesTwo", {{"T", DT_FLOAT}});
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
@@ -665,7 +1042,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
 
-  std::unique_ptr<Graph> g = GetGradBody("XTimesTwo", {{"T", DT_FLOAT}});
+  std::unique_ptr<Graph> g = GetGradBody(flr0_, "XTimesTwo", {{"T", DT_FLOAT}});
 
   {
     Scope s = Scope::NewRootScope();
@@ -689,22 +1066,22 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
 
-  OptimizeGraph(lib_.get(), &g);
+  OptimizeGraph(flr0_, &g);
 
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
-    auto scale =
-        ops::Const(s.WithOpName("scale/_5__cf__6")
-                       .WithDevice("/job:localhost/replica:0/task:0/cpu:0"),
-                   2.0f);
+    auto scale = ops::Const(
+        s.WithOpName("scale/_6__cf__15")
+            .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
+        2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
-    auto const0 =
-        ops::Const(s.WithOpName("Func/_1/sy/_6__cf__7")
-                       .WithDevice("/job:localhost/replica:0/task:0/cpu:0"),
-                   0, {0});
+    auto const0 = ops::Const(
+        s.WithOpName("Func/_1/sy/_5__cf__14")
+            .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
+        0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(
         s.WithOpName("Func/_1/rx"), func1_sx, const0);
     auto func1_sum_gx =
@@ -725,7 +1102,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_Add) {
   Init({});
   auto T = DT_FLOAT;
   std::unique_ptr<Graph> g = GetFuncBody(
-      "SymbolicGradient", {{"f", FDH::FunctionRef("Add", {{"T", T}})}});
+      flr0_, "SymbolicGradient", {{"f", FDH::FunctionRef("Add", {{"T", T}})}});
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
@@ -755,7 +1132,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_Mul) {
   Init({});
   auto T = DT_FLOAT;
   std::unique_ptr<Graph> g = GetFuncBody(
-      "SymbolicGradient", {{"f", FDH::FunctionRef("Mul", {{"T", T}})}});
+      flr0_, "SymbolicGradient", {{"f", FDH::FunctionRef("Mul", {{"T", T}})}});
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
@@ -811,7 +1188,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
 
   Init({test, grad});
 
-  std::unique_ptr<Graph> g = GetFuncBody("TestGrad", {});
+  std::unique_ptr<Graph> g = GetFuncBody(flr0_, "TestGrad", {});
   ASSERT_TRUE(g != nullptr);
   {
     Scope s = Scope::NewRootScope();
@@ -835,7 +1212,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
 
-  ExpandInlineFunctions(lib_.get(), g.get());
+  ExpandInlineFunctions(flr0_, g.get());
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
@@ -887,7 +1264,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
 
-  OptimizeGraph(lib_.get(), &g);
+  OptimizeGraph(flr0_, &g);
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
@@ -936,6 +1313,33 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
     g->ToGraphDef(&actual);
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
+}
+
+TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
+  Init({test::function::FindDevice()});
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/device:CPU:1";
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "FindDevice", {}, instantiate_opts, &handle));
+
+  Tensor y;
+  FunctionLibraryRuntime::Options opts;
+  opts.rendezvous = new IntraProcessRendezvous(device_mgr_.get());
+  opts.source_device = "/device:CPU:1";
+  // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
+  TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}, true));
+  test::ExpectTensorEqual<string>(
+      y,
+      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                             TensorShape({})));
+  opts.remote_execution = true;
+  opts.source_device = "/job:localhost/replica:0/task:0/cpu:2";
+  TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}, true));
+  test::ExpectTensorEqual<string>(
+      y,
+      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                             TensorShape({})));
+  opts.rendezvous->Unref();
 }
 
 namespace {
@@ -989,7 +1393,7 @@ TEST(OptimizationTest, RemoveDeadNodes) {
 
   GraphDef expected;
   {
-    Scope s = Scope::NewRootScope();
+    Scope s = Scope::DisabledShapeInferenceScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_INT32, 0);
     auto o = ops::Const(s.WithOpName("o"), 1);
     auto keep_me = ops::RandomUniform(s.WithOpName("keep_me"), {o}, DT_FLOAT);
@@ -1070,7 +1474,7 @@ TEST(OptimizationTest, RemoveIdentityNodes) {
        {{"y"}, "Add", {"a", "o"}, {{"T", T}}}});
 
   {
-    Scope s = Scope::NewRootScope();
+    Scope s = Scope::DisabledShapeInferenceScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_INT32, 0);
     auto o = ops::Const(s.WithOpName("o"), 1);
     auto a = ops::Square(s.WithOpName("a"), x);
@@ -1087,7 +1491,7 @@ TEST(OptimizationTest, RemoveIdentityNodes) {
   }
 
   {
-    Scope s = Scope::NewRootScope();
+    Scope s = Scope::DisabledShapeInferenceScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_INT32, 0);
     auto o = ops::Const(s.WithOpName("o"), 1);
     auto a = ops::Square(s.WithOpName("a"), x);
@@ -1137,7 +1541,7 @@ TEST(OptimizationTest, RemoveListArrayConverter) {
       {{"o", "o:sum"}});
 
   {
-    Scope scope = Scope::NewRootScope();
+    Scope scope = Scope::DisabledShapeInferenceScope();
     auto i = ops::_Arg(scope.WithOpName("i"), DT_FLOAT, 0);
     auto zero = ops::Const(scope.WithOpName("zero"), 0);
     auto s = ops::Split(scope.WithOpName("s"), zero, i, 4);
@@ -1222,7 +1626,7 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
       {{"o", "o:sum"}});
 
   {
-    Scope s = Scope::NewRootScope();
+    Scope s = Scope::DisabledShapeInferenceScope();
     auto i = ops::_Arg(s.WithOpName("i"), DT_FLOAT, 0);
     auto dummy = ops::Const(s.WithOpName("dummy"), 0);
     auto x = ops::_ListToArray(s.WithOpName("x").WithControlDependencies(dummy),

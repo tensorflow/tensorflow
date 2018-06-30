@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -45,7 +46,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
   The probability density function (pdf) is, with `@` as matrix multiplication,
 
   ```none
-  pdf(x; loc, covariance_matrix) = exp(-0.5 ||y||**2) / Z,
+  pdf(x; loc, covariance_matrix) = exp(-0.5 y) / Z,
   y = (x - loc)^T @ inv(covariance_matrix) @ (x - loc)
   Z = (2 pi)**(0.5 k) |det(covariance_matrix)|**(0.5).
   ```
@@ -54,8 +55,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
 
   * `loc` is a vector in `R^k`,
   * `covariance_matrix` is an `R^{k x k}` symmetric positive definite matrix,
-  * `Z` denotes the normalization constant, and,
-  * `||y||**2` denotes the squared Euclidean norm of `y`.
+  * `Z` denotes the normalization constant.
 
   Additional leading dimensions (if any) in `loc` and `covariance_matrix` allow
   for batch dimensions.
@@ -73,14 +73,14 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Initialize a single 3-variate Gaussian.
   mu = [1., 2, 3]
   cov = [[ 0.36,  0.12,  0.06],
          [ 0.12,  0.29, -0.13],
          [ 0.06, -0.13,  0.26]]
-  mvn = ds.MultivariateNormalFullCovariance(
+  mvn = tfd.MultivariateNormalFullCovariance(
       loc=mu,
       covariance_matrix=cov)
 
@@ -100,7 +100,7 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
   mu = [[1., 2, 3],
         [11, 22, 33]]              # shape: [2, 3]
   covariance_matrix = ...  # shape: [2, 3, 3], symmetric, positive definite.
-  mvn = ds.MultivariateNormalFullCovariance(
+  mvn = tfd.MultivariateNormalFullCovariance(
       loc=mu,
       covariance=covariance_matrix)
 
@@ -113,6 +113,14 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                covariance_matrix=None,
@@ -156,10 +164,10 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
     Raises:
       ValueError: if neither `loc` nor `covariance_matrix` are specified.
     """
-    parameters = locals()
+    parameters = dict(locals())
 
     # Convert the covariance_matrix up to a scale_tril and call MVNTriL.
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[loc, covariance_matrix]):
         if covariance_matrix is None:
           scale_tril = None
@@ -167,15 +175,14 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
           covariance_matrix = ops.convert_to_tensor(
               covariance_matrix, name="covariance_matrix")
           if validate_args:
-            assert_symmetric = check_ops.assert_equal(
-                covariance_matrix,
-                array_ops.matrix_transpose(covariance_matrix),
-                message="Matrix was not symmetric.")
-            covariance_matrix = control_flow_ops.with_dependencies(
-                [assert_symmetric], covariance_matrix)
+            covariance_matrix = control_flow_ops.with_dependencies([
+                check_ops.assert_near(
+                    covariance_matrix,
+                    array_ops.matrix_transpose(covariance_matrix),
+                    message="Matrix was not symmetric")], covariance_matrix)
           # No need to validate that covariance_matrix is non-singular.
-          # LinearOperatorTriL has an assert_non_singular method that is called
-          # by the Bijector.
+          # LinearOperatorLowerTriangular has an assert_non_singular method that
+          # is called by the Bijector.
           # However, cholesky() ignores the upper triangular part, so we do need
           # to separately assert symmetric.
           scale_tril = linalg_ops.cholesky(covariance_matrix)
@@ -183,5 +190,6 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
             loc=loc,
             scale_tril=scale_tril,
             validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats)
+            allow_nan_stats=allow_nan_stats,
+            name=name)
     self._parameters = parameters

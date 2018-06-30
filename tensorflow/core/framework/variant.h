@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,15 +23,20 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "tensorflow/core/framework/tensor.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 
 template <typename T>
 string TypeNameVariant(const T& value);
+
+template <typename T>
+string DebugStringVariant(const T& value);
 
 template <typename T>
 void EncodeVariant(const T& value, VariantTensorData* data);
@@ -78,30 +83,31 @@ bool DecodeVariant(const string& buf, T* value);
 //
 // Accessing the stored object:
 //
-// The get<T> function is the main mechanism to access the object stored in the
-// contained. It is type-safe, that is, calling get<T> when the stored object's
-// type is not T, returns a nullptr. A raw pointer to the stored object can be
-// obtained by calling get<void>().
+// The get<T> function is the main mechanism to access the object
+// stored in the container. It is type-safe, that is, calling
+// get<T> when the stored object's type is not T, returns a
+// nullptr. A raw pointer to the stored object can be obtained by calling
+// get<void>().
 //
 // Serializing/deserializing Variant object:
 //
 // The Variant class delegates serializing and deserializing operations to the
 // contained object. Helper functions to do these operations are provided for
 // POD data types, tensorflow::Tensor, and protocol buffer objects. However,
-// other classes have to provide Encode/Decode functions to do handle
+// other classes have to provide Encode/Decode functions to handle
 // serialization.
 //
 // Objects stored in a Variant object often contain references to other
 // tensorflow::Tensors of primitive types (Eg., a list of tensorflow::Tensors).
 // To efficiently support those use cases, a structure is imposed on the
-// serialization format. Namely, classes should serialize their contents in to a
+// serialization format. Namely, classes should serialize their contents into a
 // VariantTensorData object:
 //
-// struct VariantTensorData {
-//   string type_name;
-//   string metadata;
-//   std::vector<Tensor> tensors;
-// };
+//   struct VariantTensorData {
+//     string type_name;
+//     string metadata;
+//     std::vector<Tensor> tensors;
+//   };
 //
 // Objects with references to other Tensors can simply store those tensors in
 // the `tensors` field, and serialize other metadata content in to the
@@ -109,14 +115,40 @@ bool DecodeVariant(const string& buf, T* value);
 //
 // Serialization example:
 //
-// Foo f = Foo {...};
-// Variant x = f;
-// string serialized_f;
-// x.Encode(&serialized_f);
+//   Foo f = Foo {...};
+//   Variant x = f;
+//   string serialized_f;
+//   x.Encode(&serialized_f);
 //
-// Variant y = Foo(); // default constructed Foo.
-// y.Decode(&serialized_f);
-// EXPECT_EQ(*x.get<Foo>(), *y.get<Foo>());
+//   Variant y = Foo(); // default constructed Foo.
+//   y.Decode(&serialized_f);
+//   EXPECT_EQ(*x.get<Foo>(), *y.get<Foo>());
+//
+//
+// A Variant storing serialized Variant data (a value of type
+// VariantTensorDataProto) has different behavior from a standard Variant.
+// Namely, its TypeName matches the TypeName of the original Variant;
+// and its non-const get method performs lazy deserialization.
+//
+// Decode and copy example:
+//
+//   Foo f = Foo {...};
+//   Variant x = f;
+//
+//   VariantTensorData serialized_data_f;
+//   VariantTensorDataProto serialized_proto_f;
+//   x.Encode(&serialized_data_f);
+//   serialized_data_f.ToProto(&serialized_proto_f);
+//
+//   Variant y_type_unknown = serialized_proto_f;  // Store serialized Variant.
+//
+//   EXPECT_EQ(x.TypeName(), y_type_unknown.TypeName());  // Looks like Foo.
+//   EXPECT_EQ(MakeTypeIndex<VariantTensorDataProto>(),
+//             y_type_unknown.TypeId());
+//   // Decode and get y_type_unknown; compare to value in x.
+//   Foo f_decoded;
+//   EXPECT_TRUE(x.MaybeDecodeAndCopy(&f_decoded));
+//   EXPECT_EQ(f_decoded, f);
 //
 class Variant {
  public:
@@ -154,6 +186,9 @@ class Variant {
 
   void swap(Variant& other) noexcept { value_.swap(other.value_); }
 
+  // Note, unlike TypeName(), TypeId() does not return the TypeIndex
+  // of the original type when a TensorValueDataProto is stored as the
+  // value.  In this case, it returns the TypeIndex of TensorValueDataProto.
   TypeIndex TypeId() const {
     const TypeIndex VoidTypeIndex = MakeTypeIndex<void>();
     if (is_empty()) {
@@ -162,25 +197,35 @@ class Variant {
     return value_->TypeId();
   }
 
+  string DebugString() const {
+    return strings::StrCat("Variant<type: ", TypeName(),
+                           " value: ", value_->DebugString(), ">");
+  }
+
+  // Returns a pointer to the stored value if it is type T, or nullptr
+  // otherwise.
   template <typename T>
   T* get() {
     const TypeIndex TTypeIndex = MakeTypeIndex<T>();
-    if (is_empty() || (TTypeIndex != TypeId())) {
-      return nullptr;
-    }
+    if (is_empty() || (TTypeIndex != TypeId())) return nullptr;
     return std::addressof(static_cast<Variant::Value<T>*>(value_.get())->value);
   }
 
+  // Returns a pointer to the stored value if it is type T, or nullptr
+  // otherwise.
   template <typename T>
   const T* get() const {
     const TypeIndex TTypeIndex = MakeTypeIndex<T>();
-    if (is_empty() || (TTypeIndex != TypeId())) {
-      return nullptr;
-    }
+    if (is_empty() || (TTypeIndex != TypeId())) return nullptr;
     return std::addressof(
         static_cast<const Variant::Value<T>*>(value_.get())->value);
   }
 
+  // Returns TypeNameVariant(value).
+  //
+  // In the special case that a serialized Variant is stored (value
+  // is a VariantTensorDataProto), returns value.TypeName(), the
+  // TypeName field stored in the VariantTensorDataProto buffer.
   string TypeName() const {
     if (is_empty()) {
       return "";
@@ -216,6 +261,24 @@ class Variant {
     return true;
   }
 
+  template <typename T>
+  bool MaybeDecodeAndCopy(T* out) const {
+    const T* ret = get<T>();
+    if (ret != nullptr) {
+      *out = std::move(*ret);
+      return true;
+    };
+    Variant decoded = T();
+    if (!TryDecode(&decoded)) return false;
+    T* decoded_ret = decoded.get<T>();
+    CHECK_NOTNULL(decoded_ret);
+    *out = std::move(*decoded_ret);
+    return true;
+  }
+
+ private:
+  bool TryDecode(Variant* out) const;
+
  private:
   struct in_place_t {};
   static constexpr in_place_t in_place{};
@@ -227,6 +290,7 @@ class Variant {
     virtual const void* RawPtr() const = 0;
     virtual std::unique_ptr<ValueInterface> Clone() const = 0;
     virtual string TypeName() const = 0;
+    virtual string DebugString() const = 0;
     virtual void Encode(VariantTensorData* data) const = 0;
     virtual bool Decode(const VariantTensorData& data) = 0;
     virtual void Encode(string* buf) const = 0;
@@ -255,6 +319,8 @@ class Variant {
 
     string TypeName() const override { return TypeNameVariant(value); }
 
+    string DebugString() const override { return DebugStringVariant(value); }
+
     void Encode(VariantTensorData* data) const override {
       EncodeVariant(value, data);
     }
@@ -272,6 +338,8 @@ class Variant {
     T value;
   };
 
+  // value_ can point to any type T as wrapped by a ValueInterface.
+  // The only real requirement is that T is default-constructible.
   std::unique_ptr<ValueInterface> value_;
 };
 

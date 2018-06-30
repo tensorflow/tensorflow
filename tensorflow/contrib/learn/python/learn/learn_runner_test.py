@@ -28,6 +28,7 @@ from tensorflow.contrib.learn.python.learn import trainable
 
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
 from tensorflow.contrib.training.python.training import hparam as hparam_lib
+from tensorflow.python.estimator import run_config as core_run_config_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -49,9 +50,12 @@ _HPARAMS_CANNOT_BE_SET_FOR_OUTPUT_DIR_MSG = (
     "Must set `hparams` as None for `experiment_fn` with `output_dir`.")
 _CANNOT_SET_BOTH_OUTPUT_DIR_AND_CONFIG_MSG = (
     "Cannot provide both `output_dir` and `run_config`")
-_INVALID_RUN_CONFIG_TYPE_MSG = "`run_config` must be `RunConfig` instance"
+_INVALID_RUN_CONFIG_TYPE_MSG = (
+    "`run_config` must be `tf.contrib.learn.RunConfig` instance")
 _RUN_CONFIG_UID_CHECK_ERR_MSG = (
     "`RunConfig` instance is expected to be used by the `Estimator`")
+_MISSING_RUN_CONFIG_UID_ERR_MSG = (
+    "Pass `run_config` argument of the `experiment_fn` to the Estimator")
 
 
 class TestExperiment(experiment.Experiment):
@@ -299,6 +303,22 @@ class LearnRunnerRunWithRunConfigTest(test.TestCase):
       return TestExperiment(config=new_config)
 
     with self.assertRaisesRegexp(RuntimeError, _RUN_CONFIG_UID_CHECK_ERR_MSG):
+      learn_runner.run(experiment_fn=_experiment_fn,
+                       run_config=expected_run_config)
+
+  def test_fail_invalid_experiment_config_type(self):
+    expected_run_config = run_config_lib.RunConfig(model_dir=_MODIR_DIR)
+
+    def _experiment_fn(run_config, hparams):
+      del run_config, hparams  # unused.
+      # Explicitly use a new run_config without `uid` method.
+      new_config = core_run_config_lib.RunConfig(
+          model_dir=_MODIR_DIR + "/123")
+
+      return TestExperiment(config=new_config)
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _MISSING_RUN_CONFIG_UID_ERR_MSG):
       learn_runner.run(experiment_fn=_experiment_fn,
                        run_config=expected_run_config)
 

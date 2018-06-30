@@ -21,9 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/op_def.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -158,6 +159,9 @@ class AttrSlice {
   const AttrValueMap* attrs_;
 };
 
+// Return true if the attr with the name attr_name is defined in node_def.
+bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name);
+
 // Look up the attr with name attr_name and set *value to its value.  If no
 // attr with attr_name is found in node_def, or the attr does not have
 // a matching type, a non-ok status will be returned.
@@ -215,6 +219,9 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const NameAttrList** value);  // type: "func"
 
+// These versions copies the NameAttrList(s).
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   NameAttrList* value);  // type: "func"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<NameAttrList>* value);  // type: "list(func)"
 
@@ -232,6 +239,18 @@ bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
 // REQUIRES: Must not use the returned value beyond the lifetime of node_def.
 const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
 
+// Computes the input type for a specific node input.
+// REQUIRES: ValidateOpDef(op_def).ok()
+Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                        int input_port, DataType* input_type);
+// Computes the output type for a specific node output.
+// REQUIRES: ValidateOpDef(op_def).ok()
+Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                         int output_port, DataType* output_type);
+// Computes the output types for a specific node.
+// REQUIRES: ValidateOpDef(op_def).ok()
+Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
+                          DataTypeVector* outputs);
 // Computes the input and output types for a specific node.
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
@@ -248,8 +267,12 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def);
 // corresponding input/output index range.  For example,
 // input "foo" corresponds to input indices
 //   [ (*inputs)["foo"].first, (*inputs)["foo"].second ).
-// TODO(irving): Remove the NodeDef version; keep only the Node version.
-typedef std::unordered_map<string, std::pair<int, int>> NameRangeMap;
+// NOTE(mrry): To reduce allocations when the map is used and save
+// space, the returned `NameRangeMap` objects borrow the input/output
+// argument names from `op_def`. The `op_def` must outlive the
+// returned `NameRangeMap` objects.
+typedef gtl::FlatMap<StringPiece, std::pair<int, int>, hash<StringPiece>>
+    NameRangeMap;
 Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs);
 Status NameRangesForNode(const Node& node, const OpDef& op_def,
@@ -276,6 +299,11 @@ Status ValidateExternalNodeDefSyntax(const NodeDef& node_def);
 Status AttachDef(const Status& status, const NodeDef& node_def);
 Status AttachDef(const Status& status, const Node& node);
 
+// Appends the given prefix and suffix to the original node name in order to
+// make the name unique. If it's an "Enter" node, use the same way to reset
+// attribute "frame_name".
+Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
+                                NodeDef* node_def);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_FRAMEWORK_NODE_DEF_UTIL_H_

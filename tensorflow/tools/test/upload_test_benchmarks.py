@@ -87,6 +87,7 @@ import json
 import os
 import shutil
 
+from six import text_type
 from google.cloud import datastore
 
 
@@ -150,7 +151,7 @@ def upload_benchmark_data(client, data):
   """
   test_result = json.loads(data)
 
-  test_name = unicode(test_result["name"])
+  test_name = text_type(test_result["name"])
   start_time = datetime.datetime.utcfromtimestamp(
       float(test_result["startTime"]))
   batch = []
@@ -162,7 +163,7 @@ def upload_benchmark_data(client, data):
   t_val.update({
       "test": test_name,
       "start": start_time,
-      "info": unicode(data)
+      "info": text_type(data)
   })
   batch.append(t_val)
 
@@ -170,7 +171,7 @@ def upload_benchmark_data(client, data):
   # the attribute to be fetched and displayed.  The full entry information is
   # also stored as a non-indexed JSON blob.
   for ent in test_result["entries"].get("entry", []):
-    ent_name = unicode(ent["name"])
+    ent_name = text_type(ent["name"])
     e_key = client.key("Entry")
     e_val = datastore.Entity(e_key, exclude_from_indexes=["info"])
     e_val.update({
@@ -178,7 +179,7 @@ def upload_benchmark_data(client, data):
         "start": start_time,
         "entry": ent_name,
         "timing": ent["wallTime"],
-        "info": unicode(json.dumps(ent))
+        "info": text_type(json.dumps(ent))
     })
     batch.append(e_val)
 

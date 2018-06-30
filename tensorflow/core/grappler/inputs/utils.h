@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_INPUTS_UTILS_H_
-#define TENSORFLOW_GRAPPLER_INPUTS_UTILS_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_INPUTS_UTILS_H_
+#define TENSORFLOW_CORE_GRAPPLER_INPUTS_UTILS_H_
 
 #include <set>
 #include <vector>
@@ -37,4 +37,4 @@ Status ReadGraphDefFromFile(const std::string& graph_def_pbtxt_path,
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_INPUTS_UTILS_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_INPUTS_UTILS_H_

@@ -2,10 +2,6 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -31,7 +27,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "util_test",
-    size = "small",
+    size = "medium",
     srcs = ["util_test.py"],
     additional_deps = [
         "//tensorflow/python/ops/distributions",
@@ -45,6 +41,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    shard_count = 3,
 )
 
 cuda_py_test(
@@ -96,6 +93,7 @@ cuda_py_test(
     size = "small",
     srcs = ["categorical_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
@@ -136,6 +134,10 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+    ],
+    tags = [
+        "noguitar",  # b/110489471
+        "notap",  # b/110489471
     ],
 )
 
@@ -197,6 +199,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["manual"],  # b/69001419
 )
 
 cuda_py_test(
@@ -282,16 +285,4 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

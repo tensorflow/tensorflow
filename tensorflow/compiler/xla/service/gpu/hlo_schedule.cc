@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -119,11 +120,10 @@ GpuHloOrdering::GpuHloOrdering(
   // postorder, so we can do better and establish the total order here. We don't
   // do that yet since it's hard to ensure that the order here is the order used
   // by IrEmitterNested. And mismatched ordering bugs would be hard to find.
-  for (auto& computation : module->computations()) {
-    if (computation.get() != module->entry_computation() &&
+  for (auto* computation : module->computations()) {
+    if (computation != module->entry_computation() &&
         !computation->IsFusionComputation()) {
-      predecessors_.emplace(computation.get(),
-                            computation->ComputeReachability());
+      predecessors_.emplace(computation, computation->ComputeReachability());
     }
   }
 }
@@ -160,9 +160,9 @@ void BFSLaunchOrder(const HloComputation* computation,
   std::unordered_map<const HloInstruction*, int64> incoming_edge_count;
   for (const auto& hlo : computation->instructions()) {
     if (hlo->operand_count() == 0) {
-      queue.push_back(hlo.get());
+      queue.push_back(hlo);
     } else {
-      incoming_edge_count[hlo.get()] =
+      incoming_edge_count[hlo] =
           std::set<HloInstruction*>(hlo->operands().begin(),
                                     hlo->operands().end())
               .size();
@@ -199,8 +199,8 @@ StatusOr<std::unique_ptr<HloSchedule>> HloSchedule::Build(
     // concurrency by optimizing for minimal memory usage.
     TF_ASSIGN_OR_RETURN(
         schedule->thunk_launch_order_,
-        CreateMemoryMinimizingSequence(
-            *entry_computation, [pointer_size](const LogicalBuffer& buffer) {
+        ScheduleOneComputation(
+            *entry_computation, [pointer_size](const BufferValue& buffer) {
               return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
             }));
   } else {

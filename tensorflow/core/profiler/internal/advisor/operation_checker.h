@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // This checker checks common wrong configurations of operations.
 //
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_OPERATION_CHECKER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_OPERATION_CHECKER_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_OPERATION_CHECKER_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_OPERATION_CHECKER_H_
 
 #include "tensorflow/core/profiler/internal/advisor/checker.h"
 
@@ -45,9 +45,10 @@ class OperationChecker : public Checker {
       if (node->op_types().find("FusedBatchNorm") != node->op_types().end()) {
         use_fused_batch_norm = true;
       }
-      if (node->op_attrs().find("data_format") != node->op_attrs().end()) {
-        const AttrValue* attr_val = node->op_attrs().at("data_format");
-        if (attr_val->s() == "NHWC" &&
+
+      const AttrValue* attr = node->op_attrs("data_format");
+      if (attr) {
+        if (attr->s() == "NHWC" &&
             IsPlacedOnAccelerator(node->canonical_device())) {
           recommend_nchw = true;
         }
@@ -73,4 +74,4 @@ class OperationChecker : public Checker {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_OPERATION_CHECKER_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_OPERATION_CHECKER_H_

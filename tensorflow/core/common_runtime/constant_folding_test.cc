@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -119,6 +120,58 @@ TEST_F(ConstantFoldingTest, Basic) {
   EXPECT_EQ(1, s2->num_inputs());
   ExpectNodeClose<float>(*(s2->in_nodes().begin()), {2.0, 1.0, 4.0, 3.0},
                          {2, 2});
+}
+
+// Tests that different node creation ordering creates same graph after constant
+// folding.
+TEST_F(ConstantFoldingTest, DeterministicFolding) {
+  auto build_graph_and_constant_folding = [](Graph& g, bool swap) -> Status {
+    Scope s = Scope::NewRootScope();
+    auto a = ops::Const<float>(s, {1.0}, {});
+    auto b = ops::Const<float>(s, {2.0}, {});
+
+    if (swap) {
+      auto add1 = ops::Add(s.WithOpName("add1"), a, b);
+      auto add2 = ops::Add(s.WithOpName("add2"), a, b);
+      auto s1 =
+          ops::_Send(s.WithOpName("s1"), add1, "add1", "sender", 0, "receiver");
+      auto s2 =
+          ops::_Send(s.WithOpName("s2"), add2, "add2", "sender", 0, "receiver");
+    } else {
+      // Swap the order of node creation.
+      auto add2 = ops::Add(s.WithOpName("add2"), a, b);
+      auto add1 = ops::Add(s.WithOpName("add1"), a, b);
+      auto s1 =
+          ops::_Send(s.WithOpName("s1"), add1, "add1", "sender", 0, "receiver");
+      auto s2 =
+          ops::_Send(s.WithOpName("s2"), add2, "add2", "sender", 0, "receiver");
+    }
+
+    TF_CHECK_OK(s.ToGraph(&g));
+    bool was_mutated;
+    int64 unique_id = 0;
+    auto generate_new_name = [&unique_id](Graph* graph, string old_name) {
+      return strings::StrCat(graph->NewName(old_name), "__cf__", unique_id++);
+    };
+    ConstantFoldingOptions opt{};
+    opt.generate_new_name = generate_new_name;
+    TF_CHECK_OK(
+        ConstantFold(opt, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+    return Status::OK();
+  };
+
+  Graph g1(OpRegistry::Global());
+  TF_ASSERT_OK(build_graph_and_constant_folding(g1, false));
+  Graph g2(OpRegistry::Global());
+  TF_ASSERT_OK(build_graph_and_constant_folding(g2, true));
+  EXPECT_EQ(g1.num_nodes(), g2.num_nodes());
+  auto index = NodeNameIndex(g2);
+
+  // All the nodes in g1 are expected to be present in g2.
+  for (int64 i = 0; i < g1.num_nodes(); ++i) {
+    Node* n1 = g1.FindNodeId(i);
+    EXPECT_GT(index.count(n1->name()), 0);
+  }
 }
 
 TEST_F(ConstantFoldingTest, ConsiderFunction) {
@@ -259,6 +312,13 @@ TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
   TF_EXPECT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
                             nullptr, &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
+
+  // Increase the limit and the concat should now be constant folded.
+  ConstantFoldingOptions opt;
+  opt.max_constant_size_in_bytes = 10 * 1024 * 1024 + 4;
+  TF_EXPECT_OK(
+      ConstantFold(opt, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
 }
 
 TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
@@ -282,6 +342,7 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
     Status status;
     Node* times_two = s.graph()->AddNode(def, &status);
     TF_ASSERT_OK(status);
+    TF_ASSERT_OK(s.DoShapeInference(times_two));
     s.graph()->AddEdge(c.node(), 0, times_two, 0);
 
     auto times_two_send =
@@ -297,7 +358,10 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
   EXPECT_FALSE(was_mutated);
 }
 
-REGISTER_OP("ConstantFoldingTestOp").Input("a: int64").Output("b: int64");
+REGISTER_OP("ConstantFoldingTestOp")
+    .Input("a: int64")
+    .Output("b: int64")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
   Graph g(OpRegistry::Global());
@@ -312,6 +376,7 @@ TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
     Status status;
     Node* non_cpu = s.graph()->AddNode(def, &status);
     TF_ASSERT_OK(status);
+    TF_ASSERT_OK(s.DoShapeInference(non_cpu));
 
     auto non_cpu_send =
         ops::_Send(s.WithOpName("non_cpu_send"), Output(non_cpu),
@@ -398,9 +463,9 @@ TEST_F(ConstantFoldingTest, SimpleShapeKnown) {
   PartialTensorShape ps1;
   int r1_dims[] = {2, 3, 4};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape<int>(r1_dims, 3, &ps1));
-  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
-  map[recv0].push_back(ps0);
-  map[recv1].push_back(ps1);
+  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  map[recv0->name()].push_back(ps0);
+  map[recv1->name()].push_back(ps1);
   ConstantFoldingOptions opts;
   opts.shape_map = &map;
   bool was_mutated;
@@ -475,9 +540,9 @@ TEST_F(ConstantFoldingTest, PartialShape) {
   int r0_dims[] = {-1, -1};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape(r0_dims, 2, &ps0));
   PartialTensorShape ps1;
-  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
-  map[recv0].push_back(ps0);
-  map[recv1].push_back(ps1);
+  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  map[recv0->name()].push_back(ps0);
+  map[recv1->name()].push_back(ps1);
   ConstantFoldingOptions opts;
   opts.shape_map = &map;
   bool was_mutated;
@@ -530,8 +595,8 @@ TEST_F(ConstantFoldingTest, ConstShapeKnown) {
   PartialTensorShape ps0;
   int c0_dims[] = {};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape(c0_dims, 0, &ps0));
-  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
-  map[c0].push_back(ps0);
+  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  map[c0->name()].push_back(ps0);
   ConstantFoldingOptions opts;
   opts.shape_map = &map;
   bool was_mutated;

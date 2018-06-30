@@ -16,26 +16,46 @@ limitations under the License.
 syntax = "proto3";
 
 import "tensorflow/compiler/xla/xla_data.proto";
-import "tensorflow/compiler/xla/service/session.proto";
+import "tensorflow/compiler/xla/service/hlo.proto";
 
 package xla;
 
 // Options for the HLO insert-reduce-precision-operations pass.
 message HloReducePrecisionOptions {
-  // When to run the pass.
-  enum PassTiming {
-    BEFORE_OP_FUSION = 0;
-    AFTER_OP_FUSION = 1;
+  // Where and when the reduce-precision operations will be added.
+  enum Location {
+    // Add reduce-precision operations to the inputs of selected instructions.
+    // This is done before any optimization occurs.
+    OP_INPUTS = 0;
+    // Add reduce-precision operations to the outputs of selected instructions.
+    // This is done before any optimization occurs.
+    OP_OUTPUTS = 1;
+    // After operation-fusion occurs, add reduce-precision operations to the
+    // outputs of any selected instructions that have not been fused into
+    // fusion instructions.
+    UNFUSED_OP_OUTPUTS = 2;
+    // After operation-fusion occurs, add reduce-precision operations to the
+    // outputs of any fusion instructions that contain operations matching the
+    // selection criteria.
+    FUSION_INPUTS_BY_CONTENT = 3;
+    // After operation-fusion occurs, add reduce-precision operations to the
+    // outputs of any fusion instructions that contain operations matching the
+    // selection criteria.
+    FUSION_OUTPUTS_BY_CONTENT = 4;
   }
-  PassTiming pass_timing = 1;
+  Location location = 1;
 
   // Exponent and mantissa bit counts for the reduced precision.
   uint32 exponent_bits = 2;
   uint32 mantissa_bits = 3;
 
-  // Opcodes for operations that should be suffixed with reduced-precision
+  // Operations matching these opcodes should be suffixed with reduce-precision
   // operations.
   repeated uint32 opcodes_to_suffix = 4;
+
+  // Operations with names containing these substrings should be suffixed with
+  // reduce-precision operations.
+  repeated string opname_substrings_to_suffix = 5;
 }
 
 // Debugging options for XLA. These options may change at any time - there are
@@ -62,8 +82,9 @@ message DebugOptions {
   // Dump all HLO modules as text into the provided directory path.
   string xla_generate_hlo_text_to = 7;
 
-  // Dump compilation artifacts as JSON into this directory.
-  string xla_dump_debug_json_to = 8;
+  // Dump Hlo after all hlo passes are executed as proto binary into this
+  // directory.
+  string xla_dump_optimized_hlo_proto_to = 8;
 
   // Instrument the computation to collect per-HLO cycle counts.
   bool xla_hlo_profile = 9;
@@ -127,6 +148,9 @@ message DebugOptions {
   // the generated IR.
   bool xla_llvm_enable_invariant_load_metadata = 72;
 
+  // If true, a set of expensive LLVM optimization passes will not be run.
+  bool xla_llvm_disable_expensive_passes = 73;
+
   // Options for inserting reduce-precision operations for numerical
   // experimentation.  This is a repeated field, as we may want to have
   // multiple passes with different parameters.
@@ -143,6 +167,32 @@ message DebugOptions {
   // arguments. For example, with 2 input arguments in 2D and 4D shapes, the
   // computation will run 2! * 4! times.
   bool xla_test_all_input_layouts = 91;
+
+  // Assign colors based on sharding information when generating the Graphviz
+  // HLO graph.
+  bool xla_hlo_graph_sharding_color = 92;
+
+  // Prefix the name scopes of the TF graph exports with "devX" device
+  // assignments, if available.
+  bool xla_hlo_tfgraph_device_scopes = 93;
+
+  // If true, the GPU backend is free to use cudnn for HLO batch normalization
+  // ops.
+  bool xla_gpu_use_cudnn_batchnorm = 94;
+
+  // Dump HLO before any hlo passes are executed as proto binary into this
+  // directory.
+  string xla_dump_unoptimized_hlo_proto_to = 95;
+
+  // Dump HLO after each pass as an HloProto in binary file format into this
+  // directory.
+  string xla_dump_per_pass_hlo_proto_to = 96;
+
+  // Generate calls to MKL-DNN in the CPU backend.
+  bool xla_cpu_use_mkl_dnn = 97;
+
+  // Maximum kernel unroll factor for the GPU backend.
+  int32 xla_gpu_max_kernel_unroll_factor = 98;
 
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
@@ -168,22 +218,11 @@ message ExecutionOptions {
   uint64 seed = 3;
 
   DebugOptions debug_options = 4;
-}
 
-message SnapshotComputationRequest {
-  ComputationHandle computation = 1;
-}
-
-message SnapshotComputationResponse {
-  SessionModule module = 1;
-}
-
-message LoadComputationSnapshotRequest {
-  SessionModule module = 1;
-}
-
-message LoadComputationSnapshotResponse {
-  ComputationHandle computation = 1;
+  // This optional field specifies a particular set of devices to run the
+  // computation on. The computation will be partitioned across these devices.
+  // If not provided, the default device will be chosen.
+  repeated DeviceHandle device_handles = 5;
 }
 
 message GetDeviceHandlesRequest {
@@ -244,21 +283,13 @@ message ResetDeviceRequest {
 message ResetDeviceResponse {
 }
 
-message ComputationStatsRequest {
-  ComputationHandle computation = 1;
+message ComputationGraphStatsRequest {
+  HloModuleProto computation = 1;
   DebugOptions debug_options = 2;
 }
 
 message ComputationStatsResponse {
   ComputationStats stats = 1;
-}
-
-message ComputationRequest {
-  string name = 1;
-}
-
-message ComputationResponse {
-  ComputationHandle computation = 1;
 }
 
 message CreateChannelHandleRequest {
@@ -275,30 +306,16 @@ message UnregisterRequest {
 message UnregisterResponse {
 }
 
-message SetReturnValueRequest {
-  ComputationHandle computation = 1;
-  ComputationDataHandle operand = 2;
-}
-
-message SetReturnValueResponse {
-}
-
-message ExecuteRequest {
-  reserved 3, 4;
-
-  ComputationHandle computation = 1;
+message ExecuteGraphRequest {
+  HloModuleProto computation = 1;
   repeated GlobalDataHandle arguments = 2;
 
-  // This optional field specifies a particular device to run the computation.
-  // If not provided, the default device will be chosen.
-  DeviceHandle device_handle = 5;
-
   // Options that affect how XLA compiles and runs code to service this request.
-  ExecutionOptions execution_options = 6;
+  ExecutionOptions execution_options = 3;
 }
 
-message ExecuteParallelRequest {
-  repeated ExecuteRequest requests = 1;
+message ExecuteGraphParallelRequest {
+  repeated ExecuteGraphRequest requests = 1;
 }
 
 message ExecuteResponse {
@@ -310,21 +327,6 @@ message ExecuteParallelResponse {
   repeated ExecuteResponse responses = 1;
 }
 
-message ExecuteAsyncRequest {
-  reserved 3, 4;
-
-  ComputationHandle computation = 1;
-  repeated GlobalDataHandle arguments = 2;
-
-  // Options that affect how XLA compiles and runs code to service this request.
-  ExecutionOptions execution_options = 6;
-}
-
-message ExecuteAsyncResponse {
-  // A handle to the execution launched asynchronously.
-  ExecutionHandle execution = 1;
-}
-
 message WaitForExecutionRequest {
   ExecutionHandle execution = 1;
 }
@@ -334,23 +336,14 @@ message WaitForExecutionResponse {
   ExecutionProfile profile = 2;
 }
 
-message IsConstantRequest {
-  ComputationHandle computation = 1;
-  ComputationDataHandle operand = 2;
-}
-
-message IsConstantResponse {
-  bool is_constant = 1;
-}
-
-message ComputeConstantRequest {
-  ComputationHandle computation = 1;
-  ComputationDataHandle operand = 2;
-  Layout output_layout = 3;
+message ComputeConstantGraphRequest {
+  HloModuleProto computation = 1;
+  Layout output_layout = 2;
 }
 
 message ComputeConstantResponse {
-  GlobalDataHandle output = 1;
+  // A LiteralProto is returned directly for this request.
+  LiteralProto literal = 1;
 }
 
 message DeconstructTupleRequest {
@@ -391,28 +384,12 @@ message LoadDataResponse {
   int64 nanoseconds = 5;
 }
 
-message SpecializeRequest {
-  ComputationHandle computation = 1;
-  repeated GlobalDataHandle arguments = 2;
-}
-
-message SpecializeResponse {
-}
-
 message GetShapeRequest {
   GlobalDataHandle data = 1;
 }
 
 message GetShapeResponse {
   Shape shape = 1;
-}
-
-message GetComputationShapeRequest {
-  ComputationHandle computation = 1;
-}
-
-message GetComputationShapeResponse {
-  ProgramShape program_shape = 1;
 }
 
 message UnpackRequest {

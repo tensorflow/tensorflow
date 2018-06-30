@@ -149,36 +149,6 @@ class SpecsTest(test.TestCase):
       self.assertEqual(tuple(result.shape), (10, 20))
       self.assertEqual(summaries.tf_spec_structure(spec, inputs), "_ sig sig")
 
-  def testLstm2(self):
-    with self.test_session():
-      inputs = constant_op.constant(_rand(1, 64, 64, 5))
-      spec = "net = Lstm2(15)"
-      outputs = specs.create_net(spec, inputs)
-      self.assertEqual(outputs.get_shape().as_list(), [1, 64, 64, 15])
-      variables.global_variables_initializer().run()
-      result = outputs.eval()
-      self.assertEqual(tuple(result.shape), (1, 64, 64, 15))
-
-  def testLstm2to1(self):
-    with self.test_session():
-      inputs = constant_op.constant(_rand(1, 64, 64, 5))
-      spec = "net = Lstm2to1(15)"
-      outputs = specs.create_net(spec, inputs)
-      self.assertEqual(outputs.get_shape().as_list(), [1, 64, 15])
-      variables.global_variables_initializer().run()
-      result = outputs.eval()
-      self.assertEqual(tuple(result.shape), (1, 64, 15))
-
-  def testLstm2to0(self):
-    with self.test_session():
-      inputs = constant_op.constant(_rand(1, 64, 64, 5))
-      spec = "net = Lstm2to0(15)"
-      outputs = specs.create_net(spec, inputs)
-      self.assertEqual(outputs.get_shape().as_list(), [1, 15])
-      variables.global_variables_initializer().run()
-      result = outputs.eval()
-      self.assertEqual(tuple(result.shape), (1, 15))
-
   def testKeywordRestriction(self):
     with self.test_session():
       inputs = constant_op.constant(_rand(10, 20))

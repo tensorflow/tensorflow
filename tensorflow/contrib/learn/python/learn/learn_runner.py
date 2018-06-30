@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Runs an Experiment."""
+"""Runs an Experiment (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +27,7 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config as run_c
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.contrib.training.python.training import hparam as hparam_lib
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated
 
 
 # TODO(xiejw): Refactor the learn_runner to make code reusable.
@@ -65,7 +71,8 @@ def _wrapped_experiment_fn_with_uid_check(experiment_fn, require_hparams=False):
   def wrapped_experiment_fn(run_config, hparams):
     """Calls experiment_fn and checks the uid of `RunConfig`."""
     if not isinstance(run_config, run_config_lib.RunConfig):
-      raise ValueError('`run_config` must be `RunConfig` instance')
+      raise ValueError(
+          '`run_config` must be `tf.contrib.learn.RunConfig` instance')
     if not run_config.model_dir:
       raise ValueError(
           'Must specify a model directory `model_dir` in `run_config`.')
@@ -81,7 +88,15 @@ def _wrapped_experiment_fn_with_uid_check(experiment_fn, require_hparams=False):
       raise TypeError('Experiment builder did not return an Experiment '
                       'instance, got %s instead.' % type(experiment))
 
-    if experiment.estimator.config.uid() != expected_uid:
+    config_from_estimator = experiment.estimator.config
+    if not hasattr(config_from_estimator, 'uid'):
+      raise RuntimeError(
+          'Pass `run_config` argument of the `experiment_fn` to the Estimator '
+          'in Experiment. It is likely a different `RunConfig` is passed to '
+          '`Estimator` or the `config` constructor argument in `Estimator` '
+          'is not set.')
+
+    if config_from_estimator.uid() != expected_uid:
       raise RuntimeError(
           '`RunConfig` instance is expected to be used by the `Estimator` '
           'inside the `Experiment`. expected {}, but got {}'.format(
@@ -90,6 +105,7 @@ def _wrapped_experiment_fn_with_uid_check(experiment_fn, require_hparams=False):
   return wrapped_experiment_fn
 
 
+@deprecated(None, 'Use tf.estimator.train_and_evaluate.')
 def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
         hparams=None):
   """Make and run an experiment.
@@ -156,7 +172,7 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
       must be None.
       2) It accepts two arguments `run_config` and `hparams`, which should be
       used to create the `Estimator` (`run_config` passed as `config` to its
-      constructor; `hparams` used as the hyper-paremeters of the model).
+      constructor; `hparams` used as the hyper-parameters of the model).
       It must return an `Experiment`. For this case, `output_dir` must be None.
     output_dir: Base output directory [Deprecated].
     schedule: The name of the method in the `Experiment` to run.
@@ -209,6 +225,7 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
   return _execute_schedule(experiment, schedule)
 
 
+@deprecated(None, 'Use tf.estimator.train_and_evaluate.')
 def tune(experiment_fn, tuner):
   """Tune an experiment with hyper-parameters.
 

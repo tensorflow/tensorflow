@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "MatrixDeterminant"
+  endpoint {
+    name: "linalg.det"
+  }
+  endpoint {
+    name: "matrix_determinant"
+    deprecation_message: "tf.matrix_determinant is deprecated, please use tf.linalg.det instead."
+  }
+}

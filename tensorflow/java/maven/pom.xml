@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.tensorflow</groupId>
   <artifactId>parentpom</artifactId>
-  <version>1.3.0-rc1</version>
+  <version>1.9.0-rc1</version>
   <packaging>pom</packaging>
 
   <url>https://www.tensorflow.org</url>
@@ -29,22 +29,42 @@
   <modules>
     <module>libtensorflow</module>
     <module>libtensorflow_jni</module>
+    <module>libtensorflow_jni_gpu</module>
     <module>tensorflow</module>
     <module>proto</module>
+    <module>hadoop</module>
+    <module>spark-connector</module>
   </modules>
 
-
-  <!-- Requirements from http://central.sonatype.org/pages/apache-maven.html -->
-  <distributionManagement>
-    <snapshotRepository>
+  <!-- Two profiles are used:
+       ossrh - deploys to ossrh/maven central
+       bintray - deploys to bintray/jcenter. -->
+  <profiles>
+    <profile>
       <id>ossrh</id>
-      <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-    </snapshotRepository>
-    <repository>
-      <id>ossrh</id>
-      <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-    </repository>
-  </distributionManagement>
+      <distributionManagement>
+        <!-- Sonatype requirements from http://central.sonatype.org/pages/apache-maven.html -->
+        <snapshotRepository>
+          <id>ossrh</id>
+          <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+        </snapshotRepository>
+        <repository>
+          <id>ossrh</id>
+          <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+        </repository>
+      </distributionManagement>
+    </profile>
+    <profile>
+      <id>bintray</id>
+      <distributionManagement>
+        <!-- https://blog.bintray.com/2015/09/17/publishing-your-maven-project-to-bintray/ -->
+        <repository>
+          <id>bintray</id>
+          <url>https://api.bintray.com/maven/google/tensorflow/tensorflow/;publish=0</url>
+        </repository>
+      </distributionManagement>
+    </profile>
+  </profiles>
   <!-- http://central.sonatype.org/pages/requirements.html#developer-information -->
   <developers>
     <developer>
@@ -55,19 +75,6 @@
   </developers>
   <build>
     <plugins>
-      <!-- Staging repository configuration: http://central.sonatype.org/pages/apache-maven.html#nexus-staging-maven-plugin-for-deployment-and-release -->
-      <plugin>
-        <groupId>org.sonatype.plugins</groupId>
-        <artifactId>nexus-staging-maven-plugin</artifactId>
-        <version>1.6.7</version>
-        <extensions>true</extensions>
-        <configuration>
-           <serverId>ossrh</serverId>
-           <nexusUrl>https://oss.sonatype.org/</nexusUrl>
-
-           <autoReleaseAfterClose>false</autoReleaseAfterClose>
-        </configuration>
-      </plugin>
       <!-- GPG signed components: http://central.sonatype.org/pages/apache-maven.html#gpg-signed-components -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

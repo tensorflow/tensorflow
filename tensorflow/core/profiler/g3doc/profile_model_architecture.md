@@ -1,9 +1,9 @@
-##Profile Model Architecture
+## Profile Model Architecture
 
 * [Profile Model Parameters](#profile-model-parameters)
 * [Profile Model Float Operations](#profile-model-float-operations)
 
-###Profile Model Parameters
+### Profile Model Parameters
 
 <b>Notes:</b>
 `VariableV2` operation type might contain variables created by TensorFlow
@@ -39,28 +39,28 @@ param_stats = tf.profiler.profile(
 sys.stdout.write('total_params: %d\n' % param_stats.total_parameters)
 ```
 
-###Profile Model Float Operations
+### Profile Model Float Operations
 
-####Caveats
+#### Caveats
 
 For an operation to have float operation statistics:
 
-* It must have `RegisterStatistics('flops')` defined in TensorFlow. tfprof
-use the definition to calculate float operations. Contributes are welcome.
+*   It must have `RegisterStatistics('flops')` defined in TensorFlow. tfprof
+    uses the definition to calculate float operations. Contributions are
+    welcomed.
 
-* It must have known "shape" information for RegisterStatistics('flops')
-to calculate the statistics. It is suggested to pass in `-run_meta_path` if
-shape is only known during runtime. tfprof can fill in the missing shape with
-the runtime shape information from RunMetadata.
-Hence, it is suggested to use `-account_displayed_op_only`
-option so that you know the statistics are only for the operations printed out.
+*   It must have known "shape" information for RegisterStatistics('flops') to
+    calculate the statistics. It is suggested to pass in `-run_meta_path` if
+    shape is only known during runtime. tfprof can fill in the missing shape
+    with the runtime shape information from RunMetadata. Hence, it is suggested
+    to use `-account_displayed_op_only` option so that you know the statistics
+    are only for the operations printed out.
 
-* If no RunMetadata provided, tfprof count float_ops of each graph node once,
-even if it is defined in tf.while_loop. This is because tfprof doesn't know
-how many times are run statically. If RunMetadata provided, tfprof calculate
-float_ops as float_ops * run_count.
-
-
+*   If no RunMetadata is provided, tfprof counts float_ops of each graph node
+    once, even if it is defined in a tf.while_loop. This is because tfprof
+    doesn't know statically how many times each graph node is run. If
+    RunMetadata is provided, tfprof calculates float_ops as float_ops *
+    run_count.
 
 ```python
 # To profile float opertions in commandline, you need to pass --graph_path

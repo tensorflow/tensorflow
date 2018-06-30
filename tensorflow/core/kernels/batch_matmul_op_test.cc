@@ -53,9 +53,10 @@ static Graph* BatchMatmul(int b, int m, int k, int n, bool adjoint_a,
 /* Uncomment to enable benchmarks for double & complex types: */
 // BM_BatchMatmulDev(B, M, K, N, TA, TB, std::complex<float>, DT_COMPLEX64,
 // gpu);
-// BM_BatchMatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, cpu);                    \
-// BM_BatchMatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, cpu);  \
-// BM_BatchMatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, gpu);                    \
+// BM_BatchMatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, cpu); \
+// BM_BatchMatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, cpu);
+// \
+// BM_BatchMatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, gpu); \
 // BM_BatchMatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, gpu);
 
 // Typical fully connected layers

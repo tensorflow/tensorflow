@@ -1,0 +1,44 @@
+op {
+  graph_op_name: "ResizeArea"
+  in_arg {
+    name: "images"
+    description: <<END
+4-D with shape `[batch, height, width, channels]`.
+END
+  }
+  in_arg {
+    name: "size"
+    description: <<END
+= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+new size for the images.
+END
+  }
+  out_arg {
+    name: "resized_images"
+    description: <<END
+4-D with shape
+`[batch, new_height, new_width, channels]`.
+END
+  }
+  attr {
+    name: "align_corners"
+    description: <<END
+If true, the centers of the 4 corner pixels of the input and output tensors are
+aligned, preserving the values at the corner pixels. Defaults to false.
+END
+  }
+  summary: "Resize `images` to `size` using area interpolation."
+  description: <<END
+Input images can be of different types but output images are always float.
+
+The range of pixel values for the output image might be slightly different
+from the range for the input image because of limited numerical precision.
+To guarantee an output range, for example `[0.0, 1.0]`, apply
+`tf.clip_by_value` to the output.
+
+Each output pixel is computed by first transforming the pixel's footprint into
+the input tensor and then averaging the pixels that intersect the footprint. An
+input pixel's contribution to the average is weighted by the fraction of its
+area that intersects the footprint.  This is the same as OpenCV's INTER_AREA.
+END
+}

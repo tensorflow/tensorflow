@@ -14,9 +14,15 @@
 
 ### Command Line Inputs
 
-tfprof command line tool uses the following inputs:
+tfprof command line tool uses the following input:
 
-<b>--graph_path:</b> GraphDef proto file (required). Used to build in-memory
+<b>--profile_path:</b> A ProfileProto binary proto file.
+See QuickStart on generating the file.
+
+<b>THE OLD WAY BELOW IS DEPRECATED:</b>
+
+<b>--graph_path:</b> GraphDef proto file (optional in eager execution).
+Used to build in-memory
 data structure of the model. For example, graph.pbtxt written by tf.Supervisor
 can be passed to --graph_path. You can also easily get GraphDef using
 tf.get_default_graph().as_graph_def(add_shapes=True) or other API.
@@ -51,13 +57,13 @@ It defines _checkpoint_variable op type. It also provides checkpointed tensors' 
 Note: this feature is not well maintained now.
 
 
-###Start `tfprof`
+### Start `tfprof`
 
 #### Build `tfprof`
 
 ```shell
 # Build the tool.
-bazel build --config opt third_party/tensorflow/core/profiler/...
+bazel build --config opt tensorflow/core/profiler:profiler
 
 # Help information, including detail 'option' instructions.
 bazel-bin/tensorflow/core/profiler/profiler help
@@ -67,7 +73,16 @@ bazel-bin/tensorflow/core/profiler/profiler help
 ```shell
 # The following commands will start tfprof interactive mode.
 #
-# --graph_path contains the model architecutre and tensor shapes.
+# Recommended:
+#
+# The file contains the binary string of ProfileProto.
+# It contains all needed information in one file.
+bazel-bin/tensorflow/core/profiler/profiler \
+    --profile_path=profile_xxx
+#
+# Alternatively, user can pass separate files.
+#
+# --graph_path contains the model architecture and tensor shapes.
 # --run_meta_path contains the memory and time information.
 # --op_log_path contains float operation and code traces.
 # --checkpoint_path contains the model checkpoint data.
@@ -75,6 +90,11 @@ bazel-bin/tensorflow/core/profiler/profiler help
 # Only includes model architecture, parameters and shapes.
 bazel-bin/tensorflow/core/profiler/profiler \
     --graph_path=graph.pbtxt
+
+# For profiling eager execution, user can only specify run_meta_path
+# and profile execution info of each operation.
+bazel-bin/tensorflow/core/profiler/profiler \
+    --run_meta_path=run_meta
 #
 # Additionally profile ops memory and timing.
 bazel-bin/tensorflow/core/profiler/profiler \
@@ -140,9 +160,9 @@ tfprof>
 -output
 ```
 
-###Examples
+### Examples
 
-####Profile Python Time
+#### Profile Python Time
 ```shell
 # Requires --graph_path --op_log_path
 tfprof> code -max_depth 1000 -show_name_regexes .*model_analyzer.*py.* -select micros -account_type_regexes .* -order_by micros

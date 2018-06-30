@@ -20,12 +20,15 @@ from __future__ import print_function
 
 import collections
 import functools
+import six
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_lookup_ops
@@ -37,10 +40,11 @@ from tensorflow.python.ops.gen_lookup_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(yleon): Remove this function.
-@deprecated("2017-03-02", "Use `tf.tables_initializer` instead.")
+@tf_export("initialize_all_tables")
+@deprecated(None, "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
@@ -54,6 +58,7 @@ def initialize_all_tables(name="init_all_tables"):
   return tables_initializer(name)
 
 
+@tf_export("tables_initializer")
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
@@ -82,10 +87,10 @@ def _check_table_dtypes(table, key_dtype, value_dtype):
     TypeError: when 'key_dtype' or 'value_dtype' doesn't match the table data
       types.
   """
-  if key_dtype != table.key_dtype:
+  if key_dtype.base_dtype != table.key_dtype:
     raise TypeError("Invalid key dtype, expected %s but got %s." %
                     (table.key_dtype, key_dtype))
-  if value_dtype != table.value_dtype:
+  if value_dtype.base_dtype != table.value_dtype:
     raise TypeError("Invalid value dtype, expected %s but got %s." %
                     (table.value_dtype, value_dtype))
 
@@ -152,9 +157,13 @@ class InitializableLookupTableBase(LookupInterface):
       default_value: The value to use if a key is missing in the table.
       initializer: The table initializer to use.
     """
+    if context.executing_eagerly():
+      name = context.context().scope_name
+    else:
+      name = table_ref.op.name.split("/")[-1]
     super(InitializableLookupTableBase,
           self).__init__(initializer.key_dtype, initializer.value_dtype,
-                         table_ref.op.name.split("/")[-1])
+                         name)
     self._table_ref = table_ref
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
@@ -187,9 +196,7 @@ class InitializableLookupTableBase(LookupInterface):
     """
     with ops.name_scope(name, "%s_Size" % self._name,
                         [self._table_ref]) as scope:
-      # pylint: disable=protected-access
-      return gen_lookup_ops._lookup_table_size_v2(self._table_ref, name=scope)
-      # pylint: enable=protected-access
+      return gen_lookup_ops.lookup_table_size_v2(self._table_ref, name=scope)
 
   def lookup(self, keys, name=None):
     """Looks up `keys` in a table, outputs the corresponding values.
@@ -211,17 +218,15 @@ class InitializableLookupTableBase(LookupInterface):
     if isinstance(keys, sparse_tensor.SparseTensor):
       key_tensor = keys.values
 
-    if keys.dtype != self._key_dtype:
+    if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
 
     with ops.name_scope(name, "%s_Lookup" % self._name,
                         (self._table_ref, key_tensor,
                          self._default_value)) as scope:
-      # pylint: disable=protected-access
-      values = gen_lookup_ops._lookup_table_find_v2(
+      values = gen_lookup_ops.lookup_table_find_v2(
           self._table_ref, key_tensor, self._default_value, name=scope)
-      # pylint: enable=protected-access
 
     values.set_shape(key_tensor.get_shape())
     if isinstance(keys, sparse_tensor.SparseTensor):
@@ -236,9 +241,9 @@ class HashTable(InitializableLookupTableBase):
   Example usage:
 
   ```python
-  table = tf.contrib.lookup.HashTable(
-      tf.contrib.lookup.KeyValueTensorInitializer(keys, values), -1)
-  out = table.lookup(input_tensor).
+  table = tf.HashTable(
+      tf.KeyValueTensorInitializer(keys, values), -1)
+  out = table.lookup(input_tensor)
   table.init.run()
   print(out.eval())
   ```
@@ -265,16 +270,34 @@ class HashTable(InitializableLookupTableBase):
     """
     with ops.name_scope(name, "hash_table", (initializer,
                                              default_value)) as scope:
-      # pylint: disable=protected-access
-      table_ref = gen_lookup_ops._hash_table_v2(
+      table_ref = gen_lookup_ops.hash_table_v2(
           shared_name=shared_name,
           key_dtype=initializer.key_dtype,
           value_dtype=initializer.value_dtype,
           name=scope)
-      # pylint: enable=protected-access
 
       super(HashTable, self).__init__(table_ref, default_value, initializer)
+      self._value_shape = self._default_value.get_shape()
 
+  def export(self, name=None):
+    """Returns tensors of all keys and values in the table.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A pair of tensors with the first tensor containing all keys and the
+        second tensors containing all values in the table.
+    """
+    with ops.name_scope(name, "%s_Export" % self._name,
+                        [self._table_ref]) as name:
+      with ops.colocate_with(self._table_ref):
+        exported_keys, exported_values = gen_lookup_ops.lookup_table_export_v2(
+            self._table_ref, self._key_dtype, self._value_dtype, name=name)
+
+    exported_values.set_shape(exported_keys.get_shape().concatenate(
+        self._value_shape))
+    return exported_keys, exported_values
 
 class TableInitializerBase(object):
   """Base class for lookup table initializers."""
@@ -343,10 +366,12 @@ class KeyValueTensorInitializer(TableInitializerBase):
     with ops.name_scope(
         self._name, values=(table.table_ref, self._keys,
                             self._values)) as scope:
-      # pylint: disable=protected-access
-      init_op = gen_lookup_ops._initialize_table_v2(
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        scope += str(ops.uid())
+      init_op = gen_lookup_ops.initialize_table_v2(
           table.table_ref, self._keys, self._values, name=scope)
-      # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
@@ -509,8 +534,7 @@ class TextFileInitializer(TableInitializerBase):
                         (table.table_ref,)) as scope:
       filename = ops.convert_to_tensor(
           self._filename, dtypes.string, name="asset_filepath")
-      # pylint: disable=protected-access
-      init_op = gen_lookup_ops._initialize_table_from_text_file_v2(
+      init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
           table.table_ref,
           filename,
           self._key_index,
@@ -518,11 +542,10 @@ class TextFileInitializer(TableInitializerBase):
           -1 if self._vocab_size is None else self._vocab_size,
           self._delimiter,
           name=scope)
-      # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g., if
     # it is a placeholder) then it does not make sense to track it as an asset.
-    if constant_op.is_constant(filename):
+    if not context.executing_eagerly() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
 
@@ -556,9 +579,9 @@ class TextFileStringTableInitializer(TextFileInitializer):
         The path must be accessible from wherever the graph is initialized
         (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
       key_column_index: The column index from the text file to get the keys
-        from. The default is 0 that represents the whole line content.
+        from. The default is to use the line number, starting from zero.
       value_column_index: The column index from the text file to get the
-        values from. The default is to use the line number, starting from zero.
+        values from. The default is to use the whole line content.
       vocab_size: The number of elements in the file, if known.
       delimiter: The delimiter to separate fields in a line.
       name: Optional name for the op.
@@ -608,9 +631,9 @@ class TextFileIdTableInitializer(TextFileInitializer):
         The path must be accessible from wherever the graph is initialized
         (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
       key_column_index: The column index from the text file to get the `key`
+        values from. The default is to use the whole line content.
+      value_column_index: The column index from the text file to get the `value`
         values from. The default is to use the line number, starting from zero.
-      value_column_index: The column index from the text file ro get the `value`
-        values from. The default is 0 that represents the whole line content.
       vocab_size: The number of elements in the file, if known.
       delimiter: The delimiter to separate fields in a line.
       name: Optional name for the op.
@@ -683,19 +706,22 @@ class IdTableWithHashBuckets(LookupInterface):
 
   For example, if an instance of `IdTableWithHashBuckets` is initialized with a
   string-to-id table that maps:
-  - emerson -> 0
-  - lake -> 1
-  - palmer -> 2
+
+  * `emerson -> 0`
+  * `lake -> 1`
+  * `palmer -> 2`
 
   The `IdTableWithHashBuckets` object will performs the following mapping:
-  - emerson -> 0
-  - lake -> 1
-  - palmer -> 2
-  - <other term> -> bucket id between 3 and 3 + num_oov_buckets - 1, calculated
-    by: hash(<term>) % num_oov_buckets + vocab_size
 
-  If input_tensor is ["emerson", "lake", "palmer", "king", "crimson"],
-  the lookup result is [0, 1, 2, 4, 7]
+  * `emerson -> 0`
+  * `lake -> 1`
+  * `palmer -> 2`
+  * `<other term> -> bucket_id`, where bucket_id will be between `3` and
+  `3 + num_oov_buckets - 1`, calculated by:
+  `hash(<term>) % num_oov_buckets + vocab_size`
+
+  If input_tensor is `["emerson", "lake", "palmer", "king", "crimson"]`,
+  the lookup result is `[0, 1, 2, 4, 7]`.
 
   If `table` is None, only out-of-vocabulary buckets are used.
 
@@ -784,6 +810,25 @@ class IdTableWithHashBuckets(LookupInterface):
     with ops.name_scope(None, "init"):
       return control_flow_ops.no_op()
 
+  @property
+  def table_ref(self):
+    """Returns the table_ref of the underlying table, if one exists.
+
+    Only use the table_ref directly if you know what you are doing. The
+    table_ref does not have the "hash bucket" functionality, as that is provided
+    by this class.
+
+    One possible use of the table_ref is subtokenization, i.e. ops which
+    dynamically decompose tokens into subtokens based on the contents of the
+    table_ref.
+
+    Returns:
+      the underlying table_ref, or None if there is no underlying table
+    """
+    if self._table is not None:
+      return self._table.table_ref
+    return None
+
   def size(self, name=None):
     """Compute the number of elements in this table."""
     with ops.name_scope(name, "%s_Size" % self.name) as scope:
@@ -821,7 +866,7 @@ class IdTableWithHashBuckets(LookupInterface):
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
     """
-    if keys.dtype != self._key_dtype:
+    if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
     values = keys
@@ -859,7 +904,10 @@ def index_table_from_file(vocabulary_file=None,
                           default_value=-1,
                           hasher_spec=FastHashSpec,
                           key_dtype=dtypes.string,
-                          name=None):
+                          name=None,
+                          key_column_index=TextFileIndex.WHOLE_LINE,
+                          value_column_index=TextFileIndex.LINE_NUMBER,
+                          delimiter="\t"):
   """Returns a lookup table that converts a string tensor into int64 IDs.
 
   This operation constructs a lookup table to convert tensor of strings into
@@ -875,6 +923,16 @@ def index_table_from_file(vocabulary_file=None,
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
+
+  To specify multi-column vocabulary files, use key_column_index and
+  value_column_index and delimiter.
+
+  - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
+    expects data type int64.
+  - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
+    type string.
+  - A value >=0 means use the index (starting at zero) of the split line based
+    on `delimiter`.
 
   Sample Usages:
 
@@ -907,6 +965,11 @@ def index_table_from_file(vocabulary_file=None,
       assignation of out-of-vocabulary buckets.
     key_dtype: The `key` data type.
     name: A name for this op (optional).
+    key_column_index: The column index from the text file to get the `key`
+      values from. The default is to use the whole line content.
+    value_column_index: The column index from the text file to get the `value`
+      values from. The default is to use the line number, starting from zero.
+    delimiter: The delimiter to separate fields in a line.
 
   Returns:
     The lookup table to map a `key_dtype` `Tensor` to index `int64` `Tensor`.
@@ -917,13 +980,17 @@ def index_table_from_file(vocabulary_file=None,
       than zero.
   """
   if vocabulary_file is None or (
-      isinstance(vocabulary_file, str) and not vocabulary_file):
+      isinstance(vocabulary_file, six.string_types) and not vocabulary_file):
     raise ValueError("vocabulary_file must be specified and must not be empty.")
   if num_oov_buckets < 0:
     raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
                      % num_oov_buckets)
   if vocab_size is not None and vocab_size < 1:
-    raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
+    vocab_file_value = vocabulary_file
+    if isinstance(vocabulary_file, ops.Tensor):
+      vocab_file_value = tensor_util.constant_value(vocabulary_file) or "?"
+    raise ValueError("vocab_size must be greater than 0, got %d. "
+                     "vocabulary_file: %s" % (vocab_size, vocab_file_value))
   if (not key_dtype.is_integer) and (dtypes.string != key_dtype.base_dtype):
     raise TypeError("Only integer and string keys are supported.")
 
@@ -935,19 +1002,22 @@ def index_table_from_file(vocabulary_file=None,
         # Keep the shared_name:
         # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
         shared_name = "hash_table_%s_%d_%s_%s" % (vocabulary_file, vocab_size,
-                                                  TextFileIndex.WHOLE_LINE,
-                                                  TextFileIndex.LINE_NUMBER)
+                                                  key_column_index,
+                                                  value_column_index)
       else:
         # Keep the shared_name
         # <table_type>_<filename>_<key_index>_<value_index>
         shared_name = "hash_table_%s_%s_%s" % (vocabulary_file,
-                                               TextFileIndex.WHOLE_LINE,
-                                               TextFileIndex.LINE_NUMBER)
+                                               key_column_index,
+                                               value_column_index)
       init = TextFileIdTableInitializer(
           vocabulary_file,
           vocab_size=vocab_size,
           key_dtype=dtypes.int64 if key_dtype.is_integer else key_dtype,
-          name="table_init")
+          name="table_init",
+          key_column_index=key_column_index,
+          value_column_index=value_column_index,
+          delimiter=delimiter)
 
       table = HashTable(
           init, default_value, shared_name=shared_name, name=hash_table_scope)
@@ -1002,7 +1072,7 @@ def index_table_from_tensor(vocabulary_list,
 
   Args:
     vocabulary_list: A 1-D `Tensor` that specifies the mapping of keys to
-      indices. Thetype of this object must be castable to `dtype`.
+      indices. The type of this object must be castable to `dtype`.
     num_oov_buckets: The number of out-of-vocabulary buckets.
     default_value: The value to use for out-of-vocabulary feature values.
       Defaults to -1.
@@ -1042,6 +1112,10 @@ def index_table_from_tensor(vocabulary_list,
 
     shared_name = ""
     with ops.name_scope(None, "hash_table") as hash_table_scope:
+      if context.executing_eagerly():
+        # Ensure a unique name when eager execution is enabled to avoid spurious
+        # sharing issues.
+        shared_name += str(ops.uid())
       table_keys = math_ops.to_int64(keys) if keys.dtype.is_integer else keys
       init = KeyValueTensorInitializer(
           table_keys,
@@ -1065,7 +1139,10 @@ def index_table_from_tensor(vocabulary_list,
 def index_to_string_table_from_file(vocabulary_file,
                                     vocab_size=None,
                                     default_value="UNK",
-                                    name=None):
+                                    name=None,
+                                    key_column_index=TextFileIndex.LINE_NUMBER,
+                                    value_column_index=TextFileIndex.WHOLE_LINE,
+                                    delimiter="\t"):
   """Returns a lookup table that maps a `Tensor` of indices into strings.
 
   This operation constructs a lookup table to map int64 indices into string
@@ -1078,6 +1155,16 @@ def index_to_string_table_from_file(vocabulary_file,
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
+
+  To specify multi-column vocabulary files, use key_column_index and
+  value_column_index and delimiter.
+
+  - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
+    expects data type int64.
+  - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
+    type string.
+  - A value >=0 means use the index (starting at zero) of the split line based
+    on `delimiter`.
 
   Sample Usages:
 
@@ -1101,10 +1188,15 @@ def index_to_string_table_from_file(vocabulary_file,
   ```
 
   Args:
-    vocabulary_file: The vocabulary filename.
+    vocabulary_file: The vocabulary filename, may be a constant scalar `Tensor`.
     vocab_size: Number of the elements in the vocabulary, if known.
     default_value: The value to use for out-of-vocabulary indices.
     name: A name for this op (optional).
+    key_column_index: The column index from the text file to get the `key`
+      values from. The default is to use the line number, starting from zero.
+    value_column_index: The column index from the text file to get the `value`
+      values from. The default is to use the whole line content.
+    delimiter: The delimiter to separate fields in a line.
 
   Returns:
     The lookup table to map a string values associated to a given index `int64`
@@ -1114,8 +1206,10 @@ def index_to_string_table_from_file(vocabulary_file,
     ValueError: when `vocabulary_file` is empty.
     ValueError: when `vocab_size` is invalid.
   """
-  if not vocabulary_file:
-    raise ValueError("vocabulary_file must be specified.")
+  if vocabulary_file is None or (
+      isinstance(vocabulary_file, six.string_types) and not vocabulary_file):
+    raise ValueError("vocabulary_file must be specified and must not be empty.")
+
   if vocab_size is not None and vocab_size < 1:
     raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
 
@@ -1125,15 +1219,19 @@ def index_to_string_table_from_file(vocabulary_file,
       # Keep a shared_name
       # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
       shared_name = "hash_table_%s_%d_%s_%s" % (vocabulary_file, vocab_size,
-                                                TextFileIndex.LINE_NUMBER,
-                                                TextFileIndex.WHOLE_LINE)
+                                                key_column_index,
+                                                value_column_index)
     else:
       # Keep a shared_name <table_type>_<filename>_<key_index>_<value_index>
-      shared_name = "hash_table_%s_%s_%s" % (vocabulary_file,
-                                             TextFileIndex.LINE_NUMBER,
-                                             TextFileIndex.WHOLE_LINE)
+      shared_name = "hash_table_%s_%s_%s" % (vocabulary_file, key_column_index,
+                                             value_column_index)
     init = TextFileStringTableInitializer(
-        vocabulary_file, vocab_size=vocab_size, name="table_init")
+        vocabulary_file,
+        vocab_size=vocab_size,
+        name="table_init",
+        key_column_index=key_column_index,
+        value_column_index=value_column_index,
+        delimiter=delimiter)
 
     # TODO(yleon): Use a more effienct structure.
     return HashTable(init, default_value, shared_name=shared_name, name=scope)

@@ -22,11 +22,13 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TensorInfo helpers.
 
 
+@tf_export("saved_model.utils.build_tensor_info")
 def build_tensor_info(tensor):
   """Utility function to build TensorInfo proto.
 
@@ -50,6 +52,7 @@ def build_tensor_info(tensor):
   return tensor_info
 
 
+@tf_export("saved_model.utils.get_tensor_from_tensor_info")
 def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
   """Returns the Tensor or SparseTensor described by a TensorInfo proto.
 

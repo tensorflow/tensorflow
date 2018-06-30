@@ -18,10 +18,10 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/mirror_pad_op.h"
-
 #include <string>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename Tpaddings>
 class MirrorPadOp : public OpKernel {
  public:
   explicit MirrorPadOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -82,13 +82,13 @@ class MirrorPadOp : public OpKernel {
 
     // Compute the shape of the output tensor, and allocate it.
     TensorShape output_shape;
-    TTypes<int32>::ConstMatrix paddings = in1.matrix<int32>();
+    typename TTypes<Tpaddings>::ConstMatrix paddings = in1.matrix<Tpaddings>();
     for (int d = 0; d < dims; ++d) {
-      const int32 before = paddings(d, 0);  // Pad before existing elements.
-      const int32 after = paddings(d, 1);   // Pad after existing elements.
+      const Tpaddings before = paddings(d, 0);  // Pad before existing elements.
+      const Tpaddings after = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
-                  errors::InvalidArgument("paddings must be non-negative: ",
-                                          before, " ", after));
+                  errors::InvalidArgument(
+                      "paddings must be non-negative: ", before, " ", after));
       if (offset_ == 0) {  // SYMMETRIC mode.
         OP_REQUIRES(context,
                     before <= in0.dim_size(d) && after <= in0.dim_size(d),
@@ -121,7 +121,7 @@ class MirrorPadOp : public OpKernel {
 
 #define MIRROR_PAD_CASE(i)                                                \
   case i: {                                                               \
-    functor::MirrorPad<Device, T, i>()(                                   \
+    functor::MirrorPad<Device, T, Tpaddings, i>()(                        \
         context->eigen_device<Device>(), To32Bit(output->tensor<T, i>()), \
         To32Bit(in0.tensor<T, i>()), paddings, offset_);                  \
     break;                                                                \
@@ -152,22 +152,28 @@ using GpuDevice = Eigen::GpuDevice;
 namespace functor {
 // Forward declarations of the functor specializations defined in the sharded
 // files.
-#define DECLARE_CPU_SPEC(T, i)                                               \
-  template <>                                                                \
-  void MirrorPad<CpuDevice, T, i>::operator()(                               \
-      const CpuDevice&, typename TTypes<T, i, int32>::Tensor,                \
-      typename TTypes<T, i, int32>::ConstTensor, TTypes<int32>::ConstMatrix, \
-      int);                                                                  \
-  extern template struct MirrorPad<CpuDevice, T, i>;
+#define DECLARE_CPU_SPEC(T, Tpaddings, i)                     \
+  template <>                                                 \
+  void MirrorPad<CpuDevice, T, Tpaddings, i>::operator()(     \
+      const CpuDevice&, typename TTypes<T, i, int32>::Tensor, \
+      typename TTypes<T, i, int32>::ConstTensor,              \
+      TTypes<Tpaddings>::ConstMatrix, int);                   \
+  extern template struct MirrorPad<CpuDevice, T, Tpaddings, i>;
 
-#define DECLARE_CPU_SPECS(T) \
-  DECLARE_CPU_SPEC(T, 1);    \
-  DECLARE_CPU_SPEC(T, 2);    \
-  DECLARE_CPU_SPEC(T, 3);    \
-  DECLARE_CPU_SPEC(T, 4);    \
-  DECLARE_CPU_SPEC(T, 5);
+#define DECLARE_CPU_SPECS(T)     \
+  DECLARE_CPU_SPEC(T, int32, 1); \
+  DECLARE_CPU_SPEC(T, int32, 2); \
+  DECLARE_CPU_SPEC(T, int32, 3); \
+  DECLARE_CPU_SPEC(T, int32, 4); \
+  DECLARE_CPU_SPEC(T, int32, 5); \
+  DECLARE_CPU_SPEC(T, int64, 1); \
+  DECLARE_CPU_SPEC(T, int64, 2); \
+  DECLARE_CPU_SPEC(T, int64, 3); \
+  DECLARE_CPU_SPEC(T, int64, 4); \
+  DECLARE_CPU_SPEC(T, int64, 5);
 
 TF_CALL_POD_TYPES(DECLARE_CPU_SPECS);
+TF_CALL_string(DECLARE_CPU_SPECS);
 
 #undef DECLARE_CPU_SPEC
 #undef DECLARE_CPU_SPECS
@@ -179,29 +185,41 @@ TF_CALL_POD_TYPES(DECLARE_CPU_SPECS);
                               .TypeConstraint<type>("T")          \
                               .TypeConstraint<int32>("Tpaddings") \
                               .HostMemory("paddings"),            \
-                          MirrorPadOp<CpuDevice, type>);
+                          MirrorPadOp<CpuDevice, type, int32>);   \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPad")                       \
+                              .Device(DEVICE_CPU)                 \
+                              .TypeConstraint<type>("T")          \
+                              .TypeConstraint<int64>("Tpaddings") \
+                              .HostMemory("paddings"),            \
+                          MirrorPadOp<CpuDevice, type, int64>);
 
 // Note that we do register for bool type, but not in the gradient op.
 TF_CALL_POD_TYPES(REGISTER_KERNEL);
+TF_CALL_string(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
 namespace functor {
 // Forward declarations of the functor specializations for GPU.
-#define DECLARE_GPU_SPEC(T, i)                                               \
-  template <>                                                                \
-  void MirrorPad<GpuDevice, T, i>::operator()(                               \
-      const GpuDevice&, typename TTypes<T, i, int32>::Tensor,                \
-      typename TTypes<T, i, int32>::ConstTensor, TTypes<int32>::ConstMatrix, \
-      int);                                                                  \
-  extern template struct MirrorPad<GpuDevice, T, i>;
+#define DECLARE_GPU_SPEC(T, Tpaddings, i)                     \
+  template <>                                                 \
+  void MirrorPad<GpuDevice, T, Tpaddings, i>::operator()(     \
+      const GpuDevice&, typename TTypes<T, i, int32>::Tensor, \
+      typename TTypes<T, i, int32>::ConstTensor,              \
+      TTypes<Tpaddings>::ConstMatrix, int);                   \
+  extern template struct MirrorPad<GpuDevice, T, Tpaddings, i>;
 
-#define DECLARE_GPU_SPECS(T) \
-  DECLARE_GPU_SPEC(T, 1);    \
-  DECLARE_GPU_SPEC(T, 2);    \
-  DECLARE_GPU_SPEC(T, 3);    \
-  DECLARE_GPU_SPEC(T, 4);    \
-  DECLARE_GPU_SPEC(T, 5);
+#define DECLARE_GPU_SPECS(T)     \
+  DECLARE_GPU_SPEC(T, int32, 1); \
+  DECLARE_GPU_SPEC(T, int32, 2); \
+  DECLARE_GPU_SPEC(T, int32, 3); \
+  DECLARE_GPU_SPEC(T, int32, 4); \
+  DECLARE_GPU_SPEC(T, int32, 5); \
+  DECLARE_GPU_SPEC(T, int64, 1); \
+  DECLARE_GPU_SPEC(T, int64, 2); \
+  DECLARE_GPU_SPEC(T, int64, 3); \
+  DECLARE_GPU_SPEC(T, int64, 4); \
+  DECLARE_GPU_SPEC(T, int64, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPECS
@@ -215,14 +233,20 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
                               .TypeConstraint<T>("T")             \
                               .TypeConstraint<int32>("Tpaddings") \
                               .HostMemory("paddings"),            \
-                          MirrorPadOp<GpuDevice, T>)
+                          MirrorPadOp<GpuDevice, T, int32>);      \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPad")                       \
+                              .Device(DEVICE_GPU)                 \
+                              .TypeConstraint<T>("T")             \
+                              .TypeConstraint<int64>("Tpaddings") \
+                              .HostMemory("paddings"),            \
+                          MirrorPadOp<GpuDevice, T, int64>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA
 
 // Gradient op.
-template <typename Device, typename T>
+template <typename Device, typename T, typename Tpaddings>
 class MirrorPadGradOp : public OpKernel {
  public:
   explicit MirrorPadGradOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -269,13 +293,13 @@ class MirrorPadGradOp : public OpKernel {
 
     // Compute the shape of the output tensor, and allocate it.
     TensorShape output_shape;
-    TTypes<int32>::ConstMatrix paddings = in1.matrix<int32>();
+    typename TTypes<Tpaddings>::ConstMatrix paddings = in1.matrix<Tpaddings>();
     for (int d = 0; d < dims; ++d) {
-      const int32 before = paddings(d, 0);  // Pad before existing elements.
-      const int32 after = paddings(d, 1);   // Pad after existing elements.
+      const Tpaddings before = paddings(d, 0);  // Pad before existing elements.
+      const Tpaddings after = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
-                  errors::InvalidArgument("Paddings must be non-negative: ",
-                                          before, ", ", after));
+                  errors::InvalidArgument(
+                      "Paddings must be non-negative: ", before, ", ", after));
 
       const int64 out_size = in0.dim_size(d) - (before + after);
       if (offset_ == 0) {  // SYMMETRIC mode.
@@ -308,7 +332,7 @@ class MirrorPadGradOp : public OpKernel {
 
 #define MIRROR_PAD_GRAD_CASE(k)                                           \
   case k: {                                                               \
-    functor::MirrorPadGrad<Device, T, k>()(                               \
+    functor::MirrorPadGrad<Device, T, Tpaddings, k>()(                    \
         context->eigen_device<Device>(), To32Bit(output->tensor<T, k>()), \
         To32Bit(in0.tensor<T, k>()), paddings, offset_,                   \
         To32Bit(scratch.tensor<T, k>()));                                 \
@@ -337,33 +361,45 @@ class MirrorPadGradOp : public OpKernel {
 namespace functor {
 // Forward declarations of the functor specializations defined in the sharded
 // files.
-#define DECLARE_CPU_SPEC(T, k)                                               \
-  template <>                                                                \
-  void MirrorPadGrad<CpuDevice, T, k>::operator()(                           \
-      const CpuDevice&, typename TTypes<T, k, int32>::Tensor,                \
-      typename TTypes<T, k, int32>::ConstTensor, TTypes<int32>::ConstMatrix, \
-      int, typename TTypes<T, k, int32>::Tensor);                            \
-  extern template struct MirrorPadGrad<CpuDevice, T, k>;
+#define DECLARE_CPU_SPEC(T, Tpaddings, k)                     \
+  template <>                                                 \
+  void MirrorPadGrad<CpuDevice, T, Tpaddings, k>::operator()( \
+      const CpuDevice&, typename TTypes<T, k, int32>::Tensor, \
+      typename TTypes<T, k, int32>::ConstTensor,              \
+      TTypes<Tpaddings>::ConstMatrix, int,                    \
+      typename TTypes<T, k, int32>::Tensor);                  \
+  extern template struct MirrorPadGrad<CpuDevice, T, Tpaddings, k>;
 
-#define DECLARE_CPU_SPECS(T) \
-  DECLARE_CPU_SPEC(T, 1);    \
-  DECLARE_CPU_SPEC(T, 2);    \
-  DECLARE_CPU_SPEC(T, 3);    \
-  DECLARE_CPU_SPEC(T, 4);    \
-  DECLARE_CPU_SPEC(T, 5);
+#define DECLARE_CPU_SPECS(T)     \
+  DECLARE_CPU_SPEC(T, int32, 1); \
+  DECLARE_CPU_SPEC(T, int32, 2); \
+  DECLARE_CPU_SPEC(T, int32, 3); \
+  DECLARE_CPU_SPEC(T, int32, 4); \
+  DECLARE_CPU_SPEC(T, int32, 5); \
+  DECLARE_CPU_SPEC(T, int64, 1); \
+  DECLARE_CPU_SPEC(T, int64, 2); \
+  DECLARE_CPU_SPEC(T, int64, 3); \
+  DECLARE_CPU_SPEC(T, int64, 4); \
+  DECLARE_CPU_SPEC(T, int64, 5);
 
 TF_CALL_NUMBER_TYPES(DECLARE_CPU_SPECS);
 #undef DECLARE_CPU_SPECS
 #undef DECLARE_CPU_SPEC
 }  // namespace functor
 
-#define REGISTER_KERNEL(type)                                     \
-  REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")                   \
-                              .Device(DEVICE_CPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int32>("Tpaddings") \
-                              .HostMemory("paddings"),            \
-                          MirrorPadGradOp<CpuDevice, type>);
+#define REGISTER_KERNEL(type)                                       \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")                     \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int32>("Tpaddings")   \
+                              .HostMemory("paddings"),              \
+                          MirrorPadGradOp<CpuDevice, type, int32>); \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")                     \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64>("Tpaddings")   \
+                              .HostMemory("paddings"),              \
+                          MirrorPadGradOp<CpuDevice, type, int64>);
 
 TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
@@ -371,20 +407,26 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #if GOOGLE_CUDA
 namespace functor {
 // Forward declarations of the functor specializations for GPU.
-#define DECLARE_GPU_SPEC(T, k)                                               \
-  template <>                                                                \
-  void MirrorPadGrad<GpuDevice, T, k>::operator()(                           \
-      const GpuDevice&, typename TTypes<T, k, int32>::Tensor,                \
-      typename TTypes<T, k, int32>::ConstTensor, TTypes<int32>::ConstMatrix, \
-      int, typename TTypes<T, k, int32>::Tensor);                            \
-  extern template struct MirrorPadGrad<GpuDevice, T, k>;
+#define DECLARE_GPU_SPEC(T, Tpaddings, k)                     \
+  template <>                                                 \
+  void MirrorPadGrad<GpuDevice, T, Tpaddings, k>::operator()( \
+      const GpuDevice&, typename TTypes<T, k, int32>::Tensor, \
+      typename TTypes<T, k, int32>::ConstTensor,              \
+      TTypes<Tpaddings>::ConstMatrix, int,                    \
+      typename TTypes<T, k, int32>::Tensor);                  \
+  extern template struct MirrorPadGrad<GpuDevice, T, Tpaddings, k>;
 
-#define DECLARE_GPU_SPECS(T) \
-  DECLARE_GPU_SPEC(T, 1);    \
-  DECLARE_GPU_SPEC(T, 2);    \
-  DECLARE_GPU_SPEC(T, 3);    \
-  DECLARE_GPU_SPEC(T, 4);    \
-  DECLARE_GPU_SPEC(T, 5);
+#define DECLARE_GPU_SPECS(T)     \
+  DECLARE_GPU_SPEC(T, int32, 1); \
+  DECLARE_GPU_SPEC(T, int32, 2); \
+  DECLARE_GPU_SPEC(T, int32, 3); \
+  DECLARE_GPU_SPEC(T, int32, 4); \
+  DECLARE_GPU_SPEC(T, int32, 5); \
+  DECLARE_GPU_SPEC(T, int64, 1); \
+  DECLARE_GPU_SPEC(T, int64, 2); \
+  DECLARE_GPU_SPEC(T, int64, 3); \
+  DECLARE_GPU_SPEC(T, int64, 4); \
+  DECLARE_GPU_SPEC(T, int64, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPECS
@@ -398,7 +440,13 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
                               .TypeConstraint<T>("T")             \
                               .TypeConstraint<int32>("Tpaddings") \
                               .HostMemory("paddings"),            \
-                          MirrorPadGradOp<GpuDevice, T>)
+                          MirrorPadGradOp<GpuDevice, T, int32>);  \
+  REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")                   \
+                              .Device(DEVICE_GPU)                 \
+                              .TypeConstraint<T>("T")             \
+                              .TypeConstraint<int64>("Tpaddings") \
+                              .HostMemory("paddings"),            \
+                          MirrorPadGradOp<GpuDevice, T, int64>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL

@@ -21,8 +21,8 @@ limitations under the License.
 // ScopeNode and GraphNode each maps to one TFGraphNode.
 // CodeNode and OpNode each maps to one TFMultiGraphNode.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
 
 #include <algorithm>
 #include <string>
@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
@@ -111,11 +111,13 @@ class ShowMultiNode {
 
 class CodeNode : public ShowMultiNode {
  public:
-  explicit CodeNode(TFMultiGraphNode* node, const CodeDef::Trace* trace)
-      : ShowMultiNode(node), trace(trace) {}
+  CodeNode(TFMultiGraphNode* node, const CallStack::Trace* trace,
+           const string& suffix)
+      : ShowMultiNode(node), trace_(trace), suffix_(suffix) {}
   ~CodeNode() override {}
 
-  CodeNode* AddChildren(const string& name, const CodeDef::Trace* trace) {
+  CodeNode* AddChildren(const string& name, const CallStack::Trace* trace,
+                        const string suffix) {
     auto it = children_.find(name);
     if (it != children_.end()) {
       return it->second.get();
@@ -124,16 +126,23 @@ class CodeNode : public ShowMultiNode {
     graph_children_.push_back(
         std::unique_ptr<TFMultiGraphNode>(new TFMultiGraphNode(name)));
     auto child = &children_[name];
-    child->reset(new CodeNode(graph_children_.back().get(), trace));
+    child->reset(new CodeNode(graph_children_.back().get(), trace, suffix));
     children.push_back(child->get());
     return child->get();
   }
 
-  const CodeDef::Trace* trace;
+  bool has_trace() const { return trace_ != nullptr; }
+  const int32 lineno() const { return trace_->lineno(); }
+  string file() const { return trace_->file(); }
+  string function() const { return trace_->function() + suffix_; }
+  int32 func_start_line() const { return trace_->func_start_line(); }
+
   std::vector<CodeNode*> children;
   std::vector<CodeNode*> show_children;
 
  private:
+  const CallStack::Trace* trace_;
+  string suffix_;
   std::vector<std::unique_ptr<TFMultiGraphNode>> graph_children_;
   std::map<string, std::unique_ptr<CodeNode>> children_;
 };
@@ -147,4 +156,4 @@ class OpNode : public ShowMultiNode {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_NODE_SHOW_H_
