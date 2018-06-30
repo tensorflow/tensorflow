@@ -60,7 +60,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
         }
         return node_builder;
       };
-      auto make_node = [n, g, &n_attrs, &base_make_node](string op) {
+      auto make_node = [n, g, &base_make_node](string op) {
         return base_make_node(
             op, g->NewName(strings::StrCat(n->name(), "/Internal")));
       };
