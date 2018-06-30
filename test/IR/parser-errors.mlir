@@ -6,7 +6,7 @@
 ; Check different error cases.
 ; -----
 
-extfunc @illegaltype(i42) ; expected-error {{expected type}}
+extfunc @illegaltype(i) ; expected-error {{expected type}}
 
 ; -----
 
@@ -19,7 +19,7 @@ cfgfunc @bar() ; expected-error {{expected '{' in CFG function}}
 
 ; -----
 
-extfunc missingsigil() -> (i1, int, f32) ; expected-error {{expected a function identifier like}}
+extfunc missingsigil() -> (i1, affineint, f32) ; expected-error {{expected a function identifier like}}
 
 
 ; -----
@@ -75,3 +75,9 @@ bb40:
   ""()   ; expected-error {{empty operation name is invalid}}
   return
 }
+
+; -----
+
+extfunc @illegaltype(i0) ; expected-error {{invalid integer width}}
+
+

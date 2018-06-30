@@ -21,18 +21,50 @@
 #include "mlir/Support/STLExtras.h"
 using namespace mlir;
 
+PrimitiveType::PrimitiveType(TypeKind kind, MLIRContext *context)
+  : Type(kind, context) {
+}
+
+IntegerType::IntegerType(unsigned width, MLIRContext *context)
+  : Type(TypeKind::Integer, context), width(width) {
+}
+
+FunctionType::FunctionType(Type *const *inputsAndResults, unsigned numInputs,
+                           unsigned numResults, MLIRContext *context)
+  : Type(TypeKind::Function, context, numInputs),
+    numResults(numResults), inputsAndResults(inputsAndResults) {
+}
+
+VectorType::VectorType(ArrayRef<unsigned> shape, PrimitiveType *elementType,
+                       MLIRContext *context)
+  : Type(TypeKind::Vector, context, shape.size()),
+    shapeElements(shape.data()), elementType(elementType) {
+}
+
+RankedTensorType::RankedTensorType(ArrayRef<int> shape, Type *elementType,
+                                   MLIRContext *context)
+  : TensorType(TypeKind::RankedTensor, elementType, context),
+    shapeElements(shape.data()) {
+  setSubclassData(shape.size());
+}
+
+UnrankedTensorType::UnrankedTensorType(Type *elementType, MLIRContext *context)
+  : TensorType(TypeKind::UnrankedTensor, elementType, context) {
+}
+
 void Type::print(raw_ostream &os) const {
   switch (getKind()) {
-  case TypeKind::I1:   os << "i1"; return;
-  case TypeKind::I8:   os << "i8"; return;
-  case TypeKind::I16:  os << "i16"; return;
-  case TypeKind::I32:  os << "i32"; return;
-  case TypeKind::I64:  os << "i64"; return;
-  case TypeKind::Int:  os << "int"; return;
+  case TypeKind::AffineInt: os << "affineint"; return;
   case TypeKind::BF16: os << "bf16"; return;
   case TypeKind::F16:  os << "f16"; return;
   case TypeKind::F32:  os << "f32"; return;
   case TypeKind::F64:  os << "f64"; return;
+
+  case TypeKind::Integer: {
+    auto *integer = cast<IntegerType>(this);
+    os << 'i' << integer->getWidth();
+    return;
+  }
   case TypeKind::Function: {
     auto *func = cast<FunctionType>(this);
     os << '(';

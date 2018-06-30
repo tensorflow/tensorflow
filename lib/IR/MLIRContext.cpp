@@ -120,6 +120,9 @@ public:
   using AffineMapSet = DenseSet<AffineMap *, AffineMapKeyInfo>;
   AffineMapSet affineMaps;
 
+  /// Integer type uniquing.
+  DenseMap<unsigned, IntegerType*> integers;
+
   /// Function type uniquing.
   using FunctionTypeSet = DenseSet<FunctionType*, FunctionTypeKeyInfo>;
   FunctionTypeSet functions;
@@ -173,14 +176,9 @@ Identifier Identifier::get(StringRef str, const MLIRContext *context) {
   return Identifier(it->getKeyData());
 }
 
-
 //===----------------------------------------------------------------------===//
 // Types
 //===----------------------------------------------------------------------===//
-
-PrimitiveType::PrimitiveType(TypeKind kind, MLIRContext *context)
-  : Type(kind, context) {
-}
 
 PrimitiveType *PrimitiveType::get(TypeKind kind, MLIRContext *context) {
   assert(kind <= TypeKind::LAST_PRIMITIVE_TYPE && "Not a primitive type kind");
@@ -200,10 +198,16 @@ PrimitiveType *PrimitiveType::get(TypeKind kind, MLIRContext *context) {
   return impl.primitives[(int)kind] = ptr;
 }
 
-FunctionType::FunctionType(Type *const *inputsAndResults, unsigned numInputs,
-                           unsigned numResults, MLIRContext *context)
-  : Type(TypeKind::Function, context, numInputs),
-    numResults(numResults), inputsAndResults(inputsAndResults) {
+IntegerType *IntegerType::get(unsigned width, MLIRContext *context) {
+  auto &impl = context->getImpl();
+
+  auto *&result = impl.integers[width];
+  if (!result) {
+    result = impl.allocator.Allocate<IntegerType>();
+    new (result) IntegerType(width, context);
+  }
+
+  return result;
 }
 
 FunctionType *FunctionType::get(ArrayRef<Type*> inputs, ArrayRef<Type*> results,
@@ -236,18 +240,9 @@ FunctionType *FunctionType::get(ArrayRef<Type*> inputs, ArrayRef<Type*> results,
   return *existing.first = result;
 }
 
-
-
-VectorType::VectorType(ArrayRef<unsigned> shape, PrimitiveType *elementType,
-                       MLIRContext *context)
-  : Type(TypeKind::Vector, context, shape.size()),
-    shapeElements(shape.data()), elementType(elementType) {
-}
-
-
 VectorType *VectorType::get(ArrayRef<unsigned> shape, Type *elementType) {
   assert(!shape.empty() && "vector types must have at least one dimension");
-  assert(isa<PrimitiveType>(elementType) &&
+  assert((isa<PrimitiveType>(elementType) || isa<IntegerType>(elementType)) &&
          "vectors elements must be primitives");
 
   auto *context = elementType->getContext();
@@ -277,20 +272,10 @@ VectorType *VectorType::get(ArrayRef<unsigned> shape, Type *elementType) {
 
 TensorType::TensorType(TypeKind kind, Type *elementType, MLIRContext *context)
   : Type(kind, context), elementType(elementType) {
-  assert((isa<PrimitiveType>(elementType) || isa<VectorType>(elementType)) &&
+  assert((isa<PrimitiveType>(elementType) || isa<VectorType>(elementType) ||
+          isa<IntegerType>(elementType)) &&
          "tensor elements must be primitives or vectors");
   assert(isa<TensorType>(this));
-}
-
-RankedTensorType::RankedTensorType(ArrayRef<int> shape, Type *elementType,
-                                   MLIRContext *context)
-  : TensorType(TypeKind::RankedTensor, elementType, context),
-    shapeElements(shape.data()) {
-  setSubclassData(shape.size());
-}
-
-UnrankedTensorType::UnrankedTensorType(Type *elementType, MLIRContext *context)
-  : TensorType(TypeKind::UnrankedTensor, elementType, context) {
 }
 
 RankedTensorType *RankedTensorType::get(ArrayRef<int> shape,

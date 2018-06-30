@@ -48,6 +48,18 @@ Optional<unsigned> Token::getUnsignedIntegerValue() const {
   return result;
 }
 
+/// For an inttype token, return its bitwidth.
+Optional<unsigned> Token::getIntTypeBitwidth() const {
+ unsigned result = 0;
+  if (spelling[1] == '0' ||
+      spelling.drop_front().getAsInteger(10, result) ||
+      // Arbitrary but large limit on bitwidth.
+      result > 4096 || result == 0)
+    return None;
+  return result;
+}
+
+
 /// Given a 'string' token, return its value, including removing the quote
 /// characters and unescaping the contents of the string.
 std::string Token::getStringValue() const {

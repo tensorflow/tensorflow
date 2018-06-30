@@ -121,7 +121,7 @@ private:
   // as the results of their action.
 
   // Type parsing.
-  PrimitiveType *parsePrimitiveType();
+  Type *parsePrimitiveType();
   Type *parseElementType();
   VectorType *parseVectorType();
   ParseResult parseDimensionListRanked(SmallVectorImpl<int> &dimensions);
@@ -218,12 +218,11 @@ parseCommaSeparatedList(Token::Kind rightToken,
 
 /// Parse the low-level fixed dtypes in the system.
 ///
-///   primitive-type
-///      ::= `f16` | `bf16` | `f32` | `f64`      // Floating point
-///        | `i1` | `i8` | `i16` | `i32` | `i64` // Sized integers
-///        | `int`
+///   primitive-type ::= `f16` | `bf16` | `f32` | `f64`
+///   primitive-type ::= integer-type
+///   primitive-type ::= `affineint`
 ///
-PrimitiveType *Parser::parsePrimitiveType() {
+Type *Parser::parsePrimitiveType() {
   switch (curToken.getKind()) {
   default:
     return (emitError("expected type"), nullptr);
@@ -239,24 +238,16 @@ PrimitiveType *Parser::parsePrimitiveType() {
   case Token::kw_f64:
     consumeToken(Token::kw_f64);
     return Type::getF64(context);
-  case Token::kw_i1:
-    consumeToken(Token::kw_i1);
-    return Type::getI1(context);
-  case Token::kw_i8:
-    consumeToken(Token::kw_i8);
-    return Type::getI8(context);
-  case Token::kw_i16:
-    consumeToken(Token::kw_i16);
-    return Type::getI16(context);
-  case Token::kw_i32:
-    consumeToken(Token::kw_i32);
-    return Type::getI32(context);
-  case Token::kw_i64:
-    consumeToken(Token::kw_i64);
-    return Type::getI64(context);
-  case Token::kw_int:
-    consumeToken(Token::kw_int);
-    return Type::getInt(context);
+  case Token::kw_affineint:
+    consumeToken(Token::kw_affineint);
+    return Type::getAffineInt(context);
+  case Token::inttype: {
+    auto width = curToken.getIntTypeBitwidth();
+    if (!width.hasValue())
+      return (emitError("invalid integer width"), nullptr);
+    consumeToken(Token::inttype);
+    return Type::getInt(width.getValue(), context);
+  }
   }
 }
 
@@ -419,10 +410,8 @@ Type *Parser::parseMemRefType() {
     return (emitError("expected '>' in memref type"), nullptr);
 
   // FIXME: Add an IR representation for memref types.
-  return Type::getI1(context);
+  return Type::getInt(1, context);
 }
-
-
 
 /// Parse a function type.
 ///
@@ -444,7 +433,6 @@ Type *Parser::parseFunctionType() {
 
   return FunctionType::get(arguments, results, context);
 }
-
 
 /// Parse an arbitrary type.
 ///

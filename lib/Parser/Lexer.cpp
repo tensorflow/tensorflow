@@ -140,6 +140,7 @@ Token Lexer::lexComment() {
 /// Lex a bare identifier or keyword that starts with a letter.
 ///
 ///   bare-id ::= letter (letter|digit|[_])*
+///   integer-type ::= `i[1-9][0-9]*`
 ///
 Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
   // Match the rest of the identifier regex: [0-9a-zA-Z_]*
@@ -148,6 +149,15 @@ Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
 
   // Check to see if this identifier is a keyword.
   StringRef spelling(tokStart, curPtr-tokStart);
+
+  // Check for i123.
+  if (tokStart[0] == 'i') {
+    bool allDigits = true;
+    for (auto c : spelling.drop_front())
+      allDigits &= isdigit(c) != 0;
+    if (allDigits && spelling.size() != 1)
+      return Token(Token::inttype, spelling);
+  }
 
   Token::Kind kind = llvm::StringSwitch<Token::Kind>(spelling)
 #define TOK_KEYWORD(SPELLING) \

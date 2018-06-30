@@ -73,6 +73,9 @@ public:
   /// return None.
   Optional<unsigned> getUnsignedIntegerValue() const;
 
+  /// For an inttype token, return its bitwidth.
+  Optional<unsigned> getIntTypeBitwidth() const;
+
   /// Given a 'string' token, return its value, including removing the quote
   /// characters and unescaping the contents of the string.
   std::string getStringValue() const;

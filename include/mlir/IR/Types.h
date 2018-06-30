@@ -24,18 +24,12 @@
 namespace mlir {
   class MLIRContext;
   class PrimitiveType;
+  class IntegerType;
 
 /// Integer identifier for all the concrete type kinds.
 enum class TypeKind {
-  // Integer.
-  I1,
-  I8,
-  I16,
-  I32,
-  I64,
-
   // Target pointer sized integer.
-  Int,
+  AffineInt,
 
   // Floating point.
   BF16,
@@ -48,6 +42,7 @@ enum class TypeKind {
   LAST_PRIMITIVE_TYPE = F64,
 
   // Derived types.
+  Integer,
   Function,
   Vector,
   RankedTensor,
@@ -80,12 +75,8 @@ public:
   void dump() const;
 
   // Convenience factories.
-  static PrimitiveType *getI1(MLIRContext *ctx);
-  static PrimitiveType *getI8(MLIRContext *ctx);
-  static PrimitiveType *getI16(MLIRContext *ctx);
-  static PrimitiveType *getI32(MLIRContext *ctx);
-  static PrimitiveType *getI64(MLIRContext *ctx);
-  static PrimitiveType *getInt(MLIRContext *ctx);
+  static IntegerType *getInt(unsigned width, MLIRContext *ctx);
+  static PrimitiveType *getAffineInt(MLIRContext *ctx);
   static PrimitiveType *getBF16(MLIRContext *ctx);
   static PrimitiveType *getF16(MLIRContext *ctx);
   static PrimitiveType *getF32(MLIRContext *ctx);
@@ -140,23 +131,9 @@ private:
   PrimitiveType(TypeKind kind, MLIRContext *context);
 };
 
-inline PrimitiveType *Type::getI1(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::I1, ctx);
-}
-inline PrimitiveType *Type::getI8(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::I8, ctx);
-}
-inline PrimitiveType *Type::getI16(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::I16, ctx);
-}
-inline PrimitiveType *Type::getI32(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::I32, ctx);
-}
-inline PrimitiveType *Type::getI64(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::I64, ctx);
-}
-inline PrimitiveType *Type::getInt(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::Int, ctx);
+
+inline PrimitiveType *Type::getAffineInt(MLIRContext *ctx) {
+  return PrimitiveType::get(TypeKind::AffineInt, ctx);
 }
 inline PrimitiveType *Type::getBF16(MLIRContext *ctx) {
   return PrimitiveType::get(TypeKind::BF16, ctx);
@@ -170,6 +147,30 @@ inline PrimitiveType *Type::getF32(MLIRContext *ctx) {
 inline PrimitiveType *Type::getF64(MLIRContext *ctx) {
   return PrimitiveType::get(TypeKind::F64, ctx);
 }
+
+/// Integer types can have arbitrary bitwidth up to a large fixed limit of 4096.
+class IntegerType : public Type {
+public:
+  static IntegerType *get(unsigned width, MLIRContext *context);
+
+  /// Return the bitwidth of this integer type.
+  unsigned getWidth() const {
+    return width;
+  }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Type *type) {
+    return type->getKind() == TypeKind::Integer;
+  }
+private:
+  unsigned width;
+  IntegerType(unsigned width, MLIRContext *context);
+};
+
+inline IntegerType *Type::getInt(unsigned width, MLIRContext *ctx) {
+  return IntegerType::get(width, ctx);
+}
+
 
 
 /// Function types map from a list of inputs to a list of results.

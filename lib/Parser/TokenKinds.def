@@ -58,6 +58,7 @@ TOK_IDENTIFIER(affine_map_identifier)   // #foo
 // Literals
 TOK_LITERAL(integer)                    // 42
 TOK_LITERAL(string)                     // "foo"
+TOK_LITERAL(inttype)                    // i421
 
 // Punctuation.
 TOK_PUNCTUATION(arrow,            "->")
@@ -84,6 +85,7 @@ TOK_OPERATOR(floordiv,           "floordiv")
 // TODO: More operator tokens
 
 // Keywords.  These turn "foo" into Token::kw_foo enums.
+TOK_KEYWORD(affineint)
 TOK_KEYWORD(bf16)
 TOK_KEYWORD(br)
 TOK_KEYWORD(cfgfunc)
@@ -91,12 +93,6 @@ TOK_KEYWORD(extfunc)
 TOK_KEYWORD(f16)
 TOK_KEYWORD(f32)
 TOK_KEYWORD(f64)
-TOK_KEYWORD(i1)
-TOK_KEYWORD(i16)
-TOK_KEYWORD(i32)
-TOK_KEYWORD(i64)
-TOK_KEYWORD(i8)
-TOK_KEYWORD(int)
 TOK_KEYWORD(memref)
 TOK_KEYWORD(mlfunc)
 TOK_KEYWORD(return)
