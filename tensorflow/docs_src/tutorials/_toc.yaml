@@ -5,6 +5,8 @@ toc:
 - title: Learn and use ML
   style: accordion
   section:
+  - title: Overview
+    path: /tutorials/get_started/
   - title: Basic classification
     path: /tutorials/get_started/basic_classification
   - title: Text classification
